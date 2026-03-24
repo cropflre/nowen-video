@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,28 +12,37 @@ import (
 
 // LibraryService 媒体库服务
 type LibraryService struct {
-	repo      *repository.LibraryRepo
-	mediaRepo *repository.MediaRepo
-	scanner   *ScannerService
-	metadata  *MetadataService
-	logger    *zap.SugaredLogger
-	scanning  sync.Map // 记录正在扫描的媒体库ID
+	repo       *repository.LibraryRepo
+	mediaRepo  *repository.MediaRepo
+	seriesRepo *repository.SeriesRepo
+	scanner    *ScannerService
+	metadata   *MetadataService
+	logger     *zap.SugaredLogger
+	scanning   sync.Map // 记录正在扫描的媒体库ID
+	wsHub      *WSHub   // WebSocket事件广播
 }
 
 func NewLibraryService(
 	repo *repository.LibraryRepo,
 	mediaRepo *repository.MediaRepo,
+	seriesRepo *repository.SeriesRepo,
 	scanner *ScannerService,
 	metadata *MetadataService,
 	logger *zap.SugaredLogger,
 ) *LibraryService {
 	return &LibraryService{
-		repo:      repo,
-		mediaRepo: mediaRepo,
-		scanner:   scanner,
-		metadata:  metadata,
-		logger:    logger,
+		repo:       repo,
+		mediaRepo:  mediaRepo,
+		seriesRepo: seriesRepo,
+		scanner:    scanner,
+		metadata:   metadata,
+		logger:     logger,
 	}
+}
+
+// SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
+func (s *LibraryService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 // Create 创建媒体库
@@ -104,9 +114,41 @@ func (s *LibraryService) Scan(id string) error {
 	return nil
 }
 
-// Delete 删除媒体库
+// Delete 删除媒体库（级联清理关联的媒体和剧集合集数据）
 func (s *LibraryService) Delete(id string) error {
-	return s.repo.Delete(id)
+	// 先获取媒体库信息（用于日志和事件通知）
+	lib, _ := s.repo.FindByID(id)
+	libName := id
+	if lib != nil {
+		libName = lib.Name
+	}
+
+	// 级联删除关联数据
+	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
+		s.logger.Errorf("删除媒体库 %s 的媒体数据失败: %v", libName, err)
+	}
+	if err := s.seriesRepo.DeleteByLibraryID(id); err != nil {
+		s.logger.Errorf("删除媒体库 %s 的剧集合集数据失败: %v", libName, err)
+	}
+
+	// 删除媒体库记录本身
+	if err := s.repo.Delete(id); err != nil {
+		return err
+	}
+
+	s.logger.Infof("媒体库 %s 已删除（关联数据已清理）", libName)
+
+	// 广播媒体库删除事件，通知前端刷新
+	if s.wsHub != nil {
+		s.wsHub.BroadcastEvent(EventLibraryDeleted, &LibraryChangedData{
+			LibraryID:   id,
+			LibraryName: libName,
+			Action:      "deleted",
+			Message:     fmt.Sprintf("媒体库「%s」已删除", libName),
+		})
+	}
+
+	return nil
 }
 
 // Update 更新媒体库信息

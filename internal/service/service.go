@@ -43,7 +43,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetWSHub(wsHub)
 
 	// 创建Library服务
-	libService := NewLibraryService(repos.Library, repos.Media, scanner, metadata, logger)
+	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, scanner, metadata, logger)
+	libService.SetWSHub(wsHub)
 
 	// 创建调度器服务
 	scheduler := NewSchedulerService(repos.ScheduledTask, repos.Library, logger)

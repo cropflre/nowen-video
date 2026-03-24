@@ -18,6 +18,9 @@ export const WS_EVENTS = {
   TRANSCODE_PROGRESS: 'transcode_progress',
   TRANSCODE_COMPLETED: 'transcode_completed',
   TRANSCODE_FAILED: 'transcode_failed',
+  // 媒体库变更事件
+  LIBRARY_DELETED: 'library_deleted',
+  LIBRARY_UPDATED: 'library_updated',
 } as const
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS]
@@ -52,6 +55,13 @@ export interface TranscodeProgressData {
   quality: string
   progress: number
   speed: string
+  message: string
+}
+
+export interface LibraryChangedData {
+  library_id: string
+  library_name: string
+  action: string
   message: string
 }
 

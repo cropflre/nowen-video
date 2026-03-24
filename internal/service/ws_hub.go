@@ -28,6 +28,10 @@ const (
 	EventTranscodeProgress  = "transcode_progress"  // 转码进度
 	EventTranscodeCompleted = "transcode_completed" // 转码完成
 	EventTranscodeFailed    = "transcode_failed"    // 转码失败
+
+	// 媒体库变更事件
+	EventLibraryDeleted = "library_deleted" // 媒体库被删除
+	EventLibraryUpdated = "library_updated" // 媒体库内容有变更
 )
 
 // WSEvent WebSocket事件消息
@@ -57,6 +61,14 @@ type ScrapeProgressData struct {
 	Success     int    `json:"success"`     // 成功数
 	Failed      int    `json:"failed"`      // 失败数
 	MediaTitle  string `json:"media_title"` // 当前正在刮削的媒体
+	Message     string `json:"message"`
+}
+
+// LibraryChangedData 媒体库变更事件数据
+type LibraryChangedData struct {
+	LibraryID   string `json:"library_id"`
+	LibraryName string `json:"library_name"`
+	Action      string `json:"action"` // deleted / updated
 	Message     string `json:"message"`
 }
 

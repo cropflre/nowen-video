@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
+import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { Media, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Play, Clock, Sparkles } from 'lucide-react'
@@ -11,26 +12,66 @@ export default function HomePage() {
   const [continueList, setContinueList] = useState<WatchHistory[]>([])
   const [recommendations, setRecommendations] = useState<RecommendedMedia[]>([])
   const [loading, setLoading] = useState(true)
+  const location = useLocation()
+  const { on, off } = useWebSocket()
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [recentRes, continueRes, recommendRes] = await Promise.all([
-          mediaApi.recentMixed(20),
-          mediaApi.continueWatching(10),
-          recommendApi.getRecommendations(12),
-        ])
-        setRecentItems(recentRes.data.data || [])
-        setContinueList(continueRes.data.data || [])
-        setRecommendations(recommendRes.data.data || [])
-      } catch {
-        // 静默处理
-      } finally {
-        setLoading(false)
-      }
+  // 数据加载函数（可复用）
+  const fetchData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    try {
+      const [recentRes, continueRes, recommendRes] = await Promise.all([
+        mediaApi.recentMixed(20),
+        mediaApi.continueWatching(10),
+        recommendApi.getRecommendations(12),
+      ])
+      setRecentItems(recentRes.data.data || [])
+      setContinueList(continueRes.data.data || [])
+      setRecommendations(recommendRes.data.data || [])
+    } catch {
+      // 静默处理
+    } finally {
+      setLoading(false)
     }
-    fetchData()
   }, [])
+
+  // 初始加载 + 每次导航回首页时自动刷新
+  useEffect(() => {
+    fetchData(true)
+  }, [fetchData, location.key])
+
+  // 监听 WebSocket 媒体库变更事件，自动刷新首页数据
+  useEffect(() => {
+    // 防抨动刷新：收到事件后延迟 1 秒再刷新，避免短时间内多次刷新
+    const debouncedRefresh = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(() => fetchData(false), 1000)
+    }
+
+    // 媒体库删除时立即清空并重新加载
+    const handleLibraryDeleted = () => {
+      setRecentItems([])
+      setContinueList([])
+      setRecommendations([])
+      fetchData(true)
+    }
+
+    // 扫描/刮削完成时静默刷新
+    const handleContentChanged = () => debouncedRefresh()
+
+    on(WS_EVENTS.LIBRARY_DELETED, handleLibraryDeleted)
+    on(WS_EVENTS.LIBRARY_UPDATED, handleContentChanged)
+    on(WS_EVENTS.SCAN_COMPLETED, handleContentChanged)
+    on(WS_EVENTS.SCRAPE_COMPLETED, handleContentChanged)
+
+    return () => {
+      off(WS_EVENTS.LIBRARY_DELETED, handleLibraryDeleted)
+      off(WS_EVENTS.LIBRARY_UPDATED, handleContentChanged)
+      off(WS_EVENTS.SCAN_COMPLETED, handleContentChanged)
+      off(WS_EVENTS.SCRAPE_COMPLETED, handleContentChanged)
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    }
+  }, [on, off, fetchData])
 
   // 格式化进度百分比
   const formatProgress = (position: number, duration: number) => {
