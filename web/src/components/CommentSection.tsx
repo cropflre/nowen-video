@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { commentApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/components/Toast'
 import type { Comment } from '@/types'
 import { MessageSquare, Star, Send, Trash2 } from 'lucide-react'
 
@@ -19,6 +20,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
   const [hoverRating, setHoverRating] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     loadComments()
@@ -33,7 +35,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       setAvgRating(res.data.avg_rating)
       setRatingCount(res.data.rating_count)
     } catch {
-      // 静默处理
+      toast.error('加载评论失败')
     } finally {
       setLoading(false)
     }
@@ -50,7 +52,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       setRating(0)
       loadComments()
     } catch {
-      alert('发表评论失败')
+      toast.error('发表评论失败')
     }
   }
 
@@ -60,7 +62,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       await commentApi.delete(id)
       loadComments()
     } catch {
-      // 静默处理
+      toast.error('删除评论失败')
     }
   }
 

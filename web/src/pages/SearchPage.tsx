@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { mediaApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { Media } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Search as SearchIcon, X } from 'lucide-react'
@@ -12,6 +13,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const size = 30
+  const toast = useToast()
 
   const doSearch = useCallback(async (q: string, p: number) => {
     if (!q.trim()) return
@@ -22,7 +24,7 @@ export default function SearchPage() {
       setResults(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      // 静默处理
+      toast.error('搜索失败，请稍后重试')
     } finally {
       setLoading(false)
     }

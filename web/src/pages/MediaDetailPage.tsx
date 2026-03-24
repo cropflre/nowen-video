@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { mediaApi, userApi, streamApi, playlistApi, recommendApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/components/Toast'
 import type { Media, MediaPlayInfo, Playlist, RecommendedMedia } from '@/types'
 import {
   Play,
@@ -32,6 +33,7 @@ export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const toast = useToast()
   const [media, setMedia] = useState<Media | null>(null)
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
   const [isFavorited, setIsFavorited] = useState(false)
@@ -69,7 +71,10 @@ export default function MediaDetailPage() {
         setPlaylists(playlistRes.data.data || [])
         setRecommendations(recoRes.data.data || [])
       })
-      .catch(() => navigate('/'))
+      .catch(() => {
+        toast.error('加载媒体详情失败')
+        navigate('/')
+      })
       .finally(() => setLoading(false))
   }, [id, navigate])
 
@@ -84,7 +89,7 @@ export default function MediaDetailPage() {
         setIsFavorited(true)
       }
     } catch {
-      // 静默处理
+      toast.error('收藏操作失败')
     }
   }
 
@@ -96,7 +101,7 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
     } catch {
-      alert('元数据刮削失败，请检查TMDb API Key配置')
+      toast.error('元数据刮削失败，请检查TMDb API Key配置')
     } finally {
       setScraping(false)
     }
@@ -108,7 +113,7 @@ export default function MediaDetailPage() {
       await playlistApi.addItem(playlistId, id)
       setShowPlaylistMenu(false)
     } catch {
-      // 静默处理
+      toast.error('添加到播放列表失败')
     }
   }
 

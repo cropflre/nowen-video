@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 
@@ -566,4 +568,60 @@ func boolToStr(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// ==================== 服务端文件浏览器 ====================
+
+// BrowseFS 浏览服务器文件系统目录
+func (h *AdminHandler) BrowseFS(c *gin.Context) {
+	dir := c.DefaultQuery("path", "/")
+	if dir == "" {
+		dir = "/"
+	}
+
+	// 安全检查：清理路径
+	dir = filepath.Clean(dir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无法读取目录: " + err.Error()})
+		return
+	}
+
+	type FsEntry struct {
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		IsDir bool   `json:"is_dir"`
+	}
+
+	var items []FsEntry
+	for _, entry := range entries {
+		// 只返回目录（文件浏览器只需要选择文件夹）
+		if !entry.IsDir() {
+			continue
+		}
+		// 跳过隐藏目录
+		if entry.Name()[0] == '.' {
+			continue
+		}
+		items = append(items, FsEntry{
+			Name:  entry.Name(),
+			Path:  filepath.Join(dir, entry.Name()),
+			IsDir: true,
+		})
+	}
+
+	// 计算父目录
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		parent = ""
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"current": dir,
+			"parent":  parent,
+			"items":   items,
+		},
+	})
 }

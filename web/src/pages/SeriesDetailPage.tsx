@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { seriesApi, userApi, streamApi, playlistApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/components/Toast'
 import type { Series, SeasonInfo, Media, Playlist } from '@/types'
 import {
   Play,
@@ -26,6 +27,7 @@ export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const toast = useToast()
   const [series, setSeries] = useState<Series | null>(null)
   const [seasons, setSeasons] = useState<SeasonInfo[]>([])
   const [activeSeason, setActiveSeason] = useState<number>(1)
@@ -56,7 +58,10 @@ export default function SeriesDetailPage() {
         }
         setPlaylists(playlistRes.data.data || [])
       })
-      .catch(() => navigate('/'))
+      .catch(() => {
+        toast.error('加载剧集详情失败')
+        navigate('/')
+      })
       .finally(() => setLoading(false))
   }, [id, navigate])
 
@@ -78,7 +83,7 @@ export default function SeriesDetailPage() {
         setIsFavorited(true)
       }
     } catch {
-      // 静默处理
+      toast.error('收藏操作失败')
     }
   }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { mediaApi, seriesApi, streamApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { Media, Series, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import {
@@ -46,6 +47,7 @@ export default function LibraryPage() {
   const [filterGenre, setFilterGenre] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const size = 30
+  const toast = useToast()
 
   useEffect(() => {
     setPage(1)
@@ -67,7 +69,7 @@ export default function LibraryPage() {
         setTotal(mixedRes.data.total)
         setSeriesList(seriesRes.data.data || [])
       })
-      .catch(() => {})
+      .catch(() => { toast.error('加载媒体库内容失败') })
       .finally(() => setLoading(false))
   }, [id, page])
 

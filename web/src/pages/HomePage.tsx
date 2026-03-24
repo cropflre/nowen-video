@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { Media, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
+import { useToast } from '@/components/Toast'
+import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Play, Clock, Sparkles } from 'lucide-react'
 import { streamApi } from '@/api'
@@ -14,6 +15,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const location = useLocation()
   const { on, off } = useWebSocket()
+  const toast = useToast()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 数据加载函数（可复用）
@@ -29,7 +31,7 @@ export default function HomePage() {
       setContinueList(continueRes.data.data || [])
       setRecommendations(recommendRes.data.data || [])
     } catch {
-      // 静默处理
+      toast.error('加载数据失败，请刷新页面重试')
     } finally {
       setLoading(false)
     }

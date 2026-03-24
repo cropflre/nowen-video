@@ -15,6 +15,8 @@ import {
   Settings,
   Subtitles,
   Monitor,
+  Gauge,
+  ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
@@ -26,6 +28,10 @@ interface VideoPlayerProps {
   title?: string
   startPosition?: number
   onBack?: () => void
+  /** 下一集回调 — 存在时显示"下一集"按钮，播放结束自动触发 */
+  onNext?: () => void
+  /** 下一集标题（用于提示） */
+  nextTitle?: string
 }
 
 export default function VideoPlayer({
@@ -35,6 +41,8 @@ export default function VideoPlayer({
   title,
   startPosition = 0,
   onBack,
+  onNext,
+  nextTitle,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -71,6 +79,15 @@ export default function VideoPlayer({
   const [externalSubs, setExternalSubs] = useState<ExternalSubtitle[]>([])
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null)
   const [showCastPanel, setShowCastPanel] = useState(false)
+
+  // 倍速播放
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
+
+  // 自动下一集倒计时
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null)
+  const nextCountdownTimerRef = useRef<number>(0)
 
   // 快进/快退提示
   const [seekHint, setSeekHint] = useState<{ text: string; visible: boolean }>({ text: '', visible: false })
@@ -220,19 +237,43 @@ export default function VideoPlayer({
       setVolume(video.volume)
       setMuted(video.muted)
     }
+    // 播放结束 — 自动下一集
+    const onEnded = () => {
+      setPlaying(false)
+      if (onNext) {
+        // 开始 5 秒倒计时
+        setNextCountdown(5)
+      }
+    }
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('timeupdate', onTimeUpdate)
     video.addEventListener('durationchange', onDurationChange)
     video.addEventListener('volumechange', onVolumeChange)
+    video.addEventListener('ended', onEnded)
     return () => {
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('timeupdate', onTimeUpdate)
       video.removeEventListener('durationchange', onDurationChange)
       video.removeEventListener('volumechange', onVolumeChange)
+      video.removeEventListener('ended', onEnded)
     }
-  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted])
+  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext])
+
+  // 自动下一集倒计时逻辑
+  useEffect(() => {
+    if (nextCountdown === null) return
+    if (nextCountdown <= 0) {
+      setNextCountdown(null)
+      onNext?.()
+      return
+    }
+    nextCountdownTimerRef.current = window.setTimeout(() => {
+      setNextCountdown((prev) => (prev !== null ? prev - 1 : null))
+    }, 1000)
+    return () => clearTimeout(nextCountdownTimerRef.current)
+  }, [nextCountdown, onNext])
 
   // 定期上报播放进度
   useEffect(() => {
@@ -266,6 +307,10 @@ export default function VideoPlayer({
   const togglePlay = () => {
     const video = videoRef.current
     if (!video) return
+    // 如果正在倒计时下一集，取消并重新播放
+    if (nextCountdown !== null) {
+      setNextCountdown(null)
+    }
     if (video.paused) video.play()
     else video.pause()
   }
@@ -303,6 +348,15 @@ export default function VideoPlayer({
     const vol = parseFloat(e.target.value)
     video.volume = vol
     video.muted = vol === 0
+  }
+
+  // 倍速切换
+  const changeSpeed = (rate: number) => {
+    const video = videoRef.current
+    if (!video) return
+    video.playbackRate = rate
+    setPlaybackRate(rate)
+    setShowSpeedMenu(false)
   }
 
   const toggleFullscreen = () => {
@@ -365,17 +419,42 @@ export default function VideoPlayer({
         case 'Escape':
           if (onBack) onBack()
           break
+        // 倍速快捷键
+        case '<':
+        case ',': {
+          e.preventDefault()
+          const idx = SPEED_OPTIONS.indexOf(playbackRate)
+          if (idx > 0) changeSpeed(SPEED_OPTIONS[idx - 1])
+          break
+        }
+        case '>':
+        case '.': {
+          e.preventDefault()
+          const idx = SPEED_OPTIONS.indexOf(playbackRate)
+          if (idx < SPEED_OPTIONS.length - 1) changeSpeed(SPEED_OPTIONS[idx + 1])
+          break
+        }
+        // 下一集快捷键
+        case 'n':
+        case 'N':
+          if (onNext) {
+            e.preventDefault()
+            setNextCountdown(null)
+            onNext()
+          }
+          break
       }
     }
     window.addEventListener('keydown', handleKeydown)
     return () => window.removeEventListener('keydown', handleKeydown)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [playbackRate, onNext])
 
   const closeAllMenus = () => {
     setShowQuality(false)
     setShowSubtitleMenu(false)
     setShowCastPanel(false)
+    setShowSpeedMenu(false)
   }
 
   return (
@@ -413,6 +492,70 @@ export default function VideoPlayer({
         </div>
       )}
 
+      {/* 自动下一集倒计时浮层 */}
+      {nextCountdown !== null && onNext && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-5 rounded-2xl p-8 text-center"
+            style={{
+              background: 'rgba(11, 17, 32, 0.85)',
+              border: '1px solid rgba(0, 240, 255, 0.15)',
+              backdropFilter: 'blur(20px)',
+            }}
+          >
+            {/* 倒计时圆环 */}
+            <div className="relative flex h-20 w-20 items-center justify-center">
+              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(0,240,255,0.1)" strokeWidth="3" />
+                <circle cx="40" cy="40" r="36" fill="none" stroke="url(#neon-grad)" strokeWidth="3"
+                  strokeDasharray={`${2 * Math.PI * 36}`}
+                  strokeDashoffset={`${2 * Math.PI * 36 * (1 - nextCountdown / 5)}`}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-linear"
+                />
+                <defs>
+                  <linearGradient id="neon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="var(--neon-blue)" />
+                    <stop offset="100%" stopColor="var(--neon-purple)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <span className="font-display text-3xl font-bold text-white">{nextCountdown}</span>
+            </div>
+
+            <div>
+              <p className="text-sm text-surface-400">即将播放下一集</p>
+              {nextTitle && (
+                <p className="mt-1 font-display text-base font-medium text-white">{nextTitle}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setNextCountdown(null)}
+                className="rounded-xl px-5 py-2.5 text-sm font-medium text-surface-300 transition-all hover:text-white"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={() => { setNextCountdown(null); onNext() }}
+                className="rounded-xl px-5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5"
+                style={{
+                  background: 'linear-gradient(135deg, var(--neon-blue), rgba(0, 180, 220, 0.95))',
+                  boxShadow: 'var(--shadow-neon)',
+                  color: 'var(--text-on-neon)',
+                }}
+              >
+                立即播放
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 快进/快退提示气泡 */}
       <div className={clsx(
         'pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300',
@@ -426,7 +569,7 @@ export default function VideoPlayer({
       </div>
 
       {/* 中央播放按钮（暂停时显示） */}
-      {!isPlaying && !loadError && (
+      {!isPlaying && !loadError && nextCountdown === null && (
         <div
           className="absolute inset-0 flex items-center justify-center"
           onClick={togglePlay}
@@ -469,6 +612,9 @@ export default function VideoPlayer({
             <span className="badge-neon text-[10px]">
               {mode === 'direct' ? '直接播放' : 'HLS转码'}
             </span>
+            {playbackRate !== 1 && (
+              <span className="badge-neon text-[10px]">{playbackRate}x</span>
+            )}
           </div>
         )}
 
@@ -511,6 +657,18 @@ export default function VideoPlayer({
             <SkipForward size={18} />
           </button>
 
+          {/* 下一集按钮 */}
+          {onNext && (
+            <button
+              onClick={() => { setNextCountdown(null); onNext() }}
+              className="flex items-center gap-1 rounded-lg px-2 py-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
+              title={nextTitle ? `下一集: ${nextTitle}` : '下一集'}
+            >
+              <ChevronRight size={18} />
+              <span className="hidden text-xs sm:inline">下一集</span>
+            </button>
+          )}
+
           {/* 音量 */}
           <button
             onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }}
@@ -542,6 +700,51 @@ export default function VideoPlayer({
           </span>
 
           <div className="flex-1" />
+
+          {/* 倍速选择 */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowSpeedMenu(!showSpeedMenu)
+                setShowQuality(false)
+                setShowSubtitleMenu(false)
+                setShowCastPanel(false)
+              }}
+              className={clsx(
+                'rounded-lg px-2 py-2 text-xs font-semibold transition-all hover:bg-white/5',
+                playbackRate !== 1 ? 'text-neon-blue' : 'text-white/70 hover:text-white'
+              )}
+              title="播放速度"
+            >
+              {playbackRate !== 1 ? `${playbackRate}x` : <Gauge size={18} />}
+            </button>
+
+            {showSpeedMenu && (
+              <div className="absolute bottom-full right-0 mb-2 min-w-[120px] rounded-xl py-1 shadow-2xl"
+                style={{
+                  background: 'rgba(11, 17, 32, 0.9)',
+                  border: '1px solid rgba(0, 240, 255, 0.1)',
+                  backdropFilter: 'blur(20px)',
+                }}
+              >
+                {SPEED_OPTIONS.map((speed) => (
+                  <button
+                    key={speed}
+                    onClick={() => changeSpeed(speed)}
+                    className={clsx(
+                      'block w-full px-4 py-2.5 text-left text-sm transition-colors',
+                      speed === playbackRate
+                        ? 'text-neon-blue'
+                        : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
+                    )}
+                    style={speed === playbackRate ? { background: 'rgba(0, 240, 255, 0.06)' } : {}}
+                  >
+                    {speed === 1 ? '正常' : `${speed}x`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 字幕选择 */}
           {(embeddedSubs.length > 0 || externalSubs.length > 0) && (
@@ -703,7 +906,7 @@ export default function VideoPlayer({
       </div>
 
       {/* 点击空白关闭弹出菜单 */}
-      {(showQuality || showSubtitleMenu || showCastPanel) && (
+      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu) && (
         <div className="absolute inset-0 z-[-1]" onClick={closeAllMenus} />
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { playlistApi, streamApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { Playlist } from '@/types'
 import {
   ListVideo,
@@ -18,13 +19,14 @@ export default function PlaylistsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const toast = useToast()
 
   const fetchPlaylists = async () => {
     try {
       const res = await playlistApi.list()
       setPlaylists(res.data.data || [])
     } catch {
-      // 静默处理
+      toast.error('加载播放列表失败')
     } finally {
       setLoading(false)
     }
@@ -42,7 +44,7 @@ export default function PlaylistsPage() {
       setShowCreate(false)
       fetchPlaylists()
     } catch {
-      alert('创建播放列表失败')
+      toast.error('创建播放列表失败')
     }
   }
 
@@ -52,7 +54,7 @@ export default function PlaylistsPage() {
       await playlistApi.delete(id)
       setPlaylists((p) => p.filter((pl) => pl.id !== id))
     } catch {
-      alert('删除失败')
+      toast.error('删除播放列表失败')
     }
   }
 
@@ -61,7 +63,7 @@ export default function PlaylistsPage() {
       await playlistApi.removeItem(playlistId, mediaId)
       fetchPlaylists()
     } catch {
-      alert('移除失败')
+      toast.error('移除项目失败')
     }
   }
 

@@ -237,6 +237,9 @@ func main() {
 		// 手动元数据匹配
 		admin.GET("/metadata/search", handlers.Admin.SearchMetadata)
 		admin.POST("/media/:mediaId/match", handlers.Admin.MatchMetadata)
+
+		// 文件系统浏览
+		admin.GET("/fs/browse", handlers.Admin.BrowseFS)
 	}
 
 	// 静态文件（前端构建产物）

@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { mediaApi, streamApi } from '@/api'
+import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import VideoPlayer from '@/components/VideoPlayer'
+import { useToast } from '@/components/Toast'
 
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
   const [media, setMedia] = useState<Media | null>(null)
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [nextEpisode, setNextEpisode] = useState<Media | null>(null)
 
   useEffect(() => {
     if (!id) return
+
+    setLoading(true)
+    setNextEpisode(null)
 
     // 并行获取媒体详情和播放信息
     Promise.all([
@@ -20,16 +26,37 @@ export default function PlayerPage() {
       streamApi.getPlayInfo(id),
     ])
       .then(([mediaRes, playInfoRes]) => {
-        setMedia(mediaRes.data.data)
+        const mediaData = mediaRes.data.data
+        setMedia(mediaData)
         setPlayInfo(playInfoRes.data.data)
+
+        // 如果是剧集，获取下一集信息
+        if (mediaData.media_type === 'episode' && mediaData.series_id) {
+          seriesApi
+            .nextEpisode(mediaData.series_id, mediaData.season_num, mediaData.episode_num)
+            .then((res) => {
+              if (res.data.data) {
+                setNextEpisode(res.data.data)
+              }
+            })
+            .catch(() => {}) // 获取下一集失败不影响播放
+        }
       })
       .catch(() => {
+        toast.error('加载播放信息失败')
         navigate('/')
       })
       .finally(() => {
         setLoading(false)
       })
-  }, [id, navigate])
+  }, [id, navigate, toast])
+
+  // 下一集回调
+  const handleNext = useCallback(() => {
+    if (nextEpisode) {
+      navigate(`/play/${nextEpisode.id}`, { replace: true })
+    }
+  }, [nextEpisode, navigate])
 
   if (loading || !media || !playInfo || !id) {
     return (
@@ -48,14 +75,32 @@ export default function PlayerPage() {
     ? streamApi.getDirectUrl(id)
     : streamApi.getMasterUrl(id)
 
+  // 构建播放标题（剧集显示 S01E02 格式）
+  const playerTitle = media.media_type === 'episode'
+    ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
+    : media.title
+
+  // 下一集标题
+  const nextTitle = nextEpisode
+    ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
+    : undefined
+
   return (
     <div className="h-screen w-screen bg-black">
       <VideoPlayer
         src={src}
         mode={mode}
         mediaId={id}
-        title={media.title}
-        onBack={() => navigate(`/media/${id}`)}
+        title={playerTitle}
+        onBack={() => {
+          if (media.media_type === 'episode' && media.series_id) {
+            navigate(`/series/${media.series_id}`)
+          } else {
+            navigate(`/media/${id}`)
+          }
+        }}
+        onNext={nextEpisode ? handleNext : undefined}
+        nextTitle={nextTitle}
       />
     </div>
   )

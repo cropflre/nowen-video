@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { WatchHistory } from '@/types'
 import { Clock, Play, Trash2, X } from 'lucide-react'
 
@@ -10,6 +11,7 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const size = 20
+  const toast = useToast()
 
   const fetchHistory = async (p: number) => {
     setLoading(true)
@@ -18,7 +20,7 @@ export default function HistoryPage() {
       setHistories(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      // 静默处理
+      toast.error('加载观看历史失败')
     } finally {
       setLoading(false)
     }
@@ -34,7 +36,7 @@ export default function HistoryPage() {
       setHistories((h) => h.filter((item) => item.media_id !== mediaId))
       setTotal((t) => t - 1)
     } catch {
-      // 静默处理
+      toast.error('删除记录失败')
     }
   }
 
@@ -45,7 +47,7 @@ export default function HistoryPage() {
       setHistories([])
       setTotal(0)
     } catch {
-      // 静默处理
+      toast.error('清空历史失败')
     }
   }
 

@@ -194,15 +194,16 @@ export default function LibraryManager({
       {/* ===== 媒体库表格 — 飞牛风格列表 ===== */}
       {libraries.length > 0 ? (
         <div
-          className="overflow-hidden rounded-xl"
+          className="rounded-xl"
           style={{
             border: '1px solid var(--border-default)',
             background: 'var(--bg-card)',
+            overflow: 'visible',
           }}
         >
           {/* 表头 */}
           <div
-            className="grid gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider"
+            className="grid gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider rounded-t-xl"
             style={{
               gridTemplateColumns: '2fr 2fr 1fr 1.5fr 120px',
               borderBottom: '1px solid var(--border-default)',

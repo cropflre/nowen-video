@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { bookmarkApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { Bookmark } from '@/types'
 import { Bookmark as BookmarkIcon, Plus, Trash2, X } from 'lucide-react'
 
@@ -15,6 +16,7 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
   const [title, setTitle] = useState('')
   const [note, setNote] = useState('')
   const [open, setOpen] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     loadBookmarks()
@@ -25,7 +27,7 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
       const res = await bookmarkApi.listByMedia(mediaId)
       setBookmarks(res.data.data || [])
     } catch {
-      // 静默处理
+      toast.error('加载书签失败')
     }
   }
 
@@ -43,7 +45,7 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
       setShowAdd(false)
       loadBookmarks()
     } catch {
-      alert('添加书签失败')
+      toast.error('添加书签失败')
     }
   }
 
@@ -52,7 +54,7 @@ export default function BookmarkPanel({ mediaId, currentTime, onSeek }: Bookmark
       await bookmarkApi.delete(id)
       loadBookmarks()
     } catch {
-      // 静默处理
+      toast.error('删除书签失败')
     }
   }
 

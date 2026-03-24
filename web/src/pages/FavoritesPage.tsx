@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { userApi } from '@/api'
+import { useToast } from '@/components/Toast'
 import type { Favorite } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Heart } from 'lucide-react'
@@ -10,6 +11,7 @@ export default function FavoritesPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const size = 30
+  const toast = useToast()
 
   useEffect(() => {
     setLoading(true)
@@ -19,7 +21,7 @@ export default function FavoritesPage() {
         setFavorites(res.data.data || [])
         setTotal(res.data.total)
       })
-      .catch(() => {})
+      .catch(() => { toast.error('加载收藏列表失败') })
       .finally(() => setLoading(false))
   }, [page])
 
