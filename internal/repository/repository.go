@@ -244,7 +244,7 @@ func (r *MediaRepo) ListBySeriesAndSeason(seriesID string, seasonNum int) ([]mod
 // RecentNonEpisode 获取最近添加的非剧集媒体（不包含已归入合集的剧集）
 func (r *MediaRepo) RecentNonEpisode(limit int) ([]model.Media, error) {
 	var media []model.Media
-	err := r.db.Where("series_id = '' OR series_id IS NULL").
+	err := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != ''").
 		Order("created_at DESC").Limit(limit).Find(&media).Error
 	return media, err
 }
@@ -252,7 +252,7 @@ func (r *MediaRepo) RecentNonEpisode(limit int) ([]model.Media, error) {
 // RecentNonEpisodeAll 获取所有非剧集媒体（可选按媒体库过滤，用于混合列表）
 func (r *MediaRepo) RecentNonEpisodeAll(libraryID string) ([]model.Media, error) {
 	var media []model.Media
-	query := r.db.Where("series_id = '' OR series_id IS NULL")
+	query := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -265,7 +265,7 @@ func (r *MediaRepo) ListNonEpisode(page, size int, libraryID string) ([]model.Me
 	var media []model.Media
 	var total int64
 
-	query := r.db.Model(&model.Media{}).Where("series_id = '' OR series_id IS NULL")
+	query := r.db.Model(&model.Media{}).Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -275,10 +275,16 @@ func (r *MediaRepo) ListNonEpisode(page, size int, libraryID string) ([]model.Me
 	return media, total, err
 }
 
+// CleanGhostMedia 清理幽灵 Media 记录（library_id 为空的无主记录，通常由豆瓣刮削 Series 时误创建）
+func (r *MediaRepo) CleanGhostMedia() (int64, error) {
+	result := r.db.Unscoped().Where("library_id = '' OR library_id IS NULL").Delete(&model.Media{})
+	return result.RowsAffected, result.Error
+}
+
 // CountByLibrary 统计指定媒体库中非剧集媒体的数量
 func (r *MediaRepo) CountNonEpisodeByLibrary(libraryID string) (int64, error) {
 	var count int64
-	query := r.db.Model(&model.Media{}).Where("series_id = '' OR series_id IS NULL")
+	query := r.db.Model(&model.Media{}).Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -289,7 +295,7 @@ func (r *MediaRepo) CountNonEpisodeByLibrary(libraryID string) (int64, error) {
 // CountNonEpisode 统计非剧集媒体的总数（可选按媒体库过滤）
 func (r *MediaRepo) CountNonEpisode(libraryID string) (int64, error) {
 	var count int64
-	query := r.db.Model(&model.Media{}).Where("series_id = '' OR series_id IS NULL")
+	query := r.db.Model(&model.Media{}).Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}

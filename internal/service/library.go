@@ -68,6 +68,14 @@ func (s *LibraryService) CleanOrphanedData() {
 		s.logger.Infof("已清理 %d 条孤立媒体记录", mediaCount)
 	}
 
+	// 清理幽灵 Media 记录（library_id 为空的无主记录，由豆瓣刮削 Series 时误创建）
+	ghostCount, err := s.mediaRepo.CleanGhostMedia()
+	if err != nil {
+		s.logger.Errorf("清理幽灵媒体数据失败: %v", err)
+	} else if ghostCount > 0 {
+		s.logger.Infof("已清理 %d 条幽灵媒体记录（library_id 为空）", ghostCount)
+	}
+
 	// 清理孤立的 Series 记录
 	seriesCount, err := s.seriesRepo.CleanOrphanedByLibraryIDs(validIDs)
 	if err != nil {
@@ -76,8 +84,8 @@ func (s *LibraryService) CleanOrphanedData() {
 		s.logger.Infof("已清理 %d 条孤立剧集合集记录", seriesCount)
 	}
 
-	if mediaCount > 0 || seriesCount > 0 {
-		s.logger.Infof("孤立数据清理完成（媒体: %d, 合集: %d）", mediaCount, seriesCount)
+	if mediaCount > 0 || ghostCount > 0 || seriesCount > 0 {
+		s.logger.Infof("数据清理完成（孤立媒体: %d, 幽灵媒体: %d, 孤立合集: %d）", mediaCount, ghostCount, seriesCount)
 	}
 }
 

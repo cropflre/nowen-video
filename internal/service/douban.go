@@ -110,6 +110,32 @@ func (s *DoubanService) ScrapeMedia(media *model.Media, searchTitle string, year
 	return s.mediaRepo.Update(media)
 }
 
+// ApplyDoubanData 搜索豆瓣并将结果应用到 media 对象（仅修改内存，不写数据库）
+// 用于 Series 刮削时的豆瓣补充，避免意外向 Media 表写入记录
+func (s *DoubanService) ApplyDoubanData(media *model.Media, searchTitle string, year int) {
+	s.logger.Debugf("豆瓣数据补充（内存模式）: %s (year=%d)", searchTitle, year)
+
+	results, err := s.searchDouban(searchTitle, year)
+	if err != nil {
+		s.logger.Debugf("豆瓣搜索失败: %v", err)
+		return
+	}
+
+	if len(results) == 0 && year > 0 {
+		results, err = s.searchDouban(searchTitle, 0)
+		if err != nil {
+			return
+		}
+	}
+
+	if len(results) == 0 {
+		s.logger.Debugf("豆瓣未找到匹配: %s", searchTitle)
+		return
+	}
+
+	s.applyDoubanResult(media, &results[0])
+}
+
 // applyDoubanResult 将豆瓣结果应用到媒体（仅补充缺失字段）
 func (s *DoubanService) applyDoubanResult(media *model.Media, result *DoubanSearchResult) {
 	// 仅补充缺失的评分（豆瓣评分作为参考）

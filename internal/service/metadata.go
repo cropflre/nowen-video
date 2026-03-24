@@ -660,30 +660,30 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	}
 
 	// 第二步：豆瓣补充（如果TMDb信息不完整）
+	// 注意：不能调用 douban.ScrapeMedia()，因为它最后会调用 mediaRepo.Update()
+	// 把 tempMedia 写入 Media 表，导致 Series 数据被重复创建为独立的 movie 记录
 	if series.Overview == "" || series.PosterPath == "" || series.Rating == 0 {
 		s.logger.Debugf("尝试豆瓣补充剧集元数据: %s", series.Title)
-		// 创建一个临时Media用于豆瓣刮削
+		// 直接调用豆瓣搜索，只在内存中应用结果，不写入 Media 表
 		tempMedia := &model.Media{
-			ID:       series.ID,
 			Title:    series.Title,
 			FilePath: series.FolderPath + "/placeholder",
 		}
-		if err := s.douban.ScrapeMedia(tempMedia, searchTitle, year); err == nil {
-			if series.Overview == "" {
-				series.Overview = tempMedia.Overview
-			}
-			if series.Rating == 0 {
-				series.Rating = tempMedia.Rating
-			}
-			if series.Year == 0 {
-				series.Year = tempMedia.Year
-			}
-			if series.Genres == "" {
-				series.Genres = tempMedia.Genres
-			}
-			if series.PosterPath == "" && tempMedia.PosterPath != "" {
-				series.PosterPath = tempMedia.PosterPath
-			}
+		s.douban.ApplyDoubanData(tempMedia, searchTitle, year)
+		if series.Overview == "" && tempMedia.Overview != "" {
+			series.Overview = tempMedia.Overview
+		}
+		if series.Rating == 0 && tempMedia.Rating > 0 {
+			series.Rating = tempMedia.Rating
+		}
+		if series.Year == 0 && tempMedia.Year > 0 {
+			series.Year = tempMedia.Year
+		}
+		if series.Genres == "" && tempMedia.Genres != "" {
+			series.Genres = tempMedia.Genres
+		}
+		if series.PosterPath == "" && tempMedia.PosterPath != "" {
+			series.PosterPath = tempMedia.PosterPath
 		}
 	}
 
