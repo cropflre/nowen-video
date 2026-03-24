@@ -1,0 +1,36 @@
+# nowen-video 构建产物
+bin/
+dist/
+
+# 数据文件
+data/
+cache/
+
+# Go
+*.exe
+*.test
+*.out
+
+# 依赖
+vendor/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+
+# 配置文件（不提交实际配置）
+config.yaml
+
+# 分片配置中的敏感信息文件（密钥、API Key 等）
+config/secrets.yaml

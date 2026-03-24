@@ -1,0 +1,83 @@
+# ==================== nowen-video 配置文件 ====================
+#
+# 配置加载优先级（从低到高）：
+#   1. 内置默认值
+#   2. 本文件（config.yaml）—— 支持旧版扁平格式和新版嵌套格式
+#   3. config/ 目录下的分片配置文件（database.yaml, secrets.yaml 等）
+#   4. 环境变量（NOWEN_ 前缀，如 NOWEN_APP_PORT=8080）
+#
+# 推荐方式：使用 config/ 目录下的分片配置文件，便于分类管理和安全隔离。
+# 也可以继续使用本文件的扁平格式，系统会自动向后兼容。
+#
+# 分片配置文件说明：
+#   config/database.yaml  - 数据库连接参数
+#   config/secrets.yaml   - JWT密钥、第三方API密钥（⚠️ 勿提交到Git）
+#   config/app.yaml       - 应用运行环境配置
+#   config/logging.yaml   - 日志记录设置
+#   config/cache.yaml     - 缓存配置参数
+
+# ==================== 新版嵌套格式示例 ====================
+
+# 数据库配置
+database:
+  db_path: ./data/nowen.db
+  wal_mode: true
+  busy_timeout: 5000
+  cache_size: -20000
+
+# 敏感信息（建议迁移到 config/secrets.yaml）
+secrets:
+  jwt_secret: please-change-this-secret-key
+  tmdb_api_key: ""
+
+# 应用配置
+app:
+  port: 8080
+  debug: false
+  env: production
+  data_dir: ./data
+  web_dir: ./web/dist
+  ffmpeg_path: ffmpeg
+  ffprobe_path: ffprobe
+  hw_accel: auto
+  vaapi_device: /dev/dri/renderD128
+  transcode_preset: veryfast
+  max_transcode_jobs: 2
+  cors_origins: []
+
+# 日志配置
+logging:
+  level: info
+  format: console
+  output_path: ""
+  error_output_path: ""
+  enable_rotation: false
+  max_size_mb: 100
+  max_age_days: 30
+  max_backups: 10
+
+# 缓存配置
+cache:
+  cache_dir: ./cache
+  max_disk_usage_mb: 0
+  ttl_hours: 0
+  auto_cleanup: false
+  cleanup_interval_min: 60
+
+# ==================== 旧版扁平格式（向后兼容） ====================
+# 如果你使用旧版格式，以下 key 仍然有效：
+#
+# port: 8080
+# debug: false
+# data_dir: ./data
+# cache_dir: ./cache
+# web_dir: ./web/dist
+# db_path: ./data/nowen.db
+# jwt_secret: please-change-this-secret-key
+# ffmpeg_path: ffmpeg
+# ffprobe_path: ffprobe
+# hw_accel: auto
+# vaapi_device: /dev/dri/renderD128
+# transcode_preset: veryfast
+# max_transcode_jobs: 2
+# tmdb_api_key: ""

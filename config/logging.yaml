@@ -1,0 +1,53 @@
+# ==================== 日志记录设置 ====================
+# 文件: config/logging.yaml
+# 说明: 控制日志级别、格式、输出位置和日志轮转策略
+
+# 日志级别
+# 可选值: debug / info / warn / error
+# debug - 输出所有日志（开发调试用）
+# info  - 输出信息级别及以上日志（推荐生产环境）
+# warn  - 仅输出警告和错误
+# error - 仅输出错误
+# 默认: info
+level: info
+
+# 日志输出格式
+# 可选值: json / console
+# json    - 结构化 JSON 格式，适合日志采集系统
+# console - 人类可读格式，适合终端查看
+# 默认: console
+format: console
+
+# 日志输出文件路径
+# 留空则输出到 stdout（标准输出）
+# 示例: /var/log/nowen-video/app.log
+# 默认: ""（空，输出到 stdout）
+output_path: ""
+
+# 错误日志输出路径
+# 留空则输出到 stderr（标准错误输出）
+# 可单独将错误日志写入独立文件便于排查
+# 默认: ""（空，输出到 stderr）
+error_output_path: ""
+
+# ==================== 日志轮转 ====================
+
+# 是否启用日志文件轮转
+# 仅当 output_path 指定了文件路径时有效
+# 默认: false
+enable_rotation: false
+
+# 单个日志文件最大大小（MB）
+# 超过此大小将自动轮转
+# 默认: 100
+max_size_mb: 100
+
+# 日志文件最大保留天数
+# 超过此天数的旧日志文件将被自动删除
+# 默认: 30
+max_age_days: 30
+
+# 日志文件最大保留个数
+# 保留的历史日志文件数量上限
+# 默认: 10
+max_backups: 10

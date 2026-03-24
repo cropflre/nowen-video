@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  nowen-video:
+    build: .
+    container_name: nowen-video
+    ports:
+      - "8080:8080"
+    volumes:
+      # 数据持久化
+      - ./data:/data
+      # 转码缓存
+      - ./cache:/cache
+      # 媒体文件挂载（根据实际路径修改）
+      - /volume1/video:/media:ro
+      # 群晖NAS：挂载GPU设备以支持硬件加速
+      # 如果没有硬件加速需求可以注释掉
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      # ---- 应用配置 ----
+      - NOWEN_APP_PORT=8080
+      - NOWEN_APP_DATA_DIR=/data
+      - NOWEN_APP_WEB_DIR=/app/web/dist
+      - NOWEN_APP_HW_ACCEL=auto
+      - NOWEN_APP_TRANSCODE_PRESET=veryfast
+      - NOWEN_APP_MAX_TRANSCODE_JOBS=2
+      # ---- 数据库配置 ----
+      - NOWEN_DATABASE_DB_PATH=/data/nowen.db
+      # ---- 密钥配置（⚠️ 请务必修改） ----
+      - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key
+      # ---- 缓存配置 ----
+      - NOWEN_CACHE_CACHE_DIR=/cache
+      # ---- 日志配置 ----
+      - NOWEN_LOGGING_LEVEL=info
+      # ---- CORS（多个用逗号分隔，留空禁止跨域，*允许所有） ----
+      # - NOWEN_APP_CORS_ORIGINS=http://localhost:3000
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    # 资源限制（NAS场景建议限制，避免拖垮系统）
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
