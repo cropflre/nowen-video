@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { mediaApi, seriesApi, streamApi } from '@/api'
 import type { Media, Series } from '@/types'
-import MediaGrid from '@/components/MediaGrid'
 import MediaCard from '@/components/MediaCard'
 import {
   Tv,
@@ -10,7 +9,6 @@ import {
   Star,
   Calendar,
   Search,
-  SlidersHorizontal,
   Grid3X3,
   LayoutList,
   ArrowUpDown,

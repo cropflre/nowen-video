@@ -1,15 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, ScheduledTask } from '@/types'
+import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData } from '@/hooks/useWebSocket'
 import {
   Server,
   Cpu,
   HardDrive,
   Users,
-  FolderPlus,
-  RefreshCw,
   Trash2,
   Zap,
   AlertCircle,
@@ -23,15 +21,8 @@ import {
   Loader2,
   Wifi,
   WifiOff,
-  Timer,
-  Play,
-  Pause,
-  Plus,
-  Shield,
-  ScrollText,
 } from 'lucide-react'
 import clsx from 'clsx'
-import SystemMonitor from '@/components/SystemMonitor'
 import LibraryManager from '@/components/LibraryManager'
 
 export default function AdminPage() {
@@ -39,7 +30,6 @@ export default function AdminPage() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [transcodeJobs, setTranscodeJobs] = useState<TranscodeJob[]>([])
-  const [showAddLib, setShowAddLib] = useState(false)
   const [scanning, setScanning] = useState<Set<string>>(new Set())
 
   // TMDb 配置状态

@@ -6,18 +6,14 @@ import type { Media, MediaPlayInfo, Playlist, RecommendedMedia } from '@/types'
 import {
   Play,
   Heart,
-  HeartOff,
   Clock,
   Film,
-  HardDrive,
-  Calendar,
   Star,
   RefreshCw,
   ListPlus,
   Check,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   Monitor,
   Music,
   Subtitles,
@@ -27,7 +23,6 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  Tv,
   Clapperboard,
 } from 'lucide-react'
 import clsx from 'clsx'

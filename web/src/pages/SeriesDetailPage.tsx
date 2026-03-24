@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { seriesApi, streamApi, userApi } from '@/api'
+import { seriesApi } from '@/api'
 import type { Series, SeasonInfo, Media } from '@/types'
 import { Play, Calendar, Star, Film, Clock, ChevronRight, Tv } from 'lucide-react'
 import clsx from 'clsx'
@@ -32,14 +32,6 @@ export default function SeriesDetailPage() {
       .catch(() => navigate('/'))
       .finally(() => setLoading(false))
   }, [id, navigate])
-
-  const formatDuration = (seconds: number) => {
-    if (!seconds) return '-'
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    if (h > 0) return `${h}h${m}m`
-    return `${m}分钟`
-  }
 
   const activeSeasonData = seasons.find((s) => s.season_num === activeSeason)
 

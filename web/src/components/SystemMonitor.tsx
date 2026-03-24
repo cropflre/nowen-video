@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { adminApi } from '@/api'
 import type { SystemMetrics } from '@/types'
 import { Cpu, HardDrive, MemoryStick, Activity, Wifi, Clapperboard } from 'lucide-react'
