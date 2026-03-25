@@ -22,7 +22,7 @@ interface MediaInfoSectionProps {
   isAdmin: boolean
 }
 
-export default function MediaInfoSection({ media, playInfo, persons, isAdmin }: MediaInfoSectionProps) {
+export default function MediaInfoSection({ media, playInfo: _playInfo, persons, isAdmin }: MediaInfoSectionProps) {
   const toast = useToast()
   const [overviewExpanded, setOverviewExpanded] = useState(false)
   const isLongOverview = (media.overview?.length || 0) > 200

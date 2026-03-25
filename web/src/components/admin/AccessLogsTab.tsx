@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  User,
   Globe,
   Clock,
   Search,

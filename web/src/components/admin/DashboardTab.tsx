@@ -14,7 +14,6 @@ import {
   FolderOpen,
   Users,
   ListTodo,
-  LayoutDashboard,
   FolderCog,
   Link,
   Save,

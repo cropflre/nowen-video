@@ -14,7 +14,6 @@ import {
   Clock,
   AlertCircle,
   Check,
-  X,
   RefreshCw,
 } from 'lucide-react'
 import clsx from 'clsx'

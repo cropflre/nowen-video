@@ -415,7 +415,7 @@ function GenreRows({ items }: { items: MixedItem[] }) {
   const genreMap = new Map<string, MixedItem[]>()
 
   items.forEach((item) => {
-    const media = item.type === 'media' ? item.media : item.series
+    const media = item.type === 'movie' ? item.media : item.series
     if (!media) return
     const genres = (media.genres || '').split(',').filter(Boolean)
     genres.forEach((genre: string) => {
@@ -495,7 +495,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
           className="scrollbar-hide flex gap-4 overflow-x-auto scroll-smooth pb-2"
         >
           {items.map((item) => {
-            const media = item.type === 'media' ? item.media : item.series
+            const media = item.type === 'movie' ? item.media : item.series
             if (!media) return null
             const linkTo = item.type === 'series'
               ? `/series/${media.id}`

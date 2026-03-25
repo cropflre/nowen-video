@@ -7,14 +7,11 @@ import EditMetadataModal from '@/components/EditMetadataModal'
 import type { Series, SeasonInfo, Media, Playlist, WatchHistory } from '@/types'
 import {
   Play,
-  Calendar,
   Star,
-  Film,
   Clock,
   ChevronRight,
   Tv,
   Heart,
-  ListPlus,
   Check,
   RefreshCw,
   ChevronDown,
@@ -39,7 +36,7 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'season' | 'all'>('season')
   const [isFavorited, setIsFavorited] = useState(false)
-  const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const [, setPlaylists] = useState<Playlist[]>([])
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [overviewExpanded, setOverviewExpanded] = useState(false)

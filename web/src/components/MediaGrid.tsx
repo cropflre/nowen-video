@@ -1,4 +1,4 @@
-import type { Media, Series, MixedItem } from '@/types'
+import type { Media, MixedItem } from '@/types'
 import MediaCard from './MediaCard'
 
 interface MediaGridProps {

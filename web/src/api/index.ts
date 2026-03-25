@@ -446,6 +446,12 @@ export const adminApi = {
 
   clearBangumiConfig: () =>
     api.delete<{ message: string; data: BangumiConfigStatus }>('/admin/settings/bangumi'),
+
+  // 文件系统浏览
+  browseFS: (path: string) =>
+    api.get<{ data: { current: string; parent: string; items: { name: string; path: string; is_dir: boolean }[] } }>('/admin/fs/browse', {
+      params: { path },
+    }),
 }
 
 // ==================== 智能推荐 ====================

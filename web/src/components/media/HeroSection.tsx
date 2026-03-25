@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { streamApi, playlistApi } from '@/api'
+import { streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { formatDuration, formatDurationShort } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
@@ -34,7 +34,7 @@ interface HeroSectionProps {
   scraping: boolean
   isAdmin: boolean
   onFavorite: () => void
-  onScrape: () => void
+  onScrape?: () => void
   onAddToPlaylist: (playlistId: string) => void
   onShowTrailer?: () => void
   onManualMatch?: () => void
@@ -53,7 +53,7 @@ export default function HeroSection({
   scraping,
   isAdmin,
   onFavorite,
-  onScrape,
+  onScrape: _onScrape,
   onAddToPlaylist,
   onShowTrailer,
   onManualMatch,

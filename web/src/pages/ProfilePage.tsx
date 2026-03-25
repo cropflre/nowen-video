@@ -8,7 +8,6 @@ import {
   Shield,
   Save,
   Loader2,
-  Check,
   LogOut,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'

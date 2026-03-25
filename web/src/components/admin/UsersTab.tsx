@@ -33,7 +33,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const toast = useToast()
   const [libraries, setLibraries] = useState<Library[]>([])
   const [editingUser, setEditingUser] = useState<string | null>(null)
-  const [perm, setPerm] = useState<UserPermission | null>(null)
+  const [, setPerm] = useState<UserPermission | null>(null)
   const [loadingPerm, setLoadingPerm] = useState(false)
   const [savingPerm, setSavingPerm] = useState(false)
 

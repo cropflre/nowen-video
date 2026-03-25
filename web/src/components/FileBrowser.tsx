@@ -10,7 +10,6 @@ import {
   Check,
   HardDrive,
 } from 'lucide-react'
-import clsx from 'clsx'
 
 interface FsEntry {
   name: string
