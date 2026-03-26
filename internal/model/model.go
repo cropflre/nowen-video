@@ -452,5 +452,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&ContentRating{},
 		&UserPermission{},
 		&PlaybackStats{},
+		&ScrapeTask{},
+		&ScrapeHistory{},
 	)
 }

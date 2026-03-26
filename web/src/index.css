@@ -37,6 +37,7 @@
   --border-default: rgba(0, 240, 255, 0.06);
   --border-hover: rgba(0, 240, 255, 0.2);
   --border-strong: rgba(0, 240, 255, 0.12);
+  --border-subtle: rgba(0, 240, 255, 0.04);
   --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.3);
   --shadow-card-hover: 0 8px 32px rgba(0, 240, 255, 0.12), 0 0 1px rgba(0, 240, 255, 0.4);
   --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -130,6 +131,7 @@
   --border-default: rgba(0, 0, 0, 0.10);
   --border-hover: rgba(8, 145, 178, 0.30);
   --border-strong: rgba(8, 145, 178, 0.22);
+  --border-subtle: rgba(0, 0, 0, 0.06);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-card-hover: 0 8px 24px rgba(8, 145, 178, 0.12), 0 0 1px rgba(8, 145, 178, 0.25);
   --shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
@@ -398,6 +400,17 @@
     background: var(--nav-hover-bg);
   }
 
+  /* === 主题切换按钮 === */
+  .theme-toggle-btn:hover {
+    background: var(--nav-hover-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-hover) !important;
+  }
+
+  .theme-toggle-btn:active {
+    transform: scale(0.98);
+  }
+
   .nav-item.active {
     color: var(--neon-blue);
     background: var(--nav-active-bg);
@@ -460,6 +473,58 @@
     @apply transition-all duration-300;
     background: var(--bg-input);
     border: 1px solid var(--glass-border);
+  }
+
+  /* === Toggle 开关 === */
+  .toggle-switch {
+    @apply relative inline-flex items-center rounded-full cursor-pointer;
+    @apply transition-all duration-300;
+    background: var(--toggle-off-bg, var(--surface-400));
+  }
+
+  .toggle-switch[aria-checked="true"] {
+    background: var(--neon-blue);
+    box-shadow: 0 0 8px var(--neon-blue-25);
+  }
+
+  .toggle-switch-thumb {
+    @apply inline-block transform rounded-full;
+    @apply transition-transform duration-300;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+
+  /* 大号 toggle (h-6 w-11) */
+  .toggle-switch-lg {
+    @apply h-6 w-11;
+  }
+  .toggle-switch-lg .toggle-switch-thumb {
+    @apply h-4 w-4;
+  }
+  .toggle-switch-lg[aria-checked="false"] .toggle-switch-thumb {
+    transform: translateX(4px);
+  }
+  .toggle-switch-lg[aria-checked="true"] .toggle-switch-thumb {
+    transform: translateX(24px);
+  }
+
+  /* 小号 toggle (h-5 w-9) */
+  .toggle-switch-sm {
+    @apply h-5 w-9;
+  }
+  .toggle-switch-sm .toggle-switch-thumb {
+    @apply h-3.5 w-3.5;
+  }
+  .toggle-switch-sm[aria-checked="false"] .toggle-switch-thumb {
+    transform: translateX(3px);
+  }
+  .toggle-switch-sm[aria-checked="true"] .toggle-switch-thumb {
+    transform: translateX(17px);
+  }
+
+  .toggle-switch:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   .input::placeholder {

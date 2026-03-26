@@ -32,6 +32,7 @@ type RecommendService struct {
 	historyRepo *repository.WatchHistoryRepo
 	favRepo     *repository.FavoriteRepo
 	logger      *zap.SugaredLogger
+	ai          *AIService // AI 推荐理由生成
 }
 
 func NewRecommendService(
@@ -46,6 +47,11 @@ func NewRecommendService(
 		favRepo:     favRepo,
 		logger:      logger,
 	}
+}
+
+// SetAIService 设置 AI 服务（延迟注入）
+func (s *RecommendService) SetAIService(ai *AIService) {
+	s.ai = ai
 }
 
 // RecommendedMedia 推荐结果项
@@ -114,6 +120,28 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 		if len(results) >= limit {
 			break
 		}
+	}
+
+	// AI 推荐理由增强（为前 N 个结果生成个性化理由）
+	if s.ai != nil && s.ai.IsRecommendReasonEnabled() && len(results) > 0 {
+		// 提取用户偏好类型
+		var userGenres []string
+		genreSet := make(map[string]bool)
+		for _, h := range userHistory {
+			if m, err := s.mediaRepo.FindByID(h.MediaID); err == nil && m.Genres != "" {
+				for _, g := range strings.Split(m.Genres, ",") {
+					g = strings.TrimSpace(g)
+					if g != "" && !genreSet[g] {
+						genreSet[g] = true
+						userGenres = append(userGenres, g)
+					}
+				}
+			}
+			if len(userGenres) >= 5 {
+				break
+			}
+		}
+		results = s.ai.BatchGenerateRecommendReasons(results, userGenres, 5)
 	}
 
 	return results, nil

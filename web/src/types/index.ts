@@ -541,7 +541,294 @@ export interface BangumiSubject {
   tags: { name: string; count: number }[]
 }
 
+// ==================== AI 智能搜索 ====================
+export interface SearchIntent {
+  query: string
+  media_type?: string
+  genre?: string
+  year_min?: number
+  year_max?: number
+  min_rating?: number
+  sort_by?: string
+  parsed: boolean
+}
+
+// ==================== AI 服务状态 ====================
+export interface AIStatus {
+  enabled: boolean
+  provider: string
+  model: string
+  api_base: string
+  api_configured: boolean
+  timeout: number
+  enable_smart_search: boolean
+  enable_recommend_reason: boolean
+  enable_metadata_enhance: boolean
+  monthly_calls: number
+  monthly_budget: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_tokens: number
+  cache_entries: number
+  cache_ttl_hours: number
+  max_concurrent: number
+  request_interval_ms: number
+}
+
+export interface AIErrorLog {
+  time: string
+  action: string
+  error: string
+  latency_ms: number
+}
+
+export interface AICacheStats {
+  total_entries: number
+  active_entries: number
+  expired_entries: number
+  ttl_hours: number
+}
+
+export interface AITestResult {
+  success: boolean
+  error?: string
+  response?: string
+  latency_ms: number
+  provider?: string
+  model?: string
+  intent?: SearchIntent
+  reason?: string
+}
+
 export interface BangumiConfigStatus {
   configured: boolean
   masked_token: string
+}
+
+// ==================== 刮削数据管理 ====================
+export interface ScrapeTask {
+  id: string
+  url: string
+  source: string
+  title: string
+  media_type: string
+  status: 'pending' | 'scraping' | 'scraped' | 'failed' | 'translating' | 'completed'
+  progress: number
+  media_id: string
+  series_id: string
+  result_title: string
+  result_orig_title: string
+  result_year: number
+  result_overview: string
+  result_genres: string
+  result_rating: number
+  result_poster: string
+  result_country: string
+  result_language: string
+  translate_status: 'none' | 'pending' | 'translating' | 'done' | 'failed'
+  translate_lang: string
+  translated_title: string
+  translated_overview: string
+  translated_genres: string
+  translated_tagline: string
+  quality_score: number
+  error_message: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ScrapeHistory {
+  id: string
+  task_id: string
+  action: string
+  detail: string
+  user_id: string
+  created_at: string
+}
+
+export interface ScrapeStatistics {
+  total: number
+  pending: number
+  scraping: number
+  scraped: number
+  failed: number
+  translating: number
+  completed: number
+}
+
+// ==================== 影视文件管理 ====================
+export interface FileImportRequest {
+  file_path: string
+  title?: string
+  media_type?: string
+  library_id?: string
+  year?: number
+  overview?: string
+}
+
+export interface BatchImportResult {
+  total: number
+  success: number
+  failed: number
+  skipped: number
+  errors: string[]
+  media_ids: string[]
+}
+
+export interface RenamePreview {
+  media_id: string
+  old_title: string
+  new_title: string
+  old_file_path: string
+  new_file_path: string
+  reason: string
+}
+
+export interface RenameTemplate {
+  pattern: string
+  example: string
+}
+
+export interface FileManagerStats {
+  total_files: number
+  movie_count: number
+  episode_count: number
+  scraped_count: number
+  unscraped_count: number
+  total_size_bytes: number
+  recent_imports: number
+  recent_operations: number
+}
+
+export interface FileOperationLog {
+  id: string
+  action: string
+  media_id: string
+  detail: string
+  old_value: string
+  new_value: string
+  user_id: string
+  created_at: string
+}
+
+export interface ScannedFile {
+  path: string
+  name: string
+  size: number
+  ext: string
+  modified: string
+  imported: boolean
+  title: string
+}
+
+// ==================== AI 助手 ====================
+export interface ChatMsg {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: string
+  actions?: SuggestedAction[]
+  previews?: OperationPreview[]
+}
+
+export interface SuggestedAction {
+  id: string
+  label: string
+  description: string
+  action: string
+  params: string
+  dangerous: boolean
+}
+
+export interface OperationPreview {
+  media_id: string
+  title: string
+  old_value: string
+  new_value: string
+  change_type: string
+}
+
+export interface ChatSession {
+  id: string
+  user_id: string
+  messages: ChatMsg[]
+  context: {
+    selected_media_ids?: string[]
+    library_id?: string
+    last_intent?: Intent
+  }
+  created_at: string
+  updated_at: string
+}
+
+export interface Intent {
+  action: string
+  sub_action: string
+  targets: string
+  params: Record<string, string>
+  confidence: number
+  reasoning: string
+}
+
+export interface ChatResponse {
+  session_id: string
+  message: ChatMsg
+  intent?: Intent
+}
+
+export interface ExecuteResponse {
+  success: boolean
+  message: string
+  results?: OperationPreview[]
+  errors?: string[]
+  op_id: string
+}
+
+export interface AssistantOperation {
+  id: string
+  session_id: string
+  action: string
+  previews: OperationPreview[]
+  executed_at: string
+  user_id: string
+  undone: boolean
+}
+
+// ==================== 误分类检测 ====================
+export interface MisclassifiedItem {
+  media_id: string
+  title: string
+  file_path: string
+  current_type: string
+  suggested_type: string
+  confidence: number
+  reasons: string[]
+  file_size: number
+  dir_path: string
+  sibling_count: number
+}
+
+export interface MisclassificationReport {
+  total_movies: number
+  suspected_episodes: number
+  high_confidence: number
+  medium_confidence: number
+  low_confidence: number
+  items: MisclassifiedItem[]
+  common_patterns: string[]
+  suggestions: string[]
+}
+
+export interface ReclassifyRequest {
+  media_ids: string[]
+  new_type: string
+  auto_link_series: boolean
+}
+
+export interface ReclassifyResult {
+  total: number
+  success: number
+  failed: number
+  errors: string[]
+  linked_series: number
 }

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
-import { mediaApi } from '@/api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { mediaApi, aiApi } from '@/api'
 import { useToast } from '@/components/Toast'
-import type { Media } from '@/types'
+import type { Media, SearchIntent } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import {
   Search as SearchIcon,
@@ -12,6 +12,7 @@ import {
   Tv,
   Calendar,
   Star,
+  Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -50,35 +51,49 @@ export default function SearchPage() {
   const [sortBy, setSortBy] = useState('relevance')
   const [yearRange, setYearRange] = useState<{ min: number; max: number }>({ min: 0, max: 0 })
   const [minRating, setMinRating] = useState(0)
+  const [aiParsed, setAiParsed] = useState<SearchIntent | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const aiAbortRef = useRef<AbortController | null>(null)
 
-  const doSearch = useCallback(async (q: string, p: number) => {
+  const doSearch = useCallback(async (q: string, p: number, aiIntent?: SearchIntent | null) => {
     if (!q.trim()) return
     setLoading(true)
     setSearched(true)
     try {
+      // 如果有 AI 解析结果，使用 AI 解析的参数
+      const intent = aiIntent || aiParsed
+      const searchQuery = intent?.parsed ? intent.query : q.trim()
+      const searchType = intent?.parsed && intent.media_type ? intent.media_type : (filterType || undefined)
+      const searchGenre = intent?.parsed && intent.genre ? intent.genre : undefined
+      const searchYearMin = intent?.parsed && intent.year_min ? intent.year_min : (yearRange.min || undefined)
+      const searchYearMax = intent?.parsed && intent.year_max ? intent.year_max : (yearRange.max || undefined)
+      const searchMinRating = intent?.parsed && intent.min_rating ? intent.min_rating : (minRating || undefined)
+      const searchSortBy = intent?.parsed && intent.sort_by && intent.sort_by !== 'relevance' ? intent.sort_by : sortBy
+
 // 使用服务端高级搜索API，所有筛选和排序都在服务端完成
       let sort_by = 'created_at'
       let sort_order = 'desc'
-      if (sortBy === 'rating_desc') {
+      if (searchSortBy === 'rating_desc') {
         sort_by = 'rating'
         sort_order = 'desc'
-      } else if (sortBy === 'year_desc') {
+      } else if (searchSortBy === 'year_desc') {
         sort_by = 'year'
         sort_order = 'desc'
-      } else if (sortBy === 'year_asc') {
+      } else if (searchSortBy === 'year_asc') {
         sort_by = 'year'
         sort_order = 'asc'
-      } else if (sortBy === 'title_asc') {
+      } else if (searchSortBy === 'title_asc') {
         sort_by = 'title'
         sort_order = 'asc'
       }
 
       const res = await mediaApi.searchAdvanced({
-        q: q.trim(),
-        type: filterType || undefined,
-        year_min: yearRange.min || undefined,
-        year_max: yearRange.max || undefined,
-        min_rating: minRating || undefined,
+        q: searchQuery,
+        type: searchType || undefined,
+        genre: searchGenre,
+        year_min: searchYearMin,
+        year_max: searchYearMax,
+        min_rating: searchMinRating,
         sort_by,
         sort_order,
         page: p,
@@ -105,7 +120,40 @@ export default function SearchPage() {
 
     const timer = setTimeout(() => {
       setPage(1)
-      doSearch(query, 1)
+      // 先尝试 AI 智能搜索
+      if (query.trim().length > 4) {
+        aiAbortRef.current?.abort()
+        const controller = new AbortController()
+        aiAbortRef.current = controller
+        setAiLoading(true)
+        aiApi.smartSearch(query.trim())
+          .then((res) => {
+            if (!controller.signal.aborted) {
+              const intent = res.data.data
+              if (intent.parsed) {
+                setAiParsed(intent)
+                doSearch(query, 1, intent)
+              } else {
+                setAiParsed(null)
+                doSearch(query, 1)
+              }
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              setAiParsed(null)
+              doSearch(query, 1)
+            }
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) {
+              setAiLoading(false)
+            }
+          })
+      } else {
+        setAiParsed(null)
+        doSearch(query, 1)
+      }
     }, 400)
 
     return () => clearTimeout(timer)
@@ -286,6 +334,20 @@ placeholder="搜索电影、剧集..."
           <span>
             找到 <span className="font-semibold text-neon">{total}</span> 个结果
           </span>
+          {aiParsed?.parsed && (
+            <span className="flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-400 border border-purple-500/20">
+              <Sparkles size={10} />
+              AI 理解: "{aiParsed.query}"
+              {aiParsed.genre && ` · ${aiParsed.genre}`}
+              {aiParsed.year_min && aiParsed.year_max ? ` · ${aiParsed.year_min}-${aiParsed.year_max}` : ''}
+            </span>
+          )}
+          {aiLoading && (
+            <span className="flex items-center gap-1 text-[10px] text-purple-400">
+              <Sparkles size={10} className="animate-pulse" />
+              AI 分析中...
+            </span>
+          )}
           {hasActiveFilters && (
             <span className="rounded-md bg-neon-blue/10 px-2 py-0.5 text-[10px] text-neon">
               已筛选

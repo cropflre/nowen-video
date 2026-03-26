@@ -1,0 +1,60 @@
+# ==================== AI 功能配置 ====================
+# 文件: config/ai.yaml
+# 说明: 配置 AI 功能的 LLM 提供商、API 密钥和功能开关
+# 方案 C（混合方案）：
+#   - 智能搜索/推荐理由/标签生成/元数据增强 → 第三方 LLM API
+#   - 封面选择/场景识别 → 本地模型（预留接口）
+
+# 是否启用 AI 功能（总开关）
+enabled: true
+
+# LLM 提供商配置（支持 OpenAI 兼容 API）
+# 支持: openai / deepseek / qwen / ollama / 任何 OpenAI 兼容服务
+provider: "qwen"
+
+# API 基础地址
+# OpenAI:    https://api.openai.com/v1
+# DeepSeek:  https://api.deepseek.com/v1
+# 通义千问:   https://dashscope.aliyuncs.com/compatible-mode/v1
+# Ollama:    http://localhost:11434/v1
+# 自定义:    填写你的 OpenAI 兼容 API 地址
+api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+# API 密钥
+# ⚠️ 安全警告: 此文件包含敏感信息，请勿提交到版本控制系统！
+api_key: "sk-6a0dcfab395849698c1225852a4d5491"
+
+# 模型名称
+# OpenAI:    gpt-4o-mini / gpt-4o
+# DeepSeek:  deepseek-chat
+# 通义千问:   qwen-turbo / qwen-plus
+# Ollama:    llama3 / qwen2
+model: "qwen-turbo"
+
+# 请求超时（秒）
+timeout: 30
+
+# 每月 API 调用预算上限（次数，0 = 不限制）
+monthly_budget: 0
+
+# ==================== 功能开关 ====================
+
+# 智能搜索（自然语言 → 结构化查询参数）
+enable_smart_search: true
+
+# AI 推荐理由生成（为推荐结果生成个性化文案）
+enable_recommend_reason: true
+
+# AI 元数据增强（当 TMDb/豆瓣/Bangumi 都失败时，用 AI 生成简介和标签）
+enable_metadata_enhance: true
+
+# ==================== 高级设置 ====================
+
+# AI 结果缓存时间（小时，0 = 不缓存）
+cache_ttl_hours: 168
+
+# 最大并发 AI 请求数
+max_concurrent: 3
+
+# 请求间隔（毫秒，防止限流）
+request_interval_ms: 200

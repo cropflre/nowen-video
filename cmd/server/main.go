@@ -177,6 +177,9 @@ func main() {
 		api.GET("/recommend", handlers.Recommend.GetRecommendations)
 		api.GET("/recommend/similar/:mediaId", handlers.Recommend.GetSimilarMedia)
 
+		// AI 智能搜索
+		api.GET("/ai/search", handlers.AI.SmartSearch)
+
 		// 投屏
 		api.GET("/cast/devices", handlers.Cast.ListDevices)
 		api.POST("/cast/devices/refresh", handlers.Cast.RefreshDevices)
@@ -288,8 +291,62 @@ func main() {
 		admin.POST("/backup/import", handlers.Backup.ImportBackup)
 		admin.GET("/backup/list", handlers.Backup.ListBackups)
 
+		// AI 管理
+		admin.GET("/ai/status", handlers.AI.GetAIStatus)
+		admin.PUT("/ai/config", handlers.AI.UpdateAIConfig)
+		admin.POST("/ai/test", handlers.AI.TestAIConnection)
+		admin.DELETE("/ai/cache", handlers.AI.ClearAICache)
+		admin.GET("/ai/cache", handlers.AI.GetAICacheStats)
+		admin.GET("/ai/errors", handlers.AI.GetAIErrorLogs)
+		admin.POST("/ai/test/search", handlers.AI.TestSmartSearch)
+		admin.POST("/ai/test/recommend", handlers.AI.TestRecommendReason)
+
 		// 用户观影统计（管理员）
 		admin.GET("/stats/:userId", handlers.Stats.GetUserStatsAdmin)
+
+		// 刮削数据管理
+		admin.POST("/scrape/tasks", handlers.ScrapeManager.CreateTask)
+		admin.POST("/scrape/tasks/batch", handlers.ScrapeManager.BatchCreateTasks)
+		admin.GET("/scrape/tasks", handlers.ScrapeManager.ListTasks)
+		admin.GET("/scrape/tasks/:id", handlers.ScrapeManager.GetTask)
+		admin.PUT("/scrape/tasks/:id", handlers.ScrapeManager.UpdateTask)
+		admin.DELETE("/scrape/tasks/:id", handlers.ScrapeManager.DeleteTask)
+		admin.POST("/scrape/tasks/:id/scrape", handlers.ScrapeManager.StartScrape)
+		admin.POST("/scrape/tasks/:id/translate", handlers.ScrapeManager.TranslateTask)
+		admin.POST("/scrape/batch/scrape", handlers.ScrapeManager.BatchStartScrape)
+		admin.POST("/scrape/batch/translate", handlers.ScrapeManager.BatchTranslate)
+		admin.POST("/scrape/batch/delete", handlers.ScrapeManager.BatchDeleteTasks)
+		admin.POST("/scrape/export", handlers.ScrapeManager.ExportTasks)
+		admin.GET("/scrape/statistics", handlers.ScrapeManager.GetStatistics)
+		admin.GET("/scrape/history", handlers.ScrapeManager.GetHistory)
+
+		// 影视文件管理
+		admin.GET("/files", handlers.FileManager.ListFiles)
+		admin.GET("/files/:id", handlers.FileManager.GetFileDetail)
+		admin.POST("/files/import", handlers.FileManager.ImportFile)
+		admin.POST("/files/import/batch", handlers.FileManager.BatchImportFiles)
+		admin.GET("/files/scan", handlers.FileManager.ScanDirectory)
+		admin.PUT("/files/:id", handlers.FileManager.UpdateFile)
+		admin.DELETE("/files/:id", handlers.FileManager.DeleteFile)
+		admin.POST("/files/batch/delete", handlers.FileManager.BatchDeleteFiles)
+		admin.POST("/files/:id/scrape", handlers.FileManager.ScrapeFile)
+		admin.POST("/files/batch/scrape", handlers.FileManager.BatchScrapeFiles)
+		admin.POST("/files/rename/preview", handlers.FileManager.PreviewRename)
+		admin.POST("/files/rename/execute", handlers.FileManager.ExecuteRename)
+		admin.POST("/files/rename/ai", handlers.FileManager.AIGenerateRenames)
+		admin.GET("/files/rename/templates", handlers.FileManager.GetRenameTemplates)
+		admin.GET("/files/stats", handlers.FileManager.GetStats)
+		admin.GET("/files/logs", handlers.FileManager.GetOperationLogs)
+
+		// AI助手
+		admin.POST("/assistant/chat", handlers.AIAssistant.Chat)
+		admin.POST("/assistant/execute", handlers.AIAssistant.ExecuteAction)
+		admin.POST("/assistant/undo/:opId", handlers.AIAssistant.UndoOperation)
+		admin.GET("/assistant/session/:sessionId", handlers.AIAssistant.GetSession)
+		admin.DELETE("/assistant/session/:sessionId", handlers.AIAssistant.DeleteSession)
+		admin.GET("/assistant/history", handlers.AIAssistant.GetOperationHistory)
+		admin.GET("/assistant/misclassification", handlers.AIAssistant.AnalyzeMisclassification)
+		admin.POST("/assistant/reclassify", handlers.AIAssistant.ReclassifyFiles)
 	}
 
 	// 静态文件（前端构建产物）

@@ -35,11 +35,11 @@ cors_origins: []
 # FFmpeg 可执行文件路径
 # 如果已加入 PATH 环境变量，直接填写 ffmpeg 即可
 # 默认: ffmpeg
-ffmpeg_path: ffmpeg
+ffmpeg_path: C:\ffmpeg\bin\ffmpeg.exe
 
 # FFprobe 可执行文件路径
 # 默认: ffprobe
-ffprobe_path: ffprobe
+ffprobe_path: C:\ffmpeg\bin\ffprobe.exe
 
 # ==================== 硬件加速 ====================
 

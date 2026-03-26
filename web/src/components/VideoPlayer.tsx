@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { userApi, subtitleApi } from '@/api'
 import type { SubtitleTrack, ExternalSubtitle } from '@/types'
 import {
@@ -180,6 +181,13 @@ export default function VideoPlayer({
           capLevelToPlayerSize: true,
           maxBufferLength: 30,
           maxMaxBufferLength: 60,
+          xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+            // 为所有 HLS 请求（子 m3u8、.ts 分片）注入 JWT 认证头
+            const token = useAuthStore.getState().token
+            if (token) {
+              xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+            }
+          },
         })
         hls.loadSource(src)
         hls.attachMedia(video)

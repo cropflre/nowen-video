@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Settings,
   Trash2,
+  Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -34,6 +35,7 @@ import UsersTab from '@/components/admin/UsersTab'
 import TasksTab from '@/components/admin/TasksTab'
 import BackupTab from '@/components/admin/BackupTab'
 import AccessLogsTab from '@/components/admin/AccessLogsTab'
+import AITab from '@/components/admin/AITab'
 
 // ==================== 标签页定义 ====================
 const TABS = [
@@ -44,6 +46,7 @@ const TABS = [
   { id: 'monitor', label: '监控与日志', icon: Activity, shortLabel: '监控' },
   { id: 'logs', label: '访问日志', icon: Settings, shortLabel: '日志' },
   { id: 'backup', label: '数据备份', icon: Settings, shortLabel: '备份' },
+  { id: 'ai', label: 'AI 配置', icon: Sparkles, shortLabel: 'AI' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -283,6 +286,7 @@ export default function AdminPage() {
       { label: '用户管理', tab: 'users' as TabId, icon: Users },
       { label: '转码任务', tab: 'tasks' as TabId, icon: Zap },
       { label: '系统监控', tab: 'monitor' as TabId, icon: Activity },
+      { label: 'AI 配置', tab: 'ai' as TabId, icon: Sparkles },
     ]
     if (!searchQuery.trim()) return []
     const q = searchQuery.toLowerCase()
@@ -574,22 +578,28 @@ export default function AdminPage() {
                     <li className="flex items-center gap-2">
                       <span className={clsx(
                         'inline-block h-1.5 w-1.5 rounded-full',
-                        tmdbConfig?.configured ? 'bg-green-400' : 'bg-surface-600'
-                      )} />
+                        tmdbConfig?.configured ? 'bg-green-400' : ''
+                      )}
+                      style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
+                      />
                       扫描媒体库时自动获取海报、简介、评分等信息
                     </li>
                     <li className="flex items-center gap-2">
                       <span className={clsx(
                         'inline-block h-1.5 w-1.5 rounded-full',
-                        tmdbConfig?.configured ? 'bg-green-400' : 'bg-surface-600'
-                      )} />
+                        tmdbConfig?.configured ? 'bg-green-400' : ''
+                      )}
+                      style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
+                      />
                       在媒体详情页手动刮削指定视频的元数据
                     </li>
                     <li className="flex items-center gap-2">
                       <span className={clsx(
                         'inline-block h-1.5 w-1.5 rounded-full',
-                        tmdbConfig?.configured ? 'bg-green-400' : 'bg-surface-600'
-                      )} />
+                        tmdbConfig?.configured ? 'bg-green-400' : ''
+                      )}
+                      style={!tmdbConfig?.configured ? { background: 'var(--text-muted)' } : undefined}
+                      />
                       自动匹配电影/剧集的中文类型标签
                     </li>
                   </ul>
@@ -648,6 +658,11 @@ export default function AdminPage() {
         {/* ===== 数据备份标签页 ===== */}
         {activeTab === 'backup' && (
           <BackupTab />
+        )}
+
+        {/* ===== AI 配置标签页 ===== */}
+        {activeTab === 'ai' && (
+          <AITab />
         )}
       </div>
 

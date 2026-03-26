@@ -44,6 +44,14 @@ type SecretsConfig struct {
 	// 获取地址: https://next.bgm.tv/demo/access-token
 	// 留空也可使用（匿名请求，速率较低）
 	BangumiAccessToken string `mapstructure:"bangumi_access_token"`
+	// TheTVDB API Key（用于获取电视剧集的详细元数据）
+	// 申请地址: https://thetvdb.com/api-information
+	// 留空则跳过 TheTVDB 数据源
+	TheTVDBAPIKey string `mapstructure:"thetvdb_api_key"`
+	// Fanart.tv API Key（用于获取高质量图片资源：ClearLogo、背景图、光碟封面等）
+	// 申请地址: https://fanart.tv/get-an-api-key/
+	// 留空则跳过 Fanart.tv 图片增强
+	FanartTVAPIKey string `mapstructure:"fanart_tv_api_key"`
 	// 预留：其他第三方服务密钥可在此扩展
 }
 
@@ -111,6 +119,31 @@ type CacheConfig struct {
 
 // ==================== 主配置结构体 ====================
 
+// AIConfig AI 功能配置
+type AIConfig struct {
+	// 是否启用 AI 功能（总开关）
+	Enabled bool `mapstructure:"enabled"`
+	// LLM 提供商: openai / deepseek / qwen / ollama
+	Provider string `mapstructure:"provider"`
+	// API 基础地址
+	APIBase string `mapstructure:"api_base"`
+	// API 密钥
+	APIKey string `mapstructure:"api_key"`
+	// 模型名称
+	Model string `mapstructure:"model"`
+	// 请求超时（秒）
+	Timeout int `mapstructure:"timeout"`
+	// 功能开关
+	EnableSmartSearch     bool `mapstructure:"enable_smart_search"`
+	EnableRecommendReason bool `mapstructure:"enable_recommend_reason"`
+	EnableMetadataEnhance bool `mapstructure:"enable_metadata_enhance"`
+	// 高级设置
+	MonthlyBudget     int `mapstructure:"monthly_budget"`
+	CacheTTLHours     int `mapstructure:"cache_ttl_hours"`
+	MaxConcurrent     int `mapstructure:"max_concurrent"`
+	RequestIntervalMs int `mapstructure:"request_interval_ms"`
+}
+
 // Config 应用主配置（聚合所有子模块）
 type Config struct {
 	mu sync.RWMutex `mapstructure:"-"`
@@ -121,6 +154,7 @@ type Config struct {
 	App      AppConfig      `mapstructure:"app"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 	Cache    CacheConfig    `mapstructure:"cache"`
+	AI       AIConfig       `mapstructure:"ai"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -217,6 +251,8 @@ func setDefaults() {
 	viper.SetDefault("secrets.tmdb_api_proxy", "")
 	viper.SetDefault("secrets.tmdb_image_proxy", "")
 	viper.SetDefault("secrets.bangumi_access_token", "")
+	viper.SetDefault("secrets.thetvdb_api_key", "")
+	viper.SetDefault("secrets.fanart_tv_api_key", "")
 
 	// ---- 应用 ----
 	viper.SetDefault("app.port", 8080)
@@ -241,6 +277,21 @@ func setDefaults() {
 	viper.SetDefault("logging.max_size_mb", 100)
 	viper.SetDefault("logging.max_age_days", 30)
 	viper.SetDefault("logging.max_backups", 10)
+
+	// ---- AI ----
+	viper.SetDefault("ai.enabled", false)
+	viper.SetDefault("ai.provider", "openai")
+	viper.SetDefault("ai.api_base", "https://api.openai.com/v1")
+	viper.SetDefault("ai.api_key", "")
+	viper.SetDefault("ai.model", "gpt-4o-mini")
+	viper.SetDefault("ai.timeout", 30)
+	viper.SetDefault("ai.enable_smart_search", true)
+	viper.SetDefault("ai.enable_recommend_reason", true)
+	viper.SetDefault("ai.enable_metadata_enhance", true)
+	viper.SetDefault("ai.monthly_budget", 0)
+	viper.SetDefault("ai.cache_ttl_hours", 168)
+	viper.SetDefault("ai.max_concurrent", 3)
+	viper.SetDefault("ai.request_interval_ms", 200)
 
 	// ---- 缓存 ----
 	viper.SetDefault("cache.cache_dir", "./cache")
@@ -286,6 +337,7 @@ func mergeConfigDir() error {
 			{name: "app", prefix: "app"},
 			{name: "logging", prefix: "logging"},
 			{name: "cache", prefix: "cache"},
+			{name: "ai", prefix: "ai"},
 		}
 
 		for _, cf := range configFiles {

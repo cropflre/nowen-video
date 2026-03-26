@@ -9,23 +9,27 @@ import (
 
 // Handlers 聚合所有HTTP处理器
 type Handlers struct {
-	Auth      *AuthHandler
-	Library   *LibraryHandler
-	Media     *MediaHandler
-	Series    *SeriesHandler
-	Stream    *StreamHandler
-	User      *UserHandler
-	Admin     *AdminHandler
-	Subtitle  *SubtitleHandler
-	Metadata  *MetadataHandler
-	Playlist  *PlaylistHandler
-	Recommend *RecommendHandler
-	Cast      *CastHandler
-	WS        *WSHandler
-	Bookmark  *BookmarkHandler
-	Comment   *CommentHandler
-	Stats     *StatsHandler
-	Backup    *BackupHandler
+	Auth          *AuthHandler
+	Library       *LibraryHandler
+	Media         *MediaHandler
+	Series        *SeriesHandler
+	Stream        *StreamHandler
+	User          *UserHandler
+	Admin         *AdminHandler
+	Subtitle      *SubtitleHandler
+	Metadata      *MetadataHandler
+	Playlist      *PlaylistHandler
+	Recommend     *RecommendHandler
+	Cast          *CastHandler
+	WS            *WSHandler
+	Bookmark      *BookmarkHandler
+	Comment       *CommentHandler
+	Stats         *StatsHandler
+	Backup        *BackupHandler
+	AI            *AIHandler
+	ScrapeManager *ScrapeManagerHandler
+	FileManager   *FileManagerHandler
+	AIAssistant   *AIAssistantHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -48,15 +52,19 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			cfg:               cfg,
 			logger:            logger,
 		},
-		Subtitle:  &SubtitleHandler{scanner: services.Scanner, streamService: services.Stream, logger: logger},
-		Metadata:  &MetadataHandler{metadataService: services.Metadata, logger: logger},
-		Playlist:  &PlaylistHandler{playlistService: services.Playlist, logger: logger},
-		Recommend: &RecommendHandler{recommendService: services.Recommend, logger: logger},
-		Cast:      &CastHandler{castService: services.Cast, logger: logger},
-		WS:        &WSHandler{hub: services.WSHub, logger: logger},
-		Bookmark:  &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
-		Comment:   &CommentHandler{commentService: services.Comment, logger: logger},
-		Stats:     &StatsHandler{statsService: services.Stats, logger: logger},
-		Backup:    &BackupHandler{backupService: services.Backup, logger: logger},
+		Subtitle:      &SubtitleHandler{scanner: services.Scanner, streamService: services.Stream, logger: logger},
+		Metadata:      &MetadataHandler{metadataService: services.Metadata, logger: logger},
+		Playlist:      &PlaylistHandler{playlistService: services.Playlist, logger: logger},
+		Recommend:     &RecommendHandler{recommendService: services.Recommend, logger: logger},
+		Cast:          &CastHandler{castService: services.Cast, logger: logger},
+		WS:            &WSHandler{hub: services.WSHub, logger: logger},
+		Bookmark:      &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
+		Comment:       &CommentHandler{commentService: services.Comment, logger: logger},
+		Stats:         &StatsHandler{statsService: services.Stats, logger: logger},
+		Backup:        &BackupHandler{backupService: services.Backup, logger: logger},
+		AI:            &AIHandler{aiService: services.AI, logger: logger},
+		ScrapeManager: &ScrapeManagerHandler{scrapeService: services.ScrapeManager, logger: logger},
+		FileManager:   &FileManagerHandler{fileService: services.FileManager, logger: logger},
+		AIAssistant:   &AIAssistantHandler{assistantService: services.AIAssistant, logger: logger},
 	}
 }

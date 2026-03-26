@@ -24,6 +24,8 @@ import {
   Video,
   X,
   BarChart3,
+  Globe,
+  FolderOpen as FolderOpenIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -239,6 +241,24 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               <Settings size={18} />
               {(!collapsed || isMobileOpen) && <span>系统管理</span>}
             </NavLink>
+
+            <NavLink
+              to="/scrape"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+              onClick={onMobileClose}
+            >
+              <Globe size={18} />
+              {(!collapsed || isMobileOpen) && <span>刮削管理</span>}
+            </NavLink>
+
+            <NavLink
+              to="/files"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+              onClick={onMobileClose}
+            >
+              <FolderOpenIcon size={18} />
+              {(!collapsed || isMobileOpen) && <span>文件管理</span>}
+            </NavLink>
           </>
         )}
       </nav>
@@ -249,39 +269,60 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         <div className={clsx('mb-3', collapsed && !isMobileOpen && 'flex justify-center')}>
           <button
             onClick={toggleTheme}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTheme() } }}
             className={clsx(
-              'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300',
-              'hover:bg-[var(--nav-hover-bg)]',
+              'theme-toggle-btn group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300',
               (collapsed && !isMobileOpen) ? 'justify-center' : 'w-full'
             )}
-            style={{ color: 'var(--text-secondary)' }}
+            style={{
+              color: 'var(--text-secondary)',
+              background: theme === 'light' ? 'var(--nav-hover-bg)' : undefined,
+              border: theme === 'light' ? '1px solid var(--border-default)' : '1px solid transparent',
+            }}
             title={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
             aria-label={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
+            role="switch"
+            aria-checked={theme === 'dark'}
           >
-            <div className="relative h-[18px] w-[18px]">
+            {/* 图标容器 - 固定尺寸确保对齐 */}
+            <div className="relative flex h-[18px] w-[18px] items-center justify-center flex-shrink-0">
               <Sun
                 size={18}
                 className={clsx(
-                  'absolute inset-0 transition-all duration-500',
+                  'absolute transition-all duration-500',
                   theme === 'light'
                     ? 'rotate-0 scale-100 opacity-100 text-amber-500'
                     : 'rotate-90 scale-0 opacity-0'
                 )}
+                style={theme === 'light' ? { filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.4))' } : undefined}
               />
               <Moon
                 size={18}
                 className={clsx(
-                  'absolute inset-0 transition-all duration-500',
+                  'absolute transition-all duration-500',
                   theme === 'dark'
                     ? 'rotate-0 scale-100 opacity-100 text-neon'
                     : '-rotate-90 scale-0 opacity-0'
                 )}
+                style={theme === 'dark' ? { filter: 'drop-shadow(0 0 4px var(--neon-blue-40))' } : undefined}
               />
             </div>
             {(!collapsed || isMobileOpen) && (
               <span className="transition-colors group-hover:text-[var(--text-primary)]">
                 {theme === 'dark' ? '夜间模式' : '日间模式'}
               </span>
+            )}
+            {/* 当前状态指示点 */}
+            {(!collapsed || isMobileOpen) && (
+              <span
+                className="ml-auto h-1.5 w-1.5 rounded-full flex-shrink-0"
+                style={{
+                  background: theme === 'dark' ? 'var(--neon-blue)' : '#f59e0b',
+                  boxShadow: theme === 'dark'
+                    ? '0 0 6px var(--neon-blue-40)'
+                    : '0 0 6px rgba(245, 158, 11, 0.4)',
+                }}
+              />
             )}
           </button>
         </div>

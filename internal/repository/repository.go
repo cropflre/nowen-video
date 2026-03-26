@@ -27,6 +27,8 @@ type Repositories struct {
 	UserPermission *UserPermissionRepo
 	SystemSetting  *SystemSettingRepo
 	PlaybackStats  *PlaybackStatsRepo
+	ScrapeTask     *ScrapeTaskRepo
+	ScrapeHistory  *ScrapeHistoryRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -49,6 +51,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		UserPermission: &UserPermissionRepo{db: db},
 		SystemSetting:  &SystemSettingRepo{db: db},
 		PlaybackStats:  &PlaybackStatsRepo{db: db},
+		ScrapeTask:     &ScrapeTaskRepo{db: db},
+		ScrapeHistory:  &ScrapeHistoryRepo{db: db},
 	}
 }
 
@@ -1182,4 +1186,111 @@ func (r *PlaybackStatsRepo) GetMostWatchedMedia(userID string, limit int) ([]map
 		LIMIT ?
 	`, userID, limit).Scan(&results).Error
 	return results, err
+}
+
+// ==================== MediaRepo 扩展方法（文件管理） ====================
+
+// ListFilesAdvanced 高级文件列表查询（支持多条件筛选）
+func (r *MediaRepo) ListFilesAdvanced(page, size int, libraryID, mediaType, keyword, sortBy, sortOrder string, scrapedOnly *bool) ([]model.Media, int64, error) {
+	var media []model.Media
+	var total int64
+
+	query := r.db.Model(&model.Media{})
+
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if mediaType != "" {
+		query = query.Where("media_type = ?", mediaType)
+	}
+	if keyword != "" {
+		query = query.Where("title LIKE ? OR orig_title LIKE ? OR file_path LIKE ?",
+			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if scrapedOnly != nil {
+		if *scrapedOnly {
+			query = query.Where("(tmdb_id > 0 OR bangumi_id > 0 OR douban_id != '')")
+		} else {
+			query = query.Where("tmdb_id = 0 AND bangumi_id = 0 AND (douban_id = '' OR douban_id IS NULL)")
+		}
+	}
+
+	query.Count(&total)
+
+	// 排序
+	sortField := "created_at"
+	sortDir := "DESC"
+	switch sortBy {
+	case "title":
+		sortField = "title"
+	case "year":
+		sortField = "year"
+	case "rating":
+		sortField = "rating"
+	case "file_size":
+		sortField = "file_size"
+	case "created_at":
+		sortField = "created_at"
+	case "updated_at":
+		sortField = "updated_at"
+	}
+	if sortOrder == "asc" {
+		sortDir = "ASC"
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 20
+	}
+
+	err := query.Order(fmt.Sprintf("%s %s", sortField, sortDir)).
+		Offset((page - 1) * size).Limit(size).Find(&media).Error
+	return media, total, err
+}
+
+// CountByMediaType 按媒体类型统计数量
+func (r *MediaRepo) CountByMediaType(mediaType string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Media{}).Where("media_type = ?", mediaType).Count(&count).Error
+	return count, err
+}
+
+// CountScraped 统计已刮削的媒体数量
+func (r *MediaRepo) CountScraped() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Media{}).
+		Where("tmdb_id > 0 OR bangumi_id > 0 OR (douban_id != '' AND douban_id IS NOT NULL)").
+		Count(&count).Error
+	return count, err
+}
+
+// SumFileSize 统计所有媒体文件的总大小
+func (r *MediaRepo) SumFileSize() (int64, error) {
+	var total int64
+	err := r.db.Model(&model.Media{}).Select("COALESCE(SUM(file_size), 0)").Scan(&total).Error
+	return total, err
+}
+
+// CountRecentImports 统计最近N天导入的媒体数量
+func (r *MediaRepo) CountRecentImports(days int) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Media{}).
+		Where("created_at >= datetime('now', ?)", fmt.Sprintf("-%d days", days)).
+		Count(&count).Error
+	return count, err
+}
+
+// ListByMediaType 按媒体类型查询所有文件
+func (r *MediaRepo) ListByMediaType(mediaType string) ([]model.Media, error) {
+	var media []model.Media
+	err := r.db.Where("media_type = ?", mediaType).Find(&media).Error
+	return media, err
+}
+
+// BatchUpdateMediaType 批量更新媒体类型
+func (r *MediaRepo) BatchUpdateMediaType(ids []string, mediaType string) (int64, error) {
+	result := r.db.Model(&model.Media{}).Where("id IN ?", ids).Update("media_type", mediaType)
+	return result.RowsAffected, result.Error
 }

@@ -15,6 +15,8 @@ import AdminPage from '@/pages/AdminPage'
 import SeriesDetailPage from '@/pages/SeriesDetailPage'
 import ProfilePage from '@/pages/ProfilePage'
 import StatsPage from '@/pages/StatsPage'
+import ScrapeManagerPage from '@/pages/ScrapeManagerPage'
+import FileManagerPage from '@/pages/FileManagerPage'
 
 // 需要登录的路由守卫
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -61,6 +63,8 @@ export default function App() {
             <Route path="history" element={<HistoryPage />} />
             <Route path="playlists" element={<PlaylistsPage />} />
             <Route path="admin" element={<AdminPage />} />
+            <Route path="scrape" element={<ScrapeManagerPage />} />
+            <Route path="files" element={<FileManagerPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="stats" element={<StatsPage />} />
           </Route>

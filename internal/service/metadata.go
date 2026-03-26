@@ -23,14 +23,16 @@ import (
 
 // MetadataService 元数据刮削服务
 type MetadataService struct {
-	mediaRepo  *repository.MediaRepo
-	seriesRepo *repository.SeriesRepo
-	cfg        *config.Config
-	logger     *zap.SugaredLogger
-	client     *http.Client
-	wsHub      *WSHub          // WebSocket事件广播
-	douban     *DoubanService  // 豆瓣刮削服务（补充源）
-	bangumi    *BangumiService // Bangumi刮削服务（补充源）
+	mediaRepo     *repository.MediaRepo
+	seriesRepo    *repository.SeriesRepo
+	cfg           *config.Config
+	logger        *zap.SugaredLogger
+	client        *http.Client
+	wsHub         *WSHub          // WebSocket事件广播
+	douban        *DoubanService  // 豆瓣刮削服务（补充源）
+	bangumi       *BangumiService // Bangumi刮削服务（补充源）
+	ai            *AIService      // AI 元数据增强（第四层 Fallback）
+	providerChain *ProviderChain  // 多数据源调度链（第三阶段）
 }
 
 func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
@@ -137,6 +139,16 @@ func (s *MetadataService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
 }
 
+// SetAIService 设置 AI 服务（延迟注入）
+func (s *MetadataService) SetAIService(ai *AIService) {
+	s.ai = ai
+}
+
+// SetProviderChain 设置多数据源调度链（延迟注入）
+func (s *MetadataService) SetProviderChain(chain *ProviderChain) {
+	s.providerChain = chain
+}
+
 // ==================== TMDb API 数据结构 ====================
 
 // TMDbSearchResult TMDb搜索结果
@@ -211,6 +223,25 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	// 从标题中提取搜索关键词和年份
 	searchTitle, year := s.parseTitle(media.Title)
 
+	// 如果已配置 ProviderChain，使用新的多数据源调度链
+	if s.providerChain != nil {
+		err := s.providerChain.ScrapeMedia(media, searchTitle, year)
+		if err != nil {
+			s.logger.Debugf("多数据源调度链刮削失败: %s - %v", media.Title, err)
+			return err
+		}
+		// 保存更新
+		if saveErr := s.mediaRepo.Update(media); saveErr != nil {
+			s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
+			return saveErr
+		}
+		s.logger.Infof("元数据刮削完成 (多数据源): %s", media.Title)
+		time.Sleep(200 * time.Millisecond)
+		return nil
+	}
+
+	// === 兼容旧版逻辑（未配置 ProviderChain 时的 Fallback） ===
+
 	// 第一步：尝试TMDb刮削（超时 5s 快速失败，不拖慢整体流程）
 	var tmdbErr error
 	if s.cfg.Secrets.TMDbAPIKey != "" {
@@ -267,6 +298,17 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		if tmdbErr != nil {
 			if updated, err := s.mediaRepo.FindByID(mediaID); err == nil {
 				if updated.Overview == "" && updated.PosterPath == "" {
+					// 第四步：AI 元数据增强（最后的 Fallback）
+					if s.ai != nil && s.ai.IsMetadataEnhanceEnabled() {
+						s.logger.Debugf("尝试 AI 元数据增强: %s", media.Title)
+						if aiErr := s.ai.EnrichMetadata(updated, searchTitle); aiErr != nil {
+							s.logger.Debugf("AI 元数据增强也失败: %s - %v", media.Title, aiErr)
+						} else {
+							s.logger.Infof("AI 元数据增强成功: %s", media.Title)
+							s.mediaRepo.Update(updated)
+							return nil
+						}
+					}
 					return tmdbErr
 				}
 			}
@@ -281,8 +323,8 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 
 // ScrapeLibrary 为整个媒体库刮削元数据
 func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Media) (int, int) {
-	if s.cfg.Secrets.TMDbAPIKey == "" {
-		s.logger.Warn("TMDb API Key未配置，跳过元数据刮削")
+	if s.cfg.Secrets.TMDbAPIKey == "" && s.providerChain == nil {
+		s.logger.Warn("TMDb API Key未配置且无可用数据源，跳过元数据刮削")
 		return 0, 0
 	}
 
@@ -961,6 +1003,28 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	// 从标题中提取搜索关键词和年份
 	searchTitle, year := s.parseTitle(series.Title)
 
+	// 如果已配置 ProviderChain，使用新的多数据源调度链
+	if s.providerChain != nil {
+		err := s.providerChain.ScrapeSeries(series, searchTitle, year)
+		if err != nil {
+			s.logger.Debugf("多数据源调度链剧集刮削失败: %s - %v", series.Title, err)
+			// 不直接返回错误，继续尝试保存已有数据
+		}
+
+		// 保存合集元数据
+		if saveErr := s.seriesRepo.Update(series); saveErr != nil {
+			return fmt.Errorf("更新剧集合集失败: %w", saveErr)
+		}
+
+		// 将合集元数据同步到各集
+		s.syncSeriesToEpisodes(seriesID, series)
+
+		s.logger.Infof("剧集合集元数据刮削完成 (多数据源): %s", series.Title)
+		return err
+	}
+
+	// === 兼容旧版逻辑（未配置 ProviderChain 时的 Fallback） ===
+
 	// 第一步：TMDb 搜索 TV 类型
 	var tmdbResult *TMDbMovie
 	if s.cfg.Secrets.TMDbAPIKey != "" {
@@ -1104,6 +1168,14 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	}
 
 	// 第三步：将合集元数据同步到各集（海报、评分、类型等）
+	s.syncSeriesToEpisodes(seriesID, series)
+
+	s.logger.Infof("剧集合集元数据刮削完成: %s", series.Title)
+	return nil
+}
+
+// syncSeriesToEpisodes 将合集元数据同步到各集（海报、评分、类型等）
+func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Series) {
 	episodes, _ := s.mediaRepo.ListBySeriesID(seriesID)
 	for _, ep := range episodes {
 		updated := false
@@ -1135,9 +1207,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			s.mediaRepo.Update(&ep)
 		}
 	}
-
-	s.logger.Infof("剧集合集元数据刮削完成: %s, 同步了 %d 集", series.Title, len(episodes))
-	return nil
+	s.logger.Debugf("已同步合集元数据到 %d 集", len(episodes))
 }
 
 // ScrapeAllSeries 为媒体库下所有剧集合集刮削元数据
