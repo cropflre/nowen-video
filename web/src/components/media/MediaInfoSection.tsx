@@ -45,13 +45,13 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
         <section>
           <div className="relative">
             <p className={clsx(
-              'text-sm leading-relaxed text-surface-300 transition-all duration-500',
+              'text-sm leading-relaxed transition-all duration-500',
               !overviewExpanded && isLongOverview && 'line-clamp-3'
-            )}>
+            )} style={{ color: 'var(--text-secondary)' }}>
               {media.overview}
             </p>
             {isLongOverview && !overviewExpanded && (
-              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-surface-950 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 h-8" style={{ background: `linear-gradient(to top, var(--bg-base), transparent)` }} />
             )}
           </div>
           {isLongOverview && (
@@ -76,10 +76,11 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             <Link
               key={genre}
               to={`/search?q=${encodeURIComponent(genre.trim())}`}
-              className="rounded-xl px-4 py-1.5 text-sm text-surface-300 transition-all duration-300 hover:text-white hover:scale-[1.04]"
+              className="rounded-xl px-4 py-1.5 text-sm transition-all duration-300 hover:scale-[1.04]"
               style={{
                 background: 'var(--neon-blue-4)',
                 border: '1px solid var(--neon-blue-8)',
+                color: 'var(--text-secondary)',
               }}
             >
               {genre.trim()}
@@ -94,7 +95,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
           <div className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             {directors.length > 0 && (
               <div className="flex gap-2">
-                <span className="shrink-0 text-surface-500">导演：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>导演：</span>
                 <span style={{ color: 'var(--text-primary)' }}>
                   {directors.map(d => d.person?.name || '').filter(Boolean).join(' / ')}
                 </span>
@@ -102,7 +103,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             )}
             {actors.length > 0 && (
               <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0 text-surface-500">演员：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>演员：</span>
                 <span className="line-clamp-2" style={{ color: 'var(--text-primary)' }}>
                   {actors.slice(0, 8).map(a => {
                     const name = a.person?.name || ''
@@ -113,26 +114,26 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             )}
             {media.country && (
               <div className="flex gap-2">
-                <span className="shrink-0 text-surface-500">制片国家：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>制片国家：</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.country}</span>
               </div>
             )}
             {media.language && (
               <div className="flex gap-2">
-                <span className="shrink-0 text-surface-500">语言：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>语言：</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.language}</span>
               </div>
             )}
             {media.studio && (
               <div className="flex gap-2">
-                <span className="shrink-0 text-surface-500">出品公司：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>出品公司：</span>
                 <span style={{ color: 'var(--text-primary)' }}>{media.studio}</span>
               </div>
             )}
             {/* 数据来源标识 */}
             {(media.tmdb_id > 0 || media.douban_id || media.bangumi_id > 0) && (
               <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0 text-surface-500">数据来源：</span>
+                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>数据来源：</span>
                 <div className="flex flex-wrap gap-1.5">
                   {media.tmdb_id > 0 && (
                     <a
@@ -184,7 +185,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
           <div className="glass-panel rounded-xl p-5">
             {media.file_path && (
               <div className="mb-4 flex items-start gap-3">
-                <span className="shrink-0 text-xs font-medium text-surface-500">文件位置：</span>
+                <span className="shrink-0 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>文件位置：</span>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <code className="flex-1 truncate rounded-lg px-3 py-1.5 text-xs"
                     style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
@@ -193,7 +194,8 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
                   </code>
                   <button
                     onClick={copyFilePath}
-                    className="shrink-0 rounded-lg p-1.5 text-surface-500 transition-colors hover:text-neon hover:bg-neon-blue/5"
+                    className="shrink-0 rounded-lg p-1.5 transition-colors hover:text-neon hover:bg-neon-blue/5"
+                    style={{ color: 'var(--text-muted)' }}
                     title="复制路径"
                   >
                     <Copy size={14} />
@@ -203,16 +205,16 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
             )}
             <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
               <div>
-                <span className="text-surface-500">文件大小：</span>
+                <span style={{ color: 'var(--text-muted)' }}>文件大小：</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatSize(media.file_size)}</span>
               </div>
               <div>
-                <span className="text-surface-500">添加日期：</span>
+                <span style={{ color: 'var(--text-muted)' }}>添加日期：</span>
                 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDate(media.created_at)}</span>
               </div>
               {media.duration > 0 && (
                 <div>
-                  <span className="text-surface-500">总时长：</span>
+                  <span style={{ color: 'var(--text-muted)' }}>总时长：</span>
                   <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDuration(media.duration)}</span>
                 </div>
               )}

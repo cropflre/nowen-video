@@ -116,9 +116,12 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	var count int
 	var err error
 
-	if library.Type == "tvshow" {
+	switch library.Type {
+	case "tvshow":
 		count, err = s.scanTVShowLibrary(library)
-	} else {
+	case "mixed":
+		count, err = s.scanMixedLibrary(library)
+	default:
 		count, err = s.scanMovieLibrary(library)
 	}
 
@@ -188,6 +191,237 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		return nil
 	})
 	return count, err
+}
+
+// scanMixedLibrary 扫描混合媒体库（智能区分电影和电视剧）
+// 策略：遍历根目录第一层，对每个子目录判断是电影还是电视剧文件夹
+// - 如果子目录内包含多个视频文件，或文件名匹配剧集命名模式，则视为电视剧
+// - 如果子目录内只有单个视频文件且不匹配剧集模式，则视为电影
+// - 根目录下的散落视频文件按电影处理
+func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
+	s.logger.Infof("混合媒体库扫描: %s (%s)", library.Name, library.Path)
+
+	entries, err := os.ReadDir(library.Path)
+	if err != nil {
+		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
+	}
+
+	var totalCount int
+
+	// === 阶段一：收集子目录，按标准化系列名分组（用于多季合并检测） ===
+	seriesDirGroups := make(map[string][]seriesFolder) // 标准化系列名 -> 目录列表
+	var movieDirs []os.DirEntry                        // 被判定为电影的目录
+	var looseVideoFiles []os.DirEntry                  // 根目录散落的视频文件
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			// 根目录下的散落视频文件
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if supportedExts[ext] {
+				looseVideoFiles = append(looseVideoFiles, entry)
+			}
+			continue
+		}
+
+		dirName := entry.Name()
+		folderPath := filepath.Join(library.Path, dirName)
+
+		// 智能判断：该目录是电视剧还是电影
+		if s.isTVShowFolder(folderPath) {
+			// 电视剧目录：按标准化系列名分组（支持多季合并）
+			normalizedName := s.normalizeSeriesName(dirName)
+			seasonNum := s.extractSeasonFromDirName(dirName)
+			seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
+				path:      folderPath,
+				dirName:   dirName,
+				seasonNum: seasonNum,
+			})
+		} else {
+			// 电影目录
+			movieDirs = append(movieDirs, entry)
+		}
+	}
+
+	// === 阶段二：处理电视剧目录（复用 scanTVShowLibrary 的分组逻辑） ===
+	for normalizedName, folders := range seriesDirGroups {
+		if len(folders) == 1 && folders[0].seasonNum == 0 {
+			// 单个目录且未识别到季号 → 独立处理
+			f := folders[0]
+			seriesTitle := s.extractSeriesTitle(f.dirName)
+			newCount, err := s.scanSeriesFolder(library, f.path, seriesTitle)
+			if err != nil {
+				s.logger.Warnf("混合库-扫描剧集文件夹失败: %s, 错误: %v", f.path, err)
+				continue
+			}
+			totalCount += newCount
+		} else {
+			// 多季合并
+			newCount, err := s.scanMultiSeasonSeries(library, normalizedName, folders)
+			if err != nil {
+				s.logger.Warnf("混合库-扫描多季合集失败: %s, 错误: %v", normalizedName, err)
+				continue
+			}
+			totalCount += newCount
+		}
+	}
+
+	// === 阶段三：处理电影目录（扫描目录内的视频文件作为电影） ===
+	for _, entry := range movieDirs {
+		folderPath := filepath.Join(library.Path, entry.Name())
+		err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if !supportedExts[ext] {
+				return nil
+			}
+			if _, err := s.mediaRepo.FindByFilePath(path); err == nil {
+				return nil // 已存在
+			}
+			title := s.extractTitle(filepath.Base(path))
+			media := &model.Media{
+				LibraryID: library.ID,
+				Title:     title,
+				FilePath:  path,
+				FileSize:  info.Size(),
+				MediaType: "movie",
+			}
+			s.probeMediaInfo(media)
+			s.scanExternalSubtitles(media)
+			if err := s.mediaRepo.Create(media); err != nil {
+				s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
+				return nil
+			}
+			totalCount++
+			s.logger.Debugf("发现电影(混合库): %s [%s | %s | %s]", title, media.Resolution, media.VideoCodec, media.AudioCodec)
+			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+				LibraryID:   library.ID,
+				LibraryName: library.Name,
+				Phase:       "scanning",
+				NewFound:    totalCount,
+				Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
+			})
+			return nil
+		})
+		if err != nil {
+			s.logger.Warnf("混合库-扫描电影目录失败: %s, 错误: %v", folderPath, err)
+		}
+	}
+
+	// === 阶段四：处理根目录散落的视频文件（作为电影） ===
+	for _, entry := range looseVideoFiles {
+		filePath := filepath.Join(library.Path, entry.Name())
+		if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+			continue // 已存在
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		title := s.extractTitle(entry.Name())
+		media := &model.Media{
+			LibraryID: library.ID,
+			Title:     title,
+			FilePath:  filePath,
+			FileSize:  info.Size(),
+			MediaType: "movie",
+		}
+		s.probeMediaInfo(media)
+		s.scanExternalSubtitles(media)
+		if err := s.mediaRepo.Create(media); err != nil {
+			s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
+			continue
+		}
+		totalCount++
+		s.logger.Debugf("发现电影(散落): %s [%s]", title, media.Resolution)
+		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+			LibraryID:   library.ID,
+			LibraryName: library.Name,
+			Phase:       "scanning",
+			NewFound:    totalCount,
+			Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
+		})
+	}
+
+	s.logger.Infof("混合媒体库扫描完成: %s, 新增 %d 个媒体", library.Name, totalCount)
+	return totalCount, nil
+}
+
+// isTVShowFolder 智能判断一个目录是否为电视剧文件夹
+// 判断依据（满足任一即认定为电视剧）：
+// 1. 目录名包含季号标识（如 S1、Season 1、第一季）
+// 2. 目录内包含 Season 子目录
+// 3. 目录内有多个视频文件且文件名匹配剧集命名模式（S01E01、EP01、第N集等）
+// 4. 目录内有多个视频文件且文件名包含连续编号
+func (s *ScannerService) isTVShowFolder(folderPath string) bool {
+	dirName := filepath.Base(folderPath)
+
+	// 规则1: 目录名包含季号标识
+	if s.extractSeasonFromDirName(dirName) > 0 {
+		return true
+	}
+
+	// 读取目录内容
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return false
+	}
+
+	// 规则2: 包含 Season 子目录
+	var videoFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			for _, pattern := range seasonDirPatterns {
+				if pattern.MatchString(entry.Name()) {
+					return true
+				}
+			}
+			// 递归检查子目录中的视频文件（只深入一层）
+			subEntries, err := os.ReadDir(filepath.Join(folderPath, entry.Name()))
+			if err == nil {
+				for _, subEntry := range subEntries {
+					if !subEntry.IsDir() {
+						ext := strings.ToLower(filepath.Ext(subEntry.Name()))
+						if supportedExts[ext] {
+							videoFiles = append(videoFiles, subEntry.Name())
+						}
+					}
+				}
+			}
+		} else {
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if supportedExts[ext] {
+				videoFiles = append(videoFiles, entry.Name())
+			}
+		}
+	}
+
+	// 只有0或1个视频文件 → 大概率是电影
+	if len(videoFiles) <= 1 {
+		return false
+	}
+
+	// 规则3: 多个视频文件中有匹配剧集命名模式的
+	episodeMatchCount := 0
+	for _, vf := range videoFiles {
+		ep := s.parseEpisodeInfo(vf)
+		if ep.EpisodeNum > 0 {
+			episodeMatchCount++
+		}
+	}
+
+	// 如果超过一半的视频文件匹配剧集模式，认定为电视剧
+	if episodeMatchCount > 0 && episodeMatchCount >= len(videoFiles)/2 {
+		return true
+	}
+
+	// 规则4: 有3个及以上视频文件（即使无法解析集号，多文件目录更可能是剧集）
+	if len(videoFiles) >= 3 {
+		return true
+	}
+
+	return false
 }
 
 // ==================== 剧集扫描逻辑 ====================

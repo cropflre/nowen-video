@@ -287,8 +287,8 @@ export default function SeriesDetailPage() {
             ) : null}
           </div>
           {/* 多层渐变遮罩 */}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--bg-base), var(--bg-base)/80 30%, transparent)' }} />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, var(--bg-base)/60, transparent, var(--bg-base)/30)' }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(to top, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 80%, transparent) 30%, transparent 100%)` }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(to right, color-mix(in srgb, var(--bg-base) 60%, transparent), transparent, color-mix(in srgb, var(--bg-base) 30%, transparent))` }} />
           <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: 'linear-gradient(to top, var(--bg-base), transparent)' }} />
         </div>
 
@@ -313,7 +313,7 @@ export default function SeriesDetailPage() {
                     loading="eager"
                   />
                 ) : (
-                  <div className="flex items-center justify-center bg-surface-900 text-surface-600" style={{ aspectRatio: '2/3' }}>
+                  <div className="flex items-center justify-center" style={{ aspectRatio: '2/3', background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
                     <Tv size={48} />
                   </div>
                 )}
@@ -379,12 +379,13 @@ export default function SeriesDetailPage() {
                   onClick={handleFavorite}
                   className={clsx(
                     'flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105',
-                    isFavorited ? 'text-pink-400' : 'text-surface-300 hover:text-white'
+                    isFavorited ? 'text-pink-400' : ''
                   )}
                   style={{
                     background: isFavorited ? 'rgba(236, 72, 153, 0.12)' : 'var(--nav-hover-bg)',
                     border: `1px solid ${isFavorited ? 'rgba(236, 72, 153, 0.2)' : 'var(--border-default)'}`,
                     backdropFilter: 'blur(12px)',
+                    color: isFavorited ? undefined : 'var(--text-secondary)',
                   }}
                   title={isFavorited ? '取消收藏' : '收藏'}
                 >
@@ -395,11 +396,12 @@ export default function SeriesDetailPage() {
                 <div className="relative">
                   <button
                     onClick={() => { setShowMoreMenu(!showMoreMenu); setShowPlaylistMenu(false) }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-surface-300 transition-all duration-300 hover:scale-105 hover:text-white"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105"
                     style={{
                       background: 'var(--nav-hover-bg)',
                       border: '1px solid var(--border-default)',
                       backdropFilter: 'blur(12px)',
+                      color: 'var(--text-secondary)',
                     }}
                   >
                     <MoreHorizontal size={20} />
@@ -419,14 +421,16 @@ export default function SeriesDetailPage() {
                           <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>剧集管理</div>
                           <button
                             onClick={() => { handleManualMatch(); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Link2 size={14} />
                             手动匹配剧集
                           </button>
                           <button
                             onClick={() => { setShowUnmatchConfirm(true); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Unlink size={14} />
                             解除匹配剧集
@@ -434,14 +438,16 @@ export default function SeriesDetailPage() {
                           <button
                             onClick={() => { handleRefreshMetadata(); setShowMoreMenu(false) }}
                             disabled={scraping}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white disabled:opacity-50"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5 disabled:opacity-50"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} />
                             {scraping ? '刷新中...' : '刷新元数据'}
                           </button>
                           <button
                             onClick={() => { handleEditMetadata(); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Pencil size={14} />
                             编辑元数据
@@ -459,7 +465,8 @@ export default function SeriesDetailPage() {
                       {/* 通用操作 */}
                       <button
                         onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('链接已复制')).catch(() => {}); setShowMoreMenu(false) }}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         <Share2 size={14} />
                         分享链接
@@ -471,20 +478,20 @@ export default function SeriesDetailPage() {
                 {/* 右侧元数据标签 */}
                 <div className="ml-auto hidden flex-wrap items-center gap-2 lg:flex">
                   {series.year > 0 && (
-                    <span className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    <span className="rounded-lg px-2.5 py-1 text-sm"
+                      style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {series.year}
                     </span>
                   )}
-                  <span className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  <span className="rounded-lg px-2.5 py-1 text-sm"
+                    style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                   >
                     {series.season_count} 季 · {series.episode_count} 集
                   </span>
                   {series.genres && series.genres.split(',').slice(0, 3).map((g) => (
-                    <span key={g} className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    <span key={g} className="rounded-lg px-2.5 py-1 text-sm"
+                      style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {g.trim()}
                     </span>
@@ -501,9 +508,9 @@ export default function SeriesDetailPage() {
                   </span>
                 )}
                 {series.year > 0 && (
-                  <span className="text-sm text-surface-400">{series.year}</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{series.year}</span>
                 )}
-                <span className="text-sm text-surface-400">
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {series.season_count} 季 · {series.episode_count} 集
                 </span>
               </div>
@@ -522,13 +529,13 @@ export default function SeriesDetailPage() {
           <section>
             <div className="relative">
               <p className={clsx(
-                'text-sm leading-relaxed text-surface-300 transition-all duration-500',
+                'text-sm leading-relaxed transition-all duration-500',
                 !overviewExpanded && isLongOverview && 'line-clamp-3'
-              )}>
+              )} style={{ color: 'var(--text-secondary)' }}>
                 {series.overview}
               </p>
               {isLongOverview && !overviewExpanded && (
-                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-surface-950 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 h-8" style={{ background: `linear-gradient(to top, var(--bg-base), transparent)` }} />
               )}
             </div>
             {isLongOverview && (
@@ -553,10 +560,11 @@ export default function SeriesDetailPage() {
               <Link
                 key={genre}
                 to={`/search?q=${encodeURIComponent(genre.trim())}`}
-                className="rounded-xl px-4 py-1.5 text-sm text-surface-300 transition-all duration-300 hover:text-white hover:scale-[1.04]"
+                className="rounded-xl px-4 py-1.5 text-sm transition-all duration-300 hover:scale-[1.04]"
                 style={{
                   background: 'var(--neon-blue-4)',
                   border: '1px solid var(--neon-blue-8)',
+                  color: 'var(--text-secondary)',
                 }}
               >
                 {genre.trim()}
@@ -568,7 +576,7 @@ export default function SeriesDetailPage() {
         {/* 数据来源标识 */}
         {(series.tmdb_id > 0 || series.douban_id || series.bangumi_id > 0) && (
           <section className="flex items-center gap-2 text-sm">
-            <span className="shrink-0 text-surface-500">数据来源：</span>
+            <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>数据来源：</span>
             <div className="flex flex-wrap gap-1.5">
               {series.tmdb_id > 0 && (
                 <a
@@ -785,7 +793,7 @@ export default function SeriesDetailPage() {
                     {posterUrl ? (
                       <img src={posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
                     ) : (
-                      <div className="flex h-16 w-11 items-center justify-center rounded-lg text-surface-600" style={{ background: 'var(--bg-card)' }}>
+                      <div className="flex h-16 w-11 items-center justify-center rounded-lg" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
                         <span className="text-xs">N/A</span>
                       </div>
                     )}
@@ -945,7 +953,7 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-surface-700">
+          <div className="flex h-full w-full items-center justify-center" style={{ color: 'var(--text-muted)' }}>
             <Play size={20} />
           </div>
         )}
@@ -982,9 +990,8 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
             S{String(ep.season_num).padStart(2, '0')}E{String(ep.episode_num).padStart(2, '0')}
           </span>
           <h4 className={clsx(
-            'truncate text-sm font-medium transition-colors group-hover:text-neon',
-            watchStatus.watched ? 'text-surface-500' : ''
-          )} style={watchStatus.watched ? {} : { color: 'var(--text-primary)' }}>
+            'truncate text-sm font-medium transition-colors group-hover:text-neon'
+          )} style={watchStatus.watched ? { color: 'var(--text-muted)' } : { color: 'var(--text-primary)' }}>
             {ep.episode_title || (ep.episode_num > 0 ? `第 ${ep.episode_num} 集` : seriesTitle)}
           </h4>
           {watchStatus.watched && (

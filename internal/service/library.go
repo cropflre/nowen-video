@@ -157,19 +157,32 @@ func (s *LibraryService) Scan(id string) error {
 		s.logger.Infof("媒体库 %s 文件扫描完成，新增 %d 个媒体", lib.Name, count)
 
 		// 第二步：自动刮削元数据（如果配置了TMDb API Key）
-		if lib.Type == "tvshow" {
-			// 剧集库：优先刮削合集元数据，然后同步到各集
+		if lib.Type == "tvshow" || lib.Type == "mixed" {
+			// 剧集库/混合库：优先刮削合集元数据，然后同步到各集
 			seriesSuccess, seriesFailed := s.metadata.ScrapeAllSeries(id)
 			if seriesSuccess > 0 || seriesFailed > 0 {
 				s.logger.Infof("媒体库 %s 剧集合集刮削: 成功 %d, 失败 %d", lib.Name, seriesSuccess, seriesFailed)
 			}
-		} else {
-			// 电影库：逐个刮削
+		}
+		if lib.Type != "tvshow" {
+			// 电影库/混合库：刮削电影类型的媒体
 			mediaList, err := s.mediaRepo.ListByLibraryID(id)
 			if err == nil && len(mediaList) > 0 {
-				success, failed := s.metadata.ScrapeLibrary(id, mediaList)
-				if success > 0 || failed > 0 {
-					s.logger.Infof("媒体库 %s 元数据刮削: 成功 %d, 失败 %d", lib.Name, success, failed)
+				// 混合库只刮削电影类型的媒体，剧集已由上面的合集刮削处理
+				if lib.Type == "mixed" {
+					var movieList []model.Media
+					for _, m := range mediaList {
+						if m.MediaType == "movie" {
+							movieList = append(movieList, m)
+						}
+					}
+					mediaList = movieList
+				}
+				if len(mediaList) > 0 {
+					success, failed := s.metadata.ScrapeLibrary(id, mediaList)
+					if success > 0 || failed > 0 {
+						s.logger.Infof("媒体库 %s 元数据刮削: 成功 %d, 失败 %d", lib.Name, success, failed)
+					}
 				}
 			}
 		}
@@ -178,6 +191,7 @@ func (s *LibraryService) Scan(id string) error {
 	return nil
 }
 
+// Delete 删除媒体库
 // Delete 删除媒体库（级联清理关联的媒体和剧集合集数据）
 func (s *LibraryService) Delete(id string) error {
 	// 先获取媒体库信息（用于日志和事件通知）
@@ -310,17 +324,29 @@ func (s *LibraryService) Reindex(id string) error {
 		s.logger.Infof("媒体库 %s 索引重建完成，共 %d 个媒体", lib.Name, count)
 
 		// 第三步：自动刮削元数据
-		if lib.Type == "tvshow" {
+		if lib.Type == "tvshow" || lib.Type == "mixed" {
 			seriesSuccess, seriesFailed := s.metadata.ScrapeAllSeries(id)
 			if seriesSuccess > 0 || seriesFailed > 0 {
-				s.logger.Infof("媒体库 %s 重建索引刮削: 成功 %d, 失败 %d", lib.Name, seriesSuccess, seriesFailed)
+				s.logger.Infof("媒体库 %s 重建索引刮削(剧集): 成功 %d, 失败 %d", lib.Name, seriesSuccess, seriesFailed)
 			}
-		} else {
+		}
+		if lib.Type != "tvshow" {
 			mediaList, err := s.mediaRepo.ListByLibraryID(id)
 			if err == nil && len(mediaList) > 0 {
-				success, failed := s.metadata.ScrapeLibrary(id, mediaList)
-				if success > 0 || failed > 0 {
-					s.logger.Infof("媒体库 %s 重建索引刮削: 成功 %d, 失败 %d", lib.Name, success, failed)
+				if lib.Type == "mixed" {
+					var movieList []model.Media
+					for _, m := range mediaList {
+						if m.MediaType == "movie" {
+							movieList = append(movieList, m)
+						}
+					}
+					mediaList = movieList
+				}
+				if len(mediaList) > 0 {
+					success, failed := s.metadata.ScrapeLibrary(id, mediaList)
+					if success > 0 || failed > 0 {
+						s.logger.Infof("媒体库 %s 重建索引刮削(电影): 成功 %d, 失败 %d", lib.Name, success, failed)
+					}
 				}
 			}
 		}

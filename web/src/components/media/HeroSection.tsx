@@ -107,8 +107,8 @@ export default function HeroSection({
             )}
           </div>
           {/* 多层渐变遮罩 */}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--bg-base), var(--bg-base)/80 30%, transparent)' }} />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, var(--bg-base)/60, transparent, var(--bg-base)/30)' }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(to top, var(--bg-base) 0%, color-mix(in srgb, var(--bg-base) 80%, transparent) 30%, transparent 100%)` }} />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(to right, color-mix(in srgb, var(--bg-base) 60%, transparent), transparent, color-mix(in srgb, var(--bg-base) 30%, transparent))` }} />
           <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: 'linear-gradient(to top, var(--bg-base), transparent)' }} />
         </div>
 
@@ -133,7 +133,7 @@ export default function HeroSection({
                   onError={() => setPosterFailed(true)}
                 />
                 {posterFailed && (
-                  <div className="flex items-center justify-center bg-surface-900 text-surface-600" style={{ aspectRatio: '2/3' }}>
+                  <div className="flex items-center justify-center" style={{ aspectRatio: '2/3', background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
                     <Film size={48} />
                   </div>
                 )}
@@ -234,12 +234,13 @@ export default function HeroSection({
                   onClick={onFavorite}
                   className={clsx(
                     'flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105',
-                    isFavorited ? 'text-pink-400' : 'text-surface-300 hover:text-white'
+                    isFavorited ? 'text-pink-400' : ''
                   )}
                   style={{
                     background: isFavorited ? 'rgba(236, 72, 153, 0.12)' : 'var(--nav-hover-bg)',
                     border: `1px solid ${isFavorited ? 'rgba(236, 72, 153, 0.2)' : 'var(--border-default)'}`,
                     backdropFilter: 'blur(12px)',
+                    color: isFavorited ? undefined : 'var(--text-secondary)',
                   }}
                   title={isFavorited ? '取消收藏' : '收藏'}
                   aria-label={isFavorited ? '取消收藏' : '收藏'}
@@ -252,11 +253,12 @@ export default function HeroSection({
                 <div className="relative">
                   <button
                     onClick={() => { setShowPlaylistMenu(!showPlaylistMenu); setShowMoreMenu(false) }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-surface-300 transition-all duration-300 hover:scale-105 hover:text-white"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105"
                     style={{
                       background: 'var(--nav-hover-bg)',
                       border: '1px solid var(--border-default)',
                       backdropFilter: 'blur(12px)',
+                      color: 'var(--text-secondary)',
                     }}
                     title="添加到播放列表"
                     aria-label="添加到播放列表"
@@ -273,15 +275,16 @@ export default function HeroSection({
                         backdropFilter: 'blur(20px)',
                       }}
                     >
-                      <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">播放列表</div>
+                    <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>播放列表</div>
                       {playlists.length === 0 ? (
-                        <div className="px-4 py-3 text-sm text-surface-500">暂无播放列表</div>
+                        <div className="px-4 py-3 text-sm" style={{ color: 'var(--text-muted)' }}>暂无播放列表</div>
                       ) : (
                         playlists.map((pl) => (
                           <button
                             key={pl.id}
                             onClick={() => handleAddToPlaylist(pl.id)}
-                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <ListPlus size={14} />
                             {pl.name}
@@ -299,11 +302,12 @@ export default function HeroSection({
                 <div className="relative">
                   <button
                     onClick={() => { setShowMoreMenu(!showMoreMenu); setShowPlaylistMenu(false) }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl text-surface-300 transition-all duration-300 hover:scale-105 hover:text-white"
+                    className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300 hover:scale-105"
                     style={{
                       background: 'var(--nav-hover-bg)',
                       border: '1px solid var(--border-default)',
                       backdropFilter: 'blur(12px)',
+                      color: 'var(--text-secondary)',
                     }}
                   >
                     <MoreHorizontal size={20} />
@@ -323,14 +327,16 @@ export default function HeroSection({
                           <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>影片管理</div>
                           <button
                             onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Link2 size={14} />
                             手动匹配影片
                           </button>
                           <button
                             onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Unlink size={14} />
                             解除匹配影片
@@ -338,14 +344,16 @@ export default function HeroSection({
                           <button
                             onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }}
                             disabled={scraping}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white disabled:opacity-50"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5 disabled:opacity-50"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} />
                             {scraping ? '刷新中...' : '刷新元数据'}
                           </button>
                           <button
                             onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }}
-                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
                           >
                             <Pencil size={14} />
                             编辑元数据
@@ -363,14 +371,16 @@ export default function HeroSection({
                       {/* 通用操作 */}
                       <button
                         onClick={() => { copyFilePath(); setShowMoreMenu(false) }}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         <Copy size={14} />
                         复制文件路径
                       </button>
                       <button
                         onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('链接已复制')).catch(() => {}); setShowMoreMenu(false) }}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-surface-300 transition-colors hover:bg-neon-blue/5 hover:text-white"
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         <Share2 size={14} />
                         分享链接
@@ -390,22 +400,22 @@ export default function HeroSection({
                     </span>
                   )}
                   {media.year > 0 && (
-                    <span className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    <span className="rounded-lg px-2.5 py-1 text-sm"
+                      style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {media.year}
                     </span>
                   )}
                   {media.duration > 0 && (
-                    <span className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    <span className="rounded-lg px-2.5 py-1 text-sm"
+                      style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {formatDuration(media.duration)}
                     </span>
                   )}
                   {media.genres && media.genres.split(',').slice(0, 3).map((g) => (
-                    <span key={g} className="rounded-lg px-2.5 py-1 text-sm text-surface-300"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    <span key={g} className="rounded-lg px-2.5 py-1 text-sm"
+                      style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {g.trim()}
                     </span>
@@ -434,10 +444,10 @@ export default function HeroSection({
                   </span>
                 )}
                 {media.year > 0 && (
-                  <span className="text-sm text-surface-400">{media.year}</span>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{media.year}</span>
                 )}
                 {media.duration > 0 && (
-                  <span className="flex items-center gap-1 text-sm text-surface-400">
+                  <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
                     <Clock size={13} />
                     {formatDurationShort(media.duration)}
                   </span>

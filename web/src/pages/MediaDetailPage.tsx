@@ -402,7 +402,7 @@ export default function MediaDetailPage() {
                     {posterUrl ? (
                       <img src={posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
                     ) : (
-                      <div className="flex h-16 w-11 items-center justify-center rounded-lg text-surface-600" style={{ background: 'var(--bg-card)' }}>
+                      <div className="flex h-16 w-11 items-center justify-center rounded-lg" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
                         <span className="text-xs">N/A</span>
                       </div>
                     )}

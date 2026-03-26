@@ -30,14 +30,16 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
         <div className="flex gap-1">
           <button
             onClick={() => scroll('left')}
-            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:text-white hover:bg-neon-blue/5"
+            className="rounded-lg p-1.5 transition-colors hover:bg-neon-blue/5"
+            style={{ color: 'var(--text-muted)' }}
             aria-label="向左滚动"
           >
             <ChevronLeft size={18} />
           </button>
           <button
             onClick={() => scroll('right')}
-            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:text-white hover:bg-neon-blue/5"
+            className="rounded-lg p-1.5 transition-colors hover:bg-neon-blue/5"
+            style={{ color: 'var(--text-muted)' }}
             aria-label="向右滚动"
           >
             <ChevronRight size={18} />
@@ -58,7 +60,7 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
             className="media-card group w-36 flex-shrink-0"
             role="listitem"
           >
-            <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-surface-900">
+            <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
               <img
                 src={streamApi.getPosterUrl(item.media.id)}
                 alt={item.media.title}
@@ -66,7 +68,7 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
                 loading="lazy"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
-              <div className="absolute inset-0 -z-10 flex items-center justify-center text-surface-700">
+              <div className="absolute inset-0 -z-10 flex items-center justify-center" style={{ color: 'var(--text-muted)' }}>
                 <Film size={32} />
               </div>
               {/* 悬停播放图标 */}
@@ -91,7 +93,7 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
               <h4 className="truncate text-xs font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
                 {item.media.title}
               </h4>
-              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-surface-500">
+              <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
                 {item.media.year > 0 && <span>{item.media.year}</span>}
                 {item.media.rating > 0 && (
                   <>
