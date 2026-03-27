@@ -609,6 +609,22 @@ func (r *WatchHistoryRepo) ClearHistory(userID string) error {
 	return r.db.Where("user_id = ?", userID).Delete(&model.WatchHistory{}).Error
 }
 
+// DeleteByMediaID 删除指定媒体的所有观看历史记录
+func (r *WatchHistoryRepo) DeleteByMediaID(mediaID string) error {
+	return r.db.Where("media_id = ?", mediaID).Delete(&model.WatchHistory{}).Error
+}
+
+// DeleteByLibraryMediaIDs 删除指定媒体库下所有媒体的观看历史记录（通过子查询）
+func (r *WatchHistoryRepo) DeleteByLibraryMediaIDs(libraryID string) error {
+	return r.db.Where("media_id IN (SELECT id FROM media WHERE library_id = ?)", libraryID).Delete(&model.WatchHistory{}).Error
+}
+
+// CleanOrphaned 清理孤立的观看历史记录（media_id 指向的媒体已不存在）
+func (r *WatchHistoryRepo) CleanOrphaned() (int64, error) {
+	result := r.db.Where("media_id NOT IN (SELECT id FROM media WHERE deleted_at IS NULL)").Delete(&model.WatchHistory{})
+	return result.RowsAffected, result.Error
+}
+
 // GetAllByUserID 获取指定用户的所有观看记录（用于推荐系统）
 func (r *WatchHistoryRepo) GetAllByUserID(userID string) ([]model.WatchHistory, error) {
 	var histories []model.WatchHistory
@@ -684,9 +700,12 @@ func (r *FavoriteRepo) List(userID string, page, size int) ([]model.Favorite, in
 	var favs []model.Favorite
 	var total int64
 
-	query := r.db.Model(&model.Favorite{}).Where("user_id = ?", userID)
+	// 只查询关联媒体仍然存在的收藏记录，过滤掉已删除媒体的无效收藏
+	query := r.db.Model(&model.Favorite{}).
+		Joins("JOIN media ON media.id = favorites.media_id AND media.deleted_at IS NULL").
+		Where("favorites.user_id = ?", userID)
 	query.Count(&total)
-	err := query.Preload("Media").Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&favs).Error
+	err := query.Preload("Media").Order("favorites.created_at DESC").Offset((page - 1) * size).Limit(size).Find(&favs).Error
 	return favs, total, err
 }
 
@@ -694,6 +713,22 @@ func (r *FavoriteRepo) Exists(userID, mediaID string) bool {
 	var count int64
 	r.db.Model(&model.Favorite{}).Where("user_id = ? AND media_id = ?", userID, mediaID).Count(&count)
 	return count > 0
+}
+
+// DeleteByMediaID 删除指定媒体的所有收藏记录
+func (r *FavoriteRepo) DeleteByMediaID(mediaID string) error {
+	return r.db.Where("media_id = ?", mediaID).Delete(&model.Favorite{}).Error
+}
+
+// DeleteByLibraryMediaIDs 删除指定媒体库下所有媒体的收藏记录（通过子查询）
+func (r *FavoriteRepo) DeleteByLibraryMediaIDs(libraryID string) error {
+	return r.db.Where("media_id IN (SELECT id FROM media WHERE library_id = ?)", libraryID).Delete(&model.Favorite{}).Error
+}
+
+// CleanOrphaned 清理孤立的收藏记录（media_id 指向的媒体已不存在）
+func (r *FavoriteRepo) CleanOrphaned() (int64, error) {
+	result := r.db.Where("media_id NOT IN (SELECT id FROM media WHERE deleted_at IS NULL)").Delete(&model.Favorite{})
+	return result.RowsAffected, result.Error
 }
 
 // ==================== TranscodeRepo ====================

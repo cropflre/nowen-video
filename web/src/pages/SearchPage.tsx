@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { mediaApi, aiApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import type { Media, SearchIntent } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
+import Pagination from '@/components/Pagination'
 import {
   Search as SearchIcon,
   X,
@@ -36,14 +38,28 @@ const YEAR_RANGES = [
 ]
 
 export default function SearchPage() {
-  const [query, setQuery] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [query, setQuery] = useState(searchParams.get('q') || '')
   const [results, setResults] = useState<Media[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const size = 30
   const toast = useToast()
+
+  // 从 URL 参数读取分页状态
+  const page = parseInt(searchParams.get('page') || '1', 10) || 1
+
+  // 分页变化时同步到 URL
+  const setPage = useCallback((newPage: number) => {
+    const params = new URLSearchParams(searchParams)
+    if (newPage <= 1) {
+      params.delete('page')
+    } else {
+      params.set('page', String(newPage))
+    }
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
 
 // 筛选状态
   const [showFilters, setShowFilters] = useState(false)
@@ -120,6 +136,11 @@ export default function SearchPage() {
 
     const timer = setTimeout(() => {
       setPage(1)
+      // 同步搜索关键词到 URL
+      const params = new URLSearchParams(searchParams)
+      params.set('q', query.trim())
+      params.delete('page')
+      setSearchParams(params, { replace: true })
       // 先尝试 AI 智能搜索
       if (query.trim().length > 4) {
         aiAbortRef.current?.abort()
@@ -385,28 +406,13 @@ placeholder="搜索电影、剧集..."
         </div>
       )}
 
-      {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            上一页
-          </button>
-          <span className="font-display text-sm tracking-wide text-neon">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            下一页
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={size}
+        onPageChange={setPage}
+      />
     </div>
   )
 }

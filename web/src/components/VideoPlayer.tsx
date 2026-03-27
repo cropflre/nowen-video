@@ -799,18 +799,27 @@ export default function VideoPlayer({
                       {embeddedSubs.map((sub) => (
                         <button
                           key={sub.index}
-                          onClick={() => { loadSubtitle('embedded', String(sub.index)); setShowSubtitleMenu(false) }}
+                          onClick={() => {
+                            if (sub.bitmap) return // 图形字幕不可选
+                            loadSubtitle('embedded', String(sub.index))
+                            setShowSubtitleMenu(false)
+                          }}
+                          disabled={sub.bitmap}
                           className={clsx(
                             'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                            activeSubtitle === `embedded:${sub.index}`
-                              ? 'text-neon-blue'
-                              : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
+                            sub.bitmap
+                              ? 'text-surface-600 cursor-not-allowed'
+                              : activeSubtitle === `embedded:${sub.index}`
+                                ? 'text-neon-blue'
+                                : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
                           )}
-                          style={activeSubtitle === `embedded:${sub.index}` ? { background: 'var(--neon-blue-6)' } : {}}
+                          style={activeSubtitle === `embedded:${sub.index}` && !sub.bitmap ? { background: 'var(--neon-blue-6)' } : {}}
+                          title={sub.bitmap ? '图形字幕无法在浏览器中显示' : undefined}
                         >
                           {sub.title || sub.language || `轨道 ${sub.index}`}
                           {sub.codec && <span className="ml-2 text-xs text-surface-600">[{sub.codec}]</span>}
-                          {sub.default && <span className="ml-1 text-xs text-neon-blue/60">默认</span>}
+                          {sub.bitmap && <span className="ml-1 text-xs text-red-400/60">不可用</span>}
+                          {!sub.bitmap && sub.default && <span className="ml-1 text-xs text-neon-blue/60">默认</span>}
                         </button>
                       ))}
                     </>

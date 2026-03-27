@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -103,9 +104,28 @@ func (h *SeriesHandler) Poster(c *gin.Context) {
 	id := c.Param("id")
 	posterPath, err := h.seriesService.GetSeriesPosterPath(id)
 	if err != nil || posterPath == "" {
-		// 返回默认占位图
+		// 返回默认占位图（禁止缓存，确保海报就绪后能立即生效）
 		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
 		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		return
+	}
+
+	// 基于文件修改时间生成 ETag
+	fileInfo, statErr := os.Stat(posterPath)
+	if statErr != nil {
+		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
 		return
 	}
 
@@ -121,7 +141,7 @@ func (h *SeriesHandler) Poster(c *gin.Context) {
 		c.Header("Content-Type", "application/octet-stream")
 	}
 
-	c.Header("Cache-Control", "public, max-age=604800") // 缓存7天
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
 	c.File(posterPath)
 }
 
@@ -130,15 +150,27 @@ func (h *SeriesHandler) Backdrop(c *gin.Context) {
 	id := c.Param("id")
 	series, err := h.seriesService.GetSeriesDetail(id)
 	if err != nil || series.BackdropPath == "" {
-		// 返回透明占位图
+		// 返回透明占位图（禁止缓存）
 		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
 		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect fill="#1e1e2e" width="1280" height="720"/></svg>`)
 		return
 	}
 
-	if _, statErr := os.Stat(series.BackdropPath); statErr != nil {
+	fileInfo, statErr := os.Stat(series.BackdropPath)
+	if statErr != nil {
 		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720"><rect fill="#1e1e2e" width="1280" height="720"/></svg>`)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
 		return
 	}
 
@@ -154,6 +186,6 @@ func (h *SeriesHandler) Backdrop(c *gin.Context) {
 		c.Header("Content-Type", "application/octet-stream")
 	}
 
-	c.Header("Cache-Control", "public, max-age=604800")
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
 	c.File(series.BackdropPath)
 }

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -88,9 +90,29 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 	id := c.Param("id")
 	posterPath, err := h.streamService.GetPosterPath(id)
 	if err != nil || posterPath == "" {
-		// 返回默认占位图
+		// 返回默认占位图（禁止缓存，确保海报就绪后能立即生效）
 		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
 		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		return
+	}
+
+	// 基于文件修改时间生成 ETag，支持条件请求（If-None-Match）
+	fileInfo, statErr := os.Stat(posterPath)
+	if statErr != nil {
+		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="#1e1e2e" width="300" height="450"/><text fill="#666" font-family="sans-serif" font-size="14" text-anchor="middle" x="150" y="225">No Poster</text></svg>`)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	// 客户端缓存命中时返回 304
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
 		return
 	}
 
@@ -106,6 +128,6 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 		c.Header("Content-Type", "application/octet-stream")
 	}
 
-	c.Header("Cache-Control", "public, max-age=604800") // 缓存7天
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate") // 缓存1天，但必须重新验证
 	c.File(posterPath)
 }

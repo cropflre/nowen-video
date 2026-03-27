@@ -75,6 +75,17 @@ type SubtitleTrack struct {
 	Title    string `json:"title"`    // 字幕标题
 	Default  bool   `json:"default"`  // 是否默认
 	Forced   bool   `json:"forced"`   // 是否强制
+	Bitmap   bool   `json:"bitmap"`   // 是否为图形字幕（PGS/VobSub等，不可提取为文本）
+}
+
+// isBitmapSubtitle 判断字幕编解码器是否为图形字幕
+func isBitmapSubtitle(codec string) bool {
+	switch strings.ToLower(codec) {
+	case "hdmv_pgs_subtitle", "pgssub", "dvd_subtitle", "dvdsub", "dvb_subtitle", "xsub":
+		return true
+	default:
+		return false
+	}
 }
 
 // ScannerService 媒体文件扫描服务
@@ -83,7 +94,8 @@ type ScannerService struct {
 	seriesRepo *repository.SeriesRepo
 	cfg        *config.Config
 	logger     *zap.SugaredLogger
-	wsHub      *WSHub // WebSocket事件广播
+	wsHub      *WSHub      // WebSocket事件广播
+	nfoService *NFOService // NFO 本地元数据解析服务
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -92,6 +104,7 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 		seriesRepo: seriesRepo,
 		cfg:        cfg,
 		logger:     logger,
+		nfoService: NewNFOService(logger),
 	}
 }
 
@@ -175,12 +188,35 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
+
+		// 识别本地 NFO 信息文件并解析元数据
+		if nfoPath := s.nfoService.FindNFOForMedia(path); nfoPath != "" {
+			if err := s.nfoService.ParseMovieNFO(nfoPath, media); err != nil {
+				s.logger.Debugf("解析NFO失败: %s, 错误: %v", nfoPath, err)
+			} else {
+				s.logger.Debugf("从NFO读取元数据: %s -> %s", nfoPath, media.Title)
+			}
+		}
+
+		// 识别本地海报封面图片
+		mediaDir := filepath.Dir(path)
+		if poster, backdrop := s.nfoService.FindLocalImages(mediaDir); poster != "" || backdrop != "" {
+			if poster != "" && media.PosterPath == "" {
+				media.PosterPath = poster
+				s.logger.Debugf("发现本地海报: %s", poster)
+			}
+			if backdrop != "" && media.BackdropPath == "" {
+				media.BackdropPath = backdrop
+				s.logger.Debugf("发现本地背景图: %s", backdrop)
+			}
+		}
+
 		if err := s.mediaRepo.Create(media); err != nil {
 			s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
 			return nil
 		}
 		count++
-		s.logger.Debugf("发现电影: %s [%s | %s | %s]", title, media.Resolution, media.VideoCodec, media.AudioCodec)
+		s.logger.Debugf("发现电影: %s [%s | %s | %s]", media.Title, media.Resolution, media.VideoCodec, media.AudioCodec)
 		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,
@@ -810,6 +846,38 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 		s.logger.Infof("创建多季合集: %s (ID=%s, %d 个季目录)", seriesTitle, series.ID, len(folders))
 	}
 
+	// 识别本地 NFO 信息文件（从各季目录中查找）
+	for _, f := range folders {
+		if nfoPath := s.nfoService.FindNFOFile(f.path); nfoPath != "" {
+			if err := s.nfoService.ParseTVShowNFO(nfoPath, series); err != nil {
+				s.logger.Debugf("解析多季合集NFO失败: %s, 错误: %v", nfoPath, err)
+			} else {
+				s.logger.Debugf("从NFO读取多季合集元数据: %s -> %s", nfoPath, series.Title)
+			}
+			break // 只用第一个找到的NFO
+		}
+	}
+
+	// 识别本地海报封面图片（从各季目录中查找）
+	for _, f := range folders {
+		if poster, backdrop := s.nfoService.FindLocalImages(f.path); poster != "" || backdrop != "" {
+			if poster != "" && series.PosterPath == "" {
+				series.PosterPath = poster
+				s.logger.Debugf("发现多季合集本地海报: %s", poster)
+			}
+			if backdrop != "" && series.BackdropPath == "" {
+				series.BackdropPath = backdrop
+				s.logger.Debugf("发现多季合集本地背景图: %s", backdrop)
+			}
+			if series.PosterPath != "" && series.BackdropPath != "" {
+				break
+			}
+		}
+	}
+
+	// 保存NFO和图片更新
+	s.seriesRepo.Update(series)
+
 	var totalNewCount int
 	seasonSet := make(map[int]bool)
 
@@ -987,6 +1055,34 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		}
 		s.logger.Infof("创建剧集合集: %s (ID=%s)", seriesTitle, series.ID)
 	}
+
+	// 识别本地 NFO 信息文件并解析剧集元数据
+	if nfoPath := s.nfoService.FindNFOFile(folderPath); nfoPath != "" {
+		if err := s.nfoService.ParseTVShowNFO(nfoPath, series); err != nil {
+			s.logger.Debugf("解析剧集NFO失败: %s, 错误: %v", nfoPath, err)
+		} else {
+			s.logger.Debugf("从NFO读取剧集元数据: %s -> %s", nfoPath, series.Title)
+			// 如果NFO中有标题，更新seriesTitle用于后续剧集
+			if series.Title != "" {
+				seriesTitle = series.Title
+			}
+		}
+	}
+
+	// 识别本地海报封面图片
+	if poster, backdrop := s.nfoService.FindLocalImages(folderPath); poster != "" || backdrop != "" {
+		if poster != "" && series.PosterPath == "" {
+			series.PosterPath = poster
+			s.logger.Debugf("发现剧集本地海报: %s", poster)
+		}
+		if backdrop != "" && series.BackdropPath == "" {
+			series.BackdropPath = backdrop
+			s.logger.Debugf("发现剧集本地背景图: %s", backdrop)
+		}
+	}
+
+	// 保存NFO和图片更新
+	s.seriesRepo.Update(series)
 
 	// 收集所有剧集文件
 	episodes := s.collectEpisodes(folderPath)
@@ -1531,6 +1627,7 @@ func (s *ScannerService) GetSubtitleTracks(filePath string) ([]SubtitleTrack, er
 			Codec:   stream.CodecName,
 			Default: stream.Disposition.Default == 1,
 			Forced:  stream.Disposition.Forced == 1,
+			Bitmap:  isBitmapSubtitle(stream.CodecName),
 		}
 		if lang, ok := stream.Tags["language"]; ok {
 			track.Language = lang
@@ -1734,28 +1831,60 @@ type ExternalSubtitle struct {
 
 // detectSubtitleLanguage 从文件名中检测字幕语言
 func (s *ScannerService) detectSubtitleLanguage(namePart string) string {
-	langMap := map[string]string{
-		"zh":      "中文",
-		"chi":     "中文",
-		"chs":     "简体中文",
-		"cht":     "繁体中文",
-		"sc":      "简体中文",
-		"tc":      "繁体中文",
-		"en":      "English",
-		"eng":     "English",
-		"jp":      "日本語",
-		"jpn":     "日本語",
-		"ja":      "日本語",
-		"ko":      "한국어",
-		"kor":     "한국어",
-		"chinese": "中文",
-		"english": "English",
+	// 按优先级排序的语言映射（长匹配优先，避免短码误匹配）
+	type langEntry struct {
+		code string
+		lang string
+	}
+	langEntries := []langEntry{
+		// 长匹配优先
+		{"chinese", "中文"},
+		{"english", "English"},
+		{"japanese", "日本語"},
+		{"korean", "한국어"},
+		{"简体", "简体中文"},
+		{"繁体", "繁体中文"},
+		{"简中", "简体中文"},
+		{"繁中", "繁体中文"},
+		// 三字母ISO 639-2
+		{"chi", "中文"},
+		{"chs", "简体中文"},
+		{"cht", "繁体中文"},
+		{"eng", "English"},
+		{"jpn", "日本語"},
+		{"kor", "한국어"},
+		// 两字母ISO 639-1（使用分隔符精确匹配）
+		{"zh", "中文"},
+		{"en", "English"},
+		{"ja", "日本語"},
+		{"jp", "日本語"},
+		{"ko", "한국어"},
+		{"sc", "简体中文"},
+		{"tc", "繁体中文"},
 	}
 
 	namePart = strings.ToLower(namePart)
-	for code, lang := range langMap {
-		if strings.Contains(namePart, code) {
-			return lang
+	// 将分隔符统一为点号，方便精确匹配
+	normalized := strings.NewReplacer("_", ".", "-", ".", " ", ".").Replace(namePart)
+	parts := strings.Split(normalized, ".")
+
+	// 先尝试精确匹配各段
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		for _, entry := range langEntries {
+			if part == entry.code {
+				return entry.lang
+			}
+		}
+	}
+
+	// 再尝试包含匹配（仅对长码，避免短码误匹配）
+	for _, entry := range langEntries {
+		if len(entry.code) >= 3 && strings.Contains(namePart, entry.code) {
+			return entry.lang
 		}
 	}
 
@@ -1763,6 +1892,41 @@ func (s *ScannerService) detectSubtitleLanguage(namePart string) string {
 		return namePart
 	}
 	return "未知"
+}
+
+// ConvertSubtitleToVTT 将外挂字幕文件转换为WebVTT格式（浏览器原生支持）
+func (s *ScannerService) ConvertSubtitleToVTT(subtitlePath string) (string, error) {
+	// 确定输出文件路径
+	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "subtitles")
+	os.MkdirAll(cacheDir, 0755)
+
+	// 使用原始文件名+哈希避免冲突
+	baseName := strings.TrimSuffix(filepath.Base(subtitlePath), filepath.Ext(subtitlePath))
+	outputPath := filepath.Join(cacheDir, fmt.Sprintf("%s_ext.vtt", baseName))
+
+	// 检查缓存：如果转换后的文件已存在且比源文件新，直接返回
+	if outInfo, err := os.Stat(outputPath); err == nil {
+		if srcInfo, err := os.Stat(subtitlePath); err == nil {
+			if outInfo.ModTime().After(srcInfo.ModTime()) {
+				return outputPath, nil
+			}
+		}
+	}
+
+	// 使用FFmpeg将字幕转换为WebVTT
+	cmd := exec.Command(s.cfg.App.FFmpegPath,
+		"-y",
+		"-i", subtitlePath,
+		"-c:s", "webvtt",
+		outputPath,
+	)
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("FFmpeg字幕转换失败: %w, 输出: %s", err, string(output))
+	}
+
+	s.logger.Debugf("字幕转换完成: %s -> %s", subtitlePath, outputPath)
+	return outputPath, nil
 }
 
 // GetFileExt 获取文件扩展名（小写）

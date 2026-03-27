@@ -56,7 +56,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetWSHub(wsHub)
 
 	// 创建Library服务
-	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, scanner, metadata, logger)
+	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, repos.Favorite, repos.WatchHistory, scanner, metadata, logger)
 	libService.SetWSHub(wsHub)
 
 	// 创建调度器服务
@@ -112,7 +112,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetProviderChain(providerChain)
 
 	// 创建推荐服务并注入 AI
-	recommendService := NewRecommendService(repos.Media, repos.WatchHistory, repos.Favorite, logger)
+	recommendService := NewRecommendService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger)
 	recommendService.SetAIService(aiService)
 
 	// 创建刮削管理服务
@@ -143,7 +143,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Library:       libService,
 		Media:         NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, logger),
 		Series:        NewSeriesService(repos.Series, repos.Media, logger),
-		Stream:        NewStreamService(repos.Media, transcoder, cfg, logger),
+		Stream:        NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger),
 		Transcode:     transcoder,
 		Metadata:      metadata,
 		Scanner:       scanner,

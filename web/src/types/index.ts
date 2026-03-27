@@ -227,6 +227,7 @@ export interface SubtitleTrack {
   title: string
   default: boolean
   forced: boolean
+  bitmap: boolean  // 是否为图形字幕（PGS/VobSub等，不可提取为文本）
 }
 
 export interface ExternalSubtitle {

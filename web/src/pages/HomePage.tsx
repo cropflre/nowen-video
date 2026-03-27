@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { mediaApi, recommendApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -152,13 +152,19 @@ export default function HomePage() {
             {recommendations.map((item) => (
               <Link
                 key={item.media.id}
-                to={`/media/${item.media.id}`}
+                to={item.media.series_id
+                  ? `/series/${item.media.series_id}`
+                  : `/media/${item.media.id}`
+                }
                 className="media-card group block"
               >
                 {/* 海报区域 */}
                 <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
-                  <img
-                    src={streamApi.getPosterUrl(item.media.id)}
+                <img
+                    src={item.media.series_id
+                      ? streamApi.getSeriesPosterUrl(item.media.series_id)
+                      : streamApi.getPosterUrl(item.media.id)
+                    }
                     alt={item.media.title}
                     className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110 group-hover:brightness-110"
                     loading="lazy"
@@ -252,6 +258,20 @@ export default function HomePage() {
 function HeroBanner({ items }: { items: RecommendedMedia[] }) {
   const [current, setCurrent] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set())
+
+  // 缓存海报URL，避免每次渲染重新生成（token变化时才更新）
+  // 剧集类型使用 Series 海报URL，电影使用 Media 海报URL
+  const posterUrls = useMemo(() => {
+    const urls = new Map<string, string>()
+    items.forEach((rec) => {
+      const url = rec.media.series_id
+        ? streamApi.getSeriesPosterUrl(rec.media.series_id)
+        : streamApi.getPosterUrl(rec.media.id)
+      urls.set(rec.media.id, url)
+    })
+    return urls
+  }, [items])
 
   // 自动轮播
   useEffect(() => {
@@ -272,6 +292,14 @@ function HeroBanner({ items }: { items: RecommendedMedia[] }) {
   const goPrev = () => goTo((current - 1 + items.length) % items.length)
   const goNext = () => goTo((current + 1) % items.length)
 
+  const handleImageLoad = useCallback((mediaId: string) => {
+    setLoadedImages((prev) => {
+      const next = new Set(prev)
+      next.add(mediaId)
+      return next
+    })
+  }, [])
+
   const item = items[current]
   if (!item) return null
 
@@ -288,10 +316,14 @@ function HeroBanner({ items }: { items: RecommendedMedia[] }) {
             )}
           >
             <img
-              src={streamApi.getPosterUrl(rec.media.id)}
+              src={posterUrls.get(rec.media.id)}
               alt=""
-              className="h-full w-full object-cover"
+              className={clsx(
+                'h-full w-full object-cover transition-opacity duration-500',
+                loadedImages.has(rec.media.id) ? 'opacity-100' : 'opacity-0'
+              )}
               loading={i === 0 ? 'eager' : 'lazy'}
+              onLoad={() => handleImageLoad(rec.media.id)}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           </div>
@@ -509,7 +541,10 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
               >
                 <div className="relative aspect-[2/3] overflow-hidden rounded-xl" style={{ background: 'var(--bg-surface)' }}>
                   <img
-                    src={streamApi.getPosterUrl(media.id)}
+                    src={item.type === 'series' && media.id
+                      ? streamApi.getSeriesPosterUrl(media.id)
+                      : streamApi.getPosterUrl(media.id)
+                    }
                     alt={media.title}
                     className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
                     loading="lazy"

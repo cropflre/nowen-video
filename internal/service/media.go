@@ -211,8 +211,95 @@ func (s *MediaService) Search(keyword string, page, size int) ([]model.Media, in
 }
 
 // SearchAdvanced 高级搜索（支持多条件筛选和排序）
+// 对 episode 类型的结果按 SeriesID 聚合，同一剧集只展示一个合集级别的条目
 func (s *MediaService) SearchAdvanced(params repository.SearchAdvancedParams) ([]model.Media, int64, error) {
-	return s.mediaRepo.SearchAdvanced(params)
+	media, total, err := s.mediaRepo.SearchAdvanced(params)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 对结果进行剧集聚合去重
+	media, deduped := s.deduplicateEpisodes(media)
+	// 修正总数：减去被去重的数量
+	total -= int64(deduped)
+
+	return media, total, nil
+}
+
+// deduplicateEpisodes 对搜索结果中的 episode 按 SeriesID 聚合
+// 同一个 SeriesID 的剧集只保留一个，并用 Series 合集信息替换展示字段
+// 返回去重后的列表和被移除的数量
+func (s *MediaService) deduplicateEpisodes(media []model.Media) ([]model.Media, int) {
+	if len(media) == 0 {
+		return media, 0
+	}
+
+	var result []model.Media
+	seenSeriesIDs := make(map[string]bool)
+	seriesCache := make(map[string]*model.Series)
+	removed := 0
+
+	for i := range media {
+		item := media[i]
+
+		// 非剧集类型直接保留
+		if item.MediaType != "episode" || item.SeriesID == "" {
+			result = append(result, item)
+			continue
+		}
+
+		// 同一剧集已出现过，跳过
+		if seenSeriesIDs[item.SeriesID] {
+			removed++
+			continue
+		}
+		seenSeriesIDs[item.SeriesID] = true
+
+		// 用 Series 合集信息替换 episode 的展示字段
+		if series, ok := seriesCache[item.SeriesID]; ok {
+			enrichMediaWithSeriesInfo(&item, series)
+		} else if series, err := s.seriesRepo.FindByIDOnly(item.SeriesID); err == nil {
+			seriesCache[item.SeriesID] = series
+			enrichMediaWithSeriesInfo(&item, series)
+		}
+
+		result = append(result, item)
+	}
+
+	return result, removed
+}
+
+// enrichMediaWithSeriesInfo 用 Series 合集信息替换 Media 的展示字段
+func enrichMediaWithSeriesInfo(media *model.Media, series *model.Series) {
+	if series == nil {
+		return
+	}
+	if series.Title != "" {
+		media.Title = series.Title
+	}
+	if series.PosterPath != "" {
+		media.PosterPath = series.PosterPath
+	}
+	if series.BackdropPath != "" {
+		media.BackdropPath = series.BackdropPath
+	}
+	if series.Rating > 0 {
+		media.Rating = series.Rating
+	}
+	if series.Overview != "" {
+		media.Overview = series.Overview
+	}
+	if series.Genres != "" {
+		media.Genres = series.Genres
+	}
+	if series.Year > 0 {
+		media.Year = series.Year
+	}
+	// 附加 Series 对象，前端可据此判断媒体类型并展示剧集信息（季数/集数）
+	media.Series = series
+	// 清除单集的文件大小和时长，避免前端误显示单集数据
+	media.FileSize = 0
+	media.Duration = 0
 }
 
 // SearchMixedResult 混合搜索结果

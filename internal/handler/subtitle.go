@@ -63,6 +63,19 @@ func (h *SubtitleHandler) ExtractTrack(c *gin.Context) {
 		return
 	}
 
+	// 检查该字幕轨道是否为图形字幕（不可提取为文本）
+	tracks, err := h.scanner.GetSubtitleTracks(filePath)
+	if err == nil {
+		for _, track := range tracks {
+			if track.Index == streamIndex && track.Bitmap {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "该字幕轨道为图形字幕（" + track.Codec + "），无法提取为文本格式",
+				})
+				return
+			}
+		}
+	}
+
 	// 提取字幕为WebVTT格式（浏览器原生支持）
 	vttPath, err := h.scanner.ExtractSubtitle(filePath, streamIndex, "vtt")
 	if err != nil {
@@ -75,7 +88,7 @@ func (h *SubtitleHandler) ExtractTrack(c *gin.Context) {
 	c.File(vttPath)
 }
 
-// ServeExternal 提供外挂字幕文件
+// ServeExternal 提供外挂字幕文件（自动转换为WebVTT格式）
 func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 	// 外挂字幕路径通过query参数传入
 	subPath := c.Query("path")
@@ -86,20 +99,30 @@ func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 
 	// 安全检查：确保是字幕文件
 	ext := service.GetFileExt(subPath)
-	contentType := "text/plain; charset=utf-8"
 	switch ext {
 	case ".vtt":
-		contentType = "text/vtt; charset=utf-8"
-	case ".srt":
-		contentType = "application/x-subrip; charset=utf-8"
-	case ".ass", ".ssa":
-		contentType = "text/x-ssa; charset=utf-8"
+		// VTT 格式浏览器原生支持，直接返回
+		c.Header("Content-Type", "text/vtt; charset=utf-8")
+		c.Header("Cache-Control", "public, max-age=604800")
+		c.File(subPath)
+		return
+	case ".srt", ".ass", ".ssa":
+		// 非VTT格式需要通过FFmpeg转换为WebVTT
+		vttPath, err := h.scanner.ConvertSubtitleToVTT(subPath)
+		if err != nil {
+			h.logger.Warnf("字幕转换失败，尝试直接返回原始文件: %v", err)
+			// 转换失败时回退到直接返回原始文件（部分播放器可能支持）
+			c.Header("Content-Type", "text/plain; charset=utf-8")
+			c.Header("Cache-Control", "public, max-age=604800")
+			c.File(subPath)
+			return
+		}
+		c.Header("Content-Type", "text/vtt; charset=utf-8")
+		c.Header("Cache-Control", "public, max-age=604800")
+		c.File(vttPath)
+		return
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的字幕格式"})
 		return
 	}
-
-	c.Header("Content-Type", contentType)
-	c.Header("Cache-Control", "public, max-age=604800")
-	c.File(subPath)
 }

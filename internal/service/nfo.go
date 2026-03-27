@@ -133,10 +133,26 @@ func (s *NFOService) GetActorsFromNFO(nfoPath string) ([]NFOActor, []string, err
 // ==================== 本地图片扫描 ====================
 
 // FindLocalImages 在指定目录下查找本地图片（poster/fanart/banner 等）
+// 支持 jpg、png、webp 等常见图片格式
 func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
-	// 常见本地图片文件名
-	posterNames := []string{"poster.jpg", "poster.png", "cover.jpg", "cover.png", "folder.jpg", "folder.png"}
-	backdropNames := []string{"fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png", "banner.jpg"}
+	// 常见本地海报文件名（按优先级排序）
+	posterNames := []string{
+		"poster.jpg", "poster.png", "poster.webp",
+		"cover.jpg", "cover.png", "cover.webp",
+		"folder.jpg", "folder.png", "folder.webp",
+		"thumb.jpg", "thumb.png", "thumb.webp",
+		"movie.jpg", "movie.png",
+		"show.jpg", "show.png",
+	}
+	// 常见本地背景图文件名
+	backdropNames := []string{
+		"fanart.jpg", "fanart.png", "fanart.webp",
+		"backdrop.jpg", "backdrop.png", "backdrop.webp",
+		"banner.jpg", "banner.png", "banner.webp",
+		"background.jpg", "background.png", "background.webp",
+		"clearart.jpg", "clearart.png",
+		"landscape.jpg", "landscape.png",
+	}
 
 	for _, name := range posterNames {
 		path := filepath.Join(dir, name)
@@ -151,6 +167,27 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 		if _, err := os.Stat(path); err == nil {
 			backdrop = path
 			break
+		}
+	}
+
+	// 如果没有找到标准命名的海报，尝试查找目录中的第一张图片作为海报
+	if poster == "" {
+		entries, err := os.ReadDir(dir)
+		if err == nil {
+			imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					ext := strings.ToLower(filepath.Ext(entry.Name()))
+					if imageExts[ext] {
+						// 排除已识别为backdrop的文件
+						candidate := filepath.Join(dir, entry.Name())
+						if candidate != backdrop {
+							poster = candidate
+							break
+						}
+					}
+				}
+			}
 		}
 	}
 

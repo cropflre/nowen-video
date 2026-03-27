@@ -43,17 +43,23 @@ export default function MediaCard({ media, series }: MediaCardProps) {
   }
 
   // 确定链接目标和显示数据
-  const isSeries = !!series
-  const linkTo = isSeries
-    ? `/series/${series!.id}`
+  // 判断是否为剧集：直接传入series，或media带有series_id（搜索结果中的聚合剧集）
+  const isSeries = !!series || !!(media?.series_id)
+  const seriesData = series || media?.series  // 聚合剧集时从media.series获取合集信息
+  const linkTo = series
+    ? `/series/${series.id}`
     : media!.series_id
       ? `/series/${media!.series_id}`
       : `/media/${media!.id}`
 
-  const title = isSeries ? series!.title : media!.title
-  const year = isSeries ? series!.year : media!.year
-  const rating = isSeries ? series!.rating : media!.rating
-  const posterUrl = isSeries ? streamApi.getSeriesPosterUrl(series!.id) : streamApi.getPosterUrl(media!.id)
+  const title = series ? series.title : media!.title
+  const year = series ? series.year : media!.year
+  const rating = series ? series.rating : media!.rating
+  const posterUrl = series
+    ? streamApi.getSeriesPosterUrl(series.id)
+    : media!.series_id
+      ? streamApi.getSeriesPosterUrl(media!.series_id)
+      : streamApi.getPosterUrl(media!.id)
 
   return (
     <Link
@@ -116,9 +122,9 @@ export default function MediaCard({ media, series }: MediaCardProps) {
         )}
 
         {/* 剧集合集标签 */}
-        {isSeries && (
+        {isSeries && seriesData && seriesData.season_count > 0 && (
           <span className="badge-accent absolute left-2 top-2">
-            {series!.season_count} 季 · {series!.episode_count} 集
+            {seriesData.season_count} 季 · {seriesData.episode_count} 集
           </span>
         )}
 
@@ -155,6 +161,12 @@ export default function MediaCard({ media, series }: MediaCardProps) {
             <>
               <span className="text-neon-blue/30">·</span>
               <span>{formatSize(media!.file_size)}</span>
+            </>
+          )}
+          {isSeries && seriesData && seriesData.episode_count > 0 && (
+            <>
+              <span className="text-neon-blue/30">·</span>
+              <span>{seriesData.episode_count} 集</span>
             </>
           )}
         </div>

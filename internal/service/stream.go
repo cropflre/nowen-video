@@ -45,6 +45,7 @@ var mimeTypes = map[string]string{
 // StreamService 流媒体服务
 type StreamService struct {
 	mediaRepo  *repository.MediaRepo
+	seriesRepo *repository.SeriesRepo
 	transcoder *TranscodeService
 	cfg        *config.Config
 	logger     *zap.SugaredLogger
@@ -52,12 +53,14 @@ type StreamService struct {
 
 func NewStreamService(
 	mediaRepo *repository.MediaRepo,
+	seriesRepo *repository.SeriesRepo,
 	transcoder *TranscodeService,
 	cfg *config.Config,
 	logger *zap.SugaredLogger,
 ) *StreamService {
 	return &StreamService{
 		mediaRepo:  mediaRepo,
+		seriesRepo: seriesRepo,
 		transcoder: transcoder,
 		cfg:        cfg,
 		logger:     logger,
@@ -113,13 +116,14 @@ func (s *StreamService) GetDirectStreamInfo(mediaID string) (string, string, err
 }
 
 // GetPosterPath 获取海报文件路径
+// 对于剧集（episode），如果自身没有海报，会自动 fallback 到所属 Series 的海报
 func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return "", ErrMediaNotFound
 	}
 
-	// 优先查找同名海报文件
+	// 优先查找媒体自身的海报路径
 	if media.PosterPath != "" {
 		if _, err := os.Stat(media.PosterPath); err == nil {
 			return media.PosterPath, nil
@@ -143,6 +147,31 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 			candidate := filepath.Join(dir, name+ext)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
+			}
+		}
+	}
+
+	// Fallback：如果是剧集（episode）且自身没有海报，尝试使用所属 Series 的海报
+	if media.SeriesID != "" && s.seriesRepo != nil {
+		series, err := s.seriesRepo.FindByIDOnly(media.SeriesID)
+		if err == nil {
+			// 检查 Series 数据库中的海报路径
+			if series.PosterPath != "" {
+				if _, err := os.Stat(series.PosterPath); err == nil {
+					return series.PosterPath, nil
+				}
+			}
+			// 查找 Series 根目录下的海报文件
+			if series.FolderPath != "" {
+				seriesPosterNames := []string{"poster", "cover", "folder", "show"}
+				for _, name := range seriesPosterNames {
+					for _, ext := range posterExts {
+						candidate := filepath.Join(series.FolderPath, name+ext)
+						if _, err := os.Stat(candidate); err == nil {
+							return candidate, nil
+						}
+					}
+				}
 			}
 		}
 	}

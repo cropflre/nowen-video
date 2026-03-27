@@ -15,6 +15,8 @@ type LibraryService struct {
 	repo        *repository.LibraryRepo
 	mediaRepo   *repository.MediaRepo
 	seriesRepo  *repository.SeriesRepo
+	favRepo     *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
+	historyRepo *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
 	scanner     *ScannerService
 	metadata    *MetadataService
 	logger      *zap.SugaredLogger
@@ -27,17 +29,21 @@ func NewLibraryService(
 	repo *repository.LibraryRepo,
 	mediaRepo *repository.MediaRepo,
 	seriesRepo *repository.SeriesRepo,
+	favRepo *repository.FavoriteRepo,
+	historyRepo *repository.WatchHistoryRepo,
 	scanner *ScannerService,
 	metadata *MetadataService,
 	logger *zap.SugaredLogger,
 ) *LibraryService {
 	return &LibraryService{
-		repo:       repo,
-		mediaRepo:  mediaRepo,
-		seriesRepo: seriesRepo,
-		scanner:    scanner,
-		metadata:   metadata,
-		logger:     logger,
+		repo:        repo,
+		mediaRepo:   mediaRepo,
+		seriesRepo:  seriesRepo,
+		favRepo:     favRepo,
+		historyRepo: historyRepo,
+		scanner:     scanner,
+		metadata:    metadata,
+		logger:      logger,
 	}
 }
 
@@ -100,6 +106,26 @@ func (s *LibraryService) CleanOrphanedData() {
 
 	if mediaCount > 0 || ghostCount > 0 || seriesCount > 0 || emptyCount > 0 {
 		s.logger.Infof("数据清理完成（孤立媒体: %d, 幽灵媒体: %d, 孤立合集: %d, 空合集: %d）", mediaCount, ghostCount, seriesCount, emptyCount)
+	}
+
+	// 清理孤立的收藏记录（media_id 指向的媒体已不存在）
+	if s.favRepo != nil {
+		favCount, err := s.favRepo.CleanOrphaned()
+		if err != nil {
+			s.logger.Errorf("清理孤立收藏数据失败: %v", err)
+		} else if favCount > 0 {
+			s.logger.Infof("已清理 %d 条孤立收藏记录", favCount)
+		}
+	}
+
+	// 清理孤立的观看历史记录（media_id 指向的媒体已不存在）
+	if s.historyRepo != nil {
+		historyCount, err := s.historyRepo.CleanOrphaned()
+		if err != nil {
+			s.logger.Errorf("清理孤立观看历史数据失败: %v", err)
+		} else if historyCount > 0 {
+			s.logger.Infof("已清理 %d 条孤立观看历史记录", historyCount)
+		}
 	}
 }
 
@@ -206,7 +232,17 @@ func (s *LibraryService) Delete(id string) error {
 		s.fileWatcher.UnwatchLibrary(lib.Path)
 	}
 
-	// 级联删除关联数据
+	// 级联删除关联数据（先清理收藏和观看历史，再删除媒体和合集）
+	if s.favRepo != nil {
+		if err := s.favRepo.DeleteByLibraryMediaIDs(id); err != nil {
+			s.logger.Errorf("删除媒体库 %s 的收藏数据失败: %v", libName, err)
+		}
+	}
+	if s.historyRepo != nil {
+		if err := s.historyRepo.DeleteByLibraryMediaIDs(id); err != nil {
+			s.logger.Errorf("删除媒体库 %s 的观看历史数据失败: %v", libName, err)
+		}
+	}
 	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
 		s.logger.Errorf("删除媒体库 %s 的媒体数据失败: %v", libName, err)
 	}
@@ -240,12 +276,26 @@ func (s *LibraryService) Update(lib *model.Library) error {
 }
 
 // DeleteMedia 删除单个媒体记录（仅从数据库移除，不删除文件）
+// 同时级联清理关联的收藏和观看历史记录
 func (s *LibraryService) DeleteMedia(mediaID string) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return fmt.Errorf("影片不存在")
 	}
 	s.logger.Infof("删除影片: %s (%s)", media.Title, mediaID)
+
+	// 级联清理关联的收藏和观看历史
+	if s.favRepo != nil {
+		if err := s.favRepo.DeleteByMediaID(mediaID); err != nil {
+			s.logger.Errorf("删除影片 %s 的收藏数据失败: %v", media.Title, err)
+		}
+	}
+	if s.historyRepo != nil {
+		if err := s.historyRepo.DeleteByMediaID(mediaID); err != nil {
+			s.logger.Errorf("删除影片 %s 的观看历史数据失败: %v", media.Title, err)
+		}
+	}
+
 	return s.mediaRepo.DeleteByID(mediaID)
 }
 

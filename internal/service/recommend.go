@@ -29,6 +29,7 @@ const (
 // RecommendService 智能推荐服务（基于协同过滤）
 type RecommendService struct {
 	mediaRepo   *repository.MediaRepo
+	seriesRepo  *repository.SeriesRepo
 	historyRepo *repository.WatchHistoryRepo
 	favRepo     *repository.FavoriteRepo
 	logger      *zap.SugaredLogger
@@ -37,12 +38,14 @@ type RecommendService struct {
 
 func NewRecommendService(
 	mediaRepo *repository.MediaRepo,
+	seriesRepo *repository.SeriesRepo,
 	historyRepo *repository.WatchHistoryRepo,
 	favRepo *repository.FavoriteRepo,
 	logger *zap.SugaredLogger,
 ) *RecommendService {
 	return &RecommendService{
 		mediaRepo:   mediaRepo,
+		seriesRepo:  seriesRepo,
 		historyRepo: historyRepo,
 		favRepo:     favRepo,
 		logger:      logger,
@@ -120,6 +123,14 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 		if len(results) >= limit {
 			break
 		}
+	}
+
+	// 去重：同一剧集的多集只保留一个，并用 Series 信息替换展示
+	results = s.deduplicateBySeriesAndMedia(results)
+
+	// 截断到 limit
+	if len(results) > limit {
+		results = results[:limit]
 	}
 
 	// AI 推荐理由增强（为前 N 个结果生成个性化理由）
@@ -417,6 +428,9 @@ func (s *RecommendService) getContentBasedRecommendations(
 		return results[i].Score > results[j].Score
 	})
 
+	// 去重：同一剧集的多集只保留一个
+	results = s.deduplicateBySeriesAndMedia(results)
+
 	if len(results) > limit {
 		results = results[:limit]
 	}
@@ -554,6 +568,9 @@ func (s *RecommendService) getPopularRecommendations(limit int) ([]RecommendedMe
 		}
 	}
 
+	// 去重：同一剧集的多集只保留一个
+	results = s.deduplicateBySeriesAndMedia(results)
+
 	return results, nil
 }
 
@@ -622,9 +639,88 @@ func (s *RecommendService) GetSimilarMedia(mediaID string, limit int) ([]Recomme
 		return results[i].Score > results[j].Score
 	})
 
+	// 去重：同一剧集的多集只保留一个
+	results = s.deduplicateBySeriesAndMedia(results)
+
 	if len(results) > limit {
 		results = results[:limit]
 	}
 
 	return results, nil
+}
+
+// deduplicateBySeriesAndMedia 对推荐结果进行去重
+// 1. 同一个 Media.ID 只保留一个（防止重复）
+// 2. 同一个 SeriesID 的剧集只保留得分最高的一个，并用 Series 信息替换展示
+func (s *RecommendService) deduplicateBySeriesAndMedia(items []RecommendedMedia) []RecommendedMedia {
+	if len(items) == 0 {
+		return items
+	}
+
+	var result []RecommendedMedia
+	seenMediaIDs := make(map[string]bool)         // 已出现的 Media ID
+	seenSeriesIDs := make(map[string]bool)        // 已出现的 Series ID
+	seriesCache := make(map[string]*model.Series) // Series 信息缓存
+
+	for _, item := range items {
+		// 跳过已出现的 Media ID
+		if seenMediaIDs[item.Media.ID] {
+			continue
+		}
+		seenMediaIDs[item.Media.ID] = true
+
+		// 如果是剧集（有 SeriesID），按 SeriesID 去重
+		if item.Media.SeriesID != "" {
+			if seenSeriesIDs[item.Media.SeriesID] {
+				continue // 同一剧集已有代表项，跳过
+			}
+			seenSeriesIDs[item.Media.SeriesID] = true
+
+			// 用 Series 信息替换 episode 的展示信息（标题、海报等）
+			if series, ok := seriesCache[item.Media.SeriesID]; ok {
+				s.enrichMediaWithSeries(&item.Media, series)
+			} else if series, err := s.seriesRepo.FindByIDOnly(item.Media.SeriesID); err == nil {
+				seriesCache[item.Media.SeriesID] = series
+				s.enrichMediaWithSeries(&item.Media, series)
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	return result
+}
+
+// enrichMediaWithSeries 用 Series 信息丰富 Media 的展示字段
+// 将剧集的标题、海报、评分等替换为合集级别的信息
+func (s *RecommendService) enrichMediaWithSeries(media *model.Media, series *model.Series) {
+	if series == nil {
+		return
+	}
+	if series.Title != "" {
+		media.Title = series.Title
+	}
+	if series.PosterPath != "" {
+		media.PosterPath = series.PosterPath
+	}
+	if series.BackdropPath != "" {
+		media.BackdropPath = series.BackdropPath
+	}
+	if series.Rating > 0 {
+		media.Rating = series.Rating
+	}
+	if series.Overview != "" {
+		media.Overview = series.Overview
+	}
+	if series.Genres != "" {
+		media.Genres = series.Genres
+	}
+	if series.Year > 0 {
+		media.Year = series.Year
+	}
+	// 附加 Series 对象，前端可据此判断媒体类型并展示剧集信息（季数/集数）
+	media.Series = series
+	// 清除单集的文件大小和时长，避免前端误显示单集数据
+	media.FileSize = 0
+	media.Duration = 0
 }
