@@ -24,7 +24,7 @@ type CreateCommentRequest struct {
 // Create 发表评论
 func (h *CommentHandler) Create(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	mediaID := c.Param("mediaId")
+	mediaID := c.Param("id")
 
 	var req CreateCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -43,7 +43,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 
 // ListByMedia 获取媒体的评论
 func (h *CommentHandler) ListByMedia(c *gin.Context) {
-	mediaID := c.Param("mediaId")
+	mediaID := c.Param("id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 
