@@ -605,7 +605,7 @@ export default function LiveSourcesTab() {
                   <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>类型</label>
                   <select
                     value={sourceForm.type}
-                    onChange={e => setSourceForm(f => ({ ...f, type: e.target.value }))}
+                    onChange={e => setSourceForm(f => ({ ...f, type: e.target.value as SourceForm['type'] }))}
                     className="input w-full"
                   >
                     {TYPE_OPTIONS.map(opt => (
