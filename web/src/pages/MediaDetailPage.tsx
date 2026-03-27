@@ -481,6 +481,12 @@ export default function MediaDetailPage() {
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
               >
                 {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showUnmatchConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
