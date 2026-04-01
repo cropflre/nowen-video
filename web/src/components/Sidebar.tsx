@@ -30,8 +30,11 @@ import {
   Users,
   Radio,
   Cloud,
+  Activity,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { motion, AnimatePresence } from 'framer-motion'
+import { sidebarVariants, sidebarMobileVariants } from '@/lib/motion'
 
 interface SidebarProps {
   /** 移动端是否展开 */
@@ -282,6 +285,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               <FolderOpenIcon size={18} />
               {(!collapsed || isMobileOpen) && <span>{t('nav.files')}</span>}
             </NavLink>
+
+            <NavLink
+              to="/pulse"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+              onClick={onMobileClose}
+            >
+              <Activity size={18} />
+              {(!collapsed || isMobileOpen) && <span>{t('nav.pulse')}</span>}
+            </NavLink>
           </>
         )}
       </nav>
@@ -403,25 +415,30 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
 
   return (
     <>
-      {/* 桌面端侧边栏 */}
-      <aside
-        className={clsx(
-          'glass-panel-strong relative z-20 hidden h-screen flex-col transition-all duration-300 md:flex',
-          collapsed ? 'w-[68px]' : 'w-60'
-        )}
+      {/* 桌面端侧边栏 — 弹性宽度动画 */}
+      <motion.aside
+        className="glass-panel-strong relative z-20 hidden h-screen flex-col md:flex overflow-hidden flex-shrink-0"
+        animate={collapsed ? 'collapsed' : 'expanded'}
+        variants={sidebarVariants}
+        style={{ willChange: 'width' }}
       >
         {sidebarContent}
-      </aside>
+      </motion.aside>
 
-      {/* 移动端抽屉侧边栏 */}
-      <aside
-        className={clsx(
-          'glass-panel-strong fixed inset-y-0 left-0 z-40 flex w-64 flex-col transition-transform duration-300 ease-out md:hidden',
-          isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+      {/* 移动端抽屉侧边栏 — 弹性滑入 */}
+      <AnimatePresence>
+        {isMobileOpen && (
+          <motion.aside
+            className="glass-panel-strong fixed inset-y-0 left-0 z-40 flex w-64 flex-col md:hidden"
+            variants={sidebarMobileVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            {sidebarContent}
+          </motion.aside>
         )}
-      >
-        {sidebarContent}
-      </aside>
+      </AnimatePresence>
     </>
   )
 }

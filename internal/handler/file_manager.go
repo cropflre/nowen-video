@@ -66,6 +66,118 @@ func (h *FileManagerHandler) GetFileDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": media})
 }
 
+// GetFolderTree 获取文件夹树形结构
+func (h *FileManagerHandler) GetFolderTree(c *gin.Context) {
+	libraryID := c.Query("library_id")
+
+	tree, err := h.fileService.GetFolderTree(libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件夹树失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": tree})
+}
+
+// ListFilesByFolder 按文件夹路径查询文件
+func (h *FileManagerHandler) ListFilesByFolder(c *gin.Context) {
+	folderPath := c.Query("path")
+	if folderPath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件夹路径不能为空"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	libraryID := c.Query("library_id")
+	mediaType := c.Query("media_type")
+	keyword := c.Query("keyword")
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+
+	var scrapedOnly *bool
+	if v := c.Query("scraped"); v != "" {
+		b := v == "true" || v == "1"
+		scrapedOnly = &b
+	}
+
+	files, total, subFolders, err := h.fileService.ListFilesByFolder(folderPath, page, size, libraryID, mediaType, keyword, sortBy, sortOrder, scrapedOnly)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件列表失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":        files,
+		"total":       total,
+		"page":        page,
+		"size":        size,
+		"sub_folders": subFolders,
+		"folder_path": folderPath,
+	})
+}
+
+// CreateFolder 创建文件夹
+func (h *FileManagerHandler) CreateFolder(c *gin.Context) {
+	var req struct {
+		ParentPath string `json:"parent_path" binding:"required"`
+		FolderName string `json:"folder_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+	userID := c.GetString("user_id")
+	if err := h.fileService.CreateFolder(req.ParentPath, req.FolderName, userID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "文件夹创建成功"})
+}
+
+// RenameFolder 重命名文件夹
+func (h *FileManagerHandler) RenameFolder(c *gin.Context) {
+	var req struct {
+		FolderPath string `json:"folder_path" binding:"required"`
+		NewName    string `json:"new_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+	userID := c.GetString("user_id")
+	if err := h.fileService.RenameFolder(req.FolderPath, req.NewName, userID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "文件夹重命名成功"})
+}
+
+// DeleteFolder 删除文件夹
+func (h *FileManagerHandler) DeleteFolder(c *gin.Context) {
+	var req struct {
+		FolderPath string `json:"folder_path" binding:"required"`
+		Force      bool   `json:"force"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+	userID := c.GetString("user_id")
+	if err := h.fileService.DeleteFolder(req.FolderPath, req.Force, userID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "文件夹删除成功"})
+}
+
 // ==================== 文件导入 ====================
 
 // ImportFile 导入单个影视文件

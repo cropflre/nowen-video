@@ -48,6 +48,8 @@ interface FileToolbarProps {
   onBatchRename: () => void
   onBatchDelete: () => void
   onClearSelection: () => void
+  // 额外内容（如AI助手按钮），渲染在视图切换按钮右侧
+  children?: React.ReactNode
 }
 
 export default function FileToolbar({
@@ -64,6 +66,7 @@ export default function FileToolbar({
   selectedCount,
   scrapeSource, onScrapeSourceChange,
   onBatchScrape, onBatchRename, onBatchDelete, onClearSelection,
+  children,
 }: FileToolbarProps) {
   return (
     <div className="glass-panel rounded-xl p-4 space-y-3">
@@ -117,6 +120,9 @@ export default function FileToolbar({
             网格
           </button>
         </div>
+
+        {/* 额外内容插槽（如AI助手按钮） */}
+        {children}
       </div>
 
       {/* 筛选行 */}

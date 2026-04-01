@@ -10,6 +10,10 @@ interface PaginationProps {
   total?: number
   /** 每页数量 */
   pageSize?: number
+  /** 每页数量可选项 */
+  pageSizeOptions?: number[]
+  /** 每页数量变化回调 */
+  onPageSizeChange?: (size: number) => void
   /** 页码变化回调 */
   onPageChange: (page: number) => void
   /** 是否显示总数信息 */
@@ -25,6 +29,8 @@ export default function Pagination({
   totalPages,
   total,
   pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
   onPageChange,
   showTotal = true,
   showJumper = true,
@@ -215,6 +221,28 @@ export default function Pagination({
             placeholder={`${page}`}
           />
           <span>页</span>
+        </div>
+      )}
+
+      {/* 每页数量选择器 */}
+      {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
+        <div className="ml-2 flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          <span>每页</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="h-8 rounded-lg border px-2 text-sm outline-none transition-all focus:border-[var(--border-hover)] cursor-pointer"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+          <span>条</span>
         </div>
       )}
     </div>

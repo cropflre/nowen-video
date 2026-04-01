@@ -69,7 +69,11 @@ func main() {
 	// 全局中间件
 	r.Use(middleware.CORS(cfg.App.CORSOrigins...))
 	r.Use(middleware.Security())
-	r.Use(middleware.RateLimit(120)) // 全局速率限制：每分钟120次请求
+	r.Use(middleware.RateLimitWithConfig(middleware.RateLimitConfig{
+		MaxRequests:  600, // 每分钟600次请求
+		Window:       time.Minute,
+		ExcludePaths: []string{"/api/ws"}, // WebSocket 不受速率限制
+	}))
 
 	// JWT Secret 安全检查
 	if cfg.Secrets.JWTSecret == "" {
@@ -413,6 +417,11 @@ func main() {
 
 		// 影视文件管理
 		admin.GET("/files", handlers.FileManager.ListFiles)
+		admin.GET("/files/folders", handlers.FileManager.GetFolderTree)
+		admin.GET("/files/by-folder", handlers.FileManager.ListFilesByFolder)
+		admin.POST("/files/folders/create", handlers.FileManager.CreateFolder)
+		admin.POST("/files/folders/rename", handlers.FileManager.RenameFolder)
+		admin.POST("/files/folders/delete", handlers.FileManager.DeleteFolder)
 		admin.GET("/files/:id", handlers.FileManager.GetFileDetail)
 		admin.POST("/files/import", handlers.FileManager.ImportFile)
 		admin.POST("/files/import/batch", handlers.FileManager.BatchImportFiles)
@@ -509,6 +518,17 @@ func main() {
 		admin.POST("/federation/nodes/:id/sync", handlers.Federation.SyncNode)
 		admin.GET("/federation/stats", handlers.Federation.GetStats)
 		admin.GET("/federation/sync-tasks", handlers.Federation.GetSyncTasks)
+
+		// ==================== V5: Pulse 数据中心（管理员） ====================
+		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
+		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
+		admin.GET("/pulse/dashboard/top-content", handlers.Pulse.GetTopContent)
+		admin.GET("/pulse/dashboard/top-users", handlers.Pulse.GetTopUsers)
+		admin.GET("/pulse/dashboard/recent", handlers.Pulse.GetRecentPlays)
+		admin.GET("/pulse/analytics", handlers.Pulse.GetAnalytics)
+		admin.GET("/pulse/analytics/hourly", handlers.Pulse.GetHourlyDistribution)
+		admin.GET("/pulse/analytics/libraries", handlers.Pulse.GetLibraryStats)
+		admin.GET("/pulse/analytics/growth", handlers.Pulse.GetMediaGrowth)
 
 		// ==================== V3: 直播管理（管理员） ====================
 		admin.GET("/live/sources", handlers.Live.ListSourcesAdmin)

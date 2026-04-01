@@ -60,6 +60,8 @@ type Services struct {
 	FamilySocial *FamilySocialService
 	Live         *LiveService
 	CloudSync    *CloudSyncService
+	// V5: Pulse 数据中心
+	Pulse *PulseService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -227,6 +229,10 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	)
 	cloudSyncService.SetWSHub(wsHub)
 
+	// V5: 创建 Pulse 数据中心服务
+	pulseService := NewPulseService(repos.Pulse, logger)
+	pulseService.SetWSHub(wsHub)
+
 	return &Services{
 		User:           NewUserService(repos.User, cfg, logger),
 		Auth:           NewAuthService(repos.User, cfg, logger),
@@ -277,5 +283,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		FamilySocial: familySocialService,
 		Live:         liveService,
 		CloudSync:    cloudSyncService,
+		// V5: Pulse 数据中心
+		Pulse: pulseService,
 	}
 }

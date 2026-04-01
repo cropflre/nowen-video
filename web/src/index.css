@@ -408,7 +408,9 @@
     color: var(--text-secondary);
     position: relative;
     overflow: hidden;
-    transition: all 0.2s;
+    white-space: nowrap;
+    /* 仅过渡颜色和背景，避免与 framer-motion 的 width 动画冲突 */
+    transition: color 0.2s, background 0.2s, box-shadow 0.2s;
   }
 
   .nav-item:hover {

@@ -30,11 +30,48 @@ interface AIAssistantProps {
   libraryId?: string
   /** 操作执行后的回调（用于刷新列表） */
   onOperationComplete?: () => void
+  /** 是否展开面板（由父组件控制） */
+  isOpen: boolean
+  /** 切换面板展开/关闭 */
+  onToggle: () => void
 }
 
-export default function AIAssistant({ selectedMediaIds, libraryId, onOperationComplete }: AIAssistantProps) {
+/** AI助手触发按钮（嵌入到工具栏中） */
+export function AIAssistantButton({ isOpen, onToggle, selectedCount }: {
+  isOpen: boolean
+  onToggle: () => void
+  selectedCount: number
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={clsx(
+        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+        isOpen
+          ? 'text-white shadow-md shadow-neon-blue/20'
+          : 'btn-ghost hover:text-neon'
+      )}
+      style={isOpen ? {
+        background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+      } : undefined}
+      title={isOpen ? '关闭AI助手' : '打开AI助手'}
+    >
+      <Bot size={16} />
+      <span>AI 助手</span>
+      {selectedCount > 0 && (
+        <span className={clsx(
+          'ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+          isOpen ? 'bg-white/20' : 'bg-neon-blue/20 text-neon'
+        )}>
+          {selectedCount}
+        </span>
+      )}
+    </button>
+  )
+}
+
+export default function AIAssistant({ selectedMediaIds, libraryId, onOperationComplete, isOpen, onToggle }: AIAssistantProps) {
   const toast = useToast()
-  const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [sessionId, setSessionId] = useState<string>('')
   const [messages, setMessages] = useState<ChatMsg[]>([])
@@ -287,47 +324,29 @@ export default function AIAssistant({ selectedMediaIds, libraryId, onOperationCo
     )
   }
 
-  if (!isOpen) {
-    // 浮动按钮
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95"
-        style={{
-          background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-          boxShadow: '0 4px 24px rgba(0, 170, 255, 0.3)',
-          color: 'var(--text-on-neon)',
-        }}
-      >
-        <Bot size={20} />
-        <span className="text-sm font-medium">AI 助手</span>
-        {selectedMediaIds.length > 0 && (
-          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/20">
-            {selectedMediaIds.length}
-          </span>
-        )}
-      </button>
-    )
-  }
+  // 面板未展开时不渲染
+  if (!isOpen) return null
 
   return (
     <div
       className={clsx(
-        'fixed z-50 transition-all duration-300 ease-out',
-        isMinimized
-          ? 'bottom-6 right-6 w-72'
-          : 'bottom-6 right-6 w-[440px] max-h-[calc(100vh-48px)]'
+        'flex flex-col h-full',
+        isMinimized ? 'w-72' : 'w-full',
       )}
     >
-      <div className="glass-panel-strong rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      <div className="glass-panel-strong rounded-2xl shadow-lg flex flex-col overflow-hidden h-full"
         style={{
-          maxHeight: isMinimized ? 'auto' : 'calc(100vh - 48px)',
           border: '1px solid rgba(0, 170, 255, 0.15)',
         }}
       >
         {/* 标题栏 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderColor: 'var(--border-default)', background: 'var(--bg-secondary)' }}>
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{
+            borderColor: 'var(--border-default)',
+            background: 'var(--bg-secondary)',
+          }}
+        >
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))' }}>
@@ -356,7 +375,7 @@ export default function AIAssistant({ selectedMediaIds, libraryId, onOperationCo
               style={{ color: 'var(--text-tertiary)' }}>
               {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
             </button>
-            <button onClick={() => setIsOpen(false)}
+            <button onClick={onToggle}
               className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
               style={{ color: 'var(--text-tertiary)' }}>
               <X size={14} />
@@ -532,6 +551,23 @@ export default function AIAssistant({ selectedMediaIds, libraryId, onOperationCo
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+/** AI助手侧边面板包装器（带动画过渡） */
+export function AIAssistantPanel({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={clsx(
+        'flex-shrink-0 overflow-hidden transition-all duration-300 ease-out',
+        isOpen ? 'w-[380px] opacity-100' : 'w-0 opacity-0'
+      )}
+      style={{ maxHeight: isOpen ? 'calc(100vh - 280px)' : 0 }}
+    >
+      <div className="w-[380px] h-full">
+        {children}
       </div>
     </div>
   )

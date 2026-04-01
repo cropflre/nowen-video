@@ -773,6 +773,13 @@ export interface FileManagerStats {
   recent_operations: number
 }
 
+export interface FolderNode {
+  name: string
+  path: string
+  children: FolderNode[]
+  file_count: number
+}
+
 export interface FileOperationLog {
   id: string
   action: string

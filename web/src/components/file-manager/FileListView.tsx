@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import type { Media } from '@/types'
 import {
   CheckSquare,
@@ -12,10 +13,21 @@ import {
   Check,
   AlertCircle,
   FolderOpen,
+  Folder,
   Loader2,
+  ChevronRight,
+  Play,
+  Copy,
+  FolderPlus,
+  Pencil,
+  RefreshCw,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatFileSize } from './constants'
+import { streamApi } from '@/api/stream'
+import Pagination from '@/components/Pagination'
+import ContextMenu from './ContextMenu'
+import type { ContextMenuItem } from './ContextMenu'
 
 interface FileListViewProps {
   files: Media[]
@@ -32,15 +44,154 @@ interface FileListViewProps {
   page: number
   totalPages: number
   total: number
+  pageSize: number
+  pageSizeOptions: number[]
   onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+  // 文件夹导航
+  subFolders?: string[]
+  currentFolderPath?: string
+  onNavigateFolder?: (path: string) => void
+  // 右键菜单回调
+  onPlayFile?: (media: Media) => void
+  onCopyFilePath?: (path: string) => void
+  onCreateSubFolder?: (parentPath: string) => void
+  onRenameSubFolder?: (folderPath: string) => void
+  onDeleteSubFolder?: (folderPath: string) => void
+  onRefreshSubFolder?: () => void
+  onCopyFolderPath?: (path: string) => void
 }
 
 export default function FileListView({
   files, loading, viewMode, selectedIds,
   onToggleSelect, onToggleSelectAll,
   onViewDetail, onEdit, onScrape, onDelete,
-  page, totalPages, total, onPageChange,
+  page, totalPages, total, pageSize, pageSizeOptions, onPageChange, onPageSizeChange,
+  subFolders, currentFolderPath, onNavigateFolder,
+  onPlayFile, onCopyFilePath,
+  onCreateSubFolder, onRenameSubFolder, onDeleteSubFolder, onRefreshSubFolder, onCopyFolderPath,
 }: FileListViewProps) {
+  // 右键菜单状态
+  const [ctxMenu, setCtxMenu] = useState<{
+    visible: boolean; x: number; y: number;
+    type: 'file' | 'folder'; media?: Media; folderPath?: string
+  }>({ visible: false, x: 0, y: 0, type: 'file' })
+
+  const closeCtxMenu = useCallback(() => {
+    setCtxMenu(prev => ({ ...prev, visible: false }))
+  }, [])
+
+  const handleFileContextMenu = useCallback((e: React.MouseEvent, file: Media) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'file', media: file })
+  }, [])
+
+  const handleFolderContextMenu = useCallback((e: React.MouseEvent, folderFullPath: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'folder', folderPath: folderFullPath })
+  }, [])
+
+  // 构建文件右键菜单项
+  const getFileMenuItems = useCallback((): ContextMenuItem[] => {
+    const file = ctxMenu.media
+    if (!file) return []
+    return [
+      {
+        key: 'play',
+        label: '播放/预览',
+        icon: <Play size={14} />,
+        onClick: () => onPlayFile?.(file) || onViewDetail(file),
+      },
+      {
+        key: 'detail',
+        label: '查看详情',
+        icon: <Eye size={14} />,
+        onClick: () => onViewDetail(file),
+      },
+      {
+        key: 'edit',
+        label: '编辑信息',
+        icon: <Edit3 size={14} />,
+        divider: true,
+        onClick: () => onEdit(file),
+      },
+      {
+        key: 'scrape',
+        label: '重新刮削',
+        icon: <Sparkles size={14} />,
+        onClick: () => onScrape(file.id),
+      },
+      {
+        key: 'copy-path',
+        label: '复制文件路径',
+        icon: <Copy size={14} />,
+        divider: true,
+        onClick: () => onCopyFilePath?.(file.file_path),
+      },
+      {
+        key: 'delete',
+        label: '删除文件',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        divider: true,
+        onClick: () => onDelete(file.id),
+      },
+    ]
+  }, [ctxMenu.media, onPlayFile, onViewDetail, onEdit, onScrape, onDelete, onCopyFilePath])
+
+  // 构建子文件夹右键菜单项
+  const getFolderMenuItems = useCallback((): ContextMenuItem[] => {
+    const fp = ctxMenu.folderPath
+    if (!fp) return []
+    return [
+      {
+        key: 'open',
+        label: '打开文件夹',
+        icon: <FolderOpen size={14} />,
+        onClick: () => onNavigateFolder?.(fp),
+      },
+      {
+        key: 'create',
+        label: '新建子文件夹',
+        icon: <FolderPlus size={14} />,
+        divider: true,
+        disabled: !onCreateSubFolder,
+        onClick: () => onCreateSubFolder?.(fp),
+      },
+      {
+        key: 'rename',
+        label: '重命名',
+        icon: <Pencil size={14} />,
+        disabled: !onRenameSubFolder,
+        onClick: () => onRenameSubFolder?.(fp),
+      },
+      {
+        key: 'refresh',
+        label: '刷新',
+        icon: <RefreshCw size={14} />,
+        divider: true,
+        disabled: !onRefreshSubFolder,
+        onClick: () => onRefreshSubFolder?.(),
+      },
+      {
+        key: 'copy-path',
+        label: '复制路径',
+        icon: <Copy size={14} />,
+        onClick: () => onCopyFolderPath?.(fp),
+      },
+      {
+        key: 'delete',
+        label: '删除文件夹',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        divider: true,
+        disabled: !onDeleteSubFolder,
+        onClick: () => onDeleteSubFolder?.(fp),
+      },
+    ]
+  }, [ctxMenu.folderPath, onNavigateFolder, onCreateSubFolder, onRenameSubFolder, onDeleteSubFolder, onRefreshSubFolder, onCopyFolderPath])
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -49,7 +200,9 @@ export default function FileListView({
     )
   }
 
-  if (files.length === 0) {
+  const hasSubFolders = subFolders && subFolders.length > 0
+
+  if (files.length === 0 && !hasSubFolders) {
     return (
       <div className="glass-panel rounded-xl p-12 text-center">
         <FolderOpen size={48} className="mx-auto mb-4 text-surface-500" />
@@ -61,9 +214,46 @@ export default function FileListView({
 
   const isScraped = (file: Media) => file.tmdb_id > 0 || file.bangumi_id > 0 || (file.douban_id && file.douban_id !== '')
 
+  // 子文件夹卡片区域
+  const SubFolderCards = () => {
+    if (!hasSubFolders || !onNavigateFolder || !currentFolderPath) return null
+    const normalizedCurrent = currentFolderPath.replace(/\\/g, '/')
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 mb-4">
+        {subFolders!.map(folder => (
+          <button
+            key={folder}
+            onClick={() => {
+              const sep = normalizedCurrent.endsWith('/') ? '' : '/'
+              onNavigateFolder(normalizedCurrent + sep + folder)
+            }}
+            onContextMenu={(e) => {
+              const sep = normalizedCurrent.endsWith('/') ? '' : '/'
+              handleFolderContextMenu(e, normalizedCurrent + sep + folder)
+            }}
+            className="glass-panel rounded-lg p-3 flex items-center gap-2 hover:bg-white/[0.04] transition-colors text-left group"
+          >
+            <Folder size={20} className="text-amber-400/70 flex-shrink-0 group-hover:text-amber-400" />
+            <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{folder}</span>
+            <ChevronRight size={14} className="text-surface-500 flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <>
-      {viewMode === 'table' ? (
+      {/* 子文件夹 */}
+      <SubFolderCards />
+
+      {files.length === 0 ? (
+        /* 当前文件夹下无直接文件（但有子文件夹） */
+        <div className="glass-panel rounded-xl p-8 text-center">
+          <FolderOpen size={36} className="mx-auto mb-3 text-surface-500" />
+          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>当前文件夹下无直接文件，请浏览子文件夹</p>
+        </div>
+      ) : viewMode === 'table' ? (
         /* 表格视图 */
         <div className="glass-panel rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
@@ -86,7 +276,9 @@ export default function FileListView({
               </thead>
               <tbody>
                 {files.map(file => (
-                  <tr key={file.id} className="border-b transition-colors hover:bg-white/[0.02]" style={{ borderColor: 'var(--border-default)' }}>
+                  <tr key={file.id} className="border-b transition-colors hover:bg-white/[0.02]" style={{ borderColor: 'var(--border-default)' }}
+                    onContextMenu={(e) => handleFileContextMenu(e, file)}
+                  >
                     <td className="px-3 py-3">
                       <button onClick={() => onToggleSelect(file.id)}>
                         {selectedIds.has(file.id) ? <CheckSquare size={16} className="text-neon" /> : <Square size={16} className="text-surface-500" />}
@@ -94,13 +286,15 @@ export default function FileListView({
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
-                        {file.poster_path ? (
-                          <img src={file.poster_path} alt="" className="w-8 h-12 rounded object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-8 h-12 rounded bg-surface-800 flex items-center justify-center flex-shrink-0">
-                            <FileVideo size={16} className="text-surface-500" />
-                          </div>
-                        )}
+                        <img
+                          src={streamApi.getPosterUrl(file.id)}
+                          alt=""
+                          className="w-8 h-12 rounded object-cover flex-shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                        />
+                        <div className="w-8 h-12 rounded bg-surface-800 items-center justify-center flex-shrink-0 hidden">
+                          <FileVideo size={16} className="text-surface-500" />
+                        </div>
                         <div className="min-w-0">
                           <div className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{file.title}</div>
                           {file.orig_title && file.orig_title !== file.title && (
@@ -173,20 +367,21 @@ export default function FileListView({
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {files.map(file => (
             <div key={file.id} className="glass-panel rounded-xl overflow-hidden group relative cursor-pointer"
-              onClick={() => onViewDetail(file)}>
+              onClick={() => onViewDetail(file)}
+              onContextMenu={(e) => handleFileContextMenu(e, file)}
+            >
               {/* 选择框 */}
               <button className="absolute top-2 left-2 z-10" onClick={e => { e.stopPropagation(); onToggleSelect(file.id) }}>
                 {selectedIds.has(file.id) ? <CheckSquare size={18} className="text-neon" /> : <Square size={18} className="text-white/50 group-hover:text-white/80" />}
               </button>
               {/* 海报 */}
               <div className="aspect-[2/3] bg-surface-800 relative">
-                {file.poster_path ? (
-                  <img src={file.poster_path} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <FileVideo size={32} className="text-surface-600" />
-                  </div>
-                )}
+                <img
+                  src={streamApi.getPosterUrl(file.id)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
                 {/* 状态标签 */}
                 <div className="absolute top-2 right-2">
                   {isScraped(file) ? (
@@ -228,17 +423,28 @@ export default function FileListView({
       )}
 
       {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page <= 1}
-            className="btn-ghost px-3 py-1.5 rounded text-sm disabled:opacity-30">上一页</button>
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {page} / {totalPages} (共 {total} 条)
-          </span>
-          <button onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
-            className="btn-ghost px-3 py-1.5 rounded text-sm disabled:opacity-30">下一页</button>
-        </div>
+      {files.length > 0 && (
+        <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        pageSizeOptions={pageSizeOptions}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        showTotal
+        showJumper
+      />
       )}
+
+      {/* 右键菜单 */}
+      <ContextMenu
+        visible={ctxMenu.visible}
+        x={ctxMenu.x}
+        y={ctxMenu.y}
+        items={ctxMenu.type === 'file' ? getFileMenuItems() : getFolderMenuItems()}
+        onClose={closeCtxMenu}
+      />
     </>
   )
 }

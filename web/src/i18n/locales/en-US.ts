@@ -218,6 +218,7 @@ const enUS: Record<string, string> = {
   'nav.family': 'Family Space',
   'nav.live': 'Live Channels',
   'nav.sync': 'Cloud Sync',
+  'nav.pulse': 'Pulse Center',
 
   // ==================== Comments ====================
   'comment.title': 'Comments',
@@ -585,6 +586,36 @@ const enUS: Record<string, string> = {
   'aiTab.clearCacheFailed': 'Failed to clear cache',
   'aiTab.searchTestFailed': 'Search test failed',
   'aiTab.recommendTestFailed': 'Recommendation test failed',
+
+  // ==================== V5: Pulse Data Center ====================
+  'pulse.title': 'Pulse Data Center',
+  'pulse.tabDashboard': 'Dashboard',
+  'pulse.tabAnalytics': 'Media Analytics',
+  'pulse.totalMovies': 'Total Movies',
+  'pulse.totalSeries': 'Total Series',
+  'pulse.episodes': 'episodes',
+  'pulse.totalUsers': 'Total Users',
+  'pulse.activeIn7d': 'active in 7 days',
+  'pulse.totalStorage': 'Total Storage',
+  'pulse.totalPlayTime': 'Total Play Time',
+  'pulse.todayPlayTime': 'Today Play Time',
+  'pulse.playTrends': 'Play Trends',
+  'pulse.days': 'd',
+  'pulse.hourlyDist': 'Hourly Distribution',
+  'pulse.plays': 'plays',
+  'pulse.less': 'Less',
+  'pulse.more': 'More',
+  'pulse.topContent': 'Top Content',
+  'pulse.topUsers': 'Top Users',
+  'pulse.recentPlays': 'Recent Plays',
+  'pulse.libraryStats': 'Library Stats',
+  'pulse.mediaCount': 'Media',
+  'pulse.seriesCount': 'Series',
+  'pulse.storage': 'Storage',
+  'pulse.resolutionDist': 'Resolution Distribution',
+  'pulse.codecDist': 'Codec Distribution',
+  'pulse.genreDist': 'Genre Distribution',
+  'pulse.growthTrend': 'Library Growth Trend',
 }
 
 export default enUS

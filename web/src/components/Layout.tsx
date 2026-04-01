@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
 import PageTransition from './PageTransition'
 import { Menu } from 'lucide-react'
@@ -31,7 +32,7 @@ export default function Layout() {
       <Sidebar isMobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
       {/* 主内容区 */}
-      <main className="relative z-10 flex-1 overflow-y-auto">
+      <main className="relative z-10 flex-1 min-w-0 overflow-y-auto">
         {/* 移动端顶部栏 */}
         <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 md:hidden"
           style={{
@@ -53,9 +54,11 @@ export default function Layout() {
         </div>
 
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <PageTransition>
-            <Outlet />
-          </PageTransition>
+          <AnimatePresence mode="wait">
+            <PageTransition key={location.pathname}>
+              <Outlet />
+            </PageTransition>
+          </AnimatePresence>
         </div>
       </main>
     </div>

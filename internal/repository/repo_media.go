@@ -387,3 +387,102 @@ func (r *MediaRepo) BatchUpdateMediaType(ids []string, mediaType string) (int64,
 	result := r.db.Model(&model.Media{}).Where("id IN ?", ids).Update("media_type", mediaType)
 	return result.RowsAffected, result.Error
 }
+
+// GetAllFilePaths 获取所有媒体文件路径（用于构建文件夹树）
+func (r *MediaRepo) GetAllFilePaths(libraryID string) ([]string, error) {
+	var paths []string
+	query := r.db.Model(&model.Media{}).Select("file_path")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	err := query.Pluck("file_path", &paths).Error
+	return paths, err
+}
+
+// ListByFolderPath 按文件夹路径查询文件（精确匹配目录，不递归子目录）
+func (r *MediaRepo) ListByFolderPath(folderPath string, page, size int, libraryID, mediaType, keyword, sortBy, sortOrder string, scrapedOnly *bool) ([]model.Media, int64, error) {
+	var media []model.Media
+	var total int64
+
+	query := r.db.Model(&model.Media{})
+
+	// 使用 LIKE 匹配指定目录下的直接子文件（不含子目录中的文件）
+	// folderPath 末尾需要加分隔符
+	// SQLite 中使用 file_path LIKE 'folder/%' AND file_path NOT LIKE 'folder/%/%'
+	if folderPath != "" {
+		// 标准化路径分隔符
+		normalizedPath := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalizedPath, "/") {
+			normalizedPath += "/"
+		}
+		query = query.Where(
+			"(REPLACE(file_path, '\\', '/') LIKE ? AND REPLACE(file_path, '\\', '/') NOT LIKE ?)",
+			normalizedPath+"%",
+			normalizedPath+"%/%",
+		)
+	}
+
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if mediaType != "" {
+		query = query.Where("media_type = ?", mediaType)
+	}
+	if keyword != "" {
+		query = query.Where("title LIKE ? OR orig_title LIKE ? OR file_path LIKE ?",
+			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if scrapedOnly != nil {
+		if *scrapedOnly {
+			query = query.Where("(tmdb_id > 0 OR bangumi_id > 0 OR douban_id != '')")
+		} else {
+			query = query.Where("tmdb_id = 0 AND bangumi_id = 0 AND (douban_id = '' OR douban_id IS NULL)")
+		}
+	}
+
+	query.Count(&total)
+
+	sortField := "created_at"
+	sortDir := "DESC"
+	switch sortBy {
+	case "title":
+		sortField = "title"
+	case "year":
+		sortField = "year"
+	case "rating":
+		sortField = "rating"
+	case "file_size":
+		sortField = "file_size"
+	case "created_at":
+		sortField = "created_at"
+	case "updated_at":
+		sortField = "updated_at"
+	}
+	if sortOrder == "asc" {
+		sortDir = "ASC"
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+
+	err := query.Order(fmt.Sprintf("%s %s", sortField, sortDir)).
+		Offset((page - 1) * size).Limit(size).Find(&media).Error
+	return media, total, err
+}
+
+// UpdateFilePathPrefix 批量更新文件路径前缀（用于文件夹重命名）
+func (r *MediaRepo) UpdateFilePathPrefix(oldPrefix, newPrefix string) error {
+	return r.db.Exec(
+		"UPDATE media SET file_path = ? || SUBSTR(REPLACE(file_path, '\\', '/'), LENGTH(?) + 1) WHERE REPLACE(file_path, '\\', '/') LIKE ?",
+		newPrefix, oldPrefix, oldPrefix+"%",
+	).Error
+}
+
+// DeleteByPathPrefix 删除指定路径前缀下的所有文件记录
+func (r *MediaRepo) DeleteByPathPrefix(pathPrefix string) error {
+	return r.db.Where("REPLACE(file_path, '\\', '/') LIKE ?", pathPrefix+"%").Delete(&model.Media{}).Error
+}

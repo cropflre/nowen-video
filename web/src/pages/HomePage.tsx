@@ -9,7 +9,9 @@ import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Play, Clock, Sparkles, ChevronLeft, ChevronRight, Star } from 'lucide-react'
 import { streamApi } from '@/api'
-import clsx from 'clsx'
+import { motion } from 'framer-motion'
+import { staggerContainerVariants, staggerItemVariants } from '@/lib/motion'
+import HeroCarousel from '@/components/HeroCarousel'
 
 export default function HomePage() {
   const [recentItems, setRecentItems] = useState<MixedItem[]>([])
@@ -22,18 +24,31 @@ export default function HomePage() {
   const { t } = useTranslation()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 数据加载函数（可复用）
+  // 数据加载函数（可复用）— 使用 allSettled 避免单个接口失败导致全部丢失
   const fetchData = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true)
     try {
-      const [recentRes, continueRes, recommendRes] = await Promise.all([
+      const [recentResult, continueResult, recommendResult] = await Promise.allSettled([
         mediaApi.recentMixed(20),
         mediaApi.continueWatching(10),
         recommendApi.getRecommendations(12),
       ])
-      setRecentItems(recentRes.data.data || [])
-      setContinueList(continueRes.data.data || [])
-      setRecommendations(recommendRes.data.data || [])
+
+      if (recentResult.status === 'fulfilled') {
+        setRecentItems(recentResult.value.data.data || [])
+      }
+      if (continueResult.status === 'fulfilled') {
+        setContinueList(continueResult.value.data.data || [])
+      }
+      if (recommendResult.status === 'fulfilled') {
+        setRecommendations(recommendResult.value.data.data || [])
+      }
+
+      // 如果所有请求都失败，才显示错误提示
+      const allFailed = [recentResult, continueResult, recommendResult].every(r => r.status === 'rejected')
+      if (allFailed) {
+        toast.error(t('home.loadFailed'))
+      }
     } catch {
       toast.error(t('home.loadFailed'))
     } finally {
@@ -81,18 +96,30 @@ export default function HomePage() {
 
   return (
     <div className="space-y-10">
-      {/* Hero Banner — 高分推荐轮播 */}
-      {recommendations.length > 0 && <HeroBanner items={recommendations.slice(0, 5)} />}
+      {/* Hero Carousel — 现代化幻灯片轮播 */}
+      {/* 优先使用推荐数据；推荐为空时，用最近添加的媒体作为 fallback */}
+      {(recommendations.length > 0 || recentItems.length > 0) && (
+        <HeroCarousel
+          items={recommendations}
+          fallbackItems={recentItems}
+          maxItems={5}
+        />
+      )}
 
       {/* 继续观看 */}
       {continueList.length > 0 && (
-        <section className="animate-fade-in">
-          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
+        <motion.section
+          variants={staggerContainerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <motion.h2 variants={staggerItemVariants} className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Clock size={20} className="text-neon" />
             {t('home.continueWatching')}
-          </h2>
+          </motion.h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {continueList.map((item) => (
+              <motion.div key={item.id} variants={staggerItemVariants}>
               <Link
                 key={item.id}
                 to={`/play/${item.media_id}`}
@@ -138,18 +165,23 @@ export default function HomePage() {
                   </p>
                 </div>
               </Link>
+              </motion.div>
             ))}
           </div>
-        </section>
+        </motion.section>
       )}
 
       {/* 为你推荐 */}
       {recommendations.length > 0 && (
-        <section className="animate-fade-in">
-          <h2 className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
+        <motion.section
+          variants={staggerContainerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <motion.h2 variants={staggerItemVariants} className="mb-5 flex items-center gap-2 font-display text-xl font-bold tracking-wide text-theme-primary">
             <Sparkles size={20} className="text-yellow-400" />
             {t('home.recommended')}
-          </h2>
+          </motion.h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {recommendations.map((item) => (
               <Link
@@ -217,12 +249,17 @@ export default function HomePage() {
               </Link>
             ))}
           </div>
-        </section>
+        </motion.section>
       )}
 
       {/* 骨架屏加载状态 */}
       {loading && recentItems.length === 0 && (
-        <section className="animate-fade-in space-y-10">
+        <motion.section
+          className="space-y-10"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
           {/* 继续观看骨架屏 */}
           <div>
             <div className="skeleton mb-5 h-7 w-32 rounded-lg" />
@@ -253,7 +290,7 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-        </section>
+        </motion.section>
       )}
 
       {/* 最近添加 — 混合模式（电影+合集） */}
@@ -292,193 +329,6 @@ export default function HomePage() {
   )
 }
 
-// ===================== Hero Banner 轮播组件 =====================
-function HeroBanner({ items }: { items: RecommendedMedia[] }) {
-  const { t } = useTranslation()
-  const [current, setCurrent] = useState(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set())
-
-  // 缓存海报URL，避免每次渲染重新生成（token变化时才更新）
-  // 剧集类型使用 Series 海报URL，电影使用 Media 海报URL
-  const posterUrls = useMemo(() => {
-    const urls = new Map<string, string>()
-    items.forEach((rec) => {
-      const url = rec.media.series_id
-        ? streamApi.getSeriesPosterUrl(rec.media.series_id)
-        : streamApi.getPosterUrl(rec.media.id)
-      urls.set(rec.media.id, url)
-    })
-    return urls
-  }, [items])
-
-  // 自动轮播
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % items.length)
-    }, 6000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [items.length])
-
-  const goTo = (index: number) => {
-    setCurrent(index)
-    if (timerRef.current) clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % items.length)
-    }, 6000)
-  }
-
-  const goPrev = () => goTo((current - 1 + items.length) % items.length)
-  const goNext = () => goTo((current + 1) % items.length)
-
-  const handleImageLoad = useCallback((mediaId: string) => {
-    setLoadedImages((prev) => {
-      const next = new Set(prev)
-      next.add(mediaId)
-      return next
-    })
-  }, [])
-
-  const item = items[current]
-  if (!item) return null
-
-  return (
-    <section className="animate-fade-in -mx-4 -mt-6 mb-4 sm:-mx-6 lg:-mx-8">
-      <div className="relative h-[280px] overflow-hidden rounded-b-2xl sm:h-[340px] lg:h-[400px]">
-        {/* 背景图 */}
-        {items.map((rec, i) => (
-          <div
-            key={rec.media.id}
-            className={clsx(
-              'absolute inset-0 transition-all duration-1000',
-              i === current ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
-            )}
-          >
-            <img
-              src={posterUrls.get(rec.media.id)}
-              alt=""
-              className={clsx(
-                'h-full w-full object-cover transition-opacity duration-500',
-                loadedImages.has(rec.media.id) ? 'opacity-100' : 'opacity-0'
-              )}
-              loading={i === 0 ? 'eager' : 'lazy'}
-              onLoad={() => handleImageLoad(rec.media.id)}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          </div>
-        ))}
-
-        {/* 渐变遮罩 */}
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, var(--bg-base) 5%, var(--bg-base)/70 40%, transparent 80%)' }} />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, var(--bg-base)/80, transparent 60%)' }} />
-
-        {/* 内容 */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 pb-8 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            {/* 推荐理由标签 */}
-            <span className="badge-accent mb-3 inline-block text-xs">{item.reason}</span>
-
-            {/* 标题 */}
-            <h2 className="mb-2 font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
-              {item.media.title}
-            </h2>
-
-            {/* 元数据 */}
-            <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-white/70">
-              {item.media.year > 0 && <span>{item.media.year}</span>}
-              {item.media.rating > 0 && (
-                <span className="flex items-center gap-1 text-yellow-400">
-                  <Star size={14} fill="currentColor" />
-                  {item.media.rating.toFixed(1)}
-                </span>
-              )}
-              {item.media.genres && (
-                <span>{item.media.genres.split(',').slice(0, 3).join(' / ')}</span>
-              )}
-            </div>
-
-            {/* 简介 */}
-            {item.media.overview && (
-              <p className="mb-5 line-clamp-2 max-w-2xl text-sm leading-relaxed text-white/60">
-                {item.media.overview}
-              </p>
-            )}
-
-            {/* 播放按钮 */}
-            <div className="flex items-center gap-3">
-              <Link
-                to={item.media.media_type === 'episode' && item.media.series_id
-                  ? `/series/${item.media.series_id}`
-                  : `/play/${item.media.id}`
-                }
-                className="group inline-flex items-center gap-2.5 rounded-2xl px-7 py-3 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5"
-                style={{
-                  background: 'linear-gradient(135deg, var(--neon-blue), rgba(0, 180, 220, 0.95))',
-                  boxShadow: 'var(--shadow-neon), 0 4px 15px var(--neon-blue-15)',
-                  color: 'var(--text-on-neon)',
-                }}
-              >
-                <Play size={18} fill="currentColor" />
-                {t('home.playNow')}
-              </Link>
-              <Link
-                to={`/media/${item.media.id}`}
-                className="rounded-2xl px-5 py-3 text-sm font-medium text-white/80 transition-all hover:text-white"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  backdropFilter: 'blur(8px)',
-                }}
-              >
-                {t('home.viewDetail')}
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* 左右切换按钮 */}
-        {items.length > 1 && (
-          <>
-            <button
-              onClick={goPrev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/40 transition-all hover:text-white hover:bg-white/10 sm:left-4"
-            >
-              <ChevronLeft size={24} />
-            </button>
-            <button
-              onClick={goNext}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/40 transition-all hover:text-white hover:bg-white/10 sm:right-4"
-            >
-              <ChevronRight size={24} />
-            </button>
-          </>
-        )}
-
-        {/* 底部指示器 */}
-        {items.length > 1 && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2">
-            {items.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                className={clsx(
-                  'rounded-full transition-all duration-500',
-                  i === current
-                    ? 'h-2 w-6'
-                    : 'h-2 w-2 hover:bg-white/40'
-                )}
-                style={i === current
-                  ? { background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))', boxShadow: 'var(--neon-glow-shadow-md)' }
-                  : { background: 'rgba(255,255,255,0.2)' }
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
 
 // ===================== 分类推荐行组件 =====================
 function GenreRows({ items }: { items: MixedItem[] }) {
@@ -543,7 +393,11 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
   }
 
   return (
-    <section className="animate-fade-in">
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+    >
       <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold tracking-wide text-theme-primary">
         <span className="badge-accent text-xs">{genre}</span>
       </h2>
@@ -637,6 +491,6 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
           </button>
         )}
       </div>
-    </section>
+    </motion.section>
   )
 }

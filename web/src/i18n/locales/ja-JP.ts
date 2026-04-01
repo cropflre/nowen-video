@@ -218,6 +218,7 @@ const jaJP: Record<string, string> = {
   'nav.family': 'ファミリースペース',
   'nav.live': 'ライブチャンネル',
   'nav.sync': 'クラウド同期',
+  'nav.pulse': 'Pulse データセンター',
 
   // ==================== コメント ====================
   'comment.title': 'コメント',
@@ -585,6 +586,36 @@ const jaJP: Record<string, string> = {
   'aiTab.clearCacheFailed': 'キャッシュのクリアに失敗しました',
   'aiTab.searchTestFailed': '検索テストに失敗しました',
   'aiTab.recommendTestFailed': 'おすすめテストに失敗しました',
+
+  // ==================== V5: Pulse データセンター ====================
+  'pulse.title': 'Pulse データセンター',
+  'pulse.tabDashboard': 'ダッシュボード',
+  'pulse.tabAnalytics': 'メディア分析',
+  'pulse.totalMovies': '映画総数',
+  'pulse.totalSeries': 'シリーズ総数',
+  'pulse.episodes': '話',
+  'pulse.totalUsers': 'ユーザー総数',
+  'pulse.activeIn7d': '人が7日間アクティブ',
+  'pulse.totalStorage': 'ストレージ',
+  'pulse.totalPlayTime': '総再生時間',
+  'pulse.todayPlayTime': '今日の再生',
+  'pulse.playTrends': '再生トレンド',
+  'pulse.days': '日',
+  'pulse.hourlyDist': '時間帯分布',
+  'pulse.plays': '回再生',
+  'pulse.less': '少',
+  'pulse.more': '多',
+  'pulse.topContent': '人気コンテンツ',
+  'pulse.topUsers': 'アクティブユーザー',
+  'pulse.recentPlays': '最近の再生',
+  'pulse.libraryStats': 'ライブラリ統計',
+  'pulse.mediaCount': 'メディア数',
+  'pulse.seriesCount': 'シリーズ数',
+  'pulse.storage': 'ストレージ',
+  'pulse.resolutionDist': '解像度分布',
+  'pulse.codecDist': 'コーデック分布',
+  'pulse.genreDist': 'ジャンル分布',
+  'pulse.growthTrend': 'ライブラリ成長トレンド',
 }
 
 export default jaJP

@@ -1,5 +1,7 @@
 import type { Media, MixedItem } from '@/types'
 import MediaCard from './MediaCard'
+import { motion } from 'framer-motion'
+import { useStaggerVariants } from '@/hooks/useMotion'
 
 interface MediaGridProps {
   items?: Media[]
@@ -9,24 +11,26 @@ interface MediaGridProps {
 }
 
 export default function MediaGrid({ items, mixedItems, title, loading }: MediaGridProps) {
+  const { container, item: itemVariant } = useStaggerVariants()
+
   if (loading) {
     return (
-      <div className="animate-fade-in">
+      <motion.div variants={container} initial="hidden" animate="visible">
         {title && (
-          <h2 className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
             {title}
-          </h2>
+          </motion.h2>
         )}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i}>
+            <motion.div key={i} variants={itemVariant}>
               <div className="skeleton aspect-[2/3] rounded-xl" />
               <div className="skeleton mt-2 h-4 w-3/4 rounded" />
               <div className="skeleton mt-1 h-3 w-1/2 rounded" />
-            </div>
+            </motion.div>
           ))}
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -34,24 +38,32 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
   if (mixedItems) {
     if (mixedItems.length === 0) return null
     return (
-      <div className="animate-fade-in">
+      <motion.div variants={container} initial="hidden" animate="visible">
         {title && (
-          <h2 className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
             {title}
-          </h2>
+          </motion.h2>
         )}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {mixedItems.map((item) => {
             if (item.type === 'series' && item.series) {
-              return <MediaCard key={`s-${item.series.id}`} series={item.series} />
+              return (
+                <motion.div key={`s-${item.series.id}`} variants={itemVariant}>
+                  <MediaCard series={item.series} />
+                </motion.div>
+              )
             }
             if (item.media) {
-              return <MediaCard key={`m-${item.media.id}`} media={item.media} />
+              return (
+                <motion.div key={`m-${item.media.id}`} variants={itemVariant}>
+                  <MediaCard media={item.media} />
+                </motion.div>
+              )
             }
             return null
           })}
         </div>
-      </div>
+      </motion.div>
     )
   }
 
@@ -59,17 +71,19 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
   if (!items || items.length === 0) return null
 
   return (
-    <div className="animate-fade-in">
+    <motion.div variants={container} initial="hidden" animate="visible">
       {title && (
-        <h2 className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+        <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
           {title}
-        </h2>
+        </motion.h2>
       )}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {items.map((media) => (
-          <MediaCard key={media.id} media={media} />
+          <motion.div key={media.id} variants={itemVariant}>
+            <MediaCard media={media} />
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }

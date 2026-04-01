@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -29,11 +30,26 @@ func Security() gin.HandlerFunc {
 	}
 }
 
-// RateLimit 速率限制中间件（简单令牌桶，带自动清理）
+// RateLimitConfig 速率限制配置
+type RateLimitConfig struct {
+	MaxRequests  int           // 窗口期内最大请求数
+	Window       time.Duration // 滑动窗口时长
+	ExcludePaths []string      // 排除的路径前缀（不受速率限制）
+}
+
+// RateLimit 速率限制中间件（滑动窗口算法，带路径排除和自动清理）
+// maxRequestsPerMinute: 每分钟最大请求数
 func RateLimit(maxRequestsPerMinute int) gin.HandlerFunc {
+	return RateLimitWithConfig(RateLimitConfig{
+		MaxRequests: maxRequestsPerMinute,
+		Window:      time.Minute,
+	})
+}
+
+// RateLimitWithConfig 可配置的速率限制中间件（滑动窗口算法）
+func RateLimitWithConfig(cfg RateLimitConfig) gin.HandlerFunc {
 	type visitor struct {
-		tokens    int
-		lastReset time.Time
+		timestamps []time.Time // 请求时间戳列表（滑动窗口）
 	}
 
 	var mu sync.Mutex
@@ -43,10 +59,21 @@ func RateLimit(maxRequestsPerMinute int) gin.HandlerFunc {
 	go func() {
 		for {
 			time.Sleep(2 * time.Minute)
+			now := time.Now()
 			mu.Lock()
 			for ip, v := range visitors {
-				if time.Since(v.lastReset) > 2*time.Minute {
+				// 清理过期的时间戳
+				cutoff := now.Add(-cfg.Window)
+				valid := v.timestamps[:0]
+				for _, ts := range v.timestamps {
+					if ts.After(cutoff) {
+						valid = append(valid, ts)
+					}
+				}
+				if len(valid) == 0 {
 					delete(visitors, ip)
+				} else {
+					v.timestamps = valid
 				}
 			}
 			mu.Unlock()
@@ -54,24 +81,59 @@ func RateLimit(maxRequestsPerMinute int) gin.HandlerFunc {
 	}()
 
 	return func(c *gin.Context) {
+		// 检查路径是否在排除列表中
+		path := c.Request.URL.Path
+		for _, prefix := range cfg.ExcludePaths {
+			if strings.HasPrefix(path, prefix) {
+				c.Next()
+				return
+			}
+		}
+
 		ip := c.ClientIP()
+		now := time.Now()
+		cutoff := now.Add(-cfg.Window)
 
 		mu.Lock()
 		v, exists := visitors[ip]
-		if !exists || time.Since(v.lastReset) > time.Minute {
-			visitors[ip] = &visitor{tokens: maxRequestsPerMinute, lastReset: time.Now()}
-			v = visitors[ip]
+		if !exists {
+			v = &visitor{}
+			visitors[ip] = v
 		}
 
-		if v.tokens <= 0 {
+		// 滑动窗口：移除过期的时间戳
+		valid := v.timestamps[:0]
+		for _, ts := range v.timestamps {
+			if ts.After(cutoff) {
+				valid = append(valid, ts)
+			}
+		}
+		v.timestamps = valid
+
+		// 检查是否超过限制
+		if len(v.timestamps) >= cfg.MaxRequests {
+			// 计算最早请求过期的时间，作为 Retry-After
+			oldest := v.timestamps[0]
+			retryAfter := oldest.Add(cfg.Window).Sub(now).Seconds()
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
 			mu.Unlock()
-			c.Header("Retry-After", "60")
+			c.Header("Retry-After", fmt.Sprintf("%.0f", retryAfter))
+			c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", cfg.MaxRequests))
+			c.Header("X-RateLimit-Remaining", "0")
 			c.AbortWithStatus(429)
 			return
 		}
 
-		v.tokens--
+		// 记录本次请求
+		v.timestamps = append(v.timestamps, now)
+		remaining := cfg.MaxRequests - len(v.timestamps)
 		mu.Unlock()
+
+		// 添加速率限制信息头，方便前端感知
+		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", cfg.MaxRequests))
+		c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 		c.Next()
 	}
 }

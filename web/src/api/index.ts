@@ -40,3 +40,6 @@ export { liveApi, cloudSyncApi } from './live'
 
 // V2 扩展
 export { userProfileApi, offlineDownloadApi, pluginApi, musicApi, photoApi, federationApi, abrApi } from './v2'
+
+// V5: Pulse 数据中心
+export { pulseApi } from './pulse'

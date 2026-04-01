@@ -47,6 +47,8 @@ type Handlers struct {
 	FamilySocial *FamilySocialHandler
 	Live         *LiveHandler
 	CloudSync    *CloudSyncHandler
+	// V5: Pulse 数据中心
+	Pulse *PulseHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -101,5 +103,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		FamilySocial: &FamilySocialHandler{socialService: services.FamilySocial, logger: logger},
 		Live:         &LiveHandler{liveService: services.Live, logger: logger},
 		CloudSync:    &CloudSyncHandler{syncService: services.CloudSync, logger: logger},
+		// V5: Pulse 数据中心
+		Pulse: &PulseHandler{pulseService: services.Pulse, logger: logger},
 	}
 }

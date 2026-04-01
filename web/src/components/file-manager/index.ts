@@ -12,6 +12,10 @@
 export { default as FileStatsBar } from './FileStatsBar'
 export { default as FileToolbar } from './FileToolbar'
 export { default as FileListView } from './FileListView'
+export { default as FolderTree } from './FolderTree'
+export { default as Breadcrumb } from './Breadcrumb'
+export { default as ContextMenu } from './ContextMenu'
+export type { ContextMenuItem } from './ContextMenu'
 export {
   ImportFileModal,
   ScanDirectoryModal,

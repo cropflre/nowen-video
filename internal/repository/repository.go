@@ -51,6 +51,8 @@ type Repositories struct {
 	AICache        *AICacheRepo
 	GenreMapping   *GenreMappingRepo
 	RecommendCache *RecommendCacheRepo
+	// V5: Pulse 数据中心
+	Pulse *PulseRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -96,6 +98,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		AICache:        &AICacheRepo{db: db},
 		GenreMapping:   &GenreMappingRepo{db: db},
 		RecommendCache: &RecommendCacheRepo{db: db},
+		// V5: Pulse 数据中心
+		Pulse: &PulseRepo{db: db},
 	}
 }
 

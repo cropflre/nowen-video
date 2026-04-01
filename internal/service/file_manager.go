@@ -129,6 +129,259 @@ func (s *FileManagerService) ListFiles(page, size int, libraryID, mediaType, key
 	return s.mediaRepo.ListFilesAdvanced(page, size, libraryID, mediaType, keyword, sortBy, sortOrder, scrapedOnly)
 }
 
+// FolderNode 文件夹树节点
+type FolderNode struct {
+	Name      string        `json:"name"`       // 文件夹名称
+	Path      string        `json:"path"`       // 完整路径
+	Children  []*FolderNode `json:"children"`   // 子文件夹
+	FileCount int           `json:"file_count"` // 直接子文件数量
+}
+
+// GetFolderTree 获取文件夹树形结构
+func (s *FileManagerService) GetFolderTree(libraryID string) ([]*FolderNode, error) {
+	paths, err := s.mediaRepo.GetAllFilePaths(libraryID)
+	if err != nil {
+		return nil, fmt.Errorf("获取文件路径失败: %w", err)
+	}
+
+	// 统计每个目录下的直接文件数
+	dirFileCount := make(map[string]int)
+	dirSet := make(map[string]bool)
+
+	for _, p := range paths {
+		// 标准化路径分隔符
+		normalized := strings.ReplaceAll(p, "\\", "/")
+		dir := filepath.Dir(normalized)
+		dir = strings.ReplaceAll(dir, "\\", "/")
+		dirFileCount[dir]++
+		dirSet[dir] = true
+
+		// 记录所有祖先目录
+		parts := strings.Split(dir, "/")
+		for i := 1; i <= len(parts); i++ {
+			ancestor := strings.Join(parts[:i], "/")
+			if ancestor == "" {
+				continue
+			}
+			dirSet[ancestor] = true
+		}
+	}
+
+	// 构建树
+	root := make(map[string]*FolderNode)
+	var rootNodes []*FolderNode
+
+	// 收集所有目录并排序
+	var allDirs []string
+	for d := range dirSet {
+		allDirs = append(allDirs, d)
+	}
+	// 按路径长度排序，确保父目录先处理
+	for i := 0; i < len(allDirs); i++ {
+		for j := i + 1; j < len(allDirs); j++ {
+			if len(allDirs[i]) > len(allDirs[j]) {
+				allDirs[i], allDirs[j] = allDirs[j], allDirs[i]
+			}
+		}
+	}
+
+	for _, dir := range allDirs {
+		name := filepath.Base(dir)
+		name = strings.ReplaceAll(name, "\\", "/")
+		if name == "." || name == "" {
+			continue
+		}
+
+		node := &FolderNode{
+			Name:      name,
+			Path:      dir,
+			Children:  make([]*FolderNode, 0),
+			FileCount: dirFileCount[dir],
+		}
+		root[dir] = node
+
+		// 查找父目录
+		parentDir := filepath.Dir(dir)
+		parentDir = strings.ReplaceAll(parentDir, "\\", "/")
+		if parentNode, ok := root[parentDir]; ok {
+			parentNode.Children = append(parentNode.Children, node)
+		} else {
+			rootNodes = append(rootNodes, node)
+		}
+	}
+
+	return rootNodes, nil
+}
+
+// ListFilesByFolder 按文件夹路径查询文件
+func (s *FileManagerService) ListFilesByFolder(folderPath string, page, size int, libraryID, mediaType, keyword, sortBy, sortOrder string, scrapedOnly *bool) ([]model.Media, int64, []string, error) {
+	// 获取文件列表
+	files, total, err := s.mediaRepo.ListByFolderPath(folderPath, page, size, libraryID, mediaType, keyword, sortBy, sortOrder, scrapedOnly)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	// 获取当前文件夹下的子文件夹列表
+	allPaths, err := s.mediaRepo.GetAllFilePaths(libraryID)
+	if err != nil {
+		return files, total, nil, nil
+	}
+
+	normalizedFolder := strings.ReplaceAll(folderPath, "\\", "/")
+	if !strings.HasSuffix(normalizedFolder, "/") {
+		normalizedFolder += "/"
+	}
+
+	subFolderSet := make(map[string]bool)
+	for _, p := range allPaths {
+		normalized := strings.ReplaceAll(p, "\\", "/")
+		if !strings.HasPrefix(normalized, normalizedFolder) {
+			continue
+		}
+		// 获取相对路径
+		relative := strings.TrimPrefix(normalized, normalizedFolder)
+		// 如果包含 /，说明在子文件夹中
+		if idx := strings.Index(relative, "/"); idx > 0 {
+			subFolder := relative[:idx]
+			subFolderSet[subFolder] = true
+		}
+	}
+
+	var subFolders []string
+	for f := range subFolderSet {
+		subFolders = append(subFolders, f)
+	}
+	// 排序
+	for i := 0; i < len(subFolders); i++ {
+		for j := i + 1; j < len(subFolders); j++ {
+			if subFolders[i] > subFolders[j] {
+				subFolders[i], subFolders[j] = subFolders[j], subFolders[i]
+			}
+		}
+	}
+
+	return files, total, subFolders, nil
+}
+
+// CreateFolder 在指定路径下创建文件夹
+func (s *FileManagerService) CreateFolder(parentPath, folderName, userID string) error {
+	if parentPath == "" || folderName == "" {
+		return fmt.Errorf("路径和文件夹名不能为空")
+	}
+	// 检查文件夹名是否包含非法字符
+	invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	for _, ch := range invalidChars {
+		if strings.Contains(folderName, ch) {
+			return fmt.Errorf("文件夹名包含非法字符: %s", ch)
+		}
+	}
+	fullPath := filepath.Join(parentPath, folderName)
+	if _, err := os.Stat(fullPath); err == nil {
+		return fmt.Errorf("文件夹已存在: %s", fullPath)
+	}
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		return fmt.Errorf("创建文件夹失败: %w", err)
+	}
+	s.addOpLog("create_folder", "", fmt.Sprintf("创建文件夹: %s", fullPath), "", fullPath, userID)
+	return nil
+}
+
+// RenameFolder 重命名文件夹
+func (s *FileManagerService) RenameFolder(folderPath, newName, userID string) error {
+	if folderPath == "" || newName == "" {
+		return fmt.Errorf("路径和新名称不能为空")
+	}
+	invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	for _, ch := range invalidChars {
+		if strings.Contains(newName, ch) {
+			return fmt.Errorf("文件夹名包含非法字符: %s", ch)
+		}
+	}
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		return fmt.Errorf("文件夹不存在: %s", folderPath)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("路径不是文件夹: %s", folderPath)
+	}
+	parentDir := filepath.Dir(folderPath)
+	newPath := filepath.Join(parentDir, newName)
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("目标文件夹已存在: %s", newPath)
+	}
+	if err := os.Rename(folderPath, newPath); err != nil {
+		return fmt.Errorf("重命名文件夹失败: %w", err)
+	}
+
+	// 更新数据库中所有受影响的文件路径
+	oldPrefix := strings.ReplaceAll(folderPath, "\\", "/")
+	newPrefix := strings.ReplaceAll(newPath, "\\", "/")
+	if !strings.HasSuffix(oldPrefix, "/") {
+		oldPrefix += "/"
+	}
+	if !strings.HasSuffix(newPrefix, "/") {
+		newPrefix += "/"
+	}
+	if err := s.mediaRepo.UpdateFilePathPrefix(oldPrefix, newPrefix); err != nil {
+		s.logger.Warnf("更新文件路径前缀失败: %v", err)
+	}
+
+	s.addOpLog("rename_folder", "", fmt.Sprintf("重命名文件夹: %s → %s", folderPath, newPath), folderPath, newPath, userID)
+	s.broadcastEvent("folder_renamed", map[string]interface{}{
+		"old_path": folderPath,
+		"new_path": newPath,
+	})
+	return nil
+}
+
+// DeleteFolder 删除文件夹（仅删除空文件夹，或删除文件夹及其数据库记录）
+func (s *FileManagerService) DeleteFolder(folderPath string, force bool, userID string) error {
+	if folderPath == "" {
+		return fmt.Errorf("文件夹路径不能为空")
+	}
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		return fmt.Errorf("文件夹不存在: %s", folderPath)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("路径不是文件夹: %s", folderPath)
+	}
+
+	if !force {
+		// 非强制模式：仅删除空文件夹
+		entries, err := os.ReadDir(folderPath)
+		if err != nil {
+			return fmt.Errorf("读取文件夹失败: %w", err)
+		}
+		if len(entries) > 0 {
+			return fmt.Errorf("文件夹不为空，包含 %d 个项目。如需强制删除请确认", len(entries))
+		}
+		if err := os.Remove(folderPath); err != nil {
+			return fmt.Errorf("删除文件夹失败: %w", err)
+		}
+	} else {
+		// 强制模式：删除文件夹及所有内容
+		if err := os.RemoveAll(folderPath); err != nil {
+			return fmt.Errorf("删除文件夹失败: %w", err)
+		}
+		// 删除数据库中该文件夹下的所有文件记录
+		normalizedPath := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalizedPath, "/") {
+			normalizedPath += "/"
+		}
+		if err := s.mediaRepo.DeleteByPathPrefix(normalizedPath); err != nil {
+			s.logger.Warnf("删除文件夹下的数据库记录失败: %v", err)
+		}
+	}
+
+	s.addOpLog("delete_folder", "", fmt.Sprintf("删除文件夹: %s (force=%v)", folderPath, force), folderPath, "", userID)
+	s.broadcastEvent("folder_deleted", map[string]interface{}{
+		"path":  folderPath,
+		"force": force,
+	})
+	return nil
+}
+
 // GetFileDetail 获取文件详情
 func (s *FileManagerService) GetFileDetail(id string) (*model.Media, error) {
 	media, err := s.mediaRepo.FindByID(id)

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatFileSize, LANGUAGE_OPTIONS } from './constants'
+import { streamApi } from '@/api/stream'
 
 // ==================== 导入文件对话框 ====================
 interface ImportFileModalProps {
@@ -317,13 +318,14 @@ export function FileDetailModal({ media, onClose, onEdit, onScrape }: FileDetail
           <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X size={18} /></button>
         </div>
         <div className="flex gap-4">
-          {media.poster_path ? (
-            <img src={media.poster_path} alt="" className="w-32 h-48 rounded-lg object-cover flex-shrink-0" />
-          ) : (
-            <div className="w-32 h-48 rounded-lg bg-surface-800 flex items-center justify-center flex-shrink-0">
-              <FileVideo size={32} className="text-surface-600" />
-            </div>
-          )}
+          <div className="w-32 h-48 rounded-lg overflow-hidden flex-shrink-0 bg-surface-800">
+            <img
+              src={streamApi.getPosterUrl(media.id)}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
           <div className="flex-1 space-y-2 text-sm">
             <div><span style={{ color: 'var(--text-tertiary)' }}>标题：</span><span style={{ color: 'var(--text-primary)' }}>{media.title}</span></div>
             {media.orig_title && <div><span style={{ color: 'var(--text-tertiary)' }}>原始标题：</span><span style={{ color: 'var(--text-secondary)' }}>{media.orig_title}</span></div>}

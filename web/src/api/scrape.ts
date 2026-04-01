@@ -128,4 +128,31 @@ export const fileManagerApi = {
   // 操作日志
   getOperationLogs: (limit?: number) =>
     api.get<{ data: import('@/types').FileOperationLog[] }>('/admin/files/logs', { params: { limit } }),
+
+  // 获取文件夹树形结构
+  getFolderTree: (libraryId?: string) =>
+    api.get<{ data: import('@/types').FolderNode[] }>('/admin/files/folders', { params: { library_id: libraryId } }),
+
+  // 按文件夹路径查询文件
+  listFilesByFolder: (params: {
+    path: string; page?: number; size?: number; library_id?: string;
+    media_type?: string; keyword?: string; sort_by?: string;
+    sort_order?: string; scraped?: string
+  }) =>
+    api.get<{
+      data: import('@/types').Media[]; total: number; page: number; size: number;
+      sub_folders: string[]; folder_path: string
+    }>('/admin/files/by-folder', { params }),
+
+  // 创建文件夹
+  createFolder: (parentPath: string, folderName: string) =>
+    api.post<{ message: string }>('/admin/files/folders/create', { parent_path: parentPath, folder_name: folderName }),
+
+  // 重命名文件夹
+  renameFolder: (folderPath: string, newName: string) =>
+    api.post<{ message: string }>('/admin/files/folders/rename', { folder_path: folderPath, new_name: newName }),
+
+  // 删除文件夹
+  deleteFolder: (folderPath: string, force?: boolean) =>
+    api.post<{ message: string }>('/admin/files/folders/delete', { folder_path: folderPath, force }),
 }

@@ -1,7 +1,7 @@
 // Nowen Video Service Worker v2
 // 提供增强的离线缓存、后台播放和离线访问支持
 
-const CACHE_VERSION = 'v2'
+const CACHE_VERSION = 'v3'
 const STATIC_CACHE = `nowen-static-${CACHE_VERSION}`
 const DYNAMIC_CACHE = `nowen-dynamic-${CACHE_VERSION}`
 const IMAGE_CACHE = `nowen-images-${CACHE_VERSION}`
@@ -56,6 +56,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  // 仅处理 http/https 协议，跳过 chrome-extension:// 等不支持缓存的协议
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return
+  }
+
   // API 请求不缓存
   if (url.pathname.startsWith('/api/')) {
     return
@@ -87,19 +92,22 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // JS/CSS/字体等静态资源：缓存优先
+  // JS/CSS/字体等静态资源：网络优先，离线回退缓存
+  // Vite 构建的 JS/CSS 文件名带 content hash，使用网络优先确保始终加载最新版本
   if (request.url.match(/\.(js|css|woff2?)$/)) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached
-        return fetch(request).then((response) => {
+      fetch(request)
+        .then((response) => {
           if (response.ok) {
             const clone = response.clone()
             caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone))
           }
           return response
         })
-      })
+        .catch(() => {
+          // 网络失败时回退到缓存（离线支持）
+          return caches.match(request)
+        })
     )
     return
   }

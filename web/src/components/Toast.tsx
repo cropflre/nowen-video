@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
+import { createContext, useContext, useState, useCallback, useRef } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
-import clsx from 'clsx'
+import { motion, AnimatePresence } from 'framer-motion'
+import { toastVariants } from '@/lib/motion'
 
 // ============================================================
-// 全局 Toast 通知系统 - 深空流体风格
+// 全局 Toast 通知系统 - 深空流体风格 + framer-motion 动画
 // ============================================================
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -58,48 +59,41 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {/* Toast 容器 */}
+      {/* Toast 容器 — AnimatePresence 实现退出动画 + layout 实现布局过渡 */}
       <div className="pointer-events-none fixed right-4 top-4 z-[999] flex flex-col items-end gap-2">
-        {toasts.map((t) => (
-          <ToastItem key={t.id} toast={t} onClose={() => removeToast(t.id)} />
-        ))}
+        <AnimatePresence mode="popLayout">
+          {toasts.map((t) => (
+            <ToastItem key={t.id} toast={t} onClose={() => removeToast(t.id)} />
+          ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   )
 }
 
+const iconMap: Record<ToastType, React.ReactNode> = {
+  success: <CheckCircle2 size={18} style={{ color: 'var(--neon-green)' }} />,
+  error: <XCircle size={18} className="text-red-400" />,
+  warning: <AlertTriangle size={18} className="text-yellow-400" />,
+  info: <Info size={18} style={{ color: 'var(--neon-blue)' }} />,
+}
+
+const borderColorMap: Record<ToastType, string> = {
+  success: 'rgba(0, 255, 136, 0.15)',
+  error: 'rgba(239, 68, 68, 0.15)',
+  warning: 'rgba(234, 179, 8, 0.15)',
+  info: 'var(--neon-blue-15)',
+}
+
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    requestAnimationFrame(() => setVisible(true))
-    // 提前200ms播放退出动画
-    if (toast.duration && toast.duration > 0) {
-      const timer = setTimeout(() => setVisible(false), toast.duration - 300)
-      return () => clearTimeout(timer)
-    }
-  }, [toast.duration])
-
-  const iconMap: Record<ToastType, React.ReactNode> = {
-    success: <CheckCircle2 size={18} style={{ color: 'var(--neon-green)' }} />,
-    error: <XCircle size={18} className="text-red-400" />,
-    warning: <AlertTriangle size={18} className="text-yellow-400" />,
-    info: <Info size={18} style={{ color: 'var(--neon-blue)' }} />,
-  }
-
-  const borderColorMap: Record<ToastType, string> = {
-    success: 'rgba(0, 255, 136, 0.15)',
-    error: 'rgba(239, 68, 68, 0.15)',
-    warning: 'rgba(234, 179, 8, 0.15)',
-    info: 'var(--neon-blue-15)',
-  }
-
   return (
-    <div
-      className={clsx(
-        'pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl transition-all duration-300',
-        visible ? 'translate-x-0 opacity-100' : 'translate-x-8 opacity-0'
-      )}
+    <motion.div
+      layout
+      variants={toastVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
       style={{
         background: 'var(--bg-elevated)',
         border: `1px solid ${borderColorMap[toast.type]}`,
@@ -116,6 +110,6 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       >
         <X size={14} />
       </button>
-    </div>
+    </motion.div>
   )
 }
