@@ -15,8 +15,8 @@ services:
       - /volume1/video:/media:ro
       # 群晖NAS：挂载GPU设备以支持硬件加速
       # 如果没有硬件加速需求可以注释掉
-    devices:
-      - /dev/dri:/dev/dri
+    # devices:
+    #   - /dev/dri:/dev/dri
     environment:
       # ---- 应用配置 ----
       - NOWEN_APP_PORT=8080
