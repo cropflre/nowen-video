@@ -25,11 +25,12 @@ RUN CGO_ENABLED=1 go build -o nowen-video ./cmd/server
 # =============================================
 FROM alpine:3.19
 
-# 安装FFmpeg（含硬件加速支持）和必要运行时
+# 安装FFmpeg（含硬件加速支持）、su-exec 和必要运行时
 RUN apk add --no-cache \
     ffmpeg \
     tzdata \
     ca-certificates \
+    su-exec \
     # Intel VAAPI/QSV 支持
     intel-media-driver \
     libva-intel-driver \
@@ -69,8 +70,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # 创建 entrypoint 脚本：以 root 启动修复权限，然后切换到 nowen 用户运行
 RUN printf '#!/bin/sh\nchown -R nowen:nowen /data /cache 2>/dev/null || true\nexec su-exec nowen nowen-video\n' > /entrypoint.sh \
     && chmod +x /entrypoint.sh
-
-# 安装 su-exec（轻量级的用户切换工具）
-RUN apk add --no-cache su-exec
 
 CMD ["/entrypoint.sh"]
