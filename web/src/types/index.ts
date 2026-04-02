@@ -1596,3 +1596,107 @@ export interface GPUInfo {
   utilization: number
 }
 
+// ==================== P1: 批量移动媒体 ====================
+export interface BatchMoveRequest {
+  media_ids: string[]
+  target_library_id: string
+}
+
+export interface BatchMoveResult {
+  total: number
+  success: number
+  failed: number
+  errors: string[]
+}
+
+// ==================== P2: 标签管理系统 ====================
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  icon: string
+  category: string
+  sort_order: number
+  usage_count: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateTagRequest {
+  name: string
+  color?: string
+  icon?: string
+  category?: string
+}
+
+export interface BatchAddTagsRequest {
+  media_ids: string[]
+  tag_ids: string[]
+}
+
+// ==================== P2: 分享链接功能 ====================
+export interface ShareLink {
+  id: string
+  code: string
+  media_id: string
+  series_id: string
+  created_by: string
+  title: string
+  description: string
+  password?: string
+  max_views: number
+  view_count: number
+  allow_download: boolean
+  expires_at: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateShareLinkRequest {
+  media_id?: string
+  series_id?: string
+  title?: string
+  description?: string
+  password?: string
+  max_views?: number
+  allow_download?: boolean
+  expires_in?: number // 过期时间（小时）
+}
+
+// ==================== P3: 自定义匹配规则 ====================
+export interface MatchRule {
+  id: string
+  name: string
+  description: string
+  rule_type: 'filename' | 'path' | 'regex' | 'keyword'
+  pattern: string
+  action: 'set_type' | 'set_genre' | 'set_tag' | 'skip' | 'set_library'
+  action_value: string
+  priority: number
+  enabled: boolean
+  library_id: string
+  hit_count: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateMatchRuleRequest {
+  name: string
+  description?: string
+  rule_type: string
+  pattern: string
+  action: string
+  action_value?: string
+  library_id?: string
+  priority?: number
+}
+
+export interface TestMatchRuleRequest {
+  rule_type: string
+  pattern: string
+  test_input: string
+}
+

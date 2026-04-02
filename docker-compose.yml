@@ -11,15 +11,23 @@ services:
       - ./data:/data
       # 转码缓存
       - ./cache:/cache
-      # 媒体文件挂载（根据实际路径修改）
-      - /volume1/video:/media:ro
-      # 群晖NAS：挂载GPU设备以支持硬件加速
+      # 媒体文件挂载（根据实际NAS路径修改）
+      # 方式1: 挂载整个媒体根目录
+      - /volume1/Media:/media
+      # 方式2: 分别挂载不同媒体目录（取消注释并注释方式1）
+      # - /volume1/Media/电影:/media/电影
+      # - /volume1/Media/电视剧:/media/电视剧
+      # 群晖/绿联NAS：挂载GPU设备以支持硬件加速
       # 如果没有硬件加速需求可以注释掉
     # devices:
     #   - /dev/dri:/dev/dri
     environment:
       # ---- 应用配置 ----
       - NOWEN_APP_PORT=8080
+      # ---- 用户权限（NAS场景重要！设置为宿主机媒体目录的 UID/GID）----
+      # 绿联NAS通常用 PUID=0 PGID=0（root），或通过 `id` 命令查看实际值
+      # - PUID=1000
+      # - PGID=1000
       - NOWEN_APP_DATA_DIR=/data
       - NOWEN_APP_WEB_DIR=/app/web/dist
       - NOWEN_APP_HW_ACCEL=auto

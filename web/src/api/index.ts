@@ -43,3 +43,6 @@ export { userProfileApi, offlineDownloadApi, pluginApi, musicApi, photoApi, fede
 
 // V5: Pulse 数据中心
 export { pulseApi } from './pulse'
+
+// V6: P1~P3 新增功能
+export { batchMoveApi, tagApi, shareApi, matchRuleApi } from './v4'

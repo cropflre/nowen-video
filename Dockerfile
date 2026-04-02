@@ -67,8 +67,26 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -q --spider http://localhost:8080/api/auth/login || exit 1
 
-# 创建 entrypoint 脚本：以 root 启动修复权限，然后切换到 nowen 用户运行
-RUN printf '#!/bin/sh\nchown -R nowen:nowen /data /cache 2>/dev/null || true\nexec su-exec nowen nowen-video\n' > /entrypoint.sh \
+# 创建 entrypoint 脚本：支持 PUID/PGID 自定义用户，修复权限后切换用户运行
+RUN printf '#!/bin/sh\n\
+# 支持通过 PUID/PGID 环境变量自定义运行用户（兼容NAS场景）\n\
+PUID=${PUID:-$(id -u nowen)}\n\
+PGID=${PGID:-$(id -g nowen)}\n\
+\n\
+# 如果指定了自定义 UID/GID，则修改 nowen 用户\n\
+if [ "$PUID" != "$(id -u nowen)" ] || [ "$PGID" != "$(id -g nowen)" ]; then\n\
+  deluser nowen 2>/dev/null || true\n\
+  delgroup nowen 2>/dev/null || true\n\
+  addgroup -g "$PGID" -S nowen\n\
+  adduser -u "$PUID" -G nowen -S nowen\n\
+fi\n\
+\n\
+# 修复数据目录权限\n\
+chown -R nowen:nowen /data /cache 2>/dev/null || true\n\
+# 确保 /media 目录可读（不递归 chown，避免大量文件耗时）\n\
+chown nowen:nowen /media 2>/dev/null || true\n\
+\n\
+exec su-exec nowen nowen-video\n' > /entrypoint.sh \
     && chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]

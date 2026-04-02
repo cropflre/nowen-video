@@ -62,6 +62,10 @@ type Services struct {
 	CloudSync    *CloudSyncService
 	// V5: Pulse 数据中心
 	Pulse *PulseService
+	// V6: P1~P3 新增功能
+	TagSvc       *TagService
+	ShareLinkSvc *ShareLinkService
+	MatchRuleSvc *MatchRuleService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -288,5 +292,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		CloudSync:    cloudSyncService,
 		// V5: Pulse 数据中心
 		Pulse: pulseService,
+		// V6: P1~P3 新增功能
+		TagSvc:       NewTagService(repos.Tag, repos.MediaTag, logger),
+		ShareLinkSvc: NewShareLinkService(repos.ShareLink, repos.Media, repos.Series, logger),
+		MatchRuleSvc: NewMatchRuleService(repos.MatchRule, logger),
 	}
 }

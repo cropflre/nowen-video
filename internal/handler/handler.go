@@ -49,6 +49,10 @@ type Handlers struct {
 	CloudSync    *CloudSyncHandler
 	// V5: Pulse 数据中心
 	Pulse *PulseHandler
+	// V6: P1~P3 新增处理器
+	Tag       *TagHandler
+	ShareLink *ShareLinkHandler
+	MatchRule *MatchRuleHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -105,5 +109,9 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		CloudSync:    &CloudSyncHandler{syncService: services.CloudSync, logger: logger},
 		// V5: Pulse 数据中心
 		Pulse: &PulseHandler{pulseService: services.Pulse, logger: logger},
+		// V6: P1~P3 新增处理器
+		Tag:       &TagHandler{tagService: services.TagSvc, logger: logger},
+		ShareLink: &ShareLinkHandler{shareService: services.ShareLinkSvc, mediaService: services.Media, seriesService: services.Series, logger: logger},
+		MatchRule: &MatchRuleHandler{ruleService: services.MatchRuleSvc, logger: logger},
 	}
 }

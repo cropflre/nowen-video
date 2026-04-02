@@ -300,6 +300,23 @@ func main() {
 		api.GET("/sync/config", handlers.CloudSync.GetSyncConfig)
 		api.PUT("/sync/config", handlers.CloudSync.UpdateSyncConfig)
 		api.GET("/sync/export", handlers.CloudSync.ExportData)
+
+		// ==================== P2: 标签管理 ====================
+		api.GET("/tags", handlers.Tag.ListTags)
+		api.POST("/tags", handlers.Tag.CreateTag)
+		api.PUT("/tags/:id", handlers.Tag.UpdateTag)
+		api.DELETE("/tags/:id", handlers.Tag.DeleteTag)
+		api.GET("/tags/categories", handlers.Tag.ListCategories)
+		api.POST("/tags/media", handlers.Tag.AddTagToMedia)
+		api.DELETE("/tags/media/:media_id/:tag_id", handlers.Tag.RemoveTagFromMedia)
+		api.GET("/tags/media/:media_id", handlers.Tag.GetMediaTags)
+		api.POST("/tags/media/batch", handlers.Tag.BatchAddTags)
+
+		// ==================== P2: 分享链接 ====================
+		api.POST("/shares", handlers.ShareLink.CreateShareLink)
+		api.GET("/shares", handlers.ShareLink.ListUserShares)
+		api.DELETE("/shares/:id", handlers.ShareLink.DeleteShare)
+		api.POST("/shares/:id/toggle", handlers.ShareLink.ToggleShare)
 	}
 
 	// 管理路由
@@ -529,6 +546,16 @@ func main() {
 		admin.GET("/federation/stats", handlers.Federation.GetStats)
 		admin.GET("/federation/sync-tasks", handlers.Federation.GetSyncTasks)
 
+		// ==================== P1: 批量移动媒体 ====================
+		admin.POST("/media/batch-move", handlers.Library.BatchMoveMedia)
+
+		// ==================== P3: 自定义匹配规则 ====================
+		admin.GET("/match-rules", handlers.MatchRule.ListRules)
+		admin.POST("/match-rules", handlers.MatchRule.CreateRule)
+		admin.PUT("/match-rules/:id", handlers.MatchRule.UpdateRule)
+		admin.DELETE("/match-rules/:id", handlers.MatchRule.DeleteRule)
+		admin.POST("/match-rules/test", handlers.MatchRule.TestRule)
+
 		// ==================== V5: Pulse 数据中心（管理员） ====================
 		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
 		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
@@ -552,6 +579,9 @@ func main() {
 		admin.GET("/live/playlists", handlers.Live.ListPlaylists)
 		admin.DELETE("/live/playlists/:id", handlers.Live.DeletePlaylist)
 	}
+
+	// 分享链接公开访问（无需认证）
+	r.GET("/api/share/:code", handlers.ShareLink.GetShareByCode)
 
 	// ==================== V2: 联邦 API（供其他节点调用） ====================
 	federation := r.Group("/api/federation")
