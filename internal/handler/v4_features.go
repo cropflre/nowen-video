@@ -220,13 +220,13 @@ func (h *ShareLinkHandler) GetShareByCode(c *gin.Context) {
 	// 获取关联的媒体/剧集信息
 	result := gin.H{"share": link}
 	if link.MediaID != "" {
-		media, err := h.mediaService.GetDetail(link.MediaID, "")
+		media, err := h.mediaService.GetDetail(link.MediaID)
 		if err == nil {
 			result["media"] = media
 		}
 	}
 	if link.SeriesID != "" {
-		series, err := h.seriesService.GetDetail(link.SeriesID)
+		series, err := h.seriesService.GetSeriesDetail(link.SeriesID)
 		if err == nil {
 			result["series"] = series
 		}
