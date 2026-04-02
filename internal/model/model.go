@@ -102,6 +102,8 @@ type Media struct {
 	Duration   float64 `json:"duration"`                    // 时长（秒）
 	// 字幕
 	SubtitlePaths string `json:"subtitle_paths" gorm:"type:text"` // 外挂字幕路径，| 分隔
+	// STRM 远程流支持
+	StreamURL string `json:"stream_url" gorm:"type:text"` // .strm 文件中的远程流地址（为空表示本地文件）
 	// V2 扩展字段
 	TMDbID     int    `json:"tmdb_id" gorm:"index"`         // TMDb 唯一 ID
 	DoubanID   string `json:"douban_id" gorm:"type:text"`   // 豆瓣 ID

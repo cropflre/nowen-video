@@ -27,6 +27,17 @@ func (h *SubtitleHandler) ListTracks(c *gin.Context) {
 		return
 	}
 
+	// STRM 远程流不支持字幕提取
+	if filePath == "__strm__" {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"embedded": []interface{}{},
+				"external": []interface{}{},
+			},
+		})
+		return
+	}
+
 	// 获取内嵌字幕
 	embedded, err := h.scanner.GetSubtitleTracks(filePath)
 	if err != nil {
@@ -63,7 +74,11 @@ func (h *SubtitleHandler) ExtractTrack(c *gin.Context) {
 		return
 	}
 
-	// 检查该字幕轨道是否为图形字幕（不可提取为文本）
+	// STRM 远程流不支持字幕提取
+	if filePath == "__strm__" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "STRM 远程流不支持字幕提取"})
+		return
+	}
 	tracks, err := h.scanner.GetSubtitleTracks(filePath)
 	if err == nil {
 		for _, track := range tracks {

@@ -346,6 +346,7 @@ export interface MediaPlayInfo {
   video_codec: string
   audio_codec: string
   duration: number
+  is_strm?: boolean // 是否为 STRM 远程流
 }
 
 // ==================== 增强详情 ====================

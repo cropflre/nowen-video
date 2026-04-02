@@ -34,6 +34,8 @@ interface VideoPlayerProps {
   onNext?: () => void
   /** 下一集标题（用于提示） */
   nextTitle?: string
+  /** 是否为 STRM 远程流 */
+  isStrm?: boolean
 }
 
 export default function VideoPlayer({
@@ -45,6 +47,7 @@ export default function VideoPlayer({
   onBack,
   onNext,
   nextTitle,
+  isStrm = false,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -744,7 +747,7 @@ export default function VideoPlayer({
               {title}
             </h2>
             <span className="badge-neon text-[10px]">
-              {mode === 'direct' ? '直接播放' : 'HLS转码'}
+              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : 'HLS转码'}
             </span>
             {playbackRate !== 1 && (
               <span className="badge-neon text-[10px]">{playbackRate}x</span>

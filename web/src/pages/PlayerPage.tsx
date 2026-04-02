@@ -20,7 +20,7 @@ export default function PlayerPage() {
     setLoading(true)
     setNextEpisode(null)
 
-    // 并行获取媒体详情和播放信�?
+    // 并行获取媒体详情和播放信�?
     Promise.all([
       mediaApi.detail(id),
       streamApi.getPlayInfo(id),
@@ -30,7 +30,7 @@ export default function PlayerPage() {
         setMedia(mediaData)
         setPlayInfo(playInfoRes.data.data)
 
-        // 如果是剧集，获取下一集信�?
+        // 如果是剧集，获取下一集信�?
         if (mediaData.media_type === 'episode' && mediaData.series_id) {
           seriesApi
             .nextEpisode(mediaData.series_id, mediaData.season_num, mediaData.episode_num)
@@ -51,7 +51,7 @@ export default function PlayerPage() {
       })
   }, [id, navigate, toast])
 
-  // 下一集回�?
+  // 下一集回�?
   const handleNext = useCallback(() => {
     if (nextEpisode) {
       navigate(`/play/${nextEpisode.id}`, { replace: true })
@@ -75,12 +75,12 @@ export default function PlayerPage() {
     ? streamApi.getDirectUrl(id)
     : streamApi.getMasterUrl(id)
 
-  // 构建播放标题（剧集显�?S01E02 格式�?
+  // 构建播放标题（剧集显�?S01E02 格式�?
   const playerTitle = media.media_type === 'episode'
     ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
     : media.title
 
-  // 下一集标�?
+  // 下一集标�?
   const nextTitle = nextEpisode
     ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined
@@ -92,6 +92,7 @@ export default function PlayerPage() {
         mode={mode}
         mediaId={id}
         title={playerTitle}
+        isStrm={playInfo.is_strm}
         onBack={() => {
           if (media.media_type === 'episode' && media.series_id) {
             navigate(`/series/${media.series_id}`)

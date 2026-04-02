@@ -1330,6 +1330,7 @@ func isVideoExt(ext string) bool {
 		".mkv": true, ".mp4": true, ".avi": true, ".mov": true,
 		".wmv": true, ".flv": true, ".webm": true, ".m4v": true, ".ts": true,
 		".rmvb": true, ".rm": true, ".3gp": true, ".mpg": true, ".mpeg": true,
+		".strm": true, // STRM 远程流文件
 	}
 	return videoExts[ext]
 }

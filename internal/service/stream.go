@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ type MediaPlayInfo struct {
 	VideoCodec    string  `json:"video_codec"`     // 视频编码
 	AudioCodec    string  `json:"audio_codec"`     // 音频编码
 	Duration      float64 `json:"duration"`        // 时长（秒）
+	IsSTRM        bool    `json:"is_strm"`         // 是否为 STRM 远程流
 }
 
 // 浏览器可直接播放的文件格式
@@ -74,6 +76,26 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 		return nil, ErrMediaNotFound
 	}
 
+	// STRM 远程流：始终通过后端代理直接播放
+	if media.StreamURL != "" {
+		info := &MediaPlayInfo{
+			MediaID:       mediaID,
+			DirectPlayURL: fmt.Sprintf("/api/stream/%s/direct", mediaID),
+			CanDirectPlay: true,
+			FileExt:       ".strm",
+			VideoCodec:    media.VideoCodec,
+			AudioCodec:    media.AudioCodec,
+			Duration:      media.Duration,
+			IsSTRM:        true,
+		}
+		// 如果远程 URL 是 HLS 流，也提供 HLS 地址（后端代理）
+		urlLower := strings.ToLower(media.StreamURL)
+		if strings.Contains(urlLower, ".m3u8") {
+			info.HlsURL = fmt.Sprintf("/api/stream/%s/direct", mediaID)
+		}
+		return info, nil
+	}
+
 	ext := strings.ToLower(filepath.Ext(media.FilePath))
 	canDirect := directPlayableExts[ext]
 
@@ -85,6 +107,7 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 		AudioCodec:    media.AudioCodec,
 		Duration:      media.Duration,
 		CanDirectPlay: canDirect,
+		IsSTRM:        false,
 	}
 
 	if canDirect {
@@ -95,10 +118,16 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 }
 
 // GetDirectStreamInfo 获取直接播放的文件路径和MIME类型
+// 对于 STRM 文件，返回特殊标记，由 handler 层走代理逻辑
 func (s *StreamService) GetDirectStreamInfo(mediaID string) (string, string, error) {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return "", "", ErrMediaNotFound
+	}
+
+	// STRM 远程流：返回特殊标记
+	if media.StreamURL != "" {
+		return "__strm__", media.StreamURL, nil
 	}
 
 	// 检查文件是否存在
@@ -186,6 +215,11 @@ func (s *StreamService) GetMasterPlaylist(mediaID string) (string, error) {
 		return "", ErrMediaNotFound
 	}
 
+	// STRM 远程流不支持 HLS 转码，应走直接播放路径
+	if media.StreamURL != "" {
+		return "", fmt.Errorf("STRM 远程流不支持 HLS 转码，请使用直接播放")
+	}
+
 	// 根据原始视频分辨率确定可用的质量选项
 	qualities := s.getAvailableQualities(media)
 
@@ -211,6 +245,11 @@ func (s *StreamService) GetSegmentPlaylist(mediaID, quality string) (string, err
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return "", ErrMediaNotFound
+	}
+
+	// STRM 远程流不支持转码
+	if media.StreamURL != "" {
+		return "", fmt.Errorf("STRM 远程流不支持转码")
 	}
 
 	outputDir := s.transcoder.GetOutputDir(mediaID, quality)
@@ -262,4 +301,119 @@ func (s *StreamService) estimateBandwidth(bitrate string) int {
 	var val int
 	fmt.Sscanf(bitrate, "%d", &val)
 	return val * 1000
+}
+
+// ==================== STRM 远程流代理 ====================
+
+// ProxyRemoteStream 代理远程流媒体（支持 Range 请求，实现拖动进度条）
+func (s *StreamService) ProxyRemoteStream(remoteURL string, w http.ResponseWriter, r *http.Request) error {
+	// 创建请求，转发客户端的 Range 头
+	req, err := http.NewRequestWithContext(r.Context(), "GET", remoteURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建远程请求失败: %w", err)
+	}
+
+	// 转发 Range 头（支持拖动进度条和断点续播）
+	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
+	}
+
+	// 设置通用请求头
+	req.Header.Set("User-Agent", "nowen-video/1.0")
+	if referer := r.Header.Get("Referer"); referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+
+	client := &http.Client{
+		Timeout: 0, // 流媒体不设置超时
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("重定向次数过多")
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求远程流失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("远程服务器返回错误: %d", resp.StatusCode)
+	}
+
+	// 转发响应头
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	} else {
+		// 根据 URL 推断 Content-Type
+		w.Header().Set("Content-Type", s.guessContentType(remoteURL))
+	}
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		w.Header().Set("Content-Length", cl)
+	}
+	if cr := resp.Header.Get("Content-Range"); cr != "" {
+		w.Header().Set("Content-Range", cr)
+	}
+	if ar := resp.Header.Get("Accept-Ranges"); ar != "" {
+		w.Header().Set("Accept-Ranges", ar)
+	} else {
+		w.Header().Set("Accept-Ranges", "bytes")
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("X-Stream-Source", "strm-proxy")
+
+	w.WriteHeader(resp.StatusCode)
+
+	// 流式转发数据
+	buf := make([]byte, 128*1024) // 128KB 缓冲区
+	_, err = io.CopyBuffer(w, resp.Body, buf)
+	if err != nil {
+		// 客户端断开连接是正常情况，不记录为错误
+		s.logger.Debugf("STRM 代理流传输结束: %v", err)
+		return nil
+	}
+
+	return nil
+}
+
+// guessContentType 根据 URL 推断 MIME 类型
+func (s *StreamService) guessContentType(url string) string {
+	urlLower := strings.ToLower(url)
+	// 去掉查询参数
+	if idx := strings.Index(urlLower, "?"); idx > 0 {
+		urlLower = urlLower[:idx]
+	}
+
+	switch {
+	case strings.HasSuffix(urlLower, ".mp4"):
+		return "video/mp4"
+	case strings.HasSuffix(urlLower, ".mkv"):
+		return "video/x-matroska"
+	case strings.HasSuffix(urlLower, ".m3u8"):
+		return "application/vnd.apple.mpegurl"
+	case strings.HasSuffix(urlLower, ".ts"):
+		return "video/mp2t"
+	case strings.HasSuffix(urlLower, ".webm"):
+		return "video/webm"
+	case strings.HasSuffix(urlLower, ".avi"):
+		return "video/x-msvideo"
+	case strings.HasSuffix(urlLower, ".mov"):
+		return "video/quicktime"
+	default:
+		return "video/mp4" // 默认作为 MP4
+	}
+}
+
+// GetMediaStreamURL 获取媒体的远程流 URL（仅用于内部判断）
+func (s *StreamService) GetMediaStreamURL(mediaID string) (string, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	return media.StreamURL, nil
 }

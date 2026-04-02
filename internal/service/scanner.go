@@ -29,6 +29,7 @@ var supportedExts = map[string]bool{
 	".webm": true,
 	".m4v":  true,
 	".ts":   true,
+	".strm": true, // STRM 远程流文件
 }
 
 // FFprobeResult FFprobe输出结构
@@ -164,11 +165,18 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 // scanMovieLibrary 扫描电影库（支持增量扫描）
 func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	var count int
+	var totalFiles int     // 遍历到的总文件数
+	var videoFiles int     // 识别到的视频文件数
+	var skippedExist int   // 已存在且未变更跳过的文件数
+	var skippedUpdated int // 已存在但已更新的文件数
+
 	// 增量扫描：获取上次扫描时间，仅处理新增/变更的文件
 	lastScanTime := time.Time{}
 	if library.LastScan != nil {
 		lastScanTime = *library.LastScan
 	}
+
+	s.logger.Infof("电影库扫描开始: %s, 路径: %s, 上次扫描: %v", library.Name, library.Path, lastScanTime)
 
 	err := filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -178,22 +186,27 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		if info.IsDir() {
 			return nil
 		}
+		totalFiles++
 		ext := strings.ToLower(filepath.Ext(path))
 		if !supportedExts[ext] {
 			return nil
 		}
+		videoFiles++
 		// 检查文件是否已存在
 		existing, findErr := s.mediaRepo.FindByFilePath(path)
 		if findErr == nil {
 			// 文件已存在：增量扫描模式下，如果文件未修改则跳过
 			if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+				skippedExist++
 				return nil // 文件未变更，跳过
 			}
 			// 文件已变更，更新文件大小和媒体信息
+			skippedUpdated++
 			existing.FileSize = info.Size()
 			s.probeMediaInfo(existing)
 			s.scanExternalSubtitles(existing)
 			s.mediaRepo.Update(existing)
+			s.logger.Debugf("更新已有媒体: %s", path)
 			return nil
 		}
 		title := s.extractTitle(filepath.Base(path))
@@ -234,7 +247,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			return nil
 		}
 		count++
-		s.logger.Debugf("发现电影: %s [%s | %s | %s]", media.Title, media.Resolution, media.VideoCodec, media.AudioCodec)
+		s.logger.Infof("发现电影: %s [%s | %s | %s]", media.Title, media.Resolution, media.VideoCodec, media.AudioCodec)
 		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,
@@ -244,6 +257,10 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		})
 		return nil
 	})
+
+	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d",
+		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated)
+
 	return count, err
 }
 
@@ -260,8 +277,9 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
 	}
 
-	var totalCount int
+	s.logger.Infof("混合库根目录包含 %d 个条目", len(entries))
 
+	var totalCount int
 	// === 阶段一：收集子目录，按标准化系列名分组（用于多季合并检测） ===
 	seriesDirGroups := make(map[string][]seriesFolder) // 标准化系列名 -> 目录列表
 	var movieDirs []os.DirEntry                        // 被判定为电影的目录
@@ -554,11 +572,15 @@ type EpisodeInfo struct {
 func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) {
 	var totalNewEpisodes int
 
+	s.logger.Infof("剧集库扫描开始: %s, 路径: %s", library.Name, library.Path)
+
 	// 遍历媒体库根目录的第一层子目录，每个子目录视为一个剧集
 	entries, err := os.ReadDir(library.Path)
 	if err != nil {
 		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
 	}
+
+	s.logger.Infof("剧集库根目录包含 %d 个条目", len(entries))
 
 	// 收集根目录下的散落视频文件，按系列名分组
 	type looseFile struct {
@@ -1577,8 +1599,67 @@ func (s *ScannerService) ProbeMediaInfo(media *model.Media) {
 	s.probeMediaInfo(media)
 }
 
-// probeMediaInfo 使用FFprobe提取视频元数据
+// parseSTRMFile 解析 .strm 文件，提取远程流 URL
+// .strm 文件格式：纯文本文件，第一行为可播放的远程 URL
+func (s *ScannerService) parseSTRMFile(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("读取 .strm 文件失败: %w", err)
+	}
+
+	// 逐行读取，取第一个非空、非注释行作为 URL
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// 验证是否为有效的 URL
+		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
+			return line, nil
+		}
+	}
+
+	return "", fmt.Errorf(".strm 文件中未找到有效的 URL: %s", filePath)
+}
+
+// isSTRMFile 判断是否为 .strm 文件
+func isSTRMFile(filePath string) bool {
+	return strings.ToLower(filepath.Ext(filePath)) == ".strm"
+}
+
+// probeSTRMMedia 处理 .strm 文件的媒体信息
+// 对于 .strm 文件，不使用 FFprobe 探测（远程 URL 可能很慢或不支持），
+// 而是设置默认值，后续播放时由前端/后端动态处理
+func (s *ScannerService) probeSTRMMedia(media *model.Media, streamURL string) {
+	media.StreamURL = streamURL
+	// 根据远程 URL 的扩展名推断基本信息
+	urlLower := strings.ToLower(streamURL)
+	if strings.Contains(urlLower, ".m3u8") {
+		media.VideoCodec = "strm_hls"
+	} else if strings.HasSuffix(urlLower, ".mp4") || strings.Contains(urlLower, ".mp4?") {
+		media.VideoCodec = "strm_mp4"
+	} else if strings.HasSuffix(urlLower, ".mkv") || strings.Contains(urlLower, ".mkv?") {
+		media.VideoCodec = "strm_mkv"
+	} else {
+		media.VideoCodec = "strm_unknown"
+	}
+	s.logger.Debugf("STRM 文件: %s -> %s", media.FilePath, streamURL)
+}
+
+// probeMediaInfo 使用FFprobe提取视频元数据（.strm 文件走特殊逻辑）
 func (s *ScannerService) probeMediaInfo(media *model.Media) {
+	// .strm 文件：解析远程 URL，不使用 FFprobe
+	if isSTRMFile(media.FilePath) {
+		streamURL, err := s.parseSTRMFile(media.FilePath)
+		if err != nil {
+			s.logger.Warnf("解析 STRM 文件失败: %s, 错误: %v", media.FilePath, err)
+			return
+		}
+		s.probeSTRMMedia(media, streamURL)
+		return
+	}
+
 	cmd := exec.Command(s.cfg.App.FFprobePath,
 		"-v", "quiet",
 		"-print_format", "json",

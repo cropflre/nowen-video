@@ -410,11 +410,13 @@ export default function HeroSection({
                   {playInfo && (
                     <span className={clsx(
                       'rounded-lg px-2.5 py-1 text-xs font-semibold',
-                      playInfo.can_direct_play
-                        ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                        : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                      playInfo.is_strm
+                        ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                        : playInfo.can_direct_play
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                          : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
                     )}>
-                      {playInfo.can_direct_play ? t('hero.directPlay') : t('hero.needTranscode')}
+                      {playInfo.is_strm ? 'STRM 远程流' : playInfo.can_direct_play ? t('hero.directPlay') : t('hero.needTranscode')}
                     </span>
                   )}
                 </div>

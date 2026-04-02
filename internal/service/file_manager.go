@@ -519,6 +519,7 @@ func (s *FileManagerService) ScanDirectoryFiles(dirPath string) ([]map[string]in
 		".mp4": true, ".mkv": true, ".avi": true, ".mov": true,
 		".wmv": true, ".flv": true, ".webm": true, ".m4v": true,
 		".ts": true, ".rmvb": true, ".rm": true, ".3gp": true,
+		".strm": true, // STRM 远程流文件
 	}
 
 	var files []map[string]interface{}

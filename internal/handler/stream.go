@@ -19,6 +19,7 @@ type StreamHandler struct {
 }
 
 // Direct 直接提供原始文件流（支持Range请求，用于MP4等浏览器兼容格式）
+// 对于 STRM 远程流，通过后端代理转发
 func (h *StreamHandler) Direct(c *gin.Context) {
 	id := c.Param("id")
 	filePath, contentType, err := h.streamService.GetDirectStreamInfo(id)
@@ -27,7 +28,19 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 		return
 	}
 
-	// 使用http.ServeFile自动处理Range请求（断点续播、拖动进度条）
+	// STRM 远程流：通过后端代理转发
+	if filePath == "__strm__" {
+		remoteURL := contentType // GetDirectStreamInfo 对 STRM 返回的第二个值是远程 URL
+		h.logger.Debugf("STRM 代理播放: %s -> %s", id, remoteURL)
+		if err := h.streamService.ProxyRemoteStream(remoteURL, c.Writer, c.Request); err != nil {
+			h.logger.Warnf("STRM 代理播放失败: %s, 错误: %v", id, err)
+			// 如果还没写入响应头，返回错误
+			c.JSON(http.StatusBadGateway, gin.H{"error": "远程流播放失败: " + err.Error()})
+		}
+		return
+	}
+
+	// 本地文件：使用http.ServeFile自动处理Range请求（断点续播、拖动进度条）
 	c.Header("Content-Type", contentType)
 	c.Header("Accept-Ranges", "bytes")
 	c.Header("Cache-Control", "public, max-age=86400")
