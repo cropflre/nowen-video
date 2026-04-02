@@ -45,8 +45,8 @@ COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
 # 复制前端构建产物
 COPY --from=frontend /app/web/dist /app/web/dist
 
-# 创建数据目录
-RUN mkdir -p /data /cache /media && chown -R nowen:nowen /data /cache
+# 创建数据目录并设置权限（确保挂载卷时nowen用户也能写入）
+RUN mkdir -p /data /cache /media && chown -R nowen:nowen /data /cache /media
 
 # 默认环境变量
 ENV NOWEN_APP_PORT=8080
@@ -66,6 +66,11 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -q --spider http://localhost:8080/api/auth/login || exit 1
 
-USER nowen
+# 创建 entrypoint 脚本：以 root 启动修复权限，然后切换到 nowen 用户运行
+RUN printf '#!/bin/sh\nchown -R nowen:nowen /data /cache 2>/dev/null || true\nexec su-exec nowen nowen-video\n' > /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
-CMD ["nowen-video"]
+# 安装 su-exec（轻量级的用户切换工具）
+RUN apk add --no-cache su-exec
+
+CMD ["/entrypoint.sh"]
