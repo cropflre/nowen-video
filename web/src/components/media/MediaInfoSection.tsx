@@ -1,37 +1,24 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { formatSize, formatDuration, formatDate } from '@/utils/format'
+import { formatDate } from '@/utils/format'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
 import {
-  FileText,
-  Copy,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 
 interface MediaInfoSectionProps {
   media: Media
   playInfo: MediaPlayInfo | null
   persons: MediaPerson[]
-  isAdmin: boolean
 }
 
-export default function MediaInfoSection({ media, playInfo: _playInfo, persons, isAdmin }: MediaInfoSectionProps) {
-  const toast = useToast()
+export default function MediaInfoSection({ media, playInfo: _playInfo, persons }: MediaInfoSectionProps) {
   const { t } = useTranslation()
   const [overviewExpanded, setOverviewExpanded] = useState(false)
   const isLongOverview = (media.overview?.length || 0) > 200
-
-  const copyFilePath = () => {
-    if (media.file_path) {
-      navigator.clipboard.writeText(media.file_path)
-        .then(() => toast.success(t('hero.filePathCopied')))
-        .catch(() => {})
-    }
-  }
 
   const directors = persons.filter(p => p.role === 'director')
   const actors = persons.filter(p => p.role === 'actor')
@@ -169,75 +156,6 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons, 
                 </div>
               </div>
             )}
-          </div>
-        </section>
-      )}
-
-      {/* 文件信息卡片 — 仅管理员可见 */}
-      {isAdmin && (
-        <section>
-          <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-            <FileText size={16} className="text-neon/60" />
-            {t('mediaInfo.fileInfo')}
-          </h3>
-          <div className="glass-panel rounded-xl p-5 space-y-4">
-            {/* 文件路径 */}
-            {media.file_path && (
-              <div className="flex items-start gap-3">
-                <span className="shrink-0 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.filePath')}</span>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <code className="flex-1 truncate rounded-lg px-3 py-1.5 text-xs"
-                    style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
-                  >
-                    {media.file_path}
-                  </code>
-                  <button
-                    onClick={copyFilePath}
-                    className="shrink-0 rounded-lg p-1.5 transition-colors hover:text-neon hover:bg-neon-blue/5"
-                    style={{ color: 'var(--text-muted)' }}
-                    title={t('hero.copyFilePath')}
-                  >
-                    <Copy size={14} />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 基本文件属性 - 网格布局 */}
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
-              <div>
-                <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.fileSize')}</span>
-                <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatSize(media.file_size)}</span>
-              </div>
-              <div>
-                <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.addedDate')}</span>
-                <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDate(media.created_at)}</span>
-              </div>
-              {media.duration > 0 && (
-                <div>
-                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.totalDuration')}</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDuration(media.duration)}</span>
-                </div>
-              )}
-              {media.video_codec && (
-                <div>
-                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>视频编码</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.video_codec}</span>
-                </div>
-              )}
-              {media.audio_codec && (
-                <div>
-                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>音频编码</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.audio_codec}</span>
-                </div>
-              )}
-              {media.resolution && (
-                <div>
-                  <span className="block text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>分辨率</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{media.resolution}</span>
-                </div>
-              )}
-            </div>
           </div>
         </section>
       )}

@@ -402,12 +402,12 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
         <span className="badge-accent text-xs">{genre}</span>
       </h2>
 
-      <div className="group relative">
+      <div className="group/row relative">
         {/* 左箭头 */}
         {canScrollLeft && (
           <button
             onClick={() => scroll('left')}
-            className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
+            className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover/row:opacity-100"
             style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
           >
             <ChevronLeft size={20} className="text-theme-primary" />
@@ -484,7 +484,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
         {canScrollRight && (
           <button
             onClick={() => scroll('right')}
-            className="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover:opacity-100"
+            className="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-2 opacity-0 transition-all group-hover/row:opacity-100"
             style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-card)' }}
           >
             <ChevronRight size={20} className="text-theme-primary" />

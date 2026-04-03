@@ -349,21 +349,22 @@ export default function MediaDetailPage() {
 
       {/* 内容区 */}
       <div className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6 lg:px-8">
-        {/* 媒体信息（简介 + 类型 + 演职 + 文件） */}
+        {/* 媒体信息（简介 + 类型 + 演职） */}
         <MediaInfoSection
           media={media}
           playInfo={playInfo}
           persons={persons}
-          isAdmin={user?.role === 'admin'}
         />
 
-        {/* 技术规格（增强详情） */}
+        {/* 文件信息与技术规格（统一展示区域） */}
         <MediaTechSpecs
+          media={media}
           techSpecs={techSpecs}
           fileInfo={fileInfo}
           library={libraryInfo}
           playbackStats={playbackStats}
           loading={enhancedLoading}
+          isAdmin={user?.role === 'admin'}
         />
 
         {/* 相关推荐 */}
