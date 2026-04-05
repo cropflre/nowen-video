@@ -27,12 +27,13 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, onSelect, 
             })
             .catch(err => {
                 console.error(err);
+                setItems([]);
                 setLoading(false);
             });
     }, [libraryId, type]);
 
     if (loading) {
-        return <div className="stats-loading">加载中...</div>;
+        return <div style={{ color: 'var(--accent)', padding: '40px', textAlign: 'center', fontSize: '14px' }}>加载中...</div>;
     }
 
     const getLabelPrefix = () => {
@@ -46,32 +47,27 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, onSelect, 
     };
 
     return (
-        <div className="stats-grid">
-            {items.map((item, idx) => (
-                <div 
-                    key={idx} 
-                    className="stats-card"
-                    onClick={() => onSelect(item.filter_value, `${getLabelPrefix()}: ${item.name}`)}
-                >
-                    <div className="stats-card-image">
-                        {item.image ? (
-                            <img src={item.image} alt={item.name} onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image';
-                            }} />
-                        ) : (
-                            <div className="stats-card-placeholder">
-                                {type === 'directory' ? '📁' : type === 'actor' ? '👤' : type === 'genre' ? '🏷️' : '🎬'}
-                            </div>
-                        )}
+        <div className="stats-grid-container">
+            <div className="stats-grid">
+                {items.map((item, idx) => (
+                    <div 
+                        key={idx} 
+                        className="stats-card"
+                        onClick={() => onSelect(item.filter_value, `${getLabelPrefix()}: ${item.name}`)}
+                    >
+                        <div className="stats-card-name" title={item.name}>
+                            {item.name}
+                            <span style={{color: 'var(--text-dim)', marginLeft: '4px'}}>
+                                ({item.count})
+                            </span>
+                        </div>
                     </div>
-                    <div className="stats-card-info">
-                        <div className="stats-card-name" title={item.name}>{item.name}</div>
-                        <div className="stats-card-count">{item.count} 个项目</div>
-                    </div>
-                </div>
-            ))}
+                ))}
+            </div>
             {items.length === 0 && (
-                <div className="stats-empty">暂无数据</div>
+                <div style={{ color: 'var(--text-dim)', padding: '40px', textAlign: 'center', fontSize: '14px' }}>
+                    暂无数据
+                </div>
             )}
         </div>
     );

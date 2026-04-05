@@ -258,7 +258,7 @@ body {
   box-shadow: 0 10px 20px rgba(0,0,0,0.4);
 }
 
-/* ===== 通用弹窗与设置页交互 ===== */
+/* ===== 通用弹窗 ===== */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -273,10 +273,254 @@ body {
   backdrop-filter: blur(8px);
 }
 
-/* 设置页 */
+/* ===== 统计页 (目录/类别/演员/系列) 卡片网格 ===== */
+.stats-grid-container {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  padding: 30px;
+  overflow-y: overlay;
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.stats-card {
+  background: #1c1c20;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  border: 1px solid rgba(255,255,255,0.02);
+}
+
+.stats-card:hover {
+  background: #232328;
+  border-color: rgba(255,255,255,0.05);
+  transform: translateY(-2px);
+}
+
+.stats-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-align: center;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.stats-card-count {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+}
+
+/* ===== 设置页专有布局 (SettingsPage) ===== */
 .settings-container {
   display: flex;
   height: 100%;
   width: 100%;
   background: var(--bg-color);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.settings-sidebar {
+  width: 140px; /* 收紧宽度 */
+  min-width: 140px;
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.settings-sidebar-header {
+  padding: 0 20px 24px 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.settings-nav-item {
+  padding: 10px 24px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.settings-nav-item:hover {
+  color: var(--text-primary);
+}
+
+.settings-nav-item.active {
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.1);
+  border-left: 2px solid var(--accent);
+  margin-left: 0;
+  padding-left: 22px;
+}
+
+.settings-return-btn {
+  margin-top: auto;
+  padding: 10px 24px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.settings-return-btn:hover {
+  color: var(--accent-hover);
+}
+
+.settings-main {
+  flex: 1;
+  padding: 20px 40px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border-color);
+}
+
+.settings-section {
+  margin-bottom: 30px;
+  max-width: 700px;
+}
+
+.settings-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.settings-section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-left: 16px;
+  background: repeating-linear-gradient(to right, rgba(255,255,255,0.2) 0, rgba(255,255,255,0.2) 8px, transparent 8px, transparent 16px);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.settings-label {
+  width: 160px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.settings-control {
+  width: 140px;
+}
+
+.settings-input, .settings-select {
+  width: 100%;
+  padding: 6px 10px;
+  background: #2a2a30;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #fff;
+  outline: none;
+  font-size: 12px;
+}
+
+.settings-input:focus, .settings-select:focus {
+  border-color: var(--accent);
+}
+
+/* Settings Box specific Checkbox Groups */
+.settings-checkbox-group {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  min-width: 140px;
+  margin-bottom: 12px;
+}
+
+.settings-checkbox-row input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #2a2a30;
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+.settings-checkbox-row input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+.settings-checkbox-row input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.settings-checkbox-label {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.settings-footer {
+  margin-top: 10px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.settings-btn {
+  padding: 6px 16px;
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.settings-btn:hover { background: rgba(255,255,255,0.2); }
+
+.settings-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.settings-btn-primary:hover {
+  background: var(--accent-hover);
 }
