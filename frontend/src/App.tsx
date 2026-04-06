@@ -120,93 +120,107 @@ function App() {
             />
             
             <div className="main-content">
-                {(view === 'libs' || (view !== 'settings' && activeFilter)) && currentLib && (
+                {selectedMedia ? (
+                    <MediaDetail 
+                        media={selectedMedia} 
+                        onClose={() => setSelectedMedia(null)} 
+                        onSelectFilter={(filter: any) => {
+                            setActiveFilter(filter);
+                            setSelectedMedia(null);
+                            setView('libs');
+                        }}
+                    />
+                ) : (
                     <>
-                        <TopBar 
-                            libName={currentLib.name}
-                            mediaCount={mediaCount}
-                            onSearch={setSearchKeyword} 
-                            onScan={handleScan}
-                            onScanWithMode={handleScanWithMode}
-                        />
-                        {activeFilter && (
-                            <div className="filter-bar">
-                                <span>当前筛选：{activeFilter.label}</span>
-                                <button className="filter-clear" onClick={() => setActiveFilter(null)}>清除筛选</button>
+                        {(view === 'libs' || (view !== 'settings' && activeFilter)) && currentLib && (
+                            <>
+                                <TopBar 
+                                    libName={currentLib.name}
+                                    mediaCount={mediaCount}
+                                    onSearch={setSearchKeyword} 
+                                    onScan={handleScan}
+                                    onScanWithMode={handleScanWithMode}
+                                />
+                                {activeFilter && (
+                                    <div className="filter-bar">
+                                        <span>当前筛选：{activeFilter.label}</span>
+                                        <button className="filter-clear" onClick={() => setActiveFilter(null)}>清除筛选</button>
+                                    </div>
+                                )}
+                                <MediaGrid 
+                                    libraryId={currentLib.id} 
+                                    keyword={searchKeyword} 
+                                    filter={activeFilter}
+                                    onSelectMedia={setSelectedMedia}
+                                    onCountChange={setMediaCount}
+                                />
+                            </>
+                        )}
+                        {view === 'watched' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="已看列表" mediaCount={mediaCount} onSearch={setSearchKeyword} onScan={handleScan} onScanWithMode={handleScanWithMode} />
+                                <div className="filter-bar">
+                                    <span>当前视图：已看 / 历史记录</span>
+                                    <button className="filter-clear" onClick={() => setView('libs')}>返回主墙</button>
+                                </div>
+                                <MediaGrid 
+                                    libraryId={currentLib.id} 
+                                    keyword={searchKeyword} 
+                                    filter={{ type: 'watched', value: 'true', label: '已看' }}
+                                    onSelectMedia={setSelectedMedia}
+                                    onCountChange={setMediaCount}
+                                />
+                            </>
+                        )}
+                        {view === 'favorite' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="我的收藏" mediaCount={mediaCount} onSearch={setSearchKeyword} onScan={handleScan} onScanWithMode={handleScanWithMode} />
+                                <div className="filter-bar">
+                                    <span>当前视图：我的收藏</span>
+                                    <button className="filter-clear" onClick={() => setView('libs')}>返回主墙</button>
+                                </div>
+                                <MediaGrid 
+                                    libraryId={currentLib.id} 
+                                    keyword={searchKeyword} 
+                                    filter={{ type: 'favorite', value: 'true', label: '收藏' }}
+                                    onSelectMedia={setSelectedMedia}
+                                    onCountChange={setMediaCount}
+                                />
+                            </>
+                        )}
+                        {view === 'directory' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="目录聚合" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
+                                <CategoryGrid type="directory" libraryId={currentLib.id} fetchFn={GetDirectoryStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'directory', value: val, label: lbl }); setView('libs'); }} />
+                            </>
+                        )}
+                        {view === 'actor' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="演员群" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
+                                <CategoryGrid type="actor" libraryId={currentLib.id} fetchFn={GetActorStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'actor', value: val, label: lbl }); setView('libs'); }} />
+                            </>
+                        )}
+                        {view === 'genre' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="类别统计" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
+                                <CategoryGrid type="genre" libraryId={currentLib.id} fetchFn={GetGenreStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'genre', value: val, label: lbl }); setView('libs'); }} />
+                            </>
+                        )}
+                        {view === 'series' && currentLib && !activeFilter && (
+                            <>
+                                <TopBar libName="系列 / 集合" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
+                                <CategoryGrid type="series" libraryId={currentLib.id} fetchFn={GetSeriesStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'series', value: val, label: lbl }); setView('libs'); }} />
+                            </>
+                        )}
+                        {view === 'libs' && !currentLib && (
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
+                                请先新建媒体库
                             </div>
                         )}
-                        <MediaGrid 
-                            libraryId={currentLib.id} 
-                            keyword={searchKeyword} 
-                            filter={activeFilter}
-                            onSelectMedia={setSelectedMedia}
-                            onCountChange={setMediaCount}
-                        />
+                        {view === 'settings' && (
+                            <SettingsPage onClose={() => setView('libs')} />
+                        )}
                     </>
-                )}
-                {view === 'watched' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="已看列表" mediaCount={mediaCount} onSearch={setSearchKeyword} onScan={handleScan} onScanWithMode={handleScanWithMode} />
-                        <div className="filter-bar">
-                            <span>当前视图：已看 / 历史记录</span>
-                            <button className="filter-clear" onClick={() => setView('libs')}>返回主墙</button>
-                        </div>
-                        <MediaGrid 
-                            libraryId={currentLib.id} 
-                            keyword={searchKeyword} 
-                            filter={{ type: 'watched', value: 'true', label: '已看' }}
-                            onSelectMedia={setSelectedMedia}
-                            onCountChange={setMediaCount}
-                        />
-                    </>
-                )}
-                {view === 'favorite' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="我的收藏" mediaCount={mediaCount} onSearch={setSearchKeyword} onScan={handleScan} onScanWithMode={handleScanWithMode} />
-                        <div className="filter-bar">
-                            <span>当前视图：我的收藏</span>
-                            <button className="filter-clear" onClick={() => setView('libs')}>返回主墙</button>
-                        </div>
-                        <MediaGrid 
-                            libraryId={currentLib.id} 
-                            keyword={searchKeyword} 
-                            filter={{ type: 'favorite', value: 'true', label: '收藏' }}
-                            onSelectMedia={setSelectedMedia}
-                            onCountChange={setMediaCount}
-                        />
-                    </>
-                )}
-                {view === 'directory' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="目录聚合" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
-                        <CategoryGrid type="directory" libraryId={currentLib.id} fetchFn={GetDirectoryStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'directory', value: val, label: lbl }); setView('libs'); }} />
-                    </>
-                )}
-                {view === 'actor' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="演员群" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
-                        <CategoryGrid type="actor" libraryId={currentLib.id} fetchFn={GetActorStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'actor', value: val, label: lbl }); setView('libs'); }} />
-                    </>
-                )}
-                {view === 'genre' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="类别统计" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
-                        <CategoryGrid type="genre" libraryId={currentLib.id} fetchFn={GetGenreStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'genre', value: val, label: lbl }); setView('libs'); }} />
-                    </>
-                )}
-                {view === 'series' && currentLib && !activeFilter && (
-                    <>
-                        <TopBar libName="系列 / 集合" mediaCount={0} onSearch={() => {}} onScan={() => {}} onScanWithMode={() => {}} />
-                        <CategoryGrid type="series" libraryId={currentLib.id} fetchFn={GetSeriesStats} onSelect={(val, lbl) => { setActiveFilter({ type: 'series', value: val, label: lbl }); setView('libs'); }} />
-                    </>
-                )}
-                {view === 'libs' && !currentLib && (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
-                        请先新建媒体库
-                    </div>
-                )}
-                {view === 'settings' && (
-                    <SettingsPage onClose={() => setView('libs')} />
                 )}
             </div>
 
@@ -221,10 +235,6 @@ function App() {
                     onSaved={handleLibSaved}
                     onDeleted={handleLibDeleted}
                 />
-            )}
-            
-            {selectedMedia && (
-                <MediaDetail media={selectedMedia} onClose={() => setSelectedMedia(null)} />
             )}
 
             {statusMsg && (

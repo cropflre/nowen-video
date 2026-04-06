@@ -12,6 +12,7 @@ import (
 	"alex-desktop/model"
 	"alex-desktop/repository"
 	"alex-desktop/service"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -451,6 +452,7 @@ func (a *App) ToggleFavorite(mediaID string) error {
 	return a.db.Create(&newFav).Error
 }
 
+// ToggleWatched 切换已看状态
 func (a *App) ToggleWatched(mediaID string) error {
 	var wh model.WatchHistory
 	err := a.db.Where("media_id = ? AND user_id = ?", mediaID, "desktop_user").First(&wh).Error
@@ -464,6 +466,153 @@ func (a *App) ToggleWatched(mediaID string) error {
 		Completed: true,
 	}
 	return a.db.Create(&newWh).Error
+}
+
+// DeleteMedia 只从数据库删除记录，不移动文件
+func (a *App) DeleteMedia(mediaID string) error {
+	return a.repos.Media.DeleteByID(mediaID)
+}
+
+// OpenNFO 尝试找到并打开关联的 .nfo 文件
+func (a *App) OpenNFO(mediaID string) error {
+	media, err := a.repos.Media.FindByID(mediaID)
+	if err != nil {
+		return err
+	}
+	
+	// 1. 同名 nfo
+	nfoPath := strings.TrimSuffix(media.FilePath, filepath.Ext(media.FilePath)) + ".nfo"
+	if _, err := os.Stat(nfoPath); os.IsNotExist(err) {
+		// 2. 目录下的 movie.nfo
+		dir := filepath.Dir(media.FilePath)
+		nfoPath = filepath.Join(dir, "movie.nfo")
+	}
+
+	if _, err := os.Stat(nfoPath); os.IsNotExist(err) {
+		return fmt.Errorf("找不到对应的 .nfo 文件")
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", nfoPath)
+	case "darwin":
+		cmd = exec.Command("open", nfoPath)
+	default:
+		cmd = exec.Command("xdg-open", nfoPath)
+	}
+	return cmd.Start()
+}
+
+// GetMediaFiles 获取当前目录下的所有视频文件
+func (a *App) GetMediaFiles(mediaID string) ([]string, error) {
+	media, err := a.repos.Media.FindByID(mediaID)
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Dir(media.FilePath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	
+	var files []string
+	exts := map[string]bool{".mp4":true, ".mkv":true, ".avi":true, ".mov":true, ".wmv":true, ".flv":true, ".webm":true, ".ts":true, ".strm":true}
+	
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if exts[strings.ToLower(filepath.Ext(entry.Name()))] {
+				files = append(files, filepath.Join(dir, entry.Name()))
+			}
+		}
+	}
+	return files, nil
+}
+
+// GetMediaPreviews 收集本地预览图片（由高到低优先级：extrafanart > BTS > thumb > fanart > poster）
+func (a *App) GetMediaPreviews(mediaID string) ([]string, error) {
+	media, err := a.repos.Media.FindByID(mediaID)
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Dir(media.FilePath)
+	
+	var previews []string
+	seen := make(map[string]bool)
+	imgExts := map[string]bool{".jpg": true, ".png": true, ".jpeg": true, ".webp": true}
+
+	addIfNew := func(path string) {
+		name := filepath.Base(path)
+		if !seen[name] {
+			previews = append(previews, path)
+			seen[name] = true
+		}
+	}
+
+	// 1. 扫描 extrafanart 和 behind the scenes 目录（最高级生产资料）
+	subDirs := []string{"extrafanart", "behind the scenes"}
+	for _, sub := range subDirs {
+		subPath := filepath.Join(dir, sub)
+		if sEntries, err := os.ReadDir(subPath); err == nil {
+			for _, se := range sEntries {
+				if !se.IsDir() && imgExts[strings.ToLower(filepath.Ext(se.Name()))] {
+					addIfNew(filepath.Join(subPath, se.Name()))
+				}
+			}
+		}
+	}
+
+	// 2. 扫描当前层级中的剧照/背景类关键词 (优先 thumb 和 fanart)
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.IsDir() || !imgExts[strings.ToLower(filepath.Ext(e.Name()))] {
+			continue
+		}
+		nameLower := strings.ToLower(e.Name())
+		if strings.Contains(nameLower, "thumb") || strings.Contains(nameLower, "fanart") || strings.Contains(nameLower, "backdrop") || strings.Contains(nameLower, "preview") {
+			addIfNew(filepath.Join(dir, e.Name()))
+		}
+	}
+
+	// 3. 扫描其他所有图片 (排除明显的 poster)
+	for _, e := range entries {
+		if e.IsDir() || !imgExts[strings.ToLower(filepath.Ext(e.Name()))] {
+			continue
+		}
+		nameLower := strings.ToLower(e.Name())
+		if !strings.Contains(nameLower, "poster") && !strings.Contains(nameLower, "folder") && !strings.Contains(nameLower, "cover") {
+			addIfNew(filepath.Join(dir, e.Name()))
+		}
+	}
+
+	// 4. 最后兜底所有图片 (包括 poster)
+	for _, e := range entries {
+		if e.IsDir() || !imgExts[strings.ToLower(filepath.Ext(e.Name()))] {
+			continue
+		}
+		addIfNew(filepath.Join(dir, e.Name()))
+	}
+
+	return previews, nil
+}
+
+// PlayFile 播放指定绝对路径的文件
+func (a *App) PlayFile(filePath string) error {
+	settings, _ := a.GetDesktopSettings()
+	var cmd *exec.Cmd
+	if settings.PlayerPath != "" {
+		cmd = exec.Command(settings.PlayerPath, filePath)
+	} else {
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("cmd", "/c", "start", "", filePath)
+		case "darwin":
+			cmd = exec.Command("open", filePath)
+		default:
+			cmd = exec.Command("xdg-open", filePath)
+		}
+	}
+	return cmd.Start()
 }
 
 // DeleteLibrary 删除一个媒体库及其关联的所有媒体记录

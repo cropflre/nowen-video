@@ -10,6 +10,10 @@ export function DeleteLibrary(arg1) {
   return window['go']['main']['App']['DeleteLibrary'](arg1);
 }
 
+export function DeleteMedia(arg1) {
+  return window['go']['main']['App']['DeleteMedia'](arg1);
+}
+
 export function GetActorStats(arg1) {
   return window['go']['main']['App']['GetActorStats'](arg1);
 }
@@ -34,8 +38,16 @@ export function GetMediaDetail(arg1) {
   return window['go']['main']['App']['GetMediaDetail'](arg1);
 }
 
+export function GetMediaFiles(arg1) {
+  return window['go']['main']['App']['GetMediaFiles'](arg1);
+}
+
 export function GetMediaList(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['GetMediaList'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function GetMediaPreviews(arg1) {
+  return window['go']['main']['App']['GetMediaPreviews'](arg1);
 }
 
 export function GetSeriesStats(arg1) {
@@ -44,6 +56,14 @@ export function GetSeriesStats(arg1) {
 
 export function OpenMediaFolder(arg1) {
   return window['go']['main']['App']['OpenMediaFolder'](arg1);
+}
+
+export function OpenNFO(arg1) {
+  return window['go']['main']['App']['OpenNFO'](arg1);
+}
+
+export function PlayFile(arg1) {
+  return window['go']['main']['App']['PlayFile'](arg1);
 }
 
 export function PlayWithExternalPlayer(arg1) {

@@ -531,3 +531,461 @@ body {
 .settings-btn-primary:hover {
   background: var(--accent-hover);
 }
+
+/* ===== 详情工作区 (Detail Workspace) ===== */
+.detail-workspace {
+  position: relative;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+}
+
+.detail-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(40px) brightness(0.4);
+  transform: scale(1.1); /* 消除边缘模糊空白 */
+  z-index: 1;
+}
+
+.detail-backdrop-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to right, rgba(15,15,21,0.5), rgba(15,15,21,0.9));
+  z-index: 2;
+}
+
+.detail-main {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 40px;
+  gap: 40px;
+}
+
+.detail-poster-section {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.detail-poster {
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  aspect-ratio: 2/3;
+  object-fit: cover;
+}
+
+.detail-info-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 20px;
+}
+
+.detail-info-section::-webkit-scrollbar { width: 6px; }
+.detail-info-section::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.detail-title {
+  font-size: 32px;
+  font-weight: 800;
+  margin-bottom: 20px;
+  line-height: 1.2;
+}
+
+.detail-toolbar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 30px;
+  align-items: center;
+}
+
+.toolbar-icon {
+  width: 42px;
+  height: 42px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.toolbar-icon:hover {
+  background: rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.toolbar-icon.active {
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.15);
+  border-color: var(--accent);
+}
+
+.detail-file-row {
+  margin-bottom: 24px;
+}
+
+.detail-file-select {
+  width: 100%;
+  max-width: 600px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 10px 14px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.tag-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.tag-row::-webkit-scrollbar { height: 4px; }
+.tag-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.tag-pill {
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.tag-pill:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* 详情页首屏布局优化 (Round 5: Sidebar 共存修复) */
+.detail-workspace {
+    position: relative; /* 核心：改为相对定位，使其留在 main-content 内部 */
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #0a0a0a;
+}
+
+.detail-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(40px) brightness(0.2); /* 适度调深背景 */
+    opacity: 0.5;
+    z-index: 1;
+}
+
+.detail-backdrop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 20% 50%, rgba(10, 10, 10, 0) 0%, #0a0a0a 100%);
+    z-index: 1;
+}
+
+.detail-main {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: 24px; /* 进一步压缩间距 */
+    padding: 20px 30px; /* 压缩内边距 */
+    height: 100%;
+    max-width: 1400px;
+    margin: 0;
+    width: 100%;
+    overflow-y: auto;
+}
+
+.detail-poster-section {
+    flex: 0 0 auto;
+    width: 260px; /* 在侧边栏存在的情况下，进一步缩小海报宽度 */
+}
+
+.detail-poster {
+    width: 100%;
+    height: auto;
+    max-height: 400px; /* 严格限高 */
+    border-radius: 6px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    object-fit: cover;
+    background: #1a1a1a;
+}
+
+.detail-info-section {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-header-row {
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.detail-title {
+    font-size: 20px; /* 进一步缩小字号以适配窄屏 */
+    font-weight: 700;
+    color: #eee;
+    line-height: 1.2;
+    letter-spacing: -0.4px;
+}
+
+.detail-status-msg {
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.detail-toolbar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.toolbar-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #eee;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    min-width: 32px;
+}
+
+.toolbar-btn.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 3px;
+    align-self: center;
+}
+
+.detail-file-row {
+    margin-bottom: 10px;
+}
+
+.detail-file-select {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.file-active-name {
+    font-size: 11px;
+    color: #999;
+}
+
+.detail-meta-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.meta-row {
+    display: flex;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.meta-label {
+    min-width: 55px;
+    color: #555;
+    flex-shrink: 0;
+}
+
+.meta-actor-clickable {
+    color: var(--accent);
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.meta-actor-clickable:hover {
+    text-decoration: underline;
+}
+
+.tag-chips-scroll {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+
+.tag-chips-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.meta-pill-chip {
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.meta-pill-chip:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.actor-list-inline {
+    flex-wrap: wrap;
+    display: flex;
+    gap: 4px;
+}
+
+.detail-desc {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #888;
+    margin-top: 15px; /* 增加一点间距 */
+    margin-bottom: 15px;
+    max-height: 60px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    padding-right: 8px;
+    opacity: 0.85;
+}
+
+.detail-desc::-webkit-scrollbar {
+    width: 3px;
+}
+
+.detail-desc::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.detail-previews-container {
+    margin-top: 5px; 
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.previews-label {
+    font-size: 10px;
+    color: #444;
+    margin-bottom: 5px;
+}
+
+.preview-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+
+.preview-item {
+    flex: 0 0 auto;
+    width: 180px; /* 压缩预览图尺寸 */
+    height: 100px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #111;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.detail-poster.no-poster {
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #444;
+    opacity: 0.9;
+}
+
+.detail-poster.no-poster {
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #444;
+    font-weight: bold;
+    font-size: 1.2rem;
+    height: 100%;
+}
+
+/* 元数据点击态 */
+.meta-value.clickable {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+.meta-value.clickable:hover {
+    text-decoration: underline;
+}

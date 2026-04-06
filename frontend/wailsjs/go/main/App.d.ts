@@ -7,6 +7,8 @@ export function CreateLibrary(arg1:model.Library):Promise<void>;
 
 export function DeleteLibrary(arg1:string):Promise<void>;
 
+export function DeleteMedia(arg1:string):Promise<void>;
+
 export function GetActorStats(arg1:string):Promise<Array<main.StatsItem>>;
 
 export function GetDesktopSettings():Promise<main.DesktopSettings>;
@@ -19,11 +21,19 @@ export function GetLibraries():Promise<Array<model.Library>>;
 
 export function GetMediaDetail(arg1:string):Promise<model.Media>;
 
+export function GetMediaFiles(arg1:string):Promise<Array<string>>;
+
 export function GetMediaList(arg1:string,arg2:number,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<any>;
+
+export function GetMediaPreviews(arg1:string):Promise<Array<string>>;
 
 export function GetSeriesStats(arg1:string):Promise<Array<main.StatsItem>>;
 
 export function OpenMediaFolder(arg1:string):Promise<void>;
+
+export function OpenNFO(arg1:string):Promise<void>;
+
+export function PlayFile(arg1:string):Promise<void>;
 
 export function PlayWithExternalPlayer(arg1:string):Promise<void>;
 
