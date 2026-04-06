@@ -5,12 +5,15 @@ import MediaCard from './MediaCard';
 interface MediaGridProps {
     libraryId: string;
     keyword: string;
+    sortField: string;
+    sortOrder: 'asc' | 'desc';
     filter?: { type: string; value: string; label: string } | null;
     onSelectMedia: (media: any) => void;
     onCountChange?: (count: number) => void;
+    onQuickPlayStatus?: (message: string) => void;
 }
 
-const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, filter, onSelectMedia, onCountChange }) => {
+const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, sortField, sortOrder, filter, onSelectMedia, onCountChange, onQuickPlayStatus }) => {
     const [mediaItems, setMediaItems] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
@@ -51,7 +54,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, filter, onSel
         const filterType = filter?.type || "";
         const filterValue = filter?.value || "";
 
-        GetMediaList(libraryId, 1, 100, "created_at", "desc", keyword, filterType, filterValue)
+        GetMediaList(libraryId, 1, 100, sortField, sortOrder, keyword, filterType, filterValue)
             .then((res: any) => {
                 if (active) {
                     setMediaItems(res.items || []);
@@ -64,7 +67,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, filter, onSel
                 if (active) setIsLoading(false);
             });
         return () => { active = false; };
-    }, [libraryId, keyword, filter]);
+    }, [libraryId, keyword, sortField, sortOrder, filter]);
 
     return (
         <div 
@@ -78,7 +81,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({ libraryId, keyword, filter, onSel
             }}
         >
             {mediaItems.map(item => (
-                <MediaCard key={item.id} media={item} onClick={() => onSelectMedia(item)} />
+                <MediaCard key={item.id} media={item} onClick={() => onSelectMedia(item)} onQuickPlayStatus={onQuickPlayStatus} />
             ))}
             {!isLoading && mediaItems.length === 0 && (
                 <div style={{ color: 'var(--text-dim)', padding: '40px', gridColumn: '1 / -1', textAlign: 'center', fontSize: '14px' }}>

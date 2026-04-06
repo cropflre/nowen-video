@@ -134,6 +134,11 @@ export namespace model {
 	    type: string;
 	    // Go type: time
 	    last_scan?: any;
+	    folder_paths?: string[];
+	    view_mode?: string;
+	    title_field?: string;
+	    subtitle_field?: string;
+	    media_count?: number;
 	    prefer_local_nfo: boolean;
 	    min_file_size: number;
 	    enable_file_filter: boolean;
@@ -158,6 +163,11 @@ export namespace model {
 	        this.path = source["path"];
 	        this.type = source["type"];
 	        this.last_scan = this.convertValues(source["last_scan"], null);
+	        this.folder_paths = source["folder_paths"];
+	        this.view_mode = source["view_mode"];
+	        this.title_field = source["title_field"];
+	        this.subtitle_field = source["subtitle_field"];
+	        this.media_count = source["media_count"];
 	        this.prefer_local_nfo = source["prefer_local_nfo"];
 	        this.min_file_size = source["min_file_size"];
 	        this.enable_file_filter = source["enable_file_filter"];
@@ -187,6 +197,20 @@ export namespace model {
 		    }
 		    return a;
 		}
+	}
+	export class MediaActor {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MediaActor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
 	}
 	export class Series {
 	    id: string;
@@ -310,6 +334,10 @@ export namespace model {
 	    // Go type: time
 	    updated_at: any;
 	    series?: Series;
+	    actor: string;
+	    actors?: MediaActor[];
+	    is_favorite: boolean;
+	    is_watched: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Media(source);
@@ -361,6 +389,10 @@ export namespace model {
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.updated_at = this.convertValues(source["updated_at"], null);
 	        this.series = this.convertValues(source["series"], Series);
+	        this.actor = source["actor"];
+	        this.actors = this.convertValues(source["actors"], MediaActor);
+	        this.is_favorite = source["is_favorite"];
+	        this.is_watched = source["is_watched"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -380,6 +412,54 @@ export namespace model {
 		    }
 		    return a;
 		}
+	}
+	
+
+}
+
+export namespace service {
+	
+	export class NFOEditorData {
+	    nfo_path: string;
+	    title: string;
+	    code: string;
+	    release_date: string;
+	    director: string;
+	    series: string;
+	    publisher: string;
+	    maker: string;
+	    genres: string;
+	    actors: string;
+	    plot: string;
+	    runtime: string;
+	    file_size: string;
+	    resolution: string;
+	    video_codec: string;
+	    rating: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NFOEditorData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nfo_path = source["nfo_path"];
+	        this.title = source["title"];
+	        this.code = source["code"];
+	        this.release_date = source["release_date"];
+	        this.director = source["director"];
+	        this.series = source["series"];
+	        this.publisher = source["publisher"];
+	        this.maker = source["maker"];
+	        this.genres = source["genres"];
+	        this.actors = source["actors"];
+	        this.plot = source["plot"];
+	        this.runtime = source["runtime"];
+	        this.file_size = source["file_size"];
+	        this.resolution = source["resolution"];
+	        this.video_codec = source["video_codec"];
+	        this.rating = source["rating"];
+	    }
 	}
 
 }

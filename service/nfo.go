@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"alex-desktop/model"
@@ -46,6 +47,7 @@ type NFOMovie struct {
 	Tags      []string `xml:"tag"`
 	Directors []string `xml:"director"`
 	Actors    []NFOActor `xml:"actor"`
+	Set       string `xml:"set"`
 	// 增强字段：日期（多种来源，后续归一化）
 	Premiered   string `xml:"premiered"`
 	ReleaseDate string `xml:"releasedate"`
@@ -70,6 +72,12 @@ type NFOMovie struct {
 	JavbusID      string `xml:"javbusid"`
 	AiravCcid     string `xml:"airav_ccid"`
 	JavdbSearchID string `xml:"javdbsearchid"`
+	LockData      string `xml:"lockdata"`
+	DateAdded     string `xml:"dateadded"`
+	Trailer       string `xml:"trailer"`
+	Votes         string `xml:"votes"`
+	Website       string `xml:"website"`
+	FileInfo      *NFORawSection `xml:"fileinfo"`
 }
 
 // NFOTVShow 剧集 NFO XML 根元素
@@ -120,6 +128,308 @@ type NFOExtraFields struct {
 	Fanart       string            `json:"fanart,omitempty"`
 	Tags         []string          `json:"tags,omitempty"`
 	ProviderIDs  map[string]string `json:"provider_ids,omitempty"`
+}
+
+type NFORawSection struct {
+	InnerXML string `xml:",innerxml"`
+}
+
+type NFOEditorData struct {
+	NFOPath     string `json:"nfo_path"`
+	Title       string `json:"title"`
+	Code        string `json:"code"`
+	ReleaseDate string `json:"release_date"`
+	Director    string `json:"director"`
+	Series      string `json:"series"`
+	Publisher   string `json:"publisher"`
+	Maker       string `json:"maker"`
+	Genres      string `json:"genres"`
+	Actors      string `json:"actors"`
+	Plot        string `json:"plot"`
+	Runtime     string `json:"runtime"`
+	FileSize    string `json:"file_size"`
+	Resolution  string `json:"resolution"`
+	VideoCodec  string `json:"video_codec"`
+	Rating      string `json:"rating"`
+}
+
+func joinEditorList(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+
+	seen := make(map[string]bool)
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		items = append(items, value)
+	}
+	return strings.Join(items, " / ")
+}
+
+func splitEditorList(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', '，', '/', '、', '\n', '\r', ';', '|':
+			return true
+		default:
+			return false
+		}
+	})
+
+	items := make([]string, 0, len(fields))
+	seen := make(map[string]bool)
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" || seen[field] {
+			continue
+		}
+		seen[field] = true
+		items = append(items, field)
+	}
+	return items
+}
+
+func joinActorNames(actors []NFOActor) string {
+	if len(actors) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(actors))
+	for _, actor := range actors {
+		name := strings.TrimSpace(actor.Name)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return joinEditorList(names)
+}
+
+func splitEditorValues(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', '\uFF0C', '\u3001', '/', '\n', '\r', ';', '|':
+			return true
+		default:
+			return false
+		}
+	})
+
+	items := make([]string, 0, len(fields))
+	seen := make(map[string]bool)
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" || seen[field] {
+			continue
+		}
+		seen[field] = true
+		items = append(items, field)
+	}
+	return items
+}
+
+func buildEditorActors(raw string) []NFOActor {
+	names := splitEditorValues(raw)
+	actors := make([]NFOActor, 0, len(names))
+	for index, name := range names {
+		actors = append(actors, NFOActor{
+			Name:      name,
+			SortOrder: index,
+		})
+	}
+	return actors
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func formatEditorFloat(value float64) string {
+	if value <= 0 {
+		return ""
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func formatEditorInt(value int) string {
+	if value <= 0 {
+		return ""
+	}
+	return strconv.Itoa(value)
+}
+
+func formatEditorFileSize(size int64) string {
+	if size <= 0 {
+		return ""
+	}
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+
+	switch {
+	case size >= gb:
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(gb))
+	case size >= mb:
+		return fmt.Sprintf("%.1f MB", float64(size)/float64(mb))
+	case size >= kb:
+		return fmt.Sprintf("%.1f KB", float64(size)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", size)
+	}
+}
+
+func deriveEditorCode(media *model.Media) string {
+	if media == nil {
+		return ""
+	}
+
+	if media.NfoExtraFields != "" {
+		var extra NFOExtraFields
+		if err := json.Unmarshal([]byte(media.NfoExtraFields), &extra); err == nil && strings.TrimSpace(extra.Num) != "" {
+			return strings.TrimSpace(extra.Num)
+		}
+	}
+
+	filename := filepath.Base(media.FilePath)
+	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return strings.TrimSpace(stem)
+}
+
+func releaseYear(value string, fallback int) int {
+	value = strings.TrimSpace(value)
+	if len(value) >= 4 {
+		if year, err := strconv.Atoi(value[:4]); err == nil && year > 0 {
+			return year
+		}
+	}
+	return fallback
+}
+
+func (s *NFOService) LoadEditorData(nfoPath string, media *model.Media) (*NFOEditorData, error) {
+	data := &NFOEditorData{
+		NFOPath:     strings.TrimSpace(nfoPath),
+		Title:       strings.TrimSpace(media.Title),
+		Code:        deriveEditorCode(media),
+		ReleaseDate: strings.TrimSpace(media.ReleaseDateNormalized),
+		Publisher:   strings.TrimSpace(media.Studio),
+		Maker:       strings.TrimSpace(media.Studio),
+		Genres:      joinEditorList(strings.Split(strings.TrimSpace(media.Genres), ",")),
+		Actors:      joinEditorList(strings.Split(strings.TrimSpace(media.Actor), ",")),
+		Plot:        strings.TrimSpace(media.Overview),
+		Runtime:     formatEditorInt(media.Runtime),
+		FileSize:    formatEditorFileSize(media.FileSize),
+		Resolution:  strings.TrimSpace(media.Resolution),
+		VideoCodec:  strings.TrimSpace(media.VideoCodec),
+		Rating:      formatEditorFloat(media.Rating),
+	}
+	if media.Series != nil {
+		data.Series = strings.TrimSpace(media.Series.Title)
+	}
+
+	if strings.TrimSpace(nfoPath) == "" {
+		return data, nil
+	}
+
+	content, err := os.ReadFile(nfoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return data, nil
+		}
+		return nil, fmt.Errorf("读取 NFO 文件失败: %w", err)
+	}
+
+	var movie NFOMovie
+	if err := xml.Unmarshal(content, &movie); err != nil {
+		return nil, fmt.Errorf("解析 NFO 文件失败: %w", err)
+	}
+
+	data.Title = firstNonEmpty(movie.Title, data.Title)
+	data.Code = firstNonEmpty(movie.Num, data.Code)
+	data.ReleaseDate = firstNonEmpty(movie.ReleaseDate, movie.Premiered, movie.Release, data.ReleaseDate)
+	data.Director = firstNonEmpty(joinEditorList(movie.Directors), data.Director)
+	data.Series = firstNonEmpty(movie.Set, data.Series)
+	data.Publisher = firstNonEmpty(movie.Publisher, movie.Label, data.Publisher)
+	data.Maker = firstNonEmpty(movie.Maker, movie.Studio, data.Maker)
+	data.Genres = firstNonEmpty(joinEditorList(append(movie.Genres, movie.Tags...)), data.Genres)
+	data.Actors = firstNonEmpty(joinActorNames(movie.Actors), data.Actors)
+	data.Plot = firstNonEmpty(movie.Plot, movie.Outline, data.Plot)
+	data.Runtime = firstNonEmpty(formatEditorInt(movie.Runtime), data.Runtime)
+	data.Rating = firstNonEmpty(formatEditorFloat(movie.Rating), data.Rating)
+
+	return data, nil
+}
+
+func (s *NFOService) SaveEditorData(nfoPath string, data *NFOEditorData) error {
+	nfoPath = strings.TrimSpace(nfoPath)
+	if nfoPath == "" {
+		return fmt.Errorf("empty nfo path")
+	}
+	if data == nil {
+		return fmt.Errorf("empty nfo editor data")
+	}
+
+	var movie NFOMovie
+	if content, err := os.ReadFile(nfoPath); err == nil {
+		if err := xml.Unmarshal(content, &movie); err != nil {
+			return fmt.Errorf("解析 NFO 文件失败: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("读取 NFO 文件失败: %w", err)
+	}
+
+	movie.XMLName = xml.Name{Local: "movie"}
+	movie.Title = strings.TrimSpace(data.Title)
+	movie.Num = strings.TrimSpace(data.Code)
+	movie.Premiered = strings.TrimSpace(data.ReleaseDate)
+	movie.ReleaseDate = strings.TrimSpace(data.ReleaseDate)
+	movie.Release = strings.TrimSpace(data.ReleaseDate)
+	movie.Set = strings.TrimSpace(data.Series)
+	movie.Directors = splitEditorValues(data.Director)
+	movie.Publisher = strings.TrimSpace(data.Publisher)
+	movie.Label = strings.TrimSpace(data.Publisher)
+	movie.Maker = strings.TrimSpace(data.Maker)
+	movie.Studio = strings.TrimSpace(data.Maker)
+	movie.Genres = splitEditorValues(data.Genres)
+	movie.Tags = append([]string(nil), movie.Genres...)
+	movie.Actors = buildEditorActors(data.Actors)
+	movie.Plot = strings.TrimSpace(data.Plot)
+
+	if runtime, err := strconv.Atoi(strings.TrimSpace(data.Runtime)); err == nil {
+		movie.Runtime = runtime
+	}
+	if rating, err := strconv.ParseFloat(strings.TrimSpace(data.Rating), 64); err == nil {
+		movie.Rating = rating
+	}
+	movie.Year = releaseYear(data.ReleaseDate, movie.Year)
+
+	output, err := xml.MarshalIndent(movie, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化 NFO 文件失败: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(nfoPath), 0755); err != nil {
+		return fmt.Errorf("创建 NFO 目录失败: %w", err)
+	}
+
+	fileContent := append([]byte(xml.Header), output...)
+	fileContent = append(fileContent, '\n')
+	if err := os.WriteFile(nfoPath, fileContent, 0644); err != nil {
+		return fmt.Errorf("写入 NFO 文件失败: %w", err)
+	}
+
+	return nil
 }
 
 // ==================== 解析方法 ====================
@@ -225,6 +535,60 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 		if _, err := os.Stat(path); err == nil {
 			backdrop = path
 			break
+		}
+	}
+
+	imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		hasToken := func(name, token string) bool {
+			lower := strings.ToLower(name)
+			ext := strings.ToLower(filepath.Ext(lower))
+			stem := strings.TrimSuffix(lower, ext)
+			normalized := "-" + strings.NewReplacer("_", "-", ".", "-", " ", "-").Replace(stem) + "-"
+			return strings.Contains(normalized, "-"+token+"-")
+		}
+		findByTokens := func(tokens []string, excludeTokens []string) string {
+			for _, token := range tokens {
+				for _, entry := range entries {
+					if entry.IsDir() {
+						continue
+					}
+					name := entry.Name()
+					ext := strings.ToLower(filepath.Ext(name))
+					if !imageExts[ext] || !hasToken(name, token) {
+						continue
+					}
+					skip := false
+					for _, excludeToken := range excludeTokens {
+						if hasToken(name, excludeToken) {
+							skip = true
+							break
+						}
+					}
+					if skip {
+						continue
+					}
+					return filepath.Join(dir, name)
+				}
+			}
+			return ""
+		}
+
+		if poster == "" {
+			poster = findByTokens([]string{"poster"}, nil)
+		}
+		if backdrop == "" {
+			backdrop = findByTokens([]string{"fanart"}, nil)
+		}
+		if backdrop == "" {
+			backdrop = findByTokens([]string{"backdrop"}, nil)
+		}
+		if backdrop == "" {
+			backdrop = findByTokens([]string{"background", "banner", "clearart", "landscape"}, nil)
+		}
+		if poster == "" {
+			poster = findByTokens([]string{"cover", "folder", "thumb", "movie", "show"}, []string{"fanart", "backdrop", "background", "banner", "clearart", "landscape"})
 		}
 	}
 

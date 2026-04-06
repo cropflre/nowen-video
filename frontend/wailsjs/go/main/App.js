@@ -50,6 +50,10 @@ export function GetMediaPreviews(arg1) {
   return window['go']['main']['App']['GetMediaPreviews'](arg1);
 }
 
+export function GetNFOEditorData(arg1) {
+  return window['go']['main']['App']['GetNFOEditorData'](arg1);
+}
+
 export function GetSeriesStats(arg1) {
   return window['go']['main']['App']['GetSeriesStats'](arg1);
 }
@@ -66,12 +70,20 @@ export function PlayFile(arg1) {
   return window['go']['main']['App']['PlayFile'](arg1);
 }
 
+export function PlayRandomLibraryMedia(arg1) {
+  return window['go']['main']['App']['PlayRandomLibraryMedia'](arg1);
+}
+
 export function PlayWithExternalPlayer(arg1) {
   return window['go']['main']['App']['PlayWithExternalPlayer'](arg1);
 }
 
 export function RestartApp() {
   return window['go']['main']['App']['RestartApp']();
+}
+
+export function SaveNFOEditorData(arg1, arg2) {
+  return window['go']['main']['App']['SaveNFOEditorData'](arg1, arg2);
 }
 
 export function ScanLibrary(arg1) {

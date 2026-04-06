@@ -19,53 +19,66 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ type, libraryId, onSelect, 
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        let active = true;
         setLoading(true);
+
         fetchFn(libraryId)
-            .then(res => {
-                setItems(res || []);
+            .then((res) => {
+                if (!active) {
+                    return;
+                }
+                const nextItems = Array.isArray(res) ? [...res] : [];
+                nextItems.sort((left, right) => {
+                    if (right.count !== left.count) {
+                        return right.count - left.count;
+                    }
+                    return left.name.localeCompare(right.name, 'zh-CN');
+                });
+                setItems(nextItems);
                 setLoading(false);
             })
-            .catch(err => {
-                console.error(err);
+            .catch((error) => {
+                console.error(error);
+                if (!active) {
+                    return;
+                }
                 setItems([]);
                 setLoading(false);
             });
-    }, [libraryId, type]);
+
+        return () => {
+            active = false;
+        };
+    }, [fetchFn, libraryId, type]);
 
     if (loading) {
-        return <div style={{ color: 'var(--accent)', padding: '40px', textAlign: 'center', fontSize: '14px' }}>加载中...</div>;
+        return (
+            <div className="stats-grid-loading">
+                正在加载...
+            </div>
+        );
     }
 
-    const getLabelPrefix = () => {
-        switch (type) {
-            case 'directory': return '目录';
-            case 'actor': return '演员群';
-            case 'genre': return '类别';
-            case 'series': return '系列';
-            default: return '';
-        }
-    };
-
     return (
-        <div className="stats-grid-container">
-            <div className="stats-grid">
-                {items.map((item, idx) => (
-                    <div 
-                        key={idx} 
-                        className="stats-card"
-                        onClick={() => onSelect(item.filter_value, `${getLabelPrefix()}: ${item.name}`)}
+        <div className={`stats-grid-container stats-grid-container-${type}`}>
+            <div className={`stats-grid stats-grid-${type}`}>
+                {items.map((item) => (
+                    <button
+                        key={item.filter_value || item.name}
+                        type="button"
+                        className={`stats-card stats-card-${type}`}
+                        onClick={() => onSelect(item.filter_value, item.name)}
                     >
-                        <div className="stats-card-name" title={item.name}>
+                        <span className="stats-card-name" title={item.name}>
                             {item.name}
-                            <span style={{color: 'var(--text-dim)', marginLeft: '4px'}}>
-                                ({item.count})
-                            </span>
-                        </div>
-                    </div>
+                        </span>
+                        <span className="stats-card-count">({item.count})</span>
+                    </button>
                 ))}
             </div>
+
             {items.length === 0 && (
-                <div style={{ color: 'var(--text-dim)', padding: '40px', textAlign: 'center', fontSize: '14px' }}>
+                <div className="stats-grid-empty">
                     暂无数据
                 </div>
             )}

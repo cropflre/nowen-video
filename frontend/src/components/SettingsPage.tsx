@@ -19,7 +19,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     const handleSave = async () => {
         try {
             await UpdateDesktopSettings(settings);
-            setMsg("设置已保存！部分项需重启生效。");
+            setMsg("设置已保存，部分项目需重启生效。");
             setTimeout(() => setMsg(''), 3000);
         } catch (e: any) {
             setMsg("保存失败: " + e);
@@ -37,121 +37,78 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
     const renderAppearance = () => (
         <>
             <div className="settings-section">
-                <div className="settings-section-title">外 观</div>
-                
+                <div className="settings-section-title">外观</div>
+
                 <div style={{ display: 'flex', gap: '40px' }}>
                     <div style={{ flex: 1 }}>
                         <div className="settings-row">
                             <div className="settings-label">程序皮肤颜色</div>
                             <div className="settings-control">
-                                <select className="settings-select" value={settings.theme} onChange={e => setSettings({...settings, theme: e.target.value})}>
+                                <select className="settings-select" value={settings.theme} onChange={e => setSettings({ ...settings, theme: e.target.value })}>
                                     <option value="dark">黑色</option>
                                     <option value="light">白色</option>
                                 </select>
                             </div>
                         </div>
+
                         <div className="settings-row">
                             <div className="settings-label">封面圆角度</div>
                             <div className="settings-control">
-                                <select className="settings-select" value={settings.poster_radius} onChange={e => setSettings({...settings, poster_radius: parseInt(e.target.value) || 0})}>
+                                <select className="settings-select" value={settings.poster_radius} onChange={e => setSettings({ ...settings, poster_radius: parseInt(e.target.value) || 0 })}>
                                     <option value="0">0</option>
                                     <option value="4">4</option>
                                     <option value="10">10</option>
                                 </select>
                             </div>
                         </div>
+
                         <div className="settings-row">
                             <div className="settings-label">背景模糊度</div>
                             <div className="settings-control">
-                                <select className="settings-select" value={settings.backdrop_blur} onChange={e => setSettings({...settings, backdrop_blur: parseInt(e.target.value) || 0})}>
+                                <select className="settings-select" value={settings.backdrop_blur} onChange={e => setSettings({ ...settings, backdrop_blur: parseInt(e.target.value) || 0 })}>
                                     <option value="0">0</option>
                                     <option value="5">5</option>
                                     <option value="10">10</option>
                                 </select>
                             </div>
                         </div>
+
                         <div className="settings-row" style={{ marginTop: '16px' }}>
                             <label className="settings-checkbox-row">
-                                <input type="checkbox" checked={settings.min_window_width > 0} onChange={e => setSettings({...settings, min_window_width: e.target.checked ? 740 : 0})} />
+                                <input type="checkbox" checked={settings.min_window_width > 0} onChange={e => setSettings({ ...settings, min_window_width: e.target.checked ? 740 : 0 })} />
                                 <span className="settings-checkbox-label">窗口最小宽度</span>
                             </label>
                             {settings.min_window_width > 0 && (
                                 <div className="settings-control" style={{ width: '60px', marginLeft: '10px' }}>
-                                    <input className="settings-input" type="number" value={settings.min_window_width || 740} onChange={e => setSettings({...settings, min_window_width: parseInt(e.target.value) || 740})} />
+                                    <input className="settings-input" type="number" value={settings.min_window_width || 740} onChange={e => setSettings({ ...settings, min_window_width: parseInt(e.target.value) || 740 })} />
                                 </div>
                             )}
                         </div>
                     </div>
-                    
-                    <div style={{ flex: 1 }}>
-                        <div className="settings-checkbox-group" style={{ flexDirection: 'column', gap: '4px' }}>
-                            <div style={{ display: 'flex', gap: '40px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.show_subtitle_tag} onChange={e => setSettings({...settings, show_subtitle_tag: e.target.checked})} />
-                                        <span className="settings-checkbox-label">封面显示字幕标签</span>
-                                    </label>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.show_resolution_tag} onChange={e => setSettings({...settings, show_resolution_tag: e.target.checked})} />
-                                        <span className="settings-checkbox-label">封面显示分辨率标签</span>
-                                    </label>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.show_count_tag} onChange={e => setSettings({...settings, show_count_tag: e.target.checked})} />
-                                        <span className="settings-checkbox-label">封面显示数量/已看标签</span>
-                                    </label>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.show_genre_in_list} onChange={e => setSettings({...settings, show_genre_in_list: e.target.checked})} />
-                                        <span className="settings-checkbox-label">列表显示类别</span>
-                                    </label>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.show_series_in_list} onChange={e => setSettings({...settings, show_series_in_list: e.target.checked})} />
-                                        <span className="settings-checkbox-label">列表显示系列</span>
-                                    </label>
-                                    <label className="settings-checkbox-row">
-                                        <input type="checkbox" checked={settings.static_loading} onChange={e => setSettings({...settings, static_loading: e.target.checked})} />
-                                        <span className="settings-checkbox-label">封面静态加载</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <div className="settings-section">
-                <div className="settings-section-title">播 放</div>
+                <div className="settings-section-title">播放</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
                     <label className="settings-checkbox-row" style={{ marginBottom: 0 }}>
-                        <input type="checkbox" checked={settings.use_external_player} onChange={e => setSettings({...settings, use_external_player: e.target.checked})} />
+                        <input type="checkbox" checked={settings.use_external_player} onChange={e => setSettings({ ...settings, use_external_player: e.target.checked })} />
                         <span className="settings-checkbox-label" style={{ fontWeight: 600 }}>调用本地播放器</span>
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '300px' }}>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>路径:</span>
-                        <input className="settings-input" type="text" value={settings.player_path || ''} onChange={e => setSettings({...settings, player_path: e.target.value})} disabled={!settings.use_external_player} />
+                        <input className="settings-input" type="text" value={settings.player_path || ''} onChange={e => setSettings({ ...settings, player_path: e.target.value })} disabled={!settings.use_external_player} />
                     </div>
-                </div>
-                
-                <div className="settings-checkbox-group" style={{ display: 'flex', gap: '30px' }}>
-                    <label className="settings-checkbox-row">
-                        <input type="checkbox" checked={settings.loop_playback} onChange={e => setSettings({...settings, loop_playback: e.target.checked})} />
-                        <span className="settings-checkbox-label">循环播放</span>
-                    </label>
-                    <label className="settings-checkbox-row">
-                        <input type="checkbox" checked={settings.read_file_info} onChange={e => setSettings({...settings, read_file_info: e.target.checked})} />
-                        <span className="settings-checkbox-label">读取视频文件信息</span>
-                    </label>
                 </div>
             </div>
 
             <div className="settings-section">
-                <div className="settings-section-title">快 捷</div>
-                
+                <div className="settings-section-title">快捷</div>
+
                 <div className="settings-row" style={{ marginBottom: '20px' }}>
                     <div className="settings-label">热键注册失败</div>
                     <div className="settings-control">
-                        <select className="settings-select" value={settings.hotkey || 'F1'} onChange={e => setSettings({...settings, hotkey: e.target.value})}>
+                        <select className="settings-select" value={settings.hotkey || 'F1'} onChange={e => setSettings({ ...settings, hotkey: e.target.value })}>
                             <option value="F1">F1</option>
                             <option value="F2">F2</option>
                         </select>
@@ -161,21 +118,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClose }) => {
                 <div className="settings-checkbox-group" style={{ gap: '30px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.min_to_tray} onChange={e => setSettings({...settings, min_to_tray: e.target.checked})} />
+                            <input type="checkbox" checked={settings.min_to_tray} onChange={e => setSettings({ ...settings, min_to_tray: e.target.checked })} />
                             <span className="settings-checkbox-label">最小化到托盘</span>
                         </label>
                         <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.show_prompt} onChange={e => setSettings({...settings, show_prompt: e.target.checked})} />
+                            <input type="checkbox" checked={settings.show_prompt} onChange={e => setSettings({ ...settings, show_prompt: e.target.checked })} />
                             <span className="settings-checkbox-label">打开提示</span>
                         </label>
                         <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.start_with_os} onChange={e => setSettings({...settings, start_with_os: e.target.checked})} />
+                            <input type="checkbox" checked={settings.start_with_os} onChange={e => setSettings({ ...settings, start_with_os: e.target.checked })} />
                             <span className="settings-checkbox-label">开机启动</span>
                         </label>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <label className="settings-checkbox-row">
-                            <input type="checkbox" checked={settings.max_no_taskbar} onChange={e => setSettings({...settings, max_no_taskbar: e.target.checked})} />
+                            <input type="checkbox" checked={settings.max_no_taskbar} onChange={e => setSettings({ ...settings, max_no_taskbar: e.target.checked })} />
                             <span className="settings-checkbox-label">最大化不遮任务栏</span>
                         </label>
                     </div>

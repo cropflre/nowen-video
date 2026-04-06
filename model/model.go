@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,11 +23,16 @@ type User struct {
 
 // Library 媒体库
 type Library struct {
-	ID       string     `json:"id" gorm:"primaryKey;type:text"`
-	Name     string     `json:"name" gorm:"type:text;not null"`
-	Path     string     `json:"path" gorm:"type:text;not null"`      // 媒体文件目录路径
-	Type     string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
-	LastScan *time.Time `json:"last_scan"`
+	ID            string     `json:"id" gorm:"primaryKey;type:text"`
+	Name          string     `json:"name" gorm:"type:text;not null"`
+	Path          string     `json:"path" gorm:"type:text;not null"`      // 媒体文件目录路径
+	Type          string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
+	LastScan      *time.Time `json:"last_scan"`
+	FolderPaths   []string   `json:"folder_paths,omitempty" gorm:"-"`
+	ViewMode      string     `json:"view_mode,omitempty" gorm:"-"`
+	TitleField    string     `json:"title_field,omitempty" gorm:"-"`
+	SubtitleField string     `json:"subtitle_field,omitempty" gorm:"-"`
+	MediaCount    int        `json:"media_count,omitempty" gorm:"-"`
 	// 高级设置
 	PreferLocalNFO    bool   `json:"prefer_local_nfo" gorm:"default:true"`         // 优先读取本地NFO和图片
 	MinFileSize       int    `json:"min_file_size" gorm:"default:3"`               // 排除小于此大小(MB)的视频文件
@@ -84,6 +91,132 @@ func (s *Series) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+type MediaActor struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type LibraryPathConfig struct {
+	Paths         []string `json:"paths,omitempty"`
+	ViewMode      string   `json:"view_mode,omitempty"`
+	TitleField    string   `json:"title_field,omitempty"`
+	SubtitleField string   `json:"subtitle_field,omitempty"`
+}
+
+func normalizeLibraryPathList(paths []string) []string {
+	seen := make(map[string]bool)
+	normalized := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		normalized = append(normalized, path)
+	}
+	return normalized
+}
+
+func defaultLibraryPathConfig() LibraryPathConfig {
+	return LibraryPathConfig{
+		ViewMode:      "poster",
+		TitleField:    "title",
+		SubtitleField: "year",
+	}
+}
+
+func ParseLibraryPathConfig(raw string) LibraryPathConfig {
+	config := defaultLibraryPathConfig()
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return config
+	}
+
+	switch {
+	case strings.HasPrefix(raw, "{"):
+		var decoded LibraryPathConfig
+		if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+			config.Paths = normalizeLibraryPathList(decoded.Paths)
+			if decoded.ViewMode != "" {
+				config.ViewMode = decoded.ViewMode
+			}
+			if decoded.TitleField != "" {
+				config.TitleField = decoded.TitleField
+			}
+			if decoded.SubtitleField != "" {
+				config.SubtitleField = decoded.SubtitleField
+			}
+			return config
+		}
+	case strings.HasPrefix(raw, "["):
+		var decoded []string
+		if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+			config.Paths = normalizeLibraryPathList(decoded)
+			return config
+		}
+	}
+
+	config.Paths = []string{raw}
+	return config
+}
+
+func (l *Library) RootPaths() []string {
+	return ParseLibraryPathConfig(l.Path).Paths
+}
+
+func (l *Library) HydratePathConfig() {
+	config := ParseLibraryPathConfig(l.Path)
+	l.FolderPaths = config.Paths
+	l.ViewMode = config.ViewMode
+	l.TitleField = config.TitleField
+	l.SubtitleField = config.SubtitleField
+	if len(config.Paths) > 0 {
+		l.Path = config.Paths[0]
+	} else {
+		l.Path = ""
+	}
+}
+
+func (l *Library) ApplyPathConfig() error {
+	config := defaultLibraryPathConfig()
+
+	if len(l.FolderPaths) > 0 {
+		config.Paths = normalizeLibraryPathList(l.FolderPaths)
+	} else {
+		config.Paths = normalizeLibraryPathList(ParseLibraryPathConfig(l.Path).Paths)
+	}
+
+	if l.ViewMode != "" {
+		config.ViewMode = l.ViewMode
+	}
+	if l.TitleField != "" {
+		config.TitleField = l.TitleField
+	}
+	if l.SubtitleField != "" {
+		config.SubtitleField = l.SubtitleField
+	}
+
+	if len(config.Paths) == 0 {
+		l.Path = ""
+		return nil
+	}
+
+	if len(config.Paths) == 1 &&
+		config.ViewMode == "poster" &&
+		config.TitleField == "title" &&
+		config.SubtitleField == "year" {
+		l.Path = config.Paths[0]
+		return nil
+	}
+
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	l.Path = string(encoded)
+	return nil
+}
+
 // Media 媒体项（电影/剧集）
 type Media struct {
 	ID           string  `json:"id" gorm:"primaryKey;type:text"`
@@ -124,8 +257,8 @@ type Media struct {
 	VersionTag   string `json:"version_tag" gorm:"type:text"`         // 版本标识（"4K", "Director's Cut" 等）
 	VersionGroup string `json:"version_group" gorm:"index;type:text"` // 同一内容的不同版本共享此 ID
 	// NFO 扩展字段（存储非标准 NFO 数据，避免频繁加列）
-	NfoExtraFields       string `json:"nfo_extra_fields" gorm:"type:text"`        // JSON: sorttitle/maker/label/num/providerIds 等非标准字段
-	NfoRawXml            string `json:"-" gorm:"type:text"`                       // 原始 NFO XML 全文保留（不输出到前端）
+	NfoExtraFields        string `json:"nfo_extra_fields" gorm:"type:text"`        // JSON: sorttitle/maker/label/num/providerIds 等非标准字段
+	NfoRawXml             string `json:"-" gorm:"type:text"`                       // 原始 NFO XML 全文保留（不输出到前端）
 	ReleaseDateNormalized string `json:"release_date_normalized" gorm:"type:text"` // 归一化发布日期 YYYY-MM-DD
 	// 刮削状态追踪（P3）
 	ScrapeStatus   string     `json:"scrape_status" gorm:"type:text;default:pending"` // pending / scraped / failed / manual
@@ -141,8 +274,12 @@ type Media struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
-	Library Library `json:"-" gorm:"foreignKey:LibraryID"`
-	Series  *Series `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+	Library    Library      `json:"-" gorm:"foreignKey:LibraryID"`
+	Series     *Series      `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+	Actor      string       `json:"actor" gorm:"-"`
+	Actors     []MediaActor `json:"actors,omitempty" gorm:"-"`
+	IsFavorite bool         `json:"is_favorite" gorm:"-"`
+	IsWatched  bool         `json:"is_watched" gorm:"-"`
 }
 
 // Person 演职人员

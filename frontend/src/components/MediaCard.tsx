@@ -1,58 +1,85 @@
 import React from 'react';
+import { Play } from 'lucide-react';
+import { PlayFile } from "../../wailsjs/go/main/App";
 
 interface MediaCardProps {
     media: any;
     onClick: () => void;
+    onQuickPlayStatus?: (message: string) => void;
 }
 
-/**
- * 首页卡片强制尺寸：
- * 宽：178px
- * 高：海报区域 255px
- */
-const MediaCard: React.FC<MediaCardProps> = ({ media, onClick }) => {
+const formatError = (error: unknown) => {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+    if (typeof error === 'string') {
+        return error;
+    }
+    return '未知错误';
+};
+
+const MediaCard: React.FC<MediaCardProps> = ({ media, onClick, onQuickPlayStatus }) => {
     const coverUrl = media.poster_path
         ? `/local/${media.poster_path}`
         : media.backdrop_path
             ? `/local/${media.backdrop_path}`
             : '';
 
+    const handleQuickPlay = async (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+
+        const targetPath = typeof media?.file_path === 'string' ? media.file_path.trim() : '';
+        if (!targetPath) {
+            onQuickPlayStatus?.('播放失败：当前卡片没有可播放文件');
+            return;
+        }
+
+        try {
+            onQuickPlayStatus?.(`正在启动播放器：${targetPath.split(/[\\/]/).pop()}`);
+            await PlayFile(targetPath);
+        } catch (error) {
+            console.error(error);
+            onQuickPlayStatus?.(`播放失败：${formatError(error)}`);
+        }
+    };
+
     return (
         <div className="media-card" onClick={onClick}>
-            <div className="media-poster-wrapper" style={{ width: '100%', aspectRatio: '178 / 255', position: 'relative', overflow: 'hidden', borderRadius: '4px', background: '#1a1a25' }}>
+            <div className="media-poster-wrapper">
                 {coverUrl ? (
-                    <img 
-                        src={coverUrl} 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        alt={media.title} 
-                        loading="lazy" 
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/178x255?text=No+Poster';
-                        }} 
+                    <img
+                        src={coverUrl}
+                        className="media-poster-image"
+                        alt={media.title}
+                        loading="lazy"
+                        onError={(event) => {
+                            (event.target as HTMLImageElement).src = 'https://via.placeholder.com/178x255?text=No+Poster';
+                        }}
                     />
                 ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', fontSize: '12px' }}>
+                    <div className="media-poster-empty">
                         No Image
                     </div>
                 )}
-                {/* 模拟标签 - 之后可根据逻辑动态显示 */}
-                <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '2px 6px', background: 'rgba(74, 158, 255, 0.8)', color: '#fff', borderRadius: '4px', fontSize: '10px' }}>字幕</div>
-                <div style={{ position: 'absolute', top: '8px', right: '8px', padding: '2px 6px', background: 'rgba(211, 47, 47, 0.8)', color: '#fff', borderRadius: '4px', fontSize: '10px' }}>破解</div>
-            </div>
-            
-            <div className="media-info" style={{ marginTop: '10px' }}>
-                <div 
-                    className="media-title" 
-                    title={media.title} 
-                    style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#fff' }}
-                >
-                    {media.title || "未知标题"}
+
+                <div className="media-card-play-overlay">
+                    <button
+                        type="button"
+                        className="media-card-play-button"
+                        aria-label={`播放 ${media.title || '当前媒体'}`}
+                        onClick={handleQuickPlay}
+                    >
+                        <Play size={26} strokeWidth={1.8} className="media-card-play-icon" fill="currentColor" />
+                    </button>
                 </div>
-                <div 
-                    className="media-year" 
-                    style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' }}
-                >
-                    {media.year || "未知日期"}
+            </div>
+
+            <div className="media-info">
+                <div className="media-title" title={media.title}>
+                    {media.title || '未知标题'}
+                </div>
+                <div className="media-year">
+                    {media.year || '未知日期'}
                 </div>
             </div>
         </div>

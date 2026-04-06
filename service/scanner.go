@@ -183,22 +183,26 @@ func isBitmapSubtitle(codec string) bool {
 
 // ScannerService 媒体文件扫描服务
 type ScannerService struct {
-	mediaRepo     *repository.MediaRepo
-	seriesRepo    *repository.SeriesRepo
-	matchRuleRepo *repository.MatchRuleRepo // P2: 自定义匹配规则
-	cfg           *config.Config
-	logger        *zap.SugaredLogger
-	wsHub         *WSHub      // WebSocket事件广播
-	nfoService    *NFOService // NFO 本地元数据解析服务
+	mediaRepo       *repository.MediaRepo
+	seriesRepo      *repository.SeriesRepo
+	personRepo      *repository.PersonRepo
+	mediaPersonRepo *repository.MediaPersonRepo
+	matchRuleRepo   *repository.MatchRuleRepo // P2: 自定义匹配规则
+	cfg             *config.Config
+	logger          *zap.SugaredLogger
+	wsHub           *WSHub      // WebSocket事件广播
+	nfoService      *NFOService // NFO 本地元数据解析服务
 }
 
-func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
+func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
 	return &ScannerService{
-		mediaRepo:  mediaRepo,
-		seriesRepo: seriesRepo,
-		cfg:        cfg,
-		logger:     logger,
-		nfoService: NewNFOService(logger),
+		mediaRepo:       mediaRepo,
+		seriesRepo:      seriesRepo,
+		personRepo:      personRepo,
+		mediaPersonRepo: mediaPersonRepo,
+		cfg:             cfg,
+		logger:          logger,
+		nfoService:      NewNFOService(logger),
 	}
 }
 
@@ -210,6 +214,51 @@ func (s *ScannerService) SetMatchRuleRepo(repo *repository.MatchRuleRepo) {
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *ScannerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *ScannerService) persistActorsForMedia(media *model.Media) {
+	if media == nil || media.ID == "" || media.FilePath == "" || s.personRepo == nil || s.mediaPersonRepo == nil {
+		return
+	}
+
+	nfoPath := s.nfoService.FindNFOForMedia(media.FilePath)
+	if nfoPath == "" {
+		return
+	}
+
+	actors, _, err := s.nfoService.GetActorsFromNFO(nfoPath)
+	if err != nil || len(actors) == 0 {
+		return
+	}
+
+	_ = s.mediaPersonRepo.DeleteByMediaID(media.ID)
+	seen := make(map[string]bool)
+	for index, actor := range actors {
+		name := strings.TrimSpace(actor.Name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		person, err := s.personRepo.FindOrCreate(name, 0)
+		if err != nil || person == nil {
+			continue
+		}
+
+		sortOrder := actor.SortOrder
+		if sortOrder <= 0 {
+			sortOrder = index
+		}
+
+		if err := s.mediaPersonRepo.Create(&model.MediaPerson{
+			MediaID:   media.ID,
+			PersonID:  person.ID,
+			Role:      "actor",
+			SortOrder: sortOrder,
+		}); err != nil {
+			s.logger.Warnf("persist actor relation failed: media=%s actor=%s err=%v", media.ID, name, err)
+		}
+	}
 }
 
 // ScanLibrary 扫描媒体库目录
@@ -225,16 +274,34 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	})
 
 	// 根据媒体库类型采用不同的扫描策略
+	rootPaths := library.RootPaths()
+	if len(rootPaths) == 0 {
+		rootPaths = []string{strings.TrimSpace(library.Path)}
+	}
+
 	var count int
 	var err error
 
-	switch library.Type {
-	case "tvshow":
-		count, err = s.scanTVShowLibrary(library)
-	case "mixed":
-		count, err = s.scanMixedLibrary(library)
-	default:
-		count, err = s.scanMovieLibrary(library)
+	for _, rootPath := range rootPaths {
+		if strings.TrimSpace(rootPath) == "" {
+			continue
+		}
+		rootLibrary := *library
+		rootLibrary.Path = rootPath
+
+		var scanned int
+		switch library.Type {
+		case "tvshow":
+			scanned, err = s.scanTVShowLibrary(&rootLibrary)
+		case "mixed":
+			scanned, err = s.scanMixedLibrary(&rootLibrary)
+		default:
+			scanned, err = s.scanMovieLibrary(&rootLibrary)
+		}
+		count += scanned
+		if err != nil {
+			break
+		}
 	}
 
 	if err != nil {
@@ -605,6 +672,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 				s.logger.Warnf("保存媒体失败: %s, 错误: %v", pm.path, err)
 				continue
 			}
+			s.persistActorsForMedia(pm.media)
 			count++
 			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
