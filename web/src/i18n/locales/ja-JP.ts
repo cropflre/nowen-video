@@ -570,6 +570,18 @@ const jaJP: Record<string, string> = {
   'mediaInfo.addedDate': '追加日：',
   'mediaInfo.totalDuration': '再生時間：',
 
+  // ==================== キャスト・スタッフ ====================
+  'castGrid.title': 'キャスト・スタッフ',
+  'castGrid.collapse': '折りたたむ',
+  'castGrid.viewAll': '全{count}人を表示',
+  'castGrid.unknown': '不明',
+  'castGrid.asRole': '{character}役',
+  'castGrid.playAs': '役',
+  'castGrid.roleDirector': '監督',
+  'castGrid.roleActor': '俳優',
+  'castGrid.roleWriter': '脚本',
+  'castGrid.viewOnTMDb': 'TMDbで詳細を見る',
+
   // ==================== アクセスログ ====================
   'accessLogs.title': 'アクセスログ',
   'accessLogs.loadFailed': 'アクセスログの読み込みに失敗しました',

@@ -4,7 +4,7 @@ import { seriesApi, userApi, streamApi, playlistApi, adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import EditMetadataModal from '@/components/EditMetadataModal'
-import CastGrid from '@/components/media/CastGrid'
+import { CastGrid } from '@/components/media'
 import type { Series, SeasonInfo, Media, Playlist, WatchHistory, MediaPerson } from '@/types'
 import {
   Play,

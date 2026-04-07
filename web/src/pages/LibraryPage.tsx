@@ -153,8 +153,44 @@ export default function LibraryPage() {
   }, [mixedItems, searchQuery, filterGenre, sortValue])
 
   // 筛选后的剧集
+  // 对同名系列去重：标准化标题相同的多个 Series 只展示元数据最丰富的那个
+  const deduplicatedSeries = useMemo(() => {
+    const normalize = (title: string) => {
+      return title
+        .replace(/\s*S\d{1,2}\s*$/i, '')
+        .replace(/\s*Season\s*\d{1,2}\s*$/i, '')
+        .replace(/\s*第\s*[一二三四五六七八九十\d]+\s*季\s*$/, '')
+        .replace(/\s*第\s*[一二三四五六七八九十\d]+\s*部\s*$/, '')
+        .replace(/\s*[\(（]\s*Season\s*\d{1,2}\s*[\)）]\s*$/i, '')
+        .replace(/\s*【\s*第?\s*[一二三四五六七八九十\d]+\s*季?\s*】\s*$/, '')
+        .trim() || title
+    }
+    const groups = new Map<string, { best: typeof seriesList[0]; totalSeasons: number; totalEps: number }>()
+    const order: string[] = []
+    for (const s of seriesList) {
+      const key = `${s.library_id}:${normalize(s.title)}`
+      const existing = groups.get(key)
+      if (existing) {
+        existing.totalSeasons += s.season_count
+        existing.totalEps += s.episode_count
+        // 选择元数据更丰富的作为代表
+        const score = (s2: typeof s) => (s2.overview ? 3 : 0) + (s2.poster_path ? 3 : 0) + (s2.rating > 0 ? 2 : 0) + (s2.tmdb_id > 0 ? 2 : 0) + s2.episode_count
+        if (score(s) > score(existing.best)) {
+          existing.best = s
+        }
+      } else {
+        groups.set(key, { best: s, totalSeasons: s.season_count, totalEps: s.episode_count })
+        order.push(key)
+      }
+    }
+    return order.map(key => {
+      const g = groups.get(key)!
+      return { ...g.best, season_count: g.totalSeasons, episode_count: g.totalEps }
+    })
+  }, [seriesList])
+
   const filteredSeries = useMemo(() => {
-    let items = [...seriesList]
+    let items = [...deduplicatedSeries]
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
       items = items.filter(
@@ -165,7 +201,7 @@ export default function LibraryPage() {
       )
     }
     return items
-  }, [seriesList, searchQuery])
+  }, [deduplicatedSeries, searchQuery])
 
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sortValue)?.label || '排序'
 

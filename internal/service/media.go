@@ -123,6 +123,9 @@ func (s *MediaService) ListMixed(page, size int, libraryID string) ([]MixedItem,
 		return nil, 0, err
 	}
 
+	// 2.5 对同名 Series 去重：标准化标题相同的多个 Series 只展示元数据最丰富的那个
+	seriesList = deduplicateSeriesByTitle(seriesList)
+
 	// 3. 合并为混合列表，按 created_at 降序排列
 	var allItems []MixedItem
 	for i := range movies {

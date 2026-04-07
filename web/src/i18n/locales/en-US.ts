@@ -577,6 +577,18 @@ const enUS: Record<string, string> = {
   'mediaInfo.addedDate': 'Added: ',
   'mediaInfo.totalDuration': 'Duration: ',
 
+  // ==================== Cast & Crew ====================
+  'castGrid.title': 'Cast & Crew',
+  'castGrid.collapse': 'Collapse',
+  'castGrid.viewAll': 'View all {count} people',
+  'castGrid.unknown': 'Unknown',
+  'castGrid.asRole': 'as {character}',
+  'castGrid.playAs': 'as',
+  'castGrid.roleDirector': 'Director',
+  'castGrid.roleActor': 'Actor',
+  'castGrid.roleWriter': 'Writer',
+  'castGrid.viewOnTMDb': 'View on TMDb',
+
   // ==================== Access Logs ====================
   'accessLogs.title': 'Access Logs',
   'accessLogs.loadFailed': 'Failed to load access logs',

@@ -559,6 +559,18 @@ const zhCN: Record<string, string> = {
   'mediaInfo.addedDate': '添加日期：',
   'mediaInfo.totalDuration': '总时长：',
 
+  // ==================== 演职人员 ====================
+  'castGrid.title': '演职人员',
+  'castGrid.collapse': '收起',
+  'castGrid.viewAll': '查看全部 {count} 人',
+  'castGrid.unknown': '未知',
+  'castGrid.asRole': '饰 {character}',
+  'castGrid.playAs': '饰演',
+  'castGrid.roleDirector': '导演',
+  'castGrid.roleActor': '演员',
+  'castGrid.roleWriter': '编剧',
+  'castGrid.viewOnTMDb': '在 TMDb 查看详情',
+
   // ==================== 访问日志 ====================
   'accessLogs.title': '访问日志',
   'accessLogs.loadFailed': '加载访问日志失败',

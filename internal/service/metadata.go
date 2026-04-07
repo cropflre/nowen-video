@@ -21,7 +21,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
-))
+)
 
 // MetadataService 元数据刮削服务
 type MetadataService struct {

@@ -4,7 +4,7 @@ import { mediaApi, userApi, streamApi, playlistApi, recommendApi, adminApi } fro
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, WatchHistory, TechSpecs, FileDetail, LibraryInfo, PlaybackStatsInfo } from '@/types'
-import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal } from '@/components/media'
+import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal, CastGrid } from '@/components/media'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import { useTranslation } from '@/i18n'
@@ -355,6 +355,9 @@ export default function MediaDetailPage() {
           playInfo={playInfo}
           persons={persons}
         />
+
+        {/* 演职人员 */}
+        <CastGrid persons={persons} />
 
         {/* 文件信息与技术规格（统一展示区域） */}
         <MediaTechSpecs

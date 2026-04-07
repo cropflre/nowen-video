@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import type { MediaPerson } from '@/types'
 import { User, X, Film, ChevronDown, ChevronUp } from 'lucide-react'
 import clsx from 'clsx'
+import { useTranslation } from '@/i18n'
 
 interface CastGridProps {
   persons: MediaPerson[]
@@ -9,11 +10,17 @@ interface CastGridProps {
   initialCount?: number
 }
 
-/** 角色类型映射 */
-const roleLabels: Record<string, string> = {
-  director: '导演',
-  actor: '演员',
-  writer: '编剧',
+/** 获取角色类型的国际化标签 */
+function useRoleLabel() {
+  const { t } = useTranslation()
+  return (role: string) => {
+    const map: Record<string, string> = {
+      director: t('castGrid.roleDirector'),
+      actor: t('castGrid.roleActor'),
+      writer: t('castGrid.roleWriter'),
+    }
+    return map[role] || role
+  }
 }
 
 const rolePriority: Record<string, number> = {
@@ -23,6 +30,7 @@ const rolePriority: Record<string, number> = {
 }
 
 export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [selectedPerson, setSelectedPerson] = useState<MediaPerson | null>(null)
 
@@ -51,7 +59,7 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
         style={{ color: 'var(--text-primary)' }}
       >
         <Film size={16} className="text-neon/60" />
-        演职人员
+        {t('castGrid.title')}
         <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
           ({persons.length})
         </span>
@@ -74,12 +82,12 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
           {expanded ? (
             <>
               <ChevronUp size={14} />
-              收起
+              {t('castGrid.collapse')}
             </>
           ) : (
             <>
               <ChevronDown size={14} />
-              查看全部 {sortedPersons.length} 人
+              {t('castGrid.viewAll', { count: sortedPersons.length })}
             </>
           )}
         </button>
@@ -104,6 +112,8 @@ function CastCard({
   mediaPerson: MediaPerson
   onClick: (mp: MediaPerson) => void
 }) {
+  const { t } = useTranslation()
+  const getRoleLabel = useRoleLabel()
   const [imgError, setImgError] = useState(false)
   const person = mediaPerson.person
   const profileUrl = person?.profile_url
@@ -152,7 +162,7 @@ function CastCard({
               color: mediaPerson.role === 'director' ? '#FBBF24' : '#93C5FD',
             }}
           >
-            {roleLabels[mediaPerson.role] || mediaPerson.role}
+            {getRoleLabel(mediaPerson.role)}
           </div>
         )}
       </div>
@@ -163,16 +173,16 @@ function CastCard({
           className="truncate text-xs font-medium transition-colors group-hover:text-neon"
           style={{ color: 'var(--text-primary)' }}
         >
-          {person?.name || '未知'}
+          {person?.name || t('castGrid.unknown')}
         </p>
         {/* 饰演角色 */}
         {mediaPerson.character && (
           <p
             className="mt-0.5 truncate text-[10px]"
             style={{ color: 'var(--text-muted)' }}
-            title={`饰 ${mediaPerson.character}`}
+            title={t('castGrid.asRole', { character: mediaPerson.character })}
           >
-            饰 {mediaPerson.character}
+            {t('castGrid.asRole', { character: mediaPerson.character })}
           </p>
         )}
         {/* 导演/编剧没有 character 时显示角色类型 */}
@@ -181,7 +191,7 @@ function CastCard({
             className="mt-0.5 truncate text-[10px]"
             style={{ color: 'var(--text-muted)' }}
           >
-            {roleLabels[mediaPerson.role] || mediaPerson.role}
+            {getRoleLabel(mediaPerson.role)}
           </p>
         )}
       </div>
@@ -197,6 +207,8 @@ function PersonDetailModal({
   person: MediaPerson
   onClose: () => void
 }) {
+  const { t } = useTranslation()
+  const getRoleLabel = useRoleLabel()
   const [imgError, setImgError] = useState(false)
   const person = mp.person
   const profileUrl = person?.profile_url
@@ -261,7 +273,7 @@ function PersonDetailModal({
               className="text-lg font-bold"
               style={{ color: 'var(--text-primary)' }}
             >
-              {person?.name || '未知'}
+              {person?.name || t('castGrid.unknown')}
             </h3>
             {person?.orig_name && person.orig_name !== person.name && (
               <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -299,13 +311,13 @@ function PersonDetailModal({
                         : 'var(--text-secondary)',
                   }}
                 >
-                  {roleLabels[mp.role] || mp.role}
+                  {getRoleLabel(mp.role)}
                 </span>
               </div>
 
               {mp.character && (
                 <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  饰演 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{mp.character}</span>
+                  {t('castGrid.playAs')} <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{mp.character}</span>
                 </p>
               )}
 
@@ -320,7 +332,7 @@ function PersonDetailModal({
                     color: '#01b4e4',
                   }}
                 >
-                  🎬 在 TMDb 查看详情
+                  🎬 {t('castGrid.viewOnTMDb')}
                 </a>
               )}
             </div>

@@ -302,5 +302,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
 	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
 
+	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
+	svcs.Library.SetSeriesService(svcs.Series)
+
 	return svcs
 }

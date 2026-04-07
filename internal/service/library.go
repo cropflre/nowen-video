@@ -13,17 +13,18 @@ import (
 
 // LibraryService 媒体库服务
 type LibraryService struct {
-	repo        *repository.LibraryRepo
-	mediaRepo   *repository.MediaRepo
-	seriesRepo  *repository.SeriesRepo
-	favRepo     *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
-	historyRepo *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
-	scanner     *ScannerService
-	metadata    *MetadataService
-	logger      *zap.SugaredLogger
-	scanning    sync.Map            // 记录正在扫描的媒体库ID
-	wsHub       *WSHub              // WebSocket事件广播
-	fileWatcher *FileWatcherService // 文件监听服务
+	repo          *repository.LibraryRepo
+	mediaRepo     *repository.MediaRepo
+	seriesRepo    *repository.SeriesRepo
+	favRepo       *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
+	historyRepo   *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
+	scanner       *ScannerService
+	metadata      *MetadataService
+	seriesService *SeriesService // 剧集合集服务（用于扫描后自动合并）
+	logger        *zap.SugaredLogger
+	scanning      sync.Map            // 记录正在扫描的媒体库ID
+	wsHub         *WSHub              // WebSocket事件广播
+	fileWatcher   *FileWatcherService // 文件监听服务
 }
 
 func NewLibraryService(
@@ -56,6 +57,11 @@ func (s *LibraryService) SetWSHub(hub *WSHub) {
 // SetFileWatcher 设置文件监听服务（延迟注入）
 func (s *LibraryService) SetFileWatcher(fw *FileWatcherService) {
 	s.fileWatcher = fw
+}
+
+// SetSeriesService 设置剧集合集服务（延迟注入，用于扫描后自动合并重复剧集）
+func (s *LibraryService) SetSeriesService(ss *SeriesService) {
+	s.seriesService = ss
 }
 
 // CleanOrphanedData 清理孤立数据：删除 library_id 指向已不存在的媒体库的 Media 和 Series 记录
@@ -240,6 +246,20 @@ func (s *LibraryService) Scan(id string) error {
 						s.logger.Infof("媒体库 %s 元数据刮削: 成功 %d, 失败 %d", lib.Name, success, failed)
 					}
 				}
+			}
+		}
+
+		// 第三步：自动合并同名剧集（如「女神咖啡厅 第一季」和「女神咖啡厅 第二季」）
+		if s.seriesService != nil && (lib.Type == "tvshow" || lib.Type == "mixed") {
+			results, err := s.seriesService.AutoMergeDuplicates()
+			if err != nil {
+				s.logger.Warnf("媒体库 %s 自动合并剧集失败: %v", lib.Name, err)
+			} else if len(results) > 0 {
+				totalMerged := 0
+				for _, r := range results {
+					totalMerged += r.MergedCount
+				}
+				s.logger.Infof("媒体库 %s 自动合并完成: %d 组, 共合并 %d 条重复记录", lib.Name, len(results), totalMerged)
 			}
 		}
 	}()
@@ -443,6 +463,20 @@ func (s *LibraryService) Reindex(id string) error {
 						s.logger.Infof("媒体库 %s 重建索引刮削(电影): 成功 %d, 失败 %d", lib.Name, success, failed)
 					}
 				}
+			}
+		}
+
+		// 重建索引后自动合并同名剧集
+		if s.seriesService != nil && (lib.Type == "tvshow" || lib.Type == "mixed") {
+			results, err := s.seriesService.AutoMergeDuplicates()
+			if err != nil {
+				s.logger.Warnf("媒体库 %s 重建索引后自动合并失败: %v", lib.Name, err)
+			} else if len(results) > 0 {
+				totalMerged := 0
+				for _, r := range results {
+					totalMerged += r.MergedCount
+				}
+				s.logger.Infof("媒体库 %s 重建索引后自动合并: %d 组, 共合并 %d 条", lib.Name, len(results), totalMerged)
 			}
 		}
 	}()
