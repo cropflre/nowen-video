@@ -251,6 +251,63 @@ type TMDbTVEpisode struct {
 	Runtime       int     `json:"runtime"`
 }
 
+// TMDbFindResult TMDb Find API 返回结果（通过外部 ID 查找）
+type TMDbFindResult struct {
+	MovieResults []TMDbMovie `json:"movie_results"`
+	TVResults    []TMDbMovie `json:"tv_results"`
+}
+
+// FindByIMDbID 通过 IMDB ID 查找 TMDb 条目
+// 使用 TMDb 的 /3/find/{external_id} API，支持 IMDB ID (tt开头) 转换为 TMDb ID
+// 返回: (TMDb搜索结果, 媒体类型 "movie"/"tv", 错误)
+func (s *MetadataService) FindByIMDbID(imdbID string) (*TMDbMovie, string, error) {
+	if s.cfg.Secrets.TMDbAPIKey == "" {
+		return nil, "", fmt.Errorf("TMDb API Key 未配置")
+	}
+
+	apiURL := fmt.Sprintf("%s/3/find/%s?api_key=%s&external_source=imdb_id&language=zh-CN",
+		s.getTMDbAPIBase(), imdbID, s.cfg.Secrets.TMDbAPIKey)
+
+	resp, err := s.tmdbGetWithRetry(apiURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("TMDb Find API 请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result TMDbFindResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, "", fmt.Errorf("解析 TMDb Find 响应失败: %w", err)
+	}
+
+	// 优先返回电影结果
+	if len(result.MovieResults) > 0 {
+		s.logger.Infof("IMDB ID %s -> TMDb 电影 ID %d (%s)", imdbID, result.MovieResults[0].ID, result.MovieResults[0].Title)
+		return &result.MovieResults[0], "movie", nil
+	}
+
+	// 其次返回剧集结果
+	if len(result.TVResults) > 0 {
+		name := result.TVResults[0].Name
+		if name == "" {
+			name = result.TVResults[0].Title
+		}
+		s.logger.Infof("IMDB ID %s -> TMDb 剧集 ID %d (%s)", imdbID, result.TVResults[0].ID, name)
+		return &result.TVResults[0], "tv", nil
+	}
+
+	return nil, "", fmt.Errorf("IMDB ID %s 在 TMDb 中未找到匹配结果", imdbID)
+}
+
+// ConvertIMDbToTMDbID 将 IMDB ID 转换为 TMDb ID
+// 返回: (tmdbID, mediaType, error)
+func (s *MetadataService) ConvertIMDbToTMDbID(imdbID string) (int, string, error) {
+	movie, mediaType, err := s.FindByIMDbID(imdbID)
+	if err != nil {
+		return 0, "", err
+	}
+	return movie.ID, mediaType, nil
+}
+
 // TMDbCredits TMDb 演职人员信息（/movie/{id}/credits 或 /tv/{id}/credits 返回）
 type TMDbCredits struct {
 	Cast []TMDbCastMember `json:"cast"`
@@ -290,6 +347,21 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	now := time.Now()
 	media.ScrapeAttempts++
 	media.LastScrapeAt = &now
+
+	// P1: 如果扫描阶段已从文件名解析到 IMDB ID，先转换为 TMDb ID
+	if media.IMDbID != "" && media.TMDbID == 0 {
+		s.logger.Infof("检测到 IMDbID=%s（来自文件名），通过 TMDb Find API 转换: %s", media.IMDbID, media.Title)
+		tmdbID, mediaType, err := s.ConvertIMDbToTMDbID(media.IMDbID)
+		if err == nil {
+			media.TMDbID = tmdbID
+			if mediaType == "tv" && media.MediaType == "movie" {
+				media.MediaType = "episode"
+			}
+			s.logger.Infof("IMDB ID %s -> TMDb ID %d (%s)", media.IMDbID, tmdbID, mediaType)
+		} else {
+			s.logger.Debugf("IMDB ID %s 转换失败，回退到搜索模式: %v", media.IMDbID, err)
+		}
+	}
 
 	// P1: 如果扫描阶段已从文件名解析到 TMDb ID，直接用 ID 获取详情，跳过搜索步骤
 	if media.TMDbID > 0 && media.Overview == "" {
@@ -1976,6 +2048,7 @@ func (s *MetadataService) UnmatchMedia(mediaID string) error {
 
 	// 清除所有从 TMDb/豆瓣获取的元数据（保留文件扫描的原始信息）
 	media.TMDbID = 0
+	media.IMDbID = ""
 	media.DoubanID = ""
 	media.Overview = ""
 	media.PosterPath = ""
@@ -2002,6 +2075,7 @@ func (s *MetadataService) UnmatchSeries(seriesID string) error {
 	}
 
 	series.TMDbID = 0
+	series.IMDbID = ""
 	series.DoubanID = ""
 	series.Overview = ""
 	series.PosterPath = ""

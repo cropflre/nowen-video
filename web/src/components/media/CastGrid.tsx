@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import type { MediaPerson } from '@/types'
-import { User, X, Film, ChevronDown, ChevronUp } from 'lucide-react'
+import { User, X, Film } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
 
@@ -31,25 +31,35 @@ const rolePriority: Record<string, number> = {
 
 export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const [selectedPerson, setSelectedPerson] = useState<MediaPerson | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // 去重：相同 person_id + role 只保留第一条（兜底，后端合并时已去重）
+  const dedupedPersons = useMemo(() => {
+    const seen = new Set<string>()
+    return persons.filter((mp) => {
+      const key = `${mp.person_id}:${mp.role}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [persons])
 
   // 按角色排序：导演 > 编剧 > 演员，同角色按 sort_order 排序
-  const sortedPersons = [...persons].sort((a, b) => {
-    const pa = rolePriority[a.role] ?? 99
-    const pb = rolePriority[b.role] ?? 99
-    if (pa !== pb) return pa - pb
-    return a.sort_order - b.sort_order
-  })
-
-  const displayPersons = expanded ? sortedPersons : sortedPersons.slice(0, initialCount)
-  const hasMore = sortedPersons.length > initialCount
+  const sortedPersons = useMemo(() => {
+    return [...dedupedPersons].sort((a, b) => {
+      const pa = rolePriority[a.role] ?? 99
+      const pb = rolePriority[b.role] ?? 99
+      if (pa !== pb) return pa - pb
+      return a.sort_order - b.sort_order
+    })
+  }, [dedupedPersons])
 
   const handleCardClick = useCallback((person: MediaPerson) => {
     setSelectedPerson(person)
   }, [])
 
-  if (persons.length === 0) return null
+  if (dedupedPersons.length === 0) return null
 
   return (
     <section>
@@ -61,37 +71,23 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
         <Film size={16} className="text-neon/60" />
         {t('castGrid.title')}
         <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
-          ({persons.length})
+          ({dedupedPersons.length})
         </span>
       </h3>
 
-      {/* 网格布局 */}
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-        {displayPersons.map((mp) => (
+      {/* 横向滚动布局 */}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto pb-2"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'var(--border-strong) transparent',
+        }}
+      >
+        {sortedPersons.map((mp) => (
           <CastCard key={mp.id} mediaPerson={mp} onClick={handleCardClick} />
         ))}
       </div>
-
-      {/* 展开/收起按钮 */}
-      {hasMore && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-4 flex items-center gap-1.5 text-xs font-medium transition-colors hover:text-neon-blue"
-          style={{ color: 'var(--neon-blue)' }}
-        >
-          {expanded ? (
-            <>
-              <ChevronUp size={14} />
-              {t('castGrid.collapse')}
-            </>
-          ) : (
-            <>
-              <ChevronDown size={14} />
-              {t('castGrid.viewAll', { count: sortedPersons.length })}
-            </>
-          )}
-        </button>
-      )}
 
       {/* 详情弹窗 */}
       {selectedPerson && (
@@ -121,7 +117,7 @@ function CastCard({
   return (
     <button
       onClick={() => onClick(mediaPerson)}
-      className="group flex flex-col items-center gap-2 rounded-xl p-2 transition-all duration-300 hover:scale-[1.03]"
+      className="group flex w-24 flex-shrink-0 flex-col items-center gap-2 rounded-xl p-2 transition-all duration-300 hover:scale-[1.03] sm:w-28"
       style={{
         background: 'var(--bg-card)',
         border: '1px solid var(--border-default)',

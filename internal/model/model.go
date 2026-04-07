@@ -58,6 +58,7 @@ type Series struct {
 	EpisodeCount int     `json:"episode_count"`                                     // 总集数
 	// V2 扩展字段
 	TMDbID    int    `json:"tmdb_id" gorm:"index"`
+	IMDbID    string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
 	DoubanID  string `json:"douban_id" gorm:"type:text"`
 	BangumiID int    `json:"bangumi_id" gorm:"index"` // Bangumi 条目 ID
 	Country   string `json:"country" gorm:"type:text"`
@@ -105,14 +106,15 @@ type Media struct {
 	// STRM 远程流支持
 	StreamURL string `json:"stream_url" gorm:"type:text"` // .strm 文件中的远程流地址（为空表示本地文件）
 	// V2 扩展字段
-	TMDbID     int    `json:"tmdb_id" gorm:"index"`         // TMDb 唯一 ID
-	DoubanID   string `json:"douban_id" gorm:"type:text"`   // 豆瓣 ID
-	BangumiID  int    `json:"bangumi_id" gorm:"index"`      // Bangumi 条目 ID
-	Country    string `json:"country" gorm:"type:text"`     // 制片国家
-	Language   string `json:"language" gorm:"type:text"`    // 语言
-	Tagline    string `json:"tagline" gorm:"type:text"`     // 标语/宣传语
-	Studio     string `json:"studio" gorm:"type:text"`      // 出品公司
-	TrailerURL string `json:"trailer_url" gorm:"type:text"` // 预告片链接（YouTube）
+	TMDbID     int    `json:"tmdb_id" gorm:"index"`           // TMDb 唯一 ID
+	IMDbID     string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
+	DoubanID   string `json:"douban_id" gorm:"type:text"`     // 豆瓣 ID
+	BangumiID  int    `json:"bangumi_id" gorm:"index"`        // Bangumi 条目 ID
+	Country    string `json:"country" gorm:"type:text"`       // 制片国家
+	Language   string `json:"language" gorm:"type:text"`      // 语言
+	Tagline    string `json:"tagline" gorm:"type:text"`       // 标语/宣传语
+	Studio     string `json:"studio" gorm:"type:text"`        // 出品公司
+	TrailerURL string `json:"trailer_url" gorm:"type:text"`   // 预告片链接（YouTube）
 	// 多CD堆叠 & 多版本聚合（P2）
 	StackGroup   string `json:"stack_group" gorm:"index;type:text"`   // 堆叠组 ID（cd1/cd2 共享同一组 ID）
 	StackOrder   int    `json:"stack_order"`                          // 堆叠顺序（1=cd1, 2=cd2...）

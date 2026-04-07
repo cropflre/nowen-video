@@ -177,6 +177,8 @@ func (s *ScrapeManagerService) executeScrape(task *model.ScrapeTask) {
 	switch task.Source {
 	case "tmdb":
 		err = s.scrapeTMDb(task)
+	case "imdb":
+		err = s.scrapeIMDb(task)
 	case "douban":
 		err = s.scrapeDouban(task)
 	case "bangumi":
@@ -243,6 +245,39 @@ func (s *ScrapeManagerService) scrapeTMDb(task *model.ScrapeTask) error {
 	}
 
 	s.applyTMDbResult(task, &results[0])
+	return nil
+}
+
+// scrapeIMDb 从 IMDB URL 刮削（通过 TMDb Find API 桥接）
+// 工作流程: IMDB URL -> 提取 tt 编号 -> TMDb Find API -> TMDb ID -> 获取完整元数据
+func (s *ScrapeManagerService) scrapeIMDb(task *model.ScrapeTask) error {
+	// 从 URL 中提取 IMDB ID
+	imdbID := s.extractIMDbID(task.URL)
+	if imdbID == "" {
+		return fmt.Errorf("无法从 IMDB URL 中提取 ID: %s", task.URL)
+	}
+
+	s.logger.Infof("IMDB 刮削: 提取到 ID %s, 开始通过 TMDb Find API 查询", imdbID)
+
+	// 通过 TMDb Find API 将 IMDB ID 转换为 TMDb 条目
+	movie, mediaType, err := s.metadata.FindByIMDbID(imdbID)
+	if err != nil {
+		return fmt.Errorf("IMDB ID %s 转换失败: %w", imdbID, err)
+	}
+
+	// 更新任务的媒体类型（如果用户未指定）
+	if task.MediaType == "" {
+		if mediaType == "tv" {
+			task.MediaType = "tvshow"
+		} else {
+			task.MediaType = "movie"
+		}
+	}
+
+	// 应用 TMDb 搜索结果
+	s.applyTMDbResult(task, movie)
+
+	s.logger.Infof("IMDB 刮削成功: %s -> TMDb ID %d (%s)", imdbID, movie.ID, task.ResultTitle)
 	return nil
 }
 
@@ -690,7 +725,7 @@ func (s *ScrapeManagerService) detectSource(urlStr string) string {
 	case strings.Contains(host, "douban.com"):
 		return "douban"
 	case strings.Contains(host, "imdb.com"):
-		return "tmdb" // IMDB通过TMDb查询
+		return "imdb" // IMDB 通过 TMDb Find API 桥接查询
 	case strings.Contains(host, "bgm.tv") || strings.Contains(host, "bangumi"):
 		return "bangumi"
 	default:
@@ -725,6 +760,17 @@ func (s *ScrapeManagerService) extractTitleFromURL(urlStr string) string {
 		q = u.Query().Get("title")
 	}
 	return q
+}
+
+// extractIMDbID 从 IMDB URL 中提取 tt 编号
+// 支持格式: https://www.imdb.com/title/tt1234567/ 或 https://www.imdb.com/title/tt1234567
+func (s *ScrapeManagerService) extractIMDbID(urlStr string) string {
+	re := regexp.MustCompile(`/title/(tt\d+)`)
+	matches := re.FindStringSubmatch(urlStr)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
 }
 
 // extractTMDbID 从TMDb URL中提取ID

@@ -93,6 +93,25 @@ func (r *MediaPersonRepo) DeleteBySeriesID(seriesID string) error {
 	return r.db.Where("series_id = ?", seriesID).Delete(&model.MediaPerson{}).Error
 }
 
+// DeduplicateBySeriesID 清理同一 series_id 下重复的演职人员记录
+// 相同 person_id + role 只保留 sort_order 最小的那条
+func (r *MediaPersonRepo) DeduplicateBySeriesID(seriesID string) (int64, error) {
+	// 子查询：找出每组 (person_id, role) 中需要保留的记录 ID（sort_order 最小的）
+	// 然后删除不在保留列表中的记录
+	result := r.db.Exec(`
+		DELETE FROM media_persons
+		WHERE series_id = ? AND id NOT IN (
+			SELECT keep_id FROM (
+				SELECT MIN(id) as keep_id
+				FROM media_persons
+				WHERE series_id = ?
+				GROUP BY person_id, role
+			) AS keeper
+		)
+	`, seriesID, seriesID)
+	return result.RowsAffected, result.Error
+}
+
 func (r *MediaPersonRepo) ListByPersonID(personID string) ([]model.MediaPerson, error) {
 	var mps []model.MediaPerson
 	err := r.db.Where("person_id = ?", personID).Find(&mps).Error

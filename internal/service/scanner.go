@@ -380,6 +380,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		// P0: 增强的标题提取（含年份 + ID 标签解析）
 		filename := filepath.Base(path)
 		title, year, tmdbID := s.extractTitleEnhanced(filename)
+
+		// 提取 IMDB ID 标签（如 [imdbid=tt1234567]）
+		imdbID := ""
+		idType, idValue := parseIDFromName(filepath.Base(path))
+		if idType == "imdbid" || idType == "imdb" {
+			imdbID = idValue
+		}
+
 		media := &model.Media{
 			LibraryID:    library.ID,
 			Title:        title,
@@ -388,6 +396,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			MediaType:    "movie",
 			Year:         year,
 			TMDbID:       tmdbID,
+			IMDbID:       imdbID,
 			ScrapeStatus: "pending",
 		}
 
@@ -2313,6 +2322,8 @@ func (s *ScannerService) extractTitleEnhanced(filename string) (title string, ye
 	if idType == "tmdbid" || idType == "tmdb" {
 		tmdbID, _ = strconv.Atoi(idValue)
 	}
+	// 注意：IMDB ID (imdbid/imdb) 标签在此处仅被识别和移除，
+	// 实际的 IMDB ID → TMDb ID 转换在刮削阶段（ScrapeMedia）中通过网络请求完成
 	// 从名称中移除 ID 标签
 	for _, pattern := range idTagPatterns {
 		name = pattern.ReplaceAllString(name, "")

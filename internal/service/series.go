@@ -142,12 +142,12 @@ type SeasonInfo struct {
 
 // MergeResult 合并操作结果
 type MergeResult struct {
-	PrimarySeriesID   string `json:"primary_series_id"`
-	PrimaryTitle      string `json:"primary_title"`
-	MergedCount       int    `json:"merged_count"`        // 被合并的 Series 数量
-	TotalEpisodes     int    `json:"total_episodes"`      // 合并后总集数
-	TotalSeasons      int    `json:"total_seasons"`       // 合并后总季数
-	MergedSeriesIDs   []string `json:"merged_series_ids"` // 被合并的 Series ID 列表
+	PrimarySeriesID string   `json:"primary_series_id"`
+	PrimaryTitle    string   `json:"primary_title"`
+	MergedCount     int      `json:"merged_count"`      // 被合并的 Series 数量
+	TotalEpisodes   int      `json:"total_episodes"`    // 合并后总集数
+	TotalSeasons    int      `json:"total_seasons"`     // 合并后总季数
+	MergedSeriesIDs []string `json:"merged_series_ids"` // 被合并的 Series ID 列表
 }
 
 // MergeSeries 将多个 Series 合并为一个
@@ -280,7 +280,17 @@ func (s *SeriesService) MergeSeries(primaryID string, secondaryIDs []string) (*M
 		primary.FolderPath = filepath.Join(dir, "__multi__:"+primary.Title)
 	}
 
-	// 8. 重新统计季数和集数
+	// 8. 去重演职人员：合并后同一 person_id + role 可能出现多条记录
+	if s.mediaPersonRepo != nil {
+		removed, err := s.mediaPersonRepo.DeduplicateBySeriesID(primaryID)
+		if err != nil {
+			s.logger.Warnf("演职人员去重失败: %v", err)
+		} else if removed > 0 {
+			s.logger.Infof("已清理 %d 条重复的演职人员记录 (series_id=%s)", removed, primaryID)
+		}
+	}
+
+	// 9. 重新统计季数和集数
 	allEpisodes, _ := s.mediaRepo.ListBySeriesID(primaryID)
 	seasonSet := make(map[int]bool)
 	for _, ep := range allEpisodes {
@@ -439,10 +449,10 @@ func (s *SeriesService) metadataScore(ser *model.Series) int {
 func normalizeSeriesTitleForMerge(title string) string {
 	// 移除季号标识的正则模式
 	seasonPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?i)\s*S\d{1,2}\s*$`),                            // 末尾 S1, S02
-		regexp.MustCompile(`(?i)\s*Season\s*\d{1,2}\s*$`),                    // 末尾 Season 1
+		regexp.MustCompile(`(?i)\s*S\d{1,2}\s*$`),                          // 末尾 S1, S02
+		regexp.MustCompile(`(?i)\s*Season\s*\d{1,2}\s*$`),                  // 末尾 Season 1
 		regexp.MustCompile(`\s*第\s*[一二三四五六七八九十\d]+\s*季\s*$`),               // 末尾 第一季, 第2季
-		regexp.MustCompile(`(?i)\s*\(\s*Season\s*\d{1,2}\s*\)\s*$`),          // 末尾 (Season 1)
+		regexp.MustCompile(`(?i)\s*\(\s*Season\s*\d{1,2}\s*\)\s*$`),        // 末尾 (Season 1)
 		regexp.MustCompile(`(?i)\s*【\s*第?\s*[一二三四五六七八九十\d]+\s*季?\s*】\s*$`), // 末尾 【第一季】
 		regexp.MustCompile(`\s*第\s*[一二三四五六七八九十\d]+\s*部\s*$`),               // 末尾 第一部, 第2部
 	}

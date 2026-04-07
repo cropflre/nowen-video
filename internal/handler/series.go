@@ -202,5 +202,18 @@ func (h *SeriesHandler) GetPersons(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": persons})
+
+	// 去重：相同 person_id + role 只保留第一条（兜底，合并时已去重）
+	seen := make(map[string]bool)
+	deduped := make([]interface{}, 0, len(persons))
+	for _, p := range persons {
+		key := p.PersonID + ":" + p.Role
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		deduped = append(deduped, p)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": deduped})
 }
