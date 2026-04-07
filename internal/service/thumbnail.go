@@ -136,14 +136,5 @@ func (s *ThumbnailService) GetSpritePath(mediaID string) string {
 	return s.cache[mediaID]
 }
 
-// formatVTTTime 将秒数格式化为 VTT 时间格式（HH:MM:SS.mmm）
-func formatVTTTime(seconds float64) string {
-	h := int(seconds) / 3600
-	m := (int(seconds) % 3600) / 60
-	sec := int(seconds) % 60
-	ms := int((seconds - float64(int(seconds))) * 1000)
-	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, sec, ms)
-}
-
 // unused: satisfy compiler
 var _ = strconv.Atoi

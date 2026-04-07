@@ -18,6 +18,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
+	"github.com/shirou/gopsutil/v3/cpu"
 	"go.uber.org/zap"
 )
 
@@ -56,16 +57,20 @@ type PreprocessService struct {
 
 	// 工作协程控制
 	workerCount int32       // 当前活跃工作协程数
-	maxWorkers  int32       // 最大并发工作协程数
+	maxWorkers  int32       // 最大并发工作协程数（上限）
+	curWorkers  int32       // 当前动态调整后的并发数
 	jobQueue    chan string // 任务 ID 队列
 	pausedJobs  sync.Map    // 暂停的任务 ID 集合
 	cancelJobs  sync.Map    // 取消的任务 ID 集合
-	runningJobs sync.Map    // 正在运行的任务 ID -> cancel func
+	runningJobs sync.Map    // 正在运行的任务 ID -> *exec.Cmd
 	mu          sync.RWMutex
 
 	// 动态负载调整
 	lastLoadCheck time.Time
 	hwAccel       string // 硬件加速模式
+
+	// 进度广播节流
+	lastBroadcast sync.Map // taskID -> time.Time（上次广播时间）
 }
 
 // NewPreprocessService 创建预处理服务
@@ -89,6 +94,7 @@ func NewPreprocessService(
 		abrService: abrService,
 		logger:     logger,
 		maxWorkers: maxWorkers,
+		curWorkers: maxWorkers,
 		jobQueue:   make(chan string, 500),
 		hwAccel:    hwAccel,
 	}
@@ -103,6 +109,9 @@ func NewPreprocessService(
 
 	// 恢复未完成的任务
 	go s.recoverPendingTasks()
+
+	// 启动动态负载调整协程
+	go s.dynamicLoadAdjuster()
 
 	return s
 }
@@ -269,6 +278,14 @@ func (s *PreprocessService) CancelTask(taskID string) error {
 	s.cancelJobs.Store(taskID, true)
 	s.pausedJobs.Delete(taskID)
 
+	// 终止正在运行的 FFmpeg 进程
+	if cmdVal, ok := s.runningJobs.Load(taskID); ok {
+		if cmd, ok := cmdVal.(*exec.Cmd); ok && cmd.Process != nil {
+			cmd.Process.Kill()
+			s.logger.Infof("已终止预处理任务 %s 的 FFmpeg 进程", taskID)
+		}
+	}
+
 	task.Status = "cancelled"
 	task.Message = "已取消"
 	s.repo.Update(task)
@@ -405,9 +422,21 @@ func (s *PreprocessService) worker(id int) {
 			continue
 		}
 
+		// 动态并发控制：如果当前 worker ID 超过动态限制，等待
+		for int32(id) >= atomic.LoadInt32(&s.curWorkers) {
+			time.Sleep(5 * time.Second)
+			// 再次检查取消状态
+			if _, cancelled := s.cancelJobs.Load(taskID); cancelled {
+				break
+			}
+		}
+
 		atomic.AddInt32(&s.workerCount, 1)
 		s.processTask(taskID)
 		atomic.AddInt32(&s.workerCount, -1)
+
+		// 清理广播节流缓存
+		s.lastBroadcast.Delete(taskID)
 	}
 }
 
@@ -907,6 +936,14 @@ func (s *PreprocessService) updatePhase(task *model.PreprocessTask, phase string
 	task.Message = message
 	s.repo.Update(task)
 
+	// 节流广播：每 2 秒最多广播一次进度（避免 WebSocket 消息过于频繁）
+	now := time.Now()
+	if lastTime, ok := s.lastBroadcast.Load(task.ID); ok {
+		if now.Sub(lastTime.(time.Time)) < 2*time.Second {
+			return // 跳过本次广播
+		}
+	}
+	s.lastBroadcast.Store(task.ID, now)
 	s.broadcastEvent(EventPreprocessProgress, task)
 }
 
@@ -997,14 +1034,67 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// 获取 CPU 使用率
+	cpuPercent := 0.0
+	if percents, err := cpu.Percent(0, false); err == nil && len(percents) > 0 {
+		cpuPercent = percents[0]
+	}
+
 	return map[string]interface{}{
 		"cpu_count":      runtime.NumCPU(),
+		"cpu_percent":    cpuPercent,
 		"goroutines":     runtime.NumGoroutine(),
-		"mem_alloc_mb":   memStats.Alloc / 1024 / 1024,
-		"mem_sys_mb":     memStats.Sys / 1024 / 1024,
+		"mem_alloc_mb":   float64(memStats.Alloc) / 1024 / 1024,
+		"mem_sys_mb":     float64(memStats.Sys) / 1024 / 1024,
 		"active_workers": atomic.LoadInt32(&s.workerCount),
 		"max_workers":    s.maxWorkers,
+		"cur_workers":    atomic.LoadInt32(&s.curWorkers),
 		"queue_size":     len(s.jobQueue),
+	}
+}
+
+// dynamicLoadAdjuster 动态负载调整协程
+// 根据 CPU 使用率动态调整并发 worker 数量
+func (s *PreprocessService) dynamicLoadAdjuster() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		percents, err := cpu.Percent(time.Second, false)
+		if err != nil || len(percents) == 0 {
+			continue
+		}
+
+		cpuUsage := percents[0]
+		current := atomic.LoadInt32(&s.curWorkers)
+		max := s.maxWorkers
+
+		var newWorkers int32
+		switch {
+		case cpuUsage > 90:
+			// CPU 过载，减少到 1 个 worker
+			newWorkers = 1
+		case cpuUsage > 75:
+			// CPU 较高，减半
+			newWorkers = max / 2
+			if newWorkers < 1 {
+				newWorkers = 1
+			}
+		case cpuUsage > 50:
+			// CPU 中等，使用 75% 的 worker
+			newWorkers = max * 3 / 4
+			if newWorkers < 1 {
+				newWorkers = 1
+			}
+		default:
+			// CPU 空闲，使用全部 worker
+			newWorkers = max
+		}
+
+		if newWorkers != current {
+			atomic.StoreInt32(&s.curWorkers, newWorkers)
+			s.logger.Infof("动态调整并发: CPU %.1f%%, workers %d -> %d", cpuUsage, current, newWorkers)
+		}
 	}
 }
 

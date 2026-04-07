@@ -451,11 +451,16 @@ func (s *MediaService) ContinueWatching(userID string, limit int) ([]model.Watch
 	return s.historyRepo.ContinueWatching(userID, limit)
 }
 
-// UpdateProgress 更新观看进度
+// UpdateProgress 更新观看进度，并同步记录播放统计
 func (s *MediaService) UpdateProgress(userID, mediaID string, position, duration float64) error {
 	completed := false
 	if duration > 0 && position/duration > 0.9 {
 		completed = true
+	}
+
+	// 计算增量观看时长，写入 PlaybackStats 表
+	if s.statsRepo != nil && position > 0 {
+		s.recordPlaybackDelta(userID, mediaID, position)
 	}
 
 	history := &model.WatchHistory{
@@ -466,6 +471,38 @@ func (s *MediaService) UpdateProgress(userID, mediaID string, position, duration
 		Completed: completed,
 	}
 	return s.historyRepo.Upsert(history)
+}
+
+// recordPlaybackDelta 计算增量观看时长并写入 PlaybackStats
+// 通过对比上次保存的进度位置，计算本次实际观看的分钟数
+func (s *MediaService) recordPlaybackDelta(userID, mediaID string, currentPosition float64) {
+	var deltaMinutes float64
+
+	// 获取上次保存的进度
+	oldHistory, err := s.historyRepo.GetByUserAndMedia(userID, mediaID)
+	if err == nil && oldHistory != nil && currentPosition > oldHistory.Position {
+		// 正常连续播放：增量 = 当前位置 - 上次位置
+		deltaMinutes = (currentPosition - oldHistory.Position) / 60.0
+	} else if err != nil || oldHistory == nil {
+		// 首次观看该媒体：无法计算增量，使用保守估计（上报间隔约15秒 = 0.25分钟）
+		deltaMinutes = 0.25
+	}
+	// currentPosition <= oldHistory.Position 的情况（拖动回退）不记录
+
+	// 防止异常数据：增量不超过5分钟（正常上报间隔约15秒，留足余量）
+	if deltaMinutes <= 0 || deltaMinutes > 5 {
+		return
+	}
+
+	stat := &model.PlaybackStats{
+		UserID:       userID,
+		MediaID:      mediaID,
+		WatchMinutes: deltaMinutes,
+		Date:         time.Now().Format("2006-01-02"),
+	}
+	if err := s.statsRepo.Record(stat); err != nil {
+		s.logger.Debugf("记录播放统计失败: %v", err)
+	}
 }
 
 // AddFavorite 添加收藏
