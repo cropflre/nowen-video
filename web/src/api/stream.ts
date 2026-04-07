@@ -31,6 +31,9 @@ export const streamApi = {
 
   getSeriesBackdropUrl: (seriesId: string) =>
     withToken(`/api/series/${seriesId}/backdrop`),
+
+  // 为任意 URL 添加认证 token
+  withTokenUrl: (url: string) => withToken(url),
 }
 
 // 导出 withToken 供其他模块使用

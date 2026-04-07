@@ -294,6 +294,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               <Activity size={18} />
               {(!collapsed || isMobileOpen) && <span>{t('nav.pulse')}</span>}
             </NavLink>
+
+            <NavLink
+              to="/preprocess"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+              onClick={onMobileClose}
+            >
+              <Zap size={18} />
+              {(!collapsed || isMobileOpen) && <span>预处理</span>}
+            </NavLink>
           </>
         )}
       </nav>

@@ -162,6 +162,27 @@ func main() {
 		api.GET("/subtitle/:id/search", handlers.SubtitleSearch.SearchSubtitles)
 		api.POST("/subtitle/:id/download", handlers.SubtitleSearch.DownloadSubtitle)
 
+		// AI 字幕生成（语音识别）
+		api.POST("/subtitle/:id/ai/generate", handlers.Subtitle.GenerateAISubtitle)
+		api.GET("/subtitle/:id/ai/status", handlers.Subtitle.GetAISubtitleStatus)
+		api.GET("/subtitle/:id/ai/serve", handlers.Subtitle.ServeAISubtitle)
+		api.DELETE("/subtitle/:id/ai", handlers.Subtitle.DeleteAISubtitle)
+
+		// 字幕翻译（AI 翻译）
+		api.POST("/subtitle/:id/translate", handlers.Subtitle.TranslateSubtitle)
+		api.GET("/subtitle/:id/translate/status", handlers.Subtitle.GetTranslateStatus)
+		api.GET("/subtitle/:id/translate/:lang/serve", handlers.Subtitle.ServeTranslatedSubtitle)
+
+		// ASR 服务状态
+		api.GET("/asr/status", handlers.Subtitle.GetASRStatus)
+
+		// 视频预处理（用户可查询状态和播放预处理内容）
+		api.GET("/preprocess/media/:id/status", handlers.Preprocess.GetMediaTask)
+		api.GET("/preprocess/media/:id/master.m3u8", handlers.Preprocess.ServePreprocessedMaster)
+		api.GET("/preprocess/media/:id/:quality/:segment", handlers.Preprocess.ServePreprocessedSegment)
+		api.GET("/preprocess/media/:id/thumbnail", handlers.Preprocess.ServeThumbnail)
+		api.GET("/preprocess/media/:id/keyframe/:index", handlers.Preprocess.ServeKeyframe)
+
 		// 元数据刮削（管理员）
 		api.POST("/media/:id/scrape", middleware.AdminOnly(), handlers.Metadata.ScrapeMedia)
 
@@ -575,6 +596,21 @@ func main() {
 		admin.GET("/pulse/analytics/hourly", handlers.Pulse.GetHourlyDistribution)
 		admin.GET("/pulse/analytics/libraries", handlers.Pulse.GetLibraryStats)
 		admin.GET("/pulse/analytics/growth", handlers.Pulse.GetMediaGrowth)
+
+		// ==================== 视频预处理管理 ====================
+		admin.POST("/preprocess/submit", handlers.Preprocess.SubmitMedia)
+		admin.POST("/preprocess/batch", handlers.Preprocess.BatchSubmit)
+		admin.POST("/preprocess/library/:id", handlers.Preprocess.SubmitLibrary)
+		admin.GET("/preprocess/tasks", handlers.Preprocess.ListTasks)
+		admin.GET("/preprocess/tasks/:id", handlers.Preprocess.GetTask)
+		admin.POST("/preprocess/tasks/:id/pause", handlers.Preprocess.PauseTask)
+		admin.POST("/preprocess/tasks/:id/resume", handlers.Preprocess.ResumeTask)
+		admin.POST("/preprocess/tasks/:id/cancel", handlers.Preprocess.CancelTask)
+		admin.POST("/preprocess/tasks/:id/retry", handlers.Preprocess.RetryTask)
+		admin.DELETE("/preprocess/tasks/:id", handlers.Preprocess.DeleteTask)
+		admin.GET("/preprocess/statistics", handlers.Preprocess.GetStatistics)
+		admin.GET("/preprocess/system-load", handlers.Preprocess.GetSystemLoad)
+		admin.DELETE("/preprocess/cache/:id", handlers.Preprocess.CleanCache)
 
 		// ==================== V3: 直播管理（管理员） ====================
 		admin.GET("/live/sources", handlers.Live.ListSourcesAdmin)

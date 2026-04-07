@@ -143,6 +143,16 @@ type AIConfig struct {
 	CacheTTLHours     int `mapstructure:"cache_ttl_hours"`
 	MaxConcurrent     int `mapstructure:"max_concurrent"`
 	RequestIntervalMs int `mapstructure:"request_interval_ms"`
+
+	// ==================== ASR / Whisper 配置 ====================
+	// 本地 whisper.cpp 可执行文件路径（留空则仅使用云端 API）
+	WhisperCppPath string `mapstructure:"whisper_cpp_path"`
+	// 本地 Whisper 模型文件路径（如 ggml-large-v3.bin）
+	WhisperModelPath string `mapstructure:"whisper_model_path"`
+	// 本地 Whisper 线程数（默认 4）
+	WhisperThreads int `mapstructure:"whisper_threads"`
+	// 是否优先使用本地引擎（默认 false，优先云端）
+	PreferLocalWhisper bool `mapstructure:"prefer_local_whisper"`
 }
 
 // RegistrationConfig 注册控制配置

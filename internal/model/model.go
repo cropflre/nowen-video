@@ -570,6 +570,52 @@ func (mr *MatchRule) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ==================== 视频预处理任务 ====================
+
+// PreprocessTask 视频预处理任务
+type PreprocessTask struct {
+	ID         string  `json:"id" gorm:"primaryKey;type:text"`
+	MediaID    string  `json:"media_id" gorm:"index;type:text;not null"`
+	Status     string  `json:"status" gorm:"type:text;default:pending"` // pending / queued / running / paused / completed / failed / cancelled
+	Phase      string  `json:"phase" gorm:"type:text"`                  // probe / thumbnail / keyframes / transcode_360p / transcode_480p / transcode_720p / transcode_1080p / abr_master
+	Progress   float64 `json:"progress"`                                // 0-100 总体进度
+	Priority   int     `json:"priority" gorm:"default:0"`               // 优先级（数字越大越优先）
+	Message    string  `json:"message" gorm:"type:text"`                // 当前状态描述
+	Error      string  `json:"error" gorm:"type:text"`                  // 错误信息
+	Retries    int     `json:"retries" gorm:"default:0"`                // 已重试次数
+	MaxRetry   int     `json:"max_retry" gorm:"default:3"`              // 最大重试次数
+	InputPath  string  `json:"input_path" gorm:"type:text"`             // 输入文件路径
+	OutputDir  string  `json:"output_dir" gorm:"type:text"`             // 输出目录
+	MediaTitle string  `json:"media_title" gorm:"type:text"`            // 媒体标题（冗余，方便展示）
+	// 预处理结果
+	ThumbnailPath  string  `json:"thumbnail_path" gorm:"type:text"`  // 封面缩略图路径
+	KeyframesDir   string  `json:"keyframes_dir" gorm:"type:text"`   // 关键帧预览目录
+	HLSMasterPath  string  `json:"hls_master_path" gorm:"type:text"` // HLS 主播放列表路径
+	Variants       string  `json:"variants" gorm:"type:text"`        // 已完成的变体列表（JSON: ["360p","720p","1080p"]）
+	SourceHeight   int     `json:"source_height"`                    // 源视频高度
+	SourceWidth    int     `json:"source_width"`                     // 源视频宽度
+	SourceCodec    string  `json:"source_codec" gorm:"type:text"`    // 源视频编码
+	SourceDuration float64 `json:"source_duration"`                  // 源视频时长（秒）
+	SourceSize     int64   `json:"source_size"`                      // 源文件大小（字节）
+	// 性能统计
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+	ElapsedSec  float64    `json:"elapsed_sec"` // 总耗时（秒）
+	SpeedRatio  float64    `json:"speed_ratio"` // 转码速度比（如 2.5x）
+	// 时间戳
+	CreatedAt time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Media Media `json:"-" gorm:"foreignKey:MediaID"`
+}
+
+func (t *PreprocessTask) BeforeCreate(tx *gorm.DB) error {
+	if t.ID == "" {
+		t.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -625,5 +671,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&ShareLink{},
 		// P3: 自定义匹配规则
 		&MatchRule{},
+		// 视频预处理
+		&PreprocessTask{},
 	)
 }

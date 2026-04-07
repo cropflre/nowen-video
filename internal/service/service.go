@@ -66,6 +66,8 @@ type Services struct {
 	TagSvc       *TagService
 	ShareLinkSvc *ShareLinkService
 	MatchRuleSvc *MatchRuleService
+	ASR          *ASRService
+	Preprocess   *PreprocessService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -174,6 +176,11 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建字幕在线搜索服务
 	subtitleSearchService := NewSubtitleSearchService("", cfg.Cache.CacheDir, logger)
 
+	// 创建 ASR 语音识别字幕服务
+	asrService := NewASRService(cfg, repos.Media, logger)
+	asrService.SetWSHub(wsHub)
+	asrService.SetAIService(aiService) // Phase 4: 字幕翻译需要 AI 服务
+
 	// 创建批量元数据编辑服务
 	batchMetadataService := NewBatchMetadataService(repos.DB(), logger)
 
@@ -194,6 +201,10 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// V2: 创建ABR自适应码率服务
 	abrService := NewABRService(cfg, cfg.App.HWAccel, logger)
 	abrService.SetWSHub(wsHub)
+
+	// 创建视频预处理服务
+	preprocessService := NewPreprocessService(cfg, repos.Preprocess, repos.Media, abrService, cfg.App.HWAccel, logger)
+	preprocessService.SetWSHub(wsHub)
 
 	// V2: 创建可扩展插件系统
 	pluginService := NewPluginService(repos.DB(), filepath.Join(cfg.Cache.CacheDir, "plugins"), logger)
@@ -297,6 +308,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		TagSvc:       NewTagService(repos.Tag, repos.MediaTag, logger),
 		ShareLinkSvc: NewShareLinkService(repos.ShareLink, repos.Media, repos.Series, logger),
 		MatchRuleSvc: NewMatchRuleService(repos.MatchRule, logger),
+		ASR:          asrService,
+		Preprocess:   preprocessService,
 	}
 
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
@@ -304,6 +317,19 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
 	svcs.Library.SetSeriesService(svcs.Series)
+
+	// 延迟注入：StreamService 需要 PreprocessService（用于自动选择预处理内容）
+	svcs.Stream.SetPreprocessService(preprocessService)
+
+	// 延迟注入：扫描完成后自动触发预处理
+	scanner.SetOnScanComplete(func(libraryID string) {
+		count, err := preprocessService.SubmitLibrary(libraryID, 0)
+		if err != nil {
+			logger.Warnf("扫描后自动提交预处理失败: %v", err)
+		} else if count > 0 {
+			logger.Infof("扫描后自动提交 %d 个预处理任务", count)
+		}
+	})
 
 	return svcs
 }

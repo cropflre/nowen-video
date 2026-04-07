@@ -69,11 +69,17 @@ export default function PlayerPage() {
     )
   }
 
-  // 智能选择播放模式：MP4优先直接播放，MKV等走HLS转码
-  const mode = playInfo.can_direct_play ? 'direct' : 'hls'
-  const src = playInfo.can_direct_play
-    ? streamApi.getDirectUrl(id)
-    : streamApi.getMasterUrl(id)
+  // 智能选择播放模式：
+  // 1. 预处理完成 → 使用预处理的 HLS 流（秒开）
+  // 2. MP4 → 直接播放
+  // 3. 其他格式 → 实时 HLS 转码
+  const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
+  const mode = isPreprocessed ? 'hls' : (playInfo.can_direct_play ? 'direct' : 'hls')
+  const src = isPreprocessed
+    ? streamApi.withTokenUrl(playInfo.preprocessed_url!)
+    : playInfo.can_direct_play
+      ? streamApi.getDirectUrl(id)
+      : streamApi.getMasterUrl(id)
 
   // 构建播放标题（剧集显�?S01E02 格式�?
   const playerTitle = media.media_type === 'episode'

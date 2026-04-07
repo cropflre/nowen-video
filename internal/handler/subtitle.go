@@ -13,6 +13,7 @@ import (
 type SubtitleHandler struct {
 	scanner       *service.ScannerService
 	streamService *service.StreamService
+	asrService    *service.ASRService
 	logger        *zap.SugaredLogger
 }
 
@@ -140,4 +141,225 @@ func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的字幕格式"})
 		return
 	}
+}
+
+// ==================== AI 字幕生成 ====================
+
+// GenerateAISubtitle 触发 AI 字幕生成
+func (h *SubtitleHandler) GenerateAISubtitle(c *gin.Context) {
+	id := c.Param("id")
+
+	if h.asrService == nil || !h.asrService.IsEnabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用，请先配置 AI API"})
+		return
+	}
+
+	// 获取请求参数
+	var req struct {
+		Language string `json:"language"` // 语言代码，如 zh / en / ja，留空自动检测
+	}
+	c.ShouldBindJSON(&req)
+
+	task, err := h.asrService.GenerateSubtitle(id, req.Language)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "AI 字幕生成任务已启动",
+		"data":    task,
+	})
+}
+
+// GetAISubtitleStatus 获取 AI 字幕生成状态
+func (h *SubtitleHandler) GetAISubtitleStatus(c *gin.Context) {
+	id := c.Param("id")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	task := h.asrService.GetTask(id)
+	if task == nil {
+		// 检查是否有已缓存的 AI 字幕
+		vttPath, err := h.asrService.GetVTTPath(id)
+		if err == nil && vttPath != "" {
+			c.JSON(http.StatusOK, gin.H{
+				"data": gin.H{
+					"media_id": id,
+					"status":   "completed",
+					"progress": 100,
+					"message":  "AI 字幕已就绪",
+					"vtt_path": vttPath,
+				},
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"media_id": id,
+				"status":   "none",
+				"message":  "暂无 AI 字幕",
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": task})
+}
+
+// ServeAISubtitle 提供 AI 生成的字幕文件
+func (h *SubtitleHandler) ServeAISubtitle(c *gin.Context) {
+	id := c.Param("id")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	vttPath, err := h.asrService.GetVTTPath(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "AI 字幕不存在，请先生成"})
+		return
+	}
+
+	c.Header("Content-Type", "text/vtt; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.File(vttPath)
+}
+
+// DeleteAISubtitle 删除 AI 生成的字幕
+func (h *SubtitleHandler) DeleteAISubtitle(c *gin.Context) {
+	id := c.Param("id")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	if err := h.asrService.DeleteSubtitle(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "AI 字幕已删除"})
+}
+
+// ==================== Phase 4: 字幕翻译 ====================
+
+// TranslateSubtitle 触发字幕翻译
+func (h *SubtitleHandler) TranslateSubtitle(c *gin.Context) {
+	id := c.Param("id")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	var req struct {
+		TargetLang string `json:"target_lang" binding:"required"` // 目标语言代码
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请指定目标翻译语言（target_lang）"})
+		return
+	}
+
+	task, err := h.asrService.TranslateSubtitle(id, req.TargetLang)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "字幕翻译任务已启动",
+		"data":    task,
+	})
+}
+
+// GetTranslateStatus 获取字幕翻译状态
+func (h *SubtitleHandler) GetTranslateStatus(c *gin.Context) {
+	id := c.Param("id")
+	targetLang := c.Query("lang")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	if targetLang != "" {
+		// 查询特定语言的翻译状态
+		task := h.asrService.GetTranslateTask(id, targetLang)
+		if task == nil {
+			// 检查是否有已缓存的翻译字幕
+			vttPath, err := h.asrService.GetTranslatedVTTPath(id, targetLang)
+			if err == nil && vttPath != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"data": gin.H{
+						"media_id": id,
+						"status":   "completed",
+						"progress": 100,
+						"language": targetLang,
+						"message":  "翻译字幕已就绪",
+						"vtt_path": vttPath,
+					},
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"data": gin.H{
+					"media_id": id,
+					"status":   "none",
+					"language": targetLang,
+					"message":  "暂无翻译字幕",
+				},
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": task})
+		return
+	}
+
+	// 列出所有已翻译的字幕
+	translated, err := h.asrService.ListTranslatedSubtitles(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": translated})
+}
+
+// ServeTranslatedSubtitle 提供翻译后的字幕文件
+func (h *SubtitleHandler) ServeTranslatedSubtitle(c *gin.Context) {
+	id := c.Param("id")
+	targetLang := c.Param("lang")
+
+	if h.asrService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI 字幕服务未启用"})
+		return
+	}
+
+	vttPath, err := h.asrService.GetTranslatedVTTPath(id, targetLang)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "翻译字幕不存在"})
+		return
+	}
+
+	c.Header("Content-Type", "text/vtt; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.File(vttPath)
+}
+
+// GetASRStatus 获取 ASR 服务整体状态
+func (h *SubtitleHandler) GetASRStatus(c *gin.Context) {
+	if h.asrService == nil {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"enabled": false}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": h.asrService.GetStatus()})
 }

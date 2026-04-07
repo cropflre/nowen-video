@@ -24,6 +24,7 @@ const FamilyPage = lazy(() => import('@/pages/FamilyPage'))
 const LivePage = lazy(() => import('@/pages/LivePage'))
 const SyncPage = lazy(() => import('@/pages/SyncPage'))
 const PulsePage = lazy(() => import('@/pages/PulsePage'))
+const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
 
 // 页面加载中的占位组件
 function PageLoader() {
@@ -92,6 +93,7 @@ export default function App() {
               <Route path="live" element={<LivePage />} />
               <Route path="sync" element={<SyncPage />} />
               <Route path="pulse" element={<PulsePage />} />
+              <Route path="preprocess" element={<PreprocessPage />} />
             </Route>
 
             {/* 未匹配路由 */}

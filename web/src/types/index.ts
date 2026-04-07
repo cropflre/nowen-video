@@ -242,6 +242,40 @@ export interface SubtitleInfo {
   external: ExternalSubtitle[]
 }
 
+// ==================== AI 字幕 ====================
+export interface ASRTask {
+  media_id: string
+  status: 'none' | 'pending' | 'extracting' | 'transcribing' | 'converting' | 'translating' | 'completed' | 'failed'
+  progress: number
+  message: string
+  language?: string
+  engine?: string  // cloud / local
+  vtt_path?: string
+  error?: string
+  created_at?: string
+}
+
+// ==================== AI 字幕翻译 ====================
+export interface TranslatedSubtitle {
+  language: string
+  path: string
+}
+
+// ASR 服务状态
+export interface ASRServiceStatus {
+  enabled: boolean
+  cloud_enabled: boolean
+  local_enabled: boolean
+  prefer_local: boolean
+  model: string
+  whisper_cpp_path: string
+  whisper_model_path: string
+  max_concurrent: number
+  active_tasks: number
+  total_tasks: number
+  translate_enabled: boolean
+}
+
 // ==================== TMDb 配置 ====================
 export interface TMDbConfigStatus {
   configured: boolean
@@ -347,6 +381,10 @@ export interface MediaPlayInfo {
   audio_codec: string
   duration: number
   is_strm?: boolean // 是否为 STRM 远程流
+  is_preprocessed?: boolean // 是否已预处理
+  preprocessed_url?: string // 预处理后的 HLS 地址
+  preprocess_status?: string // 预处理状态
+  thumbnail_url?: string // 预处理封面缩略图
 }
 
 // ==================== 增强详情 ====================
@@ -1715,5 +1753,56 @@ export interface TestMatchRuleRequest {
   rule_type: string
   pattern: string
   test_input: string
+}
+
+// ==================== 视频预处理 ====================
+export interface PreprocessTask {
+  id: string
+  media_id: string
+  status: 'pending' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  phase: string
+  progress: number
+  priority: number
+  message: string
+  error: string
+  retries: number
+  max_retry: number
+  input_path: string
+  output_dir: string
+  media_title: string
+  thumbnail_path: string
+  keyframes_dir: string
+  hls_master_path: string
+  variants: string
+  source_height: number
+  source_width: number
+  source_codec: string
+  source_duration: number
+  source_size: number
+  started_at: string | null
+  completed_at: string | null
+  elapsed_sec: number
+  speed_ratio: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PreprocessStatistics {
+  status_counts: Record<string, number>
+  running_count: number
+  max_workers: number
+  active_workers: number
+  queue_size: number
+  hw_accel: string
+}
+
+export interface SystemLoadInfo {
+  cpu_count: number
+  goroutines: number
+  mem_alloc_mb: number
+  mem_sys_mb: number
+  active_workers: number
+  max_workers: number
+  queue_size: number
 }
 

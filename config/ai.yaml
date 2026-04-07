@@ -58,3 +58,47 @@ max_concurrent: 3
 
 # 请求间隔（毫秒，防止限流）
 request_interval_ms: 200
+
+# ==================== AI 字幕（ASR 语音识别）说明 ====================
+# AI 字幕功能复用上述 AI API 配置，通过 Whisper 兼容接口实现语音识别。
+#
+# 支持的 API 提供商：
+#   - OpenAI:     api_base 设为 https://api.openai.com/v1（原生支持 whisper-1）
+#   - Groq:       api_base 设为 https://api.groq.com/openai/v1（支持 whisper-large-v3）
+#   - 通义千问:    暂不支持 Whisper 接口
+#   - 本地部署:    使用 faster-whisper-server 等兼容 OpenAI 的本地服务
+#
+# 使用方式：
+#   在视频播放器的字幕菜单中，点击「生成 AI 字幕」即可触发。
+#   系统会自动提取音频 → 调用 Whisper API → 生成 WebVTT 字幕文件。
+#   生成的字幕会缓存在 cache/subtitles/ai/ 目录下，下次播放直接使用。
+
+# ==================== Phase 2: 本地 whisper.cpp 配置 ====================
+# 本地 whisper.cpp 可执行文件路径（留空则仅使用云端 API）
+# 下载地址: https://github.com/ggerganov/whisper.cpp/releases
+# Linux 示例: /usr/local/bin/whisper-cli
+# Windows 示例: C:\whisper\whisper-cli.exe
+whisper_cpp_path: ""
+
+# 本地 Whisper 模型文件路径
+# 推荐模型: ggml-large-v3-turbo.bin（速度快、质量高）
+# 下载地址: https://huggingface.co/ggerganov/whisper.cpp/tree/main
+# 示例: /data/models/ggml-large-v3-turbo.bin
+whisper_model_path: ""
+
+# 本地 Whisper 线程数（默认 4，建议设为 CPU 核心数的一半）
+whisper_threads: 4
+
+# 是否优先使用本地引擎（默认 false，优先云端 API）
+# 设为 true 时：本地引擎可用则优先使用，不可用时回退到云端
+# 设为 false 时：优先使用云端 API，云端不可用时回退到本地
+prefer_local_whisper: false
+
+# ==================== Phase 4: 字幕翻译说明 ====================
+# 字幕翻译功能复用上述 LLM API 配置（如 qwen-turbo / gpt-4o-mini）。
+# 支持将已有字幕（AI 生成或外挂字幕）翻译为其他语言。
+# 翻译结果缓存在 cache/subtitles/translated/ 目录下。
+#
+# 使用方式：
+#   在视频播放器的字幕菜单中，点击「翻译为其他语言...」选择目标语言。
+#   支持的目标语言: 中文/英文/日文/韩文/法文/德文/西班牙文/俄文

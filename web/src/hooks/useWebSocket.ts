@@ -26,6 +26,22 @@ export const WS_EVENTS = {
   FILE_DELETED: 'file_deleted',
   BATCH_RENAME_COMPLETE: 'batch_rename_complete',
   FILE_SCRAPE_PROGRESS: 'file_scrape_progress',
+  // AI 字幕（ASR）事件
+  ASR_STARTED: 'asr_started',
+  ASR_PROGRESS: 'asr_progress',
+  ASR_COMPLETED: 'asr_completed',
+  ASR_FAILED: 'asr_failed',
+  // 字幕翻译事件
+  TRANSLATE_PROGRESS: 'translate_progress',
+  TRANSLATE_COMPLETED: 'translate_completed',
+  TRANSLATE_FAILED: 'translate_failed',
+  // 视频预处理事件
+  PREPROCESS_STARTED: 'preprocess_started',
+  PREPROCESS_PROGRESS: 'preprocess_progress',
+  PREPROCESS_COMPLETED: 'preprocess_completed',
+  PREPROCESS_FAILED: 'preprocess_failed',
+  PREPROCESS_PAUSED: 'preprocess_paused',
+  PREPROCESS_CANCELLED: 'preprocess_cancelled',
 } as const
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS]

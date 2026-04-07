@@ -183,13 +183,14 @@ func isBitmapSubtitle(codec string) bool {
 
 // ScannerService 媒体文件扫描服务
 type ScannerService struct {
-	mediaRepo     *repository.MediaRepo
-	seriesRepo    *repository.SeriesRepo
-	matchRuleRepo *repository.MatchRuleRepo // P2: 自定义匹配规则
-	cfg           *config.Config
-	logger        *zap.SugaredLogger
-	wsHub         *WSHub      // WebSocket事件广播
-	nfoService    *NFOService // NFO 本地元数据解析服务
+	mediaRepo      *repository.MediaRepo
+	seriesRepo     *repository.SeriesRepo
+	matchRuleRepo  *repository.MatchRuleRepo // P2: 自定义匹配规则
+	cfg            *config.Config
+	logger         *zap.SugaredLogger
+	wsHub          *WSHub                 // WebSocket事件广播
+	nfoService     *NFOService            // NFO 本地元数据解析服务
+	onScanComplete func(libraryID string) // 扫描完成回调（用于触发预处理）
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -210,6 +211,11 @@ func (s *ScannerService) SetMatchRuleRepo(repo *repository.MatchRuleRepo) {
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *ScannerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+// SetOnScanComplete 设置扫描完成回调（用于触发视频预处理）
+func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
+	s.onScanComplete = fn
 }
 
 // ScanLibrary 扫描媒体库目录
@@ -256,6 +262,12 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	}
 
 	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体", library.Name, count)
+
+	// 触发预处理回调（如果已配置）
+	if s.onScanComplete != nil && count > 0 {
+		go s.onScanComplete(library.ID)
+	}
+
 	return count, err
 }
 

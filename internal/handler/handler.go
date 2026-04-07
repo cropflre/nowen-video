@@ -53,6 +53,8 @@ type Handlers struct {
 	Tag       *TagHandler
 	ShareLink *ShareLinkHandler
 	MatchRule *MatchRuleHandler
+	// 视频预处理
+	Preprocess *PreprocessHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -78,7 +80,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			logger:            logger,
 			db:                repos.DB(),
 		},
-		Subtitle:       &SubtitleHandler{scanner: services.Scanner, streamService: services.Stream, logger: logger},
+		Subtitle:       &SubtitleHandler{scanner: services.Scanner, streamService: services.Stream, asrService: services.ASR, logger: logger},
 		Metadata:       &MetadataHandler{metadataService: services.Metadata, logger: logger},
 		Playlist:       &PlaylistHandler{playlistService: services.Playlist, logger: logger},
 		Recommend:      &RecommendHandler{recommendService: services.Recommend, logger: logger},
@@ -115,5 +117,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Tag:       &TagHandler{tagService: services.TagSvc, logger: logger},
 		ShareLink: &ShareLinkHandler{shareService: services.ShareLinkSvc, mediaService: services.Media, seriesService: services.Series, logger: logger},
 		MatchRule: &MatchRuleHandler{ruleService: services.MatchRuleSvc, logger: logger},
+		// 视频预处理
+		Preprocess: NewPreprocessHandler(services.Preprocess),
 	}
 }

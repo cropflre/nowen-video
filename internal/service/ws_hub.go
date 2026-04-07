@@ -32,6 +32,9 @@ const (
 	// 媒体库变更事件
 	EventLibraryDeleted = "library_deleted" // 媒体库被删除
 	EventLibraryUpdated = "library_updated" // 媒体库内容有变更
+
+	// 注意：预处理事件常量定义在 preprocess.go 中
+	// EventPreprocessStarted / EventPreprocessProgress / EventPreprocessCompleted / EventPreprocessFailed / EventPreprocessPaused / EventPreprocessCancelled
 )
 
 // WSEvent WebSocket事件消息

@@ -16,15 +16,19 @@ import (
 
 // MediaPlayInfo 媒体播放信息（前端根据此信息决定播放模式）
 type MediaPlayInfo struct {
-	MediaID       string  `json:"media_id"`
-	DirectPlayURL string  `json:"direct_play_url"` // 直接播放地址（如果支持）
-	HlsURL        string  `json:"hls_url"`         // HLS转码播放地址
-	CanDirectPlay bool    `json:"can_direct_play"` // 浏览器是否可直接播放
-	FileExt       string  `json:"file_ext"`        // 文件扩展名
-	VideoCodec    string  `json:"video_codec"`     // 视频编码
-	AudioCodec    string  `json:"audio_codec"`     // 音频编码
-	Duration      float64 `json:"duration"`        // 时长（秒）
-	IsSTRM        bool    `json:"is_strm"`         // 是否为 STRM 远程流
+	MediaID          string  `json:"media_id"`
+	DirectPlayURL    string  `json:"direct_play_url"`   // 直接播放地址（如果支持）
+	HlsURL           string  `json:"hls_url"`           // HLS转码播放地址
+	CanDirectPlay    bool    `json:"can_direct_play"`   // 浏览器是否可直接播放
+	FileExt          string  `json:"file_ext"`          // 文件扩展名
+	VideoCodec       string  `json:"video_codec"`       // 视频编码
+	AudioCodec       string  `json:"audio_codec"`       // 音频编码
+	Duration         float64 `json:"duration"`          // 时长（秒）
+	IsSTRM           bool    `json:"is_strm"`           // 是否为 STRM 远程流
+	IsPreprocessed   bool    `json:"is_preprocessed"`   // 是否已预处理
+	PreprocessedURL  string  `json:"preprocessed_url"`  // 预处理后的 HLS 地址
+	PreprocessStatus string  `json:"preprocess_status"` // 预处理状态: none / pending / running / completed
+	ThumbnailURL     string  `json:"thumbnail_url"`     // 预处理封面缩略图
 }
 
 // 浏览器可直接播放的文件格式
@@ -49,6 +53,7 @@ type StreamService struct {
 	mediaRepo  *repository.MediaRepo
 	seriesRepo *repository.SeriesRepo
 	transcoder *TranscodeService
+	preprocess *PreprocessService
 	cfg        *config.Config
 	logger     *zap.SugaredLogger
 }
@@ -67,6 +72,11 @@ func NewStreamService(
 		cfg:        cfg,
 		logger:     logger,
 	}
+}
+
+// SetPreprocessService 注入预处理服务（延迟注入，避免循环依赖）
+func (s *StreamService) SetPreprocessService(ps *PreprocessService) {
+	s.preprocess = ps
 }
 
 // GetMediaPlayInfo 获取播放信息，前端根据此判断使用哪种播放方式
@@ -112,6 +122,23 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 
 	if canDirect {
 		info.DirectPlayURL = fmt.Sprintf("/api/stream/%s/direct", mediaID)
+	}
+
+	// 检查是否有预处理内容（优先使用预处理的 HLS 流，实现秒开）
+	if s.preprocess != nil && s.preprocess.IsPreprocessed(mediaID) {
+		info.IsPreprocessed = true
+		info.PreprocessedURL = fmt.Sprintf("/api/preprocess/media/%s/master.m3u8", mediaID)
+		info.PreprocessStatus = "completed"
+		info.ThumbnailURL = fmt.Sprintf("/api/preprocess/media/%s/thumbnail", mediaID)
+		// 预处理完成时，HLS 地址指向预处理内容（秒开）
+		info.HlsURL = info.PreprocessedURL
+	} else if s.preprocess != nil {
+		// 查询预处理状态
+		if task, err := s.preprocess.GetMediaTask(mediaID); err == nil {
+			info.PreprocessStatus = task.Status
+		} else {
+			info.PreprocessStatus = "none"
+		}
 	}
 
 	return info, nil

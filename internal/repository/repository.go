@@ -54,10 +54,11 @@ type Repositories struct {
 	// V5: Pulse 数据中心
 	Pulse *PulseRepo
 	// V6: P1~P3 新增功能
-	Tag       *TagRepo
-	MediaTag  *MediaTagRepo
-	ShareLink *ShareLinkRepo
-	MatchRule *MatchRuleRepo
+	Tag        *TagRepo
+	MediaTag   *MediaTagRepo
+	ShareLink  *ShareLinkRepo
+	MatchRule  *MatchRuleRepo
+	Preprocess *PreprocessRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -106,10 +107,11 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		// V5: Pulse 数据中心
 		Pulse: &PulseRepo{db: db},
 		// V6: P1~P3 新增功能
-		Tag:       &TagRepo{db: db},
-		MediaTag:  &MediaTagRepo{db: db},
-		ShareLink: &ShareLinkRepo{db: db},
-		MatchRule: &MatchRuleRepo{db: db},
+		Tag:        &TagRepo{db: db},
+		MediaTag:   &MediaTagRepo{db: db},
+		ShareLink:  &ShareLinkRepo{db: db},
+		MatchRule:  &MatchRuleRepo{db: db},
+		Preprocess: &PreprocessRepo{db: db},
 	}
 }
 
