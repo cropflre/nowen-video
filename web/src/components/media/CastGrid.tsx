@@ -29,7 +29,7 @@ const rolePriority: Record<string, number> = {
   actor: 2,
 }
 
-export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) {
+export default function CastGrid({ persons }: CastGridProps) {
   const { t } = useTranslation()
   const [selectedPerson, setSelectedPerson] = useState<MediaPerson | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
