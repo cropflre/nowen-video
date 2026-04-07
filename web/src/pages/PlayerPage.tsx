@@ -4,6 +4,7 @@ import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import VideoPlayer from '@/components/VideoPlayer'
 import { useToast } from '@/components/Toast'
+import { Zap, Loader2 } from 'lucide-react'
 
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>()
@@ -92,7 +93,30 @@ export default function PlayerPage() {
     : undefined
 
   return (
-    <div className="h-screen w-screen bg-black">
+    <div className="h-screen w-screen bg-black relative">
+      {/* 预处理状态提示 */}
+      {playInfo.preprocess_status && playInfo.preprocess_status !== 'none' && (
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs backdrop-blur-md"
+          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid var(--neon-blue-15)' }}>
+          {isPreprocessed ? (
+            <>
+              <Zap size={12} className="text-emerald-400" />
+              <span className="text-emerald-400">秒开播放</span>
+            </>
+          ) : playInfo.preprocess_status === 'running' ? (
+            <>
+              <Loader2 size={12} className="text-neon-blue animate-spin" />
+              <span className="text-surface-400">正在预处理中...</span>
+            </>
+          ) : playInfo.preprocess_status === 'pending' || playInfo.preprocess_status === 'queued' ? (
+            <>
+              <Loader2 size={12} className="text-yellow-400" />
+              <span className="text-surface-400">等待预处理</span>
+            </>
+          ) : null}
+        </div>
+      )}
+
       <VideoPlayer
         src={src}
         mode={mode}

@@ -1798,11 +1798,13 @@ export interface PreprocessStatistics {
 
 export interface SystemLoadInfo {
   cpu_count: number
+  cpu_percent: number
   goroutines: number
   mem_alloc_mb: number
   mem_sys_mb: number
   active_workers: number
   max_workers: number
+  cur_workers: number // 动态调整后的当前并发数
   queue_size: number
 }
 

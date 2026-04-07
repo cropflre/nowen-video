@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { preprocessApi } from '@/api/preprocess'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
-import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo } from '@/types'
+import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo, Library } from '@/types'
+import api from '@/api/client'
 import {
   Play,
   Pause,
@@ -19,6 +20,8 @@ import {
   Loader2,
   Zap,
   Film,
+  FolderOpen,
+  Send,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -63,6 +66,8 @@ export default function PreprocessPage() {
   const [stats, setStats] = useState<PreprocessStatistics | null>(null)
   const [sysLoad, setSysLoad] = useState<SystemLoadInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [libraries, setLibraries] = useState<Library[]>([])
+  const [submitting, setSubmitting] = useState<string | null>(null) // 正在提交的媒体库 ID
 
   // 加载任务列表
   const loadTasks = useCallback(async () => {
@@ -89,26 +94,52 @@ export default function PreprocessPage() {
     }
   }, [])
 
+  // 加载媒体库列表
+  const loadLibraries = useCallback(async () => {
+    try {
+      const res = await api.get<{ data: Library[] }>('/libraries')
+      setLibraries(res.data.data || [])
+    } catch {
+      // 忽略
+    }
+  }, [])
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadTasks(), loadStats()]).finally(() => setLoading(false))
-  }, [loadTasks, loadStats])
+    Promise.all([loadTasks(), loadStats(), loadLibraries()]).finally(() => setLoading(false))
+  }, [loadTasks, loadStats, loadLibraries])
 
-  // WebSocket 实时更新
+  // WebSocket 实时更新（节流：最多每 3 秒刷新一次）
   useEffect(() => {
-    const handleProgress = () => {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    let needsRefresh = false
+
+    const scheduleRefresh = () => {
+      if (refreshTimer) {
+        needsRefresh = true
+        return
+      }
       loadTasks()
       loadStats()
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null
+        if (needsRefresh) {
+          needsRefresh = false
+          scheduleRefresh()
+        }
+      }, 3000)
     }
-    on(WS_EVENTS.PREPROCESS_PROGRESS, handleProgress)
-    on(WS_EVENTS.PREPROCESS_COMPLETED, handleProgress)
-    on(WS_EVENTS.PREPROCESS_FAILED, handleProgress)
-    on(WS_EVENTS.PREPROCESS_STARTED, handleProgress)
+
+    on(WS_EVENTS.PREPROCESS_PROGRESS, scheduleRefresh)
+    on(WS_EVENTS.PREPROCESS_COMPLETED, scheduleRefresh)
+    on(WS_EVENTS.PREPROCESS_FAILED, scheduleRefresh)
+    on(WS_EVENTS.PREPROCESS_STARTED, scheduleRefresh)
     return () => {
-      off(WS_EVENTS.PREPROCESS_PROGRESS, handleProgress)
-      off(WS_EVENTS.PREPROCESS_COMPLETED, handleProgress)
-      off(WS_EVENTS.PREPROCESS_FAILED, handleProgress)
-      off(WS_EVENTS.PREPROCESS_STARTED, handleProgress)
+      off(WS_EVENTS.PREPROCESS_PROGRESS, scheduleRefresh)
+      off(WS_EVENTS.PREPROCESS_COMPLETED, scheduleRefresh)
+      off(WS_EVENTS.PREPROCESS_FAILED, scheduleRefresh)
+      off(WS_EVENTS.PREPROCESS_STARTED, scheduleRefresh)
+      if (refreshTimer) clearTimeout(refreshTimer)
     }
   }, [on, off, loadTasks, loadStats])
 
@@ -151,6 +182,26 @@ export default function PreprocessPage() {
       toast.success('任务已删除')
       loadTasks()
     } catch { toast.error('删除失败') }
+  }
+
+  // 提交整个媒体库预处理
+  const handleSubmitLibrary = async (libraryId: string) => {
+    setSubmitting(libraryId)
+    try {
+      const res = await preprocessApi.submitLibrary(libraryId)
+      const count = res.data.data.submitted
+      if (count > 0) {
+        toast.success(`已提交 ${count} 个预处理任务`)
+        loadTasks()
+        loadStats()
+      } else {
+        toast.info('该媒体库没有需要预处理的视频')
+      }
+    } catch {
+      toast.error('提交失败')
+    } finally {
+      setSubmitting(null)
+    }
   }
 
   const formatSize = (bytes: number) => {
@@ -212,7 +263,7 @@ export default function PreprocessPage() {
             </div>
             <div className="text-2xl font-bold text-white">{stats.running_count}</div>
             <div className="text-xs text-surface-500 mt-1">
-              {stats.active_workers}/{stats.max_workers} 工作线程
+              {stats.active_workers}/{sysLoad.cur_workers || stats.max_workers} 工作线程
             </div>
           </div>
 
@@ -232,10 +283,24 @@ export default function PreprocessPage() {
               <Cpu size={14} className="text-emerald-400" />
               系统负载
             </div>
-            <div className="text-2xl font-bold text-white">{sysLoad.mem_alloc_mb.toFixed(0)} MB</div>
-            <div className="text-xs text-surface-500 mt-1">
-              {sysLoad.goroutines} goroutines · {sysLoad.cpu_count} CPU
+            <div className="text-2xl font-bold text-white">
+              {sysLoad.cpu_percent != null ? `${sysLoad.cpu_percent.toFixed(0)}%` : `${sysLoad.mem_alloc_mb.toFixed(0)} MB`}
             </div>
+            <div className="text-xs text-surface-500 mt-1">
+              {sysLoad.cpu_count} CPU · {sysLoad.mem_alloc_mb.toFixed(0)} MB
+            </div>
+            {/* CPU 使用率进度条 */}
+            {sysLoad.cpu_percent != null && (
+              <div className="mt-2 h-1 w-full rounded-full bg-surface-700">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, sysLoad.cpu_percent)}%`,
+                    background: sysLoad.cpu_percent > 75 ? '#ef4444' : sysLoad.cpu_percent > 50 ? '#f59e0b' : '#10b981',
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
@@ -247,6 +312,35 @@ export default function PreprocessPage() {
             <div className="text-xs text-surface-500 mt-1">
               已完成 {stats.status_counts?.completed || 0} 个
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 媒体库批量预处理 */}
+      {libraries.length > 0 && (
+        <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+          <h2 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+            <FolderOpen size={16} className="text-neon-blue" />
+            媒体库批量预处理
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {libraries.map((lib) => (
+              <button
+                key={lib.id}
+                onClick={() => handleSubmitLibrary(lib.id)}
+                disabled={submitting === lib.id}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-surface-300 hover:text-white transition-colors disabled:opacity-50"
+                style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-15)' }}
+              >
+                {submitting === lib.id ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Send size={12} />
+                )}
+                {lib.name}
+                <span className="text-surface-500">({lib.type})</span>
+              </button>
+            ))}
           </div>
         </div>
       )}
