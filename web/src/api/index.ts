@@ -24,7 +24,7 @@ export { seriesApi } from './series'
 // 管理模块
 export { adminApi } from './admin'
 export { scrapeApi, fileManagerApi } from './scrape'
-export { backupApi, notificationApi, batchMetadataApi, importExportApi } from './backup'
+export { notificationApi, batchMetadataApi, importExportApi } from './backup'
 export { embyCompatApi } from './emby'
 
 // AI 模块
@@ -35,8 +35,7 @@ export { recommendApi } from './recommend'
 export { castApi, bookmarkApi, commentApi, statsApi } from './social'
 
 // V3 扩展
-export { aiSceneApi, familySocialApi } from './v3'
-export { liveApi, cloudSyncApi } from './live'
+export { aiSceneApi } from './v3'
 
 // V2 扩展
 export { userProfileApi, offlineDownloadApi, pluginApi, musicApi, photoApi, federationApi, abrApi } from './v2'
@@ -45,4 +44,4 @@ export { userProfileApi, offlineDownloadApi, pluginApi, musicApi, photoApi, fede
 export { pulseApi } from './pulse'
 
 // V6: P1~P3 新增功能
-export { batchMoveApi, tagApi, shareApi, matchRuleApi } from './v4'
+export { batchMoveApi } from './v4'

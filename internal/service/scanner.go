@@ -185,7 +185,6 @@ func isBitmapSubtitle(codec string) bool {
 type ScannerService struct {
 	mediaRepo      *repository.MediaRepo
 	seriesRepo     *repository.SeriesRepo
-	matchRuleRepo  *repository.MatchRuleRepo // P2: 自定义匹配规则
 	cfg            *config.Config
 	logger         *zap.SugaredLogger
 	wsHub          *WSHub                 // WebSocket事件广播
@@ -201,11 +200,6 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 		logger:     logger,
 		nfoService: NewNFOService(logger),
 	}
-}
-
-// SetMatchRuleRepo 设置匹配规则仓储（延迟注入）
-func (s *ScannerService) SetMatchRuleRepo(repo *repository.MatchRuleRepo) {
-	s.matchRuleRepo = repo
 }
 
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
@@ -278,7 +272,6 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	var videoFiles int     // 识别到的视频文件数
 	var skippedExist int   // 已存在且未变更跳过的文件数
 	var skippedUpdated int // 已存在但已更新的文件数
-	var skippedRule int    // 被匹配规则跳过的文件数
 
 	// 增量扫描：获取上次扫描时间，仅处理新增/变更的文件
 	lastScanTime := time.Time{}
@@ -295,15 +288,6 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		existingPaths = nil
 	} else {
 		s.logger.Infof("预加载 %d 个已有文件路径到内存", len(existingPaths))
-	}
-
-	// P2: 预加载自定义匹配规则
-	var matchRules []model.MatchRule
-	if s.matchRuleRepo != nil {
-		matchRules, _ = s.matchRuleRepo.ListEnabled(library.ID)
-		if len(matchRules) > 0 {
-			s.logger.Infof("加载 %d 条匹配规则", len(matchRules))
-		}
 	}
 
 	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
@@ -341,13 +325,6 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		// P0: 排除 extras 路径和 Emby 特典后缀文件
 		if isExtrasPath(path) || isExtrasFile(filepath.Base(path)) {
 			s.logger.Debugf("跳过非正片内容: %s", path)
-			return nil
-		}
-
-		// P2: 应用自定义匹配规则
-		if s.applyMatchRulesSkip(path, matchRules) {
-			skippedRule++
-			s.logger.Debugf("匹配规则跳过: %s", path)
 			return nil
 		}
 
@@ -411,9 +388,6 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			IMDbID:       imdbID,
 			ScrapeStatus: "pending",
 		}
-
-		// P2: 应用匹配规则的非跳过动作（set_type, set_genre 等）
-		s.applyMatchRulesAction(media, path, matchRules)
 
 		// P2: 检测多 CD 堆叠
 		stackBase, stackOrder := detectStacking(filename)
@@ -498,8 +472,8 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 	}
 
-	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d, 规则跳过: %d",
-		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated, skippedRule)
+	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d",
+		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated)
 
 	return count, err
 }
@@ -583,79 +557,7 @@ func detectVersionTag(filename string) string {
 	return ""
 }
 
-// ==================== P2: 自定义匹配规则集成 ====================
-
-// applyMatchRulesSkip 检查文件是否应被匹配规则跳过
-func (s *ScannerService) applyMatchRulesSkip(filePath string, rules []model.MatchRule) bool {
-	for _, rule := range rules {
-		if rule.Action != "skip" {
-			continue
-		}
-		if s.matchRule(filePath, &rule) {
-			// 更新命中计数
-			if s.matchRuleRepo != nil {
-				s.matchRuleRepo.IncrementHitCount(rule.ID)
-			}
-			return true
-		}
-	}
-	return false
-}
-
-// applyMatchRulesAction 对媒体应用匹配规则的非跳过动作
-func (s *ScannerService) applyMatchRulesAction(media *model.Media, filePath string, rules []model.MatchRule) {
-	for _, rule := range rules {
-		if rule.Action == "skip" {
-			continue
-		}
-		if s.matchRule(filePath, &rule) {
-			switch rule.Action {
-			case "set_type":
-				media.MediaType = rule.ActionValue
-			case "set_genre":
-				if media.Genres == "" {
-					media.Genres = rule.ActionValue
-				} else {
-					media.Genres += "," + rule.ActionValue
-				}
-			}
-			// 更新命中计数
-			if s.matchRuleRepo != nil {
-				s.matchRuleRepo.IncrementHitCount(rule.ID)
-			}
-			s.logger.Debugf("匹配规则命中: %s -> %s=%s", filepath.Base(filePath), rule.Action, rule.ActionValue)
-		}
-	}
-}
-
-// matchRule 测试文件路径是否匹配指定规则
-func (s *ScannerService) matchRule(filePath string, rule *model.MatchRule) bool {
-	target := filePath
-	switch rule.RuleType {
-	case "filename":
-		target = filepath.Base(filePath)
-		return strings.Contains(strings.ToLower(target), strings.ToLower(rule.Pattern))
-	case "path":
-		return strings.Contains(strings.ToLower(target), strings.ToLower(rule.Pattern))
-	case "regex":
-		re, err := regexp.Compile(rule.Pattern)
-		if err != nil {
-			return false
-		}
-		return re.MatchString(target)
-	case "keyword":
-		lower := strings.ToLower(filepath.Base(filePath))
-		keywords := strings.Split(rule.Pattern, ",")
-		for _, kw := range keywords {
-			if strings.Contains(lower, strings.ToLower(strings.TrimSpace(kw))) {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
+// scanMixedLibrary
 // scanMixedLibrary 扫描混合媒体库（智能区分电影和电视剧）
 // 策略：遍历根目录第一层，对每个子目录判断是电影还是电视剧文件夹
 // - 如果子目录内包含多个视频文件，或文件名匹配剧集命名模式，则视为电视剧

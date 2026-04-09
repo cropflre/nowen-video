@@ -162,13 +162,6 @@ export interface UserStatsOverview {
   most_watched: { media_id: string; title: string; poster_path: string; total_minutes: number }[]
 }
 
-// ==================== 数据备份 ====================
-export interface BackupFile {
-  name: string
-  size: number
-  modified: string
-}
-
 export interface SeasonInfo {
   season_num: number
   episode_count: number
@@ -595,21 +588,7 @@ export interface ContentRating {
   level: '' | 'G' | 'PG' | 'PG-13' | 'R' | 'NC-17'
 }
 
-// ==================== 访问日志 ====================
-export interface AccessLog {
-  id: string
-  user_id: string
-  username: string
-  action: string
-  resource: string
-  detail: string
-  ip: string
-  user_agent: string
-  created_at: string
-}
-
-// ==================== TMDb搜索结果（手动匹配） ====================
-export interface TMDbSearchResult {
+// ==================== TMDb搜索结果（手动匹配） ====================export interface TMDbSearchResult {
   id: number
   title: string
   name: string
@@ -1190,148 +1169,6 @@ export interface CoverCandidate {
   created_at: string
 }
 
-// ==================== V3: 家庭社交互动 ====================
-export interface FamilyGroup {
-  id: string
-  name: string
-  owner_id: string
-  invite_code: string
-  avatar: string
-  max_members: number
-  members?: FamilyMember[]
-  created_at: string
-  updated_at: string
-}
-
-export interface FamilyMember {
-  id: string
-  group_id: string
-  user_id: string
-  nickname: string
-  role: 'owner' | 'admin' | 'member'
-  joined_at: string
-  user?: User
-}
-
-export interface MediaShare {
-  id: string
-  user_id: string
-  group_id: string
-  media_id: string
-  series_id: string
-  message: string
-  created_at: string
-  user?: User
-  media?: Media
-  series?: Series
-}
-
-export interface MediaLike {
-  id: string
-  user_id: string
-  media_id: string
-  created_at: string
-}
-
-export interface MediaRecommendation {
-  id: string
-  from_user_id: string
-  to_user_id: string
-  media_id: string
-  series_id: string
-  message: string
-  is_read: boolean
-  created_at: string
-  from_user?: User
-  media?: Media
-  series?: Series
-}
-
-// ==================== V3: 实时直播 ====================
-export interface LiveSource {
-  id: string
-  name: string
-  url: string
-  type: 'iptv' | 'custom' | 'rtmp'
-  category: string
-  logo: string
-  epg_url: string
-  quality: string
-  is_active: boolean
-  sort_order: number
-  last_check_at: string | null
-  check_status: string
-  created_at: string
-  updated_at: string
-}
-
-export interface LivePlaylist {
-  id: string
-  name: string
-  url: string
-  file_path: string
-  source_count: number
-  auto_update: boolean
-  update_cron: string
-  last_update: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface LiveRecording {
-  id: string
-  source_id: string
-  user_id: string
-  title: string
-  file_path: string
-  file_size: number
-  duration: number
-  status: 'recording' | 'completed' | 'failed'
-  started_at: string
-  stopped_at: string | null
-  source?: LiveSource
-  created_at: string
-}
-
-// ==================== V3: 云端同步 ====================
-export interface SyncDevice {
-  id: string
-  user_id: string
-  device_name: string
-  device_type: 'phone' | 'tablet' | 'tv' | 'desktop' | 'browser'
-  device_id: string
-  platform: string
-  app_version: string
-  last_sync_at: string | null
-  last_active_at: string | null
-  is_online: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface SyncRecord {
-  id: string
-  user_id: string
-  device_id: string
-  data_type: 'progress' | 'favorites' | 'playlists' | 'settings' | 'history'
-  data_key: string
-  data_value: string
-  version: number
-  synced_at: string
-}
-
-export interface UserSyncConfig {
-  id: string
-  user_id: string
-  sync_progress: boolean
-  sync_favorites: boolean
-  sync_playlists: boolean
-  sync_history: boolean
-  sync_settings: boolean
-  auto_sync: boolean
-  sync_interval_min: number
-}
-
 // ==================== V2: 多用户配置文件 ====================
 export interface UserProfile {
   id: string
@@ -1664,97 +1501,6 @@ export interface BatchMoveResult {
   errors: string[]
 }
 
-// ==================== P2: 标签管理系统 ====================
-export interface Tag {
-  id: string
-  name: string
-  color: string
-  icon: string
-  category: string
-  sort_order: number
-  usage_count: number
-  created_by: string
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateTagRequest {
-  name: string
-  color?: string
-  icon?: string
-  category?: string
-}
-
-export interface BatchAddTagsRequest {
-  media_ids: string[]
-  tag_ids: string[]
-}
-
-// ==================== P2: 分享链接功能 ====================
-export interface ShareLink {
-  id: string
-  code: string
-  media_id: string
-  series_id: string
-  created_by: string
-  title: string
-  description: string
-  password?: string
-  max_views: number
-  view_count: number
-  allow_download: boolean
-  expires_at: string | null
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateShareLinkRequest {
-  media_id?: string
-  series_id?: string
-  title?: string
-  description?: string
-  password?: string
-  max_views?: number
-  allow_download?: boolean
-  expires_in?: number // 过期时间（小时）
-}
-
-// ==================== P3: 自定义匹配规则 ====================
-export interface MatchRule {
-  id: string
-  name: string
-  description: string
-  rule_type: 'filename' | 'path' | 'regex' | 'keyword'
-  pattern: string
-  action: 'set_type' | 'set_genre' | 'set_tag' | 'skip' | 'set_library'
-  action_value: string
-  priority: number
-  enabled: boolean
-  library_id: string
-  hit_count: number
-  created_by: string
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateMatchRuleRequest {
-  name: string
-  description?: string
-  rule_type: string
-  pattern: string
-  action: string
-  action_value?: string
-  library_id?: string
-  priority?: number
-}
-
-export interface TestMatchRuleRequest {
-  rule_type: string
-  pattern: string
-  test_input: string
-}
-
 // ==================== 视频预处理 ====================
 export interface PreprocessTask {
   id: string
@@ -1794,6 +1540,8 @@ export interface PreprocessStatistics {
   active_workers: number
   queue_size: number
   hw_accel: string
+  mode: string
+  resource_limit: number
 }
 
 export interface SystemLoadInfo {
@@ -1806,5 +1554,55 @@ export interface SystemLoadInfo {
   max_workers: number
   cur_workers: number // 动态调整后的当前并发数
   queue_size: number
+  resource_limit: number // CPU 资源使用率上限
+  ffmpeg_threads: number // FFmpeg 线程数
+  hw_accel: string // 硬件加速模式
+  suggestions: string[] // 性能优化建议
+}
+
+// 性能配置
+export interface PerformanceConfig {
+  resource_limit: number
+  max_transcode_jobs: number
+  transcode_preset: string
+  hw_accel: string
+  detected_hw_accel: string // 实际检测到的硬件加速模式
+  vaapi_device: string
+  cpu_count: number
+  ffmpeg_threads: number
+  max_workers: number
+}
+
+// ==================== 字幕预处理 ====================
+export interface SubtitlePreprocessTask {
+  id: string
+  media_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped'
+  phase: 'check' | 'extract' | 'generate' | 'translate' | 'done'
+  progress: number
+  message: string
+  error: string
+  media_title: string
+  source_lang: string
+  target_langs: string
+  force_regenerate: boolean
+  original_vtt_path: string
+  translated_paths: string
+  subtitle_source: string
+  detected_language: string
+  cue_count: number
+  started_at: string | null
+  completed_at: string | null
+  elapsed_sec: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SubtitlePreprocessStatistics {
+  status_counts: Record<string, number>
+  max_workers: number
+  active_workers: number
+  queue_size: number
+  asr_enabled: boolean
 }
 

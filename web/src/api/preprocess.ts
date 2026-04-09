@@ -1,5 +1,5 @@
 import api from './client'
-import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo } from '@/types'
+import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo, PerformanceConfig } from '@/types'
 
 // ==================== 视频预处理 ====================
 export const preprocessApi = {
@@ -59,6 +59,18 @@ export const preprocessApi = {
   deleteTask: (taskId: string) =>
     api.delete(`/admin/preprocess/tasks/${taskId}`),
 
+  // 批量删除任务
+  batchDeleteTasks: (taskIds: string[]) =>
+    api.post<{ message: string; data: { deleted: number } }>('/admin/preprocess/tasks/batch-delete', { task_ids: taskIds }),
+
+  // 批量取消任务
+  batchCancelTasks: (taskIds: string[]) =>
+    api.post<{ message: string; data: { cancelled: number } }>('/admin/preprocess/tasks/batch-cancel', { task_ids: taskIds }),
+
+  // 批量重试任务
+  batchRetryTasks: (taskIds: string[]) =>
+    api.post<{ message: string; data: { retried: number } }>('/admin/preprocess/tasks/batch-retry', { task_ids: taskIds }),
+
   // 获取统计信息
   getStatistics: () =>
     api.get<{ data: PreprocessStatistics }>('/admin/preprocess/statistics'),
@@ -70,4 +82,12 @@ export const preprocessApi = {
   // 清理预处理缓存
   cleanCache: (mediaId: string) =>
     api.delete(`/admin/preprocess/cache/${mediaId}`),
+
+  // 获取性能配置
+  getPerformanceConfig: () =>
+    api.get<{ data: PerformanceConfig }>('/admin/preprocess/performance-config'),
+
+  // 更新性能配置
+  updatePerformanceConfig: (updates: Partial<Pick<PerformanceConfig, 'resource_limit' | 'max_transcode_jobs' | 'transcode_preset' | 'hw_accel'>>) =>
+    api.put<{ message: string; data: PerformanceConfig }>('/admin/preprocess/performance-config', updates),
 }

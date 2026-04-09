@@ -76,10 +76,14 @@ type AppConfig struct {
 	HWAccel string `mapstructure:"hw_accel"`
 	// VAAPI 设备路径，如 /dev/dri/renderD128
 	VAAPIDevice string `mapstructure:"vaapi_device"`
-	// 转码预设: veryfast / fast / medium
+	// 转码预设: ultrafast / veryfast / fast / medium
 	TranscodePreset string `mapstructure:"transcode_preset"`
 	// 最大并发转码任务数
 	MaxTranscodeJobs int `mapstructure:"max_transcode_jobs"`
+	// CPU 资源使用率上限（百分比，1~80），系统会自动保留 20% 缓冲
+	// 例如设为 80 表示 CPU 使用率超过 80% 时暂停转码任务
+	// 默认: 5（最低配置）
+	ResourceLimit int `mapstructure:"resource_limit"`
 	// 允许的跨域来源列表
 	CORSOrigins []string `mapstructure:"cors_origins"`
 }
@@ -153,6 +157,60 @@ type AIConfig struct {
 	WhisperThreads int `mapstructure:"whisper_threads"`
 	// 是否优先使用本地引擎（默认 false，优先云端）
 	PreferLocalWhisper bool `mapstructure:"prefer_local_whisper"`
+
+	// ==================== 字幕预处理配置 ====================
+	// 是否在媒体库扫描后自动触发字幕预处理
+	AutoSubtitlePreprocess bool `mapstructure:"auto_subtitle_preprocess"`
+	// 自动预处理的目标翻译语言列表（逗号分隔，如 "zh,en"，留空则不翻译）
+	SubtitleTargetLangs string `mapstructure:"subtitle_target_langs"`
+	// 字幕预处理最大并发数（默认 1）
+	SubtitlePreprocessWorkers int `mapstructure:"subtitle_preprocess_workers"`
+	// 是否优先使用已有字幕（内嵌/外挂），而非重新 AI 生成（默认 true）
+	PreferExistingSubtitle bool `mapstructure:"prefer_existing_subtitle"`
+
+	// ==================== 图形字幕 OCR 配置 ====================
+	// 是否启用图形字幕 OCR 识别（PGS/VobSub 等）
+	OCREnabled bool `mapstructure:"ocr_enabled"`
+	// Tesseract 可执行文件路径（留空则使用系统 PATH 中的 tesseract）
+	TesseractPath string `mapstructure:"tesseract_path"`
+	// Tesseract OCR 语言包（如 "chi_sim+eng"，默认 "eng"）
+	TesseractLang string `mapstructure:"tesseract_lang"`
+	// 图形字幕导出图片 DPI（默认 150）
+	OCRDPI int `mapstructure:"ocr_dpi"`
+
+	// ==================== 字幕清洗配置 ====================
+	// 是否启用字幕内容清洗（在字幕提取/转换后、翻译前执行）
+	SubCleanEnabled bool `mapstructure:"sub_clean_enabled"`
+	// 去除 HTML 标签（<i>, <b>, <font> 等）
+	SubCleanRemoveHTML bool `mapstructure:"sub_clean_remove_html"`
+	// 去除 ASS 样式标签（{\an8}, {\pos()} 等）
+	SubCleanRemoveASSStyle bool `mapstructure:"sub_clean_remove_ass_style"`
+	// 统一标点符号（全角→半角，仅对非 CJK 文本生效）
+	SubCleanNormalizePunct bool `mapstructure:"sub_clean_normalize_punct"`
+	// 去除 SDH 标注（[音乐], (笑声), [门铃响] 等听障辅助描述）
+	SubCleanRemoveSDH bool `mapstructure:"sub_clean_remove_sdh"`
+	// 去除广告水印字幕（字幕组署名、网站地址等）
+	SubCleanRemoveAds bool `mapstructure:"sub_clean_remove_ads"`
+	// 合并过短的字幕条目（显示时长低于阈值时与相邻条目合并）
+	SubCleanMergeShort bool `mapstructure:"sub_clean_merge_short"`
+	// 拆分过长的字幕条目（超过最大字符数时按时间均分拆分）
+	SubCleanSplitLong bool `mapstructure:"sub_clean_split_long"`
+	// 处理前备份原始字幕文件（生成 .bak 文件）
+	SubCleanBackup bool `mapstructure:"sub_clean_backup"`
+	// 编码检测失败时的回退编码（如 "gbk"、"big5"、"shift_jis"）
+	SubCleanFallbackEnc string `mapstructure:"sub_clean_fallback_enc"`
+	// 全局时间轴偏移（毫秒，正数延后、负数提前）
+	SubCleanTimeOffsetMs int64 `mapstructure:"sub_clean_time_offset_ms"`
+	// 最小字幕显示时长（毫秒，低于此值的条目将被合并，默认 500）
+	SubCleanMinDurationMs int64 `mapstructure:"sub_clean_min_duration_ms"`
+	// 最大字幕显示时长（毫秒，超过此值的条目将被截断，默认 10000）
+	SubCleanMaxDurationMs int64 `mapstructure:"sub_clean_max_duration_ms"`
+	// 合并间隔阈值（毫秒，两条字幕间隔小于此值时可合并，默认 200）
+	SubCleanMinGapMs int64 `mapstructure:"sub_clean_min_gap_ms"`
+	// 每行最大字符数（用于拆分过长字幕，默认 42）
+	SubCleanMaxCharsPerLine int `mapstructure:"sub_clean_max_chars_per_line"`
+	// 每条字幕最大行数（默认 2）
+	SubCleanMaxLinesPerCue int `mapstructure:"sub_clean_max_lines_per_cue"`
 }
 
 // RegistrationConfig 注册控制配置
@@ -197,6 +255,7 @@ type Config struct {
 	VAAPIDevice      string   `mapstructure:"vaapi_device"`
 	TranscodePreset  string   `mapstructure:"transcode_preset"`
 	MaxTranscodeJobs int      `mapstructure:"max_transcode_jobs"`
+	ResourceLimit    int      `mapstructure:"resource_limit"`
 	CORSOrigins      []string `mapstructure:"cors_origins"`
 }
 
@@ -287,10 +346,11 @@ func setDefaults() {
 	viper.SetDefault("app.web_dir", "./web/dist")
 	viper.SetDefault("app.ffmpeg_path", "ffmpeg")
 	viper.SetDefault("app.ffprobe_path", "ffprobe")
-	viper.SetDefault("app.hw_accel", "auto")
+	viper.SetDefault("app.hw_accel", "none")
 	viper.SetDefault("app.vaapi_device", "/dev/dri/renderD128")
-	viper.SetDefault("app.transcode_preset", "veryfast")
-	viper.SetDefault("app.max_transcode_jobs", 2)
+	viper.SetDefault("app.transcode_preset", "ultrafast")
+	viper.SetDefault("app.max_transcode_jobs", 1)
+	viper.SetDefault("app.resource_limit", 5)
 	viper.SetDefault("app.cors_origins", []string{})
 
 	// ---- 日志 ----
@@ -339,10 +399,11 @@ func setDefaults() {
 	viper.SetDefault("jwt_secret", "nowen-video-secret-change-me")
 	viper.SetDefault("ffmpeg_path", "ffmpeg")
 	viper.SetDefault("ffprobe_path", "ffprobe")
-	viper.SetDefault("hw_accel", "auto")
+	viper.SetDefault("hw_accel", "none")
 	viper.SetDefault("vaapi_device", "/dev/dri/renderD128")
-	viper.SetDefault("transcode_preset", "veryfast")
-	viper.SetDefault("max_transcode_jobs", 2)
+	viper.SetDefault("transcode_preset", "ultrafast")
+	viper.SetDefault("max_transcode_jobs", 1)
+	viper.SetDefault("resource_limit", 5)
 	viper.SetDefault("tmdb_api_key", "")
 }
 
@@ -489,11 +550,21 @@ func (c *Config) migrateFromFlatConfig() {
 	if c.App.TranscodePreset == "" {
 		c.App.TranscodePreset = "veryfast"
 	}
-	if c.MaxTranscodeJobs != 0 && c.MaxTranscodeJobs != 2 {
+	if c.MaxTranscodeJobs != 0 && c.MaxTranscodeJobs != 1 {
 		c.App.MaxTranscodeJobs = c.MaxTranscodeJobs
 	}
 	if c.App.MaxTranscodeJobs == 0 {
-		c.App.MaxTranscodeJobs = 2
+		c.App.MaxTranscodeJobs = 1
+	}
+	// 资源限制：允许用户配置 1~80，系统自动保留 20% 缓冲
+	if c.ResourceLimit != 0 && c.ResourceLimit != 80 {
+		c.App.ResourceLimit = c.ResourceLimit
+	}
+	if c.App.ResourceLimit <= 0 {
+		c.App.ResourceLimit = 80
+	}
+	if c.App.ResourceLimit > 80 {
+		c.App.ResourceLimit = 80 // 上限 80%，保留 20% 缓冲
 	}
 
 	// 缓存
@@ -556,6 +627,83 @@ func (c *Config) ClearTMDbAPIKey() error {
 	return c.SetTMDbAPIKey("")
 }
 
+// UpdatePerformanceConfig 更新性能配置并持久化
+// 支持动态修改 resource_limit、max_transcode_jobs、transcode_preset、hw_accel
+func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key, val := range updates {
+		switch key {
+		case "resource_limit":
+			if v, ok := val.(float64); ok {
+				limit := int(v)
+				if limit < 1 {
+					limit = 1
+				}
+				if limit > 80 {
+					limit = 80
+				}
+				c.App.ResourceLimit = limit
+				viper.Set("app.resource_limit", limit)
+			}
+		case "max_transcode_jobs":
+			if v, ok := val.(float64); ok {
+				jobs := int(v)
+				if jobs < 1 {
+					jobs = 1
+				}
+				if jobs > 16 {
+					jobs = 16
+				}
+				c.App.MaxTranscodeJobs = jobs
+				viper.Set("app.max_transcode_jobs", jobs)
+			}
+		case "transcode_preset":
+			if v, ok := val.(string); ok {
+				validPresets := map[string]bool{
+					"ultrafast": true, "superfast": true, "veryfast": true,
+					"faster": true, "fast": true, "medium": true,
+					"slow": true, "slower": true, "veryslow": true,
+				}
+				if validPresets[v] {
+					c.App.TranscodePreset = v
+					viper.Set("app.transcode_preset", v)
+				}
+			}
+		case "hw_accel":
+			if v, ok := val.(string); ok {
+				validAccels := map[string]bool{
+					"auto": true, "nvenc": true, "qsv": true,
+					"vaapi": true, "none": true,
+				}
+				if validAccels[v] {
+					c.App.HWAccel = v
+					viper.Set("app.hw_accel", v)
+				}
+			}
+		}
+	}
+
+	// 同时更新分片配置文件
+	c.updateAppConfigFile(updates)
+
+	return c.saveConfig()
+}
+
+// GetPerformanceConfig 获取当前性能配置
+func (c *Config) GetPerformanceConfig() map[string]interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return map[string]interface{}{
+		"resource_limit":     c.App.ResourceLimit,
+		"max_transcode_jobs": c.App.MaxTranscodeJobs,
+		"transcode_preset":   c.App.TranscodePreset,
+		"hw_accel":           c.App.HWAccel,
+		"vaapi_device":       c.App.VAAPIDevice,
+	}
+}
+
 // saveConfig 将当前配置写入配置文件
 func (c *Config) saveConfig() error {
 	configFile := viper.ConfigFileUsed()
@@ -563,6 +711,27 @@ func (c *Config) saveConfig() error {
 		configFile = "config.yaml"
 	}
 	return viper.WriteConfigAs(configFile)
+}
+
+// updateAppConfigFile 更新 config/app.yaml 分片文件中的性能配置字段
+func (c *Config) updateAppConfigFile(updates map[string]interface{}) {
+	appDirs := []string{"./config", "./data/config", "/etc/nowen-video/config"}
+	for _, dir := range appDirs {
+		filePath := filepath.Join(dir, "app.yaml")
+		if _, err := os.Stat(filePath); err != nil {
+			continue
+		}
+		subViper := viper.New()
+		subViper.SetConfigFile(filePath)
+		if err := subViper.ReadInConfig(); err != nil {
+			continue
+		}
+		for key, val := range updates {
+			subViper.Set(key, val)
+		}
+		_ = subViper.WriteConfigAs(filePath)
+		return
+	}
 }
 
 // updateSecretsFile 更新 config/secrets.yaml 分片文件中的指定字段

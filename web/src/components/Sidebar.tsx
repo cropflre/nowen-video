@@ -27,10 +27,8 @@ import {
   X,
   BarChart3,
   FolderOpen as FolderOpenIcon,
-  Users,
-  Radio,
-  Cloud,
   Activity,
+  Subtitles,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -195,33 +193,6 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         </NavLink>
 
         <NavLink
-          to="/family"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Users size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.family')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/live"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Radio size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.live')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/sync"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Cloud size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.sync')}</span>}
-        </NavLink>
-
-        <NavLink
           to="/profile"
           className={({ isActive }) => clsx('nav-item', isActive && 'active')}
           onClick={onMobileClose}
@@ -302,6 +273,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             >
               <Zap size={18} />
               {(!collapsed || isMobileOpen) && <span>预处理</span>}
+            </NavLink>
+
+            <NavLink
+              to="/subtitle-preprocess"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+              onClick={onMobileClose}
+            >
+              <Subtitles size={18} />
+              {(!collapsed || isMobileOpen) && <span>字幕预处理</span>}
             </NavLink>
           </>
         )}

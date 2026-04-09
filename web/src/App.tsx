@@ -20,11 +20,9 @@ const SeriesDetailPage = lazy(() => import('@/pages/SeriesDetailPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const StatsPage = lazy(() => import('@/pages/StatsPage'))
 const FileManagerPage = lazy(() => import('@/pages/FileManagerPage'))
-const FamilyPage = lazy(() => import('@/pages/FamilyPage'))
-const LivePage = lazy(() => import('@/pages/LivePage'))
-const SyncPage = lazy(() => import('@/pages/SyncPage'))
 const PulsePage = lazy(() => import('@/pages/PulsePage'))
 const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
+const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
 
 // 页面加载中的占位组件
 function PageLoader() {
@@ -89,11 +87,9 @@ export default function App() {
               <Route path="files" element={<FileManagerPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="stats" element={<StatsPage />} />
-              <Route path="family" element={<FamilyPage />} />
-              <Route path="live" element={<LivePage />} />
-              <Route path="sync" element={<SyncPage />} />
               <Route path="pulse" element={<PulsePage />} />
               <Route path="preprocess" element={<PreprocessPage />} />
+              <Route path="subtitle-preprocess" element={<SubtitlePreprocessPage />} />
             </Route>
 
             {/* 未匹配路由 */}

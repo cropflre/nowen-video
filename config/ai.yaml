@@ -94,6 +94,101 @@ whisper_threads: 4
 # 设为 false 时：优先使用云端 API，云端不可用时回退到本地
 prefer_local_whisper: false
 
+# ==================== 字幕预处理配置 ====================
+# 是否在媒体库扫描后自动触发字幕预处理
+# 启用后，每次扫描完成会自动为新增视频生成/提取字幕
+auto_subtitle_preprocess: false
+
+# 自动预处理的目标翻译语言列表（逗号分隔，留空则不翻译，仅生成原始字幕）
+# 示例: "zh,en" 表示自动翻译为中文和英文
+# 支持的语言: zh(中文) / en(英文) / ja(日文) / ko(韩文) / fr(法文) / de(德文) / es(西班牙文) / ru(俄文)
+subtitle_target_langs: ""
+
+# 字幕预处理最大并发数（独立于视频预处理，默认 1）
+# 建议不超过 2，避免与视频预处理争抢资源
+subtitle_preprocess_workers: 1
+
+# 是否优先使用已有字幕（内嵌/外挂），而非重新 AI 生成（默认 true）
+# 设为 true 时：发现已有字幕则直接使用，不调用 AI
+# 设为 false 时：始终使用 AI 重新生成
+prefer_existing_subtitle: true
+
+# ==================== 图形字幕 OCR 配置 ====================
+# 是否启用图形字幕 OCR 识别（PGS/VobSub 等）
+# 启用后，遇到图形字幕时会尝试通过 OCR 提取为文本字幕
+# 需要系统安装 Tesseract OCR 引擎
+ocr_enabled: false
+
+# Tesseract 可执行文件路径（留空则使用系统 PATH 中的 tesseract）
+# Linux: /usr/bin/tesseract
+# Windows: C:\Program Files\Tesseract-OCR\tesseract.exe
+# macOS: /usr/local/bin/tesseract
+tesseract_path: ""
+
+# Tesseract OCR 语言包（多语言用 + 连接）
+# 常用: eng(英文) / chi_sim(简体中文) / chi_tra(繁体中文) / jpn(日文) / kor(韩文)
+# 示例: "chi_sim+eng" 表示同时识别中英文
+# 需要安装对应的语言包: apt install tesseract-ocr-chi-sim
+tesseract_lang: "eng"
+
+# 图形字幕导出图片 DPI（越高越清晰但越慢，默认 150）
+ocr_dpi: 150
+
+# ==================== 字幕清洗配置 ====================
+# 字幕清洗在字幕提取/转换后、翻译前执行，用于提升字幕质量。
+# 启用后会自动执行：编码转换、文本清洗、时间轴修复、分段优化。
+
+# 是否启用字幕内容清洗（总开关）
+sub_clean_enabled: false
+
+# 去除 HTML 标签（<i>, <b>, <font> 等格式标签）
+sub_clean_remove_html: true
+
+# 去除 ASS 样式标签（{\an8}, {\pos(320,50)} 等）
+sub_clean_remove_ass_style: true
+
+# 统一标点符号（全角→半角，仅对非 CJK 文本生效，CJK 文本保留全角标点）
+sub_clean_normalize_punct: false
+
+# 去除 SDH 标注（[音乐], (笑声), [门铃响] 等听障辅助描述）
+# 注意：启用后会移除所有方括号/圆括号内的内容
+sub_clean_remove_sdh: false
+
+# 去除广告水印字幕（字幕组署名、网站地址、翻译者信息等）
+sub_clean_remove_ads: true
+
+# 合并过短的字幕条目（显示时长低于 min_duration_ms 时与相邻条目合并）
+sub_clean_merge_short: true
+
+# 拆分过长的字幕条目（超过 max_chars_per_line × max_lines_per_cue 时按时间均分拆分）
+sub_clean_split_long: false
+
+# 处理前备份原始字幕文件（在原文件旁生成 .bak 备份）
+sub_clean_backup: true
+
+# 编码检测失败时的回退编码
+# 常用值: gbk(简体中文) / big5(繁体中文) / shift_jis(日文) / euc-kr(韩文)
+# 留空则不进行回退，直接使用 UTF-8
+sub_clean_fallback_enc: "gbk"
+
+# 全局时间轴偏移（毫秒，正数延后、负数提前，0 = 不偏移）
+sub_clean_time_offset_ms: 0
+
+# 最小字幕显示时长（毫秒，低于此值的条目将被合并，默认 500）
+sub_clean_min_duration_ms: 500
+
+# 最大字幕显示时长（毫秒，超过此值的条目将被截断，默认 10000 即 10 秒）
+sub_clean_max_duration_ms: 10000
+
+# 合并间隔阈值（毫秒，两条字幕间隔小于此值时可合并，默认 200）
+sub_clean_min_gap_ms: 200
+
+# 每行最大字符数（用于拆分过长字幕，默认 42）
+sub_clean_max_chars_per_line: 42
+
+# 每条字幕最大行数（默认 2）
+sub_clean_max_lines_per_cue: 2
+
 # ==================== Phase 4: 字幕翻译说明 ====================
 # 字幕翻译功能复用上述 LLM API 配置（如 qwen-turbo / gpt-4o-mini）。
 # 支持将已有字幕（AI 生成或外挂字幕）翻译为其他语言。

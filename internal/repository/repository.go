@@ -19,7 +19,6 @@ type Repositories struct {
 	Playlist       *PlaylistRepo
 	Bookmark       *BookmarkRepo
 	Comment        *CommentRepo
-	AccessLog      *AccessLogRepo
 	ScheduledTask  *ScheduledTaskRepo
 	ContentRating  *ContentRatingRepo
 	UserPermission *UserPermissionRepo
@@ -33,20 +32,6 @@ type Repositories struct {
 	AIAnalysisTask *AIAnalysisTaskRepo
 	// V3: AI 封面优化
 	CoverCandidate *CoverCandidateRepo
-	// V3: 家庭社交互动
-	FamilyGroup         *FamilyGroupRepo
-	FamilyMember        *FamilyMemberRepo
-	MediaShare          *MediaShareRepo
-	MediaLike           *MediaLikeRepo
-	MediaRecommendation *MediaRecommendationRepo
-	// V3: 实时直播
-	LiveSource    *LiveSourceRepo
-	LivePlaylist  *LivePlaylistRepo
-	LiveRecording *LiveRecordingRepo
-	// V3: 云端同步
-	SyncDevice     *SyncDeviceRepo
-	SyncRecord     *SyncRecordRepo
-	UserSyncConfig *UserSyncConfigRepo
 	// V4: 缓存与标签优化
 	AICache        *AICacheRepo
 	GenreMapping   *GenreMappingRepo
@@ -54,11 +39,8 @@ type Repositories struct {
 	// V5: Pulse 数据中心
 	Pulse *PulseRepo
 	// V6: P1~P3 新增功能
-	Tag        *TagRepo
-	MediaTag   *MediaTagRepo
-	ShareLink  *ShareLinkRepo
-	MatchRule  *MatchRuleRepo
-	Preprocess *PreprocessRepo
+	Preprocess         *PreprocessRepo
+	SubtitlePreprocess *SubtitlePreprocessRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -76,7 +58,6 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		Playlist:       &PlaylistRepo{db: db},
 		Bookmark:       &BookmarkRepo{db: db},
 		Comment:        &CommentRepo{db: db},
-		AccessLog:      &AccessLogRepo{db: db},
 		ScheduledTask:  &ScheduledTaskRepo{db: db},
 		ContentRating:  &ContentRatingRepo{db: db},
 		UserPermission: &UserPermissionRepo{db: db},
@@ -85,21 +66,10 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		ScrapeTask:     &ScrapeTaskRepo{db: db},
 		ScrapeHistory:  &ScrapeHistoryRepo{db: db},
 		// V3
-		VideoChapter:        &VideoChapterRepo{db: db},
-		VideoHighlight:      &VideoHighlightRepo{db: db},
-		AIAnalysisTask:      &AIAnalysisTaskRepo{db: db},
-		CoverCandidate:      &CoverCandidateRepo{db: db},
-		FamilyGroup:         &FamilyGroupRepo{db: db},
-		FamilyMember:        &FamilyMemberRepo{db: db},
-		MediaShare:          &MediaShareRepo{db: db},
-		MediaLike:           &MediaLikeRepo{db: db},
-		MediaRecommendation: &MediaRecommendationRepo{db: db},
-		LiveSource:          &LiveSourceRepo{db: db},
-		LivePlaylist:        &LivePlaylistRepo{db: db},
-		LiveRecording:       &LiveRecordingRepo{db: db},
-		SyncDevice:          &SyncDeviceRepo{db: db},
-		SyncRecord:          &SyncRecordRepo{db: db},
-		UserSyncConfig:      &UserSyncConfigRepo{db: db},
+		VideoChapter:   &VideoChapterRepo{db: db},
+		VideoHighlight: &VideoHighlightRepo{db: db},
+		AIAnalysisTask: &AIAnalysisTaskRepo{db: db},
+		CoverCandidate: &CoverCandidateRepo{db: db},
 		// V4
 		AICache:        &AICacheRepo{db: db},
 		GenreMapping:   &GenreMappingRepo{db: db},
@@ -107,11 +77,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		// V5: Pulse 数据中心
 		Pulse: &PulseRepo{db: db},
 		// V6: P1~P3 新增功能
-		Tag:        &TagRepo{db: db},
-		MediaTag:   &MediaTagRepo{db: db},
-		ShareLink:  &ShareLinkRepo{db: db},
-		MatchRule:  &MatchRuleRepo{db: db},
-		Preprocess: &PreprocessRepo{db: db},
+		Preprocess:         &PreprocessRepo{db: db},
+		SubtitlePreprocess: &SubtitlePreprocessRepo{db: db},
 	}
 }
 

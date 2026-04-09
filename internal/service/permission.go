@@ -23,7 +23,6 @@ type PermissionService struct {
 	permRepo    *repository.UserPermissionRepo
 	ratingRepo  *repository.ContentRatingRepo
 	historyRepo *repository.WatchHistoryRepo
-	logRepo     *repository.AccessLogRepo
 	logger      *zap.SugaredLogger
 }
 
@@ -32,14 +31,12 @@ func NewPermissionService(
 	permRepo *repository.UserPermissionRepo,
 	ratingRepo *repository.ContentRatingRepo,
 	historyRepo *repository.WatchHistoryRepo,
-	logRepo *repository.AccessLogRepo,
 	logger *zap.SugaredLogger,
 ) *PermissionService {
 	return &PermissionService{
 		permRepo:    permRepo,
 		ratingRepo:  ratingRepo,
 		historyRepo: historyRepo,
-		logRepo:     logRepo,
 		logger:      logger,
 	}
 }
@@ -168,32 +165,4 @@ func (s *PermissionService) GetContentRating(mediaID string) (string, error) {
 		return "", err
 	}
 	return rating.Level, nil
-}
-
-// ==================== 访问日志 ====================
-
-// LogAccess 记录访问日志
-func (s *PermissionService) LogAccess(userID, username, action, resource, detail, ip, userAgent string) {
-	log := &model.AccessLog{
-		UserID:    userID,
-		Username:  username,
-		Action:    action,
-		Resource:  resource,
-		Detail:    detail,
-		IP:        ip,
-		UserAgent: userAgent,
-	}
-	if err := s.logRepo.Create(log); err != nil {
-		s.logger.Warnf("记录访问日志失败: %v", err)
-	}
-}
-
-// ListAccessLogs 获取访问日志
-func (s *PermissionService) ListAccessLogs(page, size int, userID, action string) ([]model.AccessLog, int64, error) {
-	return s.logRepo.List(page, size, userID, action)
-}
-
-// CleanOldLogs 清理旧日志
-func (s *PermissionService) CleanOldLogs(days int) error {
-	return s.logRepo.CleanOlderThan(days)
 }

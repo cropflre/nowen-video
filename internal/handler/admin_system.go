@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -241,24 +240,6 @@ func (h *AdminHandler) GetContentRating(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"media_id": mediaID, "level": level}})
-}
-
-// ==================== 访问日志 ====================
-
-// ListAccessLogs 获取访问日志
-func (h *AdminHandler) ListAccessLogs(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))
-	userID := c.Query("user_id")
-	action := c.Query("action")
-
-	logs, total, err := h.permissionService.ListAccessLogs(page, size, userID, action)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取日志失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": logs, "total": total, "page": page, "size": size})
 }
 
 // ==================== 系统设置（全局） ====================
@@ -662,8 +643,6 @@ func (h *AdminHandler) ClearAllData(c *gin.Context) {
 		{name: "演员关联", model: &model.MediaPerson{}},
 		{name: "演员信息", model: &model.Person{}},
 		{name: "类型映射", model: &model.GenreMapping{}},
-		{name: "标签关联", model: &model.MediaTag{}},
-		{name: "标签", model: &model.Tag{}},
 		{name: "内容分级", model: &model.ContentRating{}},
 
 		// 刮削与任务
@@ -680,29 +659,10 @@ func (h *AdminHandler) ClearAllData(c *gin.Context) {
 		{name: "视频高光", model: &model.VideoHighlight{}},
 		{name: "封面候选", model: &model.CoverCandidate{}},
 
-		// 社交相关
-		{name: "媒体分享", model: &model.MediaShare{}},
-		{name: "媒体点赞", model: &model.MediaLike{}},
-		{name: "媒体推荐", model: &model.MediaRecommendation{}},
-		{name: "家庭成员", model: &model.FamilyMember{}},
-		{name: "家庭组", model: &model.FamilyGroup{}},
-
-		// 直播相关
-		{name: "直播录制", model: &model.LiveRecording{}},
-		{name: "直播播放列表", model: &model.LivePlaylist{}},
-		{name: "直播源", model: &model.LiveSource{}},
-
-		// 同步相关
-		{name: "同步记录", model: &model.SyncRecord{}},
-		{name: "同步设备", model: &model.SyncDevice{}},
-		{name: "同步配置", model: &model.UserSyncConfig{}},
-
 		// 其他
-		{name: "访问日志", model: &model.AccessLog{}},
 		{name: "用户权限", model: &model.UserPermission{}},
-		{name: "分享链接", model: &model.ShareLink{}},
-		{name: "匹配规则", model: &model.MatchRule{}},
 
+		// 影视元数据
 		// 影视元数据 — 完全删除（包括海报/封面路径等缓存数据）
 		{name: "媒体记录", model: &model.Media{}},
 		{name: "剧集记录", model: &model.Series{}},

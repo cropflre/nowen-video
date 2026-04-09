@@ -18,7 +18,6 @@ func setupPermissionService(t *testing.T) (*PermissionService, *repository.Repos
 		repos.UserPermission,
 		repos.ContentRating,
 		repos.WatchHistory,
-		repos.AccessLog,
 		logger.Sugar(),
 	)
 	return permService, repos
@@ -197,35 +196,5 @@ func TestContentRating_Update(t *testing.T) {
 
 	if retrieved.Level != "R" {
 		t.Errorf("更新后内容分级应为R, 实际: %s", retrieved.Level)
-	}
-}
-
-// TestAccessLog_CreateAndList 访问日志的创建和查询
-func TestAccessLog_CreateAndList(t *testing.T) {
-	_, repos := setupPermissionService(t)
-
-	// 创建几条日志
-	for i := 0; i < 5; i++ {
-		log := &model.AccessLog{
-			UserID: "test-user",
-			Action: "play",
-		}
-		if err := repos.AccessLog.Create(log); err != nil {
-			t.Fatalf("创建日志失败: %v", err)
-		}
-	}
-
-	// 查询
-	logs, total, err := repos.AccessLog.List(1, 10, "test-user", "play")
-	if err != nil {
-		t.Fatalf("查询日志失败: %v", err)
-	}
-
-	if total != 5 {
-		t.Errorf("日志总数应为5, 实际: %d", total)
-	}
-
-	if len(logs) != 5 {
-		t.Errorf("返回日志数应为5, 实际: %d", len(logs))
 	}
 }

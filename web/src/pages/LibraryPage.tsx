@@ -95,9 +95,10 @@ export default function LibraryPage() {
   const totalPages = Math.ceil(total / size)
   const hasSeries = seriesList.length > 0
 
-  // 从混合列表中提取类型标签
+  // 从混合列表和系列列表中提取类型标签
   const allGenres = useMemo(() => {
     const genres = new Set<string>()
+    // 从混合列表提取
     mixedItems.forEach((item) => {
       const g = item.type === 'series' ? item.series?.genres : item.media?.genres
       if (g) {
@@ -107,8 +108,17 @@ export default function LibraryPage() {
         })
       }
     })
+    // 从系列列表提取（确保系列视图下也有分类标签可用）
+    seriesList.forEach((s) => {
+      if (s.genres) {
+        s.genres.split(',').forEach((genre) => {
+          const trimmed = genre.trim()
+          if (trimmed) genres.add(trimmed)
+        })
+      }
+    })
     return Array.from(genres).sort()
-  }, [mixedItems])
+  }, [mixedItems, seriesList])
 
   // 辅助函数：获取混合项的属性
   const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
@@ -191,6 +201,8 @@ export default function LibraryPage() {
 
   const filteredSeries = useMemo(() => {
     let items = [...deduplicatedSeries]
+
+    // 搜索
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase()
       items = items.filter(
@@ -200,8 +212,25 @@ export default function LibraryPage() {
           s.overview?.toLowerCase().includes(q)
       )
     }
+
+    // 分类筛选
+    if (filterGenre) {
+      items = items.filter((s) => (s.genres || '').includes(filterGenre))
+    }
+
+    // 排序
+    const [field, dir] = sortValue.split('_')
+    items.sort((a, b) => {
+      let cmp = 0
+      if (field === 'title') cmp = a.title.localeCompare(b.title)
+      else if (field === 'year') cmp = (a.year || 0) - (b.year || 0)
+      else if (field === 'rating') cmp = (a.rating || 0) - (b.rating || 0)
+      else cmp = new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()
+      return dir === 'desc' ? -cmp : cmp
+    })
+
     return items
-  }, [deduplicatedSeries, searchQuery])
+  }, [deduplicatedSeries, searchQuery, filterGenre, sortValue])
 
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sortValue)?.label || '排序'
 
@@ -526,7 +555,7 @@ export default function LibraryPage() {
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Tv size={48} className="mb-4 text-surface-700" />
               <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                {searchQuery ? '没有找到匹配的剧集' : '此媒体库暂无剧集合集'}
+                {searchQuery || filterGenre ? '没有找到匹配的剧集' : '此媒体库暂无剧集合集'}
               </p>
             </div>
           )}

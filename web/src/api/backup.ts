@@ -1,20 +1,5 @@
 import api from './client'
 
-// ==================== 数据备份 ====================
-export const backupApi = {
-  exportJSON: () =>
-    api.post<{ message: string; file: string }>('/admin/backup/json'),
-
-  exportZIP: () =>
-    api.post<{ message: string; file: string }>('/admin/backup/zip'),
-
-  importBackup: (filePath: string) =>
-    api.post('/admin/backup/import', { file_path: filePath }),
-
-  list: () =>
-    api.get<{ data: import('@/types').BackupFile[] }>('/admin/backup/list'),
-}
-
 // ==================== 智能通知系统 ====================
 export const notificationApi = {
   // 获取通知配置

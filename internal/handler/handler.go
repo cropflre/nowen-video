@@ -25,7 +25,6 @@ type Handlers struct {
 	Bookmark       *BookmarkHandler
 	Comment        *CommentHandler
 	Stats          *StatsHandler
-	Backup         *BackupHandler
 	AI             *AIHandler
 	ScrapeManager  *ScrapeManagerHandler
 	FileManager    *FileManagerHandler
@@ -43,18 +42,14 @@ type Handlers struct {
 	Photo           *PhotoHandler
 	Federation      *FederationHandler
 	// V3: 新增处理器
-	AIScene      *AISceneHandler
-	FamilySocial *FamilySocialHandler
-	Live         *LiveHandler
-	CloudSync    *CloudSyncHandler
+	AIScene *AISceneHandler
 	// V5: Pulse 数据中心
 	Pulse *PulseHandler
 	// V6: P1~P3 新增处理器
-	Tag       *TagHandler
-	ShareLink *ShareLinkHandler
-	MatchRule *MatchRuleHandler
 	// 视频预处理
 	Preprocess *PreprocessHandler
+	// 字幕预处理
+	SubtitlePreprocess *SubtitlePreprocessHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -89,7 +84,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Bookmark:       &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
 		Comment:        &CommentHandler{commentService: services.Comment, logger: logger},
 		Stats:          &StatsHandler{statsService: services.Stats, logger: logger},
-		Backup:         &BackupHandler{backupService: services.Backup, logger: logger},
 		AI:             &AIHandler{aiService: services.AI, logger: logger},
 		ScrapeManager:  &ScrapeManagerHandler{scrapeService: services.ScrapeManager, logger: logger},
 		FileManager:    &FileManagerHandler{fileService: services.FileManager, logger: logger},
@@ -107,17 +101,13 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Photo:           &PhotoHandler{photoService: services.Photo, logger: logger},
 		Federation:      &FederationHandler{federationService: services.Federation, logger: logger},
 		// V3
-		AIScene:      &AISceneHandler{sceneService: services.AIScene, logger: logger},
-		FamilySocial: &FamilySocialHandler{socialService: services.FamilySocial, logger: logger},
-		Live:         &LiveHandler{liveService: services.Live, logger: logger},
-		CloudSync:    &CloudSyncHandler{syncService: services.CloudSync, logger: logger},
+		AIScene: &AISceneHandler{sceneService: services.AIScene, logger: logger},
 		// V5: Pulse 数据中心
 		Pulse: &PulseHandler{pulseService: services.Pulse, logger: logger},
 		// V6: P1~P3 新增处理器
-		Tag:       &TagHandler{tagService: services.TagSvc, logger: logger},
-		ShareLink: &ShareLinkHandler{shareService: services.ShareLinkSvc, mediaService: services.Media, seriesService: services.Series, logger: logger},
-		MatchRule: &MatchRuleHandler{ruleService: services.MatchRuleSvc, logger: logger},
 		// 视频预处理
 		Preprocess: NewPreprocessHandler(services.Preprocess),
+		// 字幕预处理
+		SubtitlePreprocess: NewSubtitlePreprocessHandler(services.SubtitlePreprocess),
 	}
 }

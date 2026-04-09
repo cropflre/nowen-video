@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -31,7 +32,6 @@ type Services struct {
 	FileWatcher    *FileWatcherService
 	NFO            *NFOService
 	Stats          *StatsService
-	Backup         *BackupService
 	Webhook        *WebhookService
 	VFS            *VFSManager
 	WSHub          *WSHub
@@ -56,18 +56,13 @@ type Services struct {
 	Photo           *PhotoService
 	Federation      *FederationService
 	// V3: 新增服务
-	AIScene      *AISceneService
-	FamilySocial *FamilySocialService
-	Live         *LiveService
-	CloudSync    *CloudSyncService
+	AIScene *AISceneService
 	// V5: Pulse 数据中心
 	Pulse *PulseService
 	// V6: P1~P3 新增功能
-	TagSvc       *TagService
-	ShareLinkSvc *ShareLinkService
-	MatchRuleSvc *MatchRuleService
-	ASR          *ASRService
-	Preprocess   *PreprocessService
+	ASR                *ASRService
+	Preprocess         *PreprocessService
+	SubtitlePreprocess *SubtitlePreprocessService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -81,7 +76,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 注入WSHub到各服务
 	scanner.SetWSHub(wsHub)
-	scanner.SetMatchRuleRepo(repos.MatchRule) // P2: 注入匹配规则仓储
 	transcoder.SetWSHub(wsHub)
 	metadata.SetWSHub(wsHub)
 
@@ -113,7 +107,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建新服务
 	nfoService := NewNFOService(logger)
 	statsService := NewStatsService(repos.PlaybackStats, repos.Media, logger)
-	backupService := NewBackupService(repos.Media, repos.Series, repos.Library, repos.Person, repos.MediaPerson, cfg, logger)
 	webhookService := NewWebhookService(logger)
 	vfsManager := NewVFSManager(logger)
 
@@ -199,12 +192,18 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	offlineDownloadService.SetWSHub(wsHub)
 
 	// V2: 创建ABR自适应码率服务
-	abrService := NewABRService(cfg, cfg.App.HWAccel, logger)
+	// 使用 TranscodeService 检测后的实际硬件加速模式（而非配置中的 "auto"）
+	detectedHWAccel := transcoder.GetHWAccelInfo()
+	abrService := NewABRService(cfg, detectedHWAccel, logger)
 	abrService.SetWSHub(wsHub)
 
 	// 创建视频预处理服务
-	preprocessService := NewPreprocessService(cfg, repos.Preprocess, repos.Media, abrService, cfg.App.HWAccel, logger)
+	preprocessService := NewPreprocessService(cfg, repos.Preprocess, repos.Media, abrService, detectedHWAccel, logger)
 	preprocessService.SetWSHub(wsHub)
+
+	// 创建字幕预处理服务
+	subtitlePreprocessService := NewSubtitlePreprocessService(cfg, repos.SubtitlePreprocess, repos.Media, asrService, scanner, logger)
+	subtitlePreprocessService.SetWSHub(wsHub)
 
 	// V2: 创建可扩展插件系统
 	pluginService := NewPluginService(repos.DB(), filepath.Join(cfg.Cache.CacheDir, "plugins"), logger)
@@ -227,27 +226,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	)
 	aiSceneService.SetWSHub(wsHub)
 
-	// V3: 创建家庭社交服务
-	familySocialService := NewFamilySocialService(
-		repos.FamilyGroup, repos.FamilyMember,
-		repos.MediaShare, repos.MediaLike, repos.MediaRecommendation,
-		repos.Media, repos.Series, logger,
-	)
-	familySocialService.SetWSHub(wsHub)
-
-	// V3: 创建直播服务
-	liveService := NewLiveService(
-		cfg, repos.LiveSource, repos.LivePlaylist, repos.LiveRecording, logger,
-	)
-	liveService.SetWSHub(wsHub)
-
-	// V3: 创建云端同步服务
-	cloudSyncService := NewCloudSyncService(
-		repos.SyncDevice, repos.SyncRecord, repos.UserSyncConfig,
-		repos.WatchHistory, repos.Favorite, repos.Playlist, logger,
-	)
-	cloudSyncService.SetWSHub(wsHub)
-
 	// V5: 创建 Pulse 数据中心服务
 	pulseService := NewPulseService(repos.Pulse, logger)
 	pulseService.SetWSHub(wsHub)
@@ -267,13 +245,12 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Cast:           NewCastService(repos.Media, cfg, logger),
 		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
 		Comment:        NewCommentService(repos.Comment, repos.Media, logger),
-		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, repos.AccessLog, logger),
+		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
 		Scheduler:      scheduler,
 		Monitor:        monitor,
 		FileWatcher:    fileWatcher,
 		NFO:            nfoService,
 		Stats:          statsService,
-		Backup:         backupService,
 		Webhook:        webhookService,
 		VFS:            vfsManager,
 		WSHub:          wsHub,
@@ -298,18 +275,13 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Photo:           photoService,
 		Federation:      federationService,
 		// V3
-		AIScene:      aiSceneService,
-		FamilySocial: familySocialService,
-		Live:         liveService,
-		CloudSync:    cloudSyncService,
+		AIScene: aiSceneService,
 		// V5: Pulse 数据中心
 		Pulse: pulseService,
 		// V6: P1~P3 新增功能
-		TagSvc:       NewTagService(repos.Tag, repos.MediaTag, logger),
-		ShareLinkSvc: NewShareLinkService(repos.ShareLink, repos.Media, repos.Series, logger),
-		MatchRuleSvc: NewMatchRuleService(repos.MatchRule, logger),
-		ASR:          asrService,
-		Preprocess:   preprocessService,
+		ASR:                asrService,
+		Preprocess:         preprocessService,
+		SubtitlePreprocess: subtitlePreprocessService,
 	}
 
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
@@ -321,6 +293,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 延迟注入：StreamService 需要 PreprocessService（用于自动选择预处理内容）
 	svcs.Stream.SetPreprocessService(preprocessService)
 
+	// 延迟注入：SchedulerService 需要 SubtitlePreprocessService（用于定时字幕预处理）
+	scheduler.SetSubtitlePreprocessService(subtitlePreprocessService, cfg.AI.SubtitleTargetLangs)
+
 	// 延迟注入：扫描完成后自动触发预处理
 	scanner.SetOnScanComplete(func(libraryID string) {
 		count, err := preprocessService.SubmitLibrary(libraryID, 0)
@@ -328,6 +303,25 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 			logger.Warnf("扫描后自动提交预处理失败: %v", err)
 		} else if count > 0 {
 			logger.Infof("扫描后自动提交 %d 个预处理任务", count)
+		}
+
+		// P1: 扫描后自动触发字幕预处理（如果配置启用）
+		if cfg.AI.AutoSubtitlePreprocess {
+			var targetLangs []string
+			if cfg.AI.SubtitleTargetLangs != "" {
+				for _, lang := range strings.Split(cfg.AI.SubtitleTargetLangs, ",") {
+					lang = strings.TrimSpace(lang)
+					if lang != "" {
+						targetLangs = append(targetLangs, lang)
+					}
+				}
+			}
+			subCount, err := subtitlePreprocessService.SubmitLibrary(libraryID, targetLangs, false)
+			if err != nil {
+				logger.Warnf("扫描后自动提交字幕预处理失败: %v", err)
+			} else if subCount > 0 {
+				logger.Infof("扫描后自动提交 %d 个字幕预处理任务", subCount)
+			}
 		}
 	})
 

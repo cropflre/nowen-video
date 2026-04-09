@@ -176,6 +176,9 @@ func main() {
 		// ASR 服务状态
 		api.GET("/asr/status", handlers.Subtitle.GetASRStatus)
 
+		// 字幕预处理状态（用户可查询）
+		api.GET("/subtitle-preprocess/media/:id/status", handlers.SubtitlePreprocess.GetMediaStatus)
+
 		// 视频预处理（用户可查询状态和播放预处理内容）
 		api.GET("/preprocess/media/:id/status", handlers.Preprocess.GetMediaTask)
 		api.GET("/preprocess/media/:id/master.m3u8", handlers.Preprocess.ServePreprocessedMaster)
@@ -284,61 +287,6 @@ func main() {
 		api.GET("/media/:id/ai/tasks", handlers.AIScene.GetAnalysisTasks)
 		api.GET("/ai/tasks/:taskId", handlers.AIScene.GetAnalysisTask)
 
-		// ==================== V3: 家庭社交互动 ====================
-		api.POST("/family/groups", handlers.FamilySocial.CreateGroup)
-		api.GET("/family/groups", handlers.FamilySocial.ListGroups)
-		api.POST("/family/groups/join", handlers.FamilySocial.JoinGroup)
-		api.GET("/family/groups/:groupId", handlers.FamilySocial.GetGroup)
-		api.DELETE("/family/groups/:groupId", handlers.FamilySocial.DeleteGroup)
-		api.POST("/family/groups/:groupId/leave", handlers.FamilySocial.LeaveGroup)
-		api.POST("/family/groups/:groupId/invite-code", handlers.FamilySocial.RegenerateInviteCode)
-		api.POST("/family/groups/:groupId/share", handlers.FamilySocial.ShareMedia)
-		api.GET("/family/groups/:groupId/shares", handlers.FamilySocial.ListGroupShares)
-		api.POST("/media/:id/like", handlers.FamilySocial.LikeMedia)
-		api.DELETE("/media/:id/like", handlers.FamilySocial.UnlikeMedia)
-		api.GET("/media/:id/like", handlers.FamilySocial.GetLikeStatus)
-		api.POST("/family/recommend", handlers.FamilySocial.RecommendMedia)
-		api.GET("/family/recommendations", handlers.FamilySocial.ListRecommendations)
-		api.POST("/family/recommendations/:recId/read", handlers.FamilySocial.MarkRecommendationRead)
-		api.GET("/family/recommendations/unread", handlers.FamilySocial.GetUnreadCount)
-
-		// ==================== V3: 实时直播 ====================
-		api.GET("/live/sources", handlers.Live.ListSources)
-		api.GET("/live/sources/:id", handlers.Live.GetSource)
-		api.GET("/live/categories", handlers.Live.GetCategories)
-		api.POST("/live/recordings", handlers.Live.StartRecording)
-		api.POST("/live/recordings/:id/stop", handlers.Live.StopRecording)
-		api.GET("/live/recordings", handlers.Live.ListRecordings)
-		api.DELETE("/live/recordings/:id", handlers.Live.DeleteRecording)
-
-		// ==================== V3: 云端同步 ====================
-		api.POST("/sync/devices", handlers.CloudSync.RegisterDevice)
-		api.GET("/sync/devices", handlers.CloudSync.ListDevices)
-		api.DELETE("/sync/devices/:deviceId", handlers.CloudSync.UnregisterDevice)
-		api.POST("/sync/data", handlers.CloudSync.SyncData)
-		api.GET("/sync/data", handlers.CloudSync.PullData)
-		api.POST("/sync/batch", handlers.CloudSync.BatchSync)
-		api.GET("/sync/full", handlers.CloudSync.FullSync)
-		api.GET("/sync/config", handlers.CloudSync.GetSyncConfig)
-		api.PUT("/sync/config", handlers.CloudSync.UpdateSyncConfig)
-		api.GET("/sync/export", handlers.CloudSync.ExportData)
-
-		// ==================== P2: 标签管理 ====================
-		api.GET("/tags", handlers.Tag.ListTags)
-		api.POST("/tags", handlers.Tag.CreateTag)
-		api.PUT("/tags/:id", handlers.Tag.UpdateTag)
-		api.DELETE("/tags/:id", handlers.Tag.DeleteTag)
-		api.GET("/tags/categories", handlers.Tag.ListCategories)
-		api.POST("/tags/media", handlers.Tag.AddTagToMedia)
-		api.DELETE("/tags/media/:media_id/:tag_id", handlers.Tag.RemoveTagFromMedia)
-		api.GET("/tags/media/:media_id", handlers.Tag.GetMediaTags)
-		api.POST("/tags/media/batch", handlers.Tag.BatchAddTags)
-
-		// ==================== P2: 分享链接 ====================
-		api.POST("/shares", handlers.ShareLink.CreateShareLink)
-		api.GET("/shares", handlers.ShareLink.ListUserShares)
-		api.DELETE("/shares/:id", handlers.ShareLink.DeleteShare)
-		api.POST("/shares/:id/toggle", handlers.ShareLink.ToggleShare)
 	}
 
 	// 管理路由
@@ -381,9 +329,6 @@ func main() {
 		// 内容分级
 		admin.GET("/rating/:mediaId", handlers.Admin.GetContentRating)
 		admin.PUT("/rating/:mediaId", handlers.Admin.SetContentRating)
-
-		// 访问日志
-		admin.GET("/logs", handlers.Admin.ListAccessLogs)
 
 		// 手动元数据匹配
 		admin.GET("/metadata/search", handlers.Admin.SearchMetadata)
@@ -436,12 +381,6 @@ func main() {
 		// TheTVDB 数据源
 		admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)
 		admin.POST("/series/:seriesId/match/thetvdb", handlers.Admin.MatchSeriesTheTVDB)
-
-		// 数据备份与恢复
-		admin.POST("/backup/json", handlers.Backup.ExportJSON)
-		admin.POST("/backup/zip", handlers.Backup.ExportZIP)
-		admin.POST("/backup/import", handlers.Backup.ImportBackup)
-		admin.GET("/backup/list", handlers.Backup.ListBackups)
 
 		// AI 管理
 		admin.GET("/ai/status", handlers.AI.GetAIStatus)
@@ -579,13 +518,6 @@ func main() {
 		// ==================== P1: 批量移动媒体 ====================
 		admin.POST("/media/batch-move", handlers.Library.BatchMoveMedia)
 
-		// ==================== P3: 自定义匹配规则 ====================
-		admin.GET("/match-rules", handlers.MatchRule.ListRules)
-		admin.POST("/match-rules", handlers.MatchRule.CreateRule)
-		admin.PUT("/match-rules/:id", handlers.MatchRule.UpdateRule)
-		admin.DELETE("/match-rules/:id", handlers.MatchRule.DeleteRule)
-		admin.POST("/match-rules/test", handlers.MatchRule.TestRule)
-
 		// ==================== V5: Pulse 数据中心（管理员） ====================
 		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
 		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
@@ -610,23 +542,28 @@ func main() {
 		admin.DELETE("/preprocess/tasks/:id", handlers.Preprocess.DeleteTask)
 		admin.GET("/preprocess/statistics", handlers.Preprocess.GetStatistics)
 		admin.GET("/preprocess/system-load", handlers.Preprocess.GetSystemLoad)
+		admin.GET("/preprocess/performance-config", handlers.Preprocess.GetPerformanceConfig)
+		admin.PUT("/preprocess/performance-config", handlers.Preprocess.UpdatePerformanceConfig)
+		admin.POST("/preprocess/tasks/batch-delete", handlers.Preprocess.BatchDeleteTasks)
+		admin.POST("/preprocess/tasks/batch-cancel", handlers.Preprocess.BatchCancelTasks)
+		admin.POST("/preprocess/tasks/batch-retry", handlers.Preprocess.BatchRetryTasks)
 		admin.DELETE("/preprocess/cache/:id", handlers.Preprocess.CleanCache)
 
-		// ==================== V3: 直播管理（管理员） ====================
-		admin.GET("/live/sources", handlers.Live.ListSourcesAdmin)
-		admin.POST("/live/sources", handlers.Live.AddSource)
-		admin.PUT("/live/sources/:id", handlers.Live.UpdateSource)
-		admin.DELETE("/live/sources/:id", handlers.Live.DeleteSource)
-		admin.POST("/live/sources/:id/check", handlers.Live.CheckSource)
-		admin.POST("/live/sources/:id/toggle", handlers.Live.ToggleSourceActive)
-		admin.POST("/live/sources/batch-check", handlers.Live.BatchCheck)
-		admin.POST("/live/playlists/import", handlers.Live.ImportM3U)
-		admin.GET("/live/playlists", handlers.Live.ListPlaylists)
-		admin.DELETE("/live/playlists/:id", handlers.Live.DeletePlaylist)
-	}
+		// ==================== 字幕预处理管理 ====================
+		admin.POST("/subtitle-preprocess/submit", handlers.SubtitlePreprocess.SubmitMedia)
+		admin.POST("/subtitle-preprocess/batch", handlers.SubtitlePreprocess.BatchSubmit)
+		admin.POST("/subtitle-preprocess/library/:id", handlers.SubtitlePreprocess.SubmitLibrary)
+		admin.GET("/subtitle-preprocess/tasks", handlers.SubtitlePreprocess.ListTasks)
+		admin.GET("/subtitle-preprocess/tasks/:id", handlers.SubtitlePreprocess.GetTask)
+		admin.POST("/subtitle-preprocess/tasks/:id/cancel", handlers.SubtitlePreprocess.CancelTask)
+		admin.POST("/subtitle-preprocess/tasks/:id/retry", handlers.SubtitlePreprocess.RetryTask)
+		admin.DELETE("/subtitle-preprocess/tasks/:id", handlers.SubtitlePreprocess.DeleteTask)
+		admin.GET("/subtitle-preprocess/statistics", handlers.SubtitlePreprocess.GetStatistics)
+		admin.POST("/subtitle-preprocess/tasks/batch-delete", handlers.SubtitlePreprocess.BatchDeleteTasks)
+		admin.POST("/subtitle-preprocess/tasks/batch-cancel", handlers.SubtitlePreprocess.BatchCancelTasks)
+		admin.POST("/subtitle-preprocess/tasks/batch-retry", handlers.SubtitlePreprocess.BatchRetryTasks)
 
-	// 分享链接公开访问（无需认证）
-	r.GET("/api/share/:code", handlers.ShareLink.GetShareByCode)
+	}
 
 	// ==================== V2: 联邦 API（供其他节点调用） ====================
 	federation := r.Group("/api/federation")

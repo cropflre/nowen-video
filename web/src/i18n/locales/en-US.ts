@@ -216,9 +216,6 @@ const enUS: Record<string, string> = {
   'auth.slogan': 'Deep Space Cinema · Future Hub',
 
   // ==================== Navigation (V3) ====================
-  'nav.family': 'Family Space',
-  'nav.live': 'Live Channels',
-  'nav.sync': 'Cloud Sync',
   'nav.pulse': 'Pulse Center',
 
   // ==================== Comments ====================
@@ -371,7 +368,6 @@ const enUS: Record<string, string> = {
   'admin.tabAI': 'AI Config',
   'admin.tabTags': 'Tags',
   'admin.tabShares': 'Share Links',
-  'admin.tabRules': 'Match Rules',
   'admin.shortDashboard': 'Dashboard',
   'admin.shortLibrary': 'Library',
   'admin.shortUsers': 'Users',
@@ -383,7 +379,6 @@ const enUS: Record<string, string> = {
   'admin.shortAI': 'AI',
   'admin.shortTags': 'Tags',
   'admin.shortShares': 'Shares',
-  'admin.shortRules': 'Rules',
   'admin.metadataConfig': 'Metadata Scraping Config',
   'admin.metadataConfigDesc': 'By configuring a TMDb (The Movie Database) API key, the system will automatically fetch posters, overviews, ratings, genres and other metadata for your videos.',
   'admin.applyTMDbKey': 'Get a free API Key from TMDb',

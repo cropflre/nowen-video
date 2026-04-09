@@ -13,14 +13,16 @@ import (
 
 // SchedulerService 定时任务调度服务
 type SchedulerService struct {
-	taskRepo   *repository.ScheduledTaskRepo
-	libRepo    *repository.LibraryRepo
-	libService *LibraryService
-	wsHub      *WSHub
-	logger     *zap.SugaredLogger
-	stopCh     chan struct{}
-	mu         sync.RWMutex
-	running    map[string]bool // 正在运行的任务ID
+	taskRepo            *repository.ScheduledTaskRepo
+	libRepo             *repository.LibraryRepo
+	libService          *LibraryService
+	subtitlePreprocess  *SubtitlePreprocessService
+	subtitleTargetLangs string // 字幕目标翻译语言配置
+	wsHub               *WSHub
+	logger              *zap.SugaredLogger
+	stopCh              chan struct{}
+	mu                  sync.RWMutex
+	running             map[string]bool // 正在运行的任务ID
 }
 
 // NewSchedulerService 创建调度服务
@@ -46,6 +48,12 @@ func (s *SchedulerService) SetLibraryService(libService *LibraryService) {
 // SetWSHub 设置WebSocket Hub
 func (s *SchedulerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+// SetSubtitlePreprocessService 延迟注入字幕预处理服务
+func (s *SchedulerService) SetSubtitlePreprocessService(svc *SubtitlePreprocessService, targetLangs string) {
+	s.subtitlePreprocess = svc
+	s.subtitleTargetLangs = targetLangs
 }
 
 // Start 启动调度器，每分钟检查一次到期任务
@@ -148,6 +156,8 @@ func (s *SchedulerService) executeTask(task model.ScheduledTask) {
 		taskErr = s.executeScrapeTask(&task)
 	case "cleanup":
 		taskErr = s.executeCleanupTask(&task)
+	case "subtitle_preprocess":
+		taskErr = s.executeSubtitlePreprocessTask(&task)
 	default:
 		taskErr = fmt.Errorf("未知任务类型: %s", task.Type)
 	}
@@ -217,6 +227,57 @@ func (s *SchedulerService) executeCleanupTask(task *model.ScheduledTask) error {
 	s.logger.Info("执行缓存清理任务")
 	// 此处可扩展：清理转码缓存、过期的访问日志等
 	return nil
+}
+
+// executeSubtitlePreprocessTask 执行字幕预处理定时任务
+func (s *SchedulerService) executeSubtitlePreprocessTask(task *model.ScheduledTask) error {
+	if s.subtitlePreprocess == nil {
+		return fmt.Errorf("SubtitlePreprocessService 未初始化")
+	}
+
+	if task.TargetID != "" {
+		// 处理指定媒体库
+		count, err := s.subtitlePreprocess.SubmitLibrary(task.TargetID, s.getSubtitleTargetLangs(), false)
+		if err != nil {
+			return err
+		}
+		s.logger.Infof("定时字幕预处理: 媒体库 %s 提交 %d 个任务", task.TargetID, count)
+		return nil
+	}
+
+	// 处理所有媒体库
+	libs, err := s.libRepo.List()
+	if err != nil {
+		return err
+	}
+	totalCount := 0
+	for _, lib := range libs {
+		count, err := s.subtitlePreprocess.SubmitLibrary(lib.ID, s.getSubtitleTargetLangs(), false)
+		if err != nil {
+			s.logger.Warnf("定时字幕预处理媒体库 %s 失败: %v", lib.Name, err)
+			continue
+		}
+		totalCount += count
+	}
+	if totalCount > 0 {
+		s.logger.Infof("定时字幕预处理: 共提交 %d 个任务", totalCount)
+	}
+	return nil
+}
+
+// getSubtitleTargetLangs 获取字幕目标翻译语言列表
+func (s *SchedulerService) getSubtitleTargetLangs() []string {
+	if s.subtitleTargetLangs == "" {
+		return nil
+	}
+	var langs []string
+	for _, lang := range strings.Split(s.subtitleTargetLangs, ",") {
+		lang = strings.TrimSpace(lang)
+		if lang != "" {
+			langs = append(langs, lang)
+		}
+	}
+	return langs
 }
 
 // calcNextRun 根据调度表达式计算下次运行时间

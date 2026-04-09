@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -136,6 +137,19 @@ type Media struct {
 
 	Library Library `json:"-" gorm:"foreignKey:LibraryID"`
 	Series  *Series `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+}
+
+// DisplayTitle 返回带集数信息的显示标题
+// 对于剧集类型，格式为 "标题 S01E02" 或 "标题 S01E02 - 单集标题"
+func (m *Media) DisplayTitle() string {
+	if m.MediaType == "episode" && m.EpisodeNum > 0 {
+		title := fmt.Sprintf("%s S%02dE%02d", m.Title, m.SeasonNum, m.EpisodeNum)
+		if m.EpisodeTitle != "" {
+			title += " - " + m.EpisodeTitle
+		}
+		return title
+	}
+	return m.Title
 }
 
 // Person 演职人员
@@ -341,26 +355,6 @@ func (c *Comment) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// AccessLog 访问日志
-type AccessLog struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:text"`
-	UserID    string    `json:"user_id" gorm:"index;type:text;not null"`
-	Username  string    `json:"username" gorm:"type:text"`
-	Action    string    `json:"action" gorm:"type:text;not null"` // login, play, scrape, admin_op等
-	Resource  string    `json:"resource" gorm:"type:text"`        // 操作的资源
-	Detail    string    `json:"detail" gorm:"type:text"`          // 操作详情
-	IP        string    `json:"ip" gorm:"type:text"`
-	UserAgent string    `json:"user_agent" gorm:"type:text"`
-	CreatedAt time.Time `json:"created_at" gorm:"index"`
-}
-
-func (a *AccessLog) BeforeCreate(tx *gorm.DB) error {
-	if a.ID == "" {
-		a.ID = uuid.New().String()
-	}
-	return nil
-}
-
 // ScheduledTask 定时任务
 type ScheduledTask struct {
 	ID        string     `json:"id" gorm:"primaryKey;type:text"`
@@ -474,104 +468,7 @@ type RecommendCache struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ==================== P2: 标签管理系统 ====================
-
-// Tag 标签
-type Tag struct {
-	ID         string    `json:"id" gorm:"primaryKey;type:text"`
-	Name       string    `json:"name" gorm:"uniqueIndex;type:text;not null"` // 标签名称（唯一）
-	Color      string    `json:"color" gorm:"type:text;default:#3b82f6"`     // 标签颜色（十六进制）
-	Icon       string    `json:"icon" gorm:"type:text"`                      // 标签图标（可选）
-	Category   string    `json:"category" gorm:"index;type:text"`            // 标签分类（如：类型、心情、场景）
-	SortOrder  int       `json:"sort_order" gorm:"default:0"`                // 排序权重
-	UsageCount int       `json:"usage_count" gorm:"default:0"`               // 使用次数（冗余计数，加速排序）
-	CreatedBy  string    `json:"created_by" gorm:"type:text"`                // 创建者用户ID
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-func (t *Tag) BeforeCreate(tx *gorm.DB) error {
-	if t.ID == "" {
-		t.ID = uuid.New().String()
-	}
-	return nil
-}
-
-// MediaTag 媒体-标签关联表
-type MediaTag struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:text"`
-	MediaID   string    `json:"media_id" gorm:"uniqueIndex:idx_media_tag;type:text;not null"`
-	TagID     string    `json:"tag_id" gorm:"uniqueIndex:idx_media_tag;index;type:text;not null"`
-	CreatedBy string    `json:"created_by" gorm:"type:text"` // 打标签的用户
-	CreatedAt time.Time `json:"created_at"`
-
-	Tag Tag `json:"tag" gorm:"foreignKey:TagID"`
-}
-
-func (mt *MediaTag) BeforeCreate(tx *gorm.DB) error {
-	if mt.ID == "" {
-		mt.ID = uuid.New().String()
-	}
-	return nil
-}
-
-// ==================== P2: 分享链接功能 ====================
-
-// ShareLink 分享链接
-type ShareLink struct {
-	ID            string     `json:"id" gorm:"primaryKey;type:text"`
-	Code          string     `json:"code" gorm:"uniqueIndex;type:text;not null"` // 短链接码（如 abc123）
-	MediaID       string     `json:"media_id" gorm:"index;type:text"`            // 分享的媒体ID（与SeriesID二选一）
-	SeriesID      string     `json:"series_id" gorm:"index;type:text"`           // 分享的剧集ID
-	CreatedBy     string     `json:"created_by" gorm:"index;type:text;not null"` // 创建者用户ID
-	Title         string     `json:"title" gorm:"type:text"`                     // 分享标题（可自定义）
-	Description   string     `json:"description" gorm:"type:text"`               // 分享描述
-	Password      string     `json:"password,omitempty" gorm:"type:text"`        // 访问密码（可选）
-	MaxViews      int        `json:"max_views" gorm:"default:0"`                 // 最大访问次数（0=不限）
-	ViewCount     int        `json:"view_count" gorm:"default:0"`                // 已访问次数
-	AllowDownload bool       `json:"allow_download" gorm:"default:false"`        // 是否允许下载
-	ExpiresAt     *time.Time `json:"expires_at"`                                 // 过期时间（nil=永不过期）
-	IsActive      bool       `json:"is_active" gorm:"default:true"`              // 是否启用
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-}
-
-func (sl *ShareLink) BeforeCreate(tx *gorm.DB) error {
-	if sl.ID == "" {
-		sl.ID = uuid.New().String()
-	}
-	return nil
-}
-
-// ==================== P3: 自定义匹配规则 ====================
-
-// MatchRule 自定义匹配规则
-type MatchRule struct {
-	ID          string    `json:"id" gorm:"primaryKey;type:text"`
-	Name        string    `json:"name" gorm:"type:text;not null"`            // 规则名称
-	Description string    `json:"description" gorm:"type:text"`              // 规则描述
-	RuleType    string    `json:"rule_type" gorm:"index;type:text;not null"` // 规则类型：filename / path / regex / keyword
-	Pattern     string    `json:"pattern" gorm:"type:text;not null"`         // 匹配模式（正则/关键词/路径模式）
-	Action      string    `json:"action" gorm:"type:text;not null"`          // 动作：set_type / set_genre / set_tag / skip / set_library
-	ActionValue string    `json:"action_value" gorm:"type:text"`             // 动作参数值
-	Priority    int       `json:"priority" gorm:"default:0"`                 // 优先级（数字越大越先执行）
-	Enabled     bool      `json:"enabled" gorm:"default:true"`               // 是否启用
-	LibraryID   string    `json:"library_id" gorm:"index;type:text"`         // 限定媒体库（空=全局）
-	HitCount    int       `json:"hit_count" gorm:"default:0"`                // 命中次数
-	CreatedBy   string    `json:"created_by" gorm:"type:text"`               // 创建者
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
-func (mr *MatchRule) BeforeCreate(tx *gorm.DB) error {
-	if mr.ID == "" {
-		mr.ID = uuid.New().String()
-	}
-	return nil
-}
-
 // ==================== 视频预处理任务 ====================
-
 // PreprocessTask 视频预处理任务
 type PreprocessTask struct {
 	ID         string  `json:"id" gorm:"primaryKey;type:text"`
@@ -616,6 +513,46 @@ func (t *PreprocessTask) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ==================== 字幕预处理任务 ====================
+
+// SubtitlePreprocessTask 字幕预处理任务
+type SubtitlePreprocessTask struct {
+	ID         string  `json:"id" gorm:"primaryKey;type:text"`
+	MediaID    string  `json:"media_id" gorm:"index;type:text;not null"`
+	Status     string  `json:"status" gorm:"type:text;default:pending"` // pending / running / completed / failed / cancelled / skipped
+	Phase      string  `json:"phase" gorm:"type:text"`                  // check / extract / generate / translate / done
+	Progress   float64 `json:"progress"`                                // 0-100 总体进度
+	Message    string  `json:"message" gorm:"type:text"`                // 当前状态描述
+	Error      string  `json:"error" gorm:"type:text"`                  // 错误信息
+	MediaTitle string  `json:"media_title" gorm:"type:text"`            // 媒体标题（冗余，方便展示）
+	// 配置
+	SourceLang      string `json:"source_lang" gorm:"type:text;default:auto"` // 源语言（auto 自动检测）
+	TargetLangs     string `json:"target_langs" gorm:"type:text"`             // 目标翻译语言列表（逗号分隔: zh,en,ja）
+	ForceRegenerate bool   `json:"force_regenerate"`                          // 是否强制重新生成
+	// 结果
+	OriginalVTTPath  string `json:"original_vtt_path" gorm:"type:text"` // 原始字幕 VTT 路径
+	TranslatedPaths  string `json:"translated_paths" gorm:"type:text"`  // 翻译字幕路径（格式: lang=path|lang=path）
+	SubtitleSource   string `json:"subtitle_source" gorm:"type:text"`   // 字幕来源: ai_cached / external_vtt / extracted / ai_generated
+	DetectedLanguage string `json:"detected_language" gorm:"type:text"` // 检测到的源语言
+	CueCount         int    `json:"cue_count"`                          // 字幕条目数
+	// 性能统计
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+	ElapsedSec  float64    `json:"elapsed_sec"` // 总耗时（秒）
+	// 时间戳
+	CreatedAt time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Media Media `json:"-" gorm:"foreignKey:MediaID"`
+}
+
+func (t *SubtitlePreprocessTask) BeforeCreate(tx *gorm.DB) error {
+	if t.ID == "" {
+		t.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
@@ -633,7 +570,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&PlaylistItem{},
 		&Bookmark{},
 		&Comment{},
-		&AccessLog{},
 		&ScheduledTask{},
 		&ContentRating{},
 		&UserPermission{},
@@ -646,32 +582,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&AIAnalysisTask{},
 		// V3: AI 驱动的封面优化
 		&CoverCandidate{},
-		// V3: 家庭社交互动
-		&FamilyGroup{},
-		&FamilyMember{},
-		&MediaShare{},
-		&MediaLike{},
-		&MediaRecommendation{},
-		// V3: 实时直播扩展
-		&LiveSource{},
-		&LivePlaylist{},
-		&LiveRecording{},
-		// V3: 云端同步与多设备
-		&SyncDevice{},
-		&SyncRecord{},
-		&UserSyncConfig{},
 		// V4: 性能优化与标签统一
 		&AICacheEntry{},
 		&GenreMapping{},
 		&RecommendCache{},
-		// P2: 标签管理系统
-		&Tag{},
-		&MediaTag{},
-		// P2: 分享链接功能
-		&ShareLink{},
-		// P3: 自定义匹配规则
-		&MatchRule{},
 		// 视频预处理
 		&PreprocessTask{},
+		// 字幕预处理
+		&SubtitlePreprocessTask{},
 	)
 }

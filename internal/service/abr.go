@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -134,10 +135,14 @@ func (s *ABRService) GenerateABRPlaylist(mediaID, inputPath string, maxHeight in
 func (s *ABRService) generateAllVariants(mediaID, inputPath, outputDir string, profiles []ABRProfile) {
 	var wg sync.WaitGroup
 
-	// 限制并行数（GPU 通常支持 2-4 路并行）
-	maxParallel := 2
-	if s.hwAccel != "none" {
-		maxParallel = 3 // GPU 加速时可以更多
+	// 根据资源限制配置动态计算并行度
+	resourceLimit := s.cfg.App.ResourceLimit
+	if resourceLimit <= 0 || resourceLimit > 80 {
+		resourceLimit = 80
+	}
+	maxParallel := 1
+	if resourceLimit >= 30 && s.hwAccel != "none" {
+		maxParallel = 2
 	}
 	sem := make(chan struct{}, maxParallel)
 
@@ -162,6 +167,7 @@ func (s *ABRService) generateAllVariants(mediaID, inputPath, outputDir string, p
 			s.logger.Debugf("ABR 转码: %s -> %s", profile.Name, strings.Join(args, " "))
 
 			cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
+			setLowPriority(cmd) // 极低资源模式：FFmpeg 以最低优先级运行
 			cmd.Stderr = os.Stderr
 
 			if err := cmd.Run(); err != nil {
@@ -256,7 +262,10 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 		}
 	}
 
-	args := append(baseArgs, videoArgs...)
+	// 根据资源限制配置动态计算 FFmpeg 线程数
+	ffmpegThreads := s.calcFFmpegThreads()
+	args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
+	args = append(args, videoArgs...)
 	args = append(args, audioArgs...)
 	args = append(args, hlsArgs...)
 
@@ -373,3 +382,20 @@ func parseBitrate(s string) int {
 
 // 确保 time 包被使用
 var _ = time.Now
+
+// calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
+func (s *ABRService) calcFFmpegThreads() int {
+	resourceLimit := s.cfg.App.ResourceLimit
+	if resourceLimit <= 0 || resourceLimit > 80 {
+		resourceLimit = 80
+	}
+	cpuCount := runtime.NumCPU()
+	threads := cpuCount * resourceLimit / 100
+	if threads < 1 {
+		threads = 1
+	}
+	if threads > cpuCount {
+		threads = cpuCount
+	}
+	return threads
+}

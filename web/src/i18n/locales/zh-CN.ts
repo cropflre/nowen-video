@@ -216,9 +216,6 @@ const zhCN: Record<string, string> = {
   'auth.slogan': '深空影音 · 未来枢纽',
 
   // ==================== V3: 导航 ====================
-  'nav.family': '家庭空间',
-  'nav.live': '直播频道',
-  'nav.sync': '云端同步',
   'nav.pulse': 'Pulse 数据中心',
   // ==================== V3: AI 场景识别 ====================
   'ai.chapters': '视频章节',
@@ -422,7 +419,6 @@ const zhCN: Record<string, string> = {
   'admin.tabAI': 'AI 配置',
   'admin.tabTags': '标签管理',
   'admin.tabShares': '分享链接',
-  'admin.tabRules': '匹配规则',
   'admin.shortDashboard': '仪表盘',
   'admin.shortLibrary': '媒体库',
   'admin.shortUsers': '用户',
@@ -434,7 +430,6 @@ const zhCN: Record<string, string> = {
   'admin.shortAI': 'AI',
   'admin.shortTags': '标签',
   'admin.shortShares': '分享',
-  'admin.shortRules': '规则',
   'admin.metadataConfig': '元数据刮削配置',
   'admin.metadataConfigDesc': '通过配置 TMDb（The Movie Database）API 密钥，系统将自动获取视频的海报、简介、评分、类型等元数据信息，让您的媒体库内容更加丰富完整。',
   'admin.applyTMDbKey': '前往 TMDb 官网免费申请 API Key',

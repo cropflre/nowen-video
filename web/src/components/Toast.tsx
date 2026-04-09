@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toastVariants } from '@/lib/motion'
@@ -48,13 +48,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   }, [removeToast])
 
-  const value: ToastContextType = {
+  const success = useCallback((msg: string) => toast('success', msg), [toast])
+  const error = useCallback((msg: string) => toast('error', msg), [toast])
+  const warning = useCallback((msg: string) => toast('warning', msg), [toast])
+  const info = useCallback((msg: string) => toast('info', msg), [toast])
+
+  const value: ToastContextType = useMemo(() => ({
     toast,
-    success: (msg) => toast('success', msg),
-    error: (msg) => toast('error', msg),
-    warning: (msg) => toast('warning', msg),
-    info: (msg) => toast('info', msg),
-  }
+    success,
+    error,
+    warning,
+    info,
+  }), [toast, success, error, warning, info])
 
   return (
     <ToastContext.Provider value={value}>

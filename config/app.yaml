@@ -1,71 +1,13 @@
-# ==================== 应用运行环境配置 ====================
-# 文件: config/app.yaml
-# 说明: 服务端口、运行模式、路径、转码等核心运行参数
-
-# 服务器监听端口
-# 默认: 8080
-port: 8080
-
-# 调试模式
-# 开启后输出更详细的日志，生产环境建议关闭
-# 默认: false
-debug: false
-
-# 运行环境标识
-# 可选值: development / production / testing
-# 默认: production
-env: production
-
-# 数据目录（存放数据库文件、元数据等）
-# 默认: ./data
-data_dir: ./data
-
-# 前端静态文件目录
-# 默认: ./web/dist
-web_dir: ./web/dist
-
-# 允许的跨域来源列表
-# 示例: ["http://localhost:3000", "https://your-domain.com"]
-# 设置 ["*"] 允许所有来源（不推荐用于生产环境）
-# 默认: []（空列表，仅允许同源请求）
 cors_origins: []
-
-# ==================== FFmpeg 配置 ====================
-
-# FFmpeg 可执行文件路径
-# 如果已加入 PATH 环境变量，直接填写 ffmpeg 即可
-# 默认: ffmpeg
+data_dir: ./data
+debug: false
+env: production
 ffmpeg_path: C:\ffmpeg\bin\ffmpeg.exe
-
-# FFprobe 可执行文件路径
-# 默认: ffprobe
 ffprobe_path: C:\ffmpeg\bin\ffprobe.exe
-
-# ==================== 硬件加速 ====================
-
-# 硬件加速模式
-# 可选值:
-#   auto  - 自动检测（推荐）
-#   qsv   - Intel Quick Sync Video（群晖 NAS 推荐）
-#   vaapi - Video Acceleration API（Linux 通用）
-#   nvenc - NVIDIA GPU
-#   none  - 纯软件编码
-# 默认: auto
 hw_accel: auto
-
-# VAAPI 设备路径（仅 vaapi 模式使用）
-# 默认: /dev/dri/renderD128
+max_transcode_jobs: 1
+port: 8080
+resource_limit: 5
+transcode_preset: ultrafast
 vaapi_device: /dev/dri/renderD128
-
-# ==================== 转码参数 ====================
-
-# 转码预设
-# 可选值: veryfast / fast / medium
-# NAS 设备建议使用 veryfast 减少 CPU 负载
-# 默认: veryfast
-transcode_preset: veryfast
-
-# 最大并发转码任务数
-# NAS 设备建议设为 1-2，避免系统过载
-# 默认: 2
-max_transcode_jobs: 2
+web_dir: ./web/dist

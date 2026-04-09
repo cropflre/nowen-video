@@ -12,7 +12,6 @@ import type {
   UserPermission,
   UpdatePermissionRequest,
   ContentRating,
-  AccessLog,
   TMDbSearchResult,
   TMDbImageInfo,
   BangumiSubject,
@@ -89,10 +88,6 @@ export const adminApi = {
 
   setContentRating: (mediaId: string, level: string) =>
     api.put(`/admin/rating/${mediaId}`, { level }),
-
-  // 访问日志
-  listAccessLogs: (params: { page?: number; size?: number; user_id?: string; action?: string }) =>
-    api.get<PaginatedResponse<AccessLog>>('/admin/logs', { params }),
 
   // 手动元数据匹配
   searchMetadata: (q: string, type_: string = 'movie', year?: number) =>

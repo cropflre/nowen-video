@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import VideoPlayer from '@/components/VideoPlayer'
 import { useToast } from '@/components/Toast'
+import { usePlayerStore } from '@/stores/player'
 import { Zap, Loader2 } from 'lucide-react'
 
 export default function PlayerPage() {
@@ -14,6 +15,13 @@ export default function PlayerPage() {
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null)
+
+  // 记录当前播放位置，用于预处理完成后无缝切换时恢复进度
+  const currentTimeRef = useRef(0)
+  const { currentTime } = usePlayerStore()
+  useEffect(() => {
+    currentTimeRef.current = currentTime
+  }, [currentTime])
 
   useEffect(() => {
     if (!id) return
@@ -58,6 +66,22 @@ export default function PlayerPage() {
       navigate(`/play/${nextEpisode.id}`, { replace: true })
     }
   }, [nextEpisode, navigate])
+
+  // 预处理完成回调：后台静默刷新播放信息，自动切换到预处理流（无缝、无感知）
+  const [switchPosition, setSwitchPosition] = useState<number | undefined>(undefined)
+  const handlePreprocessReady = useCallback(() => {
+    if (!id) return
+    streamApi.getPlayInfo(id).then((res) => {
+      const newPlayInfo = res.data.data
+      if (newPlayInfo.is_preprocessed && newPlayInfo.preprocessed_url) {
+        // 记录切换瞬间的播放位置，用于恢复进度
+        setSwitchPosition(currentTimeRef.current)
+        setPlayInfo(newPlayInfo)
+        // 播放信息更新后，VideoPlayer 会自动因 src 变化重新加载
+        // startPosition 会恢复到当前播放位置，实现无缝切换
+      }
+    }).catch(() => {})
+  }, [id])
 
   if (loading || !media || !playInfo || !id) {
     return (
@@ -123,6 +147,9 @@ export default function PlayerPage() {
         mediaId={id}
         title={playerTitle}
         isStrm={playInfo.is_strm}
+        knownDuration={playInfo.duration}
+        startPosition={switchPosition}
+        onPreprocessReady={handlePreprocessReady}
         onBack={() => {
           if (media.media_type === 'episode' && media.series_id) {
             navigate(`/series/${media.series_id}`)

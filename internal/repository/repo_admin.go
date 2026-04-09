@@ -1,41 +1,9 @@
 package repository
 
 import (
-	"fmt"
-
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
-
-// ==================== AccessLogRepo ====================
-
-type AccessLogRepo struct {
-	db *gorm.DB
-}
-
-func (r *AccessLogRepo) Create(log *model.AccessLog) error {
-	return r.db.Create(log).Error
-}
-
-func (r *AccessLogRepo) List(page, size int, userID, action string) ([]model.AccessLog, int64, error) {
-	var logs []model.AccessLog
-	var total int64
-	query := r.db.Model(&model.AccessLog{})
-	if userID != "" {
-		query = query.Where("user_id = ?", userID)
-	}
-	if action != "" {
-		query = query.Where("action = ?", action)
-	}
-	query.Count(&total)
-	err := query.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&logs).Error
-	return logs, total, err
-}
-
-func (r *AccessLogRepo) CleanOlderThan(days int) error {
-	return r.db.Where("created_at < datetime('now', ?)", fmt.Sprintf("-%d days", days)).
-		Delete(&model.AccessLog{}).Error
-}
 
 // ==================== ScheduledTaskRepo ====================
 

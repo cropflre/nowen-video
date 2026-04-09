@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { Play, Tv, Film } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Play, Tv, Film, Info } from 'lucide-react'
 import { streamApi } from '@/api'
 import type { Media, Series } from '@/types'
 import { useRef, useCallback } from 'react'
@@ -64,14 +64,26 @@ export default function MediaCard({ media, series }: MediaCardProps) {
     return `${m}m`
   }
 
+  const navigate = useNavigate()
+
   // 确定链接目标和显示数据
   const isSeries = !!series || !!(media?.series_id)
   const seriesData = series || media?.series
-  const linkTo = series
+
+  // 详情页链接（点击名字/其他区域）
+  const detailTo = series
     ? `/series/${series.id}`
     : media!.series_id
       ? `/series/${media!.series_id}`
       : `/media/${media!.id}`
+
+  // 播放/阅读链接（点击封面中间的播放按钮）
+  // 非系列的独立媒体直接进入播放页，系列进入详情页
+  const playTo = series
+    ? `/series/${series.id}`
+    : media!.series_id
+      ? `/series/${media!.series_id}`
+      : `/play/${media!.id}`
 
   const title = series ? series.title : media!.title
   const year = series ? series.year : media!.year
@@ -89,6 +101,13 @@ export default function MediaCard({ media, series }: MediaCardProps) {
       ? !!(media!.series?.poster_path)
       : !!media!.poster_path
 
+  // 点击播放按钮 — 阻止冒泡，导航到播放页
+  const handlePlayClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    navigate(playTo)
+  }, [navigate, playTo])
+
   return (
     <motion.div
       ref={cardRef}
@@ -101,7 +120,7 @@ export default function MediaCard({ media, series }: MediaCardProps) {
       whileTap={{ y: 0 }}
       transition={springDefault}
     >
-      <Link to={linkTo}>
+      <Link to={detailTo}>
         <motion.div style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}>
           {/* 鼠标追踪光晕 — 使用 motion value，零 re-render */}
           <motion.div
@@ -146,18 +165,33 @@ export default function MediaCard({ media, series }: MediaCardProps) {
             <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
               <div className="absolute bottom-3 left-3 right-3">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 group-hover:scale-110"
+                  <button
+                    onClick={handlePlayClick}
+                    className="flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 hover:scale-125 cursor-pointer"
                     style={{
                       background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
                       boxShadow: 'var(--neon-glow-shadow-lg)',
                     }}
+                    title={isSeries ? '查看系列' : '立即播放'}
                   >
                     <Play size={18} className="ml-0.5 text-white" fill="white" />
-                  </div>
+                  </button>
                   <span className="text-sm font-semibold text-white">{isSeries ? '查看' : '播放'}</span>
                 </div>
               </div>
+              {/* 详情按钮（右下角，更显眼） */}
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(detailTo) }}
+                className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full transition-all duration-300 hover:scale-110 cursor-pointer"
+                style={{
+                  background: 'rgba(0,0,0,0.7)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                }}
+                title="查看详情"
+              >
+                <Info size={14} className="text-white" />
+              </button>
             </div>
 
             {/* 分辨率标签（仅电影） */}
@@ -186,7 +220,11 @@ export default function MediaCard({ media, series }: MediaCardProps) {
 
           {/* 信息区域 */}
           <div className="p-3">
-            <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon text-theme-primary">
+            <h3
+              className="truncate text-sm font-medium text-theme-primary transition-colors duration-200 hover:text-neon cursor-pointer"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(detailTo) }}
+              title="点击查看详情"
+            >
               {title}
             </h3>
             <div className="mt-1 flex items-center gap-2 text-xs text-theme-secondary">

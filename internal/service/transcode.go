@@ -79,8 +79,12 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", ts.hwAccel)
 	})
 
-	// 启动转码工作协程
-	for i := 0; i < cfg.App.MaxTranscodeJobs; i++ {
+	// 根据配置启动转码工作协程
+	transcodeWorkers := cfg.App.MaxTranscodeJobs
+	if transcodeWorkers <= 0 {
+		transcodeWorkers = 1
+	}
+	for i := 0; i < transcodeWorkers; i++ {
 		go ts.worker(i)
 	}
 
@@ -94,7 +98,7 @@ func (s *TranscodeService) detectHWAccel() string {
 	}
 
 	// 尝试检测NVIDIA GPU
-	if _, err := exec.LookPath("nvidia-smi"); err == nil {
+	if s.detectNvidiaSmi() {
 		// 验证nvenc是否可用
 		cmd := exec.Command(s.cfg.App.FFmpegPath, "-hide_banner", "-encoders")
 		output, err := cmd.Output()
@@ -124,6 +128,43 @@ func (s *TranscodeService) detectHWAccel() string {
 
 	s.logger.Warn("未检测到硬件加速，使用软件编码")
 	return "none"
+}
+
+// detectNvidiaSmi 检测 nvidia-smi 是否可用
+// 在 Windows 上 LookPath 可能因 PATH 不完整而找不到 nvidia-smi，
+// 因此额外检查常见安装路径并尝试直接执行验证
+func (s *TranscodeService) detectNvidiaSmi() bool {
+	// 优先通过 PATH 查找
+	if _, err := exec.LookPath("nvidia-smi"); err == nil {
+		return true
+	}
+
+	// Windows 下 nvidia-smi 可能不在 PATH 中，尝试常见路径
+	if runtime.GOOS == "windows" {
+		commonPaths := []string{
+			filepath.Join(os.Getenv("SystemRoot"), "System32", "nvidia-smi.exe"),
+			filepath.Join(os.Getenv("ProgramFiles"), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"),
+		}
+		for _, p := range commonPaths {
+			if _, err := os.Stat(p); err == nil {
+				// 找到文件，尝试执行验证
+				if out, err := exec.Command(p, "--query-gpu=name", "--format=csv,noheader").Output(); err == nil {
+					gpuName := strings.TrimSpace(string(out))
+					s.logger.Infof("通过路径 %s 检测到 GPU: %s", p, gpuName)
+					return true
+				}
+			}
+		}
+
+		// 最后尝试直接执行（某些环境下 System32 不在 Go 的 LookPath 搜索范围内，但 CreateProcess 可以找到）
+		if out, err := exec.Command("nvidia-smi", "--query-gpu=name", "--format=csv,noheader").Output(); err == nil {
+			gpuName := strings.TrimSpace(string(out))
+			s.logger.Infof("直接执行 nvidia-smi 检测到 GPU: %s", gpuName)
+			return true
+		}
+	}
+
+	return false
 }
 
 // buildFFmpegArgs 根据硬件加速模式构建FFmpeg参数
@@ -198,7 +239,10 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 		}
 	}
 
-	args := append(baseArgs, videoArgs...)
+	// 根据资源限制配置动态计算 FFmpeg 线程数
+	ffmpegThreads := s.calcFFmpegThreads()
+	args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
+	args = append(args, videoArgs...)
 	args = append(args, audioArgs...)
 	args = append(args, hlsArgs...)
 
@@ -279,7 +323,8 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	s.logger.Debugf("FFmpeg命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(args, " "))
 
 	cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
-	job.cmd = cmd // 保存引用，用于取消
+	setLowPriority(cmd) // 极低资源模式：FFmpeg 以最低优先级运行
+	job.cmd = cmd       // 保存引用，用于取消
 
 	// 捕获stderr以解析进度
 	stderrPipe, err := cmd.StderrPipe()
@@ -542,6 +587,23 @@ func (s *TranscodeService) CancelTranscode(taskID string) error {
 	}
 
 	return nil
+}
+
+// calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
+func (s *TranscodeService) calcFFmpegThreads() int {
+	resourceLimit := s.cfg.App.ResourceLimit
+	if resourceLimit <= 0 || resourceLimit > 80 {
+		resourceLimit = 80
+	}
+	cpuCount := runtime.NumCPU()
+	threads := cpuCount * resourceLimit / 100
+	if threads < 1 {
+		threads = 1
+	}
+	if threads > cpuCount {
+		threads = cpuCount
+	}
+	return threads
 }
 
 // buildFFmpegHDRTonemapFilter 构建 HDR→SDR 色调映射滤镜

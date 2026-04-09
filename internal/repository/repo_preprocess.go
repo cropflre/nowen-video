@@ -69,7 +69,7 @@ func (r *PreprocessRepo) ListAll(page, pageSize int, status string) ([]model.Pre
 	}
 
 	query.Count(&total)
-	err := query.Order("created_at DESC").
+	err := query.Preload("Media").Order("created_at DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&tasks).Error
 	return tasks, total, err
@@ -122,4 +122,17 @@ func (r *PreprocessRepo) BatchUpdateStatus(ids []string, status string) error {
 	return r.db.Model(&model.PreprocessTask{}).
 		Where("id IN ?", ids).
 		Update("status", status).Error
+}
+
+// FindByIDs 根据 ID 列表批量查找任务
+func (r *PreprocessRepo) FindByIDs(ids []string) ([]model.PreprocessTask, error) {
+	var tasks []model.PreprocessTask
+	err := r.db.Where("id IN ?", ids).Find(&tasks).Error
+	return tasks, err
+}
+
+// DeleteByIDs 批量删除任务（仅删除非运行中的任务）
+func (r *PreprocessRepo) DeleteByIDs(ids []string) (int64, error) {
+	result := r.db.Where("id IN ? AND status != ?", ids, "running").Delete(&model.PreprocessTask{})
+	return result.RowsAffected, result.Error
 }

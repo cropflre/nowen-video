@@ -81,6 +81,7 @@ export default {
       animation: {
         'fade-in': 'fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
         'slide-up': 'slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+        'slide-down': 'slideDown 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
         'scale-in': 'scaleIn 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
         'glow-pulse': 'glowPulse 2s ease-in-out infinite',
         'neon-breathe': 'neonBreathe 3s ease-in-out infinite',
@@ -99,6 +100,10 @@ export default {
         },
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(20px)', filter: 'blur(4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)', filter: 'blur(0)' },
+        },
+        slideDown: {
+          '0%': { opacity: '0', transform: 'translateY(-20px)', filter: 'blur(4px)' },
           '100%': { opacity: '1', transform: 'translateY(0)', filter: 'blur(0)' },
         },
         scaleIn: {

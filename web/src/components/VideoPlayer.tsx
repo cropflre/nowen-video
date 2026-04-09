@@ -40,6 +40,10 @@ interface VideoPlayerProps {
   nextTitle?: string
   /** 是否为 STRM 远程流 */
   isStrm?: boolean
+  /** API 返回的完整视频时长（秒），用于在实时转码 EVENT 模式下显示完整时长 */
+  knownDuration?: number
+  /** 预处理完成回调，播放器会自动切换到预处理流 */
+  onPreprocessReady?: () => void
 }
 
 export default function VideoPlayer({
@@ -52,6 +56,8 @@ export default function VideoPlayer({
   onNext,
   nextTitle,
   isStrm = false,
+  knownDuration,
+  onPreprocessReady,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -153,6 +159,14 @@ export default function VideoPlayer({
       }
     }
 
+    // 监听预处理完成事件：后台预处理完成后自动通知，实现无缝切换
+    const handlePreprocessCompleted = (data: any) => {
+      if (data.media_id === mediaId && onPreprocessReady) {
+        onPreprocessReady()
+      }
+    }
+
+    on(WS_EVENTS.PREPROCESS_COMPLETED, handlePreprocessCompleted)
     on(WS_EVENTS.ASR_PROGRESS, handleASRProgress)
     on(WS_EVENTS.ASR_COMPLETED, handleASRCompleted)
     on(WS_EVENTS.ASR_FAILED, handleASRFailed)
@@ -185,6 +199,7 @@ export default function VideoPlayer({
     on(WS_EVENTS.TRANSLATE_FAILED, handleTranslateFailed)
 
     return () => {
+      off(WS_EVENTS.PREPROCESS_COMPLETED, handlePreprocessCompleted)
       off(WS_EVENTS.ASR_PROGRESS, handleASRProgress)
       off(WS_EVENTS.ASR_COMPLETED, handleASRCompleted)
       off(WS_EVENTS.ASR_FAILED, handleASRFailed)
@@ -192,7 +207,7 @@ export default function VideoPlayer({
       off(WS_EVENTS.TRANSLATE_COMPLETED, handleTranslateCompleted)
       off(WS_EVENTS.TRANSLATE_FAILED, handleTranslateFailed)
     }
-  }, [mediaId, on, off])
+  }, [mediaId, on, off, onPreprocessReady])
 
   // 加载字幕轨道列表 + 检查 AI 字幕状态
   useEffect(() => {
@@ -450,7 +465,7 @@ export default function VideoPlayer({
   const seek = (seconds: number) => {
     const video = videoRef.current
     if (!video) return
-    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds))
+    video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
     // 显示快进/快退提示
     clearTimeout(seekHintTimer.current)
     setSeekHint({ text: seconds > 0 ? `+${seconds}s` : `${seconds}s`, visible: true })
@@ -464,14 +479,21 @@ export default function VideoPlayer({
     if (!video) return
     const rect = e.currentTarget.getBoundingClientRect()
     const pos = (e.clientX - rect.left) / rect.width
-    video.currentTime = pos * video.duration
+    const targetTime = pos * displayDuration
+    // 如果目标时间超出已加载范围，限制到当前可 seek 的最大位置
+    if (video.duration > 0 && targetTime <= video.duration) {
+      video.currentTime = targetTime
+    } else if (video.duration > 0) {
+      // 超出已转码范围，跳转到已转码的最末尾
+      video.currentTime = video.duration - 0.5
+    }
   }
 
   const handleProgressHover = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const pos = (e.clientX - rect.left) / rect.width
     setHoverProgress(pos * 100)
-    setHoverTime(formatTime(pos * duration))
+    setHoverTime(formatTime(pos * displayDuration))
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,7 +535,9 @@ export default function VideoPlayer({
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  // 优先使用 API 返回的完整时长（解决实时转码 EVENT 模式下时长逐步增长的问题）
+  const displayDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
+  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
   // 键盘快捷键
   useEffect(() => {
@@ -619,8 +643,9 @@ export default function VideoPlayer({
 
     if (gesture.direction === 'horizontal') {
       // 水平滑动 -> 快进/快退
-      const seekDelta = (deltaX / rect.width) * duration * 0.3
-      const newTime = Math.max(0, Math.min(duration, gesture.startTime + seekDelta))
+      const effectiveDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
+      const seekDelta = (deltaX / rect.width) * effectiveDuration * 0.3
+      const newTime = Math.max(0, Math.min(effectiveDuration, gesture.startTime + seekDelta))
       const diff = newTime - gesture.startTime
       const sign = diff >= 0 ? '+' : '-'
       setGestureOverlay({
@@ -651,7 +676,7 @@ export default function VideoPlayer({
         })
       }
     }
-  }, [duration, setVolume])
+  }, [duration, knownDuration, setVolume])
 
   const handleTouchEnd = useCallback(() => {
     const gesture = gestureRef.current
@@ -882,8 +907,18 @@ export default function VideoPlayer({
                 backdropFilter: 'blur(8px)',
               }}
             >
-              {hoverTime}
+          {hoverTime}
             </div>
+          )}
+          {/* 已转码范围指示（实时转码 EVENT 模式下，显示已转码的区域） */}
+          {knownDuration && knownDuration > 0 && duration > 0 && duration < knownDuration && (
+            <div
+              className="absolute left-0 top-0 h-full rounded-full opacity-30"
+              style={{
+                width: `${(duration / knownDuration) * 100}%`,
+                background: 'var(--neon-blue)',
+              }}
+            />
           )}
           <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
           <div className="progress-bar-thumb" style={{ left: `${progress}%` }} />
@@ -942,7 +977,7 @@ export default function VideoPlayer({
           <span className="ml-3 font-display text-xs tracking-wide text-white/60">
             {formatTime(currentTime)}
             <span className="mx-1 text-neon-blue/30">/</span>
-            {formatTime(duration)}
+            {formatTime(displayDuration)}
           </span>
 
           <div className="flex-1" />

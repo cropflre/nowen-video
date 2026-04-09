@@ -199,6 +199,72 @@ func (h *PreprocessHandler) DeleteTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "任务已删除"})
 }
 
+// BatchDeleteTasks 批量删除预处理任务
+func (h *PreprocessHandler) BatchDeleteTasks(c *gin.Context) {
+	var req struct {
+		TaskIDs []string `json:"task_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
+		return
+	}
+
+	deleted, err := h.preprocessService.BatchDeleteTasks(req.TaskIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "批量删除完成",
+		"data":    gin.H{"deleted": deleted},
+	})
+}
+
+// BatchCancelTasks 批量取消预处理任务
+func (h *PreprocessHandler) BatchCancelTasks(c *gin.Context) {
+	var req struct {
+		TaskIDs []string `json:"task_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
+		return
+	}
+
+	cancelled, err := h.preprocessService.BatchCancelTasks(req.TaskIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "批量取消完成",
+		"data":    gin.H{"cancelled": cancelled},
+	})
+}
+
+// BatchRetryTasks 批量重试预处理任务
+func (h *PreprocessHandler) BatchRetryTasks(c *gin.Context) {
+	var req struct {
+		TaskIDs []string `json:"task_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
+		return
+	}
+
+	retried, err := h.preprocessService.BatchRetryTasks(req.TaskIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "批量重试完成",
+		"data":    gin.H{"retried": retried},
+	})
+}
+
 // GetStatistics 获取预处理统计
 func (h *PreprocessHandler) GetStatistics(c *gin.Context) {
 	stats := h.preprocessService.GetStatistics()
@@ -209,6 +275,52 @@ func (h *PreprocessHandler) GetStatistics(c *gin.Context) {
 func (h *PreprocessHandler) GetSystemLoad(c *gin.Context) {
 	load := h.preprocessService.GetSystemLoad()
 	c.JSON(http.StatusOK, gin.H{"data": load})
+}
+
+// GetPerformanceConfig 获取性能配置
+func (h *PreprocessHandler) GetPerformanceConfig(c *gin.Context) {
+	config := h.preprocessService.GetPerformanceConfig()
+	c.JSON(http.StatusOK, gin.H{"data": config})
+}
+
+// UpdatePerformanceConfig 更新性能配置
+func (h *PreprocessHandler) UpdatePerformanceConfig(c *gin.Context) {
+	var updates map[string]interface{}
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未提供任何配置项"})
+		return
+	}
+
+	// 验证字段白名单
+	allowedKeys := map[string]bool{
+		"resource_limit":     true,
+		"max_transcode_jobs": true,
+		"transcode_preset":   true,
+		"hw_accel":           true,
+	}
+	for key := range updates {
+		if !allowedKeys[key] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的配置项: " + key})
+			return
+		}
+	}
+
+	if err := h.preprocessService.UpdatePerformanceConfig(updates); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 返回更新后的配置
+	config := h.preprocessService.GetPerformanceConfig()
+	c.JSON(http.StatusOK, gin.H{
+		"message": "性能配置已更新（部分配置需重启服务生效）",
+		"data":    config,
+	})
 }
 
 // CleanCache 清理预处理缓存

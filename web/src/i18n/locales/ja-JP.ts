@@ -216,9 +216,6 @@ const jaJP: Record<string, string> = {
   'auth.slogan': 'ディープスペースシネマ · フューチャーハブ',
 
   // ==================== ナビゲーション（V3） ====================
-  'nav.family': 'ファミリースペース',
-  'nav.live': 'ライブチャンネル',
-  'nav.sync': 'クラウド同期',
   'nav.pulse': 'Pulse データセンター',
 
   // ==================== コメント ====================
@@ -371,7 +368,6 @@ const jaJP: Record<string, string> = {
   'admin.tabAI': 'AI設定',
   'admin.tabTags': 'タグ管理',
   'admin.tabShares': '共有リンク',
-  'admin.tabRules': 'マッチルール',
   'admin.shortDashboard': 'ダッシュ',
   'admin.shortLibrary': 'ライブラリ',
   'admin.shortUsers': 'ユーザー',
@@ -383,7 +379,6 @@ const jaJP: Record<string, string> = {
   'admin.shortAI': 'AI',
   'admin.shortTags': 'タグ',
   'admin.shortShares': '共有',
-  'admin.shortRules': 'ルール',
   'admin.metadataConfig': 'メタデータスクレイピング設定',
   'admin.metadataConfigDesc': 'TMDb（The Movie Database）APIキーを設定すると、システムが自動的にポスター、あらすじ、評価、ジャンルなどのメタデータを取得します。',
   'admin.applyTMDbKey': 'TMDbから無料APIキーを取得',

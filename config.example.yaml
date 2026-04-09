@@ -39,10 +39,11 @@ app:
   web_dir: ./web/dist
   ffmpeg_path: ffmpeg
   ffprobe_path: ffprobe
-  hw_accel: auto
+  hw_accel: none
   vaapi_device: /dev/dri/renderD128
-  transcode_preset: veryfast
-  max_transcode_jobs: 2
+  transcode_preset: ultrafast
+  max_transcode_jobs: 1
+  resource_limit: 5
   cors_origins: []
 
 # 日志配置
@@ -76,8 +77,9 @@ cache:
 # jwt_secret: please-change-this-secret-key
 # ffmpeg_path: ffmpeg
 # ffprobe_path: ffprobe
-# hw_accel: auto
+# hw_accel: none
 # vaapi_device: /dev/dri/renderD128
-# transcode_preset: veryfast
-# max_transcode_jobs: 2
+# transcode_preset: ultrafast
+# max_transcode_jobs: 1
+# resource_limit: 5
 # tmdb_api_key: ""
