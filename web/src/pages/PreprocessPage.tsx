@@ -1,4 +1,68 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { pageVariants, staggerContainerVariants, staggerItemVariants, modalOverlayVariants, modalContentVariants, easeSmooth, durations } from '@/lib/motion'
+
+// ==================== P3: 数值变化动画 Hook ====================
+function useAnimatedCounter(value: number, duration = 600): number {
+  const [display, setDisplay] = useState(value)
+  const prevRef = useRef(value)
+  const rafRef = useRef<number>(0)
+
+  useEffect(() => {
+    const from = prevRef.current
+    const to = value
+    prevRef.current = value
+    if (from === to) return
+
+    const startTime = performance.now()
+    const diff = to - from
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      // easeOutExpo 缓动
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress)
+      setDisplay(Math.round(from + diff * eased))
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick)
+      }
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [value, duration])
+
+  return display
+}
+
+// ==================== P2: 环形进度 SVG 组件 ====================
+function RingProgress({ value, max, size = 44, strokeWidth = 3, color = 'var(--neon-blue)', glowColor = 'var(--neon-blue-30)' }: {
+  value: number; max: number; size?: number; strokeWidth?: number; color?: string; glowColor?: string
+}) {
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const ratio = max > 0 ? Math.min(value / max, 1) : 0
+  const offset = circumference * (1 - ratio)
+
+  return (
+    <svg width={size} height={size} className="-rotate-90" viewBox={`0 0 ${size} ${size}`}>
+      {/* 轨道 */}
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke="var(--neon-blue-6)" strokeWidth={strokeWidth}
+      />
+      {/* 进度弧 */}
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke={color} strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        className="transition-all duration-700 ease-out"
+        style={{ filter: `drop-shadow(0 0 4px ${glowColor})` }}
+      />
+    </svg>
+  )
+}
 import { preprocessApi } from '@/api/preprocess'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
@@ -35,6 +99,9 @@ import {
   Gauge,
   Layers,
   MonitorSpeaker,
+  Thermometer,
+  Shield,
+  ShieldAlert,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -98,6 +165,28 @@ export default function PreprocessPage() {
 
   // 计算总页数
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize])
+
+  // P2: 状态过滤滑动指示器
+  const filterContainerRef = useRef<HTMLDivElement>(null)
+  const filterBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [filterIndicator, setFilterIndicator] = useState<{ left: number; width: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const btn = filterBtnRefs.current[statusFilter]
+    const container = filterContainerRef.current
+    if (btn && container) {
+      const containerRect = container.getBoundingClientRect()
+      const btnRect = btn.getBoundingClientRect()
+      setFilterIndicator({
+        left: btnRect.left - containerRect.left,
+        width: btnRect.width,
+      })
+    }
+  }, [statusFilter, stats])
+
+  // P3: 统计数值动画
+  const animRunning = useAnimatedCounter(stats?.running_count ?? 0)
+  const animQueue = useAnimatedCounter(stats?.queue_size ?? 0)
 
   // 全选/取消全选当前页
   const isAllSelected = tasks.length > 0 && tasks.every((t) => selectedIds.has(t.id))
@@ -379,12 +468,17 @@ export default function PreprocessPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="enter"
+      className="mx-auto max-w-7xl space-y-6 p-6"
+    >
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-            <Zap className="text-neon-blue" size={24} />
+          <h1 className="text-2xl font-display font-bold flex items-center gap-2 text-gradient">
+            <Zap className="text-neon-blue animate-neon-breathe" size={24} />
             视频预处理
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>
@@ -398,7 +492,7 @@ export default function PreprocessPage() {
               setShowPerfConfig(true)
               if (!perfConfig && !perfLoading) loadPerfConfig()
             }}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-all duration-200 shrink-0"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-all duration-200 shrink-0 active:scale-95"
             style={{
               background: 'var(--neon-blue-6)',
               border: '1px solid var(--neon-blue-6)',
@@ -410,7 +504,7 @@ export default function PreprocessPage() {
           </button>
           <button
             onClick={() => { loadTasks(); loadStats() }}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-all active:scale-95"
             style={{ background: 'var(--neon-blue-6)', color: 'var(--text-secondary)' }}
           >
             <RefreshCw size={14} />
@@ -420,6 +514,7 @@ export default function PreprocessPage() {
       </div>
 
       {/* 性能配置弹窗 */}
+      <AnimatePresence>
       {showPerfConfig && (
         <PerfConfigModal
           perfLoading={perfLoading}
@@ -434,33 +529,57 @@ export default function PreprocessPage() {
           onSave={savePerfConfig}
         />
       )}
+      </AnimatePresence>
 
       {/* 统计卡片 */}
       {stats && sysLoad && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
-            <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-              <Activity size={14} className="text-neon-blue" />
-              处理中
+        <motion.div
+          className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+          variants={staggerContainerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <motion.div variants={staggerItemVariants} className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-blue), transparent)' }} />
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                  <Activity size={14} className="text-neon-blue" />
+                  处理中
+                </div>
+                <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{animRunning}</div>
+                <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {stats.active_workers}/{sysLoad.cur_workers || stats.max_workers} 工作线程
+                </div>
+              </div>
+              {/* P2: 环形进度 — 工作线程利用率 */}
+              <div className="relative flex-shrink-0">
+                <RingProgress
+                  value={stats.active_workers}
+                  max={sysLoad.cur_workers || stats.max_workers}
+                  size={44}
+                  strokeWidth={3}
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {stats.active_workers}
+                </span>
+              </div>
             </div>
-            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{stats.running_count}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {stats.active_workers}/{sysLoad.cur_workers || stats.max_workers} 工作线程
-            </div>
-          </div>
+          </motion.div>
 
-          <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+          <motion.div variants={staggerItemVariants} className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-blue), transparent)' }} />
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
               <Clock size={14} className="text-yellow-400" />
               队列
             </div>
-            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{stats.queue_size}</div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{animQueue}</div>
             <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
               等待处理
             </div>
-          </div>
+          </motion.div>
 
-          <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+          <motion.div variants={staggerItemVariants} className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
               <Cpu size={14} className="text-emerald-400" />
               系统负载
@@ -485,19 +604,38 @@ export default function PreprocessPage() {
                 />
               </div>
             )}
-          </div>
+          </motion.div>
 
-          <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+          <motion.div variants={staggerItemVariants} className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-purple), transparent)' }} />
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
               <HardDrive size={14} className="text-purple-400" />
               硬件加速
             </div>
             <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{stats.hw_accel || 'CPU'}</div>
             <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              已完成 {stats.status_counts?.completed || 0} 个
+              {sysLoad.gpu_status?.degraded ? (
+                <span className="text-red-400">⚠ GPU 过载 · 已降级为 CPU</span>
+              ) : (
+                <>已完成 {stats.status_counts?.completed || 0} 个</>
+              )}
             </div>
-          </div>
-        </div>
+            {/* GPU 使用率进度条 */}
+            {sysLoad.gpu_status?.metrics?.available && (
+              <div className="mt-2 h-1 w-full rounded-full" style={{ background: 'var(--progress-track-bg)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, sysLoad.gpu_status.metrics.utilization)}%`,
+                    background: sysLoad.gpu_status.degraded ? '#ef4444'
+                      : sysLoad.gpu_status.metrics.utilization > 80 ? '#f59e0b'
+                      : '#a855f7',
+                  }}
+                />
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
       )}
 
       {/* 媒体库批量预处理 */}
@@ -529,14 +667,25 @@ export default function PreprocessPage() {
         </div>
       )}
 
-      {/* 状态过滤 */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* 状态过滤 — P2: 带滑动指示器 */}
+      <div ref={filterContainerRef} className="relative flex items-center gap-2 flex-wrap pb-1">
+        {/* 滑动指示器 */}
+        {filterIndicator && (
+          <motion.div
+            className="absolute bottom-0 h-[2px] rounded-full z-10"
+            style={{ background: 'var(--neon-blue)', boxShadow: '0 0 8px var(--neon-blue-30)' }}
+            animate={{ left: filterIndicator.left, width: filterIndicator.width }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          />
+        )}
         {['', 'running', 'pending', 'paused', 'completed', 'failed', 'cancelled'].map((s) => (
           <button
             key={s}
+            ref={(el) => { filterBtnRefs.current[s] = el }}
             onClick={() => { setStatusFilter(s); setPage(1); setSelectedIds(new Set()) }}
             className={clsx(
-              'rounded-lg px-3 py-1.5 text-xs transition-colors',
+              'rounded-lg px-3 py-1.5 text-xs transition-all duration-200',
+              statusFilter === s && 'font-medium',
             )}
             style={statusFilter === s ? { background: 'var(--neon-blue-15)', border: '1px solid var(--neon-blue-30)', color: 'var(--text-primary)' } : { background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)', color: 'var(--text-muted)' }}
           >
@@ -547,9 +696,14 @@ export default function PreprocessPage() {
       </div>
 
       {/* 批量操作工具栏 */}
+      <AnimatePresence>
       {isSomeSelected && (
-        <div
-          className="flex items-center gap-3 rounded-xl px-4 py-3 animate-in fade-in slide-in-from-top-2 duration-200"
+        <motion.div
+          initial={{ opacity: 0, y: -12, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: -8, filter: 'blur(2px)' }}
+          transition={{ duration: 0.25, ease: easeSmooth as unknown as [number, number, number, number] }}
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
           style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-15)' }}
         >
           <button
@@ -570,7 +724,7 @@ export default function PreprocessPage() {
           <button
             onClick={handleBatchCancel}
             disabled={batchLoading}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-yellow-400/10 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-all hover:bg-yellow-400/10 active:scale-90 disabled:opacity-50"
             style={{ color: 'var(--text-muted)', border: '1px solid var(--neon-blue-6)' }}
           >
             <XCircle size={12} />
@@ -580,7 +734,7 @@ export default function PreprocessPage() {
           <button
             onClick={handleBatchRetry}
             disabled={batchLoading}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-neon-blue/10 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-all hover:bg-neon-blue/10 active:scale-90 disabled:opacity-50"
             style={{ color: 'var(--text-muted)', border: '1px solid var(--neon-blue-6)' }}
           >
             <RotateCcw size={12} />
@@ -590,7 +744,7 @@ export default function PreprocessPage() {
           <button
             onClick={handleBatchDelete}
             disabled={batchLoading}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-red-400/10 hover:text-red-400 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-all hover:bg-red-400/10 hover:text-red-400 active:scale-90 disabled:opacity-50"
             style={{ color: 'var(--text-muted)', border: '1px solid var(--neon-blue-6)' }}
           >
             {batchLoading ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
@@ -604,11 +758,18 @@ export default function PreprocessPage() {
           >
             清除选择
           </button>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* 任务列表 */}
-      <div className="space-y-3">
+      <motion.div
+        className="space-y-3"
+        variants={staggerContainerVariants}
+        initial="hidden"
+        animate="visible"
+        key={statusFilter + '-' + page}
+      >
         {/* 列表头部：全选复选框 */}
         {tasks.length > 0 && (
           <div className="flex items-center gap-3 px-4 py-2">
@@ -631,16 +792,24 @@ export default function PreprocessPage() {
         )}
 
         {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16" style={{ color: 'var(--text-muted)' }}>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: durations.normal, ease: easeSmooth as unknown as [number, number, number, number] }}
+            className="flex flex-col items-center justify-center py-16"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <Film size={48} className="mb-4 opacity-30" />
             <p>暂无预处理任务</p>
             <p className="text-xs mt-1">扫描媒体库后将自动提交预处理任务</p>
-          </div>
+          </motion.div>
         ) : (
           tasks.map((task) => (
-            <div
+            <motion.div
               key={task.id}
-              className={clsx('rounded-xl p-4 transition-colors', selectedIds.has(task.id) && 'ring-1 ring-neon-blue/30')}
+              variants={staggerItemVariants}
+              layout
+              className={clsx('rounded-xl p-4 transition-all duration-200', selectedIds.has(task.id) && 'ring-1 ring-neon-blue/30')}
               style={{
                 background: selectedIds.has(task.id) ? 'var(--neon-blue-6)' : 'var(--glass-bg)',
                 border: '1px solid var(--neon-blue-6)',
@@ -685,6 +854,7 @@ export default function PreprocessPage() {
                             background: task.status === 'paused'
                               ? 'var(--neon-orange, orange)'
                               : 'linear-gradient(90deg, var(--neon-purple), var(--neon-blue))',
+                            boxShadow: task.status === 'running' ? 'var(--progress-bar-glow)' : 'none',
                           }}
                         />
                       </div>
@@ -717,36 +887,36 @@ export default function PreprocessPage() {
                 {/* 操作按钮 */}
                 <div className="flex items-center gap-1 shrink-0">
                   {task.status === 'running' && (
-                    <button onClick={() => handlePause(task.id)} className="p-1.5 rounded-lg hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="暂停">
+                    <button onClick={() => handlePause(task.id)} className="p-1.5 rounded-lg hover:text-yellow-400 hover:bg-yellow-400/10 active:scale-90 transition-all" style={{ color: 'var(--text-muted)' }} title="暂停">
                       <Pause size={14} />
                     </button>
                   )}
                   {task.status === 'paused' && (
-                    <button onClick={() => handleResume(task.id)} className="p-1.5 rounded-lg hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="恢复">
+                    <button onClick={() => handleResume(task.id)} className="p-1.5 rounded-lg hover:text-emerald-400 hover:bg-emerald-400/10 active:scale-90 transition-all" style={{ color: 'var(--text-muted)' }} title="恢复">
                       <Play size={14} />
                     </button>
                   )}
                   {(task.status === 'running' || task.status === 'paused' || task.status === 'pending' || task.status === 'queued') && (
-                    <button onClick={() => handleCancel(task.id)} className="p-1.5 rounded-lg hover:text-red-400 hover:bg-red-400/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="取消">
+                    <button onClick={() => handleCancel(task.id)} className="p-1.5 rounded-lg hover:text-red-400 hover:bg-red-400/10 active:scale-90 transition-all" style={{ color: 'var(--text-muted)' }} title="取消">
                       <XCircle size={14} />
                     </button>
                   )}
                   {task.status === 'failed' && (
-                    <button onClick={() => handleRetry(task.id)} className="p-1.5 rounded-lg hover:text-neon-blue hover:bg-neon-blue/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="重试">
+                    <button onClick={() => handleRetry(task.id)} className="p-1.5 rounded-lg hover:text-neon-blue hover:bg-neon-blue/10 active:scale-90 transition-all" style={{ color: 'var(--text-muted)' }} title="重试">
                       <RotateCcw size={14} />
                     </button>
                   )}
                   {(task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') && (
-                    <button onClick={() => handleDelete(task.id)} className="p-1.5 rounded-lg hover:text-red-400 hover:bg-red-400/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="删除">
+                    <button onClick={() => handleDelete(task.id)} className="p-1.5 rounded-lg hover:text-red-400 hover:bg-red-400/10 active:scale-90 transition-all" style={{ color: 'var(--text-muted)' }} title="删除">
                       <Trash2 size={14} />
                     </button>
                   )}
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))
         )}
-      </div>
+      </motion.div>
 
       {/* 增强分页 */}
       {total > 0 && (
@@ -871,7 +1041,7 @@ export default function PreprocessPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 
@@ -1101,18 +1271,31 @@ function PerfConfigModal({
             ))}
           </div>
         )}
+
+        {/* GPU 安全保护配置 */}
+        {perfConfig.detected_hw_accel && perfConfig.detected_hw_accel !== 'none' && (
+          <GPUSafetyPanel
+            perfConfig={perfConfig}
+            perfDraft={perfDraft}
+            onDraftChange={onDraftChange}
+          />
+        )}
       </div>
     )
   }
 
   return (
-    <div
+    <motion.div
       ref={overlayRef}
-      className="modal-overlay flex items-start justify-center pt-4 animate-fade-in"
+      className="modal-overlay flex items-start justify-center pt-4"
       onClick={handleOverlayClick}
+      variants={modalOverlayVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
     >
-      <div
-        className="relative w-full max-w-2xl mx-4 rounded-2xl overflow-hidden animate-slide-down"
+      <motion.div
+        className="relative w-full max-w-2xl mx-4 rounded-2xl overflow-hidden"
         style={{
           background: 'var(--bg-elevated)',
           border: '1px solid var(--border-strong)',
@@ -1120,6 +1303,10 @@ function PerfConfigModal({
           backdropFilter: 'blur(30px)',
           maxHeight: '85vh',
         }}
+        variants={modalContentVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
       >
         {/* 顶部霓虹光条 */}
         <div
@@ -1161,16 +1348,7 @@ function PerfConfigModal({
               </button>
               <button
                 onClick={onClose}
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-                style={{ color: 'var(--text-muted)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--neon-blue-6)'
-                  e.currentTarget.style.color = 'var(--text-primary)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                  e.currentTarget.style.color = 'var(--text-muted)'
-                }}
+                className="btn-close-ghost flex h-8 w-8 items-center justify-center rounded-lg transition-all active:scale-90"
               >
                 <X size={16} />
               </button>
@@ -1181,6 +1359,306 @@ function PerfConfigModal({
           <div className="px-6 pb-6">
             {renderContent()}
           </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ==================== GPU 安全保护面板组件 ====================
+interface GPUSafetyPanelProps {
+  perfConfig: PerformanceConfig
+  perfDraft: Partial<PerformanceConfig>
+  onDraftChange: (draft: Partial<PerformanceConfig>) => void
+}
+
+function GPUSafetyPanel({ perfConfig, perfDraft, onDraftChange }: GPUSafetyPanelProps) {
+  const gpuStatus = perfConfig.gpu_status
+  const metrics = gpuStatus?.metrics
+  const isDegraded = gpuStatus?.degraded ?? false
+
+  return (
+    <div className="space-y-4 rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: `1px solid ${isDegraded ? '#ef4444' : 'var(--neon-blue-6)'}` }}>
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <Shield size={16} className={isDegraded ? 'text-red-400' : 'text-emerald-400'} />
+          GPU 安全保护
+          {isDegraded && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-400/10 text-red-400 flex items-center gap-1">
+              <ShieldAlert size={10} />
+              已降级
+            </span>
+          )}
+        </h3>
+        {/* 启用/禁用开关 */}
+        <button
+          onClick={() => onDraftChange({ ...perfDraft, gpu_safety_enabled: !(perfDraft.gpu_safety_enabled ?? perfConfig.gpu_safety_enabled) } as Partial<PerformanceConfig>)}
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition-colors"
+          style={
+            (perfDraft.gpu_safety_enabled ?? perfConfig.gpu_safety_enabled)
+              ? { background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#10b981' }
+              : { background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)', color: 'var(--text-muted)' }
+          }
+        >
+          {(perfDraft.gpu_safety_enabled ?? perfConfig.gpu_safety_enabled) ? '已启用' : '已禁用'}
+        </button>
+      </div>
+
+      {/* 降级警告 */}
+      {isDegraded && gpuStatus?.degrade_reason && (
+        <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <ShieldAlert size={14} className="text-red-400 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-medium text-red-400">GPU 过载保护已触发</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{gpuStatus.degrade_reason}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              新任务已自动降级为 CPU 编码 · 已降级 {gpuStatus.degraded_task_count} 个任务
+              {gpuStatus.pending_gpu_tasks > 0 && ` · ${gpuStatus.pending_gpu_tasks} 个任务等待 GPU 恢复`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* GPU 实时指标 */}
+      {metrics?.available && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* GPU 使用率 */}
+          <div className="rounded-lg p-2.5" style={{ background: 'var(--neon-blue-6)' }}>
+            <div className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <Activity size={12} />
+              使用率
+            </div>
+            <div className="text-lg font-bold" style={{
+              color: metrics.utilization >= (perfConfig.gpu_utilization_threshold || 85) ? '#ef4444'
+                : metrics.utilization >= (perfConfig.gpu_recovery_threshold || 60) ? '#f59e0b'
+                : '#10b981'
+            }}>
+              {metrics.utilization.toFixed(0)}%
+            </div>
+            <div className="mt-1 h-1 w-full rounded-full" style={{ background: 'var(--progress-track-bg)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, metrics.utilization)}%`,
+                  background: metrics.utilization >= (perfConfig.gpu_utilization_threshold || 85) ? '#ef4444'
+                    : metrics.utilization >= (perfConfig.gpu_recovery_threshold || 60) ? '#f59e0b'
+                    : '#10b981',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* GPU 温度 */}
+          <div className="rounded-lg p-2.5" style={{ background: 'var(--neon-blue-6)' }}>
+            <div className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <Thermometer size={12} />
+              温度
+            </div>
+            <div className="text-lg font-bold" style={{
+              color: metrics.temperature >= (perfConfig.gpu_temperature_threshold || 80) ? '#ef4444'
+                : metrics.temperature >= (perfConfig.gpu_temperature_recovery || 70) ? '#f59e0b'
+                : '#10b981'
+            }}>
+              {metrics.temperature}°C
+            </div>
+            <div className="mt-1 h-1 w-full rounded-full" style={{ background: 'var(--progress-track-bg)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, (metrics.temperature / 100) * 100)}%`,
+                  background: metrics.temperature >= (perfConfig.gpu_temperature_threshold || 80) ? '#ef4444'
+                    : metrics.temperature >= (perfConfig.gpu_temperature_recovery || 70) ? '#f59e0b'
+                    : '#10b981',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 显存 */}
+          <div className="rounded-lg p-2.5" style={{ background: 'var(--neon-blue-6)' }}>
+            <div className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <HardDrive size={12} />
+              显存
+            </div>
+            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              {metrics.memory_percent.toFixed(0)}%
+            </div>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              {metrics.memory_used} / {metrics.memory_total} MB
+            </p>
+          </div>
+
+          {/* 编码器 */}
+          <div className="rounded-lg p-2.5" style={{ background: 'var(--neon-blue-6)' }}>
+            <div className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <Zap size={12} />
+              编码器
+            </div>
+            <div className="text-lg font-bold" style={{
+              color: metrics.encoder_util >= 90 ? '#ef4444'
+                : metrics.encoder_util >= 70 ? '#f59e0b'
+                : '#10b981'
+            }}>
+              {metrics.encoder_util.toFixed(0)}%
+            </div>
+            {metrics.power_draw > 0 && (
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {metrics.power_draw.toFixed(0)}W / {metrics.power_limit.toFixed(0)}W
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* GPU 名称信息 */}
+      {metrics?.gpu_name && (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {metrics.gpu_name} · 驱动 {metrics.driver_version}
+          {metrics.fan_speed > 0 && ` · 风扇 ${metrics.fan_speed}%`}
+        </p>
+      )}
+
+      {/* 阈值配置 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2" style={{ borderTop: '1px solid var(--neon-blue-6)' }}>
+        {/* 使用率阈值 */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <Activity size={12} className="text-red-400" />
+            GPU 使用率安全上限
+          </label>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const val = (perfDraft as Record<string, unknown>).gpu_utilization_threshold as number ?? (perfConfig.gpu_utilization_threshold || 85)
+              const pct = ((val - 50) / (99 - 50)) * 100
+              return (
+                <input
+                  type="range"
+                  min={50}
+                  max={99}
+                  step={5}
+                  value={val}
+                  onChange={(e) => onDraftChange({ ...perfDraft, gpu_utilization_threshold: Number(e.target.value) } as Partial<PerformanceConfig>)}
+                  className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #ef4444 0%, #ef4444 ${pct}%, var(--neon-blue-6) ${pct}%, var(--neon-blue-6) 100%)`,
+                    accentColor: '#ef4444',
+                  }}
+                />
+              )
+            })()}
+            <span className="text-sm font-mono font-bold min-w-[3rem] text-right" style={{ color: 'var(--text-primary)' }}>
+              {(perfDraft as Record<string, unknown>).gpu_utilization_threshold as number ?? (perfConfig.gpu_utilization_threshold || 85)}%
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            超过此值时新任务自动降级为 CPU 编码
+          </p>
+        </div>
+
+        {/* 温度阈值 */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <Thermometer size={12} className="text-orange-400" />
+            GPU 温度安全上限
+          </label>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const val = (perfDraft as Record<string, unknown>).gpu_temperature_threshold as number ?? (perfConfig.gpu_temperature_threshold || 80)
+              const pct = ((val - 60) / (95 - 60)) * 100
+              return (
+                <input
+                  type="range"
+                  min={60}
+                  max={95}
+                  step={5}
+                  value={val}
+                  onChange={(e) => onDraftChange({ ...perfDraft, gpu_temperature_threshold: Number(e.target.value) } as Partial<PerformanceConfig>)}
+                  className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${pct}%, var(--neon-blue-6) ${pct}%, var(--neon-blue-6) 100%)`,
+                    accentColor: '#f59e0b',
+                  }}
+                />
+              )
+            })()}
+            <span className="text-sm font-mono font-bold min-w-[3rem] text-right" style={{ color: 'var(--text-primary)' }}>
+              {(perfDraft as Record<string, unknown>).gpu_temperature_threshold as number ?? (perfConfig.gpu_temperature_threshold || 80)}°C
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            超过此温度时立即暂停所有 GPU 任务
+          </p>
+        </div>
+
+        {/* 恢复阈值 */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <Activity size={12} className="text-emerald-400" />
+            冷却恢复阈值（使用率）
+          </label>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const val = (perfDraft as Record<string, unknown>).gpu_recovery_threshold as number ?? (perfConfig.gpu_recovery_threshold || 60)
+              const pct = ((val - 30) / (80 - 30)) * 100
+              return (
+                <input
+                  type="range"
+                  min={30}
+                  max={80}
+                  step={5}
+                  value={val}
+                  onChange={(e) => onDraftChange({ ...perfDraft, gpu_recovery_threshold: Number(e.target.value) } as Partial<PerformanceConfig>)}
+                  className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #10b981 0%, #10b981 ${pct}%, var(--neon-blue-6) ${pct}%, var(--neon-blue-6) 100%)`,
+                    accentColor: '#10b981',
+                  }}
+                />
+              )
+            })()}
+            <span className="text-sm font-mono font-bold min-w-[3rem] text-right" style={{ color: 'var(--text-primary)' }}>
+              {(perfDraft as Record<string, unknown>).gpu_recovery_threshold as number ?? (perfConfig.gpu_recovery_threshold || 60)}%
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            GPU 使用率降至此值以下时恢复硬件加速
+          </p>
+        </div>
+
+        {/* 温度恢复阈值 */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            <Thermometer size={12} className="text-emerald-400" />
+            冷却恢复阈值（温度）
+          </label>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const val = (perfDraft as Record<string, unknown>).gpu_temperature_recovery as number ?? (perfConfig.gpu_temperature_recovery || 70)
+              const pct = ((val - 50) / (85 - 50)) * 100
+              return (
+                <input
+                  type="range"
+                  min={50}
+                  max={85}
+                  step={5}
+                  value={val}
+                  onChange={(e) => onDraftChange({ ...perfDraft, gpu_temperature_recovery: Number(e.target.value) } as Partial<PerformanceConfig>)}
+                  className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #10b981 0%, #10b981 ${pct}%, var(--neon-blue-6) ${pct}%, var(--neon-blue-6) 100%)`,
+                    accentColor: '#10b981',
+                  }}
+                />
+              )
+            })()}
+            <span className="text-sm font-mono font-bold min-w-[3rem] text-right" style={{ color: 'var(--text-primary)' }}>
+              {(perfDraft as Record<string, unknown>).gpu_temperature_recovery as number ?? (perfConfig.gpu_temperature_recovery || 70)}°C
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            GPU 温度降至此值以下时恢复硬件加速
+          </p>
         </div>
       </div>
     </div>

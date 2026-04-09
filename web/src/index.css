@@ -775,6 +775,15 @@
     box-shadow: var(--shadow-elevated), var(--modal-glow);
   }
 
+  /* === 关闭按钮幽灵态 === */
+  .btn-close-ghost {
+    color: var(--text-muted);
+  }
+  .btn-close-ghost:hover {
+    background: var(--neon-blue-6);
+    color: var(--text-primary);
+  }
+
   /* Tooltip */
   .tooltip {
     @apply absolute z-50 rounded-lg px-3 py-1.5 text-xs font-medium;

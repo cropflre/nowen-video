@@ -1558,6 +1558,7 @@ export interface SystemLoadInfo {
   ffmpeg_threads: number // FFmpeg 线程数
   hw_accel: string // 硬件加速模式
   suggestions: string[] // 性能优化建议
+  gpu_status?: GPUSafetyStatus // GPU 安全状态
 }
 
 // 性能配置
@@ -1571,6 +1572,53 @@ export interface PerformanceConfig {
   cpu_count: number
   ffmpeg_threads: number
   max_workers: number
+  // GPU 安全保护配置
+  gpu_safety_enabled: boolean
+  gpu_utilization_threshold: number
+  gpu_temperature_threshold: number
+  gpu_recovery_threshold: number
+  gpu_temperature_recovery: number
+  // GPU 实时状态
+  gpu_status?: GPUSafetyStatus
+}
+
+// GPU 安全状态
+export interface GPUSafetyStatus {
+  degraded: boolean
+  degrade_reason?: string
+  degrade_since?: number
+  degraded_task_count: number
+  pending_gpu_tasks: number
+  metrics: GPUMetrics
+  thresholds: GPUThresholdConfig
+}
+
+// GPU 实时指标
+export interface GPUMetrics {
+  utilization: number
+  memory_used: number
+  memory_total: number
+  memory_percent: number
+  temperature: number
+  power_draw: number
+  power_limit: number
+  encoder_util: number
+  decoder_util: number
+  fan_speed: number
+  gpu_name: string
+  driver_version: string
+  available: boolean
+  last_update_time: number
+}
+
+// GPU 安全阈值配置
+export interface GPUThresholdConfig {
+  utilization_threshold: number
+  temperature_threshold: number
+  recovery_threshold: number
+  temperature_recovery: number
+  monitor_interval: number
+  enabled: boolean
 }
 
 // ==================== 字幕预处理 ====================

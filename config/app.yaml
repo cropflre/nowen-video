@@ -4,6 +4,12 @@ debug: false
 env: production
 ffmpeg_path: C:\ffmpeg\bin\ffmpeg.exe
 ffprobe_path: C:\ffmpeg\bin\ffprobe.exe
+gpu_monitor_interval: 5
+gpu_recovery_threshold: 60
+gpu_safety_enabled: true
+gpu_temperature_recovery: 70
+gpu_temperature_threshold: 80
+gpu_utilization_threshold: 85
 hw_accel: auto
 max_transcode_jobs: 1
 port: 8080

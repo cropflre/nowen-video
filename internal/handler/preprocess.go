@@ -298,10 +298,15 @@ func (h *PreprocessHandler) UpdatePerformanceConfig(c *gin.Context) {
 
 	// 验证字段白名单
 	allowedKeys := map[string]bool{
-		"resource_limit":     true,
-		"max_transcode_jobs": true,
-		"transcode_preset":   true,
-		"hw_accel":           true,
+		"resource_limit":            true,
+		"max_transcode_jobs":        true,
+		"transcode_preset":          true,
+		"hw_accel":                  true,
+		"gpu_utilization_threshold": true,
+		"gpu_temperature_threshold": true,
+		"gpu_recovery_threshold":    true,
+		"gpu_temperature_recovery":  true,
+		"gpu_safety_enabled":        true,
 	}
 	for key := range updates {
 		if !allowedKeys[key] {

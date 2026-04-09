@@ -203,7 +203,13 @@ export default function MediaCard({ media, series }: MediaCardProps) {
 
             {/* 剧集合集标签 */}
             {isSeries && seriesData && seriesData.season_count > 0 && (
-              <span className="badge-accent absolute left-2 top-2">
+              <span className="absolute left-2 top-2 rounded-md px-2 py-0.5 text-xs font-medium backdrop-blur-md"
+                style={{
+                  background: 'rgba(0,0,0,0.65)',
+                  color: 'rgba(255,255,255,0.9)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                }}
+              >
                 {seriesData.season_count} 季 · {seriesData.episode_count} 集
               </span>
             )}

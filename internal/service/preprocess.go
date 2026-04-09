@@ -80,6 +80,9 @@ type PreprocessService struct {
 	// 进度广播节流
 	lastBroadcast sync.Map // taskID -> time.Time（上次广播时间）
 	lastDBWrite   sync.Map // taskID -> time.Time（上次数据库写入时间）
+
+	// GPU 安全监控
+	gpuMonitor *GPUMonitor
 }
 
 // NewPreprocessService 创建预处理服务
@@ -132,6 +135,11 @@ func NewPreprocessService(
 	go s.dynamicLoadAdjuster()
 
 	return s
+}
+
+// SetGPUMonitor 设置 GPU 安全监控服务
+func (s *PreprocessService) SetGPUMonitor(monitor *GPUMonitor) {
+	s.gpuMonitor = monitor
 }
 
 // SetWSHub 设置 WebSocket Hub
@@ -377,7 +385,7 @@ func (s *PreprocessService) GetStatistics() map[string]interface{} {
 	return map[string]interface{}{
 		"status_counts":  counts,
 		"running_count":  len(running),
-		"max_workers":    s.maxWorkers,
+		"max_workers":    atomic.LoadInt32(&s.maxWorkers),
 		"active_workers": atomic.LoadInt32(&s.workerCount),
 		"queue_size":     len(s.jobQueue),
 		"hw_accel":       s.hwAccel,
@@ -916,7 +924,17 @@ func (s *PreprocessService) transcodeVariant(
 
 	var videoArgs []string
 
-	switch s.hwAccel {
+	// GPU 安全保护：检查是否需要降级为 CPU 编码
+	actualHWAccel := s.hwAccel
+	if s.gpuMonitor != nil && s.hwAccel != "none" {
+		useGPU, accel := s.gpuMonitor.ShouldUseGPU(s.hwAccel)
+		if !useGPU {
+			actualHWAccel = accel // 降级为 "none"（CPU 编码）
+			s.logger.Warnf("GPU 安全保护: 任务 %s 降级为 CPU 编码", task.MediaTitle)
+		}
+	}
+
+	switch actualHWAccel {
 	case "nvenc":
 		baseArgs = append([]string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}, baseArgs...)
 		videoArgs = []string{
@@ -1266,14 +1284,14 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 	// 计算 FFmpeg 线程数（供前端展示）
 	ffmpegThreads := s.calcFFmpegThreads()
 
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"cpu_count":      runtime.NumCPU(),
 		"cpu_percent":    cpuPercent,
 		"goroutines":     runtime.NumGoroutine(),
 		"mem_alloc_mb":   float64(memStats.Alloc) / 1024 / 1024,
 		"mem_sys_mb":     float64(memStats.Sys) / 1024 / 1024,
 		"active_workers": atomic.LoadInt32(&s.workerCount),
-		"max_workers":    s.maxWorkers,
+		"max_workers":    atomic.LoadInt32(&s.maxWorkers),
 		"cur_workers":    atomic.LoadInt32(&s.curWorkers),
 		"queue_size":     len(s.jobQueue),
 		"resource_limit": s.cfg.App.ResourceLimit,
@@ -1281,6 +1299,14 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 		"hw_accel":       s.hwAccel,
 		"suggestions":    s.getPerformanceSuggestions(cpuPercent),
 	}
+
+	// 添加 GPU 实时指标
+	if s.gpuMonitor != nil {
+		gpuStatus := s.gpuMonitor.GetSafetyStatus()
+		result["gpu_status"] = gpuStatus
+	}
+
+	return result
 }
 
 // getPerformanceSuggestions 根据当前系统状态生成性能优化建议
@@ -1325,7 +1351,7 @@ func (s *PreprocessService) getPerformanceSuggestions(cpuPercent float64) []stri
 
 // GetPerformanceConfig 获取当前性能配置
 func (s *PreprocessService) GetPerformanceConfig() map[string]interface{} {
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"resource_limit":     s.cfg.App.ResourceLimit,
 		"max_transcode_jobs": s.cfg.App.MaxTranscodeJobs,
 		"transcode_preset":   s.cfg.App.TranscodePreset,
@@ -1334,8 +1360,23 @@ func (s *PreprocessService) GetPerformanceConfig() map[string]interface{} {
 		"vaapi_device":       s.cfg.App.VAAPIDevice,
 		"cpu_count":          runtime.NumCPU(),
 		"ffmpeg_threads":     s.calcFFmpegThreads(),
-		"max_workers":        s.maxWorkers,
+		"max_workers":        atomic.LoadInt32(&s.maxWorkers),
 	}
+
+	// 添加 GPU 安全保护配置
+	result["gpu_safety_enabled"] = s.cfg.App.GPUSafetyEnabled
+	result["gpu_utilization_threshold"] = s.cfg.App.GPUUtilizationThreshold
+	result["gpu_temperature_threshold"] = s.cfg.App.GPUTemperatureThreshold
+	result["gpu_recovery_threshold"] = s.cfg.App.GPURecoveryThreshold
+	result["gpu_temperature_recovery"] = s.cfg.App.GPUTemperatureRecovery
+
+	// 添加 GPU 实时状态
+	if s.gpuMonitor != nil {
+		status := s.gpuMonitor.GetSafetyStatus()
+		result["gpu_status"] = status
+	}
+
+	return result
 }
 
 // UpdatePerformanceConfig 更新性能配置（热更新，无需重启）
@@ -1346,8 +1387,43 @@ func (s *PreprocessService) UpdatePerformanceConfig(updates map[string]interface
 	}
 
 	// 热更新运行时参数
-	// 注意：max_transcode_jobs 和 hw_accel 的变更需要重启服务才能完全生效
-	// resource_limit 和 transcode_preset 可以立即生效
+	// max_transcode_jobs 的变更需要重启服务才能完全生效（worker 协程数量固定）
+	// 但我们更新 maxWorkers 以确保前端显示一致
+	if v, ok := updates["max_transcode_jobs"]; ok {
+		if fv, ok := v.(float64); ok {
+			newMax := int32(fv)
+			if newMax >= 1 && newMax <= 16 {
+				atomic.StoreInt32(&s.maxWorkers, newMax)
+				// 同步调整当前并发数上限
+				if atomic.LoadInt32(&s.curWorkers) > newMax {
+					atomic.StoreInt32(&s.curWorkers, newMax)
+				}
+				s.logger.Infof("最大并行任务数已更新: %d（完全生效需重启服务）", newMax)
+			}
+		}
+	}
+
+	// 热更新 GPU 监控阈值（无需重启）
+	if s.gpuMonitor != nil {
+		needUpdateGPU := false
+		for key := range updates {
+			if strings.HasPrefix(key, "gpu_") {
+				needUpdateGPU = true
+				break
+			}
+		}
+		if needUpdateGPU {
+			newCfg := GPUThresholdConfig{
+				UtilizationThreshold: s.cfg.App.GPUUtilizationThreshold,
+				TemperatureThreshold: s.cfg.App.GPUTemperatureThreshold,
+				RecoveryThreshold:    s.cfg.App.GPURecoveryThreshold,
+				TemperatureRecovery:  s.cfg.App.GPUTemperatureRecovery,
+				MonitorInterval:      s.cfg.App.GPUMonitorInterval,
+				Enabled:              s.cfg.App.GPUSafetyEnabled,
+			}
+			s.gpuMonitor.UpdateConfig(newCfg)
+		}
+	}
 
 	s.logger.Infof("性能配置已更新: %v", updates)
 	return nil
@@ -1368,7 +1444,7 @@ func (s *PreprocessService) dynamicLoadAdjuster() {
 
 		cpuUsage := percents[0]
 		current := atomic.LoadInt32(&s.curWorkers)
-		max := s.maxWorkers
+		max := atomic.LoadInt32(&s.maxWorkers)
 
 		// 根据用户配置的资源限制动态调整 worker 数量
 		resourceLimit := float64(s.cfg.App.ResourceLimit)

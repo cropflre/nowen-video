@@ -63,6 +63,7 @@ type Services struct {
 	ASR                *ASRService
 	Preprocess         *PreprocessService
 	SubtitlePreprocess *SubtitlePreprocessService
+	GPUMonitor         *GPUMonitor
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -197,9 +198,40 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	abrService := NewABRService(cfg, detectedHWAccel, logger)
 	abrService.SetWSHub(wsHub)
 
+	// 创建 GPU 安全监控服务
+	gpuThresholdCfg := GPUThresholdConfig{
+		UtilizationThreshold: cfg.App.GPUUtilizationThreshold,
+		TemperatureThreshold: cfg.App.GPUTemperatureThreshold,
+		RecoveryThreshold:    cfg.App.GPURecoveryThreshold,
+		TemperatureRecovery:  cfg.App.GPUTemperatureRecovery,
+		MonitorInterval:      cfg.App.GPUMonitorInterval,
+		Enabled:              cfg.App.GPUSafetyEnabled,
+	}
+	// 使用默认值填充未配置的字段
+	defaultGPUCfg := DefaultGPUThresholdConfig()
+	if gpuThresholdCfg.UtilizationThreshold <= 0 {
+		gpuThresholdCfg.UtilizationThreshold = defaultGPUCfg.UtilizationThreshold
+	}
+	if gpuThresholdCfg.TemperatureThreshold <= 0 {
+		gpuThresholdCfg.TemperatureThreshold = defaultGPUCfg.TemperatureThreshold
+	}
+	if gpuThresholdCfg.RecoveryThreshold <= 0 {
+		gpuThresholdCfg.RecoveryThreshold = defaultGPUCfg.RecoveryThreshold
+	}
+	if gpuThresholdCfg.TemperatureRecovery <= 0 {
+		gpuThresholdCfg.TemperatureRecovery = defaultGPUCfg.TemperatureRecovery
+	}
+	if gpuThresholdCfg.MonitorInterval <= 0 {
+		gpuThresholdCfg.MonitorInterval = defaultGPUCfg.MonitorInterval
+	}
+	gpuMonitor := NewGPUMonitor(detectedHWAccel, gpuThresholdCfg, logger)
+	gpuMonitor.SetWSHub(wsHub)
+	gpuMonitor.Start()
+
 	// 创建视频预处理服务
 	preprocessService := NewPreprocessService(cfg, repos.Preprocess, repos.Media, abrService, detectedHWAccel, logger)
 	preprocessService.SetWSHub(wsHub)
+	preprocessService.SetGPUMonitor(gpuMonitor)
 
 	// 创建字幕预处理服务
 	subtitlePreprocessService := NewSubtitlePreprocessService(cfg, repos.SubtitlePreprocess, repos.Media, asrService, scanner, logger)
@@ -282,6 +314,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		ASR:                asrService,
 		Preprocess:         preprocessService,
 		SubtitlePreprocess: subtitlePreprocessService,
+		GPUMonitor:         gpuMonitor,
 	}
 
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）

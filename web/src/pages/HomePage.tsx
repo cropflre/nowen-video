@@ -227,7 +227,13 @@ export default function HomePage() {
                     </div>
                   </div>
                   {/* 推荐理由标签 */}
-                  <span className="badge-accent absolute left-2 top-2">
+                  <span className="absolute left-2 top-2 max-w-[calc(100%-16px)] truncate rounded-md px-2 py-0.5 text-[10px] font-medium leading-tight backdrop-blur-md"
+                    style={{
+                      background: 'rgba(0,0,0,0.65)',
+                      color: 'rgba(255,255,255,0.9)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                    }}
+                  >
                     {item.reason}
                   </span>
                 </div>

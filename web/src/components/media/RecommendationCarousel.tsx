@@ -85,8 +85,14 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
                 </div>
               </div>
               {/* 推荐理由 */}
-              <div className="absolute right-1.5 top-1.5">
-                <span className="badge-accent text-[9px]">{item.reason}</span>
+              <div className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)]">
+                <span className="block truncate rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-tight backdrop-blur-md"
+                  style={{
+                    background: 'rgba(0,0,0,0.65)',
+                    color: 'rgba(255,255,255,0.9)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}
+                >{item.reason}</span>
               </div>
             </div>
             <div className="p-2.5">

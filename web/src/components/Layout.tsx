@@ -105,7 +105,12 @@ export default function Layout() {
           </h1>
         </div>
 
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className={`px-4 py-6 sm:px-6 lg:px-8 transition-all duration-300 ${
+          // 需要全宽展示的页面（文件管理、预处理等）不限制最大宽度
+          ['/files', '/preprocess', '/subtitle-preprocess', '/admin'].some(p => location.pathname.startsWith(p))
+            ? 'w-full'
+            : 'mx-auto max-w-7xl'
+        }`}>
           <AnimatePresence mode="wait">
             <PageTransition key={location.pathname}>
               <Outlet />

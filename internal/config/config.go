@@ -86,6 +86,23 @@ type AppConfig struct {
 	ResourceLimit int `mapstructure:"resource_limit"`
 	// 允许的跨域来源列表
 	CORSOrigins []string `mapstructure:"cors_origins"`
+
+	// ==================== GPU 安全保护配置 ====================
+	// GPU 使用率安全上限（百分比，默认 85）
+	// 超过此值将暂停新的 GPU 任务并降级为 CPU 处理
+	GPUUtilizationThreshold int `mapstructure:"gpu_utilization_threshold"`
+	// GPU 温度安全上限（摄氏度，默认 80）
+	// 超过此值将立即暂停所有 GPU 任务
+	GPUTemperatureThreshold int `mapstructure:"gpu_temperature_threshold"`
+	// GPU 冷却恢复阈值（使用率百分比，默认 60）
+	// GPU 使用率降至此值以下时恢复 GPU 加速
+	GPURecoveryThreshold int `mapstructure:"gpu_recovery_threshold"`
+	// GPU 温度冷却恢复阈值（摄氏度，默认 70）
+	GPUTemperatureRecovery int `mapstructure:"gpu_temperature_recovery"`
+	// GPU 监控采样间隔（秒，默认 5）
+	GPUMonitorInterval int `mapstructure:"gpu_monitor_interval"`
+	// 是否启用 GPU 安全保护（默认 true）
+	GPUSafetyEnabled bool `mapstructure:"gpu_safety_enabled"`
 }
 
 // LoggingConfig 日志记录设置
@@ -352,6 +369,12 @@ func setDefaults() {
 	viper.SetDefault("app.max_transcode_jobs", 1)
 	viper.SetDefault("app.resource_limit", 5)
 	viper.SetDefault("app.cors_origins", []string{})
+	viper.SetDefault("app.gpu_utilization_threshold", 85)
+	viper.SetDefault("app.gpu_temperature_threshold", 80)
+	viper.SetDefault("app.gpu_recovery_threshold", 60)
+	viper.SetDefault("app.gpu_temperature_recovery", 70)
+	viper.SetDefault("app.gpu_monitor_interval", 5)
+	viper.SetDefault("app.gpu_safety_enabled", true)
 
 	// ---- 日志 ----
 	viper.SetDefault("logging.level", "info")
@@ -499,69 +522,81 @@ func (c *Config) migrateFromFlatConfig() {
 	}
 
 	// 应用
-	if c.Port != 0 && c.Port != 8080 {
-		c.App.Port = c.Port
-	}
+	// 注意：扁平字段仅在嵌套字段为零值/默认值时才生效（向后兼容）
+	// 如果嵌套字段已有非默认值（说明用户通过新版格式或 API 设置过），则以嵌套字段为准
 	if c.App.Port == 0 {
-		c.App.Port = 8080
+		if c.Port != 0 {
+			c.App.Port = c.Port
+		} else {
+			c.App.Port = 8080
+		}
 	}
-	if c.Debug {
+	if c.Debug && !c.App.Debug {
 		c.App.Debug = true
 	}
-	if c.DataDir != "" && c.DataDir != "./data" {
-		c.App.DataDir = c.DataDir
-	}
 	if c.App.DataDir == "" {
-		c.App.DataDir = "./data"
-	}
-	if c.WebDir != "" && c.WebDir != "./web/dist" {
-		c.App.WebDir = c.WebDir
+		if c.DataDir != "" && c.DataDir != "./data" {
+			c.App.DataDir = c.DataDir
+		} else {
+			c.App.DataDir = "./data"
+		}
 	}
 	if c.App.WebDir == "" {
-		c.App.WebDir = "./web/dist"
-	}
-	if c.FFmpegPath != "" && c.FFmpegPath != "ffmpeg" {
-		c.App.FFmpegPath = c.FFmpegPath
+		if c.WebDir != "" && c.WebDir != "./web/dist" {
+			c.App.WebDir = c.WebDir
+		} else {
+			c.App.WebDir = "./web/dist"
+		}
 	}
 	if c.App.FFmpegPath == "" {
-		c.App.FFmpegPath = "ffmpeg"
-	}
-	if c.FFprobePath != "" && c.FFprobePath != "ffprobe" {
-		c.App.FFprobePath = c.FFprobePath
+		if c.FFmpegPath != "" && c.FFmpegPath != "ffmpeg" {
+			c.App.FFmpegPath = c.FFmpegPath
+		} else {
+			c.App.FFmpegPath = "ffmpeg"
+		}
 	}
 	if c.App.FFprobePath == "" {
-		c.App.FFprobePath = "ffprobe"
-	}
-	if c.HWAccel != "" && c.HWAccel != "auto" {
-		c.App.HWAccel = c.HWAccel
+		if c.FFprobePath != "" && c.FFprobePath != "ffprobe" {
+			c.App.FFprobePath = c.FFprobePath
+		} else {
+			c.App.FFprobePath = "ffprobe"
+		}
 	}
 	if c.App.HWAccel == "" {
-		c.App.HWAccel = "auto"
-	}
-	if c.VAAPIDevice != "" && c.VAAPIDevice != "/dev/dri/renderD128" {
-		c.App.VAAPIDevice = c.VAAPIDevice
+		if c.HWAccel != "" {
+			c.App.HWAccel = c.HWAccel
+		} else {
+			c.App.HWAccel = "auto"
+		}
 	}
 	if c.App.VAAPIDevice == "" {
-		c.App.VAAPIDevice = "/dev/dri/renderD128"
-	}
-	if c.TranscodePreset != "" && c.TranscodePreset != "veryfast" {
-		c.App.TranscodePreset = c.TranscodePreset
+		if c.VAAPIDevice != "" {
+			c.App.VAAPIDevice = c.VAAPIDevice
+		} else {
+			c.App.VAAPIDevice = "/dev/dri/renderD128"
+		}
 	}
 	if c.App.TranscodePreset == "" {
-		c.App.TranscodePreset = "veryfast"
-	}
-	if c.MaxTranscodeJobs != 0 && c.MaxTranscodeJobs != 1 {
-		c.App.MaxTranscodeJobs = c.MaxTranscodeJobs
+		if c.TranscodePreset != "" && c.TranscodePreset != "veryfast" {
+			c.App.TranscodePreset = c.TranscodePreset
+		} else {
+			c.App.TranscodePreset = "veryfast"
+		}
 	}
 	if c.App.MaxTranscodeJobs == 0 {
-		c.App.MaxTranscodeJobs = 1
+		if c.MaxTranscodeJobs != 0 {
+			c.App.MaxTranscodeJobs = c.MaxTranscodeJobs
+		} else {
+			c.App.MaxTranscodeJobs = 1
+		}
 	}
 	// 资源限制：允许用户配置 1~80，系统自动保留 20% 缓冲
-	if c.ResourceLimit != 0 && c.ResourceLimit != 80 {
-		c.App.ResourceLimit = c.ResourceLimit
-	}
 	if c.App.ResourceLimit <= 0 {
-		c.App.ResourceLimit = 80
+		if c.ResourceLimit > 0 {
+			c.App.ResourceLimit = c.ResourceLimit
+		} else {
+			c.App.ResourceLimit = 80
+		}
 	}
 	if c.App.ResourceLimit > 80 {
 		c.App.ResourceLimit = 80 // 上限 80%，保留 20% 缓冲
@@ -645,7 +680,9 @@ func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
 					limit = 80
 				}
 				c.App.ResourceLimit = limit
+				c.ResourceLimit = limit // 同步更新扁平兼容字段
 				viper.Set("app.resource_limit", limit)
+				viper.Set("resource_limit", limit) // 同步扁平 key
 			}
 		case "max_transcode_jobs":
 			if v, ok := val.(float64); ok {
@@ -657,7 +694,9 @@ func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
 					jobs = 16
 				}
 				c.App.MaxTranscodeJobs = jobs
+				c.MaxTranscodeJobs = jobs // 同步更新扁平兼容字段
 				viper.Set("app.max_transcode_jobs", jobs)
+				viper.Set("max_transcode_jobs", jobs) // 同步扁平 key
 			}
 		case "transcode_preset":
 			if v, ok := val.(string); ok {
@@ -668,7 +707,9 @@ func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
 				}
 				if validPresets[v] {
 					c.App.TranscodePreset = v
+					c.TranscodePreset = v // 同步更新扁平兼容字段
 					viper.Set("app.transcode_preset", v)
+					viper.Set("transcode_preset", v) // 同步扁平 key
 				}
 			}
 		case "hw_accel":
@@ -679,8 +720,63 @@ func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
 				}
 				if validAccels[v] {
 					c.App.HWAccel = v
+					c.HWAccel = v // 同步更新扁平兼容字段
 					viper.Set("app.hw_accel", v)
+					viper.Set("hw_accel", v) // 同步扁平 key
 				}
+			}
+		case "gpu_utilization_threshold":
+			if v, ok := val.(float64); ok {
+				threshold := int(v)
+				if threshold < 50 {
+					threshold = 50
+				}
+				if threshold > 99 {
+					threshold = 99
+				}
+				c.App.GPUUtilizationThreshold = threshold
+				viper.Set("app.gpu_utilization_threshold", threshold)
+			}
+		case "gpu_temperature_threshold":
+			if v, ok := val.(float64); ok {
+				threshold := int(v)
+				if threshold < 60 {
+					threshold = 60
+				}
+				if threshold > 95 {
+					threshold = 95
+				}
+				c.App.GPUTemperatureThreshold = threshold
+				viper.Set("app.gpu_temperature_threshold", threshold)
+			}
+		case "gpu_recovery_threshold":
+			if v, ok := val.(float64); ok {
+				threshold := int(v)
+				if threshold < 30 {
+					threshold = 30
+				}
+				if threshold > 80 {
+					threshold = 80
+				}
+				c.App.GPURecoveryThreshold = threshold
+				viper.Set("app.gpu_recovery_threshold", threshold)
+			}
+		case "gpu_temperature_recovery":
+			if v, ok := val.(float64); ok {
+				threshold := int(v)
+				if threshold < 50 {
+					threshold = 50
+				}
+				if threshold > 85 {
+					threshold = 85
+				}
+				c.App.GPUTemperatureRecovery = threshold
+				viper.Set("app.gpu_temperature_recovery", threshold)
+			}
+		case "gpu_safety_enabled":
+			if v, ok := val.(bool); ok {
+				c.App.GPUSafetyEnabled = v
+				viper.Set("app.gpu_safety_enabled", v)
 			}
 		}
 	}

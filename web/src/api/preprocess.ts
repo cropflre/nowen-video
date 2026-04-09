@@ -88,6 +88,6 @@ export const preprocessApi = {
     api.get<{ data: PerformanceConfig }>('/admin/preprocess/performance-config'),
 
   // 更新性能配置
-  updatePerformanceConfig: (updates: Partial<Pick<PerformanceConfig, 'resource_limit' | 'max_transcode_jobs' | 'transcode_preset' | 'hw_accel'>>) =>
+  updatePerformanceConfig: (updates: Partial<PerformanceConfig>) =>
     api.put<{ message: string; data: PerformanceConfig }>('/admin/preprocess/performance-config', updates),
 }

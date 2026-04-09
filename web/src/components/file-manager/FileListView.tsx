@@ -296,11 +296,24 @@ export default function FileListView({
                           <FileVideo size={16} className="text-surface-500" />
                         </div>
                         <div className="min-w-0">
-                          <div className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{file.title}</div>
-                          {file.orig_title && file.orig_title !== file.title && (
-                            <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{file.orig_title}</div>
-                          )}
-                          <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{file.file_path}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                              {file.title}
+                            </span>
+                            {file.media_type === 'episode' && file.episode_num > 0 && (
+                              <span className="shrink-0 inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-neon-blue/10 text-neon-blue">
+                                {file.season_num > 0 ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}` : `EP${String(file.episode_num).padStart(2, '0')}`}
+                              </span>
+                            )}
+                          </div>
+                          {file.media_type === 'episode' && file.episode_title ? (
+                            <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>{file.episode_title}</div>
+                          ) : file.orig_title && file.orig_title !== file.title ? (
+                            <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{file.orig_title}</div>
+                          ) : null}
+                          <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                            {file.file_path.split(/[\\/]/).pop()}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -408,7 +421,17 @@ export default function FileListView({
               </div>
               {/* 信息 */}
               <div className="p-2.5">
-                <div className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{file.title}</div>
+                <div className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                  {file.title}
+                  {file.media_type === 'episode' && file.episode_num > 0 && (
+                    <span className="ml-1 text-[10px] font-medium text-neon-blue">
+                      {file.season_num > 0 ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}` : `EP${String(file.episode_num).padStart(2, '0')}`}
+                    </span>
+                  )}
+                </div>
+                {file.media_type === 'episode' && file.episode_title && (
+                  <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>{file.episode_title}</div>
+                )}
                 <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                   <span>{file.year || '-'}</span>
                   {file.rating > 0 && <span className="text-amber-400">★ {file.rating.toFixed(1)}</span>}
