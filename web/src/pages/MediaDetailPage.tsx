@@ -7,6 +7,7 @@ import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, Wat
 import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal, CastGrid } from '@/components/media'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
+import SubtitleManager from '@/components/SubtitleManager'
 import { useTranslation } from '@/i18n'
 
 export default function MediaDetailPage() {
@@ -46,6 +47,7 @@ export default function MediaDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
+  const [showSubtitleManager, setShowSubtitleManager] = useState(false)
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
@@ -370,6 +372,21 @@ export default function MediaDetailPage() {
           isAdmin={user?.role === 'admin'}
         />
 
+        {/* 字幕管理入口（管理员可见） */}
+        {user?.role === 'admin' && (
+          <section>
+            <button
+              onClick={() => setShowSubtitleManager(true)}
+              className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all hover:opacity-90"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+            >
+              <span>🎬</span>
+              <span>字幕管理</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>查看内嵌/外挂字幕 · 批量提取导出</span>
+            </button>
+          </section>
+        )}
+
         {/* 相关推荐 */}
         <RecommendationCarousel recommendations={recommendations} />
 
@@ -610,6 +627,15 @@ export default function MediaDetailPage() {
           onSave={handleEditSave}
           onClose={() => setShowEditModal(false)}
           hasTagline
+        />
+      )}
+
+      {/* ==================== 字幕管理弹窗 ==================== */}
+      {showSubtitleManager && (
+        <SubtitleManager
+          mediaId={id!}
+          mediaTitle={media.title}
+          onClose={() => setShowSubtitleManager(false)}
         />
       )}
 

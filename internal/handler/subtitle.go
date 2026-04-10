@@ -1,14 +1,21 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
-
 // SubtitleHandler 字幕处理器
 type SubtitleHandler struct {
 	scanner       *service.ScannerService
@@ -123,8 +130,8 @@ func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 		c.File(subPath)
 		return
 	case ".srt", ".ass", ".ssa":
-		// 非VTT格式需要通过FFmpeg转换为WebVTT
-		vttPath, err := h.scanner.ConvertSubtitleToVTT(subPath)
+		// 非VTT格式需要通过FFmpeg转换为WebVTT（P1: 带编码自动检测）
+		vttPath, err := h.scanner.ConvertSubtitleToVTTWithEncoding(subPath)
 		if err != nil {
 			h.logger.Warnf("字幕转换失败，尝试直接返回原始文件: %v", err)
 			// 转换失败时回退到直接返回原始文件（部分播放器可能支持）
@@ -362,4 +369,130 @@ func (h *SubtitleHandler) GetASRStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": h.asrService.GetStatus()})
+}
+
+// ==================== P0: 批量字幕提取导出 ====================
+
+// ExtractAll 批量提取视频中所有（或指定）字幕轨道
+func (h *SubtitleHandler) ExtractAll(c *gin.Context) {
+	id := c.Param("id")
+
+	// 获取媒体文件路径
+	filePath, _, err := h.streamService.GetDirectStreamInfo(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "媒体不存在"})
+		return
+	}
+
+	if filePath == "__strm__" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "STRM 远程流不支持字幕提取"})
+		return
+	}
+
+	// 解析请求参数
+	var req struct {
+		Format string `json:"format"` // 输出格式: srt | vtt，默认 srt
+		Tracks []int  `json:"tracks"` // 指定轨道索引，为空则提取所有
+	}
+	c.ShouldBindJSON(&req)
+
+	if req.Format == "" {
+		req.Format = "srt"
+	}
+	if req.Format != "srt" && req.Format != "vtt" && req.Format != "ass" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的输出格式，可选: srt, vtt, ass"})
+		return
+	}
+
+	results, err := h.scanner.ExtractAllSubtitles(filePath, req.Format, req.Tracks)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 统计成功/失败数
+	successCount := 0
+	failCount := 0
+	for _, r := range results {
+		if r.Error == "" {
+			successCount++
+		} else {
+			failCount++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("提取完成: %d 成功, %d 失败", successCount, failCount),
+		"data": gin.H{
+			"files":   results,
+			"success": successCount,
+			"failed":  failCount,
+			"total":   len(results),
+		},
+	})
+}
+
+// ==================== P2: 异步字幕提取（大文件） ====================
+
+// ExtractAllAsync 异步批量提取字幕（通过 WebSocket 推送进度）
+func (h *SubtitleHandler) ExtractAllAsync(c *gin.Context) {
+	id := c.Param("id")
+
+	// 获取媒体文件路径
+	filePath, _, err := h.streamService.GetDirectStreamInfo(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "媒体不存在"})
+		return
+	}
+
+	if filePath == "__strm__" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "STRM 远程流不支持字幕提取"})
+		return
+	}
+
+	var req struct {
+		Format string `json:"format"`
+		Tracks []int  `json:"tracks"`
+		Title  string `json:"title"` // 媒体标题（用于进度消息）
+	}
+	c.ShouldBindJSON(&req)
+
+	if req.Format == "" {
+		req.Format = "srt"
+	}
+
+	// 启动异步提取
+	h.scanner.ExtractAllSubtitlesAsync(id, req.Title, filePath, req.Format, req.Tracks)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "异步字幕提取任务已启动，请通过 WebSocket 监听进度",
+	})
+}
+
+// DownloadExtracted 下载已提取的字幕文件
+func (h *SubtitleHandler) DownloadExtracted(c *gin.Context) {
+	filePath := c.Query("path")
+	if filePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少文件路径"})
+		return
+	}
+
+	// 安全检查：确保文件在缓存目录下
+	ext := service.GetFileExt(filePath)
+	switch ext {
+	case ".srt", ".vtt", ".ass", ".ssa":
+		// 允许的字幕格式
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的文件格式"})
+		return
+	}
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filepath.Base(filePath)))
+	c.Header("Content-Type", "application/octet-stream")
+	c.File(filePath)
 }

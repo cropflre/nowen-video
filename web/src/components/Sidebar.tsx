@@ -157,6 +157,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         </NavLink>
 
         <NavLink
+          to="/browse"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <Layers size={18} />
+          {(!collapsed || isMobileOpen) && <span>影视库</span>}
+        </NavLink>
+
+        <NavLink
           to="/favorites"
           className={({ isActive }) => clsx('nav-item', isActive && 'active')}
           onClick={onMobileClose}

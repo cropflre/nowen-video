@@ -1654,3 +1654,27 @@ export interface SubtitlePreprocessStatistics {
   asr_enabled: boolean
 }
 
+// ==================== P0~P2: 字幕提取导出 ====================
+export interface ExtractedSubtitleFile {
+  track_index: number
+  language: string
+  title: string
+  codec: string
+  format: string
+  path: string
+  bitmap: boolean
+  error?: string
+}
+
+export interface SubExtractProgressData {
+  media_id: string
+  media_title: string
+  format: string
+  total: number
+  current: number
+  progress: number
+  message: string
+  results?: ExtractedSubtitleFile[]
+  error?: string
+}
+

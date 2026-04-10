@@ -23,6 +23,7 @@ const FileManagerPage = lazy(() => import('@/pages/FileManagerPage'))
 const PulsePage = lazy(() => import('@/pages/PulsePage'))
 const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
 const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
+const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 
 // 页面加载中的占位组件
 function PageLoader() {
@@ -90,6 +91,7 @@ export default function App() {
               <Route path="pulse" element={<PulsePage />} />
               <Route path="preprocess" element={<PreprocessPage />} />
               <Route path="subtitle-preprocess" element={<SubtitlePreprocessPage />} />
+              <Route path="browse" element={<BrowsePage />} />
             </Route>
 
             {/* 未匹配路由 */}

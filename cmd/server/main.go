@@ -157,6 +157,12 @@ func main() {
 		api.GET("/subtitle/:id/tracks", handlers.Subtitle.ListTracks)
 		api.GET("/subtitle/:id/extract/:index", handlers.Subtitle.ExtractTrack)
 		api.GET("/subtitle/external", handlers.Subtitle.ServeExternal)
+		// P0: 批量字幕提取导出
+		api.POST("/subtitle/:id/extract-all", handlers.Subtitle.ExtractAll)
+		// P2: 异步字幕提取（大文件）
+		api.POST("/subtitle/:id/extract-all/async", handlers.Subtitle.ExtractAllAsync)
+		// 下载已提取的字幕文件
+		api.GET("/subtitle/download", handlers.Subtitle.DownloadExtracted)
 
 		// 字幕在线搜索与下载
 		api.GET("/subtitle/:id/search", handlers.SubtitleSearch.SearchSubtitles)

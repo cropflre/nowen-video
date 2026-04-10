@@ -48,6 +48,11 @@ export const WS_EVENTS = {
   SUB_PREPROCESS_COMPLETED: 'sub_preprocess_completed',
   SUB_PREPROCESS_FAILED: 'sub_preprocess_failed',
   SUB_PREPROCESS_SKIPPED: 'sub_preprocess_skipped',
+  // 字幕提取事件（P2）
+  SUB_EXTRACT_STARTED: 'sub_extract_started',
+  SUB_EXTRACT_PROGRESS: 'sub_extract_progress',
+  SUB_EXTRACT_COMPLETED: 'sub_extract_completed',
+  SUB_EXTRACT_FAILED: 'sub_extract_failed',
 } as const
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS]

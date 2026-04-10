@@ -2,9 +2,9 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
-import { userApi, subtitleApi } from '@/api'
+import { userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle } from '@/types'
+import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle, SubtitlePreprocessTask } from '@/types'
 import {
   Play,
   Pause,
@@ -23,9 +23,12 @@ import {
   Sparkles,
   Loader2,
   Languages,
+  Search,
 } from 'lucide-react'
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
+import SubtitleSearchPanel from './SubtitleSearchPanel'
+import SubtitleContentSearch from './SubtitleContentSearch'
 
 interface VideoPlayerProps {
   src: string
@@ -99,11 +102,18 @@ export default function VideoPlayer({
   const [aiSubtitleStatus, setAiSubtitleStatus] = useState<ASRTask | null>(null)
   const [aiGenerating, setAiGenerating] = useState(false)
 
+  // 字幕预处理状态
+  const [subtitlePreprocessStatus, setSubtitlePreprocessStatus] = useState<SubtitlePreprocessTask | null>(null)
+
   // Phase 4: 字幕翻译状态
   const [translatedSubs, setTranslatedSubs] = useState<TranslatedSubtitle[]>([])
   const [translateStatus, setTranslateStatus] = useState<ASRTask | null>(null)
   const [translating, setTranslating] = useState(false)
   const [showTranslateMenu, setShowTranslateMenu] = useState(false)
+
+  // 字幕搜索状态
+  const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
+  const [showContentSearch, setShowContentSearch] = useState(false)
 
   // 倍速播放
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
@@ -166,10 +176,41 @@ export default function VideoPlayer({
       }
     }
 
+    // 监听字幕预处理完成事件：预处理完成后自动刷新 AI 字幕状态
+    const handleSubPreprocessCompleted = (data: any) => {
+      if (data.media_id === mediaId) {
+        setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
+        // 字幕预处理完成后，刷新 AI 字幕状态（预处理会生成 AI 字幕）
+        subtitleApi.getAIStatus(mediaId).then((res) => {
+          const d = res.data.data
+          if (d && d.status !== 'none') {
+            setAiSubtitleStatus(d)
+          }
+        }).catch(() => {})
+        // 同时刷新翻译字幕列表（预处理可能包含翻译步骤）
+        subtitleApi.listTranslated(mediaId).then((res) => {
+          if (Array.isArray(res.data.data)) setTranslatedSubs(res.data.data)
+        }).catch(() => {})
+      }
+    }
+    const handleSubPreprocessProgress = (data: any) => {
+      if (data.media_id === mediaId) {
+        setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
+      }
+    }
+    const handleSubPreprocessFailed = (data: any) => {
+      if (data.media_id === mediaId) {
+        setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
+      }
+    }
+
     on(WS_EVENTS.PREPROCESS_COMPLETED, handlePreprocessCompleted)
     on(WS_EVENTS.ASR_PROGRESS, handleASRProgress)
     on(WS_EVENTS.ASR_COMPLETED, handleASRCompleted)
     on(WS_EVENTS.ASR_FAILED, handleASRFailed)
+    on(WS_EVENTS.SUB_PREPROCESS_COMPLETED, handleSubPreprocessCompleted)
+    on(WS_EVENTS.SUB_PREPROCESS_PROGRESS, handleSubPreprocessProgress)
+    on(WS_EVENTS.SUB_PREPROCESS_FAILED, handleSubPreprocessFailed)
 
     // Phase 4: 翻译事件监听
     const handleTranslateProgress = (data: any) => {
@@ -203,6 +244,9 @@ export default function VideoPlayer({
       off(WS_EVENTS.ASR_PROGRESS, handleASRProgress)
       off(WS_EVENTS.ASR_COMPLETED, handleASRCompleted)
       off(WS_EVENTS.ASR_FAILED, handleASRFailed)
+      off(WS_EVENTS.SUB_PREPROCESS_COMPLETED, handleSubPreprocessCompleted)
+      off(WS_EVENTS.SUB_PREPROCESS_PROGRESS, handleSubPreprocessProgress)
+      off(WS_EVENTS.SUB_PREPROCESS_FAILED, handleSubPreprocessFailed)
       off(WS_EVENTS.TRANSLATE_PROGRESS, handleTranslateProgress)
       off(WS_EVENTS.TRANSLATE_COMPLETED, handleTranslateCompleted)
       off(WS_EVENTS.TRANSLATE_FAILED, handleTranslateFailed)
@@ -234,6 +278,13 @@ export default function VideoPlayer({
     // Phase 4: 加载已翻译的字幕列表
     subtitleApi.listTranslated(mediaId).then((res) => {
       if (Array.isArray(res.data.data)) setTranslatedSubs(res.data.data)
+    }).catch(() => {})
+
+    // 查询字幕预处理状态
+    subtitlePreprocessApi.getMediaStatus(mediaId).then((res) => {
+      if (res.data.data) {
+        setSubtitlePreprocessStatus(res.data.data)
+      }
     }).catch(() => {})
   }, [mediaId])
 
@@ -564,16 +615,27 @@ export default function VideoPlayer({
           e.preventDefault()
           if (videoRef.current) videoRef.current.volume = Math.max(0, videoRef.current.volume - 0.1)
           break
-        case 'f':
+        case 'f': {
           e.preventDefault()
-          toggleFullscreen()
+          if (e.ctrlKey || e.metaKey) {
+            setShowContentSearch(prev => !prev)
+          } else {
+            toggleFullscreen()
+          }
           break
+        }
         case 'm':
           e.preventDefault()
           if (videoRef.current) videoRef.current.muted = !videoRef.current.muted
           break
         case 'Escape':
-          if (onBack) onBack()
+          if (showContentSearch) {
+            setShowContentSearch(false)
+          } else if (showSubtitleSearch) {
+            setShowSubtitleSearch(false)
+          } else if (onBack) {
+            onBack()
+          }
           break
         // 倍速快捷键
         case '<':
@@ -604,7 +666,7 @@ export default function VideoPlayer({
     window.addEventListener('keydown', handleKeydown)
     return () => window.removeEventListener('keydown', handleKeydown)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playbackRate, onNext])
+  }, [playbackRate, onNext, showContentSearch, showSubtitleSearch])
 
   // ==================== 手势控制 ====================
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -706,6 +768,7 @@ export default function VideoPlayer({
     setShowCastPanel(false)
     setShowSpeedMenu(false)
     setShowTranslateMenu(false)
+    setShowContentSearch(false)
   }
 
   return (
@@ -1120,7 +1183,9 @@ export default function VideoPlayer({
                     </>
                   )}
 
-                  {/* AI 字幕生成 */}
+                  {/* AI 字幕 — 仅在有可用字幕或正在处理时显示 */}
+                  {(aiSubtitleStatus?.status === 'completed' || aiGenerating || subtitlePreprocessStatus?.status === 'running' || subtitlePreprocessStatus?.status === 'pending') && (
+                    <>
                   <div className="mx-3 my-1 border-t border-neon-blue/10" />
                   <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">
                     <Sparkles size={10} className="inline mr-1" />AI 字幕
@@ -1159,33 +1224,33 @@ export default function VideoPlayer({
                         )}
                       </div>
                     </div>
-                  ) : aiSubtitleStatus?.status === 'failed' ? (
-                    <button
-                      onClick={() => {
-                        setAiGenerating(true)
-                        subtitleApi.generateAI(mediaId).catch(() => setAiGenerating(false))
-                      }}
-                      className="block w-full px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                    >
-                      <Sparkles size={12} className="inline mr-1.5" />
-                      重新生成 AI 字幕
-                      <span className="ml-2 text-xs text-red-400/60">上次失败</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setAiGenerating(true)
-                        subtitleApi.generateAI(mediaId).catch(() => setAiGenerating(false))
-                      }}
-                      className="block w-full px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                    >
-                      <Sparkles size={12} className="inline mr-1.5" />
-                      生成 AI 字幕
-                      <span className="ml-2 text-xs text-surface-600">语音识别</span>
-                    </button>
+                  ) : (subtitlePreprocessStatus?.status === 'running' || subtitlePreprocessStatus?.status === 'pending') ? (
+                    <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-surface-400">
+                      <Loader2 size={14} className="animate-spin text-yellow-400" />
+                      <div className="flex-1">
+                        <div className="text-xs">
+                          {subtitlePreprocessStatus.status === 'pending' ? '字幕预处理排队中...' : (subtitlePreprocessStatus.message || '字幕预处理中...')}
+                        </div>
+                        {subtitlePreprocessStatus.progress > 0 && (
+                          <div className="mt-1 h-1 w-full rounded-full bg-surface-700">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${subtitlePreprocessStatus.progress}%`,
+                                background: 'linear-gradient(90deg, var(--yellow-400), var(--neon-blue))',
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                    </>
                   )}
 
-                  {/* Phase 4: 字幕翻译 */}
+                  {/* Phase 4: 字幕翻译 — 仅在有可用字幕源时显示 */}
+                  {(translatedSubs.length > 0 || aiSubtitleStatus?.status === 'completed' || translating) && (
+                    <>
                   <div className="mx-3 my-1 border-t border-neon-blue/10" />
                   <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">
                     <Languages size={10} className="inline mr-1" />字幕翻译
@@ -1239,7 +1304,7 @@ export default function VideoPlayer({
                   )}
 
                   {/* 翻译按钮（需要有源字幕才能翻译） */}
-                  {!translating && (
+                  {!translating && aiSubtitleStatus?.status === 'completed' && (
                     <div className="relative">
                       <button
                         onClick={() => setShowTranslateMenu(!showTranslateMenu)}
@@ -1280,7 +1345,49 @@ export default function VideoPlayer({
                       )}
                     </div>
                   )}
+                    </>
+                  )}
+
+                  {/* 在线字幕搜索入口 */}
+                  <div className="mx-3 my-1 border-t border-neon-blue/10" />
+                  <button
+                    onClick={() => { setShowSubtitleSearch(true); setShowSubtitleMenu(false) }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
+                  >
+                    <Search size={12} className="text-neon-blue/60" />
+                    在线搜索字幕...
+                  </button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* 字幕内容搜索按钮 */}
+          {!isStrm && (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowContentSearch(!showContentSearch)
+                  setShowQuality(false)
+                  setShowSubtitleMenu(false)
+                  setShowCastPanel(false)
+                  setShowSpeedMenu(false)
+                }}
+                className={clsx(
+                  'rounded-lg p-2 transition-all hover:bg-white/5',
+                  showContentSearch ? 'text-neon-blue' : 'text-white/70 hover:text-white'
+                )}
+                title="字幕搜索 (Ctrl+F)"
+              >
+                <Search size={18} />
+              </button>
+
+              {showContentSearch && (
+                <SubtitleContentSearch
+                  videoRef={videoRef}
+                  onClose={() => setShowContentSearch(false)}
+                  hasActiveSubtitle={!!activeSubtitle}
+                />
               )}
             </div>
           )}
@@ -1374,8 +1481,26 @@ export default function VideoPlayer({
       </div>
 
       {/* 点击空白关闭弹出菜单 */}
-      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu) && (
+      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch) && (
         <div className="absolute inset-0 z-[-1]" onClick={closeAllMenus} />
+      )}
+
+      {/* 在线字幕搜索弹窗 (P0) */}
+      {showSubtitleSearch && (
+        <SubtitleSearchPanel
+          mediaId={mediaId}
+          title={title}
+          onClose={() => setShowSubtitleSearch(false)}
+          onDownloaded={() => {
+            // 下载完成后刷新外挂字幕列表
+            subtitleApi.getTracks(mediaId).then((res) => {
+              const info = res.data.data
+              if (info) {
+                setExternalSubs(info.external || [])
+              }
+            }).catch(() => {})
+          }}
+        />
       )}
     </div>
   )
