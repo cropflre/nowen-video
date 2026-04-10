@@ -274,15 +274,15 @@ func (s *CollectionService) SearchCollections(keyword string, limit int) ([]mode
 // 用于匹配标题中的数字序号模式
 var (
 	// 匹配中文数字序号：逃学威龙1、逃学威龙2、速度与激情3
-	reChineseSequel = regexp.MustCompile(`^(.{2,}?)\s*[0-9０-９一二三四五六七八九十百]+\s*$`)
+	reChineseSequel = regexp.MustCompile(`^(.{2,})\s*[0-9０-９一二三四五六七八九十百]+\s*$`)
 	// 匹配英文续集模式：Toy Story 2, Iron Man 3, Fast & Furious 7
-	reEnglishSequel = regexp.MustCompile(`(?i)^(.{2,}?)\s+(\d+|[IVX]+|Part\s+\d+|Chapter\s+\d+)\s*$`)
+	reEnglishSequel = regexp.MustCompile(`(?i)^(.{2,})\s+(\d+|[IVX]+|Part\s+\d+|Chapter\s+\d+)\s*$`)
 	// 匹配带冒号的续集：Alien: Resurrection, Batman: The Dark Knight
-	reColonSequel = regexp.MustCompile(`^(.{2,}?)\s*[:：]\s*.+$`)
+	reColonSequel = regexp.MustCompile(`^(.{2,})\s*[:：]\s*.+$`)
 	// 匹配括号中的年份或编号：电影名 (2020)
-	reParenSuffix = regexp.MustCompile(`^(.{2,}?)\s*[（(]\s*(?:\d{4}|\d+)\s*[）)]\s*$`)
+	reParenSuffix = regexp.MustCompile(`^(.{2,})\s*[（(]\s*(?:\d{4}|\d+)\s*[）)]\s*$`)
 	// 匹配罗马数字后缀
-	reRomanSuffix = regexp.MustCompile(`(?i)^(.{2,}?)\s+(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\s*$`)
+	reRomanSuffix = regexp.MustCompile(`(?i)^(.{2,})\s+(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\s*$`)
 )
 
 // extractSeriesBaseName 从电影标题中提取系列基础名

@@ -360,6 +360,14 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 				logger.Infof("扫描后自动提交 %d 个字幕预处理任务", subCount)
 			}
 		}
+
+		// 扫描后自动触发电影系列合集匹配
+		collCount, err := svcs.Collection.AutoMatchCollections()
+		if err != nil {
+			logger.Warnf("扫描后自动匹配合集失败: %v", err)
+		} else if collCount > 0 {
+			logger.Infof("扫描后自动创建 %d 个电影系列合集", collCount)
+		}
 	})
 
 	return svcs

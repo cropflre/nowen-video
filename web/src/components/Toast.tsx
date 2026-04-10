@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useMemo, forwardRef } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toastVariants } from '@/lib/motion'
@@ -90,31 +90,34 @@ const borderColorMap: Record<ToastType, string> = {
   info: 'var(--neon-blue-15)',
 }
 
-function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
-  return (
-    <motion.div
-      layout
-      variants={toastVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
-      style={{
-        background: 'var(--bg-elevated)',
-        border: `1px solid ${borderColorMap[toast.type]}`,
-        backdropFilter: 'blur(20px)',
-        minWidth: '280px',
-        maxWidth: '420px',
-      }}
-    >
-      {iconMap[toast.type]}
-      <p className="flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>{toast.message}</p>
-      <button
-        onClick={onClose}
-        className="shrink-0 rounded-lg p-1 text-surface-500 transition-colors hover:text-white"
+const ToastItem = forwardRef<HTMLDivElement, { toast: Toast; onClose: () => void }>(
+  function ToastItem({ toast, onClose }, ref) {
+    return (
+      <motion.div
+        ref={ref}
+        layout
+        variants={toastVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
+        style={{
+          background: 'var(--bg-elevated)',
+          border: `1px solid ${borderColorMap[toast.type]}`,
+          backdropFilter: 'blur(20px)',
+          minWidth: '280px',
+          maxWidth: '420px',
+        }}
       >
-        <X size={14} />
-      </button>
-    </motion.div>
-  )
-}
+        {iconMap[toast.type]}
+        <p className="flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>{toast.message}</p>
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded-lg p-1 text-surface-500 transition-colors hover:text-white"
+        >
+          <X size={14} />
+        </button>
+      </motion.div>
+    )
+  }
+)
