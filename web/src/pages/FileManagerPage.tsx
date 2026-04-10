@@ -484,9 +484,12 @@ export default function FileManagerPage() {
               'flex-shrink-0 hidden lg:block overflow-hidden transition-all duration-300 ease-out',
               showFolderPanel ? 'w-64 opacity-100' : 'w-0 opacity-0'
             )}
-            style={{ maxHeight: showFolderPanel ? 'calc(100vh - 280px)' : 0 }}
+            style={{
+              height: showFolderPanel ? 'calc(100vh - 280px)' : 0,
+              maxHeight: showFolderPanel ? 'calc(100vh - 280px)' : 0,
+            }}
           >
-            <div className="w-64">
+            <div className="w-64 h-full">
               <FolderTree
                 tree={folderTree}
                 loading={folderTreeLoading}

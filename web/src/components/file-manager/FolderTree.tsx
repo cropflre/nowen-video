@@ -1,8 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { FolderNode } from '@/types'
 import {
   ChevronRight,
-  ChevronDown,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -38,16 +37,33 @@ function TreeNode({
   onSelect,
   onContextMenu,
   depth = 0,
+  scrollIntoView,
 }: {
   node: FolderNode
   selectedPath: string
   onSelect: (path: string) => void
   onContextMenu: (e: React.MouseEvent, node: FolderNode) => void
   depth?: number
+  scrollIntoView?: boolean
 }) {
   const [expanded, setExpanded] = useState(depth < 1) // 默认展开第一层
   const isSelected = selectedPath === node.path
   const hasChildren = node.children && node.children.length > 0
+  const nodeRef = useRef<HTMLDivElement>(null)
+
+  // 选中节点自动滚动到可视区域
+  useEffect(() => {
+    if (isSelected && scrollIntoView && nodeRef.current) {
+      nodeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [isSelected, scrollIntoView])
+
+  // 当选中路径是当前节点的子路径时，自动展开
+  useEffect(() => {
+    if (selectedPath && hasChildren && selectedPath.startsWith(node.path + '/')) {
+      setExpanded(true)
+    }
+  }, [selectedPath, node.path, hasChildren])
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -71,6 +87,7 @@ function TreeNode({
   return (
     <div>
       <div
+        ref={nodeRef}
         onClick={handleSelect}
         onContextMenu={handleContextMenu}
         className={clsx(
@@ -86,13 +103,15 @@ function TreeNode({
         {hasChildren ? (
           <button
             onClick={handleToggle}
-            className="flex-shrink-0 p-0.5 rounded hover:bg-white/10"
+            className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-transform"
           >
-            {expanded ? (
-              <ChevronDown size={14} className="text-surface-400" />
-            ) : (
-              <ChevronRight size={14} className="text-surface-400" />
-            )}
+            <ChevronRight
+              size={14}
+              className={clsx(
+                'text-surface-400 transition-transform duration-200',
+                expanded && 'rotate-90'
+              )}
+            />
           </button>
         ) : (
           <span className="w-[18px] flex-shrink-0" />
@@ -119,9 +138,9 @@ function TreeNode({
         )}
       </div>
 
-      {/* 子节点 */}
+      {/* 子节点 - 带展开/收起动画 */}
       {expanded && hasChildren && (
-        <div>
+        <div className="animate-slide-down">
           {node.children.map((child) => (
             <TreeNode
               key={child.path}
@@ -130,6 +149,7 @@ function TreeNode({
               onSelect={onSelect}
               onContextMenu={onContextMenu}
               depth={depth + 1}
+              scrollIntoView={scrollIntoView}
             />
           ))}
         </div>
@@ -208,16 +228,19 @@ export default function FolderTree({
     ]
   }, [contextMenu.node, onCreateFolder, onRenameFolder, onDeleteFolder, onRefreshFolder, onCopyPath])
 
+  // 滚动容器引用，用于自动滚动到选中节点
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
   return (
     <div className="glass-panel rounded-xl flex flex-col h-full overflow-hidden">
       {/* 标题栏 */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: 'var(--border-default)' }}>
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: 'var(--border-default)' }}>
         <FolderTreeIcon size={16} className="text-neon flex-shrink-0" />
         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>文件夹导航</span>
       </div>
 
       {/* 全部文件按钮 */}
-      <div className="px-2 pt-2">
+      <div className="flex-shrink-0 px-2 pt-2">
         <button
           onClick={onClearFolder}
           className={clsx(
@@ -232,8 +255,16 @@ export default function FolderTree({
         </button>
       </div>
 
-      {/* 树形列表 */}
-      <div className="flex-1 overflow-y-auto px-2 py-1 min-h-0">
+      {/* 树形列表 - 可滚动区域 */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-2 py-1 min-h-0"
+        style={{
+          scrollBehavior: 'smooth',
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(255,255,255,0.15) transparent',
+        }}
+      >
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={20} className="animate-spin text-surface-400" />
@@ -251,6 +282,7 @@ export default function FolderTree({
               selectedPath={selectedPath}
               onSelect={onSelectFolder}
               onContextMenu={handleContextMenu}
+              scrollIntoView
             />
           ))
         )}
