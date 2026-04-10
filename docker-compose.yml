@@ -19,8 +19,8 @@ services:
       # - /volume1/Media/电视剧:/media/电视剧
       # 群晖/绿联NAS：挂载GPU设备以支持硬件加速
       # 如果没有硬件加速需求可以注释掉
-    # devices:
-    #   - /dev/dri:/dev/dri
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       # ---- 应用配置 ----
       - NOWEN_APP_PORT=8080
@@ -44,6 +44,7 @@ services:
       # ---- CORS（多个用逗号分隔，留空禁止跨域，*允许所有） ----
       # - NOWEN_APP_CORS_ORIGINS=http://localhost:3000
       - TZ=Asia/Shanghai
+    privileged: true
     restart: unless-stopped
     # 资源限制（NAS场景建议限制，避免拖垮系统）
     deploy:
@@ -52,3 +53,5 @@ services:
           memory: 2G
         reservations:
           memory: 512M
+          devices:
+            - capabilities: [gpu]
