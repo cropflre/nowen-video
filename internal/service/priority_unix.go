@@ -15,6 +15,15 @@ func setLowPriority(cmd *exec.Cmd) {
 	// 例如: nice -n 19 ffmpeg -y -i input.mkv ...
 	originalPath := cmd.Path
 	originalArgs := cmd.Args // Args[0] 是程序名
-	cmd.Path = "/usr/bin/nice"
+	
+	// 尝试查找 nice 命令的路径，如果找不到则直接执行原始命令（不设置优先级）
+	nicePath, err := exec.LookPath("nice")
+	if err != nil {
+		// 如果找不到 nice 命令，直接使用原始命令，不设置优先级
+		// 这比因为找不到 nice 而导致整个转码失败要好
+		return
+	}
+	
+	cmd.Path = nicePath
 	cmd.Args = append([]string{"nice", "-n", "19", originalPath}, originalArgs[1:]...)
 }

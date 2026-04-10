@@ -14,6 +14,8 @@ services:
       # 媒体文件挂载（根据实际NAS路径修改）
       # 方式1: 挂载整个媒体根目录
       - /volume1/Media:/media
+      - /volume3/18_1/18t_1:/18t
+      - /volume3/18_1/Hentai:/hentai
       # 方式2: 分别挂载不同媒体目录（取消注释并注释方式1）
       # - /volume1/Media/电影:/media/电影
       # - /volume1/Media/电视剧:/media/电视剧
@@ -30,7 +32,7 @@ services:
       # - PGID=1000
       - NOWEN_APP_DATA_DIR=/data
       - NOWEN_APP_WEB_DIR=/app/web/dist
-      - NOWEN_APP_HW_ACCEL=auto
+      - NOWEN_APP_HW_ACCEL=none  # 强制使用软件转码，避免 QSV 硬件加速失败
       - NOWEN_APP_TRANSCODE_PRESET=veryfast
       - NOWEN_APP_MAX_TRANSCODE_JOBS=2
       # ---- 数据库配置 ----

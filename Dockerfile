@@ -26,16 +26,28 @@ RUN CGO_ENABLED=1 go build -o nowen-video ./cmd/server
 FROM alpine:3.19
 
 # 安装FFmpeg（含硬件加速支持）、su-exec 和必要运行时
+# 注意：apk add 不支持行内注释，注释必须独立成行
 RUN apk add --no-cache \
     ffmpeg \
     tzdata \
     ca-certificates \
     su-exec \
-    # Intel VAAPI/QSV 支持
+    coreutils \
     intel-media-driver \
     libva-intel-driver \
     mesa-va-gallium \
-    && rm -rf /var/cache/apk/*
+    libva-utils \
+    && rm -rf /var/cache/apk/* \
+    && ln -sf /bin/nice /usr/bin/nice \
+    && echo '#!/bin/sh' > /usr/local/bin/check-gpu \
+    && echo 'if [ -c /dev/dri/renderD128 ]; then' >> /usr/local/bin/check-gpu \
+    && echo '  echo "Intel GPU available: $(vainfo 2>/dev/null | grep -o "driver.*" | head -1)"' >> /usr/local/bin/check-gpu \
+    && echo '  exit 0' >> /usr/local/bin/check-gpu \
+    && echo 'else' >> /usr/local/bin/check-gpu \
+    && echo '  echo "No GPU device found, falling back to software transcoding"' >> /usr/local/bin/check-gpu \
+    && echo '  exit 1' >> /usr/local/bin/check-gpu \
+    && echo 'fi' >> /usr/local/bin/check-gpu \
+    && chmod +x /usr/local/bin/check-gpu
 
 # 创建非root用户
 RUN addgroup -S nowen && adduser -S nowen -G nowen
