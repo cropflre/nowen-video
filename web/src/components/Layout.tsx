@@ -24,12 +24,6 @@ export default function Layout() {
     const mainEl = mainRef.current
     if (!mainEl) return
 
-    // 保存离开页面的滚动位置
-    const _prevKey = SCROLL_KEY_PREFIX + prevPathRef.current
-    // 注意：此时 prevPathRef 还是上一个路径
-    // 在 useEffect 执行时，DOM 已经更新，但我们在 cleanup 中保存
-    // 所以改用 ref 记录
-
     // 恢复当前页面的滚动位置
     const currentKey = SCROLL_KEY_PREFIX + location.pathname + location.search
     const savedPos = sessionStorage.getItem(currentKey)
