@@ -53,5 +53,3 @@ services:
           memory: 2G
         reservations:
           memory: 512M
-          devices:
-            - capabilities: [gpu]
