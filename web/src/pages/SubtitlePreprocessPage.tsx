@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { subtitlePreprocessApi } from '@/api/subtitlePreprocess'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
-import type { SubtitlePreprocessTask, SubtitlePreprocessStatistics, Library } from '@/types'
+import type { SubtitlePreprocessTask, SubtitlePreprocessStatistics, ASRHealthStatus, Library } from '@/types'
 import api from '@/api/client'
 import { LANGUAGE_OPTIONS } from '@/components/file-manager/constants'
 import {
@@ -31,6 +31,11 @@ import {
   ChevronsRight,
   X,
   ChevronDown,
+  Zap,
+  ShieldAlert,
+  ShieldCheck,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -66,6 +71,7 @@ const statusIcons: Record<string, React.ReactNode> = {
 const phaseLabels: Record<string, string> = {
   check: '检查字幕',
   extract: '提取字幕',
+  clean: '字幕清洗',
   generate: 'AI 生成',
   translate: '多语言翻译',
   done: '完成',
@@ -98,6 +104,11 @@ export default function SubtitlePreprocessPage() {
   const [selectedTargetLangs, setSelectedTargetLangs] = useState<string[]>([])
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const langDropdownRef = useRef<HTMLDivElement>(null)
+  // P1: 强制重新生成开关
+  const [forceRegenerate, setForceRegenerate] = useState(false)
+  // P0: ASR 健康状态
+  const [asrHealth, setAsrHealth] = useState<ASRHealthStatus | null>(null)
+  const [checkingHealth, setCheckingHealth] = useState(false)
 
   // 可选的翻译语言列表（排除空值选项）
   const availableLangs = useMemo(() => LANGUAGE_OPTIONS.filter((l) => l.value !== ''), [])  
@@ -180,10 +191,23 @@ export default function SubtitlePreprocessPage() {
     }
   }, [])
 
+  // P0: 检查 ASR 健康状态
+  const checkASRHealth = useCallback(async () => {
+    setCheckingHealth(true)
+    try {
+      const res = await subtitlePreprocessApi.checkASRHealth()
+      setAsrHealth(res.data.data)
+    } catch {
+      // 忽略
+    } finally {
+      setCheckingHealth(false)
+    }
+  }, [])
+
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadTasks(), loadStats(), loadLibraries()]).finally(() => setLoading(false))
-  }, [loadTasks, loadStats, loadLibraries])
+    Promise.all([loadTasks(), loadStats(), loadLibraries(), checkASRHealth()]).finally(() => setLoading(false))
+  }, [loadTasks, loadStats, loadLibraries, checkASRHealth])
 
   // WebSocket 实时更新（节流：最多每 3 秒刷新一次）
   useEffect(() => {
@@ -301,7 +325,7 @@ export default function SubtitlePreprocessPage() {
     setSubmitting(libraryId)
     try {
       const targetLangs = selectedTargetLangs
-      const res = await subtitlePreprocessApi.submitLibrary(libraryId, targetLangs)
+      const res = await subtitlePreprocessApi.submitLibrary(libraryId, targetLangs, forceRegenerate)
       const count = res.data.data.submitted
       if (count > 0) {
         toastRef.current.success(`已提交 ${count} 个字幕预处理任务`)
@@ -317,6 +341,70 @@ export default function SubtitlePreprocessPage() {
     }
   }
 
+  // P0: 一键重试所有失败任务
+  const handleRetryAllFailed = async () => {
+    setBatchLoading(true)
+    try {
+      const res = await subtitlePreprocessApi.retryAllFailed()
+      const retried = res.data.data.retried
+      if (retried > 0) {
+        toastRef.current.success(`已重试 ${retried} 个失败任务`)
+        loadTasks()
+        loadStats()
+      } else {
+        toastRef.current.info('没有失败的任务需要重试')
+      }
+    } catch {
+      toastRef.current.error('一键重试失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  // P0: 按状态批量删除
+  const handleDeleteByStatus = async (status: string) => {
+    setBatchLoading(true)
+    try {
+      const res = await subtitlePreprocessApi.deleteByStatus(status)
+      const deleted = res.data.data.deleted
+      if (deleted > 0) {
+        toastRef.current.success(`已清理 ${deleted} 个${statusLabels[status] || status}任务`)
+        loadTasks()
+        loadStats()
+      } else {
+        toastRef.current.info(`没有${statusLabels[status] || status}的任务需要清理`)
+      }
+    } catch {
+      toastRef.current.error('清理失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  // P1: 错误信息聚合
+  const errorSummary = useMemo(() => {
+    if (!stats?.status_counts?.failed) return null
+    const failedCount = stats.status_counts.failed
+    if (failedCount === 0) return null
+
+    // 从当前页任务中统计错误类型
+    const errorMap = new Map<string, number>()
+    tasks.filter(t => t.status === 'failed' && t.error).forEach(t => {
+      // 提取错误关键信息（去掉具体的媒体名称等）
+      let key = t.error
+      if (key.includes('Whisper API 返回 HTTP 404')) {
+        key = 'Whisper API 端点不存在 (HTTP 404)'
+      } else if (key.includes('ASR 失败')) {
+        key = 'ASR 语音识别失败'
+      } else if (key.includes('音频提取失败')) {
+        key = '音频提取失败'
+      }
+      errorMap.set(key, (errorMap.get(key) || 0) + 1)
+    })
+
+    return { total: failedCount, errors: Array.from(errorMap.entries()) }
+  }, [stats, tasks])
+
   const formatDuration = (sec: number) => {
     if (sec <= 0) return '-'
     const h = Math.floor(sec / 3600)
@@ -329,8 +417,42 @@ export default function SubtitlePreprocessPage() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-neon-blue" />
+      <div className="mx-auto max-w-7xl space-y-6 p-6 animate-fade-in">
+        {/* 页面标题骨架 */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="skeleton h-7 w-36 rounded-lg" />
+            <div className="skeleton h-4 w-72 rounded" />
+          </div>
+          <div className="skeleton h-9 w-20 rounded-lg" />
+        </div>
+        {/* 统计卡片骨架 */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="skeleton h-3.5 w-3.5 rounded" />
+                <div className="skeleton h-3 w-12 rounded" />
+              </div>
+              <div className="skeleton h-7 w-10 rounded-lg" />
+              <div className="skeleton mt-1.5 h-3 w-20 rounded" />
+            </div>
+          ))}
+        </div>
+        {/* 任务列表骨架 */}
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+              <div className="skeleton h-9 w-9 rounded-lg" />
+              <div className="flex-1 space-y-2">
+                <div className="skeleton h-4 w-1/3 rounded" />
+                <div className="skeleton h-1.5 w-full rounded-full" />
+                <div className="skeleton h-3 w-1/2 rounded" />
+              </div>
+              <div className="skeleton h-8 w-20 rounded-lg" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -360,7 +482,7 @@ export default function SubtitlePreprocessPage() {
 
       {/* 统计卡片 */}
       {stats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
               <Activity size={14} className="text-neon-blue" />
@@ -387,29 +509,144 @@ export default function SubtitlePreprocessPage() {
 
           <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-              <Sparkles size={14} className="text-emerald-400" />
-              AI 服务
+              <CheckCircle2 size={14} className="text-emerald-400" />
+              已完成
             </div>
-            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-              {stats.asr_enabled ? '已启用' : '未启用'}
+            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {stats.status_counts?.completed || 0}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              已完成 {stats.status_counts?.completed || 0} 个
+              跳过 {stats.status_counts?.skipped || 0} 个
             </div>
           </div>
 
           <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
             <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-              <SkipForward size={14} className="text-orange-400" />
-              已跳过
+              <AlertCircle size={14} className="text-red-400" />
+              失败
             </div>
             <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-              {stats.status_counts?.skipped || 0}
+              {stats.status_counts?.failed || 0}
             </div>
-            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              失败 {stats.status_counts?.failed || 0} 个
+            {(stats.status_counts?.failed || 0) > 0 && (
+              <button
+                onClick={handleRetryAllFailed}
+                disabled={batchLoading}
+                className="text-xs mt-1 flex items-center gap-1 transition-colors hover:text-neon-blue"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <RotateCcw size={10} />
+                一键重试全部
+              </button>
+            )}
+          </div>
+
+          {/* P0: ASR 服务健康状态卡片 */}
+          <div className="rounded-xl p-4" style={{
+            background: 'var(--glass-bg)',
+            border: asrHealth?.healthy ? '1px solid var(--neon-blue-6)' : '1px solid rgba(239,68,68,0.2)',
+          }}>
+            <div className="flex items-center gap-2 text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+              {asrHealth?.healthy ? (
+                <ShieldCheck size={14} className="text-emerald-400" />
+              ) : (
+                <ShieldAlert size={14} className="text-red-400" />
+              )}
+              ASR 服务
+            </div>
+            <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              {checkingHealth ? (
+                <Loader2 size={18} className="animate-spin text-neon-blue" />
+              ) : asrHealth?.healthy ? (
+                <span className="text-emerald-400">可用</span>
+              ) : asrHealth?.configured ? (
+                <span className="text-red-400">不可用</span>
+              ) : (
+                <span style={{ color: 'var(--text-muted)' }}>未配置</span>
+              )}
+            </div>
+            <div className="text-xs mt-1 truncate" style={{ color: 'var(--text-muted)' }} title={asrHealth?.message}>
+              {asrHealth?.engine ? `引擎: ${asrHealth.engine}` : asrHealth?.message || '点击检测'}
+            </div>
+            <button
+              onClick={checkASRHealth}
+              disabled={checkingHealth}
+              className="text-xs mt-1 flex items-center gap-1 transition-colors hover:text-neon-blue"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Zap size={10} />
+              {checkingHealth ? '检测中...' : '重新检测'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* P0: ASR 不可用警告横幅 */}
+      {asrHealth && !asrHealth.healthy && asrHealth.configured && (
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+        >
+          <ShieldAlert size={16} className="text-red-400 shrink-0" />
+          <div className="flex-1">
+            <span className="text-xs font-medium text-red-400">ASR 服务不可用</span>
+            <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
+              {asrHealth.message}。没有内嵌字幕的视频将被跳过而非失败。
+            </span>
+          </div>
+          <button
+            onClick={checkASRHealth}
+            disabled={checkingHealth}
+            className="text-xs px-2 py-1 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: 'var(--text-muted)', border: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            重新检测
+          </button>
+        </div>
+      )}
+
+      {/* P1: 错误信息聚合横幅 */}
+      {errorSummary && errorSummary.total > 0 && (
+        <div
+          className="rounded-xl px-4 py-3"
+          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-red-400 flex items-center gap-1.5">
+              <AlertCircle size={12} />
+              {errorSummary.total} 个任务失败
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRetryAllFailed}
+                disabled={batchLoading}
+                className="text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors hover:bg-neon-blue/10 disabled:opacity-50"
+                style={{ color: 'var(--neon-blue)', border: '1px solid var(--neon-blue-15)' }}
+              >
+                <RotateCcw size={10} />
+                一键重试全部
+              </button>
+              <button
+                onClick={() => handleDeleteByStatus('failed')}
+                disabled={batchLoading}
+                className="text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors hover:bg-red-400/10 disabled:opacity-50"
+                style={{ color: 'var(--text-muted)', border: '1px solid rgba(239,68,68,0.15)' }}
+              >
+                <Trash2 size={10} />
+                清理全部失败
+              </button>
             </div>
           </div>
+          {errorSummary.errors.length > 0 && (
+            <div className="space-y-1">
+              {errorSummary.errors.map(([error, count]) => (
+                <div key={error} className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-red-400/60">×{count}</span>
+                  <span className="truncate">{error}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -421,7 +658,22 @@ export default function SubtitlePreprocessPage() {
             媒体库批量字幕预处理
           </h2>
 
-          {/* 翻译语言配置 */}
+          {/* P1: 强制重新生成开关 + 翻译语言配置 */}
+          <div className="flex items-center gap-4 mb-3 flex-wrap">
+            {/* 强制重新生成开关 */}
+            <button
+              onClick={() => setForceRegenerate(!forceRegenerate)}
+              className="flex items-center gap-1.5 text-xs transition-colors"
+              style={{ color: forceRegenerate ? 'var(--neon-blue)' : 'var(--text-muted)' }}
+              title="启用后将覆盖已有字幕，重新生成"
+            >
+              {forceRegenerate ? <ToggleRight size={18} className="text-neon-blue" /> : <ToggleLeft size={18} />}
+              强制重新生成
+            </button>
+
+            <div className="w-px h-4" style={{ background: 'var(--neon-blue-6)' }} />
+          </div>
+
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <Languages size={14} style={{ color: 'var(--text-muted)' }} />
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>翻译目标语言：</span>
@@ -554,21 +806,49 @@ export default function SubtitlePreprocessPage() {
         </div>
       )}
 
-      {/* 状态过滤 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {['', 'running', 'pending', 'completed', 'failed', 'skipped', 'cancelled'].map((s) => (
-          <button
-            key={s}
-            onClick={() => { setStatusFilter(s); setPage(1); setSelectedIds(new Set()) }}
-            className={clsx(
-              'rounded-lg px-3 py-1.5 text-xs transition-colors',
+      {/* P2: 状态过滤 + 按状态快捷操作 */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          {['', 'running', 'pending', 'completed', 'failed', 'skipped', 'cancelled'].map((s) => (
+            <button
+              key={s}
+              onClick={() => { setStatusFilter(s); setPage(1); setSelectedIds(new Set()) }}
+              className={clsx(
+                'rounded-lg px-3 py-1.5 text-xs transition-colors',
+              )}
+              style={statusFilter === s ? { background: 'var(--neon-blue-15)', border: '1px solid var(--neon-blue-30)', color: 'var(--text-primary)' } : { background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)', color: 'var(--text-muted)' }}
+            >
+              {s === '' ? '全部' : statusLabels[s] || s}
+              {s && stats?.status_counts?.[s] ? ` (${stats.status_counts[s]})` : ''}
+            </button>
+          ))}
+        </div>
+
+        {/* P2: 按状态快捷操作按钮 */}
+        {statusFilter && statusFilter !== 'running' && (stats?.status_counts?.[statusFilter] || 0) > 0 && (
+          <div className="flex items-center gap-2">
+            {statusFilter === 'failed' && (
+              <button
+                onClick={handleRetryAllFailed}
+                disabled={batchLoading}
+                className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition-colors hover:bg-neon-blue/10 disabled:opacity-50"
+                style={{ color: 'var(--neon-blue)', border: '1px solid var(--neon-blue-15)' }}
+              >
+                <RotateCcw size={10} />
+                重试全部失败
+              </button>
             )}
-            style={statusFilter === s ? { background: 'var(--neon-blue-15)', border: '1px solid var(--neon-blue-30)', color: 'var(--text-primary)' } : { background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)', color: 'var(--text-muted)' }}
-          >
-            {s === '' ? '全部' : statusLabels[s] || s}
-            {s && stats?.status_counts?.[s] ? ` (${stats.status_counts[s]})` : ''}
-          </button>
-        ))}
+            <button
+              onClick={() => handleDeleteByStatus(statusFilter)}
+              disabled={batchLoading}
+              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition-colors hover:bg-red-400/10 hover:text-red-400 disabled:opacity-50"
+              style={{ color: 'var(--text-muted)', border: '1px solid var(--neon-blue-6)' }}
+            >
+              <Trash2 size={10} />
+              清理全部{statusLabels[statusFilter]}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 批量操作工具栏 */}

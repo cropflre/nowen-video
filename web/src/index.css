@@ -334,10 +334,12 @@
     border: 1px solid var(--border-default);
     transform-style: preserve-3d;
     perspective: 1000px;
+    /* 确保卡片在网格中完整填充 */
+    width: 100%;
+    min-width: 0;
   }
 
   .media-card:hover {
-    @apply scale-[1.04];
     border-color: var(--border-hover);
     box-shadow: var(--shadow-card-hover), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
@@ -353,6 +355,7 @@
     background: linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-purple), transparent);
     opacity: 0;
     transition: opacity 0.3s ease;
+    z-index: 10;
   }
 
   .media-card:hover::after {

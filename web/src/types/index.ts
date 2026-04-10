@@ -1654,6 +1654,14 @@ export interface SubtitlePreprocessStatistics {
   asr_enabled: boolean
 }
 
+// P0: ASR 服务健康状态
+export interface ASRHealthStatus {
+  configured: boolean
+  healthy: boolean
+  engine: string
+  message: string
+}
+
 // ==================== P0~P2: 字幕提取导出 ====================
 export interface ExtractedSubtitleFile {
   track_index: number

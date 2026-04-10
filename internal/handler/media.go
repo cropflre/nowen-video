@@ -13,6 +13,7 @@ import (
 // MediaHandler 媒体处理器
 type MediaHandler struct {
 	mediaService    *service.MediaService
+	personRepo      *repository.PersonRepo
 	mediaPersonRepo *repository.MediaPersonRepo
 	logger          *zap.SugaredLogger
 }
@@ -267,4 +268,39 @@ func (h *MediaHandler) GetPersons(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": persons})
+}
+
+// GetPersonDetail 获取演员详情
+// GET /api/persons/:id
+func (h *MediaHandler) GetPersonDetail(c *gin.Context) {
+	personID := c.Param("id")
+	person, err := h.personRepo.FindByID(personID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": person})
+}
+
+// GetPersonMedia 获取某个演员参演的所有影视作品
+// GET /api/persons/:id/media
+func (h *MediaHandler) GetPersonMedia(c *gin.Context) {
+	personID := c.Param("id")
+
+	// 查询该演员参演的电影
+	media, err := h.mediaPersonRepo.ListMediaByPersonID(personID)
+	if err != nil {
+		media = nil
+	}
+
+	// 查询该演员参演的剧集
+	series, err := h.mediaPersonRepo.ListSeriesByPersonID(personID)
+	if err != nil {
+		series = nil
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"media":  media,
+		"series": series,
+	})
 }

@@ -583,6 +583,21 @@ const enUS: Record<string, string> = {
   'castGrid.roleActor': 'Actor',
   'castGrid.roleWriter': 'Writer',
   'castGrid.viewOnTMDb': 'View on TMDb',
+  'castGrid.worksCount': '{count} works in library',
+  'castGrid.noWorks': 'No works found for this person',
+  'castGrid.movies': 'Movies',
+  'castGrid.tvShows': 'TV Shows',
+
+  // ==================== Person Detail Page ====================
+  'personDetail.notFound': 'Person not found',
+  'personDetail.goBack': 'Go Back',
+  'personDetail.worksCount': '{count} works in library',
+  'personDetail.movieCount': '{count} movies',
+  'personDetail.seriesCount': '{count} TV shows',
+  'personDetail.viewOnTMDb': 'View on TMDb',
+  'personDetail.noWorks': 'No works found for this person',
+  'personDetail.movies': 'Movies',
+  'personDetail.tvShows': 'TV Shows',
 
   // ==================== Access Logs ====================
   'accessLogs.title': 'Access Logs',

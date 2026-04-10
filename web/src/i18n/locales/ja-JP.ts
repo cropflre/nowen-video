@@ -576,6 +576,21 @@ const jaJP: Record<string, string> = {
   'castGrid.roleActor': '俳優',
   'castGrid.roleWriter': '脚本',
   'castGrid.viewOnTMDb': 'TMDbで詳細を見る',
+  'castGrid.worksCount': '全{count}作品',
+  'castGrid.noWorks': 'この人物の作品は見つかりませんでした',
+  'castGrid.movies': '映画',
+  'castGrid.tvShows': 'テレビ番組',
+
+  // ==================== 人物詳細ページ ====================
+  'personDetail.notFound': 'この人物は見つかりませんでした',
+  'personDetail.goBack': '戻る',
+  'personDetail.worksCount': '全{count}作品',
+  'personDetail.movieCount': '映画{count}本',
+  'personDetail.seriesCount': 'テレビ番組{count}本',
+  'personDetail.viewOnTMDb': 'TMDbで詳細を見る',
+  'personDetail.noWorks': 'この人物の作品は見つかりませんでした',
+  'personDetail.movies': '映画作品',
+  'personDetail.tvShows': 'テレビ番組作品',
 
   // ==================== アクセスログ ====================
   'accessLogs.title': 'アクセスログ',

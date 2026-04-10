@@ -65,4 +65,16 @@ export const subtitlePreprocessApi = {
   // 获取媒体字幕预处理状态（用户可查询）
   getMediaStatus: (mediaId: string) =>
     api.get<{ data: SubtitlePreprocessTask }>(`/subtitle-preprocess/media/${mediaId}/status`),
+
+  // P0: 一键重试所有失败任务
+  retryAllFailed: () =>
+    api.post<{ message: string; data: { retried: number } }>('/admin/subtitle-preprocess/retry-all-failed'),
+
+  // P0: 按状态批量删除任务
+  deleteByStatus: (status: string) =>
+    api.delete<{ message: string; data: { deleted: number } }>(`/admin/subtitle-preprocess/tasks/by-status/${status}`),
+
+  // P0: 检查 ASR 服务健康状态
+  checkASRHealth: () =>
+    api.get<{ data: { configured: boolean; healthy: boolean; engine: string; message: string } }>('/admin/subtitle-preprocess/asr-health'),
 }

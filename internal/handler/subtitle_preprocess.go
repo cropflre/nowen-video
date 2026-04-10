@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -257,4 +258,48 @@ func (h *SubtitlePreprocessHandler) GetMediaStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": task})
+}
+
+// RetryAllFailed 一键重试所有失败任务
+func (h *SubtitlePreprocessHandler) RetryAllFailed(c *gin.Context) {
+	count, err := h.subtitlePreprocess.RetryAllFailed()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("已重试 %d 个失败任务", count),
+		"data":    gin.H{"retried": count},
+	})
+}
+
+// DeleteByStatus 按状态批量删除任务
+func (h *SubtitlePreprocessHandler) DeleteByStatus(c *gin.Context) {
+	status := c.Param("status")
+	if status == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供状态参数"})
+		return
+	}
+	if status == "running" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不允许删除运行中的任务"})
+		return
+	}
+
+	deleted, err := h.subtitlePreprocess.DeleteByStatus(status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("已删除 %d 个 %s 状态的任务", deleted, status),
+		"data":    gin.H{"deleted": deleted},
+	})
+}
+
+// CheckASRHealth 检查 ASR 服务健康状态
+func (h *SubtitlePreprocessHandler) CheckASRHealth(c *gin.Context) {
+	result := h.subtitlePreprocess.CheckASRHealth()
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }

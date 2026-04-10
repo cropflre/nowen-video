@@ -198,9 +198,35 @@ export default function SubtitleManager({ mediaId, mediaTitle, onClose }: Subtit
         {/* 内容区域 */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: 'var(--neon-blue)', borderTopColor: 'transparent' }} />
-              <span className="ml-3 text-sm" style={{ color: 'var(--text-secondary)' }}>加载字幕信息...</span>
+            <div className="space-y-5 animate-fade-in">
+              {/* 内嵌字幕区骨架 */}
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="skeleton h-4 w-36 rounded" />
+                  <div className="skeleton h-6 w-14 rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}>
+                      <div className="skeleton h-4 w-4 rounded" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="skeleton h-4 w-16 rounded" />
+                          <div className="skeleton h-4 w-10 rounded" />
+                        </div>
+                        <div className="skeleton h-3 w-24 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              {/* 外挂字幕区骨架 */}
+              <section>
+                <div className="skeleton h-4 w-32 rounded mb-3" />
+                <div className="rounded-xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}>
+                  <div className="skeleton mx-auto h-3 w-32 rounded" />
+                </div>
+              </section>
             </div>
           ) : error && !subtitleInfo ? (
             <div className="rounded-xl p-4 text-center text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>

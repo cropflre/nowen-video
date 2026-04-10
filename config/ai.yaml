@@ -59,19 +59,39 @@ max_concurrent: 3
 # 请求间隔（毫秒，防止限流）
 request_interval_ms: 200
 
-# ==================== AI 字幕（ASR 语音识别）说明 ====================
-# AI 字幕功能复用上述 AI API 配置，通过 Whisper 兼容接口实现语音识别。
+# ==================== AI 字幕（ASR 语音识别）配置 ====================
+# AI 字幕功能通过 Whisper 兼容接口实现语音识别。
+# 如果下方 whisper_api_base 和 whisper_api_key 留空，则自动复用上述 LLM API 配置。
+# 如果你的 LLM 提供商不支持 Whisper 接口（如通义千问），请单独配置以下参数。
 #
-# 支持的 API 提供商：
-#   - OpenAI:     api_base 设为 https://api.openai.com/v1（原生支持 whisper-1）
-#   - Groq:       api_base 设为 https://api.groq.com/openai/v1（支持 whisper-large-v3）
-#   - 通义千问:    暂不支持 Whisper 接口
+# 支持的 Whisper API 提供商：
+#   - OpenAI:     whisper_api_base 设为 https://api.openai.com/v1（原生支持 whisper-1）
+#   - Groq:       whisper_api_base 设为 https://api.groq.com/openai/v1（支持 whisper-large-v3）
 #   - 本地部署:    使用 faster-whisper-server 等兼容 OpenAI 的本地服务
+#
+# 注意：通义千问（DashScope）不支持 Whisper 接口，如需使用云端 ASR，
+#       请配置其他支持 Whisper 的提供商。
 #
 # 使用方式：
 #   在视频播放器的字幕菜单中，点击「生成 AI 字幕」即可触发。
 #   系统会自动提取音频 → 调用 Whisper API → 生成 WebVTT 字幕文件。
 #   生成的字幕会缓存在 cache/subtitles/ai/ 目录下，下次播放直接使用。
+
+# Whisper API 独立地址（留空则复用上方 api_base）
+# 示例: https://api.openai.com/v1 或 https://api.groq.com/openai/v1
+whisper_api_base: ""
+
+# Whisper API 独立密钥（留空则复用上方 api_key）
+whisper_api_key: ""
+
+# Whisper 模型名称（留空则使用默认 whisper-1）
+# OpenAI: whisper-1
+# Groq:   whisper-large-v3 / whisper-large-v3-turbo
+whisper_model: ""
+
+# Whisper API 请求超时（秒，留空或 0 则使用默认 300 秒）
+# ASR 处理较慢，建议设置较长的超时时间
+whisper_timeout: 0
 
 # ==================== Phase 2: 本地 whisper.cpp 配置 ====================
 # 本地 whisper.cpp 可执行文件路径（留空则仅使用云端 API）

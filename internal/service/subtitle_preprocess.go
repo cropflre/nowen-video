@@ -104,6 +104,54 @@ func (s *SubtitlePreprocessService) SetWSHub(hub *WSHub) {
 
 // ==================== 公开 API ====================
 
+// CheckASRHealth 检查 ASR 服务健康状态
+func (s *SubtitlePreprocessService) CheckASRHealth() map[string]interface{} {
+	result := map[string]interface{}{
+		"configured": s.asrService != nil && s.asrService.IsEnabled(),
+		"healthy":    false,
+		"engine":     "",
+		"message":    "ASR 服务未配置",
+	}
+
+	if s.asrService == nil || !s.asrService.IsEnabled() {
+		return result
+	}
+
+	healthy, engine, errMsg := s.asrService.CheckWhisperHealth()
+	result["healthy"] = healthy
+	result["engine"] = engine
+	if errMsg != "" {
+		result["message"] = errMsg
+	} else {
+		result["message"] = "ASR 服务可用"
+	}
+
+	return result
+}
+
+// RetryAllFailed 一键重试所有失败任务
+func (s *SubtitlePreprocessService) RetryAllFailed() (int, error) {
+	tasks, err := s.repo.RetryAllFailed()
+	if err != nil {
+		return 0, fmt.Errorf("重试所有失败任务失败: %w", err)
+	}
+
+	// 将任务重新入队
+	for _, task := range tasks {
+		select {
+		case s.jobQueue <- task.ID:
+		default:
+		}
+	}
+
+	return len(tasks), nil
+}
+
+// DeleteByStatus 按状态批量删除任务
+func (s *SubtitlePreprocessService) DeleteByStatus(status string) (int64, error) {
+	return s.repo.DeleteByStatus(status)
+}
+
 // SubmitMedia 提交单个媒体进行字幕预处理
 func (s *SubtitlePreprocessService) SubmitMedia(mediaID string, targetLangs []string, forceRegenerate bool) (*model.SubtitlePreprocessTask, error) {
 	// 检查是否已有活跃任务
@@ -141,6 +189,9 @@ func (s *SubtitlePreprocessService) SubmitMedia(mediaID string, targetLangs []st
 		ForceRegenerate: forceRegenerate,
 		MediaTitle:      media.DisplayTitle(),
 	}
+
+	// P0: 如果没有内嵌/外挂字幕且 ASR 不可用，预检并给出明确提示
+	// 但仍然创建任务（可能有内嵌字幕可以提取）
 
 	if err := s.repo.Create(task); err != nil {
 		return nil, fmt.Errorf("创建字幕预处理任务失败: %w", err)
@@ -380,9 +431,9 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 			}
 
 			if s.asrService == nil || !s.asrService.IsEnabled() {
-				// 无 AI 服务且无现有字幕，跳过
+				// P0: 无 AI 服务且无现有字幕，优雅降级为 skipped
 				task.Status = "skipped"
-				task.Message = "无可用字幕且 AI 服务未启用"
+				task.Message = "无可用字幕且 AI 服务未启用，请在设置中配置 Whisper API"
 				task.Phase = "done"
 				completedAt := time.Now()
 				task.CompletedAt = &completedAt
@@ -392,7 +443,22 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 				return
 			}
 
-			s.updatePhase(task, "generate", 20, "正在生成 AI 字幕...")
+			// P0: ASR 已配置但可能不可用（如 API 不支持 Whisper），预检
+			healthy, engine, healthErr := s.asrService.CheckWhisperHealth()
+			if !healthy {
+				// ASR 配置了但不可用，降级为 skipped 而非 failed
+				task.Status = "skipped"
+				task.Message = fmt.Sprintf("无可用字幕且 ASR 不可用: %s", healthErr)
+				task.Phase = "done"
+				completedAt := time.Now()
+				task.CompletedAt = &completedAt
+				s.repo.Update(task)
+				s.broadcastEvent(EventSubPreSkipped, task)
+				s.logger.Infof("字幕预处理跳过: %s (ASR 不可用: %s)", task.MediaTitle, healthErr)
+				return
+			}
+
+			s.updatePhase(task, "generate", 20, fmt.Sprintf("正在生成 AI 字幕（引擎: %s）...", engine))
 
 			vttPath, err := s.generateAISubtitle(media, task)
 			if err != nil {

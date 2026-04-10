@@ -14,7 +14,7 @@
 // 核心模块
 export { authApi } from './auth'
 export { libraryApi } from './library'
-export { mediaApi } from './media'
+export { mediaApi, personApi } from './media'
 export { streamApi } from './stream'
 export { subtitleApi, subtitleSearchApi } from './subtitle'
 export { subtitlePreprocessApi } from './subtitlePreprocess'

@@ -165,7 +165,17 @@ type AIConfig struct {
 	MaxConcurrent     int `mapstructure:"max_concurrent"`
 	RequestIntervalMs int `mapstructure:"request_interval_ms"`
 
-	// ==================== ASR / Whisper 配置 ====================
+	// ==================== ASR / Whisper 云端 API 独立配置 ====================
+	// Whisper API 独立地址（留空则复用 APIBase）
+	WhisperAPIBase string `mapstructure:"whisper_api_base"`
+	// Whisper API 独立密钥（留空则复用 APIKey）
+	WhisperAPIKey string `mapstructure:"whisper_api_key"`
+	// Whisper 模型名称（留空则使用默认 whisper-1）
+	WhisperModel string `mapstructure:"whisper_model"`
+	// Whisper API 请求超时（秒，0 则使用默认 300）
+	WhisperTimeout int `mapstructure:"whisper_timeout"`
+
+	// ==================== ASR / 本地 whisper.cpp 配置 ====================
 	// 本地 whisper.cpp 可执行文件路径（留空则仅使用云端 API）
 	WhisperCppPath string `mapstructure:"whisper_cpp_path"`
 	// 本地 Whisper 模型文件路径（如 ggml-large-v3.bin）

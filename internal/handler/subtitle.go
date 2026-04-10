@@ -5,17 +5,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-import (
-	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
+
 // SubtitleHandler 字幕处理器
 type SubtitleHandler struct {
 	scanner       *service.ScannerService

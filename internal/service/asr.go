@@ -125,10 +125,32 @@ type ASRProgressData struct {
 // NewASRService 创建 ASR 服务
 func NewASRService(appCfg *config.Config, mediaRepo *repository.MediaRepo, logger *zap.SugaredLogger) *ASRService {
 	// 从 AI 配置中读取 ASR 相关配置
-	// ASR 复用 AI 的 API 配置，但使用 Whisper 模型
+	// 优先使用独立的 Whisper API 配置，留空时回退到 LLM 的 API 配置
 	aiCfg := appCfg.AI
 
-	timeout := aiCfg.Timeout
+	// Whisper API 地址：优先独立配置，回退到 LLM 配置
+	whisperAPIBase := aiCfg.WhisperAPIBase
+	if whisperAPIBase == "" {
+		whisperAPIBase = aiCfg.APIBase
+	}
+
+	// Whisper API 密钥：优先独立配置，回退到 LLM 配置
+	whisperAPIKey := aiCfg.WhisperAPIKey
+	if whisperAPIKey == "" {
+		whisperAPIKey = aiCfg.APIKey
+	}
+
+	// Whisper 模型名称：优先独立配置，默认 whisper-1
+	whisperModel := aiCfg.WhisperModel
+	if whisperModel == "" {
+		whisperModel = "whisper-1"
+	}
+
+	// Whisper 超时：优先独立配置，回退到 LLM 超时，最终默认 300 秒
+	timeout := aiCfg.WhisperTimeout
+	if timeout <= 0 {
+		timeout = aiCfg.Timeout
+	}
 	if timeout <= 0 {
 		timeout = 300 // ASR 需要更长的超时时间
 	}
@@ -145,9 +167,9 @@ func NewASRService(appCfg *config.Config, mediaRepo *repository.MediaRepo, logge
 
 	s := &ASRService{
 		cfg: ASRConfig{
-			APIBase:          aiCfg.APIBase,
-			APIKey:           aiCfg.APIKey,
-			Model:            "whisper-1",
+			APIBase:          whisperAPIBase,
+			APIKey:           whisperAPIKey,
+			Model:            whisperModel,
 			Timeout:          timeout,
 			MaxConcurrent:    maxConcurrent,
 			WhisperCppPath:   aiCfg.WhisperCppPath,
@@ -165,10 +187,13 @@ func NewASRService(appCfg *config.Config, mediaRepo *repository.MediaRepo, logge
 		tasks:     make(map[string]*ASRTask),
 	}
 
-	if aiCfg.Enabled && aiCfg.APIKey != "" {
-		logger.Info("ASR 语音识别服务已就绪（复用 AI 配置）")
+	// 日志提示配置来源
+	if aiCfg.WhisperAPIBase != "" {
+		logger.Infof("ASR 语音识别服务已就绪（独立 Whisper API: %s，模型: %s）", whisperAPIBase, whisperModel)
+	} else if aiCfg.Enabled && whisperAPIKey != "" {
+		logger.Info("ASR 语音识别服务已就绪（复用 LLM API 配置，如不支持 Whisper 请单独配置 whisper_api_base）")
 	} else {
-		logger.Info("ASR 语音识别服务未启用（需要配置 AI API）")
+		logger.Info("ASR 语音识别服务未启用（需要配置 Whisper API 或 AI API）")
 	}
 
 	// Phase 2: 检测本地 whisper.cpp
@@ -1356,6 +1381,55 @@ func (s *ASRService) failTaskByKey(taskKey string, mediaID string, errMsg string
 	}
 
 	s.logger.Warnf("翻译任务失败: mediaID=%s, error=%s", mediaID, errMsg)
+}
+
+// CheckWhisperHealth 检查 Whisper API 是否真正可用（发送轻量级探测请求）
+// 返回: (可用性, 引擎类型, 错误信息)
+func (s *ASRService) CheckWhisperHealth() (bool, string, string) {
+	if !s.IsEnabled() {
+		return false, "", "ASR 服务未配置（需要 Whisper API 或本地 whisper.cpp）"
+	}
+
+	// 优先检查本地引擎
+	if s.IsLocalEnabled() {
+		if _, err := exec.LookPath(s.cfg.WhisperCppPath); err == nil {
+			return true, "local", ""
+		}
+		if !s.IsCloudEnabled() {
+			return false, "local", "本地 whisper.cpp 不可用"
+		}
+	}
+
+	// 检查云端 API：发送一个轻量级 OPTIONS/GET 请求探测端点是否存在
+	if s.IsCloudEnabled() {
+		apiURL := strings.TrimRight(s.cfg.APIBase, "/") + "/audio/transcriptions"
+		req, err := http.NewRequest("OPTIONS", apiURL, nil)
+		if err != nil {
+			return false, "cloud", fmt.Sprintf("创建探测请求失败: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+s.cfg.APIKey)
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return false, "cloud", fmt.Sprintf("Whisper API 连接失败: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 404 表示端点不存在（如通义千问不支持 Whisper）
+		if resp.StatusCode == 404 {
+			return false, "cloud", fmt.Sprintf("Whisper API 端点不存在（HTTP 404），当前 API (%s) 可能不支持语音识别", s.cfg.APIBase)
+		}
+		// 405 Method Not Allowed 说明端点存在但不支持 OPTIONS，认为可用
+		// 401/403 说明端点存在但认证问题
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return false, "cloud", "Whisper API 认证失败，请检查 API Key"
+		}
+		// 其他状态码（200, 405, 400 等）都认为端点存在
+		return true, "cloud", ""
+	}
+
+	return false, "", "ASR 服务未配置"
 }
 
 // GetStatus 获取 ASR 服务状态

@@ -21,7 +21,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
             {title}
           </motion.h2>
         )}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {Array.from({ length: 12 }).map((_, i) => (
             <motion.div key={i} variants={itemVariant}>
               <div className="skeleton aspect-[2/3] rounded-xl" />
@@ -44,7 +44,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
             {title}
           </motion.h2>
         )}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {mixedItems.map((item) => {
             if (item.type === 'series' && item.series) {
               return (
@@ -77,7 +77,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
           {title}
         </motion.h2>
       )}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {items.map((media) => (
           <motion.div key={media.id} variants={itemVariant}>
             <MediaCard media={media} />

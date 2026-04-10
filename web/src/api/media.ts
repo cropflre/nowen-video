@@ -72,3 +72,14 @@ export const mediaApi = {
   scrape: (id: string) =>
     api.post(`/media/${id}/scrape`),
 }
+
+// ==================== 演员 ====================
+export const personApi = {
+  /** 获取演员详情 */
+  getDetail: (personId: string) =>
+    api.get<{ data: import('@/types').Person }>(`/persons/${personId}`),
+
+  /** 获取某个演员参演的所有影视作品 */
+  getMedia: (personId: string) =>
+    api.get<{ media: Media[]; series: Series[] }>(`/persons/${personId}/media`),
+}

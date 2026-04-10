@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { MediaPerson } from '@/types'
-import { User, X, Film } from 'lucide-react'
-import clsx from 'clsx'
+import { User, Film } from 'lucide-react'
 import { useTranslation } from '@/i18n'
 
 interface CastGridProps {
@@ -31,7 +31,7 @@ const rolePriority: Record<string, number> = {
 
 export default function CastGrid({ persons }: CastGridProps) {
   const { t } = useTranslation()
-  const [selectedPerson, setSelectedPerson] = useState<MediaPerson | null>(null)
+  const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 去重：相同 person_id + role 只保留第一条（兜底，后端合并时已去重）
@@ -55,9 +55,12 @@ export default function CastGrid({ persons }: CastGridProps) {
     })
   }, [dedupedPersons])
 
+  // 点击演员头像 → 跳转到独立的演员详情页
   const handleCardClick = useCallback((person: MediaPerson) => {
-    setSelectedPerson(person)
-  }, [])
+    if (person.person_id) {
+      navigate(`/person/${person.person_id}`)
+    }
+  }, [navigate])
 
   if (dedupedPersons.length === 0) return null
 
@@ -88,14 +91,6 @@ export default function CastGrid({ persons }: CastGridProps) {
           <CastCard key={mp.id} mediaPerson={mp} onClick={handleCardClick} />
         ))}
       </div>
-
-      {/* 详情弹窗 */}
-      {selectedPerson && (
-        <PersonDetailModal
-          person={selectedPerson}
-          onClose={() => setSelectedPerson(null)}
-        />
-      )}
     </section>
   )
 }
@@ -195,146 +190,3 @@ function CastCard({
   )
 }
 
-/** 人物详情弹窗 */
-function PersonDetailModal({
-  person: mp,
-  onClose,
-}: {
-  person: MediaPerson
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  const getRoleLabel = useRoleLabel()
-  const [imgError, setImgError] = useState(false)
-  const person = mp.person
-  const profileUrl = person?.profile_url
-
-  return (
-    <>
-      {/* 遮罩层 */}
-      <div
-        className="fixed inset-0 z-50"
-        style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
-        onClick={onClose}
-      />
-
-      {/* 弹窗内容 */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-        <div
-          className="relative w-full max-w-sm animate-fade-in rounded-2xl p-6 shadow-2xl"
-          style={{
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--glass-border)',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* 关闭按钮 */}
-          <button
-            onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full transition-all hover:scale-110"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <X size={16} />
-          </button>
-
-          {/* 头像 */}
-          <div className="mx-auto mb-4 h-32 w-32 overflow-hidden rounded-xl" style={{ background: 'var(--bg-surface)' }}>
-            {profileUrl && !imgError ? (
-              <img
-                src={profileUrl}
-                alt={person?.name || ''}
-                className="h-full w-full object-cover"
-                onError={() => setImgError(true)}
-              />
-            ) : (
-              <div
-                className="flex h-full w-full items-center justify-center"
-                style={{
-                  background: 'linear-gradient(135deg, var(--neon-blue-4), var(--neon-blue-8))',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                <User size={48} strokeWidth={1.5} />
-              </div>
-            )}
-          </div>
-
-          {/* 信息 */}
-          <div className="text-center">
-            <h3
-              className="text-lg font-bold"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {person?.name || t('castGrid.unknown')}
-            </h3>
-            {person?.orig_name && person.orig_name !== person.name && (
-              <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {person.orig_name}
-              </p>
-            )}
-
-            {/* 霓虹分隔线 */}
-            <div
-              className="mx-auto my-3 h-[2px] w-16 rounded-full"
-              style={{
-                background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple), transparent)',
-                boxShadow: '0 0 6px var(--neon-blue-30)',
-              }}
-            />
-
-            {/* 角色信息 */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <span
-                  className={clsx(
-                    'rounded-lg px-3 py-1 text-xs font-semibold',
-                  )}
-                  style={{
-                    background: mp.role === 'director'
-                      ? 'rgba(234, 179, 8, 0.12)'
-                      : mp.role === 'writer'
-                        ? 'rgba(147, 197, 253, 0.12)'
-                        : 'var(--neon-blue-4)',
-                    border: '1px solid var(--border-default)',
-                    color: mp.role === 'director'
-                      ? '#FBBF24'
-                      : mp.role === 'writer'
-                        ? '#93C5FD'
-                        : 'var(--text-secondary)',
-                  }}
-                >
-                  {getRoleLabel(mp.role)}
-                </span>
-              </div>
-
-              {mp.character && (
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {t('castGrid.playAs')} <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{mp.character}</span>
-                </p>
-              )}
-
-              {person?.tmdb_id > 0 && (
-                <a
-                  href={`https://www.themoviedb.org/person/${person.tmdb_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all hover:opacity-80"
-                  style={{
-                    background: 'rgba(1,180,228,0.12)',
-                    color: '#01b4e4',
-                  }}
-                >
-                  🎬 {t('castGrid.viewOnTMDb')}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}

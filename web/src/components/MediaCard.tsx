@@ -132,7 +132,9 @@ export default function MediaCard({ media, series }: MediaCardProps) {
           />
 
           {/* 海报区域 */}
-          <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-theme-bg-surface">
+          <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl bg-theme-bg-surface isolate"
+            style={{ transform: 'translateZ(0)' }}
+          >
             {hasPoster ? (
               <img
                 src={posterUrl}
@@ -194,20 +196,21 @@ export default function MediaCard({ media, series }: MediaCardProps) {
               </button>
             </div>
 
-            {/* 分辨率标签（仅电影） */}
+            {/* 分辨率标签（仅电影）— 使用 isolate 隔离 3D 变换影响 */}
             {!isSeries && media!.resolution && (
-              <span className="badge-neon absolute right-2 top-2">
+              <span className="badge-neon absolute right-2 top-2 z-20" style={{ transform: 'translateZ(0)' }}>
                 {media!.resolution}
               </span>
             )}
 
             {/* 剧集合集标签 */}
             {isSeries && seriesData && seriesData.season_count > 0 && (
-              <span className="absolute left-2 top-2 rounded-md px-2 py-0.5 text-xs font-medium backdrop-blur-md"
+              <span className="absolute left-2 top-2 z-20 rounded-md px-2 py-0.5 text-xs font-medium backdrop-blur-md"
                 style={{
                   background: 'rgba(0,0,0,0.65)',
                   color: 'rgba(255,255,255,0.9)',
                   border: '1px solid rgba(255,255,255,0.15)',
+                  transform: 'translateZ(0)',
                 }}
               >
                 {seriesData.season_count} 季 · {seriesData.episode_count} 集
@@ -225,38 +228,32 @@ export default function MediaCard({ media, series }: MediaCardProps) {
           </div>
 
           {/* 信息区域 */}
-          <div className="p-3">
+          <div className="px-2 pt-2.5 pb-2">
             <h3
-              className="truncate text-sm font-medium text-theme-primary transition-colors duration-200 hover:text-neon cursor-pointer"
+              className="truncate text-sm font-medium leading-snug text-theme-primary transition-colors duration-200 hover:text-neon cursor-pointer"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(detailTo) }}
-              title="点击查看详情"
+              title={title}
             >
               {title}
             </h3>
-            <div className="mt-1 flex items-center gap-2 text-xs text-theme-secondary">
-              {year > 0 && <span>{year}</span>}
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-theme-secondary overflow-hidden">
+              {year > 0 && <span className="flex-shrink-0">{year}</span>}
               {rating > 0 && (
                 <>
-                  <span className="text-neon-blue/30">·</span>
-                  <span className="text-yellow-400">★ {rating.toFixed(1)}</span>
+                  <span className="text-neon-blue/30 flex-shrink-0">·</span>
+                  <span className="text-yellow-400 flex-shrink-0">★ {rating.toFixed(1)}</span>
                 </>
               )}
               {!isSeries && media!.duration > 0 && (
                 <>
-                  <span className="text-neon-blue/30">·</span>
-                  <span>{formatDuration(media!.duration)}</span>
-                </>
-              )}
-              {!isSeries && media!.file_size > 0 && (
-                <>
-                  <span className="text-neon-blue/30">·</span>
-                  <span>{formatSize(media!.file_size)}</span>
+                  <span className="text-neon-blue/30 flex-shrink-0">·</span>
+                  <span className="flex-shrink-0">{formatDuration(media!.duration)}</span>
                 </>
               )}
               {isSeries && seriesData && seriesData.episode_count > 0 && (
                 <>
-                  <span className="text-neon-blue/30">·</span>
-                  <span>{seriesData.episode_count} 集</span>
+                  <span className="text-neon-blue/30 flex-shrink-0">·</span>
+                  <span className="flex-shrink-0">{seriesData.episode_count} 集</span>
                 </>
               )}
             </div>

@@ -565,6 +565,21 @@ const zhCN: Record<string, string> = {
   'castGrid.roleActor': '演员',
   'castGrid.roleWriter': '编剧',
   'castGrid.viewOnTMDb': '在 TMDb 查看详情',
+  'castGrid.worksCount': '共 {count} 部作品',
+  'castGrid.noWorks': '暂无收录该演员的作品',
+  'castGrid.movies': '电影',
+  'castGrid.tvShows': '剧集',
+
+  // ==================== 演员详情页 ====================
+  'personDetail.notFound': '未找到该演员信息',
+  'personDetail.goBack': '返回',
+  'personDetail.worksCount': '共 {count} 部作品',
+  'personDetail.movieCount': '{count} 部电影',
+  'personDetail.seriesCount': '{count} 部剧集',
+  'personDetail.viewOnTMDb': '在 TMDb 查看详情',
+  'personDetail.noWorks': '暂无收录该演员的作品',
+  'personDetail.movies': '电影作品',
+  'personDetail.tvShows': '剧集作品',
 
   // ==================== 访问日志 ====================
   'accessLogs.title': '访问日志',

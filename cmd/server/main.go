@@ -153,6 +153,10 @@ func main() {
 		api.GET("/series/:id/persons", handlers.Series.GetPersons)
 		api.GET("/media/:id/persons", handlers.Media.GetPersons)
 
+		// 演员作品
+		api.GET("/persons/:id", handlers.Media.GetPersonDetail)
+		api.GET("/persons/:id/media", handlers.Media.GetPersonMedia)
+
 		// 字幕
 		api.GET("/subtitle/:id/tracks", handlers.Subtitle.ListTracks)
 		api.GET("/subtitle/:id/extract/:index", handlers.Subtitle.ExtractTrack)
@@ -568,6 +572,9 @@ func main() {
 		admin.POST("/subtitle-preprocess/tasks/batch-delete", handlers.SubtitlePreprocess.BatchDeleteTasks)
 		admin.POST("/subtitle-preprocess/tasks/batch-cancel", handlers.SubtitlePreprocess.BatchCancelTasks)
 		admin.POST("/subtitle-preprocess/tasks/batch-retry", handlers.SubtitlePreprocess.BatchRetryTasks)
+		admin.POST("/subtitle-preprocess/retry-all-failed", handlers.SubtitlePreprocess.RetryAllFailed)
+		admin.DELETE("/subtitle-preprocess/tasks/by-status/:status", handlers.SubtitlePreprocess.DeleteByStatus)
+		admin.GET("/subtitle-preprocess/asr-health", handlers.SubtitlePreprocess.CheckASRHealth)
 
 	}
 

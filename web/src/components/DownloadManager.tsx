@@ -88,7 +88,47 @@ export default function DownloadManager() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-neon-blue" /></div>
+    return (
+      <div className="space-y-6 animate-fade-in">
+        {/* 队列概览骨架 */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl p-4 text-center" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+              <div className="skeleton mx-auto h-7 w-12 rounded-lg" />
+              <div className="skeleton mx-auto mt-2 h-3 w-10 rounded" />
+            </div>
+          ))}
+        </div>
+        {/* 标题区骨架 */}
+        <div className="flex items-center gap-2">
+          <div className="skeleton h-5 w-5 rounded" />
+          <div className="skeleton h-6 w-24 rounded-lg flex-1" />
+          <div className="skeleton h-9 w-24 rounded-lg" />
+        </div>
+        {/* 下载列表骨架 */}
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+              <div className="flex items-center gap-3">
+                <div className="skeleton h-4 w-4 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="skeleton h-4 w-1/3 rounded" />
+                    <div className="skeleton h-3 w-12 rounded" />
+                  </div>
+                  <div className="skeleton h-1.5 w-full rounded-full" />
+                  <div className="flex items-center justify-between">
+                    <div className="skeleton h-3 w-24 rounded" />
+                    <div className="skeleton h-3 w-16 rounded" />
+                  </div>
+                </div>
+                <div className="skeleton h-8 w-8 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (

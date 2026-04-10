@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
@@ -111,5 +113,29 @@ func (r *SubtitlePreprocessRepo) FindByIDs(ids []string) ([]model.SubtitlePrepro
 // DeleteByIDs 批量删除任务（仅删除非运行中的任务）
 func (r *SubtitlePreprocessRepo) DeleteByIDs(ids []string) (int64, error) {
 	result := r.db.Where("id IN ? AND status != ?", ids, "running").Delete(&model.SubtitlePreprocessTask{})
+	return result.RowsAffected, result.Error
+}
+
+// RetryAllFailed 将所有失败任务重置为 pending
+func (r *SubtitlePreprocessRepo) RetryAllFailed() ([]model.SubtitlePreprocessTask, error) {
+	// 先查出所有失败任务
+	var tasks []model.SubtitlePreprocessTask
+	if err := r.db.Where("status = ?", "failed").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	// 批量更新状态
+	if len(tasks) > 0 {
+		r.db.Model(&model.SubtitlePreprocessTask{}).Where("status = ?", "failed").
+			Updates(map[string]interface{}{"status": "pending", "error": "", "message": "重试中..."})
+	}
+	return tasks, nil
+}
+
+// DeleteByStatus 按状态批量删除任务（不允许删除 running 状态）
+func (r *SubtitlePreprocessRepo) DeleteByStatus(status string) (int64, error) {
+	if status == "running" {
+		return 0, fmt.Errorf("不允许删除运行中的任务")
+	}
+	result := r.db.Where("status = ?", status).Delete(&model.SubtitlePreprocessTask{})
 	return result.RowsAffected, result.Error
 }

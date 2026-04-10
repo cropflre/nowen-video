@@ -348,56 +348,37 @@ export default function BrowsePage() {
 
       {/* ===== 统计卡片 ===== */}
       <motion.div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+        className="grid grid-cols-4 gap-3"
         variants={staggerContainerVariants}
         initial="hidden"
         animate="visible"
       >
+        {[
+          { key: '' as const, label: '全部', icon: Layers, iconClass: 'text-neon-blue', gradientColor: 'var(--neon-blue)', value: stats.total },
+          { key: 'movie' as const, label: '电影', icon: Film, iconClass: 'text-purple-400', gradientColor: 'var(--neon-purple)', value: stats.movieCount },
+          { key: 'series' as const, label: '剧集', icon: Tv, iconClass: 'text-emerald-400', gradientColor: 'var(--neon-blue)', value: stats.seriesCount },
+        ].map((card) => (
+          <motion.div
+            key={card.key}
+            variants={staggerItemVariants}
+            className="relative overflow-hidden rounded-xl p-4 cursor-pointer transition-all duration-300 hover:shadow-card-hover"
+            style={{
+              background: 'var(--glass-bg)',
+              border: `1px solid ${mediaType === card.key ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}`,
+            }}
+            onClick={() => setMediaType(mediaType === card.key ? '' : card.key as '' | 'movie' | 'series')}
+          >
+            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: `linear-gradient(90deg, transparent, ${card.gradientColor}, transparent)` }} />
+            <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+              <card.icon size={14} className={card.iconClass} />
+              {card.label}
+            </div>
+            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{card.value}</div>
+          </motion.div>
+        ))}
         <motion.div
           variants={staggerItemVariants}
-          className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover cursor-pointer"
-          style={{ background: 'var(--glass-bg)', border: `1px solid ${mediaType === '' ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}` }}
-          onClick={() => setMediaType('')}
-        >
-          <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-blue), transparent)' }} />
-          <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-            <Layers size={14} className="text-neon-blue" />
-            全部
-          </div>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{stats.total}</div>
-        </motion.div>
-
-        <motion.div
-          variants={staggerItemVariants}
-          className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover cursor-pointer"
-          style={{ background: 'var(--glass-bg)', border: `1px solid ${mediaType === 'movie' ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}` }}
-          onClick={() => setMediaType(mediaType === 'movie' ? '' : 'movie')}
-        >
-          <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-purple), transparent)' }} />
-          <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-            <Film size={14} className="text-purple-400" />
-            电影
-          </div>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{stats.movieCount}</div>
-        </motion.div>
-
-        <motion.div
-          variants={staggerItemVariants}
-          className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover cursor-pointer"
-          style={{ background: 'var(--glass-bg)', border: `1px solid ${mediaType === 'series' ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}` }}
-          onClick={() => setMediaType(mediaType === 'series' ? '' : 'series')}
-        >
-          <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-blue), transparent)' }} />
-          <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-            <Tv size={14} className="text-emerald-400" />
-            剧集
-          </div>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{stats.seriesCount}</div>
-        </motion.div>
-
-        <motion.div
-          variants={staggerItemVariants}
-          className="relative overflow-hidden rounded-xl p-4 group transition-shadow duration-300 hover:shadow-card-hover"
+          className="relative overflow-hidden rounded-xl p-4 transition-all duration-300 hover:shadow-card-hover"
           style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}
         >
           <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-purple), transparent)' }} />
@@ -850,10 +831,10 @@ export default function BrowsePage() {
             // 骨架屏
             <div className={clsx(
               viewMode === 'poster'
-                ? 'grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8'
+                ? 'grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8'
                 : viewMode === 'list'
                   ? 'space-y-2'
-                  : 'grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  : 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
             )}>
               {Array.from({ length: viewMode === 'list' ? 8 : 12 }).map((_, i) => (
                 viewMode === 'list' ? (
@@ -908,7 +889,7 @@ export default function BrowsePage() {
           ) : viewMode === 'grid' ? (
             // 网格视图
             <motion.div
-              className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+              className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
               variants={staggerContainerVariants}
               initial="hidden"
               animate="visible"
@@ -916,14 +897,14 @@ export default function BrowsePage() {
               {filteredItems.map((item) => {
                 if (item.type === 'series' && item.series) {
                   return (
-                    <motion.div key={`s-${item.series.id}`} variants={staggerItemVariants}>
+                    <motion.div key={`s-${item.series.id}`} variants={staggerItemVariants} className="min-w-0">
                       <MediaCard series={item.series} />
                     </motion.div>
                   )
                 }
                 if (item.media) {
                   return (
-                    <motion.div key={`m-${item.media.id}`} variants={staggerItemVariants}>
+                    <motion.div key={`m-${item.media.id}`} variants={staggerItemVariants} className="min-w-0">
                       <MediaCard media={item.media} />
                     </motion.div>
                   )
@@ -948,7 +929,7 @@ export default function BrowsePage() {
           ) : (
             // 海报墙视图
             <motion.div
-              className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
+              className="grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
               variants={staggerContainerVariants}
               initial="hidden"
               animate="visible"
@@ -977,6 +958,7 @@ export default function BrowsePage() {
 
 // ==================== 列表视图项 ====================
 function BrowseListItem({ item }: { item: MixedItem }) {
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const isSeries = item.type === 'series'
   const media = isSeries ? undefined : item.media
   const series = isSeries ? item.series : undefined
@@ -987,6 +969,12 @@ function BrowseListItem({ item }: { item: MixedItem }) {
   const country = series?.country || media?.country || ''
   const overview = series?.overview || media?.overview || ''
   const duration = media?.duration || 0
+
+  // 解析标签列表
+  const genreList = genres ? genres.split(',').map((g: string) => g.trim()).filter(Boolean) : []
+  const MAX_VISIBLE_TAGS = 3
+  const hasMoreTags = genreList.length > MAX_VISIBLE_TAGS
+  const visibleTags = tagsExpanded ? genreList : genreList.slice(0, MAX_VISIBLE_TAGS)
 
   const linkTo = series
     ? `/series/${series.id}`
@@ -1063,22 +1051,37 @@ function BrowseListItem({ item }: { item: MixedItem }) {
             </>
           )}
         </div>
-        {/* 类型标签 */}
-        {genres && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {genres.split(',').slice(0, 4).map((g) => {
-              const genre = g.trim()
-              if (!genre) return null
-              return (
-                <span
-                  key={genre}
-                  className="rounded px-1.5 py-0.5 text-[10px]"
-                  style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
-                >
-                  {genre}
-                </span>
-              )
-            })}
+        {/* 类型标签（支持展开/收缩） */}
+        {genreList.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {visibleTags.map((genre) => (
+              <span
+                key={genre}
+                className="rounded px-1.5 py-0.5 text-[10px] transition-all duration-200"
+                style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
+              >
+                {genre}
+              </span>
+            ))}
+            {hasMoreTags && (
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTagsExpanded(!tagsExpanded) }}
+                className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-all duration-200 hover:brightness-125 cursor-pointer"
+                style={{
+                  background: tagsExpanded ? 'var(--neon-blue-10)' : 'var(--neon-blue-4)',
+                  color: 'var(--neon-blue)',
+                  border: '1px solid var(--neon-blue-10)',
+                }}
+                title={tagsExpanded ? '收起标签' : `展开全部 ${genreList.length} 个标签`}
+              >
+                {tagsExpanded ? '收起' : `+${genreList.length - MAX_VISIBLE_TAGS}`}
+                <ChevronDown
+                  size={10}
+                  className="transition-transform duration-200"
+                  style={{ transform: tagsExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                />
+              </button>
+            )}
           </div>
         )}
         {/* 简介 */}

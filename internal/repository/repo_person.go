@@ -117,3 +117,27 @@ func (r *MediaPersonRepo) ListByPersonID(personID string) ([]model.MediaPerson, 
 	err := r.db.Where("person_id = ?", personID).Find(&mps).Error
 	return mps, err
 }
+
+// ListMediaByPersonID 根据 person_id 查询该演员参演的所有影视作品（电影）
+func (r *MediaPersonRepo) ListMediaByPersonID(personID string) ([]model.Media, error) {
+	var media []model.Media
+	err := r.db.
+		Where("id IN (?)",
+			r.db.Model(&model.MediaPerson{}).Select("media_id").Where("person_id = ? AND media_id != ''", personID),
+		).
+		Order("year DESC, created_at DESC").
+		Find(&media).Error
+	return media, err
+}
+
+// ListSeriesByPersonID 根据 person_id 查询该演员参演的所有剧集合集
+func (r *MediaPersonRepo) ListSeriesByPersonID(personID string) ([]model.Series, error) {
+	var series []model.Series
+	err := r.db.
+		Where("id IN (?)",
+			r.db.Model(&model.MediaPerson{}).Select("series_id").Where("person_id = ? AND series_id != ''", personID),
+		).
+		Order("year DESC, created_at DESC").
+		Find(&series).Error
+	return series, err
+}

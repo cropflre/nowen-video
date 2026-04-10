@@ -28,6 +28,8 @@ import {
   GalleryHorizontal,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { motion, AnimatePresence } from 'framer-motion'
+import { easeSmooth, durations } from '@/lib/motion'
 
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -291,26 +293,40 @@ export default function SeriesDetailPage() {
 
   if (loading || !series) {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <div className="skeleton h-[420px] rounded-2xl" />
-        <div className="flex gap-6 pt-4">
-          <div className="skeleton hidden h-72 w-48 rounded-xl sm:block" />
-          <div className="flex-1 space-y-4">
-            <div className="skeleton h-10 w-2/3 rounded-lg" />
-            <div className="skeleton h-5 w-1/3 rounded-lg" />
-            <div className="flex gap-3">
-              <div className="skeleton h-12 w-28 rounded-xl" />
-              <div className="skeleton h-12 w-24 rounded-xl" />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="skeleton"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: durations.fast }}
+          className="space-y-6"
+        >
+          <div className="skeleton h-[420px] rounded-2xl" />
+          <div className="flex gap-6 pt-4">
+            <div className="skeleton hidden h-72 w-48 rounded-xl sm:block" />
+            <div className="flex-1 space-y-4">
+              <div className="skeleton h-10 w-2/3 rounded-lg" />
+              <div className="skeleton h-5 w-1/3 rounded-lg" />
+              <div className="flex gap-3">
+                <div className="skeleton h-12 w-28 rounded-xl" />
+                <div className="skeleton h-12 w-24 rounded-xl" />
+              </div>
+              <div className="skeleton h-20 w-full rounded-xl" />
             </div>
-            <div className="skeleton h-20 w-full rounded-xl" />
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </AnimatePresence>
     )
   }
 
   return (
-    <div className="animate-fade-in -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: durations.page, ease: easeSmooth as unknown as number[] }}
+      className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
+    >
       {/* ============================================================
           英雄区 —— 全宽背景图 + 海报 + 信息（与电影详情页一致）
           ============================================================ */}
@@ -1127,7 +1143,7 @@ export default function SeriesDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 

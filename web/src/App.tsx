@@ -24,14 +24,42 @@ const PulsePage = lazy(() => import('@/pages/PulsePage'))
 const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
 const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
 const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
+const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 
-// 页面加载中的占位组件
+// 页面加载中的占位组件 — 品牌化霓虹脉冲环
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--neon-blue)', borderTopColor: 'transparent' }} />
-        <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>加载中...</span>
+    <div className="flex items-center justify-center min-h-[60vh] animate-fade-in">
+      <div className="flex flex-col items-center gap-4">
+        {/* 双层霓虹旋转环 */}
+        <div className="relative h-12 w-12">
+          <div
+            className="absolute inset-0 rounded-full animate-glow-pulse"
+            style={{ border: '2px solid var(--neon-blue-20)' }}
+          />
+          <div
+            className="absolute inset-0 rounded-full animate-spin"
+            style={{
+              border: '2px solid transparent',
+              borderTopColor: 'var(--neon-blue)',
+              borderRightColor: 'var(--neon-blue-40)',
+            }}
+          />
+          <div
+            className="absolute inset-2 rounded-full"
+            style={{
+              border: '1.5px solid transparent',
+              borderBottomColor: 'var(--neon-purple)',
+              animation: 'spin 1.5s linear infinite reverse',
+            }}
+          />
+        </div>
+        <span
+          className="text-sm font-medium animate-neon-breathe"
+          style={{ color: 'var(--text-tertiary)' }}
+        >
+          加载中...
+        </span>
       </div>
     </div>
   )
@@ -92,6 +120,7 @@ export default function App() {
               <Route path="preprocess" element={<PreprocessPage />} />
               <Route path="subtitle-preprocess" element={<SubtitlePreprocessPage />} />
               <Route path="browse" element={<BrowsePage />} />
+              <Route path="person/:id" element={<PersonDetailPage />} />
             </Route>
 
             {/* 未匹配路由 */}
