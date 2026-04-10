@@ -430,42 +430,19 @@ func (h *AdminHandler) isAllowedBrowsePath(dir string) bool {
 		return true
 	}
 
-	// 常见的安全挂载点/根路径允许
-	safeRoots := []string{
-		"/mnt", "/media", "/home", "/srv", "/data", "/nas", "/share", "/volume",
-		"/opt", "/var/lib", "/storage",
+	// 黑名单模式：只禁止已知的敏感系统目录，其余均允许
+	// 这样可以兼容各种 NAS/Docker 挂载路径（如 /18t, /volume1 等）
+	blockedRoots := []string{
+		"/proc", "/sys", "/dev", "/run", "/boot", "/sbin", "/bin",
+		"/lib", "/lib64", "/snap",
 	}
-	for _, root := range safeRoots {
-		if strings.HasPrefix(dir, root) {
-			return true
+	for _, blocked := range blockedRoots {
+		if dir == blocked || strings.HasPrefix(dir, blocked+"/") {
+			return false
 		}
 	}
 
-	// 已配置的媒体库路径及其父目录允许
-	libraries, err := h.libraryRepo.List()
-	if err == nil {
-		for _, lib := range libraries {
-			libPath := filepath.Clean(lib.Path)
-			// 允许媒体库路径本身及其子目录
-			if strings.HasPrefix(dir, libPath) {
-				return true
-			}
-			// 允许媒体库路径的父目录链（用于导航到媒体库）
-			if strings.HasPrefix(libPath, dir) {
-				return true
-			}
-		}
-	}
-
-	// 应用数据目录允许
-	if h.cfg != nil {
-		dataDir := filepath.Clean(h.cfg.App.DataDir)
-		if strings.HasPrefix(dir, dataDir) || strings.HasPrefix(dataDir, dir) {
-			return true
-		}
-	}
-
-	return false
+	return true
 }
 
 // isSensitiveDir 检查是否为敏感系统目录

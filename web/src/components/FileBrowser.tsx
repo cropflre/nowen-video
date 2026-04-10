@@ -42,6 +42,7 @@ export default function FileBrowser({ open, onClose, onSelect, initialPath }: Fi
       setItems(data.items || [])
     } catch {
       setError('无法访问该目录，请检查路径是否存在及权限')
+      setItems([])
     } finally {
       setLoading(false)
     }
