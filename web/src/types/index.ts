@@ -1687,3 +1687,38 @@ export interface SubExtractProgressData {
   error?: string
 }
 
+// ==================== 电影系列合集 ====================
+
+/** 电影系列合集 */
+export interface MovieCollection {
+  id: string
+  name: string
+  overview: string
+  poster_path: string
+  tmdb_coll_id: number
+  media_count: number
+  auto_matched: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** 合集中的电影项 */
+export interface CollectionMediaItem {
+  id: string
+  title: string
+  orig_title: string
+  year: number
+  rating: number
+  poster_path: string
+  runtime: number
+  overview: string
+  genres: string
+  is_current: boolean
+}
+
+/** 合集及其包含的电影 */
+export interface CollectionWithMedia {
+  collection: MovieCollection
+  media: CollectionMediaItem[]
+}
+

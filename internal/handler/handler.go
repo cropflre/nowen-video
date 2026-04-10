@@ -50,6 +50,8 @@ type Handlers struct {
 	Preprocess *PreprocessHandler
 	// 字幕预处理
 	SubtitlePreprocess *SubtitlePreprocessHandler
+	// 电影系列合集
+	Collection *CollectionHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
@@ -109,5 +111,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Preprocess: NewPreprocessHandler(services.Preprocess),
 		// 字幕预处理
 		SubtitlePreprocess: NewSubtitlePreprocessHandler(services.SubtitlePreprocess),
+		// 电影系列合集
+		Collection: &CollectionHandler{collectionService: services.Collection, logger: logger},
 	}
 }

@@ -83,3 +83,22 @@ export const personApi = {
   getMedia: (personId: string) =>
     api.get<{ media: Media[]; series: Series[] }>(`/persons/${personId}/media`),
 }
+
+// ==================== 电影系列合集 ====================
+export const collectionApi = {
+  /** 获取电影所属的合集 */
+  getMediaCollection: (mediaId: string) =>
+    api.get<{ data: import('@/types').CollectionWithMedia | null }>(`/media/${mediaId}/collection`),
+
+  /** 获取合集详情 */
+  getDetail: (collectionId: string) =>
+    api.get<{ data: import('@/types').CollectionWithMedia }>(`/collections/${collectionId}`),
+
+  /** 获取合集列表 */
+  list: (params?: { page?: number; size?: number }) =>
+    api.get<{ data: import('@/types').MovieCollection[]; total: number }>('/collections', { params }),
+
+  /** 搜索合集 */
+  search: (keyword: string, limit = 10) =>
+    api.get<{ data: import('@/types').MovieCollection[] }>('/collections/search', { params: { keyword, limit } }),
+}

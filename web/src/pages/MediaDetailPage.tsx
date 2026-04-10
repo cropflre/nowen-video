@@ -4,7 +4,7 @@ import { mediaApi, userApi, streamApi, playlistApi, recommendApi, adminApi } fro
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, WatchHistory, TechSpecs, FileDetail, LibraryInfo, PlaybackStatsInfo } from '@/types'
-import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal, CastGrid } from '@/components/media'
+import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal, CastGrid, CollectionCarousel } from '@/components/media'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
@@ -387,6 +387,11 @@ export default function MediaDetailPage() {
           loading={enhancedLoading}
           isAdmin={user?.role === 'admin'}
         />
+
+        {/* 系列合集（自动识别同系列电影） */}
+        {media.media_type === 'movie' && id && (
+          <CollectionCarousel mediaId={id} />
+        )}
 
         {/* 字幕管理入口（管理员可见） */}
         {user?.role === 'admin' && (

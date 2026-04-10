@@ -81,6 +81,28 @@ func (s *Series) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// MovieCollection 电影系列合集（如"逃学威龙"系列、"速度与激情"系列）
+type MovieCollection struct {
+	ID          string    `json:"id" gorm:"primaryKey;type:text"`
+	Name        string    `json:"name" gorm:"index;type:text;not null"` // 合集名称（如"逃学威龙"）
+	Overview    string    `json:"overview" gorm:"type:text"`            // 合集简介
+	PosterPath  string    `json:"poster_path" gorm:"type:text"`         // 合集海报（取第一部的海报）
+	TMDbCollID  int       `json:"tmdb_coll_id" gorm:"index"`            // TMDb Collection ID
+	MediaCount  int       `json:"media_count"`                          // 包含的电影数量
+	AutoMatched bool      `json:"auto_matched" gorm:"default:true"`     // 是否自动匹配生成
+	CreatedAt   time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt   time.Time `json:"updated_at"`
+
+	Media []Media `json:"media,omitempty" gorm:"foreignKey:CollectionID"`
+}
+
+func (mc *MovieCollection) BeforeCreate(tx *gorm.DB) error {
+	if mc.ID == "" {
+		mc.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // Media 媒体项（电影/剧集）
 type Media struct {
 	ID           string  `json:"id" gorm:"primaryKey;type:text"`
@@ -125,6 +147,8 @@ type Media struct {
 	ScrapeStatus   string     `json:"scrape_status" gorm:"type:text;default:pending"` // pending / scraped / failed / manual
 	ScrapeAttempts int        `json:"scrape_attempts"`                                // 刮削尝试次数
 	LastScrapeAt   *time.Time `json:"last_scrape_at"`                                 // 最后一次刮削时间
+	// 电影系列合集
+	CollectionID string `json:"collection_id" gorm:"index;type:text"` // 所属电影合集 ID
 	// 剧集专属字段
 	SeriesID     string `json:"series_id" gorm:"index;type:text"`
 	SeasonNum    int    `json:"season_num"`
@@ -135,8 +159,9 @@ type Media struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
-	Library Library `json:"-" gorm:"foreignKey:LibraryID"`
-	Series  *Series `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+	Library    Library          `json:"-" gorm:"foreignKey:LibraryID"`
+	Series     *Series          `json:"series,omitempty" gorm:"foreignKey:SeriesID"`
+	Collection *MovieCollection `json:"collection,omitempty" gorm:"foreignKey:CollectionID"`
 }
 
 // DisplayTitle 返回带集数信息的显示标题
@@ -555,7 +580,7 @@ func (t *SubtitlePreprocessTask) BeforeCreate(tx *gorm.DB) error {
 
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&User{},
 		&Library{},
 		&SystemSetting{},
@@ -590,5 +615,85 @@ func AutoMigrate(db *gorm.DB) error {
 		&PreprocessTask{},
 		// 字幕预处理
 		&SubtitlePreprocessTask{},
-	)
+		// 电影系列合集
+		&MovieCollection{},
+	); err != nil {
+		return err
+	}
+
+	// SQLite 列补全安全网：GORM AutoMigrate 在 SQLite 上有时无法正确添加新列
+	// （尤其是从旧版数据库升级时），这里手动检查并补全关键缺失列
+	ensureSQLiteColumns(db)
+
+	return nil
+}
+
+// ensureSQLiteColumns 检查并补全 SQLite 表中可能缺失的列
+// GORM 的 AutoMigrate 对 SQLite 的 ALTER TABLE ADD COLUMN 支持不完善，
+// 当旧数据库文件残留时，新增字段可能静默丢失，导致运行时 SQL 报错
+func ensureSQLiteColumns(db *gorm.DB) {
+	// 定义需要检查的表和列（表名 -> []{ 列名, 列定义 }）
+	requiredColumns := map[string][]struct {
+		Column string
+		DDL    string
+	}{
+		"media": {
+			{Column: "tmdb_id", DDL: "ALTER TABLE `media` ADD COLUMN `tmdb_id` integer DEFAULT 0"},
+			{Column: "imdb_id", DDL: "ALTER TABLE `media` ADD COLUMN `imdb_id` text DEFAULT ''"},
+			{Column: "douban_id", DDL: "ALTER TABLE `media` ADD COLUMN `douban_id` text DEFAULT ''"},
+			{Column: "bangumi_id", DDL: "ALTER TABLE `media` ADD COLUMN `bangumi_id` integer DEFAULT 0"},
+			{Column: "country", DDL: "ALTER TABLE `media` ADD COLUMN `country` text DEFAULT ''"},
+			{Column: "language", DDL: "ALTER TABLE `media` ADD COLUMN `language` text DEFAULT ''"},
+			{Column: "tagline", DDL: "ALTER TABLE `media` ADD COLUMN `tagline` text DEFAULT ''"},
+			{Column: "studio", DDL: "ALTER TABLE `media` ADD COLUMN `studio` text DEFAULT ''"},
+			{Column: "trailer_url", DDL: "ALTER TABLE `media` ADD COLUMN `trailer_url` text DEFAULT ''"},
+			{Column: "stack_group", DDL: "ALTER TABLE `media` ADD COLUMN `stack_group` text DEFAULT ''"},
+			{Column: "stack_order", DDL: "ALTER TABLE `media` ADD COLUMN `stack_order` integer DEFAULT 0"},
+			{Column: "version_tag", DDL: "ALTER TABLE `media` ADD COLUMN `version_tag` text DEFAULT ''"},
+			{Column: "version_group", DDL: "ALTER TABLE `media` ADD COLUMN `version_group` text DEFAULT ''"},
+			{Column: "scrape_status", DDL: "ALTER TABLE `media` ADD COLUMN `scrape_status` text DEFAULT 'pending'"},
+			{Column: "scrape_attempts", DDL: "ALTER TABLE `media` ADD COLUMN `scrape_attempts` integer DEFAULT 0"},
+			{Column: "last_scrape_at", DDL: "ALTER TABLE `media` ADD COLUMN `last_scrape_at` datetime"},
+			{Column: "collection_id", DDL: "ALTER TABLE `media` ADD COLUMN `collection_id` text DEFAULT ''"},
+			{Column: "stream_url", DDL: "ALTER TABLE `media` ADD COLUMN `stream_url` text DEFAULT ''"},
+		},
+		"series": {
+			{Column: "tmdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tmdb_id` integer DEFAULT 0"},
+			{Column: "bangumi_id", DDL: "ALTER TABLE `series` ADD COLUMN `bangumi_id` integer DEFAULT 0"},
+			{Column: "douban_id", DDL: "ALTER TABLE `series` ADD COLUMN `douban_id` text DEFAULT ''"},
+			{Column: "imdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `imdb_id` text DEFAULT ''"},
+			{Column: "country", DDL: "ALTER TABLE `series` ADD COLUMN `country` text DEFAULT ''"},
+			{Column: "language", DDL: "ALTER TABLE `series` ADD COLUMN `language` text DEFAULT ''"},
+			{Column: "studio", DDL: "ALTER TABLE `series` ADD COLUMN `studio` text DEFAULT ''"},
+			{Column: "tagline", DDL: "ALTER TABLE `series` ADD COLUMN `tagline` text DEFAULT ''"},
+		},
+	}
+
+	for table, columns := range requiredColumns {
+		for _, col := range columns {
+			if !columnExists(db, table, col.Column) {
+				if err := db.Exec(col.DDL).Error; err != nil {
+					// 列可能已存在（并发或其他原因），忽略 "duplicate column" 错误
+					fmt.Printf("[数据库迁移] 补全列 %s.%s 失败（可忽略）: %v\n", table, col.Column, err)
+				} else {
+					fmt.Printf("[数据库迁移] 已补全缺失列: %s.%s\n", table, col.Column)
+				}
+			}
+		}
+	}
+}
+
+// columnExists 检查 SQLite 表中是否存在指定列
+func columnExists(db *gorm.DB, table, column string) bool {
+	type ColumnInfo struct {
+		Name string `gorm:"column:name"`
+	}
+	var columns []ColumnInfo
+	db.Raw("PRAGMA table_info(`" + table + "`)").Scan(&columns)
+	for _, c := range columns {
+		if c.Name == column {
+			return true
+		}
+	}
+	return false
 }

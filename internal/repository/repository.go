@@ -41,6 +41,8 @@ type Repositories struct {
 	// V6: P1~P3 新增功能
 	Preprocess         *PreprocessRepo
 	SubtitlePreprocess *SubtitlePreprocessRepo
+	// 电影系列合集
+	MovieCollection *MovieCollectionRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -79,6 +81,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		// V6: P1~P3 新增功能
 		Preprocess:         &PreprocessRepo{db: db},
 		SubtitlePreprocess: &SubtitlePreprocessRepo{db: db},
+		// 电影系列合集
+		MovieCollection: &MovieCollectionRepo{db: db},
 	}
 }
 

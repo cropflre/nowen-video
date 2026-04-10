@@ -64,6 +64,8 @@ type Services struct {
 	Preprocess         *PreprocessService
 	SubtitlePreprocess *SubtitlePreprocessService
 	GPUMonitor         *GPUMonitor
+	// 电影系列合集
+	Collection *CollectionService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -315,6 +317,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Preprocess:         preprocessService,
 		SubtitlePreprocess: subtitlePreprocessService,
 		GPUMonitor:         gpuMonitor,
+		// 电影系列合集
+		Collection: NewCollectionService(repos.MovieCollection, repos.Media, logger),
 	}
 
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）

@@ -290,6 +290,12 @@ func main() {
 
 		// ==================== V3: AI 场景识别与内容理解 ====================
 		api.POST("/media/:id/ai/chapters", handlers.AIScene.GenerateChapters)
+
+		// ==================== 电影系列合集 ====================
+		api.GET("/media/:id/collection", handlers.Collection.GetMediaCollection)
+		api.GET("/collections/:id", handlers.Collection.GetCollectionDetail)
+		api.GET("/collections", handlers.Collection.ListCollections)
+		api.GET("/collections/search", handlers.Collection.SearchCollections)
 		api.GET("/media/:id/chapters", handlers.AIScene.GetChapters)
 		api.POST("/media/:id/ai/highlights", handlers.AIScene.ExtractHighlights)
 		api.GET("/media/:id/highlights", handlers.AIScene.GetHighlights)
@@ -578,6 +584,14 @@ func main() {
 		admin.POST("/subtitle-preprocess/retry-all-failed", handlers.SubtitlePreprocess.RetryAllFailed)
 		admin.DELETE("/subtitle-preprocess/tasks/by-status/:status", handlers.SubtitlePreprocess.DeleteByStatus)
 		admin.GET("/subtitle-preprocess/asr-health", handlers.SubtitlePreprocess.CheckASRHealth)
+
+		// ==================== 电影系列合集管理 ====================
+		admin.POST("/collections", handlers.Collection.CreateCollection)
+		admin.PUT("/collections/:id", handlers.Collection.UpdateCollection)
+		admin.DELETE("/collections/:id", handlers.Collection.DeleteCollection)
+		admin.POST("/collections/:id/media", handlers.Collection.AddMedia)
+		admin.DELETE("/collections/:id/media/:mediaId", handlers.Collection.RemoveMedia)
+		admin.POST("/collections/auto-match", handlers.Collection.AutoMatch)
 
 	}
 
