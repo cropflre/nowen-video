@@ -327,6 +327,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
 	svcs.Library.SetSeriesService(svcs.Series)
 
+	// 延迟注入：LibraryService 需要 CollectionService（用于扫描+刮削后自动匹配电影系列合集）
+	svcs.Library.SetCollectionService(svcs.Collection)
+
 	// 延迟注入：StreamService 需要 PreprocessService（用于自动选择预处理内容）
 	svcs.Stream.SetPreprocessService(preprocessService)
 
@@ -360,14 +363,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 				logger.Infof("扫描后自动提交 %d 个字幕预处理任务", subCount)
 			}
 		}
-
-		// 扫描后自动触发电影系列合集匹配
-		collCount, err := svcs.Collection.AutoMatchCollections()
-		if err != nil {
-			logger.Warnf("扫描后自动匹配合集失败: %v", err)
-		} else if collCount > 0 {
-			logger.Infof("扫描后自动创建 %d 个电影系列合集", collCount)
-		}
+		// 注意：电影系列合集匹配已移至 library.go 中刮削完成后执行，确保标题已更新
 	})
 
 	return svcs

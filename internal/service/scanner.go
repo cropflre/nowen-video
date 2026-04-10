@@ -259,7 +259,7 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体", library.Name, count)
 
 	// 触发预处理回调（如果已配置）
-	if s.onScanComplete != nil && count > 0 {
+	if s.onScanComplete != nil {
 		go s.onScanComplete(library.ID)
 	}
 

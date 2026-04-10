@@ -13,18 +13,19 @@ import (
 
 // LibraryService 媒体库服务
 type LibraryService struct {
-	repo          *repository.LibraryRepo
-	mediaRepo     *repository.MediaRepo
-	seriesRepo    *repository.SeriesRepo
-	favRepo       *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
-	historyRepo   *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
-	scanner       *ScannerService
-	metadata      *MetadataService
-	seriesService *SeriesService // 剧集合集服务（用于扫描后自动合并）
-	logger        *zap.SugaredLogger
-	scanning      sync.Map            // 记录正在扫描的媒体库ID
-	wsHub         *WSHub              // WebSocket事件广播
-	fileWatcher   *FileWatcherService // 文件监听服务
+	repo              *repository.LibraryRepo
+	mediaRepo         *repository.MediaRepo
+	seriesRepo        *repository.SeriesRepo
+	favRepo           *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
+	historyRepo       *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
+	scanner           *ScannerService
+	metadata          *MetadataService
+	seriesService     *SeriesService     // 剧集合集服务（用于扫描后自动合并）
+	collectionService *CollectionService // 电影系列合集服务（用于扫描后自动匹配）
+	logger            *zap.SugaredLogger
+	scanning          sync.Map            // 记录正在扫描的媒体库ID
+	wsHub             *WSHub              // WebSocket事件广播
+	fileWatcher       *FileWatcherService // 文件监听服务
 }
 
 func NewLibraryService(
@@ -62,6 +63,11 @@ func (s *LibraryService) SetFileWatcher(fw *FileWatcherService) {
 // SetSeriesService 设置剧集合集服务（延迟注入，用于扫描后自动合并重复剧集）
 func (s *LibraryService) SetSeriesService(ss *SeriesService) {
 	s.seriesService = ss
+}
+
+// SetCollectionService 设置电影系列合集服务（延迟注入，用于扫描后自动匹配系列电影）
+func (s *LibraryService) SetCollectionService(cs *CollectionService) {
+	s.collectionService = cs
 }
 
 // CleanOrphanedData 清理孤立数据：删除 library_id 指向已不存在的媒体库的 Media 和 Series 记录
@@ -260,6 +266,16 @@ func (s *LibraryService) Scan(id string) error {
 					totalMerged += r.MergedCount
 				}
 				s.logger.Infof("媒体库 %s 自动合并完成: %d 组, 共合并 %d 条重复记录", lib.Name, len(results), totalMerged)
+			}
+		}
+
+		// 第四步：自动匹配电影系列合集（在刮削完成后执行，确保标题已更新）
+		if s.collectionService != nil && lib.Type != "tvshow" {
+			collCount, err := s.collectionService.AutoMatchCollections()
+			if err != nil {
+				s.logger.Warnf("媒体库 %s 自动匹配合集失败: %v", lib.Name, err)
+			} else if collCount > 0 {
+				s.logger.Infof("媒体库 %s 自动创建 %d 个电影系列合集", lib.Name, collCount)
 			}
 		}
 	}()
@@ -477,6 +493,16 @@ func (s *LibraryService) Reindex(id string) error {
 					totalMerged += r.MergedCount
 				}
 				s.logger.Infof("媒体库 %s 重建索引后自动合并: %d 组, 共合并 %d 条", lib.Name, len(results), totalMerged)
+			}
+		}
+
+		// 重建索引后自动匹配电影系列合集
+		if s.collectionService != nil && lib.Type != "tvshow" {
+			collCount, err := s.collectionService.AutoMatchCollections()
+			if err != nil {
+				s.logger.Warnf("媒体库 %s 重建索引后自动匹配合集失败: %v", lib.Name, err)
+			} else if collCount > 0 {
+				s.logger.Infof("媒体库 %s 重建索引后自动创建 %d 个电影系列合集", lib.Name, collCount)
 			}
 		}
 	}()

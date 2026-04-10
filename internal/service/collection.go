@@ -78,6 +78,9 @@ func (s *CollectionService) GetCollectionByMediaID(mediaID string) (*CollectionW
 		})
 	}
 
+	// 清空 Preload 填充的 Media 字段，避免 JSON 序列化时 collection 内部重复包含 media 数组
+	coll.Media = nil
+
 	return result, nil
 }
 
@@ -106,6 +109,9 @@ func (s *CollectionService) GetCollectionDetail(collectionID string) (*Collectio
 			Genres:     m.Genres,
 		})
 	}
+
+	// 清空 Preload 填充的 Media 字段，避免 JSON 序列化时 collection 内部重复包含 media 数组
+	coll.Media = nil
 
 	return result, nil
 }
