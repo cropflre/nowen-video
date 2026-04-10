@@ -2,6 +2,9 @@
 bin/
 dist/
 
+# TypeScript 增量编译缓存
+*.tsbuildinfo
+
 # 数据文件
 data/
 cache/
