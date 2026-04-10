@@ -588,7 +588,8 @@ export interface ContentRating {
   level: '' | 'G' | 'PG' | 'PG-13' | 'R' | 'NC-17'
 }
 
-// ==================== TMDb搜索结果（手动匹配） ====================export interface TMDbSearchResult {
+// ==================== TMDb搜索结果（手动匹配） ====================
+export interface TMDbSearchResult {
   id: number
   title: string
   name: string
