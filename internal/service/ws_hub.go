@@ -17,6 +17,7 @@ const (
 	EventScanProgress  = "scan_progress"  // 扫描进度（发现新文件）
 	EventScanCompleted = "scan_completed" // 扫描完成
 	EventScanFailed    = "scan_failed"    // 扫描失败
+	EventScanPhase     = "scan_phase"     // 扫描阶段变更（多步骤流程通知）
 
 	// 刮削事件
 	EventScrapeStarted   = "scrape_started"   // 刮削开始
@@ -50,10 +51,20 @@ type ScanProgressData struct {
 	LibraryName string `json:"library_name"`
 	Phase       string `json:"phase"`     // scanning / scraping / cleaning
 	Current     int    `json:"current"`   // 当前处理数
-	Total       int    `json:"total"`     // 总数（刮削时有值）
+	Total       int    `json:"total"`     // 总数
 	NewFound    int    `json:"new_found"` // 新发现的文件数
 	Cleaned     int    `json:"cleaned"`   // 清理的已删除文件数
 	Message     string `json:"message"`   // 描述信息
+}
+
+// ScanPhaseData 扫描阶段变更数据（用于多步骤流程的阶段通知）
+type ScanPhaseData struct {
+	LibraryID   string `json:"library_id"`
+	LibraryName string `json:"library_name"`
+	Phase       string `json:"phase"`        // scanning / scraping / merging / matching / completed
+	StepCurrent int    `json:"step_current"` // 当前步骤序号（从1开始）
+	StepTotal   int    `json:"step_total"`   // 总步骤数
+	Message     string `json:"message"`      // 阶段描述信息
 }
 
 // ScrapeProgressData 刮削进度数据

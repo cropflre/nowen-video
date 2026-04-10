@@ -211,7 +211,33 @@ func (s *LibraryService) Scan(id string) error {
 	go func() {
 		defer s.scanning.Delete(id)
 
+		// 计算总步骤数（根据媒体库类型动态确定）
+		stepTotal := 2 // 基础：扫描 + 刮削
+		if lib.Type == "tvshow" || lib.Type == "mixed" {
+			stepTotal++ // 自动合并剧集
+		}
+		if lib.Type != "tvshow" {
+			stepTotal++ // 自动匹配电影系列合集
+		}
+		stepCurrent := 0
+
+		// 广播阶段事件的辅助函数
+		broadcastPhase := func(phase, message string) {
+			stepCurrent++
+			if s.wsHub != nil {
+				s.wsHub.BroadcastEvent(EventScanPhase, &ScanPhaseData{
+					LibraryID:   id,
+					LibraryName: lib.Name,
+					Phase:       phase,
+					StepCurrent: stepCurrent,
+					StepTotal:   stepTotal,
+					Message:     message,
+				})
+			}
+		}
+
 		// 第一步：扫描文件
+		broadcastPhase("scanning", fmt.Sprintf("正在扫描媒体文件: %s", lib.Name))
 		count, err := s.scanner.ScanLibrary(lib)
 		if err != nil {
 			s.logger.Errorf("扫描媒体库失败: %s, 错误: %v", lib.Name, err)
@@ -225,6 +251,7 @@ func (s *LibraryService) Scan(id string) error {
 		s.logger.Infof("媒体库 %s 文件扫描完成，新增 %d 个媒体", lib.Name, count)
 
 		// 第二步：自动刮削元数据（如果配置了TMDb API Key）
+		broadcastPhase("scraping", fmt.Sprintf("正在识别媒体信息: %s", lib.Name))
 		if lib.Type == "tvshow" || lib.Type == "mixed" {
 			// 剧集库/混合库：优先刮削合集元数据，然后同步到各集
 			seriesSuccess, seriesFailed := s.metadata.ScrapeAllSeries(id)
@@ -257,6 +284,7 @@ func (s *LibraryService) Scan(id string) error {
 
 		// 第三步：自动合并同名剧集（如「女神咖啡厅 第一季」和「女神咖啡厅 第二季」）
 		if s.seriesService != nil && (lib.Type == "tvshow" || lib.Type == "mixed") {
+			broadcastPhase("merging", fmt.Sprintf("正在合并同名剧集: %s", lib.Name))
 			results, err := s.seriesService.AutoMergeDuplicates()
 			if err != nil {
 				s.logger.Warnf("媒体库 %s 自动合并剧集失败: %v", lib.Name, err)
@@ -271,12 +299,25 @@ func (s *LibraryService) Scan(id string) error {
 
 		// 第四步：自动匹配电影系列合集（在刮削完成后执行，确保标题已更新）
 		if s.collectionService != nil && lib.Type != "tvshow" {
+			broadcastPhase("matching", fmt.Sprintf("正在匹配电影系列合集: %s", lib.Name))
 			collCount, err := s.collectionService.AutoMatchCollections()
 			if err != nil {
 				s.logger.Warnf("媒体库 %s 自动匹配合集失败: %v", lib.Name, err)
 			} else if collCount > 0 {
 				s.logger.Infof("媒体库 %s 自动创建 %d 个电影系列合集", lib.Name, collCount)
 			}
+		}
+
+		// 广播全部完成事件
+		if s.wsHub != nil {
+			s.wsHub.BroadcastEvent(EventScanPhase, &ScanPhaseData{
+				LibraryID:   id,
+				LibraryName: lib.Name,
+				Phase:       "completed",
+				StepCurrent: stepTotal,
+				StepTotal:   stepTotal,
+				Message:     fmt.Sprintf("媒体库 %s 处理完成", lib.Name),
+			})
 		}
 	}()
 
@@ -430,7 +471,32 @@ func (s *LibraryService) Reindex(id string) error {
 	go func() {
 		defer s.scanning.Delete(id)
 
+		// 计算总步骤数（清理 + 扫描 + 刮削 + 可选合并 + 可选匹配）
+		stepTotal := 3 // 基础：清理 + 扫描 + 刮削
+		if lib.Type == "tvshow" || lib.Type == "mixed" {
+			stepTotal++ // 自动合并剧集
+		}
+		if lib.Type != "tvshow" {
+			stepTotal++ // 自动匹配电影系列合集
+		}
+		stepCurrent := 0
+
+		broadcastPhase := func(phase, message string) {
+			stepCurrent++
+			if s.wsHub != nil {
+				s.wsHub.BroadcastEvent(EventScanPhase, &ScanPhaseData{
+					LibraryID:   id,
+					LibraryName: lib.Name,
+					Phase:       phase,
+					StepCurrent: stepCurrent,
+					StepTotal:   stepTotal,
+					Message:     message,
+				})
+			}
+		}
+
 		// 第一步：清除该媒体库下所有旧媒体和合集记录
+		broadcastPhase("cleaning", fmt.Sprintf("正在清除旧索引数据: %s", lib.Name))
 		if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
 			s.logger.Errorf("清除媒体库旧媒体记录失败: %s, 错误: %v", lib.Name, err)
 			return
@@ -442,6 +508,7 @@ func (s *LibraryService) Reindex(id string) error {
 		s.logger.Infof("已清除媒体库 %s 的旧索引数据（含媒体和合集）", lib.Name)
 
 		// 第二步：重新扫描文件
+		broadcastPhase("scanning", fmt.Sprintf("正在扫描媒体文件: %s", lib.Name))
 		count, err := s.scanner.ScanLibrary(lib)
 		if err != nil {
 			s.logger.Errorf("重建索引扫描失败: %s, 错误: %v", lib.Name, err)
@@ -455,6 +522,7 @@ func (s *LibraryService) Reindex(id string) error {
 		s.logger.Infof("媒体库 %s 索引重建完成，共 %d 个媒体", lib.Name, count)
 
 		// 第三步：自动刮削元数据
+		broadcastPhase("scraping", fmt.Sprintf("正在识别媒体信息: %s", lib.Name))
 		if lib.Type == "tvshow" || lib.Type == "mixed" {
 			seriesSuccess, seriesFailed := s.metadata.ScrapeAllSeries(id)
 			if seriesSuccess > 0 || seriesFailed > 0 {
@@ -484,6 +552,7 @@ func (s *LibraryService) Reindex(id string) error {
 
 		// 重建索引后自动合并同名剧集
 		if s.seriesService != nil && (lib.Type == "tvshow" || lib.Type == "mixed") {
+			broadcastPhase("merging", fmt.Sprintf("正在合并同名剧集: %s", lib.Name))
 			results, err := s.seriesService.AutoMergeDuplicates()
 			if err != nil {
 				s.logger.Warnf("媒体库 %s 重建索引后自动合并失败: %v", lib.Name, err)
@@ -498,12 +567,25 @@ func (s *LibraryService) Reindex(id string) error {
 
 		// 重建索引后自动匹配电影系列合集
 		if s.collectionService != nil && lib.Type != "tvshow" {
+			broadcastPhase("matching", fmt.Sprintf("正在匹配电影系列合集: %s", lib.Name))
 			collCount, err := s.collectionService.AutoMatchCollections()
 			if err != nil {
 				s.logger.Warnf("媒体库 %s 重建索引后自动匹配合集失败: %v", lib.Name, err)
 			} else if collCount > 0 {
 				s.logger.Infof("媒体库 %s 重建索引后自动创建 %d 个电影系列合集", lib.Name, collCount)
 			}
+		}
+
+		// 广播全部完成事件
+		if s.wsHub != nil {
+			s.wsHub.BroadcastEvent(EventScanPhase, &ScanPhaseData{
+				LibraryID:   id,
+				LibraryName: lib.Name,
+				Phase:       "completed",
+				StepCurrent: stepTotal,
+				StepTotal:   stepTotal,
+				Message:     fmt.Sprintf("媒体库 %s 重建索引完成", lib.Name),
+			})
 		}
 	}()
 

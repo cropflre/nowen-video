@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, SystemSettings } from '@/types'
-import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData } from '@/hooks/useWebSocket'
+import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import {
   Server,
   Users,
@@ -232,6 +232,7 @@ export default function AdminPage() {
   const [scanProgress, setScanProgress] = useState<Record<string, ScanProgressData>>({})
   const [scrapeProgress, setScrapeProgress] = useState<Record<string, ScrapeProgressData>>({})
   const [transcodeProgress, setTranscodeProgress] = useState<Record<string, TranscodeProgressData>>({})
+  const [scanPhase, setScanPhase] = useState<Record<string, ScanPhaseData>>({})
   const [realtimeMessages, setRealtimeMessages] = useState<string[]>([])
 
   // 标签页切换 — 同步到 URL hash
@@ -325,6 +326,26 @@ export default function AdminPage() {
       addMessage(`❌ ${data.message}`)
     }
 
+    const handleScanPhase = (data: ScanPhaseData) => {
+      if (data.phase === 'completed') {
+        setScanPhase((prev) => {
+          const next = { ...prev }
+          delete next[data.library_id]
+          return next
+        })
+        setScanning((s) => {
+          const ns = new Set(s)
+          ns.delete(data.library_id)
+          return ns
+        })
+        addMessage(`✨ ${data.message}`)
+        libraryApi.list().then((res) => setLibraries(res.data.data || []))
+      } else {
+        setScanPhase((prev) => ({ ...prev, [data.library_id]: data }))
+        addMessage(`📦 ${data.message}`)
+      }
+    }
+
     on(WS_EVENTS.SCAN_STARTED, handleScanStarted)
     on(WS_EVENTS.SCAN_PROGRESS, handleScanProgress)
     on(WS_EVENTS.SCAN_COMPLETED, handleScanCompleted)
@@ -336,6 +357,7 @@ export default function AdminPage() {
     on(WS_EVENTS.TRANSCODE_PROGRESS, handleTranscodeProgress)
     on(WS_EVENTS.TRANSCODE_COMPLETED, handleTranscodeCompleted)
     on(WS_EVENTS.TRANSCODE_FAILED, handleTranscodeFailed)
+    on(WS_EVENTS.SCAN_PHASE, handleScanPhase)
 
     return () => {
       off(WS_EVENTS.SCAN_STARTED, handleScanStarted)
@@ -349,6 +371,7 @@ export default function AdminPage() {
       off(WS_EVENTS.TRANSCODE_PROGRESS, handleTranscodeProgress)
       off(WS_EVENTS.TRANSCODE_COMPLETED, handleTranscodeCompleted)
       off(WS_EVENTS.TRANSCODE_FAILED, handleTranscodeFailed)
+      off(WS_EVENTS.SCAN_PHASE, handleScanPhase)
     }
   }, [on, off, addMessage])
 
@@ -526,6 +549,7 @@ export default function AdminPage() {
             scanProgress={scanProgress}
             scrapeProgress={scrapeProgress}
             transcodeProgress={transcodeProgress}
+            scanPhase={scanPhase}
             realtimeMessages={realtimeMessages}
             switchTab={(tab) => switchTab(tab as TabId)}
           />
@@ -542,6 +566,7 @@ export default function AdminPage() {
               setScanning={setScanning}
               scanProgress={scanProgress}
               scrapeProgress={scrapeProgress}
+              scanPhase={scanPhase}
             />
 
             {/* TMDb 元数据刮削配置 */}

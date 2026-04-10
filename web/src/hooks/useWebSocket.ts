@@ -21,6 +21,8 @@ export const WS_EVENTS = {
   // 媒体库变更事件
   LIBRARY_DELETED: 'library_deleted',
   LIBRARY_UPDATED: 'library_updated',
+  // 扫描阶段事件
+  SCAN_PHASE: 'scan_phase',
   // 文件管理事件
   FILE_IMPORTED: 'file_imported',
   FILE_DELETED: 'file_deleted',
@@ -66,6 +68,15 @@ export interface ScanProgressData {
   current: number
   total: number
   new_found: number
+  message: string
+}
+
+export interface ScanPhaseData {
+  library_id: string
+  library_name: string
+  phase: 'scanning' | 'scraping' | 'merging' | 'matching' | 'cleaning' | 'completed'
+  step_current: number
+  step_total: number
   message: string
 }
 

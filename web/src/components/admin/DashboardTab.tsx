@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { SystemInfo, SystemSettings } from '@/types'
-import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData } from '@/hooks/useWebSocket'
+import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import {
   Server,
   Cpu,
@@ -39,6 +39,7 @@ interface DashboardTabProps {
   scanProgress: Record<string, ScanProgressData>
   scrapeProgress: Record<string, ScrapeProgressData>
   transcodeProgress: Record<string, TranscodeProgressData>
+  scanPhase: Record<string, ScanPhaseData>
   realtimeMessages: string[]
   switchTab: (tab: string) => void
 }
@@ -50,6 +51,7 @@ export default function DashboardTab({
   scanProgress,
   scrapeProgress,
   transcodeProgress,
+  scanPhase,
   realtimeMessages,
   switchTab,
 }: DashboardTabProps) {
@@ -84,7 +86,17 @@ export default function DashboardTab({
     series: { id: string; title: string; season_count: number; episode_count: number }[]
   }[] | null>(null)
 
-  const hasActiveProgress = Object.keys(scanProgress).length > 0 || Object.keys(scrapeProgress).length > 0 || Object.keys(transcodeProgress).length > 0
+  const hasActiveProgress = Object.keys(scanProgress).length > 0 || Object.keys(scrapeProgress).length > 0 || Object.keys(transcodeProgress).length > 0 || Object.keys(scanPhase).length > 0
+
+  // 阶段名称映射
+  const phaseLabels: Record<string, string> = {
+    scanning: '📂 扫描文件',
+    scraping: '🎨 识别信息',
+    merging: '🔗 合并剧集',
+    matching: '🎬 匹配合集',
+    cleaning: '🧹 清理数据',
+    completed: '✅ 处理完成',
+  }
 
   const hwAccelLabel = (hw: string) => {
     switch (hw) {
@@ -194,6 +206,45 @@ export default function DashboardTab({
             实时进度
           </h2>
           <div className="space-y-3">
+            {/* 扫描阶段进度（多步骤流程） */}
+            {Object.entries(scanPhase).map(([libId, data]) => (
+              <div key={`phase-${libId}`} className="glass-panel-subtle rounded-xl p-4" style={{ borderColor: 'var(--neon-blue-15)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {phaseLabels[data.phase] || data.phase} {data.library_name}
+                  </span>
+                  <span className="text-xs font-mono text-neon">
+                    步骤 {data.step_current}/{data.step_total}
+                  </span>
+                </div>
+                {/* 步骤进度条 */}
+                <div className="mb-2 h-2 overflow-hidden rounded-full" style={{ background: 'var(--neon-blue-6)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
+                      width: `${data.step_total > 0 ? (data.step_current / data.step_total) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+                {/* 步骤圆点指示器 */}
+                <div className="flex items-center gap-1.5 mb-1">
+                  {Array.from({ length: data.step_total }, (_, i) => (
+                    <div
+                      key={i}
+                      className="h-1.5 rounded-full transition-all duration-500"
+                      style={{
+                        width: i < data.step_current ? '16px' : '6px',
+                        background: i < data.step_current ? 'var(--neon-blue)' : 'var(--neon-blue-10)',
+                        opacity: i < data.step_current ? 1 : 0.4,
+                      }}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-surface-400">{data.message}</p>
+              </div>
+            ))}
+            {/* 扫描进度 */}
             {Object.entries(scanProgress).map(([libId, data]) => (
               <div key={`scan-${libId}`} className="glass-panel-subtle rounded-xl p-4" style={{ borderColor: 'var(--neon-blue-15)' }}>
                 <div className="flex items-center justify-between mb-2">

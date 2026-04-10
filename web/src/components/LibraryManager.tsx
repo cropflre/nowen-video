@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { libraryApi } from '@/api'
 import type { Library, CreateLibraryRequest } from '@/types'
-import type { ScanProgressData, ScrapeProgressData } from '@/hooks/useWebSocket'
+import type { ScanProgressData, ScrapeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import { useToast } from './Toast'
 import CreateLibraryModal from './CreateLibraryModal'
 import EditLibraryModal from './EditLibraryModal'
@@ -40,6 +40,7 @@ interface LibraryManagerProps {
   setScanning: React.Dispatch<React.SetStateAction<Set<string>>>
   scanProgress: Record<string, ScanProgressData>
   scrapeProgress: Record<string, ScrapeProgressData>
+  scanPhase: Record<string, ScanPhaseData>
 }
 
 export default function LibraryManager({
@@ -49,6 +50,7 @@ export default function LibraryManager({
   setScanning,
   scanProgress,
   scrapeProgress,
+  scanPhase,
 }: LibraryManagerProps) {
   const toast = useToast()
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -265,6 +267,17 @@ export default function LibraryManager({
             const isScanning = scanning.has(lib.id)
             const progress = scanProgress[lib.id]
             const scrape = scrapeProgress[lib.id]
+            const phase = scanPhase[lib.id]
+
+            // 计算阶段显示文本
+            const phaseLabel = phase ? {
+              scanning: '扫描文件',
+              scraping: '识别信息',
+              merging: '合并剧集',
+              matching: '匹配合集',
+              cleaning: '清理数据',
+              completed: '处理完成',
+            }[phase.phase] || phase.phase : null
 
             return (
               <div key={lib.id} className="group relative">
@@ -296,9 +309,15 @@ export default function LibraryManager({
                       >
                         {lib.name}
                       </h3>
-                      {isScanning && (
+                    {isScanning && (
                         <p className="mt-0.5 text-xs text-neon animate-pulse">
-                          {progress?.message || scrape?.message || '扫描中...'}
+                          {scrape
+                            ? `识别中 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
+                            : progress?.message
+                              ? progress.message
+                              : phase
+                                ? `${phaseLabel} (${phase.step_current}/${phase.step_total})`
+                                : '扫描中...'}
                         </p>
                       )}
                     </div>
@@ -421,10 +440,34 @@ export default function LibraryManager({
                 </div>
 
                 {/* 扫描进度条（扫描中显示） */}
-                {isScanning && (progress || scrape) && (
-                  <div className="px-5 pb-2">
+                {isScanning && (progress || scrape || phase) && (
+                  <div className="px-5 pb-3">
+                    {/* 阶段指示器 */}
+                    {phase && phase.phase !== 'completed' && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: phase.step_total }, (_, i) => (
+                            <div
+                              key={i}
+                              className="h-1.5 rounded-full transition-all duration-500"
+                              style={{
+                                width: i < phase.step_current ? '20px' : '8px',
+                                background: i < phase.step_current
+                                  ? 'var(--neon-blue)'
+                                  : 'var(--neon-blue-10)',
+                                opacity: i < phase.step_current ? 1 : 0.4,
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[11px] font-medium" style={{ color: 'var(--neon-blue)' }}>
+                          {phaseLabel} ({phase.step_current}/{phase.step_total})
+                        </span>
+                      </div>
+                    )}
+                    {/* 进度条 */}
                     <div
-                      className="h-1 overflow-hidden rounded-full"
+                      className="h-1.5 overflow-hidden rounded-full"
                       style={{ background: 'var(--neon-blue-6)' }}
                     >
                       <div
@@ -441,6 +484,17 @@ export default function LibraryManager({
                         }}
                       />
                     </div>
+                    {/* 刮削详细信息 */}
+                    {scrape && scrape.total > 0 && (
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          {scrape.media_title || '处理中...'}
+                        </span>
+                        <span className="text-[11px] font-mono" style={{ color: 'var(--neon-purple)' }}>
+                          {scrape.current}/{scrape.total} (成功:{scrape.success} 失败:{scrape.failed})
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
