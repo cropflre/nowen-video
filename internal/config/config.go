@@ -600,13 +600,17 @@ func (c *Config) migrateFromFlatConfig() {
 			c.App.MaxTranscodeJobs = 1
 		}
 	}
-	// 资源限制：允许用户配置 1~80，系统自动保留 20% 缓冲
+	// 资源限制：允许用户配置 20~80，系统自动保留 20% 缓冲
+	// 默认值 70%，适合大多数 NAS 和家用服务器场景
 	if c.App.ResourceLimit <= 0 {
 		if c.ResourceLimit > 0 {
 			c.App.ResourceLimit = c.ResourceLimit
 		} else {
-			c.App.ResourceLimit = 80
+			c.App.ResourceLimit = 70
 		}
+	}
+	if c.App.ResourceLimit < 20 {
+		c.App.ResourceLimit = 20 // 下限 20%，过低会导致预处理任务无法执行
 	}
 	if c.App.ResourceLimit > 80 {
 		c.App.ResourceLimit = 80 // 上限 80%，保留 20% 缓冲

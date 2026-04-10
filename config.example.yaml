@@ -43,7 +43,7 @@ app:
   vaapi_device: /dev/dri/renderD128
   transcode_preset: ultrafast
   max_transcode_jobs: 1
-  resource_limit: 5
+  resource_limit: 70    # CPU资源限制百分比（1-80），建议60-80，过低会导致预处理任务无法执行
   cors_origins: []
 
 # 日志配置
@@ -81,5 +81,5 @@ cache:
 # vaapi_device: /dev/dri/renderD128
 # transcode_preset: ultrafast
 # max_transcode_jobs: 1
-# resource_limit: 5
+# resource_limit: 70
 # tmdb_api_key: ""

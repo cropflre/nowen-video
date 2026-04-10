@@ -64,6 +64,9 @@ func main() {
 	services.Library.CleanOrphanedData()
 
 	// 设置路由
+	if !cfg.App.Debug {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	r := gin.Default()
 
 	// 全局中间件
