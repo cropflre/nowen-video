@@ -132,29 +132,42 @@ func (s *NFOService) GetActorsFromNFO(nfoPath string) ([]NFOActor, []string, err
 
 // ==================== 本地图片扫描 ====================
 
+// 常见视频文件扩展名
+var nfoVideoExts = map[string]bool{
+	".mkv": true, ".mp4": true, ".avi": true, ".mov": true,
+	".wmv": true, ".flv": true, ".webm": true, ".m4v": true, ".ts": true,
+	".rmvb": true, ".rm": true, ".3gp": true, ".mpg": true, ".mpeg": true,
+	".strm": true,
+}
+
+// 常见图片文件扩展名
+var nfoImageExts = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
+
+// 常见本地海报文件名（按优先级排序）
+var standardPosterNames = []string{
+	"poster.jpg", "poster.png", "poster.webp",
+	"cover.jpg", "cover.png", "cover.webp",
+	"folder.jpg", "folder.png", "folder.webp",
+	"thumb.jpg", "thumb.png", "thumb.webp",
+	"movie.jpg", "movie.png",
+	"show.jpg", "show.png",
+}
+
+// 常见本地背景图文件名
+var standardBackdropNames = []string{
+	"fanart.jpg", "fanart.png", "fanart.webp",
+	"backdrop.jpg", "backdrop.png", "backdrop.webp",
+	"banner.jpg", "banner.png", "banner.webp",
+	"background.jpg", "background.png", "background.webp",
+	"clearart.jpg", "clearart.png",
+	"landscape.jpg", "landscape.png",
+}
+
 // FindLocalImages 在指定目录下查找本地图片（poster/fanart/banner 等）
+// 适用于剧集/合集等场景，不区分具体视频文件
 // 支持 jpg、png、webp 等常见图片格式
 func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
-	// 常见本地海报文件名（按优先级排序）
-	posterNames := []string{
-		"poster.jpg", "poster.png", "poster.webp",
-		"cover.jpg", "cover.png", "cover.webp",
-		"folder.jpg", "folder.png", "folder.webp",
-		"thumb.jpg", "thumb.png", "thumb.webp",
-		"movie.jpg", "movie.png",
-		"show.jpg", "show.png",
-	}
-	// 常见本地背景图文件名
-	backdropNames := []string{
-		"fanart.jpg", "fanart.png", "fanart.webp",
-		"backdrop.jpg", "backdrop.png", "backdrop.webp",
-		"banner.jpg", "banner.png", "banner.webp",
-		"background.jpg", "background.png", "background.webp",
-		"clearart.jpg", "clearart.png",
-		"landscape.jpg", "landscape.png",
-	}
-
-	for _, name := range posterNames {
+	for _, name := range standardPosterNames {
 		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); err == nil {
 			poster = path
@@ -162,7 +175,7 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 		}
 	}
 
-	for _, name := range backdropNames {
+	for _, name := range standardBackdropNames {
 		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); err == nil {
 			backdrop = path
@@ -174,11 +187,10 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 	if poster == "" {
 		entries, err := os.ReadDir(dir)
 		if err == nil {
-			imageExts := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true}
 			for _, entry := range entries {
 				if !entry.IsDir() {
 					ext := strings.ToLower(filepath.Ext(entry.Name()))
-					if imageExts[ext] {
+					if nfoImageExts[ext] {
 						// 排除已识别为backdrop的文件
 						candidate := filepath.Join(dir, entry.Name())
 						if candidate != backdrop {
@@ -189,6 +201,109 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 				}
 			}
 		}
+	}
+
+	return poster, backdrop
+}
+
+// FindLocalImagesForMedia 根据媒体文件路径查找对应的本地图片
+// 方案 C：优先匹配与视频同名的图片，当目录下只有一个视频文件时才使用通用封面
+// 解决多部影片在同一目录下共用同一张封面的问题
+func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, backdrop string) {
+	dir := filepath.Dir(mediaFilePath)
+	baseName := strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath))
+
+	// === 阶段1：优先查找与视频文件同名的图片 ===
+	// 例如：[48DRJ-60109] 影片A.mkv -> [48DRJ-60109] 影片A-poster.jpg 或 [48DRJ-60109] 影片A.jpg
+	posterSuffixes := []string{
+		"-poster.jpg", "-poster.png", "-poster.webp",
+		"-cover.jpg", "-cover.png", "-cover.webp",
+		"-thumb.jpg", "-thumb.png", "-thumb.webp",
+		".jpg", ".png", ".webp",
+	}
+	backdropSuffixes := []string{
+		"-fanart.jpg", "-fanart.png", "-fanart.webp",
+		"-backdrop.jpg", "-backdrop.png", "-backdrop.webp",
+		"-banner.jpg", "-banner.png", "-banner.webp",
+	}
+
+	for _, suffix := range posterSuffixes {
+		path := filepath.Join(dir, baseName+suffix)
+		if _, err := os.Stat(path); err == nil {
+			poster = path
+			break
+		}
+	}
+
+	for _, suffix := range backdropSuffixes {
+		path := filepath.Join(dir, baseName+suffix)
+		if _, err := os.Stat(path); err == nil {
+			backdrop = path
+			break
+		}
+	}
+
+	// 如果已经找到同名图片，直接返回
+	if poster != "" {
+		return poster, backdrop
+	}
+
+	// === 阶段2：统计目录中的视频文件数量 ===
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return poster, backdrop
+	}
+
+	videoCount := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if nfoVideoExts[ext] {
+				videoCount++
+				if videoCount > 1 {
+					break // 已确认多个视频，无需继续计数
+				}
+			}
+		}
+	}
+
+	// === 阶段3：根据视频文件数量决定是否使用通用封面 ===
+	if videoCount <= 1 {
+		// 目录下只有一个视频文件（或没有），可以安全使用通用封面
+		for _, name := range standardPosterNames {
+			path := filepath.Join(dir, name)
+			if _, err := os.Stat(path); err == nil {
+				poster = path
+				break
+			}
+		}
+
+		for _, name := range standardBackdropNames {
+			path := filepath.Join(dir, name)
+			if _, err := os.Stat(path); err == nil {
+				backdrop = path
+				break
+			}
+		}
+
+		// 兜底：目录中第一张图片
+		if poster == "" {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					ext := strings.ToLower(filepath.Ext(entry.Name()))
+					if nfoImageExts[ext] {
+						candidate := filepath.Join(dir, entry.Name())
+						if candidate != backdrop {
+							poster = candidate
+							break
+						}
+					}
+				}
+			}
+		}
+	} else {
+		// 目录下有多个视频文件，不使用通用封面，避免多部影片共用同一张图
+		s.logger.Debugf("目录 %s 下有 %d 个视频文件，跳过通用封面分配", dir, videoCount)
 	}
 
 	return poster, backdrop

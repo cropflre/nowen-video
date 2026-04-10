@@ -444,9 +444,8 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 				}
 			}
 
-			// 识别本地海报封面图片
-			mediaDir := filepath.Dir(pm.path)
-			if poster, backdrop := s.nfoService.FindLocalImages(mediaDir); poster != "" || backdrop != "" {
+			// 识别本地海报封面图片（使用按文件名匹配的方法，避免同目录多视频共用封面）
+			if poster, backdrop := s.nfoService.FindLocalImagesForMedia(pm.path); poster != "" || backdrop != "" {
 				if poster != "" && pm.media.PosterPath == "" {
 					pm.media.PosterPath = poster
 					s.logger.Debugf("发现本地海报: %s", poster)
