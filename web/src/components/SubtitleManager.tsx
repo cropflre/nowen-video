@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { subtitleApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SubtitleTrack, ExternalSubtitle, SubtitleInfo, ExtractedSubtitleFile, SubExtractProgressData } from '@/types'
+import type { SubtitleInfo, ExtractedSubtitleFile, SubExtractProgressData } from '@/types'
 
 interface SubtitleManagerProps {
   mediaId: string

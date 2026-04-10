@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
 import PageTransition from './PageTransition'
@@ -25,7 +25,7 @@ export default function Layout() {
     if (!mainEl) return
 
     // 保存离开页面的滚动位置
-    const prevKey = SCROLL_KEY_PREFIX + prevPathRef.current
+    const _prevKey = SCROLL_KEY_PREFIX + prevPathRef.current
     // 注意：此时 prevPathRef 还是上一个路径
     // 在 useEffect 执行时，DOM 已经更新，但我们在 cleanup 中保存
     // 所以改用 ref 记录

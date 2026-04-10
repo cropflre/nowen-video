@@ -342,7 +342,7 @@ export default function MediaDetailPage() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: durations.page, ease: easeSmooth as unknown as number[] }}
+      transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
       className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
     >
       {/* 英雄区 */}

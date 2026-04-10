@@ -5,7 +5,6 @@ import type {
   TranscodeJob,
   TMDbConfigStatus,
   ListResponse,
-  PaginatedResponse,
   SystemMetrics,
   ScheduledTask,
   CreateScheduledTaskRequest,

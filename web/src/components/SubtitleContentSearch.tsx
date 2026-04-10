@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search, X, Clock, ChevronRight, Subtitles, ArrowUp, ArrowDown } from 'lucide-react'
+import { Search, X, Clock, ChevronRight, Subtitles } from 'lucide-react'
 import clsx from 'clsx'
 
 interface SubtitleCue {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { personApi, streamApi } from '@/api'
 import type { Person, Media, Series } from '@/types'
-import { User, Film, Tv, Star, ExternalLink, ArrowLeft, Calendar, Globe } from 'lucide-react'
+import { User, Film, Tv, Star, ExternalLink, ArrowLeft, Calendar } from 'lucide-react'
 import { useTranslation } from '@/i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import { easeSmooth, durations } from '@/lib/motion'
@@ -119,7 +119,7 @@ export default function PersonDetailPage() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: durations.page, ease: easeSmooth as unknown as number[] }}
+      transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
       className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
     >
       {/* ==================== 英雄区 ==================== */}
@@ -377,7 +377,7 @@ export default function PersonDetailPage() {
 
 /** 作品卡片 — 参考 Emby 风格 */
 function WorkCard({
-  id,
+  id: _id,
   title,
   year,
   rating,

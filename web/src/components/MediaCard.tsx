@@ -46,15 +46,6 @@ export default function MediaCard({ media, series }: MediaCardProps) {
     isHovering.set(0)
   }, [mouseX, mouseY, isHovering])
 
-  // 格式化文件大小
-  const formatSize = (bytes: number) => {
-    if (!bytes) return ''
-    const gb = bytes / (1024 * 1024 * 1024)
-    if (gb >= 1) return `${gb.toFixed(1)} GB`
-    const mb = bytes / (1024 * 1024)
-    return `${mb.toFixed(0)} MB`
-  }
-
   // 格式化时长
   const formatDuration = (seconds: number) => {
     if (!seconds) return ''
