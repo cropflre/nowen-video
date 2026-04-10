@@ -377,6 +377,11 @@ export default function MediaDetailPage() {
         {/* 演职人员 */}
         <CastGrid persons={persons} />
 
+        {/* 系列合集（自动识别同系列电影） */}
+        {media.media_type === 'movie' && id && (
+          <CollectionCarousel mediaId={id} />
+        )}
+
         {/* 文件信息与技术规格（统一展示区域） */}
         <MediaTechSpecs
           media={media}
@@ -387,11 +392,6 @@ export default function MediaDetailPage() {
           loading={enhancedLoading}
           isAdmin={user?.role === 'admin'}
         />
-
-        {/* 系列合集（自动识别同系列电影） */}
-        {media.media_type === 'movie' && id && (
-          <CollectionCarousel mediaId={id} />
-        )}
 
         {/* 字幕管理入口（管理员可见） */}
         {user?.role === 'admin' && (
