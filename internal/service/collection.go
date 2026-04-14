@@ -492,7 +492,9 @@ var (
 	// ===== 第二层：连接词分割模式 =====
 	// 匹配中文连接词模式："哈哈哈之我真是醉了"、"名侦探柯南之xxx"、"熊出没·原始时代"
 	// 支持的连接词：之、的、·、—、-
-	reChineseDelimiter = regexp.MustCompile(`^(.{2,}?)(之|的(?!.{0,2}$)|[·•]|\s*[—–-]\s*)(.{2,})$`)
+	// "的"作为连接词时，要求后半部分至少3字（避免把"我的家"拆成"我"+"家"）
+	reChineseDelimiter = regexp.MustCompile(`^(.{2,}?)(之|[·•]|\s*[—–-]\s*)(.{2,})$`)
+	reChineseDelimiterDe = regexp.MustCompile(`^(.{2,}?)的(.{3,})$`)
 	// 匹配英文分隔符模式："Harry Potter - The Chamber of Secrets"
 	reEnglishDelimiter = regexp.MustCompile(`(?i)^(.{2,}?)\s*[-–—:：]\s+(.{2,})$`)
 )
@@ -546,8 +548,16 @@ func extractPrefixByDelimiter(title string) string {
 		return ""
 	}
 
-	// 尝试中文连接词分割
+	// 尝试中文连接词分割（之、·、—、-）
 	if matches := reChineseDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
+		prefix := strings.TrimSpace(matches[1])
+		if len([]rune(prefix)) >= 2 {
+			return normalizeBaseName(prefix)
+		}
+	}
+
+	// 尝试"的"连接词分割（要求后半部分至少3字，避免把"我的家"拆成"我"+"家"）
+	if matches := reChineseDelimiterDe.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
 			return normalizeBaseName(prefix)
