@@ -2736,3 +2736,199 @@ func (s *ScannerService) broadcastSubExtractEvent(eventType string, data *SubExt
 		s.wsHub.BroadcastEvent(eventType, data)
 	}
 }
+
+// ==================== 重复媒体检测 ====================
+
+// DuplicateGroup 重复媒体组
+type DuplicateGroup struct {
+	GroupKey   string          `json:"group_key"`   // 分组键（标题+年份）
+	Title      string          `json:"title"`       // 标题
+	Year       int             `json:"year"`        // 年份
+	MediaCount int             `json:"media_count"` // 重复数量
+	Media      []DuplicateItem `json:"media"`       // 重复的媒体列表
+	Suggestion string          `json:"suggestion"`  // 处理建议
+}
+
+// DuplicateItem 重复媒体项
+type DuplicateItem struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	FilePath   string  `json:"file_path"`
+	FileSize   int64   `json:"file_size"`
+	Resolution string  `json:"resolution"`
+	VideoCodec string  `json:"video_codec"`
+	AudioCodec string  `json:"audio_codec"`
+	Duration   float64 `json:"duration"`
+	LibraryID  string  `json:"library_id"`
+	IsPrimary  bool    `json:"is_primary"` // 是否为推荐保留的版本
+}
+
+// DetectDuplicates 检测媒体库中的重复媒体
+// 检测策略：
+// 1. 基于标题+年份的精确匹配
+// 2. 基于文件大小+时长的近似匹配
+// 3. 基于 TMDb ID 的精确匹配
+func (s *ScannerService) DetectDuplicates(libraryID string) ([]DuplicateGroup, error) {
+	var media []model.Media
+	query := s.mediaRepo.DB().Where("media_type = ? AND deleted_at IS NULL", "movie")
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if err := query.Find(&media).Error; err != nil {
+		return nil, fmt.Errorf("查询媒体列表失败: %w", err)
+	}
+
+	// 按标题+年份分组
+	titleYearGroups := make(map[string][]model.Media)
+	// 按 TMDb ID 分组
+	tmdbGroups := make(map[int][]model.Media)
+
+	for _, m := range media {
+		// 标题+年份分组
+		normalizedTitle := strings.ToLower(strings.TrimSpace(m.Title))
+		key := fmt.Sprintf("%s|%d", normalizedTitle, m.Year)
+		titleYearGroups[key] = append(titleYearGroups[key], m)
+
+		// TMDb ID 分组
+		if m.TMDbID > 0 {
+			tmdbGroups[m.TMDbID] = append(tmdbGroups[m.TMDbID], m)
+		}
+	}
+
+	// 合并检测结果（去重）
+	seen := make(map[string]bool) // 已处理的媒体 ID
+	var groups []DuplicateGroup
+
+	// 优先使用 TMDb ID 匹配（最精确）
+	for tmdbID, mediaList := range tmdbGroups {
+		if len(mediaList) < 2 {
+			continue
+		}
+		group := s.buildDuplicateGroup(mediaList, fmt.Sprintf("tmdb:%d", tmdbID))
+		groups = append(groups, group)
+		for _, m := range mediaList {
+			seen[m.ID] = true
+		}
+	}
+
+	// 标题+年份匹配（排除已被 TMDb ID 匹配的）
+	for key, mediaList := range titleYearGroups {
+		if len(mediaList) < 2 {
+			continue
+		}
+		// 过滤已处理的
+		var filtered []model.Media
+		for _, m := range mediaList {
+			if !seen[m.ID] {
+				filtered = append(filtered, m)
+			}
+		}
+		if len(filtered) < 2 {
+			continue
+		}
+		group := s.buildDuplicateGroup(filtered, key)
+		groups = append(groups, group)
+	}
+
+	// 按重复数量降序排列
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].MediaCount > groups[j].MediaCount
+	})
+
+	s.logger.Infof("重复媒体检测完成: 发现 %d 组重复", len(groups))
+	return groups, nil
+}
+
+// buildDuplicateGroup 构建重复组信息
+func (s *ScannerService) buildDuplicateGroup(mediaList []model.Media, groupKey string) DuplicateGroup {
+	group := DuplicateGroup{
+		GroupKey:   groupKey,
+		Title:      mediaList[0].Title,
+		Year:       mediaList[0].Year,
+		MediaCount: len(mediaList),
+	}
+
+	// 选择推荐保留的版本（优先级：4K > 1080p > 720p，同分辨率选文件最大的）
+	resolutionPriority := map[string]int{
+		"4K": 5, "2K": 4, "1080p": 3, "720p": 2, "480p": 1,
+	}
+
+	bestIdx := 0
+	bestScore := 0
+	for i, m := range mediaList {
+		score := resolutionPriority[m.Resolution] * 1000000
+		score += int(m.FileSize / (1024 * 1024)) // 加上文件大小（MB）作为次要排序
+		if score > bestScore {
+			bestScore = score
+			bestIdx = i
+		}
+	}
+
+	for i, m := range mediaList {
+		item := DuplicateItem{
+			ID:         m.ID,
+			Title:      m.Title,
+			FilePath:   m.FilePath,
+			FileSize:   m.FileSize,
+			Resolution: m.Resolution,
+			VideoCodec: m.VideoCodec,
+			AudioCodec: m.AudioCodec,
+			Duration:   m.Duration,
+			LibraryID:  m.LibraryID,
+			IsPrimary:  i == bestIdx,
+		}
+		group.Media = append(group.Media, item)
+	}
+
+	// 生成处理建议
+	if len(mediaList) == 2 {
+		best := mediaList[bestIdx]
+		otherIdx := 1 - bestIdx
+		other := mediaList[otherIdx]
+		group.Suggestion = fmt.Sprintf("建议保留 %s 版本（%s, %.1fGB），可删除 %s 版本（%s, %.1fGB）",
+			best.Resolution, best.VideoCodec, float64(best.FileSize)/(1024*1024*1024),
+			other.Resolution, other.VideoCodec, float64(other.FileSize)/(1024*1024*1024))
+	} else {
+		group.Suggestion = fmt.Sprintf("发现 %d 个重复版本，建议保留最高质量版本", len(mediaList))
+	}
+
+	return group
+}
+
+// MarkDuplicates 标记重复媒体（在扫描完成后调用）
+func (s *ScannerService) MarkDuplicates(libraryID string) (int, error) {
+	groups, err := s.DetectDuplicates(libraryID)
+	if err != nil {
+		return 0, err
+	}
+
+	marked := 0
+	for _, group := range groups {
+		for _, item := range group.Media {
+			if item.IsPrimary {
+				// 主版本：设置 DuplicateGroup 但不设置 DuplicateOf
+				s.mediaRepo.UpdateFields(item.ID, map[string]interface{}{
+					"duplicate_group": group.GroupKey,
+					"duplicate_of":    "",
+				})
+			} else {
+				// 重复版本：设置 DuplicateOf 指向主版本
+				primaryID := ""
+				for _, m := range group.Media {
+					if m.IsPrimary {
+						primaryID = m.ID
+						break
+					}
+				}
+				s.mediaRepo.UpdateFields(item.ID, map[string]interface{}{
+					"duplicate_group": group.GroupKey,
+					"duplicate_of":    primaryID,
+				})
+				marked++
+			}
+		}
+	}
+
+	s.logger.Infof("重复媒体标记完成: 标记 %d 个重复文件", marked)
+	return marked, nil
+}

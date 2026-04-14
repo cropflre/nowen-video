@@ -591,3 +591,15 @@ func (s *LibraryService) Reindex(id string) error {
 
 	return nil
 }
+
+// ==================== 重复媒体检测 ====================
+
+// DetectDuplicates 检测媒体库中的重复媒体
+func (s *LibraryService) DetectDuplicates(libraryID string) ([]DuplicateGroup, error) {
+	return s.scanner.DetectDuplicates(libraryID)
+}
+
+// MarkDuplicates 标记重复媒体
+func (s *LibraryService) MarkDuplicates(libraryID string) (int, error) {
+	return s.scanner.MarkDuplicates(libraryID)
+}

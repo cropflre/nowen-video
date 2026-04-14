@@ -363,6 +363,20 @@ export default function MediaDetailPage() {
         onRefreshMetadata={handleRefreshMetadata}
         onEditMetadata={handleEditMetadata}
         onDelete={() => setShowDeleteConfirm(true)}
+        onPreprocess={() => {
+          adminApi.submitPreprocess(id!).then(() => {
+            toast.success('已提交预处理任务')
+          }).catch(() => {
+            toast.error('提交预处理失败')
+          })
+        }}
+        onTranscode={() => {
+          adminApi.submitTranscode(id!).then(() => {
+            toast.success('已提交强制转码任务')
+          }).catch(() => {
+            toast.error('提交转码失败')
+          })
+        }}
       />
 
       {/* 内容区 */}

@@ -29,6 +29,7 @@ import {
   FolderOpen as FolderOpenIcon,
   Activity,
   Subtitles,
+  Library as LibraryIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -163,6 +164,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         >
           <Layers size={18} />
           {(!collapsed || isMobileOpen) && <span>影视库</span>}
+        </NavLink>
+
+        <NavLink
+          to="/collections"
+          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          onClick={onMobileClose}
+        >
+          <LibraryIcon size={18} />
+          {(!collapsed || isMobileOpen) && <span>影视合集</span>}
         </NavLink>
 
         <NavLink

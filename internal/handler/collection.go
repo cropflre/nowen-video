@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -12,6 +16,7 @@ import (
 // CollectionHandler 电影系列合集处理器
 type CollectionHandler struct {
 	collectionService *service.CollectionService
+	streamService     *service.StreamService
 	logger            *zap.SugaredLogger
 }
 
@@ -189,6 +194,136 @@ func (h *CollectionHandler) AddMedia(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "添加成功"})
+}
+
+// Poster 获取合集封面海报图片
+// GET /api/collections/:id/poster
+// 策略：优先使用合集自身的 PosterPath，如果为空则使用第一部电影的海报
+func (h *CollectionHandler) Poster(c *gin.Context) {
+	collectionID := c.Param("id")
+	if collectionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少合集ID"})
+		return
+	}
+
+	// 1. 尝试通过 CollectionService 获取合集自身的海报路径
+	posterPath, err := h.collectionService.GetCollectionPosterPath(collectionID)
+	if err == nil && posterPath != "" {
+		if _, statErr := os.Stat(posterPath); statErr == nil {
+			h.servePosterFile(c, posterPath)
+			return
+		}
+	}
+
+	// 2. 回退：通过 StreamService 获取第一部电影的海报
+	if h.streamService != nil {
+		firstMediaID, err := h.collectionService.GetFirstMediaID(collectionID)
+		if err == nil && firstMediaID != "" {
+			mediaPosterPath, err := h.streamService.GetPosterPath(firstMediaID)
+			if err == nil && mediaPosterPath != "" {
+				h.servePosterFile(c, mediaPosterPath)
+				return
+			}
+		}
+	}
+
+	// 3. 返回占位图
+	c.Header("Content-Type", "image/svg+xml")
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("X-Poster-Placeholder", "true")
+	c.String(http.StatusOK, collectionPosterPlaceholderSVG)
+}
+
+// servePosterFile 提供海报文件服务（带缓存和 ETag 支持）
+func (h *CollectionHandler) servePosterFile(c *gin.Context, posterPath string) {
+	fileInfo, statErr := os.Stat(posterPath)
+	if statErr != nil {
+		c.Header("Content-Type", "image/svg+xml")
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.String(http.StatusOK, collectionPosterPlaceholderSVG)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(posterPath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+	c.File(posterPath)
+}
+
+// 合集海报占位图 SVG
+const collectionPosterPlaceholderSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="450" fill="url(#bg)"/>
+  <text x="150" y="210" text-anchor="middle" fill="#4a5568" font-size="48" font-family="sans-serif">🎬</text>
+  <text x="150" y="260" text-anchor="middle" fill="#4a5568" font-size="14" font-family="sans-serif">系列合集</text>
+</svg>`
+
+// MergeDuplicates 合并所有同名重复合集
+// POST /api/admin/collections/merge-duplicates
+func (h *CollectionHandler) MergeDuplicates(c *gin.Context) {
+	merged, err := h.collectionService.MergeDuplicateCollections()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "合并失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("合并完成，共处理 %d 组同名合集", merged),
+		"merged":  merged,
+	})
+}
+
+// CleanupEmpty 清理所有空壳合集（无关联电影的合集）
+// POST /api/admin/collections/cleanup-empty
+func (h *CollectionHandler) CleanupEmpty(c *gin.Context) {
+	cleaned, err := h.collectionService.CleanupEmptyCollections()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "清理失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("清理完成，共删除 %d 个空壳合集", cleaned),
+		"cleaned": cleaned,
+	})
+}
+
+// DuplicateStats 获取重复合集统计信息
+// GET /api/admin/collections/duplicate-stats
+func (h *CollectionHandler) DuplicateStats(c *gin.Context) {
+	stats, err := h.collectionService.GetDuplicateCollectionStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  stats,
+		"count": len(stats),
+	})
 }
 
 // RemoveMedia 从合集移除电影

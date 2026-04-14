@@ -239,3 +239,47 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": lib})
 }
+
+// DetectDuplicates 检测重复媒体
+// GET /api/admin/libraries/:id/duplicates
+func (h *LibraryHandler) DetectDuplicates(c *gin.Context) {
+	libraryID := c.Param("id")
+	groups, err := h.libService.DetectDuplicates(libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "检测重复媒体失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data":  groups,
+		"total": len(groups),
+	})
+}
+
+// DetectAllDuplicates 检测所有媒体库的重复媒体
+// GET /api/admin/duplicates
+func (h *LibraryHandler) DetectAllDuplicates(c *gin.Context) {
+	groups, err := h.libService.DetectDuplicates("")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "检测重复媒体失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data":  groups,
+		"total": len(groups),
+	})
+}
+
+// MarkDuplicates 标记重复媒体
+// POST /api/admin/libraries/:id/mark-duplicates
+func (h *LibraryHandler) MarkDuplicates(c *gin.Context) {
+	libraryID := c.Param("id")
+	count, err := h.libService.MarkDuplicates(libraryID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "标记重复媒体失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("已标记 %d 个重复文件", count),
+		"marked":  count,
+	})
+}

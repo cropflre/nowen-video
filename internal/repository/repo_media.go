@@ -14,6 +14,11 @@ type MediaRepo struct {
 	db *gorm.DB
 }
 
+// DB 返回底层数据库连接（供复杂查询使用）
+func (r *MediaRepo) DB() *gorm.DB {
+	return r.db
+}
+
 func (r *MediaRepo) Create(media *model.Media) error {
 	return r.db.Create(media).Error
 }

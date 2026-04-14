@@ -52,29 +52,36 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
     <section className="mt-6">
       {/* 标题栏 */}
       <div className="mb-3 flex items-center justify-between">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 transition-colors hover:text-neon"
-        >
+        <div className="flex items-center gap-2">
           <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
             <Layers size={16} className="text-neon/60" />
             系列合集
-            <span className="ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+            <Link
+              to={`/collections/${collection.id}`}
+              className="ml-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-all hover:scale-105"
               style={{
                 background: 'linear-gradient(135deg, var(--neon-blue-10), var(--neon-purple-10))',
                 color: 'var(--neon-blue)',
                 border: '1px solid var(--neon-blue-20)',
               }}
+              title="查看合集详情"
             >
               {collection.name} · {media.length}部
-            </span>
+              <ChevronRight size={10} />
+            </Link>
           </h3>
-          {expanded ? (
-            <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
-          ) : (
-            <ChevronDown size={16} style={{ color: 'var(--text-muted)' }} />
-          )}
-        </button>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="rounded-lg p-1 transition-colors hover:bg-neon-blue/5"
+            title={expanded ? '收起列表' : '展开列表'}
+          >
+            {expanded ? (
+              <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} />
+            ) : (
+              <ChevronDown size={16} style={{ color: 'var(--text-muted)' }} />
+            )}
+          </button>
+        </div>
 
         {!expanded && (
           <div className="flex items-center gap-2">

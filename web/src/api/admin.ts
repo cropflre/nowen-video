@@ -277,4 +277,21 @@ export const adminApi = {
       count: number
       series: { id: string; title: string; season_count: number; episode_count: number; poster_path: string }[]
     }[]; total: number }>('/admin/series/merge-candidates'),
+
+  // 重复媒体检测
+  detectDuplicates: (libraryId?: string) =>
+    libraryId
+      ? api.get<{ data: import('@/types').DuplicateGroup[]; total: number }>(`/admin/libraries/${libraryId}/duplicates`)
+      : api.get<{ data: import('@/types').DuplicateGroup[]; total: number }>('/admin/duplicates'),
+
+  markDuplicates: (libraryId: string) =>
+    api.post<{ message: string; marked: number }>(`/admin/libraries/${libraryId}/mark-duplicates`),
+
+  // 手动预处理单个媒体
+  submitPreprocess: (mediaId: string) =>
+    api.post<{ message: string }>('/admin/preprocess/submit', { media_id: mediaId }),
+
+  // 手动转码单个媒体（通过预处理提交）
+  submitTranscode: (mediaId: string) =>
+    api.post<{ message: string }>('/admin/preprocess/submit', { media_id: mediaId, force: true }),
 }

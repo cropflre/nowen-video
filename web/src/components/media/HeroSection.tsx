@@ -23,6 +23,7 @@ import {
   Link2,
   Unlink,
   Trash2,
+  Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -43,6 +44,8 @@ interface HeroSectionProps {
   onRefreshMetadata?: () => void
   onEditMetadata?: () => void
   onDelete?: () => void
+  onPreprocess?: () => void
+  onTranscode?: () => void
 }
 
 export default function HeroSection({
@@ -62,6 +65,8 @@ export default function HeroSection({
   onRefreshMetadata,
   onEditMetadata,
   onDelete,
+  onPreprocess,
+  onTranscode,
 }: HeroSectionProps) {
   const toast = useToast()
   const { t } = useTranslation()
@@ -349,6 +354,24 @@ export default function HeroSection({
                           >
                             <Trash2 size={14} />
                             {t('hero.deleteMedia')}
+                          </button>
+                          <div className="my-1 mx-3 h-px" style={{ background: 'var(--border-default)' }} />
+                          <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>预处理与转码</div>
+                          <button
+                            onClick={() => { onPreprocess?.(); setShowMoreMenu(false) }}
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            <Zap size={14} />
+                            手动预处理
+                          </button>
+                          <button
+                            onClick={() => { onTranscode?.(); setShowMoreMenu(false) }}
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition-colors hover:bg-neon-blue/5"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            <Clapperboard size={14} />
+                            强制重新转码
                           </button>
                           <div className="my-1 mx-3 h-px" style={{ background: 'var(--border-default)' }} />
                         </>

@@ -296,6 +296,7 @@ func main() {
 		api.GET("/collections", handlers.Collection.ListCollections)
 		api.GET("/collections/search", handlers.Collection.SearchCollections) // search 必须在 :id 之前注册
 		api.GET("/collections/:id", handlers.Collection.GetCollectionDetail)
+		api.GET("/collections/:id/poster", handlers.Collection.Poster)
 		api.GET("/media/:id/chapters", handlers.AIScene.GetChapters)
 		api.POST("/media/:id/ai/highlights", handlers.AIScene.ExtractHighlights)
 		api.GET("/media/:id/highlights", handlers.AIScene.GetHighlights)
@@ -537,6 +538,11 @@ func main() {
 		// ==================== P1: 批量移动媒体 ====================
 		admin.POST("/media/batch-move", handlers.Library.BatchMoveMedia)
 
+		// ==================== 重复媒体检测 ====================
+		admin.GET("/duplicates", handlers.Library.DetectAllDuplicates)
+		admin.GET("/libraries/:id/duplicates", handlers.Library.DetectDuplicates)
+		admin.POST("/libraries/:id/mark-duplicates", handlers.Library.MarkDuplicates)
+
 		// ==================== V5: Pulse 数据中心（管理员） ====================
 		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
 		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
@@ -587,7 +593,10 @@ func main() {
 
 		// ==================== 电影系列合集管理 ====================
 		admin.POST("/collections", handlers.Collection.CreateCollection)
-		admin.POST("/collections/auto-match", handlers.Collection.AutoMatch) // auto-match 必须在 :id 之前注册
+		admin.POST("/collections/auto-match", handlers.Collection.AutoMatch)             // auto-match 必须在 :id 之前注册
+		admin.POST("/collections/merge-duplicates", handlers.Collection.MergeDuplicates) // 合并同名重复合集
+		admin.POST("/collections/cleanup-empty", handlers.Collection.CleanupEmpty)       // 清理空壳合集
+		admin.GET("/collections/duplicate-stats", handlers.Collection.DuplicateStats)    // 重复合集统计
 		admin.PUT("/collections/:id", handlers.Collection.UpdateCollection)
 		admin.DELETE("/collections/:id", handlers.Collection.DeleteCollection)
 		admin.POST("/collections/:id/media", handlers.Collection.AddMedia)

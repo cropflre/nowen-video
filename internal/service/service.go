@@ -333,20 +333,33 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 延迟注入：StreamService 需要 PreprocessService（用于自动选择预处理内容）
 	svcs.Stream.SetPreprocessService(preprocessService)
 
+	// 延迟注入：StreamService 需要 SystemSettingRepo（用于读取播放偏好设置）
+	svcs.Stream.SetSettingRepo(repos.SystemSetting)
+
 	// 延迟注入：SchedulerService 需要 SubtitlePreprocessService（用于定时字幕预处理）
 	scheduler.SetSubtitlePreprocessService(subtitlePreprocessService, cfg.AI.SubtitleTargetLangs)
 
-	// 延迟注入：扫描完成后自动触发预处理
+	// 延迟注入：扫描完成后自动触发预处理（受系统设置控制）
 	scanner.SetOnScanComplete(func(libraryID string) {
-		count, err := preprocessService.SubmitLibrary(libraryID, 0)
-		if err != nil {
-			logger.Warnf("扫描后自动提交预处理失败: %v", err)
-		} else if count > 0 {
-			logger.Infof("扫描后自动提交 %d 个预处理任务", count)
+		// 检查系统设置：是否启用扫描后自动预处理
+		autoPreprocess := false
+		if setting, err := repos.SystemSetting.Get("auto_preprocess_on_scan"); err == nil && (setting == "true" || setting == "1") {
+			autoPreprocess = true
+		}
+
+		if autoPreprocess {
+			count, err := preprocessService.SubmitLibrary(libraryID, 0)
+			if err != nil {
+				logger.Warnf("扫描后自动提交预处理失败: %v", err)
+			} else if count > 0 {
+				logger.Infof("扫描后自动提交 %d 个预处理任务", count)
+			}
+		} else {
+			logger.Info("扫描后自动预处理已关闭（可在系统设置中开启）")
 		}
 
 		// P1: 扫描后自动触发字幕预处理（如果配置启用）
-		if cfg.AI.AutoSubtitlePreprocess {
+		if cfg.AI.AutoSubtitlePreprocess && autoPreprocess {
 			var targetLangs []string
 			if cfg.AI.SubtitleTargetLangs != "" {
 				for _, lang := range strings.Split(cfg.AI.SubtitleTargetLangs, ",") {

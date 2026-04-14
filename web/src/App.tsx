@@ -25,6 +25,8 @@ const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
 const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
 const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
+const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
+const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage'))
 
 // 页面加载中的占位组件 — 品牌化霓虹脉冲环
 function PageLoader() {
@@ -120,6 +122,8 @@ export default function App() {
               <Route path="preprocess" element={<PreprocessPage />} />
               <Route path="subtitle-preprocess" element={<SubtitlePreprocessPage />} />
               <Route path="browse" element={<BrowsePage />} />
+              <Route path="collections" element={<CollectionsPage />} />
+              <Route path="collections/:id" element={<CollectionDetailPage />} />
               <Route path="person/:id" element={<PersonDetailPage />} />
             </Route>
 

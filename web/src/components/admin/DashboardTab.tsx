@@ -21,6 +21,9 @@ import {
   Trash2,
   ShieldAlert,
   Merge,
+  Play,
+  Scan,
+  MonitorPlay,
 } from 'lucide-react'
 import { adminApi } from '@/api'
 
@@ -398,6 +401,42 @@ export default function DashboardTab({
               <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>播放网盘文件时优先使用直链进行在线播放。</p>
             </div>
             <ToggleButton checked={sysSettings.enable_direct_link} onChange={() => setSysSettings((s) => ({ ...s, enable_direct_link: !s.enable_direct_link }))} />
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+          {/* 播放与转码设置 */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <MonitorPlay size={16} style={{ color: '#8B5CF6' }} />
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>优先直接播放</h4>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>开启后播放器默认使用原始格式直接播放，不自动触发转码。关闭后将根据文件格式自动选择直接播放或 HLS 转码。</p>
+            </div>
+            <ToggleButton checked={sysSettings.prefer_direct_play} onChange={() => setSysSettings((s) => ({ ...s, prefer_direct_play: !s.prefer_direct_play }))} />
+          </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Scan size={16} style={{ color: '#06B6D4' }} />
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>扫描后自动预处理</h4>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>开启后扫描媒体库完成时自动触发视频预处理和字幕预处理。关闭后需手动在预处理页面提交任务。</p>
+            </div>
+            <ToggleButton checked={sysSettings.auto_preprocess_on_scan} onChange={() => setSysSettings((s) => ({ ...s, auto_preprocess_on_scan: !s.auto_preprocess_on_scan }))} />
+          </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Play size={16} style={{ color: '#EC4899' }} />
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>播放时自动转码</h4>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>开启后播放不支持直接播放的格式时自动触发实时转码。关闭后需手动在媒体详情页触发转码。</p>
+            </div>
+            <ToggleButton checked={sysSettings.auto_transcode_on_play} onChange={() => setSysSettings((s) => ({ ...s, auto_transcode_on_play: !s.auto_transcode_on_play }))} />
           </div>
 
           {/* 保存 */}

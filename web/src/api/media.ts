@@ -101,4 +101,16 @@ export const collectionApi = {
   /** 搜索合集 */
   search: (keyword: string, limit = 10) =>
     api.get<{ data: import('@/types').MovieCollection[] }>('/collections/search', { params: { keyword, limit } }),
+
+  /** 合并所有同名重复合集（管理员） */
+  mergeDuplicates: () =>
+    api.post<{ message: string; merged: number }>('/admin/collections/merge-duplicates'),
+
+  /** 清理所有空壳合集（管理员） */
+  cleanupEmpty: () =>
+    api.post<{ message: string; cleaned: number }>('/admin/collections/cleanup-empty'),
+
+  /** 获取重复合集统计信息（管理员） */
+  getDuplicateStats: () =>
+    api.get<{ data: Record<string, number>; count: number }>('/admin/collections/duplicate-stats'),
 }

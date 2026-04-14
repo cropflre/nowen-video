@@ -149,6 +149,9 @@ type Media struct {
 	LastScrapeAt   *time.Time `json:"last_scrape_at"`                                 // 最后一次刮削时间
 	// 电影系列合集
 	CollectionID string `json:"collection_id" gorm:"index;type:text"` // 所属电影合集 ID
+	// 重复媒体检测
+	DuplicateOf    string `json:"duplicate_of" gorm:"index;type:text"`    // 重复的原始媒体 ID（为空表示非重复）
+	DuplicateGroup string `json:"duplicate_group" gorm:"index;type:text"` // 重复组标识（相同标题+年份的媒体共享此标识）
 	// 剧集专属字段
 	SeriesID     string `json:"series_id" gorm:"index;type:text"`
 	SeasonNum    int    `json:"season_num"`

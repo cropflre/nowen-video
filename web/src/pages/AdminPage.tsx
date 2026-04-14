@@ -217,6 +217,9 @@ export default function AdminPage() {
     metadata_store_path: '',
     play_cache_path: '',
     enable_direct_link: false,
+    auto_preprocess_on_scan: false,
+    auto_transcode_on_play: false,
+    prefer_direct_play: true,
   })
 
   // TMDb 配置状态

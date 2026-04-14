@@ -378,6 +378,7 @@ export interface MediaPlayInfo {
   preprocessed_url?: string // 预处理后的 HLS 地址
   preprocess_status?: string // 预处理状态
   thumbnail_url?: string // 预处理封面缩略图
+  prefer_direct_play?: boolean // 系统设置：优先直接播放
 }
 
 // ==================== 增强详情 ====================
@@ -621,6 +622,9 @@ export interface SystemSettings {
   metadata_store_path: string
   play_cache_path: string
   enable_direct_link: boolean
+  auto_preprocess_on_scan: boolean   // 扫描后自动触发预处理
+  auto_transcode_on_play: boolean    // 播放时自动触发转码
+  prefer_direct_play: boolean        // 优先直接播放（禁用自动转码）
 }
 
 // ==================== 豆瓣数据源 ====================
@@ -1720,5 +1724,28 @@ export interface CollectionMediaItem {
 export interface CollectionWithMedia {
   collection: MovieCollection
   media: CollectionMediaItem[]
+}
+
+// ==================== 重复媒体检测 ====================
+export interface DuplicateItem {
+  id: string
+  title: string
+  file_path: string
+  file_size: number
+  resolution: string
+  video_codec: string
+  audio_codec: string
+  duration: number
+  library_id: string
+  is_primary: boolean
+}
+
+export interface DuplicateGroup {
+  group_key: string
+  title: string
+  year: number
+  media_count: number
+  media: DuplicateItem[]
+  suggestion: string
 }
 

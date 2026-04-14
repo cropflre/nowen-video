@@ -95,14 +95,23 @@ export default function PlayerPage() {
   }
 
   // 智能选择播放模式：
-  // 1. 预处理完成 → 使用预处理的 HLS 流（秒开）
-  // 2. MP4 → 直接播放
-  // 3. 其他格式 → 实时 HLS 转码
+  // 系统设置 prefer_direct_play=true 时：
+  //   1. 预处理完成 → 使用预处理的 HLS 流（秒开）
+  //   2. 其他所有格式 → 优先直接播放（禁用自动转码）
+  // 系统设置 prefer_direct_play=false 时（旧行为）：
+  //   1. 预处理完成 → 使用预处理的 HLS 流
+  //   2. MP4 → 直接播放
+  //   3. 其他格式 → 实时 HLS 转码
   const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
-  const mode = isPreprocessed ? 'hls' : (playInfo.can_direct_play ? 'direct' : 'hls')
+  const preferDirect = playInfo.prefer_direct_play !== false // 默认 true
+  const mode = isPreprocessed
+    ? 'hls'
+    : preferDirect
+      ? 'direct'  // 优先直接播放，禁用自动转码
+      : (playInfo.can_direct_play ? 'direct' : 'hls')
   const src = isPreprocessed
     ? streamApi.withTokenUrl(playInfo.preprocessed_url!)
-    : playInfo.can_direct_play
+    : (mode === 'direct')
       ? streamApi.getDirectUrl(id)
       : streamApi.getMasterUrl(id)
 

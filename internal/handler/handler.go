@@ -112,6 +112,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		// 字幕预处理
 		SubtitlePreprocess: NewSubtitlePreprocessHandler(services.SubtitlePreprocess),
 		// 电影系列合集
-		Collection: &CollectionHandler{collectionService: services.Collection, logger: logger},
+		Collection: &CollectionHandler{collectionService: services.Collection, streamService: services.Stream, logger: logger},
 	}
 }
