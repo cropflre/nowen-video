@@ -9,7 +9,6 @@ import {
   Star,
   Calendar,
   Clock,
-  ChevronLeft,
   Loader2,
   Play,
   ArrowLeft,
