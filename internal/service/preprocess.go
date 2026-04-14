@@ -923,7 +923,16 @@ func (s *PreprocessService) transcodeVariant(
 	return s.transcodeWithFallback(task, variant, hlsArgs, audioArgs, m3u8Path, segmentPath, onProgress)
 }
 
-// transcodeWithFallback 尝试硬件加速，失败时回退到软件转码
+// transcodeWithFallback 尝试硬件加速转码，失败时自动回退到软件转码。
+//
+// 回退策略：
+//   - NVENC 模式: nvenc → qsv → vaapi → software
+//   - QSV 模式: qsv → vaapi → none(software)
+//   - VAAPI 模式: vaapi → qsv → none(software)
+//   - 其他/none: 仅 software
+//
+// 每次尝试失败后会清理已生成的分片文件（保留目录），确保下次尝试从干净状态开始。
+// 如果任务被用户取消（通过 cancelJobs），会立即返回而不继续尝试。
 func (s *PreprocessService) transcodeWithFallback(
 	task *model.PreprocessTask,
 	variant ABRProfile,
@@ -931,67 +940,70 @@ func (s *PreprocessService) transcodeWithFallback(
 	m3u8Path, segmentPath string,
 	onProgress func(progress float64, speed string),
 ) error {
-	// 尝试硬件加速配置
-	hwAccelAttempts := []struct {
-		name   string
-		config func() ([]string, []string, []string)
-	}{
-		{
-			name: "qsv",
-			config: func() ([]string, []string, []string) {
-				baseArgs := []string{"-y", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-i", task.InputPath}
-				videoArgs := []string{
-					"-c:v", "h264_qsv",
-					"-preset", "medium",
-					"-b:v", variant.VideoBitrate,
-					"-maxrate", variant.MaxBitrate,
-					"-bufsize", variant.BufSize,
-					"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
-					"-g", "48",
-					"-keyint_min", "48",
-				}
-				return baseArgs, videoArgs, audioArgs
-			},
+	// 构建硬件加速配置映射（使用 map 替代嵌套循环查找）
+	hwAccelConfigs := map[string]func() ([]string, []string, []string){
+		"nvenc": func() ([]string, []string, []string) {
+			baseArgs := []string{"-y", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", task.InputPath}
+			videoArgs := []string{
+				"-c:v", "h264_nvenc",
+				"-preset", "p4",
+				"-b:v", variant.VideoBitrate,
+				"-maxrate", variant.MaxBitrate,
+				"-bufsize", variant.BufSize,
+				"-vf", fmt.Sprintf("scale_cuda=%d:%d", variant.Width, variant.Height),
+				"-g", "48",
+				"-keyint_min", "48",
+				"-sc_threshold", "0",
+			}
+			return baseArgs, videoArgs, audioArgs
 		},
-		{
-			name: "vaapi",
-			config: func() ([]string, []string, []string) {
-				baseArgs := []string{
-					"-y",
-					"-hwaccel", "vaapi",
-					"-hwaccel_output_format", "vaapi",
-					"-vaapi_device", s.cfg.App.VAAPIDevice,
-					"-i", task.InputPath,
-				}
-				videoArgs := []string{
-					"-c:v", "h264_vaapi",
-					"-b:v", variant.VideoBitrate,
-					"-maxrate", variant.MaxBitrate,
-					"-bufsize", variant.BufSize,
-					"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", variant.Width, variant.Height),
-					"-g", "48",
-					"-keyint_min", "48",
-				}
-				return baseArgs, videoArgs, audioArgs
-			},
+		"qsv": func() ([]string, []string, []string) {
+			baseArgs := []string{"-y", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-i", task.InputPath}
+			videoArgs := []string{
+				"-c:v", "h264_qsv",
+				"-preset", "medium",
+				"-b:v", variant.VideoBitrate,
+				"-maxrate", variant.MaxBitrate,
+				"-bufsize", variant.BufSize,
+				"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
+				"-g", "48",
+				"-keyint_min", "48",
+			}
+			return baseArgs, videoArgs, audioArgs
 		},
-		{
-			name: "none",
-			config: func() ([]string, []string, []string) {
-				baseArgs := []string{"-y", "-i", task.InputPath}
-				videoArgs := []string{
-					"-c:v", "libx264",
-					"-preset", s.cfg.App.TranscodePreset,
-					"-b:v", variant.VideoBitrate,
-					"-maxrate", variant.MaxBitrate,
-					"-bufsize", variant.BufSize,
-					"-vf", fmt.Sprintf("scale=%d:%d", variant.Width, variant.Height),
-					"-g", "48",
-					"-keyint_min", "48",
-					"-sc_threshold", "0",
-				}
-				return baseArgs, videoArgs, audioArgs
-			},
+		"vaapi": func() ([]string, []string, []string) {
+			baseArgs := []string{
+				"-y",
+				"-hwaccel", "vaapi",
+				"-hwaccel_output_format", "vaapi",
+				"-vaapi_device", s.cfg.App.VAAPIDevice,
+				"-i", task.InputPath,
+			}
+			videoArgs := []string{
+				"-c:v", "h264_vaapi",
+				"-b:v", variant.VideoBitrate,
+				"-maxrate", variant.MaxBitrate,
+				"-bufsize", variant.BufSize,
+				"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", variant.Width, variant.Height),
+				"-g", "48",
+				"-keyint_min", "48",
+			}
+			return baseArgs, videoArgs, audioArgs
+		},
+		"none": func() ([]string, []string, []string) {
+			baseArgs := []string{"-y", "-i", task.InputPath}
+			videoArgs := []string{
+				"-c:v", "libx264",
+				"-preset", s.cfg.App.TranscodePreset,
+				"-b:v", variant.VideoBitrate,
+				"-maxrate", variant.MaxBitrate,
+				"-bufsize", variant.BufSize,
+				"-vf", fmt.Sprintf("scale=%d:%d", variant.Width, variant.Height),
+				"-g", "48",
+				"-keyint_min", "48",
+				"-sc_threshold", "0",
+			}
+			return baseArgs, videoArgs, audioArgs
 		},
 	}
 
@@ -1008,6 +1020,8 @@ func (s *PreprocessService) transcodeWithFallback(
 	// 根据当前硬件加速模式确定尝试顺序
 	var attempts []string
 	switch actualHWAccel {
+	case "nvenc":
+		attempts = []string{"nvenc", "qsv", "vaapi", "none"}
 	case "qsv":
 		attempts = []string{"qsv", "vaapi", "none"}
 	case "vaapi":
@@ -1016,27 +1030,24 @@ func (s *PreprocessService) transcodeWithFallback(
 		attempts = []string{"none"}
 	}
 
+	// 提前计算 FFmpeg 线程数（循环内不变，避免重复调用）
+	ffmpegThreads := s.calcFFmpegThreads()
+
 	// 尝试不同的转码方式
 	for _, attemptName := range attempts {
-		var configFunc func() ([]string, []string, []string)
-		for _, hw := range hwAccelAttempts {
-			if hw.name == attemptName {
-				configFunc = hw.config
-				break
-			}
-		}
-		
-		if configFunc == nil {
+		configFunc, ok := hwAccelConfigs[attemptName]
+		if !ok {
 			continue
 		}
 
-		baseArgs, videoArgs, audioArgs := configFunc()
-		
-		// 根据资源限制配置动态计算 FFmpeg 线程数
-		ffmpegThreads := s.calcFFmpegThreads()
+		// 确保输出目录存在（回退清理后需要重建）
+		os.MkdirAll(filepath.Dir(segmentPath), 0755)
+
+		baseArgs, videoArgs, aArgs := configFunc()
+
 		args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
 		args = append(args, videoArgs...)
-		args = append(args, audioArgs...)
+		args = append(args, aArgs...)
 		args = append(args, hlsArgs...)
 
 		cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
@@ -1053,18 +1064,28 @@ func (s *PreprocessService) transcodeWithFallback(
 		}
 
 		if err := cmd.Start(); err != nil {
-			s.logger.Debugf("硬件加速 %s 启动失败: %v", attemptName, err)
+			s.logger.Warnf("硬件加速 %s 启动失败: %v", attemptName, err)
 			continue // 尝试下一种方式
 		}
 
 		// 存储进程引用用于取消
 		s.runningJobs.Store(task.ID, cmd)
-		
-		// 启动进度解析协程
+
+		// 启动进度解析协程，同时收集 stderr 最后几行用于错误诊断
+		type stderrResult struct {
+			lastLines []string
+		}
+		resultCh := make(chan stderrResult, 1)
 		progressDone := make(chan struct{})
 		go func() {
 			defer close(progressDone)
-			s.parseFFmpegProgress(stderrPipe, task.SourceDuration, onProgress)
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Errorf("进度解析 panic: %v", r)
+				}
+			}()
+			lastLines := s.parseFFmpegProgressWithStderr(stderrPipe, task.SourceDuration, onProgress)
+			resultCh <- stderrResult{lastLines: lastLines}
 		}()
 
 		// 等待命令完成
@@ -1072,22 +1093,42 @@ func (s *PreprocessService) transcodeWithFallback(
 		s.runningJobs.Delete(task.ID)
 		<-progressDone // 等待进度解析完成
 
+		// 收集 stderr 输出
+		var stderrLines []string
+		select {
+		case res := <-resultCh:
+			stderrLines = res.lastLines
+		default:
+		}
+
 		if err != nil {
 			// 检查是否是被取消
 			if _, cancelled := s.cancelJobs.Load(task.ID); cancelled {
 				return fmt.Errorf("任务已取消")
 			}
-			
-			s.logger.Debugf("硬件加速 %s 转码失败: %v", attemptName, err)
-			
+
+			// 使用 Warn 级别记录回退信息，确保生产环境可见
+			if len(stderrLines) > 0 {
+				s.logger.Warnf("硬件加速 %s 转码失败: %v\nFFmpeg 输出:\n%s",
+					attemptName, err, strings.Join(stderrLines, "\n"))
+			} else {
+				s.logger.Warnf("硬件加速 %s 转码失败: %v", attemptName, err)
+			}
+
 			// 如果不是最后一次尝试，继续尝试下一种方式
 			if attemptName != attempts[len(attempts)-1] {
-				// 清理当前尝试的文件
+				// 只清理已生成的文件，保留目录结构（避免后续尝试因目录不存在而失败）
 				os.Remove(m3u8Path)
-				os.RemoveAll(filepath.Dir(segmentPath))
+				cleanupDir := filepath.Dir(segmentPath)
+				if entries, err := os.ReadDir(cleanupDir); err == nil {
+					for _, entry := range entries {
+						os.Remove(filepath.Join(cleanupDir, entry.Name()))
+					}
+				}
+				s.logger.Warnf("回退: %s 失败，尝试下一种方式", attemptName)
 				continue
 			}
-			
+
 			// 所有尝试都失败了
 			return fmt.Errorf("所有转码方式均失败，最后错误: %w", err)
 		}
@@ -1100,10 +1141,11 @@ func (s *PreprocessService) transcodeWithFallback(
 	return fmt.Errorf("所有转码方式均失败")
 }
 
-// parseFFmpegProgress 解析 FFmpeg stderr 进度输出
+// parseFFmpegProgressWithStderr 解析 FFmpeg stderr 进度输出，同时收集最后 N 行 stderr 用于错误诊断。
 // P2 优化：使用 bufio.Scanner 按行扫描，避免原始 Read 截断行导致正则匹配失败
 // P3 优化：使用预编译正则 + 进度变化阈值过滤，减少无效回调
-func (s *PreprocessService) parseFFmpegProgress(stderr io.ReadCloser, totalDuration float64, onProgress func(float64, string)) {
+// 返回值：stderr 最后 10 行输出（用于转码失败时的错误诊断）
+func (s *PreprocessService) parseFFmpegProgressWithStderr(stderr io.ReadCloser, totalDuration float64, onProgress func(float64, string)) []string {
 	scanner := bufio.NewScanner(stderr)
 	// FFmpeg 的 stderr 输出使用 \r 作为行分隔符，需要自定义 split 函数
 	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -1123,9 +1165,20 @@ func (s *PreprocessService) parseFFmpegProgress(stderr io.ReadCloser, totalDurat
 	})
 
 	var lastProgress float64
+	// 环形缓冲区：保留最后 10 行 stderr 输出用于错误诊断
+	const maxStderrLines = 10
+	stderrRing := make([]string, 0, maxStderrLines)
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// 收集非空行到环形缓冲区
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			if len(stderrRing) >= maxStderrLines {
+				stderrRing = stderrRing[1:]
+			}
+			stderrRing = append(stderrRing, trimmed)
+		}
 
 		timeMatches := ffmpegTimeRegex.FindStringSubmatch(line)
 		if len(timeMatches) < 5 || totalDuration <= 0 {
@@ -1156,6 +1209,8 @@ func (s *PreprocessService) parseFFmpegProgress(stderr io.ReadCloser, totalDurat
 
 		onProgress(progress, speed)
 	}
+
+	return stderrRing
 }
 
 // generateMasterPlaylist 生成 ABR 主播放列表
