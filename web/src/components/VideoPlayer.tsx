@@ -32,7 +32,7 @@ import SubtitleContentSearch from './SubtitleContentSearch'
 
 interface VideoPlayerProps {
   src: string
-  mode?: 'direct' | 'hls'
+  mode?: 'direct' | 'hls' | 'remux'
   mediaId: string
   title?: string
   startPosition?: number
@@ -45,6 +45,8 @@ interface VideoPlayerProps {
   isStrm?: boolean
   /** API 返回的完整视频时长（秒），用于在实时转码 EVENT 模式下显示完整时长 */
   knownDuration?: number
+  /** Remux 播放失败回调，触发后 PlayerPage 会自动降级到 HLS 转码模式 */
+  onRemuxFallback?: () => void
   /** 预处理完成回调，播放器会自动切换到预处理流 */
   onPreprocessReady?: () => void
 }
@@ -61,6 +63,7 @@ export default function VideoPlayer({
   isStrm = false,
   knownDuration,
   onPreprocessReady,
+  onRemuxFallback,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -352,7 +355,7 @@ export default function VideoPlayer({
       hlsRef.current.destroy()
       hlsRef.current = null
     }
-    if (mode === 'direct') {
+    if (mode === 'direct' || mode === 'remux') {
       video.src = src
       setQualities([])
       video.addEventListener('loadedmetadata', () => {
@@ -361,6 +364,12 @@ export default function VideoPlayer({
       }, { once: true })
       video.addEventListener('error', () => {
         const err = video.error
+        // Remux 模式下播放失败（如浏览器不支持 HEVC 10-bit），自动降级到 HLS
+        if (mode === 'remux' && onRemuxFallback) {
+          console.warn('Remux 播放失败，自动降级到 HLS 转码:', err?.message)
+          onRemuxFallback()
+          return
+        }
         setLoadError(`播放失败: ${err?.message || '未知错误'}`)
       }, { once: true })
     } else {
@@ -421,7 +430,7 @@ export default function VideoPlayer({
       hlsRef.current?.destroy()
       hlsRef.current = null
     }
-  }, [src, mode, startPosition, reset])
+  }, [src, mode, startPosition, reset, onRemuxFallback])
 
   // 视频事件监听
   useEffect(() => {
@@ -944,7 +953,7 @@ export default function VideoPlayer({
               {title}
             </h2>
             <span className="badge-neon text-[10px]">
-              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : 'HLS转码'}
+              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : mode === 'remux' ? 'Remux播放' : 'HLS转码'}
             </span>
             {playbackRate !== 1 && (
               <span className="badge-neon text-[10px]">{playbackRate}x</span>

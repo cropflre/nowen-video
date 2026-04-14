@@ -87,6 +87,17 @@ func (h *StreamHandler) Segment(c *gin.Context) {
 	}
 }
 
+// Remux 实时将 MKV 等格式 remux 为 fragmented MP4 流式输出（零转码，仅转封装）
+func (h *StreamHandler) Remux(c *gin.Context) {
+	id := c.Param("id")
+	h.logger.Debugf("Remux 播放请求: %s", id)
+	if err := h.streamService.RemuxStream(id, c.Writer, c.Request); err != nil {
+		h.logger.Warnf("Remux 播放失败: %s, 错误: %v", id, err)
+		// 如果还没写入响应头，返回错误
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Remux 播放失败: " + err.Error()})
+	}
+}
+
 // MediaInfo 获取媒体的播放信息（前端用于决定播放模式）
 func (h *StreamHandler) MediaInfo(c *gin.Context) {
 	id := c.Param("id")

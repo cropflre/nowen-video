@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -30,6 +32,8 @@ type MediaPlayInfo struct {
 	PreprocessStatus string  `json:"preprocess_status"`  // 预处理状态: none / pending / running / completed
 	ThumbnailURL     string  `json:"thumbnail_url"`      // 预处理封面缩略图
 	PreferDirectPlay bool    `json:"prefer_direct_play"` // 系统设置：优先直接播放（禁用自动转码）
+	CanRemux         bool    `json:"can_remux"`          // 是否支持 remux（MKV等容器内编码兼容但容器不兼容）
+	RemuxURL         string  `json:"remux_url"`          // Remux 播放地址（零转码，仅转封装）
 }
 
 // 浏览器可直接播放的文件格式
@@ -37,6 +41,31 @@ var directPlayableExts = map[string]bool{
 	".mp4":  true,
 	".webm": true,
 	".m4v":  true,
+}
+
+// 可通过 remux（转封装）播放的格式：容器不兼容但内部编码兼容
+// 这些格式内部通常是 H.264/H.265+AAC，只需换容器为 fMP4 即可在浏览器播放
+var remuxableExts = map[string]bool{
+	".mkv": true,
+	".avi": true,
+	".mov": true,
+	".flv": true,
+	".wmv": true,
+	".ts":  true,
+}
+
+// 浏览器可解码的视频编码（用于判断是否可 remux）
+var browserCompatibleVideoCodecs = map[string]bool{
+	"h264": true, "avc": true, "avc1": true,
+	"h265": true, "hevc": true, // Chrome 108+ 部分支持
+	"vp8": true, "vp9": true,
+	"av1": true,
+}
+
+// 浏览器可解码的音频编码
+var browserCompatibleAudioCodecs = map[string]bool{
+	"aac": true, "mp3": true, "opus": true,
+	"vorbis": true, "flac": true, "ac3": true, "eac3": true,
 }
 
 // 文件扩展名 -> MIME类型映射
@@ -129,6 +158,16 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 
 	if canDirect {
 		info.DirectPlayURL = fmt.Sprintf("/api/stream/%s/direct", mediaID)
+	}
+
+	// 判断是否可通过 remux 播放（容器不兼容但编码兼容）
+	if !canDirect && remuxableExts[ext] {
+		videoCodec := strings.ToLower(media.VideoCodec)
+		audioCodec := strings.ToLower(media.AudioCodec)
+		if browserCompatibleVideoCodecs[videoCodec] && (audioCodec == "" || browserCompatibleAudioCodecs[audioCodec]) {
+			info.CanRemux = true
+			info.RemuxURL = fmt.Sprintf("/api/stream/%s/remux", mediaID)
+		}
 	}
 
 	// 读取系统设置：是否优先直接播放
@@ -452,6 +491,88 @@ func (s *StreamService) guessContentType(url string) string {
 	default:
 		return "video/mp4" // 默认作为 MP4
 	}
+}
+
+// RemuxStream 实时将 MKV 等格式 remux 为 fragmented MP4 流式输出（零转码，仅转封装）
+// 使用 FFmpeg -c copy 模式，CPU 占用极低，速度接近磁盘 I/O
+func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *http.Request) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+
+	if media.StreamURL != "" {
+		return fmt.Errorf("STRM 远程流不支持 remux")
+	}
+
+	if _, err := os.Stat(media.FilePath); os.IsNotExist(err) {
+		return fmt.Errorf("文件不存在: %s", media.FilePath)
+	}
+
+	// 使用请求的 context，客户端断开时自动终止 FFmpeg
+	ctx := r.Context()
+
+	// 构建 FFmpeg remux 命令
+	// -c copy: 不重新编码，仅转封装
+	// -movflags frag_mp4+empty_moov+default_base_moof: 生成 fragmented MP4，支持流式输出
+	// -f mp4: 输出 MP4 格式
+	// pipe:1: 输出到 stdout
+	args := []string{
+		"-i", media.FilePath,
+		"-c", "copy",
+		"-movflags", "frag_mp4+empty_moov+default_base_moof",
+		"-f", "mp4",
+		"-y",
+		"pipe:1",
+	}
+
+	s.logger.Debugf("Remux 命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(args, " "))
+
+	cmd := exec.CommandContext(ctx, s.cfg.App.FFmpegPath, args...)
+
+	// 获取 stdout 管道
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("创建 stdout 管道失败: %w", err)
+	}
+
+	// 忽略 stderr（FFmpeg 的进度信息）
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("启动 remux 失败: %w", err)
+	}
+
+	// 设置响应头
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Accept-Ranges", "none") // remux 流不支持 Range 请求
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Stream-Mode", "remux")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	// 流式转发 FFmpeg 输出到 HTTP 响应
+	buf := make([]byte, 256*1024) // 256KB 缓冲区
+	_, copyErr := io.CopyBuffer(w, stdout, buf)
+
+	// 等待 FFmpeg 进程结束
+	waitErr := cmd.Wait()
+
+	// 客户端断开连接是正常情况
+	if ctx.Err() == context.Canceled {
+		s.logger.Debugf("Remux 流已断开（客户端关闭）: %s", mediaID)
+		return nil
+	}
+
+	if copyErr != nil {
+		s.logger.Debugf("Remux 流传输结束: %v", copyErr)
+		return nil
+	}
+
+	if waitErr != nil {
+		return fmt.Errorf("remux 进程异常退出: %w", waitErr)
+	}
+
+	return nil
 }
 
 // GetMediaStreamURL 获取媒体的远程流 URL（仅用于内部判断）

@@ -94,26 +94,41 @@ export default function PlayerPage() {
     )
   }
 
+  // Remux 降级状态：当 Remux 播放失败时（如浏览器不支持 HEVC 10-bit），自动降级到 HLS 转码
+  const [remuxFailed, setRemuxFailed] = useState(false)
+
+  // Remux 播放失败回调：自动降级到 HLS 转码模式
+  const handleRemuxFallback = useCallback(() => {
+    toast.info('当前浏览器不支持该编码格式，已自动切换到转码播放')
+    setRemuxFailed(true)
+  }, [toast])
+
   // 智能选择播放模式：
-  // 系统设置 prefer_direct_play=true 时：
-  //   1. 预处理完成 → 使用预处理的 HLS 流（秒开）
-  //   2. 其他所有格式 → 优先直接播放（禁用自动转码）
-  // 系统设置 prefer_direct_play=false 时（旧行为）：
-  //   1. 预处理完成 → 使用预处理的 HLS 流
-  //   2. MP4 → 直接播放
-  //   3. 其他格式 → 实时 HLS 转码
+  // 优先级：预处理 HLS > 直接播放（MP4/WebM） > Remux（MKV等零转码转封装） > HLS 实时转码
+  //
+  // 1. 预处理完成 → 使用预处理的 HLS 流（秒开）
+  // 2. 浏览器兼容格式（MP4/WebM/M4V） → 直接播放
+  // 3. 容器不兼容但编码兼容（MKV+H.264+AAC） → Remux（FFmpeg -c copy 转封装为 fMP4，零转码）
+  //    → 如果 Remux 播放失败（如 HEVC 10-bit 浏览器不支持） → 自动降级到 HLS 转码
+  // 4. 其他格式 → HLS 实时转码
   const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
   const preferDirect = playInfo.prefer_direct_play !== false // 默认 true
-  const mode = isPreprocessed
+  const mode: 'direct' | 'hls' | 'remux' = isPreprocessed
     ? 'hls'
-    : preferDirect
-      ? 'direct'  // 优先直接播放，禁用自动转码
-      : (playInfo.can_direct_play ? 'direct' : 'hls')
+    : playInfo.can_direct_play
+      ? 'direct'
+      : (playInfo.can_remux && !remuxFailed)
+        ? 'remux'
+        : preferDirect && !remuxFailed
+          ? 'direct'  // 用户强制直接播放（可能不兼容，但尊重用户选择）
+          : 'hls'
   const src = isPreprocessed
     ? streamApi.withTokenUrl(playInfo.preprocessed_url!)
-    : (mode === 'direct')
+    : mode === 'direct'
       ? streamApi.getDirectUrl(id)
-      : streamApi.getMasterUrl(id)
+      : mode === 'remux'
+        ? streamApi.getRemuxUrl(id)
+        : streamApi.getMasterUrl(id)
 
   // 构建播放标题（剧集显�?S01E02 格式�?
   const playerTitle = media.media_type === 'episode'
@@ -159,6 +174,7 @@ export default function PlayerPage() {
         knownDuration={playInfo.duration}
         startPosition={switchPosition}
         onPreprocessReady={handlePreprocessReady}
+        onRemuxFallback={mode === 'remux' ? handleRemuxFallback : undefined}
         onBack={() => {
           if (media.media_type === 'episode' && media.series_id) {
             navigate(`/series/${media.series_id}`)

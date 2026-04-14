@@ -379,6 +379,8 @@ export interface MediaPlayInfo {
   preprocess_status?: string // 预处理状态
   thumbnail_url?: string // 预处理封面缩略图
   prefer_direct_play?: boolean // 系统设置：优先直接播放
+  can_remux?: boolean // 是否支持 remux（容器不兼容但编码兼容）
+  remux_url?: string // Remux 播放地址（零转码，仅转封装）
 }
 
 // ==================== 增强详情 ====================

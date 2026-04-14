@@ -146,6 +146,7 @@ func main() {
 		// 流媒体
 		api.GET("/stream/:id/info", handlers.Stream.MediaInfo)
 		api.GET("/stream/:id/direct", handlers.Stream.Direct)
+		api.GET("/stream/:id/remux", handlers.Stream.Remux)
 		api.GET("/stream/:id/master.m3u8", handlers.Stream.Master)
 		api.GET("/stream/:id/:quality/:segment", handlers.Stream.Segment)
 

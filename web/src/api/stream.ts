@@ -23,6 +23,9 @@ export const streamApi = {
   getDirectUrl: (mediaId: string) =>
     withToken(`/api/stream/${mediaId}/direct`),
 
+  getRemuxUrl: (mediaId: string) =>
+    withToken(`/api/stream/${mediaId}/remux`),
+
   getPosterUrl: (mediaId: string) =>
     withToken(`/api/media/${mediaId}/poster`),
 
