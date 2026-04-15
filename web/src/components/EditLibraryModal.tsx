@@ -15,6 +15,7 @@ import {
   Globe,
   Eye,
   Save,
+  Search,
 } from 'lucide-react'
 import FileBrowser from './FileBrowser'
 
@@ -125,6 +126,7 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
     metadata_lang: 'zh-CN',
     allow_adult_content: false,
     auto_download_sub: false,
+    auto_scrape_metadata: true,
     enable_file_watch: false,
   })
   const [showLangDropdown, setShowLangDropdown] = useState(false)
@@ -147,6 +149,7 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
         metadata_lang: library.metadata_lang,
         allow_adult_content: library.allow_adult_content,
         auto_download_sub: library.auto_download_sub,
+        auto_scrape_metadata: library.auto_scrape_metadata,
         enable_file_watch: library.enable_file_watch,
       })
       setShowAdvanced(false)
@@ -567,7 +570,28 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
 
                   <div style={{ borderTop: '1px solid var(--border-default)' }} />
 
-                  {/* ———— 6. 实时文件监控 ———— */}
+                  {/* ———— 6. 扫描后自动刮削元数据 ———— */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Search size={16} style={{ color: '#06B6D4' }} />
+                        <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          扫描后自动刮削元数据
+                        </h4>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                        扫描媒体库后自动从 TMDb、豆瓣等数据源识别并下载影片信息。关闭后需手动触发刮削。
+                      </p>
+                    </div>
+                    <ToggleSwitch
+                      checked={advanced.auto_scrape_metadata}
+                      onChange={(v) => updateAdvanced('auto_scrape_metadata', v)}
+                    />
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+                  {/* ———— 7. 实时文件监控 ———— */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">

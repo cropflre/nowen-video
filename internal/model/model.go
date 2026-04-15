@@ -34,6 +34,8 @@ type Library struct {
 	MetadataLang      string `json:"metadata_lang" gorm:"type:text;default:zh-CN"` // 媒体元数据下载语言
 	AllowAdultContent bool   `json:"allow_adult_content" gorm:"default:false"`     // 允许成人内容
 	AutoDownloadSub   bool   `json:"auto_download_sub" gorm:"default:false"`       // 自动下载字幕
+	// 扫描行为设置
+	AutoScrapeMetadata bool `json:"auto_scrape_metadata" gorm:"default:true"` // 扫描后自动刮削元数据
 	// 实时文件监控（媒体库级别设置）
 	EnableFileWatch bool `json:"enable_file_watch" gorm:"default:false"` // 启用实时文件监控
 	// 时间戳

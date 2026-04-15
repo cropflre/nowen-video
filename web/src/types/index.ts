@@ -40,6 +40,7 @@ export interface Library {
   metadata_lang: string
   allow_adult_content: boolean
   auto_download_sub: boolean
+  auto_scrape_metadata: boolean
   enable_file_watch: boolean
 }
 
@@ -51,6 +52,7 @@ export interface LibraryAdvancedSettings {
   metadata_lang: string
   allow_adult_content: boolean
   auto_download_sub: boolean
+  auto_scrape_metadata: boolean
   enable_file_watch: boolean
 }
 
@@ -65,6 +67,7 @@ export interface CreateLibraryRequest {
   metadata_lang?: string
   allow_adult_content?: boolean
   auto_download_sub?: boolean
+  auto_scrape_metadata?: boolean
   enable_file_watch?: boolean
 }
 

@@ -28,6 +28,8 @@ type CreateLibraryRequest struct {
 	MetadataLang      *string `json:"metadata_lang"`
 	AllowAdultContent *bool   `json:"allow_adult_content"`
 	AutoDownloadSub   *bool   `json:"auto_download_sub"`
+	// 扫描行为设置
+	AutoScrapeMetadata *bool `json:"auto_scrape_metadata"`
 	// 媒体库级别设置
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
@@ -44,6 +46,8 @@ type UpdateLibraryRequest struct {
 	MetadataLang      *string `json:"metadata_lang"`
 	AllowAdultContent *bool   `json:"allow_adult_content"`
 	AutoDownloadSub   *bool   `json:"auto_download_sub"`
+	// 扫描行为设置
+	AutoScrapeMetadata *bool `json:"auto_scrape_metadata"`
 	// 媒体库级别设置
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
@@ -110,6 +114,9 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	if req.AutoDownloadSub != nil {
 		lib.AutoDownloadSub = *req.AutoDownloadSub
 	}
+	if req.AutoScrapeMetadata != nil {
+		lib.AutoScrapeMetadata = *req.AutoScrapeMetadata
+	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch
 	}
@@ -117,7 +124,7 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	// 如果有高级设置需要更新，则再次保存
 	needUpdate := req.PreferLocalNFO != nil || req.EnableFileFilter != nil || req.MinFileSize != nil ||
 		req.MetadataLang != nil || req.AllowAdultContent != nil || req.AutoDownloadSub != nil ||
-		req.EnableFileWatch != nil
+		req.AutoScrapeMetadata != nil || req.EnableFileWatch != nil
 	if needUpdate {
 		h.libService.Update(lib)
 	}
@@ -227,6 +234,9 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 	}
 	if req.AutoDownloadSub != nil {
 		lib.AutoDownloadSub = *req.AutoDownloadSub
+	}
+	if req.AutoScrapeMetadata != nil {
+		lib.AutoScrapeMetadata = *req.AutoScrapeMetadata
 	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch
