@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash 启动主题 — 使用品牌色背景 -->
+    <style name="Theme.NowenVideo" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- Splash Screen 主题（Android 12+） -->
+    <style name="Theme.NowenVideo.Splash" parent="Theme.NowenVideo">
+        <item name="android:windowSplashScreenBackground">#6366F1</item>
+    </style>
+</resources>

@@ -37,3 +37,16 @@ config.yaml
 
 # 分片配置中的敏感信息文件（密钥、API Key 等）
 config/secrets.yaml
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.apk
+*.aab
+*.aar
+*.ap_
