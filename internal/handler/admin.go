@@ -15,6 +15,7 @@ import (
 // AdminHandler 管理处理器
 type AdminHandler struct {
 	userService       *service.UserService
+	authService       *service.AuthService
 	transcodeService  *service.TranscodeService
 	monitorService    *service.MonitorService
 	schedulerService  *service.SchedulerService
@@ -56,6 +57,31 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
+}
+
+// ResetUserPassword 管理员重置用户密码
+func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
+	userID := c.Param("id")
+
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required,min=6,max=64"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效，新密码至少6位"})
+		return
+	}
+
+	if err := h.authService.ResetPassword(userID, req.NewPassword); err != nil {
+		if err == service.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+			return
+		}
+		h.logger.Errorf("重置用户密码失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "重置密码失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "密码已重置"})
 }
 
 // ==================== 系统信息 ====================

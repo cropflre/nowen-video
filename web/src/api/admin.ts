@@ -28,6 +28,9 @@ export const adminApi = {
   deleteUser: (id: string) =>
     api.delete(`/admin/users/${id}`),
 
+  resetUserPassword: (id: string, newPassword: string) =>
+    api.put<{ message: string }>(`/admin/users/${id}/password`, { new_password: newPassword }),
+
   systemInfo: () =>
     api.get<{ data: SystemInfo }>('/admin/system'),
 

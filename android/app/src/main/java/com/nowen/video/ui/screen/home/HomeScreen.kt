@@ -164,7 +164,14 @@ fun HomeScreen(
                                     ContinueWatchingCard(
                                         media = media,
                                         progress = if (history.duration > 0) (history.position / history.duration).toFloat() else 0f,
-                                        onClick = { onMediaClick(media.id) }
+                                        onClick = {
+                                            // 剧集类型导航到系列详情页，电影类型导航到媒体详情页
+                                            if (media.mediaType == "episode" && media.seriesId.isNotBlank()) {
+                                                onSeriesClick(media.seriesId)
+                                            } else {
+                                                onMediaClick(media.id)
+                                            }
+                                        }
                                     )
                                 }
                             }

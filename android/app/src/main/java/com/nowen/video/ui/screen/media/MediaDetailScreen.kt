@@ -125,11 +125,21 @@ fun MediaDetailScreen(
 
                 // 信息区域
                 Column(modifier = Modifier.padding(16.dp)) {
-                    // 标题
+                    // 标题（剧集类型使用格式化标题，电影使用原标题）
                     Text(
-                        text = media.title,
+                        text = media.displayTitle(),
                         style = MaterialTheme.typography.headlineMedium
                     )
+
+                    // 原始标题（如果是剧集且有单集标题，显示在副标题位置）
+                    if (media.mediaType == "episode" && media.episodeTitle.isNotBlank()) {
+                        Text(
+                            text = media.episodeTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
 
                     // 元信息行
                     Row(

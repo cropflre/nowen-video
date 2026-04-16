@@ -286,9 +286,10 @@ const enUS: Record<string, string> = {
   'profile.confirmPasswordPlaceholder': 'Re-enter new password',
   'profile.passwordMinLength': 'New password must be at least 6 characters',
   'profile.passwordMismatch': 'Passwords do not match',
-  'profile.passwordVerifySuccess': 'Password verified. Please contact admin to change password or wait for future version support',
-  'profile.passwordVerifyFailed': 'Old password verification failed',
-  'profile.verifyAndChange': 'Verify & Change',
+  'profile.passwordChangeSuccess': 'Password changed successfully',
+  'profile.passwordChangeFailed': 'Failed to change password, please try again',
+  'profile.passwordVerifyFailed': 'Current password is incorrect',
+  'profile.verifyAndChange': 'Confirm Change',
   'profile.logout': 'Logout',
   'profile.logoutHint': 'Sign out and return to login page',
 

@@ -38,16 +38,18 @@ toast.error(t('profile.passwordMismatch'))
 
     setChangingPwd(true)
     try {
-      // 通过重新登录验证旧密码，再注册新密码的方式（简化方案）
-// 这里使用一个技巧：先用旧密码登录验证身份
-      await authApi.login({ username: user!.username, password: oldPassword })
-// 验证成功后，提示用户密码修改已完成（前端无直接修改密码API，需后端支持）
-toast.success(t('profile.passwordVerifySuccess'))
+      await authApi.changePassword(oldPassword, newPassword)
+      toast.success(t('profile.passwordChangeSuccess'))
       setOldPassword('')
       setNewPassword('')
       setConfirmPassword('')
-    } catch {
-toast.error(t('profile.passwordVerifyFailed'))
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.error
+      if (err?.response?.status === 401) {
+        toast.error(t('profile.passwordVerifyFailed'))
+      } else {
+        toast.error(errorMsg || t('profile.passwordChangeFailed'))
+      }
     } finally {
       setChangingPwd(false)
     }

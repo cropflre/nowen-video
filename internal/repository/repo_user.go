@@ -42,3 +42,8 @@ func (r *UserRepo) Count() (int64, error) {
 func (r *UserRepo) Delete(id string) error {
 	return r.db.Delete(&model.User{}, "id = ?", id).Error
 }
+
+// UpdatePassword 更新用户密码
+func (r *UserRepo) UpdatePassword(id string, hashedPassword string) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("password", hashedPassword).Error
+}

@@ -99,6 +99,7 @@ func main() {
 	authProtected.Use(middleware.JWTAuth(cfg.Secrets.JWTSecret))
 	{
 		authProtected.POST("/refresh", handlers.Auth.RefreshToken)
+		authProtected.PUT("/password", handlers.Auth.ChangePassword)
 	}
 
 	// PWA 资源文件（公开访问）
@@ -316,6 +317,7 @@ func main() {
 	{
 		admin.GET("/users", handlers.Admin.ListUsers)
 		admin.DELETE("/users/:id", handlers.Admin.DeleteUser)
+		admin.PUT("/users/:id/password", handlers.Admin.ResetUserPassword)
 		admin.GET("/system", handlers.Admin.SystemInfo)
 		admin.GET("/transcode/status", handlers.Admin.TranscodeStatus)
 		admin.POST("/transcode/:taskId/cancel", handlers.Admin.CancelTranscode)

@@ -88,3 +88,29 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, token)
 }
+
+// ChangePassword 修改密码（需要认证）
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+
+	var req service.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效，新密码至少6位"})
+		return
+	}
+
+	if err := h.authService.ChangePassword(userID.(string), &req); err != nil {
+		switch err {
+		case service.ErrInvalidCredentials:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "当前密码错误"})
+		case service.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
+		default:
+			h.logger.Errorf("修改密码失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "修改密码失败"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+}

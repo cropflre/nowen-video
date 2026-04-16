@@ -64,6 +64,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		User:    &UserHandler{userService: services.User, mediaService: services.Media, logger: logger},
 		Admin: &AdminHandler{
 			userService:       services.User,
+			authService:       services.Auth,
 			transcodeService:  services.Transcode,
 			monitorService:    services.Monitor,
 			schedulerService:  services.Scheduler,

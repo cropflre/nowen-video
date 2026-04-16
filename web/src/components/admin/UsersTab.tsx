@@ -12,6 +12,8 @@ import {
   Clock,
   Eye,
   FolderOpen,
+  KeyRound,
+  X,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -36,6 +38,11 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const [, setPerm] = useState<UserPermission | null>(null)
   const [loadingPerm, setLoadingPerm] = useState(false)
   const [savingPerm, setSavingPerm] = useState(false)
+
+  // 重置密码
+  const [resetPwdUser, setResetPwdUser] = useState<User | null>(null)
+  const [resetPwdValue, setResetPwdValue] = useState('')
+  const [resettingPwd, setResettingPwd] = useState(false)
 
   // 权限编辑表单
   const [permLibraries, setPermLibraries] = useState<string[]>([])
@@ -98,6 +105,25 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
     }
   }
 
+  // 重置密码
+  const handleResetPassword = async () => {
+    if (!resetPwdUser || resetPwdValue.length < 6) {
+      toast.error('新密码至少6位')
+      return
+    }
+    setResettingPwd(true)
+    try {
+      await adminApi.resetUserPassword(resetPwdUser.id, resetPwdValue)
+      toast.success(`已重置 ${resetPwdUser.username} 的密码`)
+      setResetPwdUser(null)
+      setResetPwdValue('')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '重置密码失败')
+    } finally {
+      setResettingPwd(false)
+    }
+  }
+
   // 切换媒体库访问权限
   const toggleLibrary = (libId: string) => {
     setPermLibraries((prev) =>
@@ -146,6 +172,15 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                     权限
                   </button>
                 )}
+                {/* 重置密码按钮 */}
+                <button
+                  onClick={() => { setResetPwdUser(user); setResetPwdValue('') }}
+                  className="btn-ghost gap-1 px-2.5 py-1.5 text-xs text-surface-400 hover:text-yellow-400 transition-all"
+                  title="重置密码"
+                >
+                  <KeyRound size={14} />
+                  密码
+                </button>
                 {user.role !== 'admin' && (
                   <button onClick={() => handleDeleteUser(user.id)} className="btn-ghost p-2 text-red-400 hover:text-red-300" title="删除用户">
                     <Trash2 size={16} />
@@ -266,8 +301,54 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
 
       <div className="flex items-start gap-2 rounded-xl p-3 text-xs text-yellow-400/80" style={{ background: 'rgba(234, 179, 8, 0.03)', border: '1px solid rgba(234, 179, 8, 0.08)' }}>
         <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
-        <span>新用户可以通过登录页面的"创建账号"自行注册。第一个注册的用户将自动成为管理员。点击「权限」按钮可配置用户的媒体库访问、内容分级和观看时长限制。</span>
+        <span>新用户可以通过登录页面的“创建账号”自行注册。第一个注册的用户将自动成为管理员。点击「权限」按钮可配置用户的媒体库访问、内容分级和观看时长限制。点击「密码」按钮可重置用户密码。</span>
       </div>
+
+      {/* 重置密码弹窗 */}
+      {resetPwdUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setResetPwdUser(null)}>
+          <div className="glass-panel-strong rounded-2xl p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <KeyRound size={16} className="text-yellow-400" />
+                重置密码
+              </h3>
+              <button onClick={() => setResetPwdUser(null)} className="text-surface-500 hover:text-surface-300">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              为用户 <strong style={{ color: 'var(--text-primary)' }}>{resetPwdUser.username}</strong> 设置新密码
+            </p>
+            <input
+              type="password"
+              value={resetPwdValue}
+              onChange={e => setResetPwdValue(e.target.value)}
+              className="input w-full mb-4"
+              placeholder="输入新密码（至少6位）"
+              minLength={6}
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setResetPwdUser(null)}
+                className="rounded-xl px-4 py-2 text-sm font-medium transition-all"
+                style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={resettingPwd || resetPwdValue.length < 6}
+                className="btn-primary gap-1.5 px-4 py-2 text-sm"
+              >
+                {resettingPwd ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                确认重置
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -159,3 +159,56 @@ func (s *AuthService) generateToken(user *model.User) (*TokenResponse, error) {
 		User:      user,
 	}, nil
 }
+
+// ChangePasswordRequest 修改密码请求
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=64"`
+}
+
+// ChangePassword 修改密码（用户自行修改，需验证旧密码）
+func (s *AuthService) ChangePassword(userID string, req *ChangePasswordRequest) error {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	// 验证旧密码
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
+		return ErrInvalidCredentials
+	}
+
+	// 生成新密码哈希
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// 更新密码
+	if err := s.userRepo.UpdatePassword(userID, string(hashedPassword)); err != nil {
+		return err
+	}
+
+	s.logger.Infof("用户 %s 修改了密码", user.Username)
+	return nil
+}
+
+// ResetPassword 管理员重置用户密码（无需旧密码）
+func (s *AuthService) ResetPassword(userID string, newPassword string) error {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	if err := s.userRepo.UpdatePassword(userID, string(hashedPassword)); err != nil {
+		return err
+	}
+
+	s.logger.Infof("管理员重置了用户 %s 的密码", user.Username)
+	return nil
+}

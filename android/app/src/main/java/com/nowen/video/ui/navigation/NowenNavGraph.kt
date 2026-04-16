@@ -279,6 +279,9 @@ fun NowenNavGraph(
                 onMediaClick = { mediaId ->
                     navController.navigate(Screen.MediaDetail.createRoute(mediaId))
                 },
+                onSeriesClick = { seriesId ->
+                    navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
+                },
                 onBack = { navController.popBackStack() }
             )
         }

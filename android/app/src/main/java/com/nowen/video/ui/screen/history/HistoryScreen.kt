@@ -36,6 +36,7 @@ import javax.inject.Inject
 @Composable
 fun HistoryScreen(
     onMediaClick: (String) -> Unit,
+    onSeriesClick: (String) -> Unit = {},
     onBack: () -> Unit,
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
@@ -104,7 +105,14 @@ fun HistoryScreen(
                         serverUrl = uiState.serverUrl,
                         token = uiState.token,
                         onClick = {
-                            history.media?.let { onMediaClick(it.id) }
+                            history.media?.let { media ->
+                                // 剧集类型导航到系列详情页，电影类型导航到媒体详情页
+                                if (media.mediaType == "episode" && media.seriesId.isNotBlank()) {
+                                    onSeriesClick(media.seriesId)
+                                } else {
+                                    onMediaClick(media.id)
+                                }
+                            }
                         },
                         onDelete = { viewModel.deleteHistory(history.mediaId) }
                     )

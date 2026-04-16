@@ -337,9 +337,10 @@ const zhCN: Record<string, string> = {
   'profile.confirmPasswordPlaceholder': '再次输入新密码',
   'profile.passwordMinLength': '新密码至少6位',
   'profile.passwordMismatch': '两次输入的密码不一致',
-  'profile.passwordVerifySuccess': '密码验证成功。请联系管理员修改密码或等待后续版本支持',
-  'profile.passwordVerifyFailed': '旧密码验证失败',
-  'profile.verifyAndChange': '验证并修改',
+  'profile.passwordChangeSuccess': '密码修改成功',
+  'profile.passwordChangeFailed': '密码修改失败，请稍后重试',
+  'profile.passwordVerifyFailed': '当前密码错误',
+  'profile.verifyAndChange': '确认修改',
   'profile.logout': '退出登录',
   'profile.logoutHint': '退出当前账号，返回登录页面',
 
