@@ -718,6 +718,9 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 		origTitle = best.OriginalTitle
 	}
 
+	if title != "" {
+		media.Title = title
+	}
 	media.OrigTitle = origTitle
 	if best.Overview != "" {
 		media.Overview = best.Overview
@@ -807,6 +810,9 @@ func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error
 		return fmt.Errorf("解析 TMDb TV 详情失败: %w", err)
 	}
 
+	if tvDetail.Name != "" {
+		media.Title = tvDetail.Name
+	}
 	media.OrigTitle = tvDetail.OriginalName
 	if tvDetail.Overview != "" {
 		media.Overview = tvDetail.Overview
@@ -1330,6 +1336,9 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 		origTitle = result.OriginalName
 	}
 
+	if title != "" {
+		media.Title = title
+	}
 	media.OrigTitle = origTitle
 	if result.Overview != "" {
 		media.Overview = result.Overview
@@ -1350,6 +1359,9 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 
 // applyMovieDetail 将电影详情应用到媒体
 func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovieDetail) {
+	if detail.Title != "" {
+		media.Title = detail.Title
+	}
 	media.OrigTitle = detail.OriginalTitle
 	if detail.Overview != "" {
 		media.Overview = detail.Overview

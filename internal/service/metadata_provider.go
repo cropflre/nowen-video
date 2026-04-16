@@ -450,6 +450,9 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 	}
 
 	if mode == "primary" {
+		if title != "" {
+			series.Title = title
+		}
 		series.OrigTitle = origTitle
 		if best.Overview != "" {
 			series.Overview = best.Overview
@@ -458,6 +461,9 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 		series.Genres = p.metadata.mapGenreIDs(best.GenreIDs)
 	} else {
 		// 补充模式：仅填充缺失字段
+		if series.Title == "" && title != "" {
+			series.Title = title
+		}
 		if series.OrigTitle == "" {
 			series.OrigTitle = origTitle
 		}
