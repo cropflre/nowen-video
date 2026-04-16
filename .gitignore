@@ -6,8 +6,8 @@ dist/
 *.tsbuildinfo
 
 # 数据文件
-data/
-cache/
+/data/
+/cache/
 
 # Go
 *.exe

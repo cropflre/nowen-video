@@ -87,7 +87,7 @@ fun SearchScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (uiState.movies.isEmpty() && uiState.series.isEmpty() && query.isNotBlank()) {
+        } else if (uiState.media.isEmpty() && uiState.series.isEmpty() && query.isNotBlank()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -114,7 +114,7 @@ fun SearchScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // 电影结果
-                if (uiState.movies.isNotEmpty()) {
+                if (uiState.media.isNotEmpty()) {
                     item {
                         Text(
                             "电影",
@@ -122,7 +122,7 @@ fun SearchScreen(
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
                     }
-                    items(uiState.movies) { media ->
+                    items(uiState.media) { media ->
                         SearchResultItem(
                             title = media.title,
                             subtitle = buildString {
@@ -230,7 +230,7 @@ private fun SearchResultItem(
 
 data class SearchUiState(
     val loading: Boolean = false,
-    val movies: List<Media> = emptyList(),
+    val media: List<Media> = emptyList(),
     val series: List<Series> = emptyList(),
     val serverUrl: String = "",
     val token: String = ""
@@ -258,7 +258,7 @@ class SearchViewModel @Inject constructor(
     fun search(query: String) {
         searchJob?.cancel()
         if (query.isBlank()) {
-            _uiState.value = _uiState.value.copy(movies = emptyList(), series = emptyList())
+            _uiState.value = _uiState.value.copy(media = emptyList(), series = emptyList())
             return
         }
 
@@ -269,7 +269,7 @@ class SearchViewModel @Inject constructor(
             mediaRepository.searchMixed(query).onSuccess { result ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    movies = result.movies,
+                    media = result.media,
                     series = result.series
                 )
             }.onFailure {
