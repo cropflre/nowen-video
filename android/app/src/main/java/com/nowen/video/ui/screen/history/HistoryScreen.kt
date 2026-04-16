@@ -193,11 +193,21 @@ private fun HistoryItem(
             // 信息
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = media.title,
+                    text = media.displayTitle(),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // 剧集单集标题（如有）
+                if (media.mediaType == "episode" && media.episodeTitle.isNotBlank()) {
+                    Text(
+                        text = media.episodeTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (media.year > 0) {
                     Text(
                         text = "${media.year}",

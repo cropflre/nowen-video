@@ -95,10 +95,10 @@ func (r *MediaRepo) SearchAdvanced(params SearchAdvancedParams) ([]model.Media, 
 	query := r.db.Model(&model.Media{})
 
 	if params.Keyword != "" {
-		// 改进：多字段搜索
+		// 改进：多字段搜索（标题、原始标题、标语、类型标签）
 		query = query.Where(
-			"title LIKE ? OR orig_title LIKE ? OR tagline LIKE ?",
-			"%"+params.Keyword+"%", "%"+params.Keyword+"%", "%"+params.Keyword+"%",
+			"title LIKE ? OR orig_title LIKE ? OR tagline LIKE ? OR genres LIKE ?",
+			"%"+params.Keyword+"%", "%"+params.Keyword+"%", "%"+params.Keyword+"%", "%"+params.Keyword+"%",
 		)
 	}
 	if params.MediaType != "" {

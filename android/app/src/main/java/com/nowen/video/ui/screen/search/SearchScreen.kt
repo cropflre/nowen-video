@@ -41,13 +41,21 @@ import javax.inject.Inject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
+    initialQuery: String = "",
     onMediaClick: (String) -> Unit,
     onSeriesClick: (String) -> Unit,
     onBack: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
+
+    // 如果有初始搜索关键词，自动触发搜索
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank()) {
+            viewModel.search(initialQuery)
+        }
+    }
 
     Scaffold(
         topBar = {

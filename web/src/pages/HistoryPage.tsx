@@ -151,8 +151,16 @@ export default function HistoryPage() {
                   className="text-sm font-medium transition-colors hover:text-neon"
                   style={{ color: 'var(--text-primary)' }}
                 >
-                  {item.media?.title || t('history.unknownMedia')}
+                  {item.media?.media_type === 'episode' && item.media?.series
+                    ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
+                    : (item.media?.title || t('history.unknownMedia'))
+                  }
                 </Link>
+                {item.media?.media_type === 'episode' && item.media?.episode_title && (
+                  <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {item.media.episode_title}
+                  </p>
+                )}
                 <div className="mt-1 flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                   <span>
                     {t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}

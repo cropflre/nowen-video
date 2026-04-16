@@ -22,7 +22,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.nowen.video.data.local.TokenManager
-import com.nowen.video.data.model.Media
+import com.nowen.video.data.model.MixedItem
 import com.nowen.video.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +31,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * 媒体列表页 — 按媒体库展示电影/剧集网格
+ * 媒体列表页 — 按媒体库展示电影/剧集合集混合网格
+ * 使用 /api/media/mixed 接口，将剧集聚合为合集展示，避免每集重复显示
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,16 +76,16 @@ fun MediaListScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(uiState.mediaList) { media ->
-                    MediaGridItem(
-                        media = media,
+                items(uiState.mixedList) { item ->
+                    MixedGridItem(
+                        item = item,
                         serverUrl = uiState.serverUrl,
                         token = uiState.token,
                         onClick = {
-                            if (media.mediaType == "episode" && media.seriesId.isNotBlank()) {
-                                onSeriesClick(media.seriesId)
-                            } else {
-                                onMediaClick(media.id)
+                            if (item.type == "series" && item.series != null) {
+                                onSeriesClick(item.series.id)
+                            } else if (item.media != null) {
+                                onMediaClick(item.media.id)
                             }
                         }
                     )
@@ -95,12 +96,37 @@ fun MediaListScreen(
 }
 
 @Composable
-private fun MediaGridItem(
-    media: Media,
+private fun MixedGridItem(
+    item: MixedItem,
     serverUrl: String,
     token: String,
     onClick: () -> Unit
 ) {
+    // 根据类型获取展示信息
+    val title: String
+    val year: Int
+    val posterUrl: String
+    val resolution: String
+    val badgeText: String? // 额外角标（如集数）
+
+    if (item.type == "series" && item.series != null) {
+        val series = item.series
+        title = series.title
+        year = series.year
+        posterUrl = "$serverUrl/api/series/${series.id}/poster?token=$token"
+        resolution = ""
+        badgeText = if (series.episodeCount > 0) "${series.episodeCount} 集" else null
+    } else if (item.media != null) {
+        val media = item.media
+        title = media.title
+        year = media.year
+        posterUrl = "$serverUrl/api/media/${media.id}/poster?token=$token"
+        resolution = media.resolution
+        badgeText = null
+    } else {
+        return
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -109,8 +135,6 @@ private fun MediaGridItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            val posterUrl = "$serverUrl/api/media/${media.id}/poster?token=$token"
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -119,13 +143,13 @@ private fun MediaGridItem(
             ) {
                 AsyncImage(
                     model = posterUrl,
-                    contentDescription = media.title,
+                    contentDescription = title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
 
-                // 分辨率标签
-                if (media.resolution.isNotBlank()) {
+                // 分辨率标签（仅电影显示）
+                if (resolution.isNotBlank()) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -134,9 +158,27 @@ private fun MediaGridItem(
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
                     ) {
                         Text(
-                            text = media.resolution,
+                            text = resolution,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+
+                // 集数角标（仅剧集合集显示）
+                if (badgeText != null) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -144,14 +186,14 @@ private fun MediaGridItem(
 
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
-                    text = media.title,
+                    text = title,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (media.year > 0) {
+                if (year > 0) {
                     Text(
-                        text = "${media.year}",
+                        text = "$year",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -166,7 +208,7 @@ private fun MediaGridItem(
 data class MediaListUiState(
     val loading: Boolean = true,
     val libraryName: String = "",
-    val mediaList: List<Media> = emptyList(),
+    val mixedList: List<MixedItem> = emptyList(),
     val serverUrl: String = "",
     val token: String = "",
     val error: String? = null
@@ -189,10 +231,10 @@ class MediaListViewModel @Inject constructor(
             val token = tokenManager.getToken() ?: ""
             _uiState.value = _uiState.value.copy(serverUrl = serverUrl, token = token)
 
-            mediaRepository.getMediaList(libraryId = libraryId, limit = 100).onSuccess { response ->
+            mediaRepository.getMediaMixed(libraryId = libraryId, limit = 100).onSuccess { response ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    mediaList = response.data
+                    mixedList = response.data
                 )
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(

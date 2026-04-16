@@ -1,0 +1,16 @@
+C:\UGit\nowen-video\android\app\build\generated\ksp\debug\java\com\nowen\video\ui\screen\settings\SettingsViewModel_Factory.java:30: 错误: 写入SettingsViewModel_Factory时出错: C:\UGit\nowen-video\android\app\build\intermediates\javac\debug\compileDebugJavaWithJavac\classes\com\nowen\video\ui\screen\settings\SettingsViewModel_Factory.class: 另一个程序正在使用此文件，进程无法访问。
+public final class SettingsViewModel_Factory implements Factory<SettingsViewModel> {
+             ^
+1 个错误
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugJavaWithJavac'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 7s

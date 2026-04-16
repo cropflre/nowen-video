@@ -203,6 +203,7 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 			"-c:v", "h264_nvenc",
 			"-preset", "p4", // 平衡质量和速度
 			"-b:v", qc.VideoBitrate,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_cuda=%d:%d", qc.Width, qc.Height),
 		}
 
@@ -213,6 +214,7 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 			"-c:v", "h264_qsv",
 			"-preset", s.cfg.App.TranscodePreset,
 			"-global_quality", "23",
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_qsv=%d:%d", qc.Width, qc.Height),
 		}
 
@@ -226,6 +228,7 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 		videoArgs = []string{
 			"-c:v", "h264_vaapi",
 			"-b:v", qc.VideoBitrate,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", qc.Width, qc.Height),
 		}
 
@@ -235,6 +238,7 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 			"-c:v", "libx264",
 			"-preset", s.cfg.App.TranscodePreset,
 			"-crf", "23",
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale=%d:%d", qc.Width, qc.Height),
 		}
 	}

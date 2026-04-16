@@ -24,8 +24,10 @@ import com.nowen.video.ui.navigation.Screen
 import com.nowen.video.ui.theme.NowenVideoTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -56,6 +58,16 @@ fun NowenVideoApp(
                 SplashScreen()
             } else if (startDestination != null) {
                 val navController = rememberNavController()
+
+                // 监听认证失效事件，自动跳转到登录页
+                LaunchedEffect(Unit) {
+                    viewModel.authExpiredEvent.collect {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+
                 NowenNavGraph(
                     navController = navController,
                     startDestination = startDestination!!
@@ -87,7 +99,7 @@ private fun SplashScreen() {
 }
 
 /**
- * 应用级 ViewModel — 判断启动路由 + 管理主题 + WebSocket 生命周期
+ * 应用级 ViewModel — 判断启动路由 + 管理主题 + WebSocket 生命周期 + 认证状态监听
  */
 @HiltViewModel
 class AppViewModel @Inject constructor(
@@ -101,6 +113,10 @@ class AppViewModel @Inject constructor(
 
     private val _showSplash = MutableStateFlow(true)
     val showSplash = _showSplash.asStateFlow()
+
+    /** 认证失效事件 — 当 Token 被拦截器清除时触发 */
+    private val _authExpiredEvent = MutableSharedFlow<Unit>()
+    val authExpiredEvent = _authExpiredEvent.asSharedFlow()
 
     /**
      * 主题模式 — 从 DataStore 实时读取
@@ -129,6 +145,19 @@ class AppViewModel @Inject constructor(
             // Splash 展示 1 秒后消失
             delay(1000)
             _showSplash.value = false
+        }
+
+        // 监听 Token 变化：当 Token 被清除（401 拦截器触发）时，发送认证失效事件
+        viewModelScope.launch {
+            var wasLoggedIn = false
+            tokenManager.isLoggedInFlow().collect { isLoggedIn ->
+                if (wasLoggedIn && !isLoggedIn) {
+                    // 从已登录变为未登录 → Token 失效
+                    webSocketManager.disconnect()
+                    _authExpiredEvent.emit(Unit)
+                }
+                wasLoggedIn = isLoggedIn
+            }
         }
     }
 

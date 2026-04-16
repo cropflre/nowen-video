@@ -213,6 +213,7 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 			"-b:v", profile.VideoBitrate,
 			"-maxrate", profile.MaxBitrate,
 			"-bufsize", profile.BufSize,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_cuda=%d:%d", profile.Width, profile.Height),
 			"-g", "48", // GOP 大小（关键帧间隔）
 			"-keyint_min", "48",
@@ -227,6 +228,7 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 			"-b:v", profile.VideoBitrate,
 			"-maxrate", profile.MaxBitrate,
 			"-bufsize", profile.BufSize,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_qsv=%d:%d", profile.Width, profile.Height),
 			"-g", "48",
 			"-keyint_min", "48",
@@ -243,6 +245,7 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 			"-b:v", profile.VideoBitrate,
 			"-maxrate", profile.MaxBitrate,
 			"-bufsize", profile.BufSize,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", profile.Width, profile.Height),
 			"-g", "48",
 			"-keyint_min", "48",
@@ -255,6 +258,7 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 			"-b:v", profile.VideoBitrate,
 			"-maxrate", profile.MaxBitrate,
 			"-bufsize", profile.BufSize,
+			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 			"-vf", fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
 			"-g", "48",
 			"-keyint_min", "48",

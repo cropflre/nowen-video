@@ -27,6 +27,7 @@ import coil.compose.AsyncImage
 import com.nowen.video.data.local.TokenManager
 import com.nowen.video.data.model.Library
 import com.nowen.video.data.model.Media
+import com.nowen.video.data.model.MixedItem
 import com.nowen.video.data.model.WatchHistory
 import com.nowen.video.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -98,8 +99,7 @@ fun HomeScreen(
             ) {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                    .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 // 媒体库入口
@@ -173,8 +173,8 @@ fun HomeScreen(
                     }
                 }
 
-                // 最近添加
-                if (uiState.recentMedia.isNotEmpty()) {
+                // 最近添加（使用混合列表，动漫按系列展示，电影按单部展示）
+                if (uiState.recentMixed.isNotEmpty()) {
                     item {
                         SectionTitle("最近添加")
                     }
@@ -183,16 +183,16 @@ fun HomeScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            items(uiState.recentMedia) { media ->
-                                MediaPosterCard(
-                                    media = media,
+                            items(uiState.recentMixed) { item ->
+                                MixedPosterCard(
+                                    item = item,
                                     serverUrl = uiState.serverUrl,
                                     token = uiState.token,
                                     onClick = {
-                                        if (media.mediaType == "episode" && media.seriesId.isNotBlank()) {
-                                            onSeriesClick(media.seriesId)
-                                        } else {
-                                            onMediaClick(media.id)
+                                        if (item.type == "series" && item.series != null) {
+                                            onSeriesClick(item.series.id)
+                                        } else if (item.media != null) {
+                                            onMediaClick(item.media.id)
                                         }
                                     }
                                 )
@@ -202,7 +202,7 @@ fun HomeScreen(
                 }
 
                 // 空状态
-                if (uiState.libraries.isEmpty() && uiState.recentMedia.isEmpty()) {
+                if (uiState.libraries.isEmpty() && uiState.recentMixed.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -347,14 +347,160 @@ private fun ContinueWatchingCard(
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
 
-            // 标题
-            Text(
-                text = media.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+            // 标题（剧集显示系列名+集数，电影显示标题）
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    text = media.displayTitle(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                // 剧集单集标题（如有）
+                if (media.mediaType == "episode" && media.episodeTitle.isNotBlank()) {
+                    Text(
+                        text = media.episodeTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 混合列表海报卡片 — 根据类型区分展示电影和剧集合集
+ * 电影：显示电影海报、标题、年份、评分
+ * 剧集合集：显示系列海报、标题、年份、评分、集数角标
+ */
+@Composable
+fun MixedPosterCard(
+    item: MixedItem,
+    serverUrl: String,
+    token: String,
+    onClick: () -> Unit
+) {
+    // 根据类型提取展示信息
+    val title: String
+    val year: Int
+    val rating: Double
+    val posterUrl: String?
+    val badgeText: String? // 集数角标（仅剧集合集）
+
+    if (item.type == "series" && item.series != null) {
+        val series = item.series
+        title = series.title
+        year = series.year
+        rating = series.rating
+        posterUrl = if (series.posterPath.isNotBlank()) {
+            "$serverUrl/api/series/${series.id}/poster?token=$token"
+        } else null
+        badgeText = if (series.episodeCount > 0) "${series.episodeCount} 集" else null
+    } else if (item.media != null) {
+        val media = item.media
+        title = media.title
+        year = media.year
+        rating = media.rating
+        posterUrl = if (media.posterPath.isNotBlank()) {
+            "$serverUrl/api/media/${media.id}/poster?token=$token"
+        } else null
+        badgeText = null
+    } else {
+        return
+    }
+
+    Card(
+        modifier = Modifier
+            .width(130.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(195.dp)
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            ) {
+                if (posterUrl != null) {
+                    AsyncImage(
+                        model = posterUrl,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Movie,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // 评分角标
+                if (rating > 0) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                    ) {
+                        Text(
+                            text = String.format("%.1f", rating),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // 集数角标（仅剧集合集显示）
+                if (badgeText != null) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.9f)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            // 标题 + 年份
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (year > 0) {
+                    Text(
+                        text = "$year",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -454,7 +600,7 @@ data class HomeUiState(
     val refreshing: Boolean = false,
     val libraries: List<Library> = emptyList(),
     val continueWatching: List<WatchHistory> = emptyList(),
-    val recentMedia: List<Media> = emptyList(),
+    val recentMixed: List<MixedItem> = emptyList(),
     val serverUrl: String = "",
     val token: String = "",
     val error: String? = null
@@ -471,7 +617,7 @@ class HomeViewModel @Inject constructor(
 
     fun loadData() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(loading = true)
+            _uiState.value = _uiState.value.copy(loading = true, error = null)
 
             val serverUrl = tokenManager.getServerUrl() ?: ""
             val token = tokenManager.getToken() ?: ""
@@ -483,21 +629,34 @@ class HomeViewModel @Inject constructor(
 
             // 并行加载数据
             launch {
-                mediaRepository.getLibraries().onSuccess { libraries ->
-                    _uiState.value = _uiState.value.copy(libraries = libraries)
-                }
+                mediaRepository.getLibraries()
+                    .onSuccess { libraries ->
+                        _uiState.value = _uiState.value.copy(libraries = libraries)
+                    }
+                    .onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            error = "加载媒体库失败: ${e.message}"
+                        )
+                    }
             }
 
             launch {
-                mediaRepository.getContinueWatching().onSuccess { history ->
-                    _uiState.value = _uiState.value.copy(continueWatching = history)
-                }
+                mediaRepository.getContinueWatching()
+                    .onSuccess { history ->
+                        _uiState.value = _uiState.value.copy(continueWatching = history)
+                    }
             }
 
             launch {
-                mediaRepository.getRecentMedia(20).onSuccess { media ->
-                    _uiState.value = _uiState.value.copy(recentMedia = media)
-                }
+                mediaRepository.getRecentMixed(20)
+                    .onSuccess { items ->
+                        _uiState.value = _uiState.value.copy(recentMixed = items)
+                    }
+                    .onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            error = "加载最近媒体失败: ${e.message}"
+                        )
+                    }
             }
 
             _uiState.value = _uiState.value.copy(loading = false)
@@ -509,12 +668,18 @@ class HomeViewModel @Inject constructor(
      */
     fun refresh() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(refreshing = true)
+            _uiState.value = _uiState.value.copy(refreshing = true, error = null)
 
             launch {
-                mediaRepository.getLibraries().onSuccess { libraries ->
-                    _uiState.value = _uiState.value.copy(libraries = libraries)
-                }
+                mediaRepository.getLibraries()
+                    .onSuccess { libraries ->
+                        _uiState.value = _uiState.value.copy(libraries = libraries)
+                    }
+                    .onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            error = "刷新失败: ${e.message}"
+                        )
+                    }
             }
 
             launch {
@@ -524,8 +689,8 @@ class HomeViewModel @Inject constructor(
             }
 
             launch {
-                mediaRepository.getRecentMedia(20).onSuccess { media ->
-                    _uiState.value = _uiState.value.copy(recentMedia = media)
+                mediaRepository.getRecentMixed(20).onSuccess { items ->
+                    _uiState.value = _uiState.value.copy(recentMixed = items)
                 }
             }
 

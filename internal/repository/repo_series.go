@@ -136,12 +136,15 @@ func (r *SeriesRepo) RecentUpdatedByLibrary(libraryID string, limit int) ([]mode
 	return series, err
 }
 
-// SearchSeries 搜索合集
+// SearchSeries 搜索合集（支持标题、原始标题、类型标签搜索）
 func (r *SeriesRepo) SearchSeries(keyword string, page, size int) ([]model.Series, int64, error) {
 	var series []model.Series
 	var total int64
 
-	query := r.db.Model(&model.Series{}).Where("name LIKE ?", "%"+keyword+"%")
+	query := r.db.Model(&model.Series{}).Where(
+		"title LIKE ? OR orig_title LIKE ? OR genres LIKE ?",
+		"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%",
+	)
 	query.Count(&total)
 	err := query.Order("created_at DESC").Offset((page - 1) * size).Limit(size).Find(&series).Error
 	return series, total, err

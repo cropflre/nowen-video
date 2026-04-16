@@ -12,9 +12,13 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -37,6 +41,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.ui.PlayerView
 import com.nowen.video.data.local.TokenManager
 import com.nowen.video.data.model.StreamInfo
@@ -47,8 +54,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
+import android.util.Log
 import kotlin.math.abs
+
+private const val TAG = "PlayerDebug"
 
 /**
  * 视频播放器页面
@@ -70,11 +81,28 @@ fun PlayerScreen(
     var gestureInfo by remember { mutableStateOf<String?>(null) }
     var showSubtitlePicker by remember { mutableStateOf(false) }
 
-    // 创建 ExoPlayer
+    // 倍速播放状态
+    var showSpeedPicker by remember { mutableStateOf(false) }
+    var currentSpeed by remember { mutableFloatStateOf(1f) }
+    val speedOptions = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f, 6f, 7f, 8f)
+
+    // 创建 ExoPlayer（注入 Authorization Header，解决流媒体请求 401 问题）
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-        }
+        Log.d(TAG, "创建 ExoPlayer, token长度=${viewModel.token.length}, token前10=${viewModel.token.take(10)}")
+        // 创建带认证头的 HttpDataSource
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(
+                mapOf("Authorization" to "Bearer ${viewModel.token}")
+            )
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+            .apply {
+                playWhenReady = true
+            }
     }
 
     // 加载流信息和字幕
@@ -269,6 +297,23 @@ fun PlayerScreen(
             }
 
             Row {
+                // 倍速按钮
+                Surface(
+                    modifier = Modifier
+                        .clickable { showSpeedPicker = true }
+                        .padding(8.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (currentSpeed != 1f) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                           else Color.Transparent
+                ) {
+                    Text(
+                        text = if (currentSpeed != 1f) "${currentSpeed}x" else "倍速",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (currentSpeed != 1f) MaterialTheme.colorScheme.primary else Color.White,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
                 // 字幕按钮
                 if (uiState.subtitleTracks.isNotEmpty()) {
                     IconButton(onClick = { showSubtitlePicker = true }) {
@@ -279,6 +324,25 @@ fun PlayerScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // 倍速播放标签（非 1x 时显示）
+        if (currentSpeed != 1f) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 56.dp, end = 80.dp)
+                    .statusBarsPadding(),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+            ) {
+                Text(
+                    text = "${currentSpeed}x",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
         }
 
@@ -341,6 +405,85 @@ fun PlayerScreen(
                 Text(uiState.fallbackMessage!!)
             }
         }
+    }
+
+    // 倍速选择弹窗
+    if (showSpeedPicker) {
+        AlertDialog(
+            onDismissRequest = { showSpeedPicker = false },
+            title = { Text("播放速度") },
+            text = {
+                Column {
+                    // 快速恢复正常速度
+                    if (currentSpeed != 1f) {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    "恢复正常速度",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            leadingContent = {
+                                Icon(
+                                    Icons.Default.Restore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    currentSpeed = 1f
+                                    exoPlayer.setPlaybackSpeed(1f)
+                                    showSpeedPicker = false
+                                    gestureInfo = "正常速度"
+                                }
+                        )
+                        HorizontalDivider()
+                    }
+                    // 倍速选项列表
+                    speedOptions.forEach { speed ->
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    text = if (speed == 1f) "正常" else "${speed}x",
+                                    color = if (speed == currentSpeed) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            leadingContent = {
+                                if (speed == currentSpeed) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Speed,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    currentSpeed = speed
+                                    exoPlayer.setPlaybackSpeed(speed)
+                                    showSpeedPicker = false
+                                    gestureInfo = if (speed == 1f) "正常速度" else "${speed}x 倍速"
+                                }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSpeedPicker = false }) {
+                    Text("关闭")
+                }
+            }
+        )
     }
 
     // 字幕选择弹窗
@@ -437,11 +580,21 @@ class PlayerViewModel @Inject constructor(
         private set
     private var triedModes = mutableSetOf<PlaybackMode>()
 
+    init {
+        // 在 ViewModel 初始化时同步加载 token 和 serverUrl
+        // 确保 Composable 首次组合时 ExoPlayer 能获取到认证信息
+        runBlocking {
+            serverUrl = tokenManager.getServerUrl() ?: ""
+            token = tokenManager.getToken() ?: ""
+        }
+    }
+
     fun loadStreamInfo(mediaId: String) {
         currentMediaId = mediaId
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true)
 
+            // 刷新 token（可能已过期或更新）
             serverUrl = tokenManager.getServerUrl() ?: ""
             token = tokenManager.getToken() ?: ""
 
@@ -454,9 +607,11 @@ class PlayerViewModel @Inject constructor(
 
             // 获取流信息
             mediaRepository.getStreamInfo(mediaId).onSuccess { info ->
+                Log.d(TAG, "StreamInfo: preprocessed=${info.preprocessed}, canDirectPlay=${info.canDirectPlay}, canRemux=${info.canRemux}, videoCodec=${info.videoCodec}")
                 _uiState.value = _uiState.value.copy(streamInfo = info)
                 resolvePlaybackMode(info)
             }.onFailure { e ->
+                Log.e(TAG, "获取流信息失败", e)
                 fallbackToHLS()
             }
 
@@ -473,32 +628,49 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 智能播放模式选择
-     * 优先级：预处理 HLS > Direct > Remux > HLS 转码
+     * 智能播放模式选择（Android 端优化版）
+     *
+     * Android 端的 ExoPlayer 原生支持 MKV/AVI/MOV/FLV 等容器格式，
+     * 不像浏览器只能播放 MP4/WebM。因此 Android 端的策略是：
+     * 只要设备硬件支持视频编码（H.264/H.265/VP9/AV1），就直接播放原始文件，
+     * 无需 Remux 或转码，实现真正的"秒开"体验。
+     *
+     * 优先级：Direct Play（Android 原生支持） > 预处理 HLS > Remux > HLS 转码
+     * 注意：Android 端优先直接播放，因为 ExoPlayer 支持的格式远多于浏览器
      */
     private fun resolvePlaybackMode(info: StreamInfo) {
         val baseUrl = "$serverUrl/api/stream/$currentMediaId"
 
         when {
-            info.preprocessed -> {
-                val url = "$serverUrl/api/preprocess/media/$currentMediaId/master.m3u8?token=$token"
-                setPlayback(PlaybackMode.PREPROCESSED_HLS, url)
-            }
-            info.canDirectPlay && isDeviceSupported(info.videoCodec) -> {
+            // 1. Android 端核心优化：只要设备支持该编码，直接播放原始文件（包括 MKV/AVI/MOV 等）
+            //    ExoPlayer 原生支持这些容器格式，无需 Remux，零延迟秒开
+            isDeviceSupported(info.videoCodec) -> {
                 val url = "$baseUrl/direct?token=$token"
+                Log.d(TAG, "Android 直接播放: codec=${info.videoCodec}, 跳过转码")
                 setPlayback(PlaybackMode.DIRECT, url)
             }
+            // 2. 设备不支持该编码，但有预处理完成的 HLS → 使用预处理的 HLS 流
+            info.preprocessed -> {
+                val url = "$serverUrl/api/preprocess/media/$currentMediaId/master.m3u8?token=$token"
+                Log.d(TAG, "使用预处理 HLS: codec=${info.videoCodec}")
+                setPlayback(PlaybackMode.PREPROCESSED_HLS, url)
+            }
+            // 3. 可以 Remux → 转封装播放
             info.canRemux -> {
                 val url = "$baseUrl/remux?token=$token"
+                Log.d(TAG, "使用 Remux: codec=${info.videoCodec}")
                 setPlayback(PlaybackMode.REMUX, url)
             }
+            // 4. 兜底：HLS 实时转码
             else -> {
+                Log.d(TAG, "降级到 HLS 转码: codec=${info.videoCodec}")
                 fallbackToHLS()
             }
         }
     }
 
     private fun setPlayback(mode: PlaybackMode, url: String) {
+        Log.d(TAG, "setPlayback: mode=$mode, url=$url")
         triedModes.add(mode)
         _uiState.value = _uiState.value.copy(
             playbackUrl = url,
@@ -518,15 +690,32 @@ class PlayerViewModel @Inject constructor(
 
     fun onPlaybackError(error: PlaybackException) {
         val currentMode = _uiState.value.playbackMode ?: return
+        Log.e(TAG, "播放错误: mode=$currentMode, error=${error.message}", error)
 
+        val info = _uiState.value.streamInfo
         val nextMode = when (currentMode) {
-            PlaybackMode.DIRECT -> if (PlaybackMode.REMUX !in triedModes) PlaybackMode.REMUX else PlaybackMode.HLS
-            PlaybackMode.REMUX -> PlaybackMode.HLS
-            PlaybackMode.PREPROCESSED_HLS -> PlaybackMode.HLS
+            PlaybackMode.DIRECT -> {
+                // 直接播放失败 → 尝试预处理 HLS（如果有）→ Remux → HLS
+                when {
+                    info?.preprocessed == true && PlaybackMode.PREPROCESSED_HLS !in triedModes -> PlaybackMode.PREPROCESSED_HLS
+                    info?.canRemux == true && PlaybackMode.REMUX !in triedModes -> PlaybackMode.REMUX
+                    PlaybackMode.HLS !in triedModes -> PlaybackMode.HLS
+                    else -> null
+                }
+            }
+            PlaybackMode.PREPROCESSED_HLS -> {
+                // 预处理 HLS 失败 → 尝试 Remux → HLS
+                when {
+                    info?.canRemux == true && PlaybackMode.REMUX !in triedModes -> PlaybackMode.REMUX
+                    PlaybackMode.HLS !in triedModes -> PlaybackMode.HLS
+                    else -> null
+                }
+            }
+            PlaybackMode.REMUX -> if (PlaybackMode.HLS !in triedModes) PlaybackMode.HLS else null
             PlaybackMode.HLS -> null
         }
 
-        if (nextMode != null && nextMode !in triedModes) {
+        if (nextMode != null) {
             val baseUrl = "$serverUrl/api/stream/$currentMediaId"
 
             val url = when (nextMode) {
@@ -536,6 +725,7 @@ class PlayerViewModel @Inject constructor(
                 PlaybackMode.PREPROCESSED_HLS -> "$serverUrl/api/preprocess/media/$currentMediaId/master.m3u8?token=$token"
             }
 
+            Log.d(TAG, "自动降级: $currentMode -> $nextMode, url=$url")
             triedModes.add(nextMode)
             _uiState.value = _uiState.value.copy(
                 playbackUrl = url,

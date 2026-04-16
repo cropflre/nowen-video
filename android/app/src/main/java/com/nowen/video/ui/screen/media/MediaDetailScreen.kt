@@ -1,7 +1,10 @@
 package com.nowen.video.ui.screen.media
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,7 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -20,8 +25,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.nowen.video.data.local.TokenManager
+import com.nowen.video.data.model.CollectionMediaItem
+import com.nowen.video.data.model.CollectionWithMedia
 import com.nowen.video.data.model.Media
-import com.nowen.video.data.model.MovieCollection
 import com.nowen.video.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,14 +36,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * 电影详情页 — 展示电影完整信息、收藏、合集入口和播放入口
+ * 电影详情页 — 展示电影完整信息、标签、合集、收藏和播放入口
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MediaDetailScreen(
     mediaId: String,
     onPlayClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit = {},
+    onSearchClick: (String) -> Unit = {},
+    onMediaNavigate: (String) -> Unit = {},
     onBack: () -> Unit,
     viewModel: MediaDetailViewModel = hiltViewModel()
 ) {
@@ -172,17 +180,34 @@ fun MediaDetailScreen(
                         }
                     }
 
-                    // 类型标签
+                    // ==================== 类型标签（可点击搜索） ====================
                     if (media.genres.isNotBlank()) {
-                        Row(
+                        FlowRow(
                             modifier = Modifier.padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            media.genres.split(",").take(4).forEach { genre ->
-                                SuggestionChip(
-                                    onClick = {},
-                                    label = { Text(genre.trim(), style = MaterialTheme.typography.labelSmall) }
-                                )
+                            media.genres.split(",").forEach { genre ->
+                                val trimmedGenre = genre.trim()
+                                if (trimmedGenre.isNotBlank()) {
+                                    AssistChip(
+                                        onClick = { onSearchClick(trimmedGenre) },
+                                        label = {
+                                            Text(
+                                                trimmedGenre,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Tag,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -202,42 +227,20 @@ fun MediaDetailScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // 合集入口
-                    if (uiState.collection != null) {
-                        val collection = uiState.collection!!
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            onClick = { onCollectionClick(collection.id) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Collections,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = collection.name,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    Text(
-                                        text = "共 ${collection.mediaCount} 部影片",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                    // ==================== 系列合集（内嵌卡片列表） ====================
+                    val collectionData = uiState.collectionWithMedia
+                    if (collectionData != null && collectionData.media.size > 1) {
+                        CollectionSection(
+                            collectionData = collectionData,
+                            serverUrl = uiState.serverUrl,
+                            token = uiState.token,
+                            onCollectionClick = { onCollectionClick(collectionData.collection.id) },
+                            onMediaClick = { clickedMediaId ->
+                                if (clickedMediaId != mediaId) {
+                                    onMediaNavigate(clickedMediaId)
                                 }
-                                Icon(
-                                    Icons.Default.ChevronRight,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                             }
-                        }
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
@@ -264,7 +267,6 @@ fun MediaDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
-                        // 注意：这里不能用 LazyRow（因为外层是 verticalScroll），用 Row 代替
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -273,7 +275,7 @@ fun MediaDetailScreen(
                                 Card(
                                     modifier = Modifier.width(90.dp),
                                     shape = RoundedCornerShape(8.dp),
-                                    onClick = { onPlayClick(similar.id) }
+                                    onClick = { onMediaNavigate(similar.id) }
                                 ) {
                                     AsyncImage(
                                         model = posterUrl,
@@ -313,6 +315,429 @@ fun MediaDetailScreen(
     }
 }
 
+// ==================== 合集区域组件 ====================
+
+/**
+ * 系列合集区域 — 参考 Web 端 CollectionCarousel 实现
+ * 支持横向滚动卡片模式和展开列表模式
+ */
+@Composable
+private fun CollectionSection(
+    collectionData: CollectionWithMedia,
+    serverUrl: String,
+    token: String,
+    onCollectionClick: () -> Unit,
+    onMediaClick: (String) -> Unit
+) {
+    val collection = collectionData.collection
+    val mediaList = collectionData.media
+    var expanded by remember { mutableStateOf(false) }
+
+    // 当前电影在合集中的位置
+    val currentIndex = mediaList.indexOfFirst { it.isCurrent }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // 标题栏
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Collections,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "系列合集",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                // 合集名称标签（可点击跳转合集详情）
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    modifier = Modifier.clickable(onClick = onCollectionClick),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${collection.name} · ${mediaList.size}部",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 系列进度指示
+                if (currentIndex >= 0 && !expanded) {
+                    Text(
+                        text = "第 ${currentIndex + 1}/${mediaList.size} 部",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // 展开/收起按钮
+                IconButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 横向滚动卡片模式（默认）
+            if (!expanded) {
+                val scrollState = rememberScrollState()
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    mediaList.forEach { item ->
+                        CollectionCardItem(
+                            item = item,
+                            serverUrl = serverUrl,
+                            token = token,
+                            onClick = { onMediaClick(item.id) }
+                        )
+                    }
+                }
+            }
+
+            // 展开的列表模式
+            if (expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    mediaList.forEachIndexed { index, item ->
+                        CollectionListItem(
+                            item = item,
+                            index = index + 1,
+                            serverUrl = serverUrl,
+                            token = token,
+                            onClick = { onMediaClick(item.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 合集横向滚动卡片
+ */
+@Composable
+private fun CollectionCardItem(
+    item: CollectionMediaItem,
+    serverUrl: String,
+    token: String,
+    onClick: () -> Unit
+) {
+    val isCurrent = item.isCurrent
+    val posterUrl = if (item.posterPath.isNotBlank()) {
+        "$serverUrl/api/media/${item.id}/poster?token=$token"
+    } else null
+
+    Card(
+        modifier = Modifier
+            .width(100.dp)
+            .clickable(enabled = !isCurrent, onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        border = if (isCurrent) CardDefaults.outlinedCardBorder().copy(
+            width = 2.dp
+        ) else null,
+        colors = if (isCurrent) CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        ) else CardDefaults.cardColors()
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+            ) {
+                if (posterUrl != null) {
+                    AsyncImage(
+                        model = posterUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Movie,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // "当前" 标识
+                if (isCurrent) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    ) {
+                        Text(
+                            text = "当前",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // 评分
+                if (item.rating > 0 && !isCurrent) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp),
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color.Black.copy(alpha = 0.6f)
+                    ) {
+                        Text(
+                            text = "★${String.format("%.1f", item.rating)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFFD700),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+
+            // 标题和年份
+            Column(modifier = Modifier.padding(6.dp)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                )
+                if (item.year > 0) {
+                    Text(
+                        text = "${item.year}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 合集展开列表项
+ */
+@Composable
+private fun CollectionListItem(
+    item: CollectionMediaItem,
+    index: Int,
+    serverUrl: String,
+    token: String,
+    onClick: () -> Unit
+) {
+    val isCurrent = item.isCurrent
+    val posterUrl = if (item.posterPath.isNotBlank()) {
+        "$serverUrl/api/media/${item.id}/poster?token=$token"
+    } else null
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !isCurrent, onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.surface,
+        border = if (isCurrent) CardDefaults.outlinedCardBorder() else null
+    ) {
+        Row(
+            modifier = Modifier.padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 序号
+            Surface(
+                modifier = Modifier.size(28.dp),
+                shape = RoundedCornerShape(6.dp),
+                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "$index",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCurrent) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 海报缩略图
+            Box(
+                modifier = Modifier
+                    .width(36.dp)
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(6.dp))
+            ) {
+                if (posterUrl != null) {
+                    AsyncImage(
+                        model = posterUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Movie,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 信息
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isCurrent) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Text(
+                                text = "当前",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (item.year > 0) {
+                        Text(
+                            text = "${item.year}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (item.rating > 0) {
+                        Text(
+                            text = "★${String.format("%.1f", item.rating)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFFD700)
+                        )
+                    }
+                    if (item.runtime > 0) {
+                        Text(
+                            text = "${item.runtime}分钟",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (item.overview.isNotBlank()) {
+                    Text(
+                        text = item.overview,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // 播放图标（非当前电影）
+            if (!isCurrent) {
+                Surface(
+                    modifier = Modifier.size(28.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "播放",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==================== 通用组件 ====================
+
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(
@@ -347,7 +772,7 @@ data class MediaDetailUiState(
     val loading: Boolean = true,
     val media: Media? = null,
     val isFavorited: Boolean = false,
-    val collection: MovieCollection? = null,
+    val collectionWithMedia: CollectionWithMedia? = null,
     val similarMedia: List<Media> = emptyList(),
     val serverUrl: String = "",
     val token: String = "",
@@ -385,8 +810,8 @@ class MediaDetailViewModel @Inject constructor(
             }
 
             launch {
-                mediaRepository.getMediaCollection(mediaId).onSuccess { collection ->
-                    _uiState.value = _uiState.value.copy(collection = collection)
+                mediaRepository.getMediaCollection(mediaId).onSuccess { collectionData ->
+                    _uiState.value = _uiState.value.copy(collectionWithMedia = collectionData)
                 }
             }
 

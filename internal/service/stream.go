@@ -495,6 +495,7 @@ func (s *StreamService) guessContentType(url string) string {
 
 // RemuxStream 实时将 MKV 等格式 remux 为 fragmented MP4 流式输出（零转码，仅转封装）
 // 使用 FFmpeg -c copy 模式，CPU 占用极低，速度接近磁盘 I/O
+// 支持 ?start=秒数 参数实现快速 Seek 跳转（类似 Emby 的拖动进度条体验）
 func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *http.Request) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
@@ -512,19 +513,30 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 	// 使用请求的 context，客户端断开时自动终止 FFmpeg
 	ctx := r.Context()
 
+	// 解析前端传来的起始时间参数（支持 Seek 跳转）
+	startTime := r.URL.Query().Get("start")
+
 	// 构建 FFmpeg remux 命令
+	// -ss: 快速跳转到指定时间（放在 -i 前面实现 input seeking，速度极快）
 	// -c copy: 不重新编码，仅转封装
 	// -movflags frag_mp4+empty_moov+default_base_moof: 生成 fragmented MP4，支持流式输出
 	// -f mp4: 输出 MP4 格式
 	// pipe:1: 输出到 stdout
-	args := []string{
+	args := []string{}
+
+	// 如果有 start 参数，利用 FFmpeg 的 -ss 实现快速跳转（必须放在 -i 前面以实现 input seeking）
+	if startTime != "" && startTime != "0" {
+		args = append(args, "-ss", startTime)
+	}
+
+	args = append(args,
 		"-i", media.FilePath,
 		"-c", "copy",
 		"-movflags", "frag_mp4+empty_moov+default_base_moof",
 		"-f", "mp4",
 		"-y",
 		"pipe:1",
-	}
+	)
 
 	s.logger.Debugf("Remux 命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(args, " "))
 

@@ -118,8 +118,24 @@ data class Media(
     @SerialName("episode_title") val episodeTitle: String = "",
     // 合集
     @SerialName("collection_id") val collectionId: String = "",
+    // 关联的剧集系列信息（后端 Preload 时返回）
+    val series: Series? = null,
     @SerialName("created_at") val createdAt: String = ""
-)
+) {
+    /**
+     * 获取格式化的显示标题
+     * 对于剧集类型：使用系列名 + S01E02 格式
+     * 对于电影类型：直接使用标题
+     */
+    fun displayTitle(): String {
+        if (mediaType == "episode" && episodeNum > 0) {
+            val seriesTitle = series?.title ?: title
+            val formatted = "${seriesTitle} S${seasonNum.toString().padStart(2, '0')}E${episodeNum.toString().padStart(2, '0')}"
+            return if (episodeTitle.isNotBlank()) "$formatted - $episodeTitle" else formatted
+        }
+        return title
+    }
+}
 
 // ==================== 剧集 ====================
 
@@ -164,12 +180,16 @@ data class StreamInfo(
     val resolution: String = "",
     @SerialName("can_direct_play") val canDirectPlay: Boolean = false,
     @SerialName("can_remux") val canRemux: Boolean = false,
-    val preprocessed: Boolean = false,
+    @SerialName("is_preprocessed") val preprocessed: Boolean = false,
+    @SerialName("is_strm") val isStrm: Boolean = false,
+    @SerialName("prefer_direct_play") val preferDirectPlay: Boolean = false,
+    @SerialName("preprocess_status") val preprocessStatus: String = "",
     @SerialName("mime_type") val mimeType: String = "",
-    @SerialName("direct_url") val directUrl: String = "",
+    @SerialName("direct_play_url") val directUrl: String = "",
     @SerialName("remux_url") val remuxUrl: String = "",
     @SerialName("hls_url") val hlsUrl: String = "",
-    @SerialName("preprocess_url") val preprocessUrl: String = ""
+    @SerialName("preprocessed_url") val preprocessUrl: String = "",
+    @SerialName("thumbnail_url") val thumbnailUrl: String = ""
 )
 
 // ==================== 搜索 ====================
@@ -226,6 +246,19 @@ data class SubtitleTracksResponse(
     val external: List<SubtitleTrack> = emptyList()
 )
 
+// ==================== 混合列表 ====================
+
+/**
+ * 混合列表项 — 对应后端 MixedItem，统一表示电影或剧集合集
+ * 后端 /api/media/mixed 返回此类型的列表
+ */
+@Serializable
+data class MixedItem(
+    val type: String = "movie", // "movie" 或 "series"
+    val media: Media? = null,
+    val series: Series? = null
+)
+
 // ==================== 合集 ====================
 
 @Serializable
@@ -239,6 +272,34 @@ data class MovieCollection(
     val media: List<Media>? = null,
     @SerialName("tmdb_id") val tmdbId: Int = 0,
     @SerialName("created_at") val createdAt: String = ""
+)
+
+/**
+ * 合集中的电影项 — 对应后端 CollectionMediaItem
+ * 包含电影基本信息和 is_current 标记（标识当前正在查看的电影）
+ */
+@Serializable
+data class CollectionMediaItem(
+    val id: String,
+    val title: String,
+    @SerialName("orig_title") val origTitle: String = "",
+    val year: Int = 0,
+    val rating: Double = 0.0,
+    @SerialName("poster_path") val posterPath: String = "",
+    val runtime: Int = 0,
+    val overview: String = "",
+    val genres: String = "",
+    @SerialName("is_current") val isCurrent: Boolean = false
+)
+
+/**
+ * 合集及其包含的电影 — 对应后端 CollectionWithMedia
+ * 后端 /api/media/:id/collection 返回此结构
+ */
+@Serializable
+data class CollectionWithMedia(
+    val collection: MovieCollection,
+    val media: List<CollectionMediaItem> = emptyList()
 )
 
 // ==================== 书签 ====================

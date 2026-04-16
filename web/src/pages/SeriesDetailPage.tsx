@@ -557,11 +557,12 @@ export default function SeriesDetailPage() {
                     {series.season_count} 季 · {series.episode_count} 集
                   </span>
                   {series.genres && series.genres.split(',').slice(0, 3).map((g) => (
-                    <span key={g} className="rounded-lg px-2.5 py-1 text-sm"
+                    <Link key={g} to={`/search?q=${encodeURIComponent(g.trim())}`}
+                      className="rounded-lg px-2.5 py-1 text-sm transition-all duration-200 hover:scale-[1.04] hover:brightness-125 cursor-pointer"
                       style={{ background: 'var(--neon-blue-4)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {g.trim()}
-                    </span>
+                    </Link>
                   ))}
                 </div>
               </div>

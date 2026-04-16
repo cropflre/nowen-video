@@ -136,7 +136,7 @@ fun NowenNavGraph(
                     navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
                 },
                 onSearchClick = {
-                    navController.navigate(Screen.Search.route)
+                    navController.navigate(Screen.Search.createRoute())
                 },
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
@@ -188,6 +188,12 @@ fun NowenNavGraph(
                 onCollectionClick = { collectionId ->
                     navController.navigate(Screen.CollectionDetail.createRoute(collectionId))
                 },
+                onSearchClick = { query ->
+                    navController.navigate(Screen.Search.createRoute(query))
+                },
+                onMediaNavigate = { targetMediaId ->
+                    navController.navigate(Screen.MediaDetail.createRoute(targetMediaId))
+                },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -202,6 +208,9 @@ fun NowenNavGraph(
                 seriesId = seriesId,
                 onEpisodeClick = { mediaId ->
                     navController.navigate(Screen.Player.createRoute(mediaId))
+                },
+                onSearchClick = { query ->
+                    navController.navigate(Screen.Search.createRoute(query))
                 },
                 onBack = { navController.popBackStack() }
             )
@@ -232,9 +241,18 @@ fun NowenNavGraph(
             )
         }
 
-        // 搜索
-        composable(Screen.Search.route) {
+        // 搜索（支持可选的初始搜索关键词）
+        composable(
+            route = "search?q={query}",
+            arguments = listOf(navArgument("query") {
+                type = NavType.StringType
+                defaultValue = ""
+                nullable = true
+            })
+        ) { backStackEntry ->
+            val initialQuery = backStackEntry.arguments?.getString("query") ?: ""
             SearchScreen(
+                initialQuery = initialQuery,
                 onMediaClick = { mediaId ->
                     navController.navigate(Screen.MediaDetail.createRoute(mediaId))
                 },

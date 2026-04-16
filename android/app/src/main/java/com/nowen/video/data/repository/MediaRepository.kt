@@ -31,11 +31,20 @@ class MediaRepository @Inject constructor(
         PaginatedResponse(data = resp.data, total = resp.total, page = resp.page, size = resp.size)
     }
 
+    suspend fun getMediaMixed(
+        libraryId: String? = null,
+        page: Int = 1,
+        limit: Int = 20
+    ): Result<PaginatedResponse<MixedItem>> = runCatching {
+        val resp = api.getMediaMixed(libraryId, page, limit)
+        PaginatedResponse(data = resp.data, total = resp.total, page = resp.page, size = resp.size)
+    }
+
     suspend fun getRecentMedia(limit: Int = 20): Result<List<Media>> = runCatching {
         api.getRecentMedia(limit).data
     }
 
-    suspend fun getRecentMixed(limit: Int = 20): Result<List<Media>> = runCatching {
+    suspend fun getRecentMixed(limit: Int = 20): Result<List<MixedItem>> = runCatching {
         api.getRecentMixed(limit).data
     }
 
@@ -154,7 +163,7 @@ class MediaRepository @Inject constructor(
         api.getCollectionDetail(id).data
     }
 
-    suspend fun getMediaCollection(mediaId: String): Result<MovieCollection?> = runCatching {
+    suspend fun getMediaCollection(mediaId: String): Result<CollectionWithMedia?> = runCatching {
         api.getMediaCollection(mediaId).data
     }
 

@@ -158,8 +158,16 @@ export default function HomePage() {
                 {/* 信息 */}
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-sm font-medium transition-colors group-hover:text-neon text-theme-primary">
-                    {item.media.title}
+                    {item.media.media_type === 'episode' && item.media.series
+                      ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
+                      : item.media.title
+                    }
                   </h3>
+                  {item.media.media_type === 'episode' && item.media.episode_title && (
+                    <p className="mt-0.5 truncate text-xs text-theme-secondary">
+                      {item.media.episode_title}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-theme-tertiary">
                     {t('home.watched', { percent: String(formatProgress(item.position, item.duration)) })}
                   </p>

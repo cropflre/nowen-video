@@ -121,7 +121,12 @@ export default function VideoPlayer({
   // 倍速播放
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
-  const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
+  const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 7, 8]
+
+  // 优先使用 API 返回的完整时长（解决实时转码 EVENT 模式下时长逐步增长的问题）
+  // 必须在所有 useEffect 之前声明，避免 TDZ（暂时性死区）错误
+  const displayDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
+  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
   // 自动下一集倒计时
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
@@ -438,7 +443,8 @@ export default function VideoPlayer({
     if (!video) return
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    const onTimeUpdate = () => setCurrentTime(video.currentTime)
+    // Remux 模式下，video.currentTime 是从 seek 点开始的相对时间，需要加上偏移量
+    const onTimeUpdate = () => setCurrentTime(video.currentTime + remuxOffsetRef.current)
     const onDurationChange = () => setDuration(video.duration)
     const onVolumeChange = () => {
       setVolume(video.volume)
@@ -487,11 +493,14 @@ export default function VideoPlayer({
     progressReportRef.current = window.setInterval(() => {
       const video = videoRef.current
       if (video && !video.paused && video.currentTime > 0) {
-        userApi.updateProgress(mediaId, video.currentTime, video.duration).catch(() => {})
+        // Remux 模式下需要加上偏移量，保存正确的绝对播放位置
+        const actualTime = video.currentTime + remuxOffsetRef.current
+        const actualDuration = displayDuration > 0 ? displayDuration : video.duration
+        userApi.updateProgress(mediaId, actualTime, actualDuration).catch(() => {})
       }
     }, 15000)
     return () => clearInterval(progressReportRef.current)
-  }, [mediaId])
+  }, [mediaId, displayDuration])
 
   // 全屏变化监听
   useEffect(() => {
@@ -525,7 +534,15 @@ export default function VideoPlayer({
   const seek = (seconds: number) => {
     const video = videoRef.current
     if (!video) return
-    video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
+
+    // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现快进/快退
+    if (mode === 'remux') {
+      const currentPos = remuxOffsetRef.current + (video.currentTime || 0)
+      const targetTime = Math.max(0, Math.min(displayDuration, currentPos + seconds))
+      remuxSeek(targetTime)
+    } else {
+      video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
+    }
     // 显示快进/快退提示
     clearTimeout(seekHintTimer.current)
     setSeekHint({ text: seconds > 0 ? `+${seconds}s` : `${seconds}s`, visible: true })
@@ -534,12 +551,37 @@ export default function VideoPlayer({
     }, 800)
   }
 
+  // Remux Seek：通过重新加载带 ?start= 参数的 URL 实现进度跳转
+  // 类似 Emby 的拖动进度条体验，中止当前流并从新位置开始转封装
+  const remuxSeek = useCallback((targetTime: number) => {
+    const video = videoRef.current
+    if (!video || mode !== 'remux' || !src) return
+    // 从 src 中提取基础 URL（去掉已有的 start 参数）
+    const baseUrl = src.replace(/[&?]start=[^&]*/g, '')
+    const sep = baseUrl.includes('?') ? '&' : '?'
+    const newSrc = `${baseUrl}${sep}start=${Math.floor(targetTime)}`
+    // 记录目标时间偏移，用于显示正确的进度
+    remuxOffsetRef.current = targetTime
+    video.src = newSrc
+    video.play().catch(() => {})
+  }, [src, mode])
+
+  // Remux 时间偏移：记录 Seek 的起始时间，用于计算真实播放位置
+  const remuxOffsetRef = useRef(0)
+
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const video = videoRef.current
     if (!video) return
     const rect = e.currentTarget.getBoundingClientRect()
     const pos = (e.clientX - rect.left) / rect.width
     const targetTime = pos * displayDuration
+
+    // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现 Seek
+    if (mode === 'remux') {
+      remuxSeek(targetTime)
+      return
+    }
+
     // 如果目标时间超出已加载范围，限制到当前可 seek 的最大位置
     if (video.duration > 0 && targetTime <= video.duration) {
       video.currentTime = targetTime
@@ -565,13 +607,19 @@ export default function VideoPlayer({
   }
 
   // 倍速切换
-  const changeSpeed = (rate: number) => {
+  const changeSpeed = useCallback((rate: number) => {
     const video = videoRef.current
     if (!video) return
     video.playbackRate = rate
     setPlaybackRate(rate)
     setShowSpeedMenu(false)
-  }
+    // 显示倍速切换提示
+    clearTimeout(seekHintTimer.current)
+    setSeekHint({ text: rate === 1 ? '正常速度' : `${rate}x 倍速`, visible: true })
+    seekHintTimer.current = window.setTimeout(() => {
+      setSeekHint(prev => ({ ...prev, visible: false }))
+    }, 800)
+  }, [])
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen()
@@ -594,10 +642,6 @@ export default function VideoPlayer({
     if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
     return `${m}:${s.toString().padStart(2, '0')}`
   }
-
-  // 优先使用 API 返回的完整时长（解决实时转码 EVENT 模式下时长逐步增长的问题）
-  const displayDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
-  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
   // 键盘快捷键
   useEffect(() => {
@@ -646,7 +690,7 @@ export default function VideoPlayer({
             onBack()
           }
           break
-        // 倍速快捷键
+        // 倍速快捷键：< 减速，> 加速，Backspace 恢复正常速度
         case '<':
         case ',': {
           e.preventDefault()
@@ -659,6 +703,14 @@ export default function VideoPlayer({
           e.preventDefault()
           const idx = SPEED_OPTIONS.indexOf(playbackRate)
           if (idx < SPEED_OPTIONS.length - 1) changeSpeed(SPEED_OPTIONS[idx + 1])
+          break
+        }
+        case 'Backspace': {
+          // 快速恢复正常速度
+          if (playbackRate !== 1) {
+            e.preventDefault()
+            changeSpeed(1)
+          }
           break
         }
         // 下一集快捷键
@@ -1073,19 +1125,34 @@ export default function VideoPlayer({
             </button>
 
             {showSpeedMenu && (
-              <div className="absolute bottom-full right-0 mb-2 min-w-[120px] rounded-xl py-1 shadow-2xl"
+              <div className="absolute bottom-full right-0 mb-2 min-w-[140px] max-h-[360px] overflow-y-auto rounded-xl py-1 shadow-2xl"
                 style={{
                   background: 'rgba(11, 17, 32, 0.9)',
                   border: '1px solid var(--neon-blue-10)',
                   backdropFilter: 'blur(20px)',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'var(--neon-blue-15) transparent',
                 }}
               >
+                {/* 快速恢复正常速度按钮 */}
+                {playbackRate !== 1 && (
+                  <>
+                    <button
+                      onClick={() => changeSpeed(1)}
+                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-neon-blue transition-colors hover:bg-neon-blue/10"
+                    >
+                      <span>恢复正常</span>
+                      <span className="text-[10px] text-surface-500">Backspace</span>
+                    </button>
+                    <div className="mx-3 my-0.5 border-t border-neon-blue/10" />
+                  </>
+                )}
                 {SPEED_OPTIONS.map((speed) => (
                   <button
                     key={speed}
                     onClick={() => changeSpeed(speed)}
                     className={clsx(
-                      'block w-full px-4 py-2.5 text-left text-sm transition-colors',
+                      'block w-full px-4 py-2 text-left text-sm transition-colors',
                       speed === playbackRate
                         ? 'text-neon-blue'
                         : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
@@ -1095,6 +1162,10 @@ export default function VideoPlayer({
                     {speed === 1 ? '正常' : `${speed}x`}
                   </button>
                 ))}
+                <div className="mx-3 my-0.5 border-t border-neon-blue/10" />
+                <div className="px-4 py-1.5 text-[10px] text-surface-500">
+                  快捷键: &lt; 减速 &gt; 加速
+                </div>
               </div>
             )}
           </div>

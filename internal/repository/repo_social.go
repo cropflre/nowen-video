@@ -25,7 +25,7 @@ func (r *WatchHistoryRepo) Upsert(history *model.WatchHistory) error {
 
 func (r *WatchHistoryRepo) ContinueWatching(userID string, limit int) ([]model.WatchHistory, error) {
 	var histories []model.WatchHistory
-	err := r.db.Preload("Media").
+	err := r.db.Preload("Media").Preload("Media.Series").
 		Where("user_id = ? AND completed = ?", userID, false).
 		Order("updated_at DESC").
 		Limit(limit).
@@ -39,7 +39,7 @@ func (r *WatchHistoryRepo) ListHistory(userID string, page, size int) ([]model.W
 
 	query := r.db.Model(&model.WatchHistory{}).Where("user_id = ?", userID)
 	query.Count(&total)
-	err := query.Preload("Media").
+	err := query.Preload("Media").Preload("Media.Series").
 		Order("updated_at DESC").
 		Offset((page - 1) * size).
 		Limit(size).

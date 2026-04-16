@@ -58,7 +58,14 @@ interface NowenApiService {
     @GET("media/recent/mixed")
     suspend fun getRecentMixed(
         @Query("limit") limit: Int = 20
-    ): ApiResponse<List<Media>>
+    ): ApiResponse<List<MixedItem>>
+
+    @GET("media/mixed")
+    suspend fun getMediaMixed(
+        @Query("library_id") libraryId: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("size") size: Int = 20
+    ): ApiPaginatedResponse<MixedItem>
 
     @GET("media/continue")
     suspend fun getContinueWatching(): ApiResponse<List<WatchHistory>>
@@ -162,7 +169,7 @@ interface NowenApiService {
     suspend fun searchCollections(@Query("keyword") keyword: String): ApiResponse<List<MovieCollection>>
 
     @GET("media/{id}/collection")
-    suspend fun getMediaCollection(@Path("id") mediaId: String): ApiResponse<MovieCollection?>
+    suspend fun getMediaCollection(@Path("id") mediaId: String): ApiResponse<CollectionWithMedia?>
 
     // ==================== 书签 ====================
 

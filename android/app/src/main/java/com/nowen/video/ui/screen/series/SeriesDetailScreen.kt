@@ -34,11 +34,12 @@ import javax.inject.Inject
 /**
  * 剧集详情页 — 展示剧集信息和季/集列表
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SeriesDetailScreen(
     seriesId: String,
     onEpisodeClick: (String) -> Unit,
+    onSearchClick: (String) -> Unit = {},
     onBack: () -> Unit,
     viewModel: SeriesDetailViewModel = hiltViewModel()
 ) {
@@ -131,6 +132,40 @@ fun SeriesDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
+                        }
+                    }
+                }
+
+                // 类型标签（可点击搜索）
+                if (series.genres.isNotBlank()) {
+                    item {
+                        FlowRow(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            series.genres.split(",").forEach { genre ->
+                                val trimmedGenre = genre.trim()
+                                if (trimmedGenre.isNotBlank()) {
+                                    AssistChip(
+                                        onClick = { onSearchClick(trimmedGenre) },
+                                        label = {
+                                            Text(
+                                                trimmedGenre,
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Tag,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

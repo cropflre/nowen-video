@@ -37,7 +37,10 @@ sealed class Screen(val route: String) {
     }
 
     /** 搜索 */
-    data object Search : Screen("search")
+    data object Search : Screen("search?q={query}") {
+        const val baseRoute = "search"
+        fun createRoute(query: String = "") = if (query.isNotBlank()) "search?q=$query" else "search"
+    }
 
     /** 收藏列表 */
     data object Favorites : Screen("favorites")

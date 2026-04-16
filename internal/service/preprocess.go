@@ -950,6 +950,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
+				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 				"-vf", fmt.Sprintf("scale_cuda=%d:%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
@@ -965,6 +966,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
+				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 				"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
@@ -984,6 +986,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
+				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 				"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
@@ -998,6 +1001,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
+				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 				"-vf", fmt.Sprintf("scale=%d:%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
