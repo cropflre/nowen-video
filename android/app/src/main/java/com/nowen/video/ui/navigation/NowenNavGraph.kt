@@ -112,6 +112,11 @@ fun NowenNavGraph(
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
+                },
+                onChangeServer = {
+                    navController.navigate(Screen.ServerSetup.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
                 }
             )
         }

@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { Library } from '@/types'
@@ -128,10 +129,11 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         {/* 移动端关闭按钮 */}
         {isMobileOpen && onMobileClose && (
           <button
-            onClick={onMobileClose}
-            className="rounded-lg p-1.5 text-surface-400 transition-all duration-200 hover:text-neon hover:bg-neon-blue/5 md:hidden"
+            onClick={(e) => { e.stopPropagation(); onMobileClose(); }}
+            className="rounded-lg p-2 text-surface-400 transition-all duration-200 hover:text-neon hover:bg-neon-blue/5 md:hidden"
+            aria-label="关闭菜单"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         )}
       </div>
@@ -433,20 +435,40 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
         {sidebarContent}
       </motion.aside>
 
-      {/* 移动端抽屉侧边栏 — 弹性滑入 */}
-      <AnimatePresence>
-        {isMobileOpen && (
-          <motion.aside
-            className="glass-panel-strong fixed inset-y-0 left-0 z-40 flex w-64 flex-col md:hidden"
-            variants={sidebarMobileVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-          >
-            {sidebarContent}
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      {/* 移动端遮罩 + 抽屉侧边栏 — 通过 Portal 渲染到 body，彻底避免父级层叠上下文干扰 */}
+      {createPortal(
+        <>
+          <AnimatePresence>
+            {isMobileOpen && (
+              <motion.div
+                key="sidebar-overlay"
+                className="fixed inset-0 z-[9998] bg-black/60 md:hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={onMobileClose}
+                aria-hidden="true"
+              />
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {isMobileOpen && (
+              <motion.aside
+                key="sidebar-drawer"
+                className="glass-panel-strong fixed inset-y-0 left-0 z-[9999] flex w-64 flex-col md:hidden"
+                variants={sidebarMobileVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                {sidebarContent}
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        </>,
+        document.body
+      )}
     </>
   )
 }

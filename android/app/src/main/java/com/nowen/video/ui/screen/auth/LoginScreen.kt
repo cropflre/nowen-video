@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nowen.video.data.local.TokenManager
 import com.nowen.video.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,7 @@ import javax.inject.Inject
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    onChangeServer: () -> Unit = {},
     viewModel: LoginViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -43,8 +45,11 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
+    val serverUrl by viewModel.serverUrl.collectAsState()
+
     // 检查系统初始化状态
     LaunchedEffect(Unit) {
+        viewModel.loadServerUrl()
         viewModel.checkInitStatus()
     }
 
@@ -169,6 +174,18 @@ fun LoginScreen(
                     )
                 }
             }
+
+            // 更换服务器按钮
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onChangeServer
+            ) {
+                Text(
+                    text = "更换服务器" + if (serverUrl.isNotBlank()) "（$serverUrl）" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -183,11 +200,21 @@ data class LoginUiState(
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState = _uiState.asStateFlow()
+
+    private val _serverUrl = MutableStateFlow("")
+    val serverUrl = _serverUrl.asStateFlow()
+
+    fun loadServerUrl() {
+        viewModelScope.launch {
+            _serverUrl.value = tokenManager.getServerUrl() ?: ""
+        }
+    }
 
     fun checkInitStatus() {
         viewModelScope.launch {

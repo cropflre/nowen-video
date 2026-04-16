@@ -66,15 +66,7 @@ export default function Layout() {
       <div className="pointer-events-none fixed inset-0 z-0 bg-deep-space" />
       <div className="pointer-events-none fixed inset-0 z-0 noise-bg" />
 
-      {/* 移动端遮罩 */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity duration-300 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      {/* 侧边导航 */}
+      {/* 侧边导航（遮罩层已移入 Sidebar 内部，确保 z-index 层叠上下文正确） */}
       <Sidebar isMobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
       {/* 主内容区 */}

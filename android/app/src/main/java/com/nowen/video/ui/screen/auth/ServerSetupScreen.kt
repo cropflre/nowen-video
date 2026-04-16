@@ -72,7 +72,7 @@ fun ServerSetupScreen(
                 value = serverUrl,
                 onValueChange = { serverUrl = it },
                 label = { Text("服务器地址") },
-                placeholder = { Text("http://192.168.1.100:9090") },
+                placeholder = { Text("http://192.168.1.100:8080") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(
@@ -143,7 +143,8 @@ class ServerSetupViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     fun saveServerUrl(url: String, onSuccess: () -> Unit) {
-        val trimmedUrl = url.trim().trimEnd('/')
+        // 清理非 ASCII 可见字符（防止输入法注入不可见 Unicode 字符）
+        val trimmedUrl = url.replace(Regex("[^\\x20-\\x7E]"), "").trim().trimEnd('/')
         if (trimmedUrl.isBlank() || (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://"))) {
             _uiState.value = _uiState.value.copy(error = "请输入有效的服务器地址（以 http:// 或 https:// 开头）")
             return

@@ -27,7 +27,7 @@ import javax.inject.Singleton
 object NetworkModule {
 
     /** 服务器基础 URL — 运行时可通过 TokenManager 动态切换 */
-    private const val DEFAULT_BASE_URL = "http://10.0.2.2:9090/api/"
+    private const val DEFAULT_BASE_URL = "http://10.0.2.2:8080/api/"
 
     @Provides
     @Singleton

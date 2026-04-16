@@ -83,6 +83,15 @@ export default function PlayerPage() {
     }).catch(() => {})
   }, [id])
 
+  // Remux 降级状态：当 Remux 播放失败时（如浏览器不支持 HEVC 10-bit），自动降级到 HLS 转码
+  const [remuxFailed, setRemuxFailed] = useState(false)
+
+  // Remux 播放失败回调：自动降级到 HLS 转码模式
+  const handleRemuxFallback = useCallback(() => {
+    toast.info('当前浏览器不支持该编码格式，已自动切换到转码播放')
+    setRemuxFailed(true)
+  }, [toast])
+
   if (loading || !media || !playInfo || !id) {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
@@ -93,15 +102,6 @@ export default function PlayerPage() {
       </div>
     )
   }
-
-  // Remux 降级状态：当 Remux 播放失败时（如浏览器不支持 HEVC 10-bit），自动降级到 HLS 转码
-  const [remuxFailed, setRemuxFailed] = useState(false)
-
-  // Remux 播放失败回调：自动降级到 HLS 转码模式
-  const handleRemuxFallback = useCallback(() => {
-    toast.info('当前浏览器不支持该编码格式，已自动切换到转码播放')
-    setRemuxFailed(true)
-  }, [toast])
 
   // 智能选择播放模式：
   // 优先级：预处理 HLS > 直接播放（MP4/WebM） > Remux（MKV等零转码转封装） > HLS 实时转码
