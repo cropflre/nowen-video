@@ -37,6 +37,16 @@ class PlayerPreferences @Inject constructor(
         private val KEY_SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
         // 是否自动加载字幕
         private val KEY_AUTO_LOAD_SUBTITLE = booleanPreferencesKey("auto_load_subtitle")
+        // 字幕字体大小：0=小, 1=中, 2=大, 3=超大
+        private val KEY_SUBTITLE_FONT_SIZE = intPreferencesKey("subtitle_font_size")
+        // 字幕字体颜色（ARGB 整数）
+        private val KEY_SUBTITLE_FONT_COLOR = intPreferencesKey("subtitle_font_color")
+        // 字幕背景颜色（ARGB 整数）
+        private val KEY_SUBTITLE_BG_COLOR = intPreferencesKey("subtitle_bg_color")
+        // 字幕位置：0=底部, 1=顶部
+        private val KEY_SUBTITLE_POSITION = intPreferencesKey("subtitle_position")
+        // 字幕延迟（毫秒）
+        private val KEY_SUBTITLE_DELAY = intPreferencesKey("subtitle_delay")
         // 手势灵敏度：0=低, 1=中, 2=高
         private val KEY_GESTURE_SENSITIVITY = intPreferencesKey("gesture_sensitivity")
         // 是否启用手势控制
@@ -106,6 +116,71 @@ class PlayerPreferences @Inject constructor(
 
     suspend fun setAutoLoadSubtitle(enabled: Boolean) {
         context.playerPrefsStore.edit { it[KEY_AUTO_LOAD_SUBTITLE] = enabled }
+    }
+
+    // ==================== 字幕字体大小 ====================
+
+    val subtitleFontSizeFlow: Flow<Int> = context.playerPrefsStore.data.map {
+        it[KEY_SUBTITLE_FONT_SIZE] ?: 1 // 默认中
+    }
+
+    suspend fun getSubtitleFontSize(): Int =
+        context.playerPrefsStore.data.first()[KEY_SUBTITLE_FONT_SIZE] ?: 1
+
+    suspend fun setSubtitleFontSize(size: Int) {
+        context.playerPrefsStore.edit { it[KEY_SUBTITLE_FONT_SIZE] = size }
+    }
+
+    // ==================== 字幕字体颜色 ====================
+
+    val subtitleFontColorFlow: Flow<Int> = context.playerPrefsStore.data.map {
+        it[KEY_SUBTITLE_FONT_COLOR] ?: 0xFFFFFFFF.toInt() // 默认白色
+    }
+
+    suspend fun getSubtitleFontColor(): Int =
+        context.playerPrefsStore.data.first()[KEY_SUBTITLE_FONT_COLOR] ?: 0xFFFFFFFF.toInt()
+
+    suspend fun setSubtitleFontColor(color: Int) {
+        context.playerPrefsStore.edit { it[KEY_SUBTITLE_FONT_COLOR] = color }
+    }
+
+    // ==================== 字幕背景颜色 ====================
+
+    val subtitleBgColorFlow: Flow<Int> = context.playerPrefsStore.data.map {
+        it[KEY_SUBTITLE_BG_COLOR] ?: 0x80000000.toInt() // 默认半透明黑色
+    }
+
+    suspend fun getSubtitleBgColor(): Int =
+        context.playerPrefsStore.data.first()[KEY_SUBTITLE_BG_COLOR] ?: 0x80000000.toInt()
+
+    suspend fun setSubtitleBgColor(color: Int) {
+        context.playerPrefsStore.edit { it[KEY_SUBTITLE_BG_COLOR] = color }
+    }
+
+    // ==================== 字幕位置 ====================
+
+    val subtitlePositionFlow: Flow<Int> = context.playerPrefsStore.data.map {
+        it[KEY_SUBTITLE_POSITION] ?: 0 // 默认底部
+    }
+
+    suspend fun getSubtitlePosition(): Int =
+        context.playerPrefsStore.data.first()[KEY_SUBTITLE_POSITION] ?: 0
+
+    suspend fun setSubtitlePosition(position: Int) {
+        context.playerPrefsStore.edit { it[KEY_SUBTITLE_POSITION] = position }
+    }
+
+    // ==================== 字幕延迟 ====================
+
+    val subtitleDelayFlow: Flow<Int> = context.playerPrefsStore.data.map {
+        it[KEY_SUBTITLE_DELAY] ?: 0 // 默认无延迟
+    }
+
+    suspend fun getSubtitleDelay(): Int =
+        context.playerPrefsStore.data.first()[KEY_SUBTITLE_DELAY] ?: 0
+
+    suspend fun setSubtitleDelay(delayMs: Int) {
+        context.playerPrefsStore.edit { it[KEY_SUBTITLE_DELAY] = delayMs }
     }
 
     // ==================== 手势控制 ====================

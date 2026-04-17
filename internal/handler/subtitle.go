@@ -108,6 +108,9 @@ func (h *SubtitleHandler) ExtractTrack(c *gin.Context) {
 }
 
 // ServeExternal 提供外挂字幕文件（自动转换为WebVTT格式）
+// 支持 format 参数：
+//   - format=raw: 返回原始字幕文件（适用于 ExoPlayer 等原生支持 ASS/SRT 的播放器）
+//   - 默认: 转换为 WebVTT 格式（适用于浏览器）
 func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 	// 外挂字幕路径通过query参数传入
 	subPath := c.Query("path")
@@ -116,21 +119,69 @@ func (h *SubtitleHandler) ServeExternal(c *gin.Context) {
 		return
 	}
 
+	// 是否返回原始格式（Android 端 ExoPlayer 原生支持 ASS/SRT）
+	rawFormat := c.Query("format") == "raw"
+
 	// 安全检查：确保是字幕文件
 	ext := service.GetFileExt(subPath)
 	switch ext {
 	case ".vtt":
-		// VTT 格式浏览器原生支持，直接返回
+		// VTT 格式直接返回
 		c.Header("Content-Type", "text/vtt; charset=utf-8")
 		c.Header("Cache-Control", "public, max-age=604800")
 		c.File(subPath)
 		return
-	case ".srt", ".ass", ".ssa":
-		// 非VTT格式需要通过FFmpeg转换为WebVTT（P1: 带编码自动检测）
+	case ".srt":
+		if rawFormat {
+			// 原始 SRT 格式直接返回（ExoPlayer 原生支持）
+			// 先做编码检测转换为 UTF-8
+			utf8Path, err := h.scanner.EnsureUTF8Subtitle(subPath)
+			if err != nil {
+				h.logger.Warnf("SRT 编码转换失败，直接返回原始文件: %v", err)
+				c.Header("Content-Type", "application/x-subrip; charset=utf-8")
+				c.Header("Cache-Control", "public, max-age=604800")
+				c.File(subPath)
+				return
+			}
+			c.Header("Content-Type", "application/x-subrip; charset=utf-8")
+			c.Header("Cache-Control", "public, max-age=604800")
+			c.File(utf8Path)
+			return
+		}
+		// 默认转换为 WebVTT
 		vttPath, err := h.scanner.ConvertSubtitleToVTTWithEncoding(subPath)
 		if err != nil {
 			h.logger.Warnf("字幕转换失败，尝试直接返回原始文件: %v", err)
-			// 转换失败时回退到直接返回原始文件（部分播放器可能支持）
+			c.Header("Content-Type", "text/plain; charset=utf-8")
+			c.Header("Cache-Control", "public, max-age=604800")
+			c.File(subPath)
+			return
+		}
+		c.Header("Content-Type", "text/vtt; charset=utf-8")
+		c.Header("Cache-Control", "public, max-age=604800")
+		c.File(vttPath)
+		return
+	case ".ass", ".ssa":
+		if rawFormat {
+			// 原始 ASS/SSA 格式直接返回（ExoPlayer 原生支持，保留样式信息）
+			// 先做编码检测转换为 UTF-8
+			utf8Path, err := h.scanner.EnsureUTF8Subtitle(subPath)
+			if err != nil {
+				h.logger.Warnf("ASS 编码转换失败，直接返回原始文件: %v", err)
+				c.Header("Content-Type", "text/x-ssa; charset=utf-8")
+				c.Header("Cache-Control", "public, max-age=604800")
+				c.File(subPath)
+				return
+			}
+			c.Header("Content-Type", "text/x-ssa; charset=utf-8")
+			c.Header("Cache-Control", "public, max-age=604800")
+			c.File(utf8Path)
+			return
+		}
+		// 默认转换为 WebVTT（浏览器用）
+		vttPath, err := h.scanner.ConvertSubtitleToVTTWithEncoding(subPath)
+		if err != nil {
+			h.logger.Warnf("字幕转换失败，尝试直接返回原始文件: %v", err)
 			c.Header("Content-Type", "text/plain; charset=utf-8")
 			c.Header("Cache-Control", "public, max-age=604800")
 			c.File(subPath)

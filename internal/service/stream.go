@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -354,8 +355,32 @@ func (s *StreamService) GetSegmentPlaylist(mediaID, quality string) (string, err
 		return "", fmt.Errorf("启动转码失败: %w", err)
 	}
 
-	// 返回一个等待中的播放列表（前端会重试）
-	return "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-PLAYLIST-TYPE:EVENT\n", nil
+	// 等待 m3u8 文件产出（最多等待 30 秒）
+	// 避免返回空播放列表导致 ExoPlayer 报 PlaylistStuckException
+	for i := 0; i < 60; i++ {
+		if _, err := os.Stat(m3u8Path); err == nil {
+			content, err := os.ReadFile(m3u8Path)
+			if err != nil {
+				return "", err
+			}
+			// 确保播放列表中至少有一个分片
+			if strings.Contains(string(content), ".ts") {
+				return string(content), nil
+			}
+		}
+		// 每 500ms 检查一次
+		select {
+		case <-context.Background().Done():
+			break
+		default:
+			// 使用 time.Sleep 等待
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// 超时仍未产出分片，返回带有正确格式的等待播放列表
+	s.logger.Warnf("HLS 转码等待超时: %s/%s", mediaID, quality)
+	return "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n", nil
 }
 
 // ServeSegment 提供HLS分片文件

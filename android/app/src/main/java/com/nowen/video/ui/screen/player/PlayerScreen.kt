@@ -58,18 +58,27 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.nowen.video.data.local.PlayerPreferences
 import com.nowen.video.data.local.TokenManager
+import com.nowen.video.data.model.ASRTask
 import com.nowen.video.data.model.Media
 import com.nowen.video.data.model.StreamInfo
+import com.nowen.video.data.model.SubtitleDownloadResult
+import com.nowen.video.data.model.SubtitleSearchResult
 import com.nowen.video.data.model.SubtitleTrack
+import com.nowen.video.data.model.SubtitleTracksResponse
+import com.nowen.video.data.model.TranslatedSubtitle
 import com.nowen.video.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -79,6 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 import android.util.Log
+import java.net.URLEncoder
 import kotlin.math.abs
 
 private const val TAG = "PlayerDebug"
@@ -150,21 +160,50 @@ fun PlayerScreen(
     }
 
     // 创建 ExoPlayer（注入 Authorization Header，解决流媒体请求 401 问题）
-    val exoPlayer = remember {
-        Log.d(TAG, "创建 ExoPlayer, token长度=${viewModel.token.length}, token前10=${viewModel.token.take(10)}")
-        // 创建带认证头的 HttpDataSource
+    val dataSourceFactory = remember {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(
                 mapOf("Authorization" to "Bearer ${viewModel.token}")
             )
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        DefaultDataSource.Factory(context, httpDataSourceFactory)
+    }
+    val mediaSourceFactory = remember { DefaultMediaSourceFactory(dataSourceFactory) }
+    val exoPlayer = remember {
+        Log.d(TAG, "创建 ExoPlayer, token长度=${viewModel.token.length}, token前10=${viewModel.token.take(10)}")
+
+        // 自定义 RenderersFactory，在 TextRenderer 上启用 Legacy 解码模式
+        // media3 1.5.x 的 experimentalSetLegacyDecodingEnabled 方法在 TextRenderer 类上
+        // 必须启用才能处理 text/x-ssa (ASS/SSA) 格式的字幕
+        val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun buildTextRenderers(
+                context: android.content.Context,
+                output: androidx.media3.exoplayer.text.TextOutput,
+                outputLooper: android.os.Looper,
+                extensionRendererMode: Int,
+                out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>
+            ) {
+                super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)
+                // 遍历所有 TextRenderer 并启用 Legacy 解码
+                for (renderer in out) {
+                    if (renderer is androidx.media3.exoplayer.text.TextRenderer) {
+                        renderer.experimentalSetLegacyDecodingEnabled(true)
+                    }
+                }
+            }
+        }.setEnableDecoderFallback(true)
 
         ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .apply {
                 playWhenReady = true
+                // 启用文本轨道（字幕）渲染，确保字幕能显示
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setPreferredTextLanguage("und")
+                    .setPreferredTextRoleFlags(C.ROLE_FLAG_SUBTITLE)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
             }
     }
 
@@ -179,7 +218,7 @@ fun PlayerScreen(
         viewModel.loadSubtitleTracks(mediaId)
     }
 
-    // 设置播放源（含字幕）
+    // 设置播放源
     LaunchedEffect(uiState.playbackUrl) {
         val url = uiState.playbackUrl ?: return@LaunchedEffect
 
@@ -192,23 +231,6 @@ fun PlayerScreen(
             else -> {}
         }
 
-        // 添加外挂字幕轨道
-        val subtitleConfigs = uiState.subtitleTracks
-            .filter { it.isExternal }
-            .map { track ->
-                val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/external?path=${track.filePath}&token=${viewModel.token}"
-                MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
-                    .setMimeType(MimeTypes.APPLICATION_SUBRIP)
-                    .setLanguage(track.language)
-                    .setLabel(track.title.ifBlank { track.language })
-                    .setSelectionFlags(if (track.isDefault) C.SELECTION_FLAG_DEFAULT else 0)
-                    .build()
-            }
-
-        if (subtitleConfigs.isNotEmpty()) {
-            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigs)
-        }
-
         exoPlayer.setMediaItem(mediaItemBuilder.build())
         exoPlayer.prepare()
 
@@ -218,11 +240,84 @@ fun PlayerScreen(
         }
     }
 
-    // 监听播放错误 — 自动降级
+    // 外挂字幕加载（等待字幕列表和播放源都就绪后再加载）
+    // 使用 MergingMediaSource + SingleSampleMediaSource 方式，比 SubtitleConfiguration 更可靠
+    LaunchedEffect(uiState.externalSubs, uiState.playbackUrl) {
+        if (uiState.playbackUrl == null || uiState.externalSubs.isEmpty()) return@LaunchedEffect
+        // 等待 ExoPlayer 准备就绪
+        delay(800)
+
+        Log.d(TAG, "开始自动加载外挂字幕(MergingMediaSource): ${uiState.externalSubs.size} 条")
+
+        val url = uiState.playbackUrl ?: return@LaunchedEffect
+        // 构建主视频 MediaSource
+        val videoMediaItem = MediaItem.Builder().setUri(url).apply {
+            when (uiState.playbackMode) {
+                PlaybackMode.HLS, PlaybackMode.PREPROCESSED_HLS -> setMimeType(MimeTypes.APPLICATION_M3U8)
+                else -> {}
+            }
+        }.build()
+        val videoSource = mediaSourceFactory.createMediaSource(videoMediaItem)
+
+        // 构建字幕 MediaSource 列表
+        val subtitleSources = uiState.externalSubs.map { track ->
+            val path = track.path.ifBlank { track.filePath }
+            val encodedPath = java.net.URLEncoder.encode(path, "UTF-8")
+            val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/external?path=$encodedPath&format=raw&token=${viewModel.token}"
+            val mimeType = getMimeTypeForSubtitleFormat(track.format)
+            Log.d(TAG, "字幕源: path=$path, format=${track.format}, mimeType=$mimeType")
+
+            val subtitleMediaItem = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                .setMimeType(mimeType)
+                .setLanguage(track.language.ifBlank { "und" })
+                .setLabel(track.title.ifBlank { track.language.ifBlank { track.filename } })
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+
+            SingleSampleMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(subtitleMediaItem, C.TIME_UNSET)
+        }
+
+        // 合并视频和字幕源
+        val mergedSource = MergingMediaSource(videoSource, *subtitleSources.toTypedArray())
+
+        val pos = exoPlayer.currentPosition
+        exoPlayer.setMediaSource(mergedSource)
+        exoPlayer.prepare()
+        if (pos > 0) exoPlayer.seekTo(pos)
+
+        // 确保 ExoPlayer 启用文本轨道渲染
+        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
+        Log.d(TAG, "外挂字幕 MergingMediaSource 已设置")
+    }
+
+    // 监听播放错误和字幕轨道变化
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 viewModel.onPlaybackError(error)
+            }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                // 调试：打印所有轨道信息
+                for (group in tracks.groups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        val isSelected = group.isTrackSelected(i)
+                        if (format.sampleMimeType?.contains("text") == true ||
+                            format.sampleMimeType?.contains("subrip") == true ||
+                            format.sampleMimeType?.contains("ssa") == true ||
+                            format.sampleMimeType?.contains("vtt") == true) {
+                            Log.d(TAG, "字幕轨道: mime=${format.sampleMimeType}, lang=${format.language}, label=${format.label}, selected=$isSelected")
+                        }
+                    }
+                }
+            }
+            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                if (cueGroup.cues.isNotEmpty()) {
+                    Log.d(TAG, "字幕渲染: ${cueGroup.cues.size} 条字幕, 第一条=${cueGroup.cues.firstOrNull()?.text?.toString()?.take(50)}")
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -716,19 +811,17 @@ fun PlayerScreen(
                             )
                         }
 
-                        // 字幕按钮
-                        if (uiState.subtitleTracks.isNotEmpty()) {
-                            IconButton(
-                                onClick = { showSubtitlePicker = true },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Subtitles,
-                                    contentDescription = "字幕",
-                                    tint = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                        // 字幕按钮（始终显示）
+                        IconButton(
+                            onClick = { showSubtitlePicker = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Subtitles,
+                                contentDescription = "字幕",
+                                tint = if (uiState.activeSubtitle != null) NeonBlue else Color.White.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
                         // 设置按钮
@@ -898,19 +991,24 @@ fun PlayerScreen(
                             onClick = { settingsCategory = "decoder" }
                         )
 
-                        // 字幕设置
-                        if (uiState.subtitleTracks.isNotEmpty()) {
-                            SettingsMenuItem(
-                                icon = Icons.Default.Subtitles,
-                                title = "字幕",
-                                value = "${uiState.subtitleTracks.size} 条可用",
-                                onClick = {
-                                    showSettingsPanel = false
-                                    settingsCategory = null
-                                    showSubtitlePicker = true
-                                }
-                            )
-                        }
+                        // 字幕设置（始终显示，支持 AI 生成和在线搜索）
+                        SettingsMenuItem(
+                            icon = Icons.Default.Subtitles,
+                            title = "字幕",
+                            value = buildString {
+                                val total = uiState.embeddedSubs.size + uiState.externalSubs.size
+                                if (total > 0) append("${total} 条可用")
+                                else append("无字幕")
+                                if (uiState.aiSubtitleStatus?.status == "completed") append(" · AI")
+                                if (uiState.translatedSubs.isNotEmpty()) append(" · ${uiState.translatedSubs.size}翻译")
+                            },
+                            isHighlighted = uiState.activeSubtitle != null,
+                            onClick = {
+                                showSettingsPanel = false
+                                settingsCategory = null
+                                showSubtitlePicker = true
+                            }
+                        )
 
                         // 播放模式信息（只读展示）
                         if (uiState.playbackMode != null) {
@@ -1192,51 +1290,998 @@ fun PlayerScreen(
     }
 
     // 字幕选择弹窗
+    // ==================== 字幕面板状态 ====================
+    var subtitlePanelTab by remember { mutableStateOf("tracks") } // tracks, search, style
+    var subtitleSearchLang by remember { mutableStateOf("zh-cn,en") }
+    var showTranslateMenu by remember { mutableStateOf(false) }
+
+    // 字幕样式状态
+    var subtitleFontSize by remember { mutableIntStateOf(1) }
+    var subtitleDelay by remember { mutableIntStateOf(0) }
+
+    // 加载字幕样式偏好
+    LaunchedEffect(showSubtitlePicker) {
+        if (showSubtitlePicker) {
+            subtitleFontSize = viewModel.getSubtitleFontSize()
+            subtitleDelay = viewModel.getSubtitleDelay()
+        }
+    }
+
+    // ==================== 字幕面板（ModalBottomSheet）====================
     if (showSubtitlePicker) {
-        AlertDialog(
-            onDismissRequest = { showSubtitlePicker = false },
-            title = { Text("选择字幕") },
-            text = {
-                Column {
-                    // 关闭字幕选项
-                    ListItem(
-                        headlineContent = { Text("关闭字幕") },
-                        leadingContent = {
-                            Icon(Icons.Default.SubtitlesOff, contentDescription = null)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    HorizontalDivider()
-                    // 字幕轨道列表
-                    uiState.subtitleTracks.forEach { track ->
-                        ListItem(
-                            headlineContent = {
-                                Text(track.title.ifBlank { "字幕 ${track.index}" })
-                            },
-                            supportingContent = {
-                                Text(
-                                    buildString {
-                                        if (track.language.isNotBlank()) append(track.language)
-                                        if (track.codec.isNotBlank()) append(" · ${track.codec}")
-                                        if (track.forced) append(" · 强制")
-                                    }
-                                )
-                            },
-                            leadingContent = {
-                                Icon(Icons.Default.Subtitles, contentDescription = null)
-                            },
-                            modifier = Modifier.fillMaxWidth()
+        ModalBottomSheet(
+            onDismissRequest = {
+                showSubtitlePicker = false
+                subtitlePanelTab = "tracks"
+                showTranslateMenu = false
+            },
+            containerColor = Color(0xFF0B1120),
+            contentColor = Color.White,
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // ===== 标题栏 =====
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Subtitles,
+                            contentDescription = null,
+                            tint = NeonBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "字幕",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
                         )
                     }
+                    // 统计信息
+                    Text(
+                        text = "${uiState.embeddedSubs.size} 内嵌 · ${uiState.externalSubs.size} 外挂",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.4f)
+                    )
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSubtitlePicker = false }) {
-                    Text("关闭")
+
+                // ===== Tab 切换 =====
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "tracks" to "字幕轨道",
+                        "search" to "在线搜索",
+                        "style" to "样式设置"
+                    ).forEach { (key, label) ->
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { subtitlePanelTab = key },
+                            color = if (subtitlePanelTab == key) NeonBlue.copy(alpha = 0.15f) else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (subtitlePanelTab == key) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (subtitlePanelTab == key) NeonBlue else Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = NeonBlue.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+
+                when (subtitlePanelTab) {
+                    // ==================== 字幕轨道 Tab ====================
+                    "tracks" -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 500.dp)
+                        ) {
+                            // --- 关闭字幕 ---
+                            item {
+                                SubtitleTrackItem(
+                                    title = "关闭字幕",
+                                    subtitle = null,
+                                    isSelected = uiState.activeSubtitle == null,
+                                    icon = Icons.Default.SubtitlesOff,
+                                    onClick = {
+                                        viewModel.setActiveSubtitle(null)
+                                        // 关闭字幕：直接禁用文本轨道（不需要重新加载视频）
+                                        Log.d(TAG, "关闭字幕")
+                                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                            .build()
+                                    }
+                                )
+                            }
+
+                            // --- 内嵌字幕 ---
+                            if (uiState.embeddedSubs.isNotEmpty()) {
+                                item {
+                                    SubtitleSectionHeader(title = "📝 内嵌字幕", count = uiState.embeddedSubs.size)
+                                }
+                                items(uiState.embeddedSubs) { track ->
+                                    val isBitmap = track.bitmap
+                                    val trackId = "embedded:${track.index}"
+                                    SubtitleTrackItem(
+                                        title = track.title.ifBlank { track.language.ifBlank { "轨道 ${track.index}" } },
+                                        subtitle = buildString {
+                                            if (track.language.isNotBlank()) append(getLanguageLabel(track.language))
+                                            if (track.codec.isNotBlank()) append(" · ${getCodecLabel(track.codec)}")
+                                            if (track.forced) append(" · 强制")
+                                            if (track.isDefault) append(" · 默认")
+                                            if (isBitmap) append(" · 图形字幕")
+                                        },
+                                        isSelected = uiState.activeSubtitle == trackId,
+                                        isDisabled = isBitmap,
+                                        disabledReason = if (isBitmap) "图形字幕不可用" else null,
+                                        onClick = {
+                                            if (!isBitmap) {
+                                                viewModel.setActiveSubtitle(trackId)
+                                                // 通过 ExoPlayer 加载内嵌字幕
+                                                val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/$mediaId/extract/${track.index}?token=${viewModel.token}"
+                                                Log.d(TAG, "手动选择内嵌字幕: index=${track.index}, url=$subtitleUrl")
+                                                // 使用 MergingMediaSource 方式加载字幕（更可靠）
+                                                val currentItem = exoPlayer.currentMediaItem ?: return@SubtitleTrackItem
+                                                val videoSource = mediaSourceFactory.createMediaSource(currentItem)
+                                                val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                                                    .setMimeType(MimeTypes.TEXT_VTT)
+                                                    .setLanguage(track.language.ifBlank { "und" })
+                                                    .setLabel(track.title.ifBlank { track.language })
+                                                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                    .build()
+                                                val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                                                    .createMediaSource(subtitleConfig, C.TIME_UNSET)
+                                                val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+
+                                                val pos = exoPlayer.currentPosition
+                                                exoPlayer.setMediaSource(mergedSource)
+                                                exoPlayer.prepare()
+                                                exoPlayer.seekTo(pos)
+                                                // 确保启用字幕轨道渲染
+                                                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                    .build()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            // --- 外挂字幕 ---
+                            if (uiState.externalSubs.isNotEmpty()) {
+                                item {
+                                    SubtitleSectionHeader(title = "📁 外挂字幕", count = uiState.externalSubs.size)
+                                }
+                                items(uiState.externalSubs) { track ->
+                                    val trackId = "external:${track.path.ifBlank { track.filePath }}"
+                                    SubtitleTrackItem(
+                                        title = track.language.ifBlank { track.filename.ifBlank { track.title.ifBlank { "外挂字幕" } } },
+                                        subtitle = if (track.format.isNotBlank()) "[${track.format.uppercase()}]" else null,
+                                        isSelected = uiState.activeSubtitle == trackId,
+                                        onClick = {
+                                            viewModel.setActiveSubtitle(trackId)
+                                            val path = track.path.ifBlank { track.filePath }
+                                            val encodedPath = java.net.URLEncoder.encode(path, "UTF-8")
+                                            // Android 端使用 format=raw 获取原始格式，ExoPlayer 原生支持 ASS/SRT
+                                            val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/external?path=$encodedPath&format=raw&token=${viewModel.token}"
+                                            val mimeType = getMimeTypeForSubtitleFormat(track.format)
+                                            Log.d(TAG, "手动选择外挂字幕: format=${track.format}, mimeType=$mimeType, url=$subtitleUrl")
+
+                                            // 使用 MergingMediaSource 方式加载字幕（更可靠）
+                                            val currentItem = exoPlayer.currentMediaItem ?: return@SubtitleTrackItem
+                                            val videoSource = mediaSourceFactory.createMediaSource(currentItem)
+                                            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                                                .setMimeType(mimeType)
+                                                .setLanguage(track.language.ifBlank { "und" })
+                                                .setLabel(track.language.ifBlank { track.filename })
+                                                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                .build()
+                                            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                                                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+                                            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+
+                                            val pos = exoPlayer.currentPosition
+                                            exoPlayer.setMediaSource(mergedSource)
+                                            exoPlayer.prepare()
+                                            exoPlayer.seekTo(pos)
+                                            // 确保启用字幕轨道渲染
+                                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                .build()
+                                        }
+                                    )
+                                }
+                            }
+
+                            // --- AI 字幕 ---
+                            item {
+                                SubtitleSectionHeader(title = "✨ AI 字幕")
+                            }
+                            item {
+                                if (uiState.aiSubtitleStatus?.status == "completed") {
+                                    SubtitleTrackItem(
+                                        title = "AI 生成字幕",
+                                        subtitle = "✓ 已就绪",
+                                        subtitleColor = Color(0xFF34D399),
+                                        isSelected = uiState.activeSubtitle == "ai:",
+                                        icon = Icons.Default.AutoAwesome,
+                                        onClick = {
+                                            viewModel.setActiveSubtitle("ai:")
+                                            val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/$mediaId/ai/serve?token=${viewModel.token}"
+                                            Log.d(TAG, "手动选择AI字幕: url=$subtitleUrl")
+                                            // 使用 MergingMediaSource 方式加载字幕
+                                            val currentItem = exoPlayer.currentMediaItem ?: return@SubtitleTrackItem
+                                            val videoSource = mediaSourceFactory.createMediaSource(currentItem)
+                                            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                                                .setMimeType(MimeTypes.TEXT_VTT)
+                                                .setLanguage("und")
+                                                .setLabel("AI 生成字幕")
+                                                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                .build()
+                                            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                                                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+                                            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+
+                                            val pos = exoPlayer.currentPosition
+                                            exoPlayer.setMediaSource(mergedSource)
+                                            exoPlayer.prepare()
+                                            exoPlayer.seekTo(pos)
+                                            // 确保启用字幕轨道渲染
+                                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                .build()
+                                        }
+                                    )
+                                } else if (uiState.aiGenerating) {
+                                    // 生成中进度
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = NeonBlue,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = uiState.aiSubtitleStatus?.message ?: "正在生成...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White.copy(alpha = 0.6f)
+                                            )
+                                            if ((uiState.aiSubtitleStatus?.progress ?: 0) > 0) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { (uiState.aiSubtitleStatus?.progress ?: 0) / 100f },
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(3.dp)
+                                                        .clip(RoundedCornerShape(1.5.dp)),
+                                                    color = NeonBlue,
+                                                    trackColor = Color.White.copy(alpha = 0.1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // 生成按钮
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { viewModel.generateAISubtitle(mediaId) }
+                                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                                        color = Color.Transparent
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = NeonBlue.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = "生成 AI 字幕",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.White.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // --- 翻译字幕 ---
+                            if (uiState.translatedSubs.isNotEmpty() || uiState.aiSubtitleStatus?.status == "completed") {
+                                item {
+                                    SubtitleSectionHeader(title = "🌐 字幕翻译")
+                                }
+                                // 已翻译列表
+                                items(uiState.translatedSubs) { sub ->
+                                    val trackId = "translated:${sub.language}"
+                                    SubtitleTrackItem(
+                                        title = getTranslateLanguageName(sub.language),
+                                        subtitle = "✓ 已翻译",
+                                        subtitleColor = Color(0xFF34D399),
+                                        isSelected = uiState.activeSubtitle == trackId,
+                                        icon = Icons.Default.Translate,
+                                        onClick = {
+                                            viewModel.setActiveSubtitle(trackId)
+                                            val subtitleUrl = "${viewModel.serverUrl}/api/subtitle/$mediaId/translate/${sub.language}/serve?token=${viewModel.token}"
+                                            Log.d(TAG, "手动选择翻译字幕: lang=${sub.language}, url=$subtitleUrl")
+                                            // 使用 MergingMediaSource 方式加载字幕
+                                            val currentItem = exoPlayer.currentMediaItem ?: return@SubtitleTrackItem
+                                            val videoSource = mediaSourceFactory.createMediaSource(currentItem)
+                                            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
+                                                .setMimeType(MimeTypes.TEXT_VTT)
+                                                .setLanguage(sub.language)
+                                                .setLabel(getTranslateLanguageName(sub.language))
+                                                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                .build()
+                                            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                                                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+                                            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+
+                                            val pos = exoPlayer.currentPosition
+                                            exoPlayer.setMediaSource(mergedSource)
+                                            exoPlayer.prepare()
+                                            exoPlayer.seekTo(pos)
+                                            // 确保启用字幕轨道渲染
+                                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                .build()
+                                        }
+                                    )
+                                }
+                                // 翻译进度
+                                if (uiState.translating) {
+                                    item {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                color = NeonBlue,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = uiState.translateMessage ?: "正在翻译...",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+                                }
+                                // 翻译为其他语言
+                                if (!uiState.translating && uiState.aiSubtitleStatus?.status == "completed") {
+                                    item {
+                                        var expanded by remember { mutableStateOf(false) }
+                                        Column {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { expanded = !expanded }
+                                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                                color = Color.Transparent
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        Icons.Default.Translate,
+                                                        contentDescription = null,
+                                                        tint = NeonBlue.copy(alpha = 0.6f),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Text(
+                                                        text = "翻译为其他语言...",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = Color.White.copy(alpha = 0.7f)
+                                                    )
+                                                }
+                                            }
+                                            if (expanded) {
+                                                val existingLangs = uiState.translatedSubs.map { it.language }.toSet()
+                                                val languages = listOf(
+                                                    "zh" to "中文", "en" to "英文", "ja" to "日文", "ko" to "韩文",
+                                                    "fr" to "法文", "de" to "德文", "es" to "西班牙文", "ru" to "俄文"
+                                                ).filter { it.first !in existingLangs }
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 28.dp),
+                                                    color = Color.Black.copy(alpha = 0.3f),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Column {
+                                                        languages.forEach { (code, name) ->
+                                                            Text(
+                                                                text = name,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = Color.White.copy(alpha = 0.7f),
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .clickable {
+                                                                        expanded = false
+                                                                        viewModel.translateSubtitle(mediaId, code)
+                                                                    }
+                                                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // --- 字幕延迟调节 ---
+                            item {
+                                SubtitleSectionHeader(title = "⏱ 字幕延迟")
+                            }
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            subtitleDelay -= 500
+                                            viewModel.saveSubtitleDelay(subtitleDelay)
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.White.copy(alpha = 0.05f), CircleShape)
+                                    ) {
+                                        Icon(Icons.Default.Remove, contentDescription = "-0.5s", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                    }
+                                    Text(
+                                        text = if (subtitleDelay == 0) "无延迟" else "${subtitleDelay / 1000f}s",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = if (subtitleDelay != 0) NeonBlue else Color.White.copy(alpha = 0.6f)
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            subtitleDelay += 500
+                                            viewModel.saveSubtitleDelay(subtitleDelay)
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color.White.copy(alpha = 0.05f), CircleShape)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "+0.5s", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                                    }
+                                    // 重置
+                                    if (subtitleDelay != 0) {
+                                        TextButton(onClick = {
+                                            subtitleDelay = 0
+                                            viewModel.saveSubtitleDelay(0)
+                                        }) {
+                                            Text("重置", style = MaterialTheme.typography.labelSmall, color = NeonBlue)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ==================== 在线搜索 Tab ====================
+                    "search" -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 500.dp)
+                        ) {
+                            // 搜索栏
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 语言选择
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            subtitleSearchLang = when (subtitleSearchLang) {
+                                                "zh-cn,en" -> "zh-cn"
+                                                "zh-cn" -> "en"
+                                                "en" -> "ja"
+                                                else -> "zh-cn,en"
+                                            }
+                                        },
+                                    color = NeonBlue.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = when (subtitleSearchLang) {
+                                            "zh-cn,en" -> "中英"
+                                            "zh-cn" -> "中文"
+                                            "en" -> "英文"
+                                            "ja" -> "日文"
+                                            else -> subtitleSearchLang
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NeonBlue,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    )
+                                }
+
+                                // 搜索按钮
+                                Button(
+                                    onClick = { viewModel.searchSubtitles(mediaId, subtitleSearchLang) },
+                                    enabled = !uiState.searching,
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (uiState.searching) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (uiState.searching) "搜索中..." else "搜索字幕")
+                                }
+                            }
+
+                            // 搜索结果
+                            if (uiState.searchResults.isEmpty() && !uiState.searching) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "点击搜索按钮查找在线字幕",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.3f)
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                ) {
+                                    items(uiState.searchResults) { result ->
+                                        val isDownloading = uiState.downloadingSubId == result.id
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                                            color = Color.White.copy(alpha = 0.03f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = result.fileName,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.White.copy(alpha = 0.8f),
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Row(
+                                                        modifier = Modifier.padding(top = 4.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        if (result.language.isNotBlank()) {
+                                                            Text(
+                                                                text = result.language,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = NeonBlue.copy(alpha = 0.6f)
+                                                            )
+                                                        }
+                                                        if (result.format.isNotBlank()) {
+                                                            Text(
+                                                                text = result.format.uppercase(),
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = Color.White.copy(alpha = 0.3f)
+                                                            )
+                                                        }
+                                                        if (result.source.isNotBlank()) {
+                                                            Text(
+                                                                text = result.source,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = Color.White.copy(alpha = 0.3f)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                // 下载按钮
+                                                IconButton(
+                                                    onClick = { viewModel.downloadSubtitle(mediaId, result.id) },
+                                                    enabled = !isDownloading,
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    if (isDownloading) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(16.dp),
+                                                            color = NeonBlue,
+                                                            strokeWidth = 2.dp
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            Icons.Default.Download,
+                                                            contentDescription = "下载",
+                                                            tint = NeonBlue,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ==================== 样式设置 Tab ====================
+                    "style" -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp)
+                        ) {
+                            // 字体大小
+                            Text(
+                                text = "字体大小",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(0 to "小", 1 to "中", 2 to "大", 3 to "超大").forEach { (index, label) ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                subtitleFontSize = index
+                                                viewModel.saveSubtitleFontSize(index)
+                                            },
+                                        color = if (subtitleFontSize == index) NeonBlue.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = if (subtitleFontSize == index) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (subtitleFontSize == index) NeonBlue else Color.White.copy(alpha = 0.5f),
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 12.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // 字幕颜色
+                            Text(
+                                text = "字幕颜色",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                val colors = listOf(
+                                    0xFFFFFFFF.toInt() to "白色",
+                                    0xFFFFFF00.toInt() to "黄色",
+                                    0xFF00FF00.toInt() to "绿色",
+                                    0xFF00FFFF.toInt() to "青色",
+                                    0xFFFF6B6B.toInt() to "红色"
+                                )
+                                colors.forEach { (color, name) ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.clickable {
+                                            viewModel.saveSubtitleFontColor(color)
+                                        }
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(color))
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White.copy(alpha = 0.4f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // 字幕背景
+                            Text(
+                                text = "字幕背景",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(
+                                    0x00000000 to "无",
+                                    0x80000000.toInt() to "半透明",
+                                    0xFF000000.toInt() to "黑色"
+                                ).forEach { (color, label) ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                viewModel.saveSubtitleBgColor(color)
+                                            },
+                                        color = Color.White.copy(alpha = 0.05f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.5f),
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 12.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // 预览
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                color = Color.Black,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(80.dp),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Text(
+                                        text = "字幕预览效果",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = when (subtitleFontSize) {
+                                                0 -> 12.sp
+                                                1 -> 16.sp
+                                                2 -> 20.sp
+                                                3 -> 24.sp
+                                                else -> 16.sp
+                                            },
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+// ==================== 字幕面板辅助组件 ====================
+
+/**
+ * 字幕分区标题
+ */
+@Composable
+private fun SubtitleSectionHeader(title: String, count: Int? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = NeonBlue.copy(alpha = 0.1f)
+        )
+        Text(
+            text = if (count != null) "$title ($count)" else title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            ),
+            color = NeonBlue.copy(alpha = 0.4f),
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = NeonBlue.copy(alpha = 0.1f)
         )
     }
+}
+
+/**
+ * 字幕轨道项
+ */
+@Composable
+private fun SubtitleTrackItem(
+    title: String,
+    subtitle: String?,
+    isSelected: Boolean = false,
+    isDisabled: Boolean = false,
+    disabledReason: String? = null,
+    icon: ImageVector = Icons.Default.Subtitles,
+    subtitleColor: Color = Color.White.copy(alpha = 0.4f),
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !isDisabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        color = if (isSelected) NeonBlue.copy(alpha = 0.08f) else Color.Transparent,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = when {
+                    isDisabled -> Color.White.copy(alpha = 0.2f)
+                    isSelected -> NeonBlue
+                    else -> Color.White.copy(alpha = 0.5f)
+                },
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        isDisabled -> Color.White.copy(alpha = 0.3f)
+                        isSelected -> NeonBlue
+                        else -> Color.White.copy(alpha = 0.8f)
+                    },
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isDisabled) Color(0xFFEF4444).copy(alpha = 0.6f) else subtitleColor
+                    )
+                }
+            }
+            if (isSelected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = NeonBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            if (isDisabled && disabledReason != null) {
+                Text(
+                    text = disabledReason,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFEF4444).copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+}
+
+// ==================== 字幕辅助函数 ====================
+
+/**
+ * 根据字幕格式返回 ExoPlayer 对应的 MIME 类型
+ * Android 端使用 format=raw 获取原始字幕文件，ExoPlayer 原生支持 ASS/SRT/VTT
+ */
+private fun getMimeTypeForSubtitleFormat(format: String): String {
+    return when (format.lowercase()) {
+        "ass", "ssa" -> MimeTypes.TEXT_SSA          // ExoPlayer 原生支持 ASS/SSA 样式渲染
+        "srt", "subrip" -> MimeTypes.APPLICATION_SUBRIP  // ExoPlayer 原生支持 SRT
+        "vtt", "webvtt" -> MimeTypes.TEXT_VTT       // WebVTT 格式
+        else -> MimeTypes.TEXT_VTT                   // 默认使用 VTT（后端会转换）
+    }
+}
+
+private fun getLanguageLabel(lang: String): String {
+    val langMap = mapOf(
+        "chi" to "中文", "zho" to "中文", "chs" to "简体中文", "cht" to "繁体中文",
+        "eng" to "英语", "jpn" to "日语", "kor" to "韩语", "fra" to "法语",
+        "deu" to "德语", "spa" to "西班牙语", "ita" to "意大利语", "por" to "葡萄牙语",
+        "rus" to "俄语", "ara" to "阿拉伯语", "tha" to "泰语", "vie" to "越南语",
+        "und" to "未知", "" to "未知"
+    )
+    return langMap[lang] ?: lang
+}
+
+private fun getCodecLabel(codec: String): String {
+    val codecMap = mapOf(
+        "subrip" to "SRT", "ass" to "ASS", "ssa" to "SSA", "webvtt" to "WebVTT",
+        "mov_text" to "MP4 Text", "hdmv_pgs_subtitle" to "PGS", "dvd_subtitle" to "VobSub",
+        "dvb_subtitle" to "DVB"
+    )
+    return codecMap[codec] ?: codec.uppercase()
+}
+
+private fun getTranslateLanguageName(lang: String): String {
+    val langNames = mapOf(
+        "zh" to "中文", "en" to "英文", "ja" to "日文", "ko" to "韩文",
+        "fr" to "法文", "de" to "德文", "es" to "西班牙文", "pt" to "葡萄牙文",
+        "ru" to "俄文", "it" to "意大利文", "ar" to "阿拉伯文", "th" to "泰文"
+    )
+    return langNames[lang] ?: lang
 }
 
 // ==================== 设置面板组件 ====================
@@ -1379,7 +2424,24 @@ data class PlayerUiState(
     val playbackUrl: String? = null,
     val playbackMode: PlaybackMode? = null,
     val resumePosition: Double = 0.0,
+    // 字幕轨道（分类）
     val subtitleTracks: List<SubtitleTrack> = emptyList(),
+    val embeddedSubs: List<SubtitleTrack> = emptyList(),
+    val externalSubs: List<SubtitleTrack> = emptyList(),
+    // AI 字幕
+    val aiSubtitleStatus: ASRTask? = null,
+    val aiGenerating: Boolean = false,
+    // 翻译字幕
+    val translatedSubs: List<TranslatedSubtitle> = emptyList(),
+    val translating: Boolean = false,
+    val translateMessage: String? = null,
+    // 字幕搜索
+    val searchResults: List<SubtitleSearchResult> = emptyList(),
+    val searching: Boolean = false,
+    val downloadingSubId: String? = null,
+    // 当前活动字幕
+    val activeSubtitle: String? = null,
+    // 其他
     val fallbackMessage: String? = null,
     val error: String? = null
 )
@@ -1467,10 +2529,159 @@ class PlayerViewModel @Inject constructor(
 
     fun loadSubtitleTracks(mediaId: String) {
         viewModelScope.launch {
-            mediaRepository.getSubtitleTracks(mediaId).onSuccess { tracks ->
-                _uiState.value = _uiState.value.copy(subtitleTracks = tracks)
+            // 加载内嵌 + 外挂字幕轨道
+            mediaRepository.getSubtitleTracks(mediaId).onSuccess { resp ->
+                Log.d(TAG, "字幕轨道加载成功: embedded=${resp.embedded.size}, external=${resp.external.size}")
+                _uiState.value = _uiState.value.copy(
+                    embeddedSubs = resp.embedded,
+                    externalSubs = resp.external,
+                    subtitleTracks = resp.embedded + resp.external
+                )
+            }.onFailure { e ->
+                Log.e(TAG, "字幕轨道加载失败", e)
+            }
+
+            // 检查 AI 字幕状态
+            mediaRepository.getAISubtitleStatus(mediaId).onSuccess { task ->
+                if (task.status != "none") {
+                    _uiState.value = _uiState.value.copy(
+                        aiSubtitleStatus = task,
+                        aiGenerating = task.status in listOf("extracting", "transcribing", "converting")
+                    )
+                    // 如果正在生成，启动轮询
+                    if (task.status in listOf("extracting", "transcribing", "converting")) {
+                        pollAISubtitleStatus(mediaId)
+                    }
+                }
+            }
+
+            // 加载已翻译字幕列表
+            mediaRepository.getTranslatedSubtitles(mediaId).onSuccess { subs ->
+                _uiState.value = _uiState.value.copy(translatedSubs = subs)
             }
         }
+    }
+
+    // AI 字幕生成
+    fun generateAISubtitle(mediaId: String, language: String = "") {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(aiGenerating = true)
+            mediaRepository.generateAISubtitle(mediaId, language).onSuccess { task ->
+                _uiState.value = _uiState.value.copy(aiSubtitleStatus = task)
+                pollAISubtitleStatus(mediaId)
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(aiGenerating = false)
+            }
+        }
+    }
+
+    // 轮询 AI 字幕状态
+    private fun pollAISubtitleStatus(mediaId: String) {
+        viewModelScope.launch {
+            while (true) {
+                delay(3000)
+                mediaRepository.getAISubtitleStatus(mediaId).onSuccess { task ->
+                    _uiState.value = _uiState.value.copy(aiSubtitleStatus = task)
+                    if (task.status == "completed") {
+                        _uiState.value = _uiState.value.copy(aiGenerating = false)
+                        return@launch
+                    }
+                    if (task.status == "failed" || task.status == "none") {
+                        _uiState.value = _uiState.value.copy(aiGenerating = false)
+                        return@launch
+                    }
+                }.onFailure {
+                    _uiState.value = _uiState.value.copy(aiGenerating = false)
+                    return@launch
+                }
+            }
+        }
+    }
+
+    // 字幕翻译
+    fun translateSubtitle(mediaId: String, targetLang: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(translating = true, translateMessage = "正在翻译...")
+            mediaRepository.translateSubtitle(mediaId, targetLang).onSuccess {
+                pollTranslateStatus(mediaId)
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(translating = false, translateMessage = null)
+            }
+        }
+    }
+
+    private fun pollTranslateStatus(mediaId: String) {
+        viewModelScope.launch {
+            while (true) {
+                delay(3000)
+                mediaRepository.getTranslatedSubtitles(mediaId).onSuccess { subs ->
+                    _uiState.value = _uiState.value.copy(translatedSubs = subs)
+                    // 检查是否完成（简单判断：列表变化即完成）
+                    _uiState.value = _uiState.value.copy(translating = false, translateMessage = null)
+                    return@launch
+                }.onFailure {
+                    _uiState.value = _uiState.value.copy(translating = false, translateMessage = null)
+                    return@launch
+                }
+            }
+        }
+    }
+
+    // 在线字幕搜索
+    fun searchSubtitles(mediaId: String, language: String = "zh-cn,en") {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(searching = true, searchResults = emptyList())
+            val media = _uiState.value.streamInfo
+            mediaRepository.searchSubtitles(
+                mediaId = mediaId,
+                language = language,
+                title = _uiState.value.title,
+                year = null,
+                type = null
+            ).onSuccess { results ->
+                _uiState.value = _uiState.value.copy(searchResults = results, searching = false)
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(searching = false)
+            }
+        }
+    }
+
+    // 下载字幕
+    fun downloadSubtitle(mediaId: String, fileId: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(downloadingSubId = fileId)
+            mediaRepository.downloadSubtitle(mediaId, fileId).onSuccess {
+                // 下载成功后刷新字幕列表
+                loadSubtitleTracks(mediaId)
+                _uiState.value = _uiState.value.copy(downloadingSubId = null)
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(downloadingSubId = null)
+            }
+        }
+    }
+
+    // 设置当前活动字幕
+    fun setActiveSubtitle(subtitle: String?) {
+        _uiState.value = _uiState.value.copy(activeSubtitle = subtitle)
+    }
+
+    // 字幕样式偏好
+    suspend fun getSubtitleFontSize(): Int = playerPreferences.getSubtitleFontSize()
+    suspend fun getSubtitleFontColor(): Int = playerPreferences.getSubtitleFontColor()
+    suspend fun getSubtitleBgColor(): Int = playerPreferences.getSubtitleBgColor()
+    suspend fun getSubtitleDelay(): Int = playerPreferences.getSubtitleDelay()
+
+    fun saveSubtitleFontSize(size: Int) {
+        viewModelScope.launch { playerPreferences.setSubtitleFontSize(size) }
+    }
+    fun saveSubtitleFontColor(color: Int) {
+        viewModelScope.launch { playerPreferences.setSubtitleFontColor(color) }
+    }
+    fun saveSubtitleBgColor(color: Int) {
+        viewModelScope.launch { playerPreferences.setSubtitleBgColor(color) }
+    }
+    fun saveSubtitleDelay(delayMs: Int) {
+        viewModelScope.launch { playerPreferences.setSubtitleDelay(delayMs) }
     }
 
     /**

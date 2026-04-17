@@ -2601,6 +2601,53 @@ func isValidUTF8(data []byte) bool {
 	return utf8.Valid(data)
 }
 
+// EnsureUTF8Subtitle 确保字幕文件为 UTF-8 编码（保持原始格式不变）
+// 用于 Android 端 ExoPlayer 直接解析 ASS/SRT 等格式时，确保编码正确
+func (s *ScannerService) EnsureUTF8Subtitle(subtitlePath string) (string, error) {
+	// 读取原始文件
+	raw, err := os.ReadFile(subtitlePath)
+	if err != nil {
+		return "", fmt.Errorf("读取字幕文件失败: %w", err)
+	}
+
+	// 如果已经是 UTF-8，直接返回原始路径
+	if isValidUTF8(raw) {
+		return subtitlePath, nil
+	}
+
+	// 非 UTF-8，进行编码转换
+	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "subtitles")
+	os.MkdirAll(cacheDir, 0755)
+
+	baseName := strings.TrimSuffix(filepath.Base(subtitlePath), filepath.Ext(subtitlePath))
+	ext := filepath.Ext(subtitlePath)
+	outputPath := filepath.Join(cacheDir, fmt.Sprintf("%s_utf8%s", baseName, ext))
+
+	// 检查缓存
+	if outInfo, err := os.Stat(outputPath); err == nil {
+		if srcInfo, err := os.Stat(subtitlePath); err == nil {
+			if outInfo.ModTime().After(srcInfo.ModTime()) {
+				return outputPath, nil
+			}
+		}
+	}
+
+	// 使用编码检测逻辑转换
+	cleaner := NewSubtitleCleaner(SubtitleCleanConfig{AutoDetectEncoding: true}, s.logger)
+	content, encoding, converted := cleaner.detectAndConvertEncoding(subtitlePath)
+
+	if converted && content != "" {
+		s.logger.Infof("字幕编码转换（保持原格式）: %s -> UTF-8 (检测到: %s)", filepath.Base(subtitlePath), encoding)
+		if err := os.WriteFile(outputPath, []byte(content), 0644); err != nil {
+			return "", fmt.Errorf("写入 UTF-8 字幕文件失败: %w", err)
+		}
+		return outputPath, nil
+	}
+
+	// 转换失败，返回原始文件
+	return subtitlePath, nil
+}
+
 // ==================== P2: 异步字幕提取 + 进度反馈 ====================
 
 // 字幕提取事件常量

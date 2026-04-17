@@ -202,6 +202,22 @@ data class SearchResult(
     @SerialName("series_total") val seriesTotal: Int = 0
 )
 
+// ==================== 收藏 ====================
+
+/**
+ * 收藏记录 — 对应后端 model.Favorite
+ * 后端 GET /users/me/favorites 返回 {"data": [Favorite, ...], ...}
+ * 每个 Favorite 内嵌完整的 Media 对象
+ */
+@Serializable
+data class Favorite(
+    val id: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("media_id") val mediaId: String = "",
+    val media: Media,
+    @SerialName("created_at") val createdAt: String = ""
+)
+
 // ==================== 观看历史 ====================
 
 @Serializable
@@ -227,15 +243,23 @@ data class ProgressUpdate(
 
 @Serializable
 data class SubtitleTrack(
-    val index: Int,
+    val index: Int = -1,           // 内嵌字幕有 index，外挂字幕没有，给默认值
     val language: String = "",
     val title: String = "",
     val codec: String = "",
     val forced: Boolean = false,
-    @SerialName("is_default") val isDefault: Boolean = false,
-    @SerialName("is_external") val isExternal: Boolean = false,
-    @SerialName("file_path") val filePath: String = ""
-)
+    val bitmap: Boolean = false,
+    @SerialName("default") val isDefault: Boolean = false,  // 后端字段名是 "default"
+    val filename: String = "",
+    val format: String = "",       // 外挂字幕格式：srt, ass, vtt 等
+    val path: String = ""          // 外挂字幕文件路径
+) {
+    /** 是否为外挂字幕（有 path 或 filename 则为外挂） */
+    val isExternal: Boolean get() = path.isNotBlank() || filename.isNotBlank()
+
+    /** 兼容旧代码的 filePath 属性 */
+    val filePath: String get() = path
+}
 
 /**
  * 字幕轨道响应（后端返回 {"data": {"embedded": [...], "external": [...]}}）
@@ -244,6 +268,51 @@ data class SubtitleTrack(
 data class SubtitleTracksResponse(
     val embedded: List<SubtitleTrack> = emptyList(),
     val external: List<SubtitleTrack> = emptyList()
+)
+
+/**
+ * AI 字幕任务状态
+ * 对应后端 ASRTask 结构
+ */
+@Serializable
+data class ASRTask(
+    val status: String = "none",  // none, extracting, transcribing, converting, completed, failed
+    val progress: Int = 0,
+    val message: String = "",
+    @SerialName("media_id") val mediaId: String = ""
+)
+
+/**
+ * 翻译后的字幕信息
+ */
+@Serializable
+data class TranslatedSubtitle(
+    val language: String = "",
+    val path: String = "",
+    @SerialName("created_at") val createdAt: String = ""
+)
+
+/**
+ * 字幕搜索结果
+ */
+@Serializable
+data class SubtitleSearchResult(
+    val id: String = "",
+    @SerialName("file_name") val fileName: String = "",
+    val language: String = "",
+    val format: String = "",
+    val rating: Double = 0.0,
+    @SerialName("download_count") val downloadCount: Int = 0,
+    val source: String = ""
+)
+
+/**
+ * 字幕下载结果
+ */
+@Serializable
+data class SubtitleDownloadResult(
+    val path: String = "",
+    val filename: String = ""
 )
 
 // ==================== 混合列表 ====================

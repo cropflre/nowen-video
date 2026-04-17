@@ -1,5 +1,7 @@
 package com.nowen.video.ui.screen.search
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,10 +17,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -27,6 +32,7 @@ import com.nowen.video.data.local.TokenManager
 import com.nowen.video.data.model.Media
 import com.nowen.video.data.model.Series
 import com.nowen.video.data.repository.MediaRepository
+import com.nowen.video.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,7 +42,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * 搜索页面 — 支持电影和剧集混合搜索
+ * 搜索页面 — 赛博朋克风格：深空背景 + 霓虹搜索框 + 玻璃拟态结果卡片
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,121 +55,158 @@ fun SearchScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var query by remember { mutableStateOf(initialQuery) }
+    val colorScheme = MaterialTheme.colorScheme
 
-    // 如果有初始搜索关键词，自动触发搜索
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank()) {
             viewModel.search(initialQuery)
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = {
-                            query = it
-                            viewModel.search(it)
-                        },
-                        placeholder = { Text("搜索电影、剧集...") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(
-                            onSearch = { viewModel.search(query) }
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                        )
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        if (uiState.loading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (uiState.media.isEmpty() && uiState.series.isEmpty() && query.isNotBlank()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.SearchOff,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "未找到相关内容",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 电影结果
-                if (uiState.media.isNotEmpty()) {
-                    item {
-                        Text(
-                            "电影",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                    items(uiState.media) { media ->
-                        SearchResultItem(
-                            title = media.title,
-                            subtitle = buildString {
-                                if (media.year > 0) append("${media.year}")
-                                if (media.genres.isNotBlank()) append(" · ${media.genres.split(",").first()}")
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .spaceBackground()
+    ) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        // 赛博朋克搜索输入框
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = {
+                                query = it
+                                viewModel.search(it)
                             },
-                            posterUrl = "${uiState.serverUrl}/api/media/${media.id}/poster?token=${uiState.token}",
-                            rating = media.rating,
-                            onClick = { onMediaClick(media.id) }
+                            placeholder = {
+                                Text(
+                                    "搜索电影、剧集...",
+                                    color = colorScheme.outline,
+                                    letterSpacing = 1.sp
+                                )
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = { viewModel.search(query) }
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colorScheme.primary,
+                                unfocusedBorderColor = colorScheme.primary.copy(alpha = 0.3f),
+                                cursorColor = colorScheme.primary,
+                                focusedTextColor = colorScheme.onSurface,
+                                unfocusedTextColor = colorScheme.onSurface,
+                                focusedContainerColor = colorScheme.surface.copy(alpha = 0.6f),
+                                unfocusedContainerColor = colorScheme.surface.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                                tint = colorScheme.primary
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = colorScheme.scrim.copy(alpha = 0.85f)
+                    )
+                )
+            }
+        ) { padding ->
+            if (uiState.loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            color = colorScheme.primary,
+                            trackColor = colorScheme.surfaceContainerHigh
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "搜索中...",
+                            color = colorScheme.primary.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            letterSpacing = 2.sp
                         )
                     }
                 }
+            } else if (uiState.media.isEmpty() && uiState.series.isEmpty() && query.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.SearchOff,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = colorScheme.secondary.copy(alpha = 0.5f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "未找到相关内容",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 电影结果
+                    if (uiState.media.isNotEmpty()) {
+                        item {
+                            CyberResultSectionTitle("电影", "${uiState.media.size} 个结果")
+                        }
+                        items(uiState.media) { media ->
+                            CyberSearchResultItem(
+                                title = media.title,
+                                subtitle = buildString {
+                                    if (media.year > 0) append("${media.year}")
+                                    if (media.genres.isNotBlank()) append(" · ${media.genres.split(",").first()}")
+                                },
+                                posterUrl = "${uiState.serverUrl}/api/media/${media.id}/poster?token=${uiState.token}",
+                                rating = media.rating,
+                                onClick = { onMediaClick(media.id) }
+                            )
+                        }
+                    }
 
-                // 剧集结果
-                if (uiState.series.isNotEmpty()) {
-                    item {
-                        Text(
-                            "剧集",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                    items(uiState.series) { series ->
-                        SearchResultItem(
-                            title = series.title,
-                            subtitle = buildString {
-                                if (series.year > 0) append("${series.year}")
-                                append(" · ${series.seasonCount} 季")
-                            },
-                            posterUrl = "${uiState.serverUrl}/api/series/${series.id}/poster?token=${uiState.token}",
-                            rating = series.rating,
-                            onClick = { onSeriesClick(series.id) }
-                        )
+                    // 剧集结果
+                    if (uiState.series.isNotEmpty()) {
+                        item {
+                            CyberResultSectionTitle("剧集", "${uiState.series.size} 个结果")
+                        }
+                        items(uiState.series) { series ->
+                            CyberSearchResultItem(
+                                title = series.title,
+                                subtitle = buildString {
+                                    if (series.year > 0) append("${series.year}")
+                                    append(" · ${series.seasonCount} 季")
+                                },
+                                posterUrl = "${uiState.serverUrl}/api/series/${series.id}/poster?token=${uiState.token}",
+                                rating = series.rating,
+                                onClick = { onSeriesClick(series.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -172,64 +215,115 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchResultItem(
+private fun CyberResultSectionTitle(title: String, count: String) {
+    val colorScheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp
+            ),
+            color = colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            count,
+            style = MaterialTheme.typography.labelSmall,
+            color = colorScheme.outline
+        )
+    }
+}
+
+@Composable
+private fun CyberSearchResultItem(
     title: String,
     subtitle: String,
     posterUrl: String,
     rating: Double,
     onClick: () -> Unit
 ) {
-    Card(
+    val colorScheme = MaterialTheme.colorScheme
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .glassMorphism(cornerRadius = 14.dp)
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            AsyncImage(
-                model = posterUrl,
-                contentDescription = title,
+            // 海报
+            Box(
                 modifier = Modifier
                     .width(60.dp)
                     .height(90.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                        1.dp,
+                        colorScheme.primary.copy(alpha = 0.15f),
+                        RoundedCornerShape(8.dp)
+                    )
+            ) {
+                AsyncImage(
+                    model = posterUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
+                    color = colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = colorScheme.outline
                 )
                 if (rating > 0) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 6.dp)
                     ) {
                         Icon(
                             Icons.Default.Star,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
+                            tint = AmberGold
                         )
                         Text(
                             text = String.format(" %.1f", rating),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = AmberGold
                         )
                     }
                 }
             }
+
+            // 箭头指示
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .align(Alignment.CenterVertically),
+                tint = colorScheme.primary.copy(alpha = 0.5f)
+            )
         }
     }
 }

@@ -121,15 +121,22 @@ class MediaRepository @Inject constructor(
     }
 
     suspend fun getFavorites(): Result<List<Media>> = runCatching {
-        api.getFavorites().data
+        api.getFavorites().data.map { it.media }
     }
 
     suspend fun addFavorite(mediaId: String): Result<Unit> = runCatching {
-        api.addFavorite(mediaId)
+        val response = api.addFavorite(mediaId)
+        if (!response.isSuccessful && response.code() != 409) {
+            throw retrofit2.HttpException(response)
+        }
+        // 201 Created 或 409 Conflict（已收藏）都视为成功
     }
 
     suspend fun removeFavorite(mediaId: String): Result<Unit> = runCatching {
-        api.removeFavorite(mediaId)
+        val response = api.removeFavorite(mediaId)
+        if (!response.isSuccessful) {
+            throw retrofit2.HttpException(response)
+        }
     }
 
     suspend fun checkFavorite(mediaId: String): Result<Boolean> = runCatching {
@@ -148,9 +155,41 @@ class MediaRepository @Inject constructor(
 
     // ==================== 字幕 ====================
 
-    suspend fun getSubtitleTracks(mediaId: String): Result<List<SubtitleTrack>> = runCatching {
-        val resp = api.getSubtitleTracks(mediaId).data
-        resp.embedded + resp.external
+    suspend fun getSubtitleTracks(mediaId: String): Result<SubtitleTracksResponse> = runCatching {
+        api.getSubtitleTracks(mediaId).data
+    }
+
+    // AI 字幕生成
+    suspend fun generateAISubtitle(mediaId: String, language: String = ""): Result<ASRTask> = runCatching {
+        api.generateAISubtitle(mediaId, mapOf("language" to language)).data
+    }
+
+    suspend fun getAISubtitleStatus(mediaId: String): Result<ASRTask> = runCatching {
+        api.getAISubtitleStatus(mediaId).data
+    }
+
+    // 字幕翻译
+    suspend fun translateSubtitle(mediaId: String, targetLang: String): Result<ASRTask> = runCatching {
+        api.translateSubtitle(mediaId, mapOf("target_lang" to targetLang)).data
+    }
+
+    suspend fun getTranslatedSubtitles(mediaId: String): Result<List<TranslatedSubtitle>> = runCatching {
+        api.getTranslateStatus(mediaId).data
+    }
+
+    // 字幕在线搜索
+    suspend fun searchSubtitles(
+        mediaId: String,
+        language: String? = null,
+        title: String? = null,
+        year: Int? = null,
+        type: String? = null
+    ): Result<List<SubtitleSearchResult>> = runCatching {
+        api.searchSubtitles(mediaId, language, title, year, type).data
+    }
+
+    suspend fun downloadSubtitle(mediaId: String, fileId: String): Result<SubtitleDownloadResult> = runCatching {
+        api.downloadSubtitle(mediaId, mapOf("file_id" to fileId)).data
     }
 
     // ==================== 合集 ====================

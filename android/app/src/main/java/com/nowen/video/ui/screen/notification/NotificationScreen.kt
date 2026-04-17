@@ -1,9 +1,13 @@
 package com.nowen.video.ui.screen.notification
 
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -12,11 +16,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.data.remote.*
+import com.nowen.video.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +34,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * 实时通知页面 — 展示扫描/刮削/转码等后台任务进度
+ * 实时通知页面 — 赛博朋克风格
+ * 展示扫描/刮削/转码等后台任务进度
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,149 +45,234 @@ fun NotificationScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        viewModel.startListening()
-    }
+    LaunchedEffect(Unit) { viewModel.startListening() }
+    DisposableEffect(Unit) { onDispose { viewModel.stopListening() } }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.stopListening() }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("后台任务") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    // 连接状态指示
-                    val stateColor = when (uiState.connectionState) {
-                        WSConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary
-                        WSConnectionState.CONNECTING, WSConnectionState.RECONNECTING ->
-                            MaterialTheme.colorScheme.tertiary
-                        WSConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
-                    }
-                    val stateText = when (uiState.connectionState) {
-                        WSConnectionState.CONNECTED -> "已连接"
-                        WSConnectionState.CONNECTING -> "连接中..."
-                        WSConnectionState.RECONNECTING -> "重连中..."
-                        WSConnectionState.DISCONNECTED -> "未连接"
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = stateColor.copy(alpha = 0.15f),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                if (uiState.connectionState == WSConnectionState.CONNECTED)
-                                    Icons.Default.Wifi else Icons.Default.WifiOff,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = stateColor
+    Box(Modifier.fillMaxSize().spaceBackground()) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "后台任务",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                letterSpacing = 1.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            Text(
-                                stateText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = stateColor
-                            )
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = MaterialTheme.colorScheme.primary)
                         }
+                    },
+                    actions = {
+                        // 赛博朋克连接状态指示
+                        CyberConnectionBadge(uiState.connectionState)
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f)
+                    )
+                )
+            }
+        ) { padding ->
+            if (uiState.tasks.isEmpty()) {
+                // 空状态
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // 脉冲动画图标
+                        val infiniteTransition = rememberInfiniteTransition(label = "empty_pulse")
+                        val pulseAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.3f, targetValue = 0.7f,
+                            animationSpec = infiniteRepeatable(
+                                tween(2000, easing = EaseInOutCubic),
+                                RepeatMode.Reverse
+                            ), label = "pulse_a"
+                        )
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = null,
+                            modifier = Modifier.size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "暂无后台任务",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "扫描、刮削、转码等任务进度将在此显示",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
                     }
                 }
-            )
-        }
-    ) { padding ->
-        if (uiState.tasks.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Notifications,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "暂无后台任务",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        "扫描、刮削、转码等任务进度将在此显示",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(uiState.tasks) { task ->
-                    TaskCard(task)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(uiState.tasks) { task ->
+                        CyberTaskCard(task)
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * 赛博朋克连接状态徽章
+ */
 @Composable
-private fun TaskCard(task: TaskInfo) {
-    Card(
+private fun CyberConnectionBadge(state: WSConnectionState) {
+    val stateColor = when (state) {
+        WSConnectionState.CONNECTED -> ElectricGreen
+        WSConnectionState.CONNECTING, WSConnectionState.RECONNECTING -> AmberGold
+        WSConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
+    }
+    val stateText = when (state) {
+        WSConnectionState.CONNECTED -> "已连接"
+        WSConnectionState.CONNECTING -> "连接中..."
+        WSConnectionState.RECONNECTING -> "重连中..."
+        WSConnectionState.DISCONNECTED -> "未连接"
+    }
+
+    // 连接状态呼吸动画
+    val infiniteTransition = rememberInfiniteTransition(label = "conn_badge")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.15f, targetValue = 0.35f,
+        animationSpec = infiniteRepeatable(
+            tween(1500, easing = EaseInOutCubic),
+            RepeatMode.Reverse
+        ), label = "conn_glow"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = stateColor.copy(alpha = glowAlpha),
+        modifier = Modifier
+            .padding(end = 8.dp)
+            .border(1.dp, stateColor.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            // 发光小圆点
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(stateColor)
+            )
+            Text(
+                stateText,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                color = stateColor
+            )
+        }
+    }
+}
+
+/**
+ * 赛博朋克任务卡片
+ */
+@Composable
+private fun CyberTaskCard(task: TaskInfo) {
+    val colorScheme = MaterialTheme.colorScheme
+    val taskColor = when (task.type) {
+        TaskType.SCAN -> colorScheme.primary
+        TaskType.SCRAPE -> colorScheme.secondary
+        TaskType.TRANSCODE -> ElectricGreen
+    }
+    val statusColor = when (task.status) {
+        TaskStatus.RUNNING -> taskColor
+        TaskStatus.COMPLETED -> ElectricGreen
+        TaskStatus.FAILED -> colorScheme.error
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(),
-        shape = RoundedCornerShape(12.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        taskColor.copy(alpha = 0.04f),
+                        colorScheme.surface.copy(alpha = 0.95f)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        taskColor.copy(alpha = 0.2f),
+                        taskColor.copy(alpha = 0.05f)
+                    )
+                ),
+                RoundedCornerShape(14.dp)
+            )
+            .animateContentSize()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Icon(
-                    when (task.type) {
-                        TaskType.SCAN -> Icons.Default.FolderOpen
-                        TaskType.SCRAPE -> Icons.Default.CloudDownload
-                        TaskType.TRANSCODE -> Icons.Default.Transform
-                    },
-                    contentDescription = null,
-                    tint = when (task.status) {
-                        TaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
-                        TaskStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
-                        TaskStatus.FAILED -> MaterialTheme.colorScheme.error
-                    }
-                )
+                // 任务类型图标
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(taskColor.copy(alpha = 0.1f))
+                        .border(1.dp, taskColor.copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        when (task.type) {
+                            TaskType.SCAN -> Icons.Default.FolderOpen
+                            TaskType.SCRAPE -> Icons.Default.CloudDownload
+                            TaskType.TRANSCODE -> Icons.Default.Transform
+                        },
+                        contentDescription = null,
+                        tint = taskColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = task.title,
-                        style = MaterialTheme.typography.titleSmall
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                        color = colorScheme.onSurface
                     )
-                    Text(
-                        text = task.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (task.message.isNotBlank()) {
+                        Text(
+                            text = task.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
                 }
-                // 状态标签
+
+                // 赛博朋克状态标签
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = when (task.status) {
-                        TaskStatus.RUNNING -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        TaskStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
-                        TaskStatus.FAILED -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
-                    }
+                    color = statusColor.copy(alpha = 0.12f),
+                    modifier = Modifier.border(
+                        0.5.dp, statusColor.copy(alpha = 0.3f), RoundedCornerShape(6.dp)
+                    )
                 ) {
                     Text(
                         text = when (task.status) {
@@ -184,30 +280,55 @@ private fun TaskCard(task: TaskInfo) {
                             TaskStatus.COMPLETED -> "已完成"
                             TaskStatus.FAILED -> "失败"
                         },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        color = when (task.status) {
-                            TaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
-                            TaskStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
-                            TaskStatus.FAILED -> MaterialTheme.colorScheme.error
-                        }
+                        color = statusColor
                     )
                 }
             }
 
-            // 进度条
+            // 赛博朋克进度条
             if (task.status == TaskStatus.RUNNING && task.total > 0) {
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { (task.current.toFloat() / task.total).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = "${task.current} / ${task.total}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                Spacer(Modifier.height(12.dp))
+                val progress = (task.current.toFloat() / task.total).coerceIn(0f, 1f)
+
+                // 进度条背景
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(colorScheme.surfaceVariant)
+                ) {
+                    // 发光进度条
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(taskColor, taskColor.copy(alpha = 0.7f))
+                                )
+                            )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "${task.current} / ${task.total}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colorScheme.outline
+                    )
+                    Text(
+                        "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = taskColor
+                    )
+                }
             }
         }
     }
@@ -247,14 +368,12 @@ class NotificationViewModel @Inject constructor(
     fun startListening() {
         webSocketManager.connect()
 
-        // 监听连接状态
         viewModelScope.launch {
             webSocketManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
             }
         }
 
-        // 监听扫描进度
         viewModelScope.launch {
             webSocketManager.scanProgress.collect { data ->
                 updateTask(
@@ -269,7 +388,6 @@ class NotificationViewModel @Inject constructor(
             }
         }
 
-        // 监听刮削进度
         viewModelScope.launch {
             webSocketManager.scrapeProgress.collect { data ->
                 updateTask(
@@ -284,7 +402,6 @@ class NotificationViewModel @Inject constructor(
             }
         }
 
-        // 监听转码进度
         viewModelScope.launch {
             webSocketManager.transcodeProgress.collect { data ->
                 updateTask(
@@ -299,7 +416,6 @@ class NotificationViewModel @Inject constructor(
             }
         }
 
-        // 监听通用事件（处理失败事件）
         viewModelScope.launch {
             webSocketManager.events.collect { event ->
                 when (event.type) {
@@ -310,43 +426,22 @@ class NotificationViewModel @Inject constructor(
         }
     }
 
-    fun stopListening() {
-        // 不断开 WebSocket，让它在后台保持连接
-    }
+    fun stopListening() {}
 
-    private fun updateTask(
-        id: String,
-        type: TaskType,
-        title: String,
-        message: String,
-        current: Int,
-        total: Int,
-        isCompleted: Boolean
-    ) {
+    private fun updateTask(id: String, type: TaskType, title: String, message: String, current: Int, total: Int, isCompleted: Boolean) {
         val tasks = _uiState.value.tasks.toMutableList()
         val index = tasks.indexOfFirst { it.id == id }
-        val task = TaskInfo(
-            id = id,
-            type = type,
-            title = title,
-            message = message,
+        val task = TaskInfo(id = id, type = type, title = title, message = message,
             status = if (isCompleted) TaskStatus.COMPLETED else TaskStatus.RUNNING,
-            current = current,
-            total = total
-        )
-        if (index >= 0) {
-            tasks[index] = task
-        } else {
-            tasks.add(0, task) // 新任务插入到顶部
-        }
+            current = current, total = total)
+        if (index >= 0) tasks[index] = task else tasks.add(0, task)
         _uiState.value = _uiState.value.copy(tasks = tasks)
     }
 
     private fun markTaskFailed(idPrefix: String) {
         val tasks = _uiState.value.tasks.map { task ->
-            if (task.id.startsWith(idPrefix) && task.status == TaskStatus.RUNNING) {
-                task.copy(status = TaskStatus.FAILED)
-            } else task
+            if (task.id.startsWith(idPrefix) && task.status == TaskStatus.RUNNING)
+                task.copy(status = TaskStatus.FAILED) else task
         }
         _uiState.value = _uiState.value.copy(tasks = tasks)
     }

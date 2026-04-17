@@ -1,6 +1,7 @@
 package com.nowen.video.ui.navigation
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
@@ -28,50 +29,95 @@ import com.nowen.video.ui.screen.notification.NotificationScreen
 /**
  * 页面过渡动画时长
  */
-private const val ANIM_DURATION = 300
+private const val ANIM_DURATION = 350
+private const val ANIM_FAST = 250
 
 /**
- * 通用进入动画 — 从右侧滑入 + 淡入
+ * 赛博朋克页面进入 — 从右侧滑入 + 缩放 + 淡入
  */
-private fun defaultEnterTransition(): EnterTransition {
+private fun cyberEnterTransition(): EnterTransition {
     return slideInHorizontally(
-        initialOffsetX = { fullWidth -> fullWidth / 4 },
+        initialOffsetX = { fullWidth -> fullWidth / 3 },
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    ) + fadeIn(
         animationSpec = tween(ANIM_DURATION)
-    ) + fadeIn(animationSpec = tween(ANIM_DURATION))
+    ) + scaleIn(
+        initialScale = 0.92f,
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    )
 }
 
 /**
- * 通用退出动画 — 向左侧滑出 + 淡出
+ * 赛博朋克页面退出 — 向左侧滑出 + 缩小 + 淡出
  */
-private fun defaultExitTransition(): ExitTransition {
+private fun cyberExitTransition(): ExitTransition {
     return slideOutHorizontally(
         targetOffsetX = { fullWidth -> -fullWidth / 4 },
-        animationSpec = tween(ANIM_DURATION)
-    ) + fadeOut(animationSpec = tween(ANIM_DURATION))
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    ) + fadeOut(
+        animationSpec = tween(ANIM_FAST)
+    ) + scaleOut(
+        targetScale = 0.95f,
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    )
 }
 
 /**
- * 返回时的进入动画 — 从左侧滑入 + 淡入
+ * 返回时的进入动画 — 从左侧滑入 + 缩放回复
  */
-private fun defaultPopEnterTransition(): EnterTransition {
+private fun cyberPopEnterTransition(): EnterTransition {
     return slideInHorizontally(
         initialOffsetX = { fullWidth -> -fullWidth / 4 },
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    ) + fadeIn(
         animationSpec = tween(ANIM_DURATION)
-    ) + fadeIn(animationSpec = tween(ANIM_DURATION))
+    ) + scaleIn(
+        initialScale = 0.95f,
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    )
 }
 
 /**
- * 返回时的退出动画 — 向右侧滑出 + 淡出
+ * 返回时的退出动画 — 向右侧滑出 + 缩小
  */
-private fun defaultPopExitTransition(): ExitTransition {
+private fun cyberPopExitTransition(): ExitTransition {
     return slideOutHorizontally(
-        targetOffsetX = { fullWidth -> fullWidth / 4 },
-        animationSpec = tween(ANIM_DURATION)
-    ) + fadeOut(animationSpec = tween(ANIM_DURATION))
+        targetOffsetX = { fullWidth -> fullWidth / 3 },
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    ) + fadeOut(
+        animationSpec = tween(ANIM_FAST)
+    ) + scaleOut(
+        targetScale = 0.92f,
+        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+    )
 }
 
 /**
- * 应用导航图 — Phase 4 增强版（带页面过渡动画）
+ * 全息投影式进入 — 缩放 + 淡入（用于认证页面）
+ */
+private fun holoEnterTransition(): EnterTransition {
+    return scaleIn(
+        initialScale = 0.85f,
+        animationSpec = tween(450, easing = EaseInOutCubic)
+    ) + fadeIn(
+        animationSpec = tween(450)
+    )
+}
+
+/**
+ * 全息投影式退出 — 缩放 + 淡出
+ */
+private fun holoExitTransition(): ExitTransition {
+    return scaleOut(
+        targetScale = 1.1f,
+        animationSpec = tween(350, easing = EaseInOutCubic)
+    ) + fadeOut(
+        animationSpec = tween(350)
+    )
+}
+
+/**
+ * 应用导航图 — 赛博朋克增强版（带科幻页面过渡动画）
  */
 @Composable
 fun NowenNavGraph(
@@ -81,16 +127,16 @@ fun NowenNavGraph(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        enterTransition = { defaultEnterTransition() },
-        exitTransition = { defaultExitTransition() },
-        popEnterTransition = { defaultPopEnterTransition() },
-        popExitTransition = { defaultPopExitTransition() }
+        enterTransition = { cyberEnterTransition() },
+        exitTransition = { cyberExitTransition() },
+        popEnterTransition = { cyberPopEnterTransition() },
+        popExitTransition = { cyberPopExitTransition() }
     ) {
-        // 服务器配置 — 使用淡入淡出（无滑动）
+        // 服务器配置 — 全息投影式过渡
         composable(
             route = Screen.ServerSetup.route,
-            enterTransition = { fadeIn(animationSpec = tween(400)) },
-            exitTransition = { fadeOut(animationSpec = tween(400)) }
+            enterTransition = { holoEnterTransition() },
+            exitTransition = { holoExitTransition() }
         ) {
             ServerSetupScreen(
                 onServerConfigured = {
@@ -101,11 +147,11 @@ fun NowenNavGraph(
             )
         }
 
-        // 登录 — 使用淡入淡出
+        // 登录 — 全息投影式过渡
         composable(
             route = Screen.Login.route,
-            enterTransition = { fadeIn(animationSpec = tween(400)) },
-            exitTransition = { fadeOut(animationSpec = tween(400)) }
+            enterTransition = { holoEnterTransition() },
+            exitTransition = { holoExitTransition() }
         ) {
             LoginScreen(
                 onLoginSuccess = {
@@ -121,12 +167,15 @@ fun NowenNavGraph(
             )
         }
 
-        // 首页 — 使用淡入淡出（作为根页面）
+        // 首页 — 淡入 + 微缩放（作为根页面）
         composable(
             route = Screen.Home.route,
-            enterTransition = { fadeIn(animationSpec = tween(300)) },
-            exitTransition = { defaultExitTransition() },
-            popEnterTransition = { defaultPopEnterTransition() }
+            enterTransition = {
+                fadeIn(animationSpec = tween(400)) +
+                        scaleIn(initialScale = 0.96f, animationSpec = tween(400, easing = EaseInOutCubic))
+            },
+            exitTransition = { cyberExitTransition() },
+            popEnterTransition = { cyberPopEnterTransition() }
         ) {
             HomeScreen(
                 onMediaClick = { mediaId ->
@@ -216,22 +265,22 @@ fun NowenNavGraph(
             )
         }
 
-        // 播放器 — 使用垂直滑入动画（从底部弹出）
+        // 播放器 — 从底部弹出 + 缩放
         composable(
             route = Screen.Player.route,
             arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             enterTransition = {
                 slideInVertically(
                     initialOffsetY = { it },
-                    animationSpec = tween(350)
-                ) + fadeIn(animationSpec = tween(350))
+                    animationSpec = tween(400, easing = EaseInOutCubic)
+                ) + fadeIn(animationSpec = tween(300))
             },
             exitTransition = { fadeOut(animationSpec = tween(200)) },
             popExitTransition = {
                 slideOutVertically(
                     targetOffsetY = { it },
-                    animationSpec = tween(350)
-                ) + fadeOut(animationSpec = tween(350))
+                    animationSpec = tween(400, easing = EaseInOutCubic)
+                ) + fadeOut(animationSpec = tween(300))
             }
         ) { backStackEntry ->
             val mediaId = backStackEntry.arguments?.getString("mediaId") ?: return@composable
@@ -241,7 +290,7 @@ fun NowenNavGraph(
             )
         }
 
-        // 搜索（支持可选的初始搜索关键词）
+        // 搜索
         composable(
             route = "search?q={query}",
             arguments = listOf(navArgument("query") {

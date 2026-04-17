@@ -1,6 +1,7 @@
 package com.nowen.video.data.remote
 
 import com.nowen.video.data.model.*
+import retrofit2.Response
 import retrofit2.http.*
 
 /**
@@ -128,13 +129,13 @@ interface NowenApiService {
     suspend fun getHistory(): ApiPaginatedResponse<WatchHistory>
 
     @GET("users/me/favorites")
-    suspend fun getFavorites(): ApiPaginatedResponse<Media>
+    suspend fun getFavorites(): ApiPaginatedResponse<Favorite>
 
     @POST("users/me/favorites/{mediaId}")
-    suspend fun addFavorite(@Path("mediaId") mediaId: String)
+    suspend fun addFavorite(@Path("mediaId") mediaId: String): Response<Unit>
 
     @DELETE("users/me/favorites/{mediaId}")
-    suspend fun removeFavorite(@Path("mediaId") mediaId: String)
+    suspend fun removeFavorite(@Path("mediaId") mediaId: String): Response<Unit>
 
     @GET("users/me/favorites/{mediaId}/check")
     suspend fun checkFavorite(@Path("mediaId") mediaId: String): ApiResponse<Boolean>
@@ -156,6 +157,46 @@ interface NowenApiService {
         @Path("id") id: String,
         @Path("index") index: Int
     ): okhttp3.ResponseBody
+
+    // AI 字幕生成
+    @POST("subtitle/{id}/ai/generate")
+    suspend fun generateAISubtitle(
+        @Path("id") id: String,
+        @Body request: Map<String, String>
+    ): ApiResponse<ASRTask>
+
+    @GET("subtitle/{id}/ai/status")
+    suspend fun getAISubtitleStatus(@Path("id") id: String): ApiResponse<ASRTask>
+
+    // 字幕翻译
+    @POST("subtitle/{id}/translate")
+    suspend fun translateSubtitle(
+        @Path("id") id: String,
+        @Body request: Map<String, String>
+    ): ApiResponse<ASRTask>
+
+    @GET("subtitle/{id}/translate/status")
+    suspend fun getTranslateStatus(@Path("id") id: String): ApiResponse<List<TranslatedSubtitle>>
+
+    // 字幕在线搜索
+    @GET("subtitle/{id}/search")
+    suspend fun searchSubtitles(
+        @Path("id") id: String,
+        @Query("language") language: String? = null,
+        @Query("title") title: String? = null,
+        @Query("year") year: Int? = null,
+        @Query("type") type: String? = null
+    ): ApiResponse<List<SubtitleSearchResult>>
+
+    @POST("subtitle/{id}/download")
+    suspend fun downloadSubtitle(
+        @Path("id") id: String,
+        @Body request: Map<String, String>
+    ): ApiResponse<SubtitleDownloadResult>
+
+    // ASR 服务状态
+    @GET("asr/status")
+    suspend fun getASRStatus(): ApiResponse<Map<String, @kotlinx.serialization.Serializable Any>>
 
     // ==================== 合集 ====================
 
