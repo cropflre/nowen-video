@@ -33,11 +33,11 @@ func (r *MovieCollectionRepo) FindByID(id string) (*model.MovieCollection, error
 	return &coll, err
 }
 
-// FindByIDWithMedia 根据 ID 查找合集并预加载关联的电影（按年份排序）
+// FindByIDWithMedia 根据 ID 查找合集并预加载关联的电影（按首映日期排序）
 func (r *MovieCollectionRepo) FindByIDWithMedia(id string) (*model.MovieCollection, error) {
 	var coll model.MovieCollection
 	err := r.db.Preload("Media", func(db *gorm.DB) *gorm.DB {
-		return db.Order("year ASC, title ASC")
+		return db.Order("CASE WHEN premiered != '' THEN 0 ELSE 1 END ASC, premiered ASC, year ASC, title ASC")
 	}).First(&coll, "id = ?", id).Error
 	return &coll, err
 }
@@ -191,11 +191,11 @@ func (r *MovieCollectionRepo) Delete(id string) error {
 	return r.db.Delete(&model.MovieCollection{}, "id = ?", id).Error
 }
 
-// GetMediaByCollectionID 获取合集下的所有电影（按年份排序）
+// GetMediaByCollectionID 获取合集下的所有电影（按首映日期排序）
 func (r *MovieCollectionRepo) GetMediaByCollectionID(collectionID string) ([]model.Media, error) {
 	var media []model.Media
 	err := r.db.Where("collection_id = ?", collectionID).
-		Order("year ASC, title ASC").
+		Order("CASE WHEN premiered != '' THEN 0 ELSE 1 END ASC, premiered ASC, year ASC, title ASC").
 		Find(&media).Error
 	return media, err
 }

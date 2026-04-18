@@ -734,6 +734,11 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 	if len(dateStr) >= 4 {
 		media.Year, _ = strconv.Atoi(dateStr[:4])
 	}
+	if best.ReleaseDate != "" {
+		media.Premiered = best.ReleaseDate
+	} else if best.FirstAirDate != "" {
+		media.Premiered = best.FirstAirDate
+	}
 
 	// 下载海报
 	if best.PosterPath != "" {
@@ -822,6 +827,9 @@ func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error
 
 	if len(tvDetail.FirstAirDate) >= 4 {
 		media.Year, _ = strconv.Atoi(tvDetail.FirstAirDate[:4])
+	}
+	if tvDetail.FirstAirDate != "" {
+		media.Premiered = tvDetail.FirstAirDate
 	}
 
 	// 下载海报
@@ -1352,6 +1360,9 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 	if len(dateStr) >= 4 {
 		media.Year, _ = strconv.Atoi(dateStr[:4])
 	}
+	if result.ReleaseDate != "" {
+		media.Premiered = result.ReleaseDate
+	}
 
 	// 类型映射
 	media.Genres = s.mapGenreIDs(result.GenreIDs)
@@ -1373,6 +1384,9 @@ func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovie
 
 	if len(detail.ReleaseDate) >= 4 {
 		media.Year, _ = strconv.Atoi(detail.ReleaseDate[:4])
+	}
+	if detail.ReleaseDate != "" {
+		media.Premiered = detail.ReleaseDate
 	}
 
 	// 类型

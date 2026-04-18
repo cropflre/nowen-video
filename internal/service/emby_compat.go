@@ -1032,6 +1032,9 @@ func (s *EmbyCompatService) applyEmbyMovieNFO(media *model.Media, nfo *EmbyMovie
 	if nfo.Year > 0 {
 		media.Year = nfo.Year
 	}
+	if nfo.Premiered != "" {
+		media.Premiered = nfo.Premiered
+	}
 	if nfo.Plot != "" {
 		media.Overview = nfo.Plot
 	} else if nfo.Outline != "" {

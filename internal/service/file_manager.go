@@ -809,8 +809,10 @@ func (s *FileManagerService) scrapeFromTMDb(media *model.Media, searchTitle stri
 	}
 	if r.ReleaseDate != "" && len(r.ReleaseDate) >= 4 {
 		fmt.Sscanf(r.ReleaseDate[:4], "%d", &media.Year)
+		media.Premiered = r.ReleaseDate
 	} else if r.FirstAirDate != "" && len(r.FirstAirDate) >= 4 {
 		fmt.Sscanf(r.FirstAirDate[:4], "%d", &media.Year)
+		media.Premiered = r.FirstAirDate
 	}
 	media.TMDbID = r.ID
 

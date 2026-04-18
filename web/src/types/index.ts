@@ -1718,6 +1718,7 @@ export interface CollectionMediaItem {
   title: string
   orig_title: string
   year: number
+  premiered: string
   rating: number
   poster_path: string
   runtime: number

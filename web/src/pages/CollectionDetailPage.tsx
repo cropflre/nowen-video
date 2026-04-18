@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
 import type { CollectionWithMedia, CollectionMediaItem } from '@/types'
@@ -12,14 +12,61 @@ import {
   Loader2,
   Play,
   ArrowLeft,
+  Grid3X3,
+  LayoutList,
+  ArrowUpDown,
 } from 'lucide-react'
+
+type SortOption = 'premiered_asc' | 'premiered_desc' | 'title_asc' | 'rating_desc'
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'premiered_asc', label: '首映日期 ↑' },
+  { value: 'premiered_desc', label: '首映日期 ↓' },
+  { value: 'title_asc', label: '标题 A-Z' },
+  { value: 'rating_desc', label: '评分 ↓' },
+]
 
 export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<CollectionWithMedia | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const viewMode = (searchParams.get('view') || 'grid') as 'grid' | 'list'
+  const sortOption = (searchParams.get('sort') || 'premiered_asc') as SortOption
+
+  const sortedMedia = useMemo(() => {
+    if (!data?.media) return []
+    const sorted = [...data.media]
+    switch (sortOption) {
+      case 'premiered_asc':
+        sorted.sort((a, b) => {
+          const da = a.premiered || '', db = b.premiered || ''
+          if (da && db) return da.localeCompare(db) || a.title.localeCompare(b.title)
+          if (da) return -1
+          if (db) return 1
+          return (a.year || 9999) - (b.year || 9999) || a.title.localeCompare(b.title)
+        })
+        break
+      case 'premiered_desc':
+        sorted.sort((a, b) => {
+          const da = a.premiered || '', db = b.premiered || ''
+          if (da && db) return db.localeCompare(da) || a.title.localeCompare(b.title)
+          if (da) return -1
+          if (db) return 1
+          return (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title)
+        })
+        break
+      case 'title_asc':
+        sorted.sort((a, b) => a.title.localeCompare(b.title))
+        break
+      case 'rating_desc':
+        sorted.sort((a, b) => b.rating - a.rating || a.title.localeCompare(b.title))
+        break
+    }
+    return sorted
+  }, [data?.media, sortOption])
 
   useEffect(() => {
     if (!id) return
@@ -162,6 +209,27 @@ export default function CollectionDetailPage() {
                   </>
                 )}
               </div>
+              {/* 合集类型标签（从所有电影中提取去重） */}
+              {(() => {
+                const genreSet = new Set<string>()
+                media.forEach(m => {
+                  if (m.genres) m.genres.split(',').forEach(g => { const t = g.trim(); if (t) genreSet.add(t) })
+                })
+                const genres = Array.from(genreSet).sort()
+                if (genres.length === 0) return null
+                return (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {genres.map(g => (
+                      <span key={g}
+                        className="rounded-lg px-2 py-0.5 text-xs font-medium"
+                        style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)', color: 'var(--text-secondary)' }}
+                      >
+                        {g}
+                      </span>
+                    ))}
+                  </div>
+                )
+              })()}
               {collection.overview && (
                 <p className="mt-4 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
                   {collection.overview}
@@ -174,16 +242,85 @@ export default function CollectionDetailPage() {
 
       {/* 电影列表 */}
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <h2 className="mb-6 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}>
-          系列电影
-        </h2>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {media.map((item, index) => (
-            <CollectionMovieCard key={item.id} item={item} index={index + 1} />
-          ))}
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="font-display text-lg font-semibold tracking-wide"
+            style={{ color: 'var(--text-primary)' }}>
+            系列电影
+          </h2>
+          <div className="flex items-center gap-3">
+            {/* 排序 */}
+            <div className="flex items-center gap-1.5">
+              <ArrowUpDown size={14} style={{ color: 'var(--text-muted)' }} />
+              <select
+                value={sortOption}
+                onChange={(e) => {
+                  const p = new URLSearchParams(searchParams)
+                  const val = e.target.value
+                  if (val === 'premiered_asc') p.delete('sort')
+                  else p.set('sort', val)
+                  setSearchParams(p, { replace: true })
+                }}
+                className="rounded-lg px-2 py-1.5 text-xs outline-none transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-default)',
+                }}
+              >
+                {SORT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {/* 视图切换 */}
+            <div className="flex items-center rounded-lg" style={{ border: '1px solid var(--border-default)' }}>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams)
+                  p.delete('view')
+                  setSearchParams(p, { replace: true })
+                }}
+                className="p-2 transition-all"
+                style={{
+                  background: viewMode === 'grid' ? 'var(--nav-active-bg)' : 'transparent',
+                  color: viewMode === 'grid' ? 'var(--neon-blue)' : 'var(--text-tertiary)',
+                }}
+                title="卡片视图"
+              >
+                <Grid3X3 size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams)
+                  p.set('view', 'list')
+                  setSearchParams(p, { replace: true })
+                }}
+                className="p-2 transition-all"
+                style={{
+                  background: viewMode === 'list' ? 'var(--nav-active-bg)' : 'transparent',
+                  color: viewMode === 'list' ? 'var(--neon-blue)' : 'var(--text-tertiary)',
+                }}
+                title="列表视图"
+              >
+                <LayoutList size={16} />
+              </button>
+            </div>
+          </div>
         </div>
+
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {sortedMedia.map((item, index) => (
+              <CollectionMovieCard key={item.id} item={item} index={index + 1} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sortedMedia.map((item, index) => (
+              <CollectionMovieListItem key={item.id} item={item} index={index + 1} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -248,7 +385,7 @@ function CollectionMovieCard({ item, index }: { item: CollectionMediaItem; index
       {/* 信息 */}
       <div className="p-3">
         <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
-          style={{ color: 'var(--text-primary)' }}>
+          style={{ color: 'var(--text-primary)' }} title={item.title}>
           {item.title}
         </h4>
         <div className="mt-1 flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -262,6 +399,110 @@ function CollectionMovieCard({ item, index }: { item: CollectionMediaItem; index
               <Clock size={10} /> {item.runtime}分钟
             </span>
           )}
+        </div>
+        {item.genres && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {item.genres.split(',').map((g) => {
+              const t = g.trim()
+              if (!t) return null
+              return (
+                <span key={t}
+                  className="rounded px-1 py-0.5 text-[10px]"
+                  style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
+                >
+                  {t}
+                </span>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+/** 合集中的电影列表项 */
+function CollectionMovieListItem({ item, index }: { item: CollectionMediaItem; index: number }) {
+  const genreList = item.genres ? item.genres.split(',').map(g => g.trim()).filter(Boolean) : []
+
+  const formatDuration = (seconds: number) => {
+    if (!seconds) return ''
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
+  }
+
+  return (
+    <Link
+      to={`/media/${item.id}`}
+      className="group flex items-center gap-4 rounded-xl p-3 transition-all duration-300"
+      style={{ border: '1px solid var(--border-default)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover-bg)'; e.currentTarget.style.borderColor = 'var(--border-hover)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
+    >
+      {/* 序号 */}
+      <span className="w-6 text-center text-xs font-bold flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+        {index}
+      </span>
+
+      {/* 缩略图 */}
+      <div className="h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+        <img
+          src={streamApi.getPosterUrl(item.id)}
+          alt={item.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+      </div>
+
+      {/* 信息 */}
+      <div className="min-w-0 flex-1">
+        <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
+          style={{ color: 'var(--text-primary)' }} title={item.title}>
+          {item.title}
+        </h4>
+        <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {item.year > 0 && <span>{item.year}</span>}
+          {item.runtime > 0 && (
+            <>
+              <span style={{ color: 'var(--text-muted)' }}>·</span>
+              <span>{formatDuration(item.runtime)}</span>
+            </>
+          )}
+        </div>
+        {genreList.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {genreList.slice(0, 3).map(g => (
+              <span key={g} className="rounded px-1 py-0.5 text-[10px]"
+                style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}>
+                {g}
+              </span>
+            ))}
+            {genreList.length > 3 && (
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+{genreList.length - 3}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 评分 */}
+      {item.rating > 0 && (
+        <div className="flex items-center gap-1 text-sm flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
+          <Star size={14} className="text-yellow-400" fill="currentColor" />
+          <span className="font-semibold">{item.rating.toFixed(1)}</span>
+        </div>
+      )}
+
+      {/* 播放按钮 */}
+      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full"
+          style={{
+            background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+            boxShadow: '0 0 8px var(--neon-blue-40)',
+          }}>
+          <Play size={12} className="ml-0.5 text-white" fill="white" />
         </div>
       </div>
     </Link>

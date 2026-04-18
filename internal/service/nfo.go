@@ -29,6 +29,7 @@ type NFOMovie struct {
 	Title     string     `xml:"title"`
 	OrigTitle string     `xml:"originaltitle"`
 	Year      int        `xml:"year"`
+	Premiered string     `xml:"premiered"`
 	Plot      string     `xml:"plot"`
 	Tagline   string     `xml:"tagline"`
 	Rating    float64    `xml:"rating"`
@@ -348,6 +349,9 @@ func (s *NFOService) applyMovieNFOToMedia(media *model.Media, nfo *NFOMovie) {
 	}
 	if nfo.Year > 0 {
 		media.Year = nfo.Year
+	}
+	if nfo.Premiered != "" {
+		media.Premiered = nfo.Premiered
 	}
 	if nfo.Plot != "" {
 		media.Overview = nfo.Plot

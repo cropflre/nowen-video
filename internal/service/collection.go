@@ -43,6 +43,7 @@ type CollectionMediaItem struct {
 	Title      string  `json:"title"`
 	OrigTitle  string  `json:"orig_title"`
 	Year       int     `json:"year"`
+	Premiered  string  `json:"premiered"`
 	Rating     float64 `json:"rating"`
 	PosterPath string  `json:"poster_path"`
 	Runtime    int     `json:"runtime"`
@@ -69,6 +70,7 @@ func (s *CollectionService) GetCollectionByMediaID(mediaID string) (*CollectionW
 			Title:      m.Title,
 			OrigTitle:  m.OrigTitle,
 			Year:       m.Year,
+			Premiered:  m.Premiered,
 			Rating:     m.Rating,
 			PosterPath: m.PosterPath,
 			Runtime:    m.Runtime,
@@ -102,6 +104,7 @@ func (s *CollectionService) GetCollectionDetail(collectionID string) (*Collectio
 			Title:      m.Title,
 			OrigTitle:  m.OrigTitle,
 			Year:       m.Year,
+			Premiered:  m.Premiered,
 			Rating:     m.Rating,
 			PosterPath: m.PosterPath,
 			Runtime:    m.Runtime,

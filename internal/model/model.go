@@ -136,6 +136,7 @@ type Media struct {
 	IMDbID     string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
 	DoubanID   string `json:"douban_id" gorm:"type:text"`     // 豆瓣 ID
 	BangumiID  int    `json:"bangumi_id" gorm:"index"`        // Bangumi 条目 ID
+	Premiered  string `json:"premiered" gorm:"type:text"`     // 首映日期（NFO YYYY-MM-DD）
 	Country    string `json:"country" gorm:"type:text"`       // 制片国家
 	Language   string `json:"language" gorm:"type:text"`      // 语言
 	Tagline    string `json:"tagline" gorm:"type:text"`       // 标语/宣传语
