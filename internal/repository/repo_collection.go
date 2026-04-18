@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -211,12 +212,37 @@ func (r *MovieCollectionRepo) FindCollectionByMediaID(mediaID string) (*model.Mo
 	return r.FindByIDWithMedia(media.CollectionID)
 }
 
-// UpdateMediaCount 更新合集的电影数量
+// UpdateMediaCount 更新合集的电影数量和年份范围
 func (r *MovieCollectionRepo) UpdateMediaCount(collectionID string) error {
 	var count int64
 	r.db.Model(&model.Media{}).Where("collection_id = ?", collectionID).Count(&count)
+
+	// 计算年份范围
+	yearRange := r.computeYearRange(collectionID)
+
 	return r.db.Model(&model.MovieCollection{}).Where("id = ?", collectionID).
-		Update("media_count", count).Error
+		Updates(map[string]interface{}{
+			"media_count": count,
+			"year_range":  yearRange,
+		}).Error
+}
+
+// computeYearRange 根据合集中电影的年份计算年份范围
+// 如果所有电影同年返回 "2020"，否则返回 "1991-1993"
+func (r *MovieCollectionRepo) computeYearRange(collectionID string) string {
+	var minYear, maxYear int
+	r.db.Model(&model.Media{}).
+		Where("collection_id = ? AND year > 0", collectionID).
+		Select("MIN(year), MAX(year)").
+		Row().Scan(&minYear, &maxYear)
+
+	if minYear == 0 && maxYear == 0 {
+		return ""
+	}
+	if minYear == maxYear {
+		return fmt.Sprintf("%d", minYear)
+	}
+	return fmt.Sprintf("%d-%d", minYear, maxYear)
 }
 
 // ListMoviesWithoutCollection 获取没有合集的电影列表（用于自动匹配）

@@ -1707,6 +1707,7 @@ export interface MovieCollection {
   tmdb_coll_id: number
   media_count: number
   auto_matched: boolean
+  year_range: string
   created_at: string
   updated_at: string
 }

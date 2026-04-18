@@ -1,23 +1,57 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
 import type { MovieCollection } from '@/types'
 import Pagination from '@/components/Pagination'
-import { Library, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw } from 'lucide-react'
+import { Library, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw, Grid3X3, LayoutList, ArrowUpDown, ChevronDown, Filter } from 'lucide-react'
+import clsx from 'clsx'
+
+type ViewMode = 'grid' | 'list'
+
+const SORT_OPTIONS = [
+  { value: 'created_desc', label: '最近创建' },
+  { value: 'created_asc', label: '最早创建' },
+  { value: 'updated_desc', label: '最近更新' },
+  { value: 'updated_asc', label: '最早更新' },
+  { value: 'name_asc', label: '名称 A-Z' },
+  { value: 'name_desc', label: '名称 Z-A' },
+  { value: 'count_desc', label: '电影最多' },
+  { value: 'count_asc', label: '电影最少' },
+] as const
+
+type SortValue = typeof SORT_OPTIONS[number]['value']
 
 export default function CollectionsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sortRef = useRef<HTMLDivElement>(null)
   const [collections, setCollections] = useState<MovieCollection[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(24)
+  const page = Number(searchParams.get('page')) || 1
+  const pageSize = Number(searchParams.get('size')) || 24
+  const viewMode = (searchParams.get('view') as ViewMode) || 'grid'
+  const sortValue = (searchParams.get('sort') as SortValue) || 'created_desc'
+  const filterAuto = searchParams.get('auto') || '' // '' | 'true' | 'false'
   const [loading, setLoading] = useState(true)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<MovieCollection[] | null>(null)
   const [operating, setOperating] = useState(false)
   const [operationMsg, setOperationMsg] = useState('')
+  const [showSortDropdown, setShowSortDropdown] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const pageSizeOptions = [12, 24, 36, 48]
+
+  // 点击外部关闭排序下拉
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setShowSortDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // 加载合集列表
   const fetchCollections = useCallback(async () => {
@@ -91,23 +125,97 @@ export default function CollectionsPage() {
     try {
       const res = await collectionApi.rematch()
       setOperationMsg(res.data.message || `重新匹配完成，新建 ${res.data.created} 个合集`)
-      setPage(1)
+      setSearchParams(prev => { prev.set('page', '1'); return prev })
       fetchCollections()
     } catch {
       setOperationMsg('重新匹配失败，请重试')
     } finally {
       setOperating(false)
     }
-  }, [operating, fetchCollections])
+  }, [operating, fetchCollections, setSearchParams])
 
-  const displayList = searchResults !== null ? searchResults : collections
+  // ===== 排序 + 筛选 =====
+  const filteredAndSorted = useMemo(() => {
+    let items = searchResults !== null ? [...searchResults] : [...collections]
+
+    // 筛选：自动匹配 / 手动创建
+    if (filterAuto !== '') {
+      const isAuto = filterAuto === 'true'
+      items = items.filter(c => c.auto_matched === isAuto)
+    }
+
+    // 排序
+    const [field, dir] = sortValue.split('_') as [string, string]
+    const mult = dir === 'desc' ? -1 : 1
+    items.sort((a, b) => {
+      let cmp = 0
+      switch (field) {
+        case 'created':
+          cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          break
+        case 'updated':
+          cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+          break
+        case 'name':
+          cmp = a.name.localeCompare(b.name, 'zh-CN')
+          break
+        case 'count':
+          cmp = a.media_count - b.media_count
+          break
+      }
+      return cmp * mult
+    })
+
+    return items
+  }, [collections, searchResults, sortValue, filterAuto])
+
+  const displayList = filteredAndSorted
   const totalPages = Math.ceil(total / pageSize)
+  const currentSortLabel = SORT_OPTIONS.find(o => o.value === sortValue)?.label || '排序'
+  const hasActiveFilter = filterAuto !== ''
+
+  // 切换分页时同步 URL
+  const handlePageChange = useCallback((p: number) => {
+    setSearchParams(prev => {
+      if (p <= 1) prev.delete('page'); else prev.set('page', String(p))
+      return prev
+    })
+  }, [setSearchParams])
 
   // 切换每页数量时重置到第一页
   const handlePageSizeChange = useCallback((size: number) => {
-    setPageSize(size)
-    setPage(1)
-  }, [])
+    setSearchParams(prev => {
+      prev.delete('page')
+      prev.set('size', String(size))
+      return prev
+    })
+  }, [setSearchParams])
+
+  // 切换视图模式
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
+    setSearchParams(prev => {
+      if (mode === 'grid') prev.delete('view'); else prev.set('view', mode)
+      return prev
+    })
+  }, [setSearchParams])
+
+  // 切换排序
+  const handleSortChange = useCallback((value: SortValue) => {
+    setSearchParams(prev => {
+      if (value === 'created_desc') prev.delete('sort'); else prev.set('sort', value)
+      return prev
+    })
+    setShowSortDropdown(false)
+  }, [setSearchParams])
+
+  // 切换筛选
+  const handleFilterAuto = useCallback((value: string) => {
+    setSearchParams(prev => {
+      if (value === '') prev.delete('auto'); else prev.set('auto', value)
+      prev.delete('page')
+      return prev
+    })
+  }, [setSearchParams])
 
   return (
     <div className="space-y-6">
@@ -149,6 +257,96 @@ export default function CollectionsPage() {
         <button onClick={handleSearch} className="btn-primary px-4 py-2 text-sm">
           搜索
         </button>
+        {/* 筛选按钮 */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={clsx('flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all')}
+          style={{
+            border: `1px solid ${hasActiveFilter ? 'var(--border-hover)' : 'var(--border-default)'}`,
+            color: hasActiveFilter ? 'var(--neon-blue)' : 'var(--text-secondary)',
+            background: hasActiveFilter ? 'var(--nav-active-bg)' : 'transparent',
+          }}
+        >
+          <Filter size={14} />
+          筛选
+          {hasActiveFilter && (
+            <span
+              className="ml-1 rounded-full px-1.5 text-[10px] font-bold"
+              style={{
+                background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                color: 'var(--text-on-neon)',
+              }}
+            >
+              1
+            </span>
+          )}
+        </button>
+        {/* 排序 */}
+        <div className="relative" ref={sortRef}>
+          <button
+            onClick={() => setShowSortDropdown(!showSortDropdown)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all"
+            style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
+          >
+            <ArrowUpDown size={14} />
+            {currentSortLabel}
+            <ChevronDown size={12} />
+          </button>
+          {showSortDropdown && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowSortDropdown(false)} />
+              <div
+                className="absolute right-0 top-full z-40 mt-1 w-40 overflow-hidden rounded-xl py-1 animate-slide-up"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-strong)',
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.4)',
+                }}
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleSortChange(opt.value)}
+                    className={clsx(
+                      'w-full px-3 py-2 text-left text-sm transition-colors',
+                      sortValue === opt.value
+                        ? 'text-neon bg-[var(--nav-active-bg)]'
+                        : 'hover:bg-[var(--nav-hover-bg)]',
+                    )}
+                    style={{ color: sortValue === opt.value ? 'var(--neon-blue)' : 'var(--text-secondary)' }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {/* 视图切换 */}
+        <div className="flex items-center rounded-lg" style={{ border: '1px solid var(--border-default)' }}>
+          <button
+            onClick={() => handleViewModeChange('grid')}
+            className="p-2 transition-all"
+            style={{
+              background: viewMode === 'grid' ? 'var(--nav-active-bg)' : 'transparent',
+              color: viewMode === 'grid' ? 'var(--neon-blue)' : 'var(--text-tertiary)',
+            }}
+            title="网格视图"
+          >
+            <Grid3X3 size={16} />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('list')}
+            className="p-2 transition-all"
+            style={{
+              background: viewMode === 'list' ? 'var(--nav-active-bg)' : 'transparent',
+              color: viewMode === 'list' ? 'var(--neon-blue)' : 'var(--text-tertiary)',
+            }}
+            title="列表视图"
+          >
+            <LayoutList size={16} />
+          </button>
+        </div>
         <div className="flex gap-2 ml-auto">
           <button
             onClick={handleRematch}
@@ -180,6 +378,47 @@ export default function CollectionsPage() {
         </div>
       </div>
 
+      {/* 筛选面板 */}
+      {showFilters && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-xl p-3 animate-slide-up"
+          style={{
+            background: 'var(--nav-hover-bg)',
+            border: '1px solid var(--border-default)',
+          }}
+        >
+          <span className="text-xs font-medium mr-1" style={{ color: 'var(--text-tertiary)' }}>来源</span>
+          {[
+            { value: '', label: '全部' },
+            { value: 'true', label: '自动匹配' },
+            { value: 'false', label: '手动创建' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => handleFilterAuto(opt.value)}
+              className={clsx('rounded-lg px-3 py-1.5 text-xs font-medium transition-all')}
+              style={{
+                background: filterAuto === opt.value ? 'var(--nav-active-bg)' : 'transparent',
+                border: `1px solid ${filterAuto === opt.value ? 'var(--border-hover)' : 'var(--border-default)'}`,
+                color: filterAuto === opt.value ? 'var(--neon-blue)' : 'var(--text-secondary)',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+          {hasActiveFilter && (
+            <button
+              onClick={() => handleFilterAuto('')}
+              className="ml-2 flex items-center gap-1 text-xs"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              <X size={12} />
+              清除
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 操作结果提示 */}
       {operationMsg && (
         <div className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm"
@@ -191,7 +430,7 @@ export default function CollectionsPage() {
         </div>
       )}
 
-      {/* 合集网格 */}
+      {/* 合集内容 */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 size={24} className="animate-spin text-neon" />
@@ -200,13 +439,13 @@ export default function CollectionsPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Library size={48} className="mb-4 text-surface-600" />
           <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {searchResults !== null ? '未找到匹配的合集' : '暂无影视合集'}
+            {searchResults !== null ? '未找到匹配的合集' : hasActiveFilter ? '没有符合条件的合集' : '暂无影视合集'}
           </p>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            {searchResults !== null ? '请尝试其他关键词' : '扫描媒体库后系统会自动匹配电影系列合集'}
+            {searchResults !== null ? '请尝试其他关键词' : hasActiveFilter ? '尝试调整筛选条件' : '扫描媒体库后系统会自动匹配电影系列合集'}
           </p>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {displayList.map((coll) => (
             <CollectionCard
@@ -214,6 +453,12 @@ export default function CollectionsPage() {
               collection={coll}
               onClick={() => navigate(`/collections/${coll.id}`)}
             />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {displayList.map((coll) => (
+            <CollectionListItem key={coll.id} collection={coll} />
           ))}
         </div>
       )}
@@ -226,7 +471,7 @@ export default function CollectionsPage() {
           total={total}
           pageSize={pageSize}
           pageSizeOptions={pageSizeOptions}
-          onPageChange={setPage}
+          onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
         />
       )}
@@ -261,6 +506,14 @@ function CollectionCard({ collection: coll, onClick }: { collection: MovieCollec
           {coll.media_count} 部
         </div>
 
+        {/* 来源标签 */}
+        {coll.auto_matched && (
+          <div className="absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-md"
+            style={{ background: 'rgba(0,0,0,0.6)', color: 'var(--text-tertiary)' }}>
+            自动
+          </div>
+        )}
+
         {/* 悬停遮罩 */}
         <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
           <div className="absolute bottom-2 left-2">
@@ -282,12 +535,63 @@ function CollectionCard({ collection: coll, onClick }: { collection: MovieCollec
           style={{ color: 'var(--text-primary)' }}>
           {coll.name}
         </h3>
-        {coll.overview && (
-          <p className="mt-1 line-clamp-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            {coll.overview}
-          </p>
-        )}
+        <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {coll.year_range && <span>{coll.year_range}</span>}
+          {coll.year_range && <span style={{ color: 'var(--text-muted)' }}>·</span>}
+          <span>{coll.media_count} 部</span>
+        </div>
       </div>
     </div>
+  )
+}
+
+/** 合集列表项 — 列表视图 */
+function CollectionListItem({ collection: coll }: { collection: MovieCollection }) {
+  return (
+    <Link
+      to={`/collections/${coll.id}`}
+      className="group flex items-center gap-4 rounded-xl p-3 transition-all duration-300"
+      style={{ border: '1px solid var(--border-default)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover-bg)'; e.currentTarget.style.borderColor = 'var(--border-hover)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
+    >
+      {/* 缩略图 */}
+      <div
+        className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-lg"
+        style={{ background: 'var(--bg-surface)' }}
+      >
+        <img
+          src={streamApi.getCollectionPosterUrl(coll.id)}
+          alt={coll.name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+      </div>
+
+      {/* 信息 */}
+      <div className="min-w-0 flex-1">
+        <h3
+          className="truncate text-sm font-medium transition-colors group-hover:text-neon"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {coll.name}
+        </h3>
+        <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {coll.year_range && <span>{coll.year_range}</span>}
+          {coll.year_range && <span style={{ color: 'var(--text-muted)' }}>·</span>}
+          <span className="rounded px-1 py-0.5 text-[10px]" style={{ background: 'var(--nav-hover-bg)' }}>
+            {coll.auto_matched ? '自动匹配' : '手动创建'}
+          </span>
+        </div>
+      </div>
+
+      {/* 数量 */}
+      <div className="flex items-center gap-1.5 text-xs font-medium flex-shrink-0"
+        style={{ color: 'var(--text-secondary)' }}>
+        <Film size={14} />
+        <span>{coll.media_count} 部</span>
+      </div>
+    </Link>
   )
 }

@@ -458,9 +458,11 @@ func (s *CollectionService) CreateCollection(name string, mediaIDs []string) (*m
 	if len(mediaIDs) > 0 {
 		if media, err := s.mediaRepo.FindByID(mediaIDs[0]); err == nil {
 			coll.PosterPath = media.PosterPath
-			s.collRepo.Update(coll)
 		}
 	}
+
+	// 同步更新电影数量和年份范围
+	s.collRepo.UpdateMediaCount(coll.ID)
 
 	return coll, nil
 }

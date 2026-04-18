@@ -92,6 +92,7 @@ type MovieCollection struct {
 	TMDbCollID  int       `json:"tmdb_coll_id" gorm:"index"`            // TMDb Collection ID
 	MediaCount  int       `json:"media_count"`                          // 包含的电影数量
 	AutoMatched bool      `json:"auto_matched" gorm:"default:true"`     // 是否自动匹配生成
+	YearRange   string    `json:"year_range" gorm:"type:text"`          // 年份范围（如"1991-1993"或"2020"）
 	CreatedAt   time.Time `json:"created_at" gorm:"index"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
