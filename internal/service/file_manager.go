@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -210,6 +211,11 @@ func (s *FileManagerService) GetFolderTree(libraryID string) ([]*FolderNode, err
 		}
 	}
 
+	// 按名称排序根节点
+	sortFolderNodes(rootNodes)
+	// 递归排序每个节点的子节点
+	sortFolderChildren(rootNodes)
+
 	return rootNodes, nil
 }
 
@@ -251,14 +257,10 @@ func (s *FileManagerService) ListFilesByFolder(folderPath string, page, size int
 	for f := range subFolderSet {
 		subFolders = append(subFolders, f)
 	}
-	// 排序
-	for i := 0; i < len(subFolders); i++ {
-		for j := i + 1; j < len(subFolders); j++ {
-			if subFolders[i] > subFolders[j] {
-				subFolders[i], subFolders[j] = subFolders[j], subFolders[i]
-			}
-		}
-	}
+	// 按名称排序（不区分大小写）
+	sort.Slice(subFolders, func(i, j int) bool {
+		return strings.ToLower(subFolders[i]) < strings.ToLower(subFolders[j])
+	})
 
 	return files, total, subFolders, nil
 }
@@ -1646,6 +1648,23 @@ func (s *FileManagerService) extractSeasonEpisodeNum(media *model.Media) {
 		if matches := p.FindStringSubmatch(fileName); len(matches) > 1 {
 			fmt.Sscanf(matches[1], "%d", &media.EpisodeNum)
 			break
+		}
+	}
+}
+
+// sortFolderNodes 按名称排序文件夹节点（不区分大小写）
+func sortFolderNodes(nodes []*FolderNode) {
+	sort.Slice(nodes, func(i, j int) bool {
+		return strings.ToLower(nodes[i].Name) < strings.ToLower(nodes[j].Name)
+	})
+}
+
+// sortFolderChildren 递归排序所有子节点
+func sortFolderChildren(nodes []*FolderNode) {
+	for _, node := range nodes {
+		if len(node.Children) > 0 {
+			sortFolderNodes(node.Children)
+			sortFolderChildren(node.Children)
 		}
 	}
 }

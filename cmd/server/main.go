@@ -597,6 +597,7 @@ func main() {
 		// ==================== 电影系列合集管理 ====================
 		admin.POST("/collections", handlers.Collection.CreateCollection)
 		admin.POST("/collections/auto-match", handlers.Collection.AutoMatch)             // auto-match 必须在 :id 之前注册
+		admin.POST("/collections/rematch", handlers.Collection.Rematch)                  // 重新匹配（清除自动匹配后重跑）
 		admin.POST("/collections/merge-duplicates", handlers.Collection.MergeDuplicates) // 合并同名重复合集
 		admin.POST("/collections/cleanup-empty", handlers.Collection.CleanupEmpty)       // 清理空壳合集
 		admin.GET("/collections/duplicate-stats", handlers.Collection.DuplicateStats)    // 重复合集统计

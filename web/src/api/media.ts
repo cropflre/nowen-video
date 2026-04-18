@@ -110,6 +110,10 @@ export const collectionApi = {
   cleanupEmpty: () =>
     api.post<{ message: string; cleaned: number }>('/admin/collections/cleanup-empty'),
 
+  /** 重新匹配所有合集（管理员） */
+  rematch: () =>
+    api.post<{ message: string; created: number }>('/admin/collections/rematch'),
+
   /** 获取重复合集统计信息（管理员） */
   getDuplicateStats: () =>
     api.get<{ data: Record<string, number>; count: number }>('/admin/collections/duplicate-stats'),

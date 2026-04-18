@@ -3,19 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
 import type { MovieCollection } from '@/types'
-import { Library, Search, Film, Loader2, X, Play, Merge, Trash2 } from 'lucide-react'
+import Pagination from '@/components/Pagination'
+import { Library, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw } from 'lucide-react'
 
 export default function CollectionsPage() {
   const navigate = useNavigate()
   const [collections, setCollections] = useState<MovieCollection[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(24)
   const [loading, setLoading] = useState(true)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<MovieCollection[] | null>(null)
   const [operating, setOperating] = useState(false)
   const [operationMsg, setOperationMsg] = useState('')
-  const pageSize = 24
+  const pageSizeOptions = [12, 24, 36, 48]
 
   // 加载合集列表
   const fetchCollections = useCallback(async () => {
@@ -29,7 +31,7 @@ export default function CollectionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, pageSize])
 
   useEffect(() => {
     fetchCollections()
@@ -81,8 +83,31 @@ export default function CollectionsPage() {
     }
   }, [operating, fetchCollections])
 
+  // 重新匹配合集
+  const handleRematch = useCallback(async () => {
+    if (operating) return
+    setOperating(true)
+    setOperationMsg('')
+    try {
+      const res = await collectionApi.rematch()
+      setOperationMsg(res.data.message || `重新匹配完成，新建 ${res.data.created} 个合集`)
+      setPage(1)
+      fetchCollections()
+    } catch {
+      setOperationMsg('重新匹配失败，请重试')
+    } finally {
+      setOperating(false)
+    }
+  }, [operating, fetchCollections])
+
   const displayList = searchResults !== null ? searchResults : collections
   const totalPages = Math.ceil(total / pageSize)
+
+  // 切换每页数量时重置到第一页
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size)
+    setPage(1)
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -125,6 +150,15 @@ export default function CollectionsPage() {
           搜索
         </button>
         <div className="flex gap-2 ml-auto">
+          <button
+            onClick={handleRematch}
+            disabled={operating}
+            className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
+            title="清除所有自动匹配的合集并重新匹配，手动创建的合集不受影响"
+          >
+            {operating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            重新匹配
+          </button>
           <button
             onClick={handleMergeDuplicates}
             disabled={operating}
@@ -185,26 +219,16 @@ export default function CollectionsPage() {
       )}
 
       {/* 分页 */}
-      {searchResults === null && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30"
-          >
-            上一页
-          </button>
-          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="btn-ghost px-3 py-1.5 text-sm disabled:opacity-30"
-          >
-            下一页
-          </button>
-        </div>
+      {searchResults === null && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
     </div>
   )

@@ -311,6 +311,23 @@ func (h *CollectionHandler) CleanupEmpty(c *gin.Context) {
 	})
 }
 
+// Rematch 重新匹配所有电影系列合集
+// POST /api/admin/collections/rematch
+// 清除所有自动匹配的合集关联和记录，然后重新执行自动匹配
+// 手动创建的合集（auto_matched = false）及其关联会被保留
+func (h *CollectionHandler) Rematch(c *gin.Context) {
+	created, err := h.collectionService.ReMatchCollections()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "重新匹配失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("重新匹配完成，新建 %d 个合集", created),
+		"created": created,
+	})
+}
+
 // DuplicateStats 获取重复合集统计信息
 // GET /api/admin/collections/duplicate-stats
 func (h *CollectionHandler) DuplicateStats(c *gin.Context) {

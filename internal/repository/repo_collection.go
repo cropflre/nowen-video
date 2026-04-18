@@ -1,6 +1,9 @@
 package repository
 
 import (
+	"strings"
+	"unicode"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
@@ -43,6 +46,61 @@ func (r *MovieCollectionRepo) FindByName(name string) (*model.MovieCollection, e
 	var coll model.MovieCollection
 	err := r.db.Where("name = ?", name).First(&coll).Error
 	return &coll, err
+}
+
+// FindByNameFuzzy 根据名称模糊查找合集
+// 先尝试精确匹配，失败后通过标准化名称（去除空格、标点、全半角差异）进行匹配
+// 这样 "逃学威龙" 和 "逃学威龙 " 或 "逃学威龙·" 都能匹配到同一合集
+func (r *MovieCollectionRepo) FindByNameFuzzy(name string) (*model.MovieCollection, error) {
+	// 1. 先尝试精确匹配
+	if coll, err := r.FindByName(name); err == nil {
+		return coll, nil
+	}
+
+	// 2. 精确匹配失败，使用标准化名称在所有合集中查找
+	var allColls []model.MovieCollection
+	if err := r.db.Find(&allColls).Error; err != nil {
+		return nil, err
+	}
+
+	normalized := normalizeForMatch(name)
+	for i := range allColls {
+		if normalizeForMatch(allColls[i].Name) == normalized {
+			return &allColls[i], nil
+		}
+	}
+
+	return nil, gorm.ErrRecordNotFound
+}
+
+// normalizeForMatch 标准化名称用于模糊匹配
+// 去除空格、常见标点、全半角差异，统一为小写
+func normalizeForMatch(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		// 跳过空格和常见标点
+		if unicode.IsSpace(r) || isIgnoredPunct(r) {
+			continue
+		}
+		// 全角转半角
+		switch {
+		case r >= 'Ａ' && r <= 'Ｚ':
+			r = r - 'Ａ' + 'A'
+		case r >= 'ａ' && r <= 'ｚ':
+			r = r - 'ａ' + 'a'
+		case r >= '０' && r <= '９':
+			r = r - '０' + '0'
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+	return b.String()
+}
+
+// isIgnoredPunct 判断是否为在比较时应忽略的标点符号
+// 使用 unicode.IsPunct 判断，覆盖所有标点类别
+func isIgnoredPunct(r rune) bool {
+	return unicode.IsPunct(r)
 }
 
 // FindAllByName 根据名称精确查找所有同名合集
@@ -112,7 +170,7 @@ func (r *MovieCollectionRepo) List(page, size int) ([]model.MovieCollection, int
 
 	r.db.Model(&model.MovieCollection{}).Where("media_count > 0").Count(&total)
 	err := r.db.Where("media_count > 0").
-		Order("updated_at DESC").
+		Order("created_at DESC").
 		Offset((page - 1) * size).Limit(size).
 		Find(&colls).Error
 	return colls, total, err
@@ -179,4 +237,33 @@ func (r *MovieCollectionRepo) Search(keyword string, limit int) ([]model.MovieCo
 		Limit(limit).
 		Find(&colls).Error
 	return colls, err
+}
+
+// ClearAutoMatchedAssociations 清除所有自动匹配合集的电影关联（将 collection_id 置空）
+// 保留手动创建的合集（auto_matched = false）及其关联
+func (r *MovieCollectionRepo) ClearAutoMatchedAssociations() (int64, error) {
+	// 获取所有自动匹配的合集 ID
+	var autoMatchedIDs []string
+	if err := r.db.Model(&model.MovieCollection{}).
+		Where("auto_matched = true").
+		Pluck("id", &autoMatchedIDs).Error; err != nil {
+		return 0, err
+	}
+
+	if len(autoMatchedIDs) == 0 {
+		return 0, nil
+	}
+
+	// 清除这些合集下电影的 collection_id
+	result := r.db.Model(&model.Media{}).
+		Where("collection_id IN ?", autoMatchedIDs).
+		Update("collection_id", "")
+	return result.RowsAffected, result.Error
+}
+
+// DeleteAutoMatchedCollections 删除所有自动匹配的合集记录
+// 仅删除 auto_matched = true 的合集，保留手动创建的
+func (r *MovieCollectionRepo) DeleteAutoMatchedCollections() (int64, error) {
+	result := r.db.Where("auto_matched = true").Delete(&model.MovieCollection{})
+	return result.RowsAffected, result.Error
 }

@@ -240,45 +240,75 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 
 	// ===== 第二层：连接词分割法提取前缀并聚合 =====
 	prefixGroups := make(map[string][]model.Media)
+	matchedIDs := make(map[string]bool) // 记录已被L1或L2匹配的媒体ID
+	for id := range groups {
+		for _, m := range groups[id] {
+			matchedIDs[m.ID] = true
+		}
+	}
 	for _, m := range unmatchedMovies {
 		prefix := extractPrefixByDelimiter(m.Title)
 		if prefix != "" {
 			prefixGroups[prefix] = append(prefixGroups[prefix], m)
+			matchedIDs[m.ID] = true
 		}
 	}
 
-	// 将第二层中 >= 2 部电影的前缀组合并到主分组中
-	// 注意：如果前缀名与第一层的基础名冲突，合并到同一组
+	// 修复点1：不再提前过滤 len < 2 的前缀组，全部合并到主分组，统一在后续处理
+	// 这样后续单独入库的系列电影也能被追加到已存在的同名合集中
 	for prefix, mediaList := range prefixGroups {
-		if len(mediaList) < 2 {
-			continue // 只有一部电影的前缀不构成系列
-		}
 		groups[prefix] = append(groups[prefix], mediaList...)
 		s.logger.Infof("[前缀匹配] 发现系列前缀 '%s'，包含 %d 部电影", prefix, len(mediaList))
 	}
 
+	// ===== 第三层：通用空格分割 =====
+	// 对第一层和第二层均未匹配的电影，只要标题包含空格就提取空格前的基础名
+	spaceGroups := make(map[string][]model.Media)
+	for _, m := range unmatchedMovies {
+		if matchedIDs[m.ID] {
+			continue // 已被L1或L2匹配，跳过
+		}
+		baseName := extractBaseNameBySpaceSplit(m.Title)
+		if baseName != "" {
+			spaceGroups[baseName] = append(spaceGroups[baseName], m)
+		}
+	}
+
+	for baseName, mediaList := range spaceGroups {
+		groups[baseName] = append(groups[baseName], mediaList...)
+		s.logger.Infof("[空格分割] 发现系列基础名 '%s'，包含 %d 部电影", baseName, len(mediaList))
+	}
+
 	created := 0
 	for baseName, mediaList := range groups {
-		if len(mediaList) < 2 {
+		// 修复点2：先检查数据库中是否已经存在同名合集（模糊匹配，去除空格/标点/全半角差异）
+		existing, err := s.collRepo.FindByNameFuzzy(baseName)
+
+		// 修复点3：只有当合集"不存在"且"待关联电影少于2部"时，才跳过（不创建新合集）
+		if (err != nil || existing == nil) && len(mediaList) < 2 {
 			continue
 		}
 
-		// 检查是否已存在同名合集（合并后只会有一个）
-		existing, err := s.collRepo.FindByName(baseName)
+		// 修复点4：如果合集已存在，即使本次只匹配到 1 部电影，也追加进去
 		if err == nil && existing != nil {
-			// 已存在，将未关联的电影加入
+			added := false
 			for _, m := range mediaList {
 				if m.CollectionID == "" {
 					s.mediaRepo.UpdateFields(m.ID, map[string]interface{}{
 						"collection_id": existing.ID,
 					})
+					added = true
 				}
 			}
-			s.collRepo.UpdateMediaCount(existing.ID)
+			// 如果有新电影被加入，则更新该合集的媒体总数
+			if added {
+				s.collRepo.UpdateMediaCount(existing.ID)
+				s.logger.Infof("向已有合集 '%s' 自动追加了 %d 部电影", baseName, len(mediaList))
+			}
 			continue
 		}
 
-		// 创建新合集
+		// 创建新合集（只有待关联电影 >= 2 部才会走到这里）
 		coll := &model.MovieCollection{
 			Name:        baseName,
 			PosterPath:  mediaList[0].PosterPath, // 使用第一部电影的海报
@@ -474,6 +504,36 @@ func (s *CollectionService) GetDuplicateCollectionStats() (map[string]int, error
 	return stats, nil
 }
 
+// ReMatchCollections 重新匹配合集
+// 清除所有自动匹配的合集关联和记录，然后重新执行自动匹配
+// 手动创建的合集（auto_matched = false）及其关联会被保留
+func (s *CollectionService) ReMatchCollections() (int, error) {
+	// 第一步：清除所有自动匹配合集的电影关联
+	cleared, err := s.collRepo.ClearAutoMatchedAssociations()
+	if err != nil {
+		s.logger.Warnf("清除自动匹配关联时出错: %v", err)
+	} else if cleared > 0 {
+		s.logger.Infof("已清除 %d 条自动匹配的电影关联", cleared)
+	}
+
+	// 第二步：删除所有自动匹配的合集记录
+	deleted, err := s.collRepo.DeleteAutoMatchedCollections()
+	if err != nil {
+		s.logger.Warnf("删除自动匹配合集记录时出错: %v", err)
+	} else if deleted > 0 {
+		s.logger.Infof("已删除 %d 个自动匹配合集", deleted)
+	}
+
+	// 第三步：重新执行自动匹配
+	created, err := s.AutoMatchCollections()
+	if err != nil {
+		return 0, err
+	}
+
+	s.logger.Infof("重新匹配完成：删除 %d 个旧合集，新建 %d 个合集", deleted, created)
+	return created, nil
+}
+
 // ==================== 标题匹配算法 ====================
 
 // 用于匹配标题中的数字序号模式
@@ -497,6 +557,24 @@ var (
 	reChineseDelimiterDe = regexp.MustCompile(`^(.{2,}?)的(.{3,})$`)
 	// 匹配英文分隔符模式："Harry Potter - The Chamber of Secrets"
 	reEnglishDelimiter = regexp.MustCompile(`(?i)^(.{2,}?)\s*[-–—:：]\s+(.{2,})$`)
+
+	// ===== 第二层补充：人名/副标题后缀模式 =====
+	// 匹配"基础名 + 空格 + XX编/篇/版/章/辑/卷/期"模式
+	// 例如："少女教育 稻垣纱衣编" -> "少女教育"
+	//       "少女教育 雏田麻未编" -> "少女教育"
+	//       "世界遗产 第X卷"      -> "世界遗产"
+	//       "名作剧场 第X期"      -> "名作剧场"
+	// 后缀词至少2个字符（人名），避免误拆
+	rePersonSuffix = regexp.MustCompile(`^(.{2,}?)\s+(.{2,}(?:编|篇|版|章|辑|卷|期|作|風|style|edition))\s*$`)
+
+	// ===== 第三层：通用空格分割模式 =====
+	// 匹配"基础名 + 空格 + 任意后缀"的通用模式
+	// 这是最后一道防线，只要标题中包含空格且基础名合法，就提取空格前的基础名
+	// 例如："少女教育 稻垣纱衣" -> "少女教育"
+	//       "少女教育 雏田麻未" -> "少女教育"
+	//       "Super Hero Max"    -> "Super Hero"
+	// 要求：基础名 >= 2字符，后缀 >= 2字符
+	reSpaceSplit = regexp.MustCompile(`^(.{2,}?)\s+(.{2,})\s*$`)
 )
 
 // extractSeriesBaseName 从电影标题中提取系列基础名（第一层：精确模式匹配）
@@ -519,6 +597,7 @@ func extractSeriesBaseName(title string) string {
 		reEnglishSequel,
 		reRomanSuffix,
 		reParenSuffix,
+		reColonSequel,
 	}
 
 	for _, pattern := range patterns {
@@ -566,6 +645,36 @@ func extractPrefixByDelimiter(title string) string {
 
 	// 尝试英文分隔符分割
 	if matches := reEnglishDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
+		prefix := strings.TrimSpace(matches[1])
+		if len([]rune(prefix)) >= 2 {
+			return normalizeBaseName(prefix)
+		}
+	}
+
+	// 尝试人名/副标题后缀分割
+	// 例如："少女教育 稻垣纱衣编" -> "少女教育"
+	if matches := rePersonSuffix.FindStringSubmatch(title); len(matches) >= 2 {
+		prefix := strings.TrimSpace(matches[1])
+		if len([]rune(prefix)) >= 2 {
+			return normalizeBaseName(prefix)
+		}
+	}
+
+	return ""
+}
+
+// extractBaseNameBySpaceSplit 第三层：通用空格分割
+// 只要标题中包含空格，就提取空格前的基础名
+// 这是最后防线，在第一层（序号）和第二层（连接词/后缀）都无法匹配时使用
+// 例如："少女教育 稻垣纱衣" -> "少女教育"
+//       "Super Hero Max"    -> "Super Hero"
+func extractBaseNameBySpaceSplit(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+
+	if matches := reSpaceSplit.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
 			return normalizeBaseName(prefix)
