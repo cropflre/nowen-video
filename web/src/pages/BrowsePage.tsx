@@ -81,62 +81,58 @@ export default function BrowsePage() {
   const [libraries, setLibraries] = useState<Library[]>([])
   const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
   const [seriesList, setSeriesList] = useState<Series[]>([])
-  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  // ===== 筛选状态（从 URL 参数恢复） =====
+  // ===== 筛选状态（全部从 URL 读取，单一数据源） =====
   const page = parseInt(searchParams.get('page') || '1', 10) || 1
-  const size = 30
-  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
-  const [selectedLibrary, setSelectedLibrary] = useState<string>(searchParams.get('lib') || '')
-  const [mediaType, setMediaType] = useState<'' | 'movie' | 'series'>(
-    (searchParams.get('type') as '' | 'movie' | 'series') || ''
-  )
-  const [selectedGenres, setSelectedGenres] = useState<string[]>(() => {
+  const size = parseInt(searchParams.get('size') || '30', 10) || 30
+  const searchQuery = searchParams.get('q') || ''
+  const selectedLibrary = searchParams.get('lib') || ''
+  const mediaType = (searchParams.get('type') || '') as '' | 'movie' | 'series'
+  const selectedGenres = useMemo(() => {
     const g = searchParams.get('genres')
     return g ? g.split(',').filter(Boolean) : []
-  })
-  const [selectedCountry, setSelectedCountry] = useState(searchParams.get('country') || '')
-  const [yearRange, setYearRange] = useState<{ min: number; max: number }>(() => ({
+  }, [searchParams])
+  const selectedCountry = searchParams.get('country') || ''
+  const yearRange = useMemo<{ min: number; max: number }>(() => ({
     min: parseInt(searchParams.get('year_min') || '0', 10) || 0,
     max: parseInt(searchParams.get('year_max') || '0', 10) || 0,
-  }))
-  const [minRating, setMinRating] = useState(parseInt(searchParams.get('rating') || '0', 10) || 0)
-  const [sortValue, setSortValue] = useState(searchParams.get('sort') || 'created_desc')
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    (searchParams.get('view') as ViewMode) || 'grid'
-  )
+  }), [searchParams])
+  const minRating = parseInt(searchParams.get('rating') || '0', 10) || 0
+  const sortValue = searchParams.get('sort') || 'created_desc'
+  const viewMode = (searchParams.get('view') || 'grid') as ViewMode
   const [showFilters, setShowFilters] = useState(false)
   const [showSortDropdown, setShowSortDropdown] = useState(false)
 
-  // ===== 分页 =====
-  const setPage = useCallback((newPage: number) => {
-    const params = new URLSearchParams(searchParams)
-    if (newPage <= 1) params.delete('page')
-    else params.set('page', String(newPage))
-    setSearchParams(params, { replace: true })
+  // 搜索输入框的本地状态（仅用于输入，提交时才同步到 URL）
+  const [searchInput, setSearchInput] = useState(searchQuery)
+
+  // ===== 统一 URL 更新函数 =====
+  // 所有状态变更都通过此函数更新 URL，避免 state 和 URL 不同步
+  const updateUrl = useCallback((changes: Record<string, string | null>) => {
+    const p = new URLSearchParams(searchParams)
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) {
+        p.delete(key)
+      } else {
+        p.set(key, value)
+      }
+    }
+    // 筛选条件变化时重置到第1页（除非正在切换页码）
+    if (!('page' in changes)) {
+      p.delete('page')
+    }
+    setSearchParams(p, { replace: true })
   }, [searchParams, setSearchParams])
 
-  // ===== 同步筛选状态到 URL =====
-  const syncFiltersToUrl = useCallback(() => {
-    const params = new URLSearchParams()
-    if (searchQuery) params.set('q', searchQuery)
-    if (selectedLibrary) params.set('lib', selectedLibrary)
-    if (mediaType) params.set('type', mediaType)
-    if (selectedGenres.length > 0) params.set('genres', selectedGenres.join(','))
-    if (selectedCountry) params.set('country', selectedCountry)
-    if (yearRange.min > 0) params.set('year_min', String(yearRange.min))
-    if (yearRange.max > 0) params.set('year_max', String(yearRange.max))
-    if (minRating > 0) params.set('rating', String(minRating))
-    if (sortValue !== 'created_desc') params.set('sort', sortValue)
-    if (viewMode !== 'grid') params.set('view', viewMode)
-    setSearchParams(params, { replace: true })
-  }, [searchQuery, selectedLibrary, mediaType, selectedGenres, selectedCountry, yearRange, minRating, sortValue, viewMode, setSearchParams])
+  // ===== 分页 =====
+  const setPage = useCallback((newPage: number) => {
+    updateUrl({ page: newPage <= 1 ? null : String(newPage) })
+  }, [updateUrl])
 
-  // 筛选变化时同步到 URL
-  useEffect(() => {
-    syncFiltersToUrl()
-  }, [syncFiltersToUrl])
+  const setPageSize = useCallback((newSize: number) => {
+    updateUrl({ size: newSize === 30 ? null : String(newSize) })
+  }, [updateUrl])
 
   // ===== 加载媒体库列表 =====
   useEffect(() => {
@@ -145,24 +141,29 @@ export default function BrowsePage() {
     }).catch(() => {})
   }, [])
 
+  // URL 中的 q 变化时同步到搜索输入框（如浏览器前进/后退）
+  useEffect(() => {
+    setSearchInput(searchQuery)
+  }, [searchQuery])
+
   // ===== 加载数据 =====
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const libId = selectedLibrary || undefined
+      // 请求全量数据（后端 ListMixed 本身就是全量查询再截断，直接取全量）
       const [mixedRes, seriesRes] = await Promise.all([
-        mediaApi.listMixed({ page, size, library_id: libId }),
+        mediaApi.listMixed({ page: 1, size: 10000, library_id: libId }),
         seriesApi.list({ library_id: libId }),
       ])
       setMixedItems(mixedRes.data.data || [])
-      setTotal(mixedRes.data.total)
       setSeriesList(seriesRes.data.data || [])
     } catch {
       toast.error('加载影视库内容失败')
     } finally {
       setLoading(false)
     }
-  }, [page, selectedLibrary])
+  }, [selectedLibrary])
 
   useEffect(() => {
     fetchData()
@@ -284,7 +285,12 @@ export default function BrowsePage() {
     return items
   }, [mixedItems, mediaType, searchQuery, selectedGenres, selectedCountry, yearRange, minRating, sortValue])
 
-  const totalPages = Math.ceil(total / size)
+  const totalPages = Math.ceil(filteredItems.length / size)
+  // 前端分页：从筛选后的全量数据中截取当前页
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * size
+    return filteredItems.slice(start, start + size)
+  }, [filteredItems, page, size])
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sortValue)?.label || '排序'
 
   // 活跃筛选条件数量
@@ -297,21 +303,19 @@ export default function BrowsePage() {
 
   // 清除所有筛选
   const clearAllFilters = () => {
-    setSearchQuery('')
-    setSelectedLibrary('')
-    setMediaType('')
-    setSelectedGenres([])
-    setSelectedCountry('')
-    setYearRange({ min: 0, max: 0 })
-    setMinRating(0)
-    setSortValue('created_desc')
+    setSearchInput('')
+    const p = new URLSearchParams()
+    // 只保留分页和视图参数
+    if (size !== 30) p.set('size', String(size))
+    if (viewMode !== 'grid') p.set('view', viewMode)
+    setSearchParams(p, { replace: true })
   }
 
   // 切换类型标签
   const toggleGenre = (genre: string) => {
-    setSelectedGenres((prev) =>
-      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
-    )
+    const current = selectedGenres
+    const next = current.includes(genre) ? current.filter((g) => g !== genre) : [...current, genre]
+    updateUrl({ genres: next.length > 0 ? next.join(',') : null })
   }
 
   // ===== 统计信息 =====
@@ -366,7 +370,7 @@ export default function BrowsePage() {
               background: 'var(--glass-bg)',
               border: `1px solid ${mediaType === card.key ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}`,
             }}
-            onClick={() => setMediaType(mediaType === card.key ? '' : card.key as '' | 'movie' | 'series')}
+            onClick={() => updateUrl({ type: mediaType === card.key ? null : card.key })}
           >
             <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: `linear-gradient(90deg, transparent, ${card.gradientColor}, transparent)` }} />
             <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -398,7 +402,7 @@ export default function BrowsePage() {
           {libraries.length > 1 && (
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => { setSelectedLibrary(''); setPage(1) }}
+                onClick={() => { updateUrl({ lib: null }) }}
                 className={clsx(
                   'rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
                   !selectedLibrary && 'font-semibold'
@@ -417,7 +421,7 @@ export default function BrowsePage() {
               {libraries.map((lib) => (
                 <button
                   key={lib.id}
-                  onClick={() => { setSelectedLibrary(lib.id); setPage(1) }}
+                  onClick={() => { updateUrl({ lib: lib.id }) }}
                   className={clsx(
                     'rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
                     selectedLibrary === lib.id && 'font-semibold'
@@ -446,14 +450,17 @@ export default function BrowsePage() {
             />
             <input
               type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value)
+                updateUrl({ q: e.target.value || null })
+              }}
               className="input pl-9 pr-8 py-2 text-sm w-full"
               placeholder="搜索影视作品..."
             />
-            {searchQuery && (
+            {searchInput && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => { setSearchInput(''); updateUrl({ q: null }) }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors hover:bg-[var(--nav-hover-bg)]"
                 style={{ color: 'var(--text-muted)' }}
               >
@@ -525,7 +532,7 @@ export default function BrowsePage() {
                       return (
                         <button
                           key={opt.value}
-                          onClick={() => { setSortValue(opt.value); setShowSortDropdown(false) }}
+                          onClick={() => { updateUrl({ sort: opt.value === 'created_desc' ? null : opt.value }); setShowSortDropdown(false) }}
                           className={clsx(
                             'w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
                             sortValue === opt.value
@@ -551,7 +558,7 @@ export default function BrowsePage() {
             style={{ border: '1px solid var(--border-default)' }}
           >
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => updateUrl({ view: null })}
               className="p-2 transition-all"
               style={{
                 background: viewMode === 'grid' ? 'var(--nav-active-bg)' : 'transparent',
@@ -562,7 +569,7 @@ export default function BrowsePage() {
               <Grid3X3 size={16} />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => updateUrl({ view: 'list' })}
               className="p-2 transition-all"
               style={{
                 background: viewMode === 'list' ? 'var(--nav-active-bg)' : 'transparent',
@@ -573,7 +580,7 @@ export default function BrowsePage() {
               <LayoutList size={16} />
             </button>
             <button
-              onClick={() => setViewMode('poster')}
+              onClick={() => updateUrl({ view: 'poster' })}
               className="p-2 transition-all"
               style={{
                 background: viewMode === 'poster' ? 'var(--nav-active-bg)' : 'transparent',
@@ -649,7 +656,7 @@ export default function BrowsePage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
-                        onClick={() => setSelectedCountry('')}
+                        onClick={() => updateUrl({ country: null })}
                         className={clsx(
                           'rounded-lg px-2.5 py-1 text-xs font-medium transition-all',
                           !selectedCountry && 'text-neon'
@@ -667,7 +674,7 @@ export default function BrowsePage() {
                       {allCountries.map((country) => (
                         <button
                           key={country}
-                          onClick={() => setSelectedCountry(selectedCountry === country ? '' : country)}
+                          onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}
                           className={clsx(
                             'rounded-lg px-2.5 py-1 text-xs font-medium transition-all',
                             selectedCountry === country && 'text-neon'
@@ -699,7 +706,7 @@ export default function BrowsePage() {
                       return (
                         <button
                           key={yr.label}
-                          onClick={() => setYearRange({ min: yr.min, max: yr.max })}
+                          onClick={() => updateUrl({ year_min: yr.min > 0 ? String(yr.min) : null, year_max: yr.max > 0 ? String(yr.max) : null })}
                           className={clsx(
                             'rounded-lg px-2.5 py-1 text-xs font-medium transition-all',
                             isActive && 'text-neon'
@@ -731,7 +738,7 @@ export default function BrowsePage() {
                       return (
                         <button
                           key={opt.value}
-                          onClick={() => setMinRating(opt.value)}
+                          onClick={() => updateUrl({ rating: opt.value > 0 ? String(opt.value) : null })}
                           className={clsx(
                             'rounded-lg px-2.5 py-1 text-xs font-medium transition-all',
                             isActive && 'text-neon'
@@ -791,7 +798,7 @@ export default function BrowsePage() {
               </span>
             ))}
             <button
-              onClick={() => setSelectedGenres([])}
+              onClick={() => updateUrl({ genres: null })}
               className="text-xs transition-colors hover:text-red-400"
               style={{ color: 'var(--text-muted)' }}
             >
@@ -854,7 +861,7 @@ export default function BrowsePage() {
                 )
               ))}
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : pagedItems.length === 0 ? (
             // 空状态
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -894,7 +901,7 @@ export default function BrowsePage() {
               initial="hidden"
               animate="visible"
             >
-              {filteredItems.map((item) => {
+              {pagedItems.map((item) => {
                 if (item.type === 'series' && item.series) {
                   return (
                     <motion.div key={`s-${item.series.id}`} variants={staggerItemVariants} className="min-w-0">
@@ -920,7 +927,7 @@ export default function BrowsePage() {
               initial="hidden"
               animate="visible"
             >
-              {filteredItems.map((item) => (
+              {pagedItems.map((item) => (
                 <motion.div key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} variants={staggerItemVariants}>
                   <BrowseListItem item={item} />
                 </motion.div>
@@ -934,7 +941,7 @@ export default function BrowsePage() {
               initial="hidden"
               animate="visible"
             >
-              {filteredItems.map((item) => (
+              {pagedItems.map((item) => (
                 <motion.div key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} variants={staggerItemVariants}>
                   <PosterWallItem item={item} />
                 </motion.div>
@@ -948,8 +955,10 @@ export default function BrowsePage() {
       <Pagination
         page={page}
         totalPages={totalPages}
-        total={total}
+        total={filteredItems.length}
         pageSize={size}
+        pageSizeOptions={[20, 30, 50, 100]}
+        onPageSizeChange={setPageSize}
         onPageChange={setPage}
       />
     </motion.div>

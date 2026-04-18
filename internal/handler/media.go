@@ -128,7 +128,7 @@ func (h *MediaHandler) ListMixed(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if size < 1 || size > 100 {
+	if size < 1 || size > 50000 {
 		size = 20
 	}
 
