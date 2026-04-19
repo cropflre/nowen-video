@@ -300,10 +300,11 @@ export default function VideoPlayer({
   const loadSubtitle = useCallback((type: string, id: string) => {
     const video = videoRef.current
     if (!video) return
-    while (video.textTracks.length > 0) {
-      const track = video.querySelector('track')
-      if (track) track.remove()
-      else break
+    // 清除之前手动添加的 <track> 元素
+    video.querySelectorAll('track').forEach(t => t.remove())
+    // 将所有 textTrack 设为 hidden（HLS.js 的轨道也一并隐藏，不影响）
+    for (let i = 0; i < video.textTracks.length; i++) {
+      video.textTracks[i].mode = 'hidden'
     }
     if (type === 'off') {
       setActiveSubtitle(null)
@@ -334,21 +335,77 @@ export default function VideoPlayer({
       label = `翻译字幕（${langNames[id] || id}）`
     }
     if (subtitleUrl) {
-      const trackEl = document.createElement('track')
-      trackEl.kind = 'subtitles'
-      trackEl.label = label
-      trackEl.srclang = 'und'
-      trackEl.src = subtitleUrl
-      trackEl.default = true
-      video.appendChild(trackEl)
-      setTimeout(() => {
-        if (video.textTracks.length > 0) {
-          video.textTracks[0].mode = 'showing'
-        }
-      }, 100)
+      // 使用 fetch + addTextTrack 代替 <track> 元素，避免跨域和 HLS.js 干扰
+      const token = useAuthStore.getState().token
+      const headers: Record<string, string> = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      fetch(subtitleUrl, { headers })
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.text()
+        })
+        .then(vttText => {
+          const blob = new Blob([vttText], { type: 'text/vtt' })
+          const blobUrl = URL.createObjectURL(blob)
+          const trackEl = document.createElement('track')
+          trackEl.kind = 'subtitles'
+          trackEl.label = label
+          trackEl.srclang = 'und'
+          trackEl.src = blobUrl
+          trackEl.default = true
+          video.appendChild(trackEl)
+          setTimeout(() => {
+            // 找到刚添加的 track 并激活
+            for (let i = 0; i < video.textTracks.length; i++) {
+              const t = video.textTracks[i]
+              if (t.label === label) {
+                t.mode = 'showing'
+              } else {
+                t.mode = 'hidden'
+              }
+            }
+            // 释放 blob URL（字幕已加载，不再需要）
+            URL.revokeObjectURL(blobUrl)
+          }, 100)
+        })
+        .catch(err => {
+          console.error('字幕加载失败:', err)
+        })
       setActiveSubtitle(`${type}:${id}`)
     }
   }, [mediaId, embeddedSubs, externalSubs])
+
+  // 自动选中第一个可用字幕
+  const autoSelectSubtitle = useCallback(() => {
+    // 优先级：外挂字幕 > 内嵌非bitmap字幕 > AI字幕 > 翻译字幕
+    if (externalSubs.length > 0) {
+      loadSubtitle('external', externalSubs[0].path)
+      return
+    }
+    const firstPlayableEmbedded = embeddedSubs.find(s => !s.bitmap)
+    if (firstPlayableEmbedded) {
+      loadSubtitle('embedded', String(firstPlayableEmbedded.index))
+      return
+    }
+    if (aiSubtitleStatus?.status === 'completed') {
+      loadSubtitle('ai', '')
+      return
+    }
+    if (translatedSubs.length > 0) {
+      loadSubtitle('translated', translatedSubs[0].language)
+      return
+    }
+  }, [externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, loadSubtitle])
+
+  // 字幕列表就绪后自动选中第一个
+  useEffect(() => {
+    if (!mediaId || activeSubtitle) return // 已有选中字幕，不覆盖
+    // 有任何可用字幕时尝试自动选中
+    if (externalSubs.length > 0 || embeddedSubs.some(s => !s.bitmap) || aiSubtitleStatus?.status === 'completed' || translatedSubs.length > 0) {
+      autoSelectSubtitle()
+    }
+  }, [mediaId, activeSubtitle, externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, autoSelectSubtitle])
 
   // 初始化播放器
   useEffect(() => {
@@ -849,6 +906,7 @@ export default function VideoPlayer({
         onClick={togglePlay}
         onDoubleClick={toggleFullscreen}
         playsInline
+        crossOrigin="anonymous"
       />
 
       {/* 加载错误提示 */}

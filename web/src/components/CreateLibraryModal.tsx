@@ -195,8 +195,9 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
         ...advanced,
       })
       onClose()
-    } catch {
-      setError('创建媒体库失败，请检查路径是否正确')
+    } catch (err: any) {
+      const serverMsg = err?.response?.data?.error
+      setError(serverMsg || '创建媒体库失败，请检查路径是否正确')
     } finally {
       setSubmitting(false)
     }
