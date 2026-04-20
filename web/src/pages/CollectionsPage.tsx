@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
+import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
 import type { MovieCollection } from '@/types'
 import Pagination from '@/components/Pagination'
 import { Library, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw, Grid3X3, LayoutList, ArrowUpDown, ChevronDown, Filter } from 'lucide-react'
@@ -22,18 +23,20 @@ const SORT_OPTIONS = [
 
 type SortValue = typeof SORT_OPTIONS[number]['value']
 
+interface CollectionsData {
+  list: MovieCollection[]
+  total: number
+}
+
 export default function CollectionsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const sortRef = useRef<HTMLDivElement>(null)
-  const [collections, setCollections] = useState<MovieCollection[]>([])
-  const [total, setTotal] = useState(0)
   const page = Number(searchParams.get('page')) || 1
   const pageSize = Number(searchParams.get('size')) || 24
   const viewMode = (searchParams.get('view') as ViewMode) || 'grid'
   const sortValue = (searchParams.get('sort') as SortValue) || 'created_desc'
   const filterAuto = searchParams.get('auto') || '' // '' | 'true' | 'false'
-  const [loading, setLoading] = useState(true)
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<MovieCollection[] | null>(null)
   const [operating, setOperating] = useState(false)
@@ -53,23 +56,23 @@ export default function CollectionsPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // 加载合集列表
-  const fetchCollections = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await collectionApi.list({ page, size: pageSize })
-      setCollections(res.data.data || [])
-      setTotal(res.data.total || 0)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [page, pageSize])
-
-  useEffect(() => {
-    fetchCollections()
-  }, [fetchCollections])
+  // 加载合集列表（排序和筛选全部下沉到后端，保证分页和总数一致）
+  // 使用 usePageCache：按"分页/排序/筛选"组合的 key 分桶缓存，跨导航命中时零 loading
+  const { data, loading, refetch } = usePageCache<CollectionsData>(
+    `collections:list:page=${page}:size=${pageSize}:sort=${sortValue}:auto=${filterAuto}`,
+    async () => {
+      const res = await collectionApi.list({
+        page,
+        size: pageSize,
+        sort: sortValue,
+        auto: filterAuto || undefined,
+      })
+      return { list: res.data.data || [], total: res.data.total || 0 }
+    },
+    { ttl: 20_000 },
+  )
+  const collections = data?.list ?? []
+  const total = data?.total ?? 0
 
   // 搜索合集
   const handleSearch = useCallback(async () => {
@@ -93,13 +96,14 @@ export default function CollectionsPage() {
     try {
       const res = await collectionApi.mergeDuplicates()
       setOperationMsg(res.data.message || `已合并 ${res.data.merged} 组重复合集`)
-      fetchCollections()
+      invalidatePageCachePrefix('collections:')
+      refetch(true)
     } catch {
       setOperationMsg('合并失败，请重试')
     } finally {
       setOperating(false)
     }
-  }, [operating, fetchCollections])
+  }, [operating, refetch])
 
   // 清理空壳合集
   const handleCleanupEmpty = useCallback(async () => {
@@ -109,13 +113,14 @@ export default function CollectionsPage() {
     try {
       const res = await collectionApi.cleanupEmpty()
       setOperationMsg(res.data.message || `已清理 ${res.data.cleaned} 个空壳合集`)
-      fetchCollections()
+      invalidatePageCachePrefix('collections:')
+      refetch(true)
     } catch {
       setOperationMsg('清理失败，请重试')
     } finally {
       setOperating(false)
     }
-  }, [operating, fetchCollections])
+  }, [operating, refetch])
 
   // 重新匹配合集
   const handleRematch = useCallback(async () => {
@@ -126,51 +131,32 @@ export default function CollectionsPage() {
       const res = await collectionApi.rematch()
       setOperationMsg(res.data.message || `重新匹配完成，新建 ${res.data.created} 个合集`)
       setSearchParams(prev => { prev.set('page', '1'); return prev })
-      fetchCollections()
+      invalidatePageCachePrefix('collections:')
+      refetch(true)
     } catch {
       setOperationMsg('重新匹配失败，请重试')
     } finally {
       setOperating(false)
     }
-  }, [operating, fetchCollections, setSearchParams])
+  }, [operating, refetch, setSearchParams])
 
-  // ===== 排序 + 筛选 =====
-  const filteredAndSorted = useMemo(() => {
-    let items = searchResults !== null ? [...searchResults] : [...collections]
-
-    // 筛选：自动匹配 / 手动创建
+  // ===== 显示列表 =====
+  // 正常浏览模式下，后端已经完成排序和筛选，直接使用 collections
+  // 搜索模式下，对搜索结果做客户端筛选（搜索 API 目前未下沉 auto 筛选）
+  const displayList = useMemo(() => {
+    if (searchResults === null) return collections
+    let items = [...searchResults]
     if (filterAuto !== '') {
       const isAuto = filterAuto === 'true'
       items = items.filter(c => c.auto_matched === isAuto)
     }
-
-    // 排序
-    const [field, dir] = sortValue.split('_') as [string, string]
-    const mult = dir === 'desc' ? -1 : 1
-    items.sort((a, b) => {
-      let cmp = 0
-      switch (field) {
-        case 'created':
-          cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          break
-        case 'updated':
-          cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
-          break
-        case 'name':
-          cmp = a.name.localeCompare(b.name, 'zh-CN')
-          break
-        case 'count':
-          cmp = a.media_count - b.media_count
-          break
-      }
-      return cmp * mult
-    })
-
     return items
-  }, [collections, searchResults, sortValue, filterAuto])
+  }, [collections, searchResults, filterAuto])
 
-  const displayList = filteredAndSorted
-  const totalPages = Math.ceil(total / pageSize)
+  // 分页总页数：搜索结果按搜索结果数量计算；浏览模式按后端 total 计算（已按筛选条件过滤）
+  const totalPages = searchResults === null
+    ? Math.ceil(total / pageSize)
+    : Math.ceil(displayList.length / pageSize)
   const currentSortLabel = SORT_OPTIONS.find(o => o.value === sortValue)?.label || '排序'
   const hasActiveFilter = filterAuto !== ''
 

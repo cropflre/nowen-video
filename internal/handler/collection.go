@@ -58,10 +58,12 @@ func (h *CollectionHandler) GetCollectionDetail(c *gin.Context) {
 }
 
 // ListCollections 获取合集列表
-// GET /api/collections
+// GET /api/collections?page=&size=&sort=&auto=
 func (h *CollectionHandler) ListCollections(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	sort := c.DefaultQuery("sort", "created_desc")
+	autoFilter := c.Query("auto") // "" | "true" | "false"
 
 	if page < 1 {
 		page = 1
@@ -69,8 +71,12 @@ func (h *CollectionHandler) ListCollections(c *gin.Context) {
 	if size < 1 || size > 100 {
 		size = 20
 	}
+	// 白名单校验 auto 参数，避免非法输入
+	if autoFilter != "" && autoFilter != "true" && autoFilter != "false" {
+		autoFilter = ""
+	}
 
-	colls, total, err := h.collectionService.ListCollections(page, size)
+	colls, total, err := h.collectionService.ListCollectionsWithOptions(page, size, sort, autoFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集列表失败"})
 		return

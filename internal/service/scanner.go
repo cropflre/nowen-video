@@ -332,6 +332,8 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		// P2: 内存查重（替代逐个 DB 查询）
 		if existingPaths != nil {
 			if existingPaths[path] {
+				// 标记此路径已在本次扫描中被磁盘命中（收尾清理时据此判断哪些 DB 记录已失效）
+				delete(existingPaths, path)
 				// 文件已存在：增量扫描模式下，如果文件未修改则跳过
 				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
 					skippedExist++
@@ -472,8 +474,24 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 	}
 
-	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d",
-		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated)
+	// 清理失效记录：walk 正常完成后，existingPaths 里剩余的路径即为"DB 有但磁盘已不存在"的记录
+	// （如用户把文件拖拽到其他位置/删除后的残留）。walk 出错时保守不删，避免误清理。
+	staleRemoved := 0
+	if err == nil && existingPaths != nil && len(existingPaths) > 0 {
+		for stalePath := range existingPaths {
+			if m, findErr := s.mediaRepo.FindByFilePath(stalePath); findErr == nil && m != nil {
+				if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
+					s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", stalePath, delErr)
+					continue
+				}
+				staleRemoved++
+				s.logger.Infof("清理失效媒体记录（磁盘已不存在）: %s", stalePath)
+			}
+		}
+	}
+
+	s.logger.Infof("电影库扫描统计: %s — 遍历文件: %d, 视频文件: %d, 新增: %d, 已存在跳过: %d, 已更新: %d, 清理失效: %d",
+		library.Name, totalFiles, videoFiles, count, skippedExist, skippedUpdated, staleRemoved)
 
 	return count, err
 }
@@ -708,6 +726,29 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			NewFound:    totalCount,
 			Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
 		})
+	}
+
+	// 收尾清理：遍历该库 DB 中所有文件路径，用 os.Stat 检查磁盘是否真的存在，
+	// 不存在的直接删除。这样无论文件原来属于电影目录还是剧集目录，都能正确清理。
+	// 之前的"限定范围"策略会遗漏被判为剧集目录的电影文件夹中的失效记录。
+	allPaths, cleanupErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
+	if cleanupErr == nil && allPaths != nil {
+		staleRemoved := 0
+		for dbPath := range allPaths {
+			if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
+					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
+						s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", dbPath, delErr)
+						continue
+					}
+					staleRemoved++
+					s.logger.Infof("清理失效媒体记录（磁盘已不存在）: %s", dbPath)
+				}
+			}
+		}
+		if staleRemoved > 0 {
+			s.logger.Infof("混合库 %s 清理失效媒体记录: %d 条", library.Name, staleRemoved)
+		}
 	}
 
 	s.logger.Infof("混合媒体库扫描完成: %s, 新增 %d 个媒体", library.Name, totalCount)
@@ -1089,6 +1130,27 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			actualSeriesName, newCount, series.SeasonCount, series.EpisodeCount)
 
 		totalNewEpisodes += newCount
+	}
+
+	// 收尾清理：检查该库 DB 中所有文件路径，磁盘上不存在的视为失效记录删除
+	allPaths, ppErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
+	if ppErr == nil && allPaths != nil {
+		staleRemoved := 0
+		for dbPath := range allPaths {
+			if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
+					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
+						s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", dbPath, delErr)
+						continue
+					}
+					staleRemoved++
+					s.logger.Infof("清理失效媒体记录（磁盘已不存在）: %s", dbPath)
+				}
+			}
+		}
+		if staleRemoved > 0 {
+			s.logger.Infof("剧集库 %s 清理失效媒体记录: %d 条", library.Name, staleRemoved)
+		}
 	}
 
 	return totalNewEpisodes, nil

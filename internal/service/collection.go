@@ -1,11 +1,9 @@
 package service
 
 import (
-	"regexp"
-	"strings"
 	"time"
-	"unicode"
 
+	"github.com/nowen-video/nowen-video/internal/matcher"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -122,7 +120,12 @@ func (s *CollectionService) GetCollectionDetail(collectionID string) (*Collectio
 // ListCollections 分页获取合集列表
 // 同时确保每个合集都有封面海报（使用第一部电影的海报）
 func (s *CollectionService) ListCollections(page, size int) ([]model.MovieCollection, int64, error) {
-	colls, total, err := s.collRepo.List(page, size)
+	return s.ListCollectionsWithOptions(page, size, "created_desc", "")
+}
+
+// ListCollectionsWithOptions 支持排序和来源筛选的分页查询
+func (s *CollectionService) ListCollectionsWithOptions(page, size int, sort, autoFilter string) ([]model.MovieCollection, int64, error) {
+	colls, total, err := s.collRepo.ListWithOptions(page, size, sort, autoFilter)
 	if err != nil {
 		return colls, total, err
 	}
@@ -539,176 +542,22 @@ func (s *CollectionService) ReMatchCollections() (int, error) {
 	return created, nil
 }
 
-// ==================== 标题匹配算法 ====================
+// ==================== 标题匹配算法（薄包装） ====================
+// 核心算法已抽取到 internal/matcher 包，供本服务和诊断脚本共同使用。
+// 这里保留包级别的包装函数名称，以最小化对现有调用点的影响。
 
-// 用于匹配标题中的数字序号模式
-var (
-	// 匹配中文数字序号：逃学威龙1、逃学威龙2、速度与激情3
-	reChineseSequel = regexp.MustCompile(`^(.{2,})\s*[0-9０-９一二三四五六七八九十百]+\s*$`)
-	// 匹配英文续集模式：Toy Story 2, Iron Man 3, Fast & Furious 7
-	reEnglishSequel = regexp.MustCompile(`(?i)^(.{2,})\s+(\d+|[IVX]+|Part\s+\d+|Chapter\s+\d+)\s*$`)
-	// 匹配带冒号的续集：Alien: Resurrection, Batman: The Dark Knight
-	reColonSequel = regexp.MustCompile(`^(.{2,})\s*[:：]\s*.+$`)
-	// 匹配括号中的年份或编号：电影名 (2020)
-	reParenSuffix = regexp.MustCompile(`^(.{2,})\s*[（(]\s*(?:\d{4}|\d+)\s*[）)]\s*$`)
-	// 匹配罗马数字后缀
-	reRomanSuffix = regexp.MustCompile(`(?i)^(.{2,})\s+(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\s*$`)
-
-	// ===== 第二层：连接词分割模式 =====
-	// 匹配中文连接词模式："哈哈哈之我真是醉了"、"名侦探柯南之xxx"、"熊出没·原始时代"
-	// 支持的连接词：之、的、·、—、-
-	// "的"作为连接词时，要求后半部分至少3字（避免把"我的家"拆成"我"+"家"）
-	reChineseDelimiter = regexp.MustCompile(`^(.{2,}?)(之|[·•]|\s*[—–-]\s*)(.{2,})$`)
-	reChineseDelimiterDe = regexp.MustCompile(`^(.{2,}?)的(.{3,})$`)
-	// 匹配英文分隔符模式："Harry Potter - The Chamber of Secrets"
-	reEnglishDelimiter = regexp.MustCompile(`(?i)^(.{2,}?)\s*[-–—:：]\s+(.{2,})$`)
-
-	// ===== 第二层补充：人名/副标题后缀模式 =====
-	// 匹配"基础名 + 空格 + XX编/篇/版/章/辑/卷/期"模式
-	// 例如："少女教育 稻垣纱衣编" -> "少女教育"
-	//       "少女教育 雏田麻未编" -> "少女教育"
-	//       "世界遗产 第X卷"      -> "世界遗产"
-	//       "名作剧场 第X期"      -> "名作剧场"
-	// 后缀词至少2个字符（人名），避免误拆
-	rePersonSuffix = regexp.MustCompile(`^(.{2,}?)\s+(.{2,}(?:编|篇|版|章|辑|卷|期|作|風|style|edition))\s*$`)
-
-	// ===== 第三层：通用空格分割模式 =====
-	// 匹配"基础名 + 空格 + 任意后缀"的通用模式
-	// 这是最后一道防线，只要标题中包含空格且基础名合法，就提取空格前的基础名
-	// 例如："少女教育 稻垣纱衣" -> "少女教育"
-	//       "少女教育 雏田麻未" -> "少女教育"
-	//       "Super Hero Max"    -> "Super Hero"
-	// 要求：基础名 >= 2字符，后缀 >= 2字符
-	reSpaceSplit = regexp.MustCompile(`^(.{2,}?)\s+(.{2,})\s*$`)
-)
-
-// extractSeriesBaseName 从电影标题中提取系列基础名（第一层：精确模式匹配）
-// 例如：
-//   - "逃学威龙1" -> "逃学威龙"
-//   - "逃学威龙2" -> "逃学威龙"
-//   - "速度与激情7" -> "速度与激情"
-//   - "Toy Story 2" -> "Toy Story"
-//   - "Iron Man 3" -> "Iron Man"
-//   - "The Godfather Part II" -> "The Godfather"
+// extractSeriesBaseName 第一层：精确续集模式匹配。详见 matcher.ExtractSeriesBaseName。
 func extractSeriesBaseName(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return ""
-	}
-
-	// 尝试各种模式匹配
-	patterns := []*regexp.Regexp{
-		reChineseSequel,
-		reEnglishSequel,
-		reRomanSuffix,
-		reParenSuffix,
-		reColonSequel,
-	}
-
-	for _, pattern := range patterns {
-		if matches := pattern.FindStringSubmatch(title); len(matches) >= 2 {
-			baseName := strings.TrimSpace(matches[1])
-			// 基础名至少 2 个字符
-			if len([]rune(baseName)) >= 2 {
-				return normalizeBaseName(baseName)
-			}
-		}
-	}
-
-	return ""
+	return matcher.ExtractSeriesBaseName(title)
 }
 
-// extractPrefixByDelimiter 从电影标题中提取前缀（第二层：连接词分割法）
-// 通过识别中文连接词（之、的、·、—）来分割标题，提取系列前缀
-// 例如：
-//   - "哈哈哈之我真是醉了" -> "哈哈哈"
-//   - "哈哈哈之我也无奈"   -> "哈哈哈"
-//   - "名侦探柯南之xxx"   -> "名侦探柯南"
-//   - "熊出没·原始时代"   -> "熊出没"
-//   - "新大头儿子和小头爸爸之xxx" -> "新大头儿子和小头爸爸"
+// extractPrefixByDelimiter 第二层：连接词/人名后缀分割。详见 matcher.ExtractPrefixByDelimiter。
 func extractPrefixByDelimiter(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return ""
-	}
-
-	// 尝试中文连接词分割（之、·、—、-）
-	if matches := reChineseDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
-		prefix := strings.TrimSpace(matches[1])
-		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix)
-		}
-	}
-
-	// 尝试"的"连接词分割（要求后半部分至少3字，避免把"我的家"拆成"我"+"家"）
-	if matches := reChineseDelimiterDe.FindStringSubmatch(title); len(matches) >= 2 {
-		prefix := strings.TrimSpace(matches[1])
-		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix)
-		}
-	}
-
-	// 尝试英文分隔符分割
-	if matches := reEnglishDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
-		prefix := strings.TrimSpace(matches[1])
-		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix)
-		}
-	}
-
-	// 尝试人名/副标题后缀分割
-	// 例如："少女教育 稻垣纱衣编" -> "少女教育"
-	if matches := rePersonSuffix.FindStringSubmatch(title); len(matches) >= 2 {
-		prefix := strings.TrimSpace(matches[1])
-		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix)
-		}
-	}
-
-	return ""
+	return matcher.ExtractPrefixByDelimiter(title)
 }
 
-// extractBaseNameBySpaceSplit 第三层：通用空格分割
-// 只要标题中包含空格，就提取空格前的基础名
-// 这是最后防线，在第一层（序号）和第二层（连接词/后缀）都无法匹配时使用
-// 例如："少女教育 稻垣纱衣" -> "少女教育"
-//       "Super Hero Max"    -> "Super Hero"
+// extractBaseNameBySpaceSplit 第三层：通用空格分割兜底。详见 matcher.ExtractBaseNameBySpaceSplit。
 func extractBaseNameBySpaceSplit(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return ""
-	}
-
-	if matches := reSpaceSplit.FindStringSubmatch(title); len(matches) >= 2 {
-		prefix := strings.TrimSpace(matches[1])
-		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix)
-		}
-	}
-
-	return ""
+	return matcher.ExtractBaseNameBySpaceSplit(title)
 }
 
-// normalizeBaseName 标准化基础名（去除尾部标点、空格等）
-func normalizeBaseName(name string) string {
-	name = strings.TrimSpace(name)
-	// 去除尾部的常见分隔符
-	name = strings.TrimRight(name, " -_·.、，,")
-	// 去除尾部的冒号
-	name = strings.TrimRight(name, ":：")
-	name = strings.TrimSpace(name)
-
-	// 如果全是标点或空白，返回空
-	allPunct := true
-	for _, r := range name {
-		if !unicode.IsPunct(r) && !unicode.IsSpace(r) {
-			allPunct = false
-			break
-		}
-	}
-	if allPunct {
-		return ""
-	}
-
-	return name
-}

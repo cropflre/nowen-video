@@ -1,43 +1,45 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
+import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
 import { formatProgress, formatTime } from '@/utils/format'
 import type { WatchHistory } from '@/types'
 import { Clock, Play, Trash2, X } from 'lucide-react'
 
+interface HistoryData {
+  list: WatchHistory[]
+  total: number
+}
+
 export default function HistoryPage() {
-  const [histories, setHistories] = useState<WatchHistory[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const size = 20
   const toast = useToast()
   const { t } = useTranslation()
 
-  const fetchHistory = async (p: number) => {
-    setLoading(true)
-    try {
-      const res = await userApi.history(p, size)
-      setHistories(res.data.data || [])
-      setTotal(res.data.total)
-    } catch {
-      toast.error(t('history.loadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data, loading, mutate, refetch } = usePageCache<HistoryData>(
+    `history:page=${page}:size=${size}`,
+    async () => {
+      const res = await userApi.history(page, size)
+      return { list: res.data.data || [], total: res.data.total }
+    },
+    { ttl: 15_000 },
+  )
 
-  useEffect(() => {
-    fetchHistory(page)
-  }, [page])
+  const histories = data?.list ?? []
+  const total = data?.total ?? 0
 
   const handleDelete = async (mediaId: string) => {
     try {
       await userApi.deleteHistory(mediaId)
-      setHistories((h) => h.filter((item) => item.media_id !== mediaId))
-      setTotal((t) => t - 1)
+      // 乐观更新当前页；同时使其他分页缓存失效，确保重新访问时数据一致
+      mutate((prev) => ({
+        list: (prev?.list ?? []).filter((item) => item.media_id !== mediaId),
+        total: Math.max(0, (prev?.total ?? 0) - 1),
+      }))
+      invalidatePageCachePrefix('history:')
     } catch {
       toast.error(t('history.deleteFailed'))
     }
@@ -47,8 +49,11 @@ export default function HistoryPage() {
     if (!confirm(t('history.clearConfirm'))) return
     try {
       await userApi.clearHistory()
-      setHistories([])
-      setTotal(0)
+      mutate({ list: [], total: 0 })
+      invalidatePageCachePrefix('history:')
+      // 同时清除首页的"继续观看"缓存，让首页刷新时不显示已清理的记录
+      invalidatePageCachePrefix('home:')
+      refetch(true)
     } catch {
       toast.error(t('history.clearFailed'))
     }

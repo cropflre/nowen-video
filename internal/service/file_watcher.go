@@ -241,6 +241,27 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 		event.Op.String(),
 		libraryID)
 
+	// 对 Remove/Rename 事件：即时删除对应的媒体记录（视频文件级别），
+	// 避免等防抖 3 秒扫描时 UI 仍显示已不存在的文件（幽灵记录）。
+	if isVideo && event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+		if m, err := fw.mediaRepo.FindByFilePath(event.Name); err == nil && m != nil {
+			if delErr := fw.mediaRepo.DeleteByID(m.ID); delErr != nil {
+				fw.logger.Warnf("即时删除失效媒体记录失败: %s, 错误: %v", event.Name, delErr)
+			} else {
+				fw.logger.Infof("即时删除失效媒体记录（文件已移除/重命名）: %s", event.Name)
+				// 通知前端立即刷新
+				if fw.wsHub != nil {
+					fw.wsHub.BroadcastEvent(EventLibraryUpdated, &LibraryChangedData{
+						LibraryID:   libraryID,
+						LibraryName: "",
+						Action:      "media_removed",
+						Message:     "文件已移除: " + filepath.Base(event.Name),
+					})
+				}
+			}
+		}
+	}
+
 	// 防抖：3秒内合并多个事件，只触发一次增量扫描
 	fw.debounceScan(libraryID)
 }

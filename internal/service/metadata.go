@@ -512,6 +512,10 @@ func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Medi
 	// P3: 使用增强的过滤逻辑（排除最近 7 天内已失败的记录）
 	var needScrape []model.Media
 	for _, media := range mediaList {
+		// 跳过已成功刮削的记录（避免重复刮削已有元数据的电影）
+		if media.ScrapeStatus == "scraped" {
+			continue
+		}
 		if media.Overview == "" || media.PosterPath == "" {
 			// P3: 跳过最近 7 天内已尝试刮削但失败的记录
 			if media.ScrapeStatus == "failed" && media.LastScrapeAt != nil {
@@ -2020,12 +2024,14 @@ func (s *MetadataService) ScrapeAllSeries(libraryID string) (int, int) {
 		return 0, 0
 	}
 
-	// 过滤出需要刮削的剧集
+	// 过滤出需要刮削的剧集（跳过已成功刮削的）
 	var needScrape []model.Series
 	for _, s := range seriesList {
-		if s.Overview == "" || s.PosterPath == "" {
-			needScrape = append(needScrape, s)
+		// 已有完整元数据的剧集跳过（Overview 和 PosterPath 都不为空）
+		if s.Overview != "" && s.PosterPath != "" {
+			continue
 		}
+		needScrape = append(needScrape, s)
 	}
 
 	if len(needScrape) == 0 {

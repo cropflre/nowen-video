@@ -128,7 +128,9 @@ func (h *MediaHandler) ListMixed(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if size < 1 || size > 50000 {
+	// size 上限设为 2000，满足前端全量筛选的常见家庭影视库场景，
+	// 同时避免 size=50000 这类请求引发的数据库/内存压力与潜在 DoS 风险。
+	if size < 1 || size > 2000 {
 		size = 20
 	}
 

@@ -166,12 +166,52 @@ func (r *MovieCollectionRepo) FindByTMDbCollID(tmdbCollID int) (*model.MovieColl
 
 // List 分页获取合集列表（排除空壳合集）
 func (r *MovieCollectionRepo) List(page, size int) ([]model.MovieCollection, int64, error) {
+	return r.ListWithOptions(page, size, "created_desc", "")
+}
+
+// ListWithOptions 支持排序和来源筛选的分页查询
+// sort: created_desc | created_asc | updated_desc | updated_asc | name_asc | name_desc | count_desc | count_asc
+// autoFilter: "" 全部 | "true" 自动匹配 | "false" 手动创建
+func (r *MovieCollectionRepo) ListWithOptions(page, size int, sort, autoFilter string) ([]model.MovieCollection, int64, error) {
 	var colls []model.MovieCollection
 	var total int64
 
-	r.db.Model(&model.MovieCollection{}).Where("media_count > 0").Count(&total)
-	err := r.db.Where("media_count > 0").
-		Order("created_at DESC").
+	query := r.db.Model(&model.MovieCollection{}).Where("media_count > 0")
+	if autoFilter == "true" {
+		query = query.Where("auto_matched = ?", true)
+	} else if autoFilter == "false" {
+		query = query.Where("auto_matched = ?", false)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 白名单映射：防止 SQL 注入
+	orderExpr := "created_at DESC"
+	switch sort {
+	case "created_asc":
+		orderExpr = "created_at ASC"
+	case "updated_desc":
+		orderExpr = "updated_at DESC"
+	case "updated_asc":
+		orderExpr = "updated_at ASC"
+	case "name_asc":
+		orderExpr = "name ASC"
+	case "name_desc":
+		orderExpr = "name DESC"
+	case "count_desc":
+		orderExpr = "media_count DESC"
+	case "count_asc":
+		orderExpr = "media_count ASC"
+	case "created_desc":
+		fallthrough
+	default:
+		orderExpr = "created_at DESC"
+	}
+
+	err := query.
+		Order(orderExpr).
 		Offset((page - 1) * size).Limit(size).
 		Find(&colls).Error
 	return colls, total, err
@@ -231,10 +271,15 @@ func (r *MovieCollectionRepo) UpdateMediaCount(collectionID string) error {
 // 如果所有电影同年返回 "2020"，否则返回 "1991-1993"
 func (r *MovieCollectionRepo) computeYearRange(collectionID string) string {
 	var minYear, maxYear int
-	r.db.Model(&model.Media{}).
+	// 使用 sql.NullInt64 兜底，避免合集内无有效年份数据时 Scan 失败
+	row := r.db.Model(&model.Media{}).
 		Where("collection_id = ? AND year > 0", collectionID).
 		Select("MIN(year), MAX(year)").
-		Row().Scan(&minYear, &maxYear)
+		Row()
+	if err := row.Scan(&minYear, &maxYear); err != nil {
+		// 没有数据或 Scan 出错时，直接返回空字符串（不抛出异常，让上层使用默认值）
+		return ""
+	}
 
 	if minYear == 0 && maxYear == 0 {
 		return ""

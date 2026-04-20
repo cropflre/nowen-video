@@ -94,8 +94,8 @@ export const collectionApi = {
   getDetail: (collectionId: string) =>
     api.get<{ data: import('@/types').CollectionWithMedia }>(`/collections/${collectionId}`),
 
-  /** 获取合集列表 */
-  list: (params?: { page?: number; size?: number }) =>
+  /** 获取合集列表（支持排序和来源筛选） */
+  list: (params?: { page?: number; size?: number; sort?: string; auto?: string }) =>
     api.get<{ data: import('@/types').MovieCollection[]; total: number }>('/collections', { params }),
 
   /** 搜索合集 */

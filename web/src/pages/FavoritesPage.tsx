@@ -1,32 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
+import { usePageCache } from '@/hooks/usePageCache'
 import type { Favorite } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import { Heart } from 'lucide-react'
 
+interface FavoritesData {
+  list: Favorite[]
+  total: number
+}
+
 export default function FavoritesPage() {
-  const [favorites, setFavorites] = useState<Favorite[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
   const size = 30
   const toast = useToast()
   const { t } = useTranslation()
 
-  useEffect(() => {
-    setLoading(true)
-    userApi
-      .favorites(page, size)
-      .then((res) => {
-        setFavorites(res.data.data || [])
-        setTotal(res.data.total)
-      })
-      .catch(() => { toast.error(t('favorites.loadFailed')) })
-      .finally(() => setLoading(false))
-  }, [page])
+  // 按 page 分键缓存：切换分页时如果命中缓存则零 loading
+  const { data, loading, error } = usePageCache<FavoritesData>(
+    `favorites:page=${page}:size=${size}`,
+    async () => {
+      const res = await userApi.favorites(page, size)
+      return { list: res.data.data || [], total: res.data.total }
+    },
+    { ttl: 15_000 },
+  )
 
+  if (error) {
+    toast.error(t('favorites.loadFailed'))
+  }
+
+  const favorites = data?.list ?? []
+  const total = data?.total ?? 0
   const media = favorites.map((f) => f.media)
   const totalPages = Math.ceil(total / size)
 

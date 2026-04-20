@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { mediaApi, seriesApi, libraryApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
+import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
 import type { Series, MixedItem, Library } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
@@ -69,6 +70,17 @@ const RATING_OPTIONS = [
 // 视图模式
 type ViewMode = 'grid' | 'list' | 'poster'
 
+// ==================== 辅助函数（组件外纯函数，避免每次渲染创建新引用） ====================
+
+const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
+const getItemOrigTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.orig_title || '') : (item.media?.orig_title || '')
+const getItemOverview = (item: MixedItem) => item.type === 'series' ? (item.series?.overview || '') : (item.media?.overview || '')
+const getItemGenres = (item: MixedItem) => item.type === 'series' ? (item.series?.genres || '') : (item.media?.genres || '')
+const getItemCountry = (item: MixedItem) => item.type === 'series' ? (item.series?.country || '') : (item.media?.country || '')
+const getItemYear = (item: MixedItem) => item.type === 'series' ? (item.series?.year || 0) : (item.media?.year || 0)
+const getItemRating = (item: MixedItem) => item.type === 'series' ? (item.series?.rating || 0) : (item.media?.rating || 0)
+const getItemTime = (item: MixedItem) => item.type === 'series' ? (item.series?.created_at || '') : (item.media?.created_at || '')
+
 // ==================== 主组件 ====================
 
 export default function BrowsePage() {
@@ -79,9 +91,6 @@ export default function BrowsePage() {
 
   // ===== 数据状态 =====
   const [libraries, setLibraries] = useState<Library[]>([])
-  const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
-  const [seriesList, setSeriesList] = useState<Series[]>([])
-  const [loading, setLoading] = useState(true)
 
   // ===== 筛选状态（全部从 URL 读取，单一数据源） =====
   const page = parseInt(searchParams.get('page') || '1', 10) || 1
@@ -147,33 +156,83 @@ export default function BrowsePage() {
   }, [searchQuery])
 
   // ===== 加载数据 =====
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const libId = selectedLibrary || undefined
-      // 请求全量数据（后端 ListMixed 本身就是全量查询再截断，直接取全量）
-      const [mixedRes, seriesRes] = await Promise.all([
-        mediaApi.listMixed({ page: 1, size: 10000, library_id: libId }),
-        seriesApi.list({ library_id: libId }),
-      ])
-      setMixedItems(mixedRes.data.data || [])
-      setSeriesList(seriesRes.data.data || [])
-    } catch {
-      toast.error('加载影视库内容失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedLibrary])
+  // 前端全量筛选的最大容量上限（与后端 ListMixed size 上限保持一致）
+  // 超过该阈值时退化为纯后端分页模式，避免一次性加载过多数据
+  const MAX_CLIENT_ITEMS = 2000
 
+  interface BrowseData {
+    mixedItems: MixedItem[]
+    seriesList: Series[]
+    totalCount: number
+    serverPaginated: boolean
+  }
+
+  // 使用 usePageCache，按参数组合分键 → 跨导航回来命中缓存，零 loading
+  const { data: browseData, loading, refetch } = usePageCache<BrowseData>(
+    `browse:lib=${selectedLibrary || 'all'}:page=${page}:size=${size}`,
+    async () => {
+      const libId = selectedLibrary || undefined
+      // 先用一次小请求探测总量
+      const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: libId })
+      const total = probe.data.total || 0
+
+      if (total <= MAX_CLIENT_ITEMS) {
+        // 小型影视库：一次性拉取全量数据，启用前端筛选/排序/分页
+        const [mixedRes, seriesRes] = await Promise.all([
+          mediaApi.listMixed({ page: 1, size: MAX_CLIENT_ITEMS, library_id: libId }),
+          seriesApi.list({ library_id: libId }),
+        ])
+        return {
+          mixedItems: mixedRes.data.data || [],
+          seriesList: seriesRes.data.data || [],
+          totalCount: total,
+          serverPaginated: false,
+        }
+      } else {
+        // 大型影视库：退化为后端分页（不支持高级前端筛选，仅支持基础浏览）
+        const [mixedRes, seriesRes] = await Promise.all([
+          mediaApi.listMixed({ page, size, library_id: libId }),
+          seriesApi.list({ library_id: libId }),
+        ])
+        return {
+          mixedItems: mixedRes.data.data || [],
+          seriesList: seriesRes.data.data || [],
+          totalCount: total,
+          serverPaginated: true,
+        }
+      }
+    },
+    { ttl: 20_000 },
+  )
+
+  const mixedItems = browseData?.mixedItems ?? []
+  const seriesList = browseData?.seriesList ?? []
+  const totalCount = browseData?.totalCount ?? 0
+  const serverPaginated = browseData?.serverPaginated ?? false
+
+  // 接口失败时的错误提示
+  const toastRef = useRef(toast)
+  useEffect(() => { toastRef.current = toast }, [toast])
+  const hasDataRef = useRef(false)
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (browseData) hasDataRef.current = true
+  }, [browseData])
+  // 若明确失败（loading 结束但依然没数据），给一次提示
+  useEffect(() => {
+    if (!loading && !browseData && hasDataRef.current) {
+      toastRef.current.error('加载影视库内容失败')
+    }
+  }, [loading, browseData])
 
   // ===== WebSocket 实时更新 =====
   useEffect(() => {
     const debouncedRefresh = () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(() => fetchData(), 1000)
+      refreshTimerRef.current = setTimeout(() => {
+        // 内容变更时使所有 browse 缓存失效，并静默刷新当前视图
+        invalidatePageCachePrefix('browse:')
+        refetch(true)
+      }, 1000)
     }
     on(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
     on(WS_EVENTS.SCRAPE_COMPLETED, debouncedRefresh)
@@ -184,7 +243,7 @@ export default function BrowsePage() {
       off(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
-  }, [on, off, fetchData])
+  }, [on, off, refetch])
 
   // ===== 提取所有分类标签 =====
   const { allGenres, allCountries } = useMemo(() => {
@@ -211,18 +270,10 @@ export default function BrowsePage() {
     }
   }, [mixedItems, seriesList])
 
-  // ===== 辅助函数 =====
-  const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
-  const getItemOrigTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.orig_title || '') : (item.media?.orig_title || '')
-  const getItemOverview = (item: MixedItem) => item.type === 'series' ? (item.series?.overview || '') : (item.media?.overview || '')
-  const getItemGenres = (item: MixedItem) => item.type === 'series' ? (item.series?.genres || '') : (item.media?.genres || '')
-  const getItemCountry = (item: MixedItem) => item.type === 'series' ? (item.series?.country || '') : (item.media?.country || '')
-  const getItemYear = (item: MixedItem) => item.type === 'series' ? (item.series?.year || 0) : (item.media?.year || 0)
-  const getItemRating = (item: MixedItem) => item.type === 'series' ? (item.series?.rating || 0) : (item.media?.rating || 0)
-  const getItemTime = (item: MixedItem) => item.type === 'series' ? (item.series?.created_at || '') : (item.media?.created_at || '')
-
   // ===== 筛选和排序 =====
+  // 服务端分页模式下，不做前端筛选/排序，直接使用服务端返回的当前页数据
   const filteredItems = useMemo(() => {
+    if (serverPaginated) return mixedItems
     let items = [...mixedItems]
 
     // 媒体类型筛选
@@ -283,14 +334,17 @@ export default function BrowsePage() {
     })
 
     return items
-  }, [mixedItems, mediaType, searchQuery, selectedGenres, selectedCountry, yearRange, minRating, sortValue])
+  }, [serverPaginated, mixedItems, mediaType, searchQuery, selectedGenres, selectedCountry, yearRange, minRating, sortValue])
 
-  const totalPages = Math.ceil(filteredItems.length / size)
-  // 前端分页：从筛选后的全量数据中截取当前页
+  const totalPages = serverPaginated
+    ? Math.ceil(totalCount / size)
+    : Math.ceil(filteredItems.length / size)
+  // 前端分页：从筛选后的全量数据中截取当前页；服务端分页模式下 mixedItems 本身就是当前页
   const pagedItems = useMemo(() => {
+    if (serverPaginated) return filteredItems
     const start = (page - 1) * size
     return filteredItems.slice(start, start + size)
-  }, [filteredItems, page, size])
+  }, [serverPaginated, filteredItems, page, size])
   const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sortValue)?.label || '排序'
 
   // 活跃筛选条件数量
@@ -808,7 +862,7 @@ export default function BrowsePage() {
         )}
 
         {/* 搜索结果提示 */}
-        {(searchQuery || activeFilterCount > 0) && (
+        {(searchQuery || activeFilterCount > 0) && !serverPaginated && (
           <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-tertiary)' }}>
             <span>
               找到 <strong className="text-neon">{filteredItems.length}</strong> 个结果
@@ -821,6 +875,22 @@ export default function BrowsePage() {
               <X size={12} />
               清除筛选
             </button>
+          </div>
+        )}
+
+        {/* 大型影视库提示：数据量超出前端筛选阈值，仅支持基础分页浏览 */}
+        {serverPaginated && (
+          <div
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
+            style={{
+              background: 'var(--neon-blue-6)',
+              border: '1px solid var(--neon-blue-10)',
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            <span>
+              影视库较大（共 {totalCount} 部），暂仅支持基础分页浏览。如需使用高级筛选和排序，请先选择单个媒体库缩小范围。
+            </span>
           </div>
         )}
       </div>
@@ -955,7 +1025,7 @@ export default function BrowsePage() {
       <Pagination
         page={page}
         totalPages={totalPages}
-        total={filteredItems.length}
+        total={serverPaginated ? totalCount : filteredItems.length}
         pageSize={size}
         pageSizeOptions={[20, 30, 50, 100]}
         onPageSizeChange={setPageSize}

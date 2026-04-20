@@ -340,6 +340,10 @@ export default function VideoPlayer({
       const headers: Record<string, string> = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
 
+      // 记录本次加载的 blobUrl 和 trackEl，便于失败/卸载时清理
+      let createdBlobUrl: string | null = null
+      let createdTrackEl: HTMLTrackElement | null = null
+
       fetch(subtitleUrl, { headers })
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -348,31 +352,41 @@ export default function VideoPlayer({
         .then(vttText => {
           const blob = new Blob([vttText], { type: 'text/vtt' })
           const blobUrl = URL.createObjectURL(blob)
+          createdBlobUrl = blobUrl
           const trackEl = document.createElement('track')
+          createdTrackEl = trackEl
           trackEl.kind = 'subtitles'
           trackEl.label = label
           trackEl.srclang = 'und'
           trackEl.src = blobUrl
           trackEl.default = true
-          video.appendChild(trackEl)
-          setTimeout(() => {
-            // 找到刚添加的 track 并激活
+          // 监听 track load 事件，在浏览器解析完 VTT 后再释放 blob URL，避免过早 revoke 导致字幕无法显示
+          const onTrackLoad = () => {
+            // 激活对应 textTrack
             for (let i = 0; i < video.textTracks.length; i++) {
               const t = video.textTracks[i]
-              if (t.label === label) {
-                t.mode = 'showing'
-              } else {
-                t.mode = 'hidden'
-              }
+              t.mode = t.label === label ? 'showing' : 'hidden'
             }
-            // 释放 blob URL（字幕已加载，不再需要）
+            // 字幕已解析完成，可以安全释放 blob URL
             URL.revokeObjectURL(blobUrl)
-          }, 100)
+            trackEl.removeEventListener('load', onTrackLoad)
+          }
+          trackEl.addEventListener('load', onTrackLoad)
+          video.appendChild(trackEl)
+          // 只有字幕成功加载后才更新 activeSubtitle，避免 UI 显示为已选中但实际加载失败
+          setActiveSubtitle(`${type}:${id}`)
         })
         .catch(err => {
           console.error('字幕加载失败:', err)
+          // 加载失败时重置激活状态，清理未完成的资源
+          if (createdTrackEl && createdTrackEl.parentNode) {
+            createdTrackEl.parentNode.removeChild(createdTrackEl)
+          }
+          if (createdBlobUrl) {
+            URL.revokeObjectURL(createdBlobUrl)
+          }
+          setActiveSubtitle(null)
         })
-      setActiveSubtitle(`${type}:${id}`)
     }
   }, [mediaId, embeddedSubs, externalSubs])
 

@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
+import { usePageCache } from '@/hooks/usePageCache'
 import type { CollectionWithMedia, CollectionMediaItem } from '@/types'
 import {
   Layers,
@@ -30,33 +31,42 @@ export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [data, setData] = useState<CollectionWithMedia | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const viewMode = (searchParams.get('view') || 'grid') as 'grid' | 'list'
   const sortOption = (searchParams.get('sort') || 'premiered_asc') as SortOption
+
+  // 按 id 分键缓存：跨页面返回时命中缓存，零 loading
+  const { data, loading, error } = usePageCache<CollectionWithMedia>(
+    id ? `collection:detail:${id}` : null,
+    async () => {
+      const res = await collectionApi.getDetail(id!)
+      return res.data.data
+    },
+    { ttl: 60_000 },
+  )
 
   const sortedMedia = useMemo(() => {
     if (!data?.media) return []
     const sorted = [...data.media]
+    // 按首映日期排序：有首映日期的排前面；两者都有则按字符串比较；否则回退到年份；最后按标题打平
+    const byPremiered = (dir: 'asc' | 'desc') => (a: CollectionMediaItem, b: CollectionMediaItem) => {
+      const da = a.premiered || '', db = b.premiered || ''
+      if (da && db) {
+        const cmp = dir === 'asc' ? da.localeCompare(db) : db.localeCompare(da)
+        return cmp || a.title.localeCompare(b.title)
+      }
+      if (da) return -1
+      if (db) return 1
+      const ya = a.year || (dir === 'asc' ? 9999 : 0)
+      const yb = b.year || (dir === 'asc' ? 9999 : 0)
+      const ycmp = dir === 'asc' ? ya - yb : yb - ya
+      return ycmp || a.title.localeCompare(b.title)
+    }
     switch (sortOption) {
       case 'premiered_asc':
-        sorted.sort((a, b) => {
-          const da = a.premiered || '', db = b.premiered || ''
-          if (da && db) return da.localeCompare(db) || a.title.localeCompare(b.title)
-          if (da) return -1
-          if (db) return 1
-          return (a.year || 9999) - (b.year || 9999) || a.title.localeCompare(b.title)
-        })
+        sorted.sort(byPremiered('asc'))
         break
       case 'premiered_desc':
-        sorted.sort((a, b) => {
-          const da = a.premiered || '', db = b.premiered || ''
-          if (da && db) return db.localeCompare(da) || a.title.localeCompare(b.title)
-          if (da) return -1
-          if (db) return 1
-          return (b.year || 0) - (a.year || 0) || a.title.localeCompare(b.title)
-        })
+        sorted.sort(byPremiered('desc'))
         break
       case 'title_asc':
         sorted.sort((a, b) => a.title.localeCompare(b.title))
@@ -68,23 +78,8 @@ export default function CollectionDetailPage() {
     return sorted
   }, [data?.media, sortOption])
 
-  useEffect(() => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    collectionApi.getDetail(id)
-      .then(res => {
-        setData(res.data.data)
-      })
-      .catch(() => {
-        setError('合集不存在或加载失败')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [id])
-
-  if (loading) {
+  // 只在"首次加载且无任何数据"时才显示全屏 loader，避免返回时闪屏
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 size={32} className="animate-spin text-neon" />
@@ -97,7 +92,7 @@ export default function CollectionDetailPage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Layers size={48} className="text-surface-600" />
         <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
-          {error || '合集不存在'}
+          {error ? '合集不存在或加载失败' : '合集不存在'}
         </p>
         <button onClick={() => navigate('/collections')} className="btn-ghost text-sm">
           返回合集列表

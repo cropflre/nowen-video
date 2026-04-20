@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/nowen-video/nowen-video/internal/config"
+	"github.com/nowen-video/nowen-video/internal/matcher"
 	"github.com/nowen-video/nowen-video/internal/model"
 
 	"github.com/glebarez/sqlite"
@@ -51,22 +52,11 @@ type DiagnoseReport struct {
 	Suggestions    []string               `json:"suggestions"`
 }
 
-// ==================== 匹配算法（与 collection.go 同步） ====================
-
-var (
-	reChineseSequel    = regexp.MustCompile(`^(.{2,})\s*[0-9０-９一二三四五六七八九十百]+\s*$`)
-	reEnglishSequel    = regexp.MustCompile(`(?i)^(.{2,})\s+(\d+|[IVX]+|Part\s+\d+|Chapter\s+\d+)\s*$`)
-	reColonSequel      = regexp.MustCompile(`^(.{2,})\s*[:：]\s*.+$`)
-	reParenSuffix      = regexp.MustCompile(`^(.{2,})\s*[（(]\s*(?:\d{4}|\d+)\s*[）)]\s*$`)
-	reRomanSuffix      = regexp.MustCompile(`(?i)^(.{2,})\s+(?:II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\s*$`)
-	reChineseDelimiter = regexp.MustCompile(`^(.{2,}?)(之|[·•]|\s*[—–-]\s*)(.{2,})$`)
-	reChineseDelimiterDe = regexp.MustCompile(`^(.{2,}?)的(.{3,})$`)
-	reEnglishDelimiter = regexp.MustCompile(`(?i)^(.{2,}?)\s*[-–—:：]\s+(.{2,})$`)
-	rePersonSuffix     = regexp.MustCompile(`^(.{2,}?)\s+(.{2,}(?:编|篇|版|章|辑|卷|期|作|風|style|edition))\s*$`)
-	reSpaceSplit       = regexp.MustCompile(`^(.{2,}?)\s+(.{2,})\s*$`)
-)
+// ==================== 匹配算法 ====================
+// 直接复用 internal/matcher 包中的算法和正则，与合集服务保持一致。
 
 // extractBaseNameFull 完整提取基础名（返回 baseName 和匹配层级描述）
+// 与合集服务的三层匹配保持完全一致，差异只是额外返回命中的层级标签。
 func extractBaseNameFull(title string) (baseName string, layer string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -78,76 +68,63 @@ func extractBaseNameFull(title string) (baseName string, layer string) {
 		re    *regexp.Regexp
 		label string
 	}{
-		{reChineseSequel, "L1-中文序号"},
-		{reEnglishSequel, "L1-英文续集"},
-		{reRomanSuffix, "L1-罗马数字"},
-		{reParenSuffix, "L1-括号编号"},
-		{reColonSequel, "L1-冒号分隔"},
+		{matcher.ReChineseSequel, "L1-中文序号"},
+		{matcher.ReEnglishSequel, "L1-英文续集"},
+		{matcher.ReRomanSuffix, "L1-罗马数字"},
+		{matcher.ReParenSuffix, "L1-括号编号"},
+		{matcher.ReColonSequel, "L1-冒号分隔"},
 	}
 	for _, p := range patterns {
 		if matches := p.re.FindStringSubmatch(title); len(matches) >= 2 {
 			bn := strings.TrimSpace(matches[1])
 			if len([]rune(bn)) >= 2 {
-				return normalizeBaseName(bn), p.label
+				return matcher.NormalizeBaseName(bn), p.label
 			}
 		}
 	}
 
 	// 第二层：连接词分割
-	if matches := reChineseDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
+	if matches := matcher.ReChineseDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix), "L2-中文连接词"
+			return matcher.NormalizeBaseName(prefix), "L2-中文连接词"
 		}
 	}
-	if matches := reChineseDelimiterDe.FindStringSubmatch(title); len(matches) >= 2 {
+	if matches := matcher.ReChineseDelimiterDe.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix), "L2-的连接词"
+			return matcher.NormalizeBaseName(prefix), "L2-的连接词"
 		}
 	}
-	if matches := reEnglishDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
+	if matches := matcher.ReEnglishDelimiter.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix), "L2-英文分隔符"
+			return matcher.NormalizeBaseName(prefix), "L2-英文分隔符"
 		}
 	}
 
 	// 第二层补充：人名/副标题后缀
-	if matches := rePersonSuffix.FindStringSubmatch(title); len(matches) >= 2 {
+	if matches := matcher.RePersonSuffix.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix), "L2-人名后缀"
+			return matcher.NormalizeBaseName(prefix), "L2-人名后缀"
 		}
 	}
 
 	// 第三层：通用空格分割
-	if matches := reSpaceSplit.FindStringSubmatch(title); len(matches) >= 2 {
+	if matches := matcher.ReSpaceSplit.FindStringSubmatch(title); len(matches) >= 2 {
 		prefix := strings.TrimSpace(matches[1])
 		if len([]rune(prefix)) >= 2 {
-			return normalizeBaseName(prefix), "L3-空格分割"
+			return matcher.NormalizeBaseName(prefix), "L3-空格分割"
 		}
 	}
 
 	return "", "未匹配"
 }
 
+// normalizeBaseName 薄包装，保持原有调用点不变
 func normalizeBaseName(name string) string {
-	name = strings.TrimSpace(name)
-	name = strings.TrimRight(name, " -_·.、，,")
-	name = strings.TrimRight(name, ":：")
-	name = strings.TrimSpace(name)
-	allPunct := true
-	for _, r := range name {
-		if !unicode.IsPunct(r) && !unicode.IsSpace(r) {
-			allPunct = false
-			break
-		}
-	}
-	if allPunct {
-		return ""
-	}
-	return name
+	return matcher.NormalizeBaseName(name)
 }
 
 // normalizeForMatch 标准化名称用于模糊匹配
@@ -640,6 +617,10 @@ func main() {
 	if err != nil {
 		fmt.Printf("连接数据库失败: %v\n", err)
 		os.Exit(1)
+	}
+	// 确保程序退出时释放底层 sql.DB 连接，防止连接泄露
+	if sqlDB, errDB := db.DB(); errDB == nil {
+		defer func() { _ = sqlDB.Close() }()
 	}
 
 	// 运行诊断
