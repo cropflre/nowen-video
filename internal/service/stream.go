@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -647,8 +648,9 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 		return fmt.Errorf("创建 stdout 管道失败: %w", err)
 	}
 
-	// 忽略 stderr（FFmpeg 的进度信息）
-	cmd.Stderr = nil
+	// 捕获 stderr 用于错误诊断（FFmpeg 的错误信息输出到这里）
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动 remux 失败: %w", err)
@@ -680,6 +682,11 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 	}
 
 	if waitErr != nil {
+		stderrStr := stderrBuf.String()
+		if len(stderrStr) > 500 {
+			stderrStr = stderrStr[len(stderrStr)-500:]
+		}
+		s.logger.Warnf("Remux FFmpeg stderr (last 500 chars): %s", stderrStr)
 		return fmt.Errorf("remux 进程异常退出: %w", waitErr)
 	}
 
