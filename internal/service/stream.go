@@ -116,6 +116,75 @@ func (s *StreamService) SetSettingRepo(repo *repository.SystemSettingRepo) {
 	s.settingRepo = repo
 }
 
+// ShouldRemux 判断给定媒体在当前客户端 UA 下是否应该走 Remux（零转码）。
+// 这是"秒开"的关键判定：一旦返回 true，应让客户端直接请求 /api/stream/:id/remux
+// 或 /emby/Videos/:id/stream（Emby 层走 remux 分支），完全绕过 HLS 转码。
+//
+// 判定规则：
+//  1. 文件必须是本地（非 STRM）
+//  2. 容器在 remuxableExts 白名单（mkv/avi/mov/flv/wmv/ts）
+//  3. 视频编码在浏览器兼容列表
+//  4. 音频编码为空（单轨或未探测）或在浏览器兼容列表
+//  5. 客户端 UA 对应支持 fMP4 fragmented MP4 流式回放
+//
+// 当前仅拒绝明确不支持 fMP4 的旧设备（如裸 Safari iOS 13-），
+// 其他情况（包括 Infuse/Chrome/Edge/Firefox 等）一律允许。
+func (s *StreamService) ShouldRemux(media *model.Media, userAgent string) bool {
+	if media == nil || media.StreamURL != "" {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(media.FilePath))
+	if !remuxableExts[ext] {
+		return false
+	}
+	vc := strings.ToLower(media.VideoCodec)
+	ac := strings.ToLower(media.AudioCodec)
+	if !browserCompatibleVideoCodecs[vc] {
+		return false
+	}
+	if ac != "" && !browserCompatibleAudioCodecs[ac] {
+		return false
+	}
+	// UA 黑名单：这些客户端对 fragmented MP4 支持不完善，强制走 HLS 更稳
+	uaLower := strings.ToLower(userAgent)
+	if strings.Contains(uaLower, "applecoremedia") {
+		// Apple 原生播放器对 fMP4 中 MKV-remux 偶发兼容问题；但 Infuse/Safari 通常用的是 AVFoundation
+		// Infuse UA 包含 "Infuse" 字样，优先保留
+		if !strings.Contains(uaLower, "infuse") && !strings.Contains(uaLower, "safari") {
+			return false
+		}
+	}
+	return true
+}
+
+// ClientSupportsHEVC 粗略判断客户端是否能硬解 HEVC。
+// 主要用于返回 MediaSource 时选择是否标记支持 DirectPlay。
+// Safari 11+/Edge Chromium/Chrome 108+ 都支持 HEVC 硬解。
+func (s *StreamService) ClientSupportsHEVC(userAgent string) bool {
+	uaLower := strings.ToLower(userAgent)
+	switch {
+	case strings.Contains(uaLower, "infuse"):
+		return true // Infuse 全平台硬解 HEVC
+	case strings.Contains(uaLower, "safari") && !strings.Contains(uaLower, "chrome"):
+		return true // 原生 Safari（非 Chromium 内核）
+	case strings.Contains(uaLower, "edg/"):
+		return true // Edge Chromium（>=80 支持）
+	case strings.Contains(uaLower, "exoplayer"):
+		return true // ExoPlayer 硬解
+	}
+	return false
+}
+
+// ShouldRemux 对外接口：基于 mediaID 查询并判断。
+// 给 handler 层直接用，不需要每次自己读库。
+func (s *StreamService) ShouldRemuxByID(mediaID, userAgent string) (bool, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return false, ErrMediaNotFound
+	}
+	return s.ShouldRemux(media, userAgent), nil
+}
+
 // GetMediaPlayInfo 获取播放信息，前端根据此判断使用哪种播放方式
 func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error) {
 	media, err := s.mediaRepo.FindByID(mediaID)
@@ -326,6 +395,10 @@ func (s *StreamService) GetMasterPlaylist(mediaID string) (string, error) {
 }
 
 // GetSegmentPlaylist 获取指定质量的播放列表或触发转码
+// 秒开优化：
+//   - hls_time 从 6 降到 2，首片最快 2 秒内产出
+//   - 使用 WaitForFirstSegment 替代原 60 秒轮询，响应更快
+//   - 10 秒仍无首片时返回占位 playlist（ExoPlayer/HLS.js 会自动重试）
 func (s *StreamService) GetSegmentPlaylist(mediaID, quality string) (string, error) {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
@@ -340,47 +413,37 @@ func (s *StreamService) GetSegmentPlaylist(mediaID, quality string) (string, err
 	outputDir := s.transcoder.GetOutputDir(mediaID, quality)
 	m3u8Path := filepath.Join(outputDir, "stream.m3u8")
 
-	// 检查是否已有转码缓存
+	// 检查是否已有转码缓存（完成态或运行中均可）
 	if _, err := os.Stat(m3u8Path); err == nil {
 		content, err := os.ReadFile(m3u8Path)
-		if err != nil {
-			return "", err
+		if err == nil && strings.Contains(string(content), ".ts") {
+			return string(content), nil
 		}
-		return string(content), nil
 	}
 
-	// 触发转码
-	_, err = s.transcoder.StartTranscode(media, quality)
-	if err != nil {
+	// 触发转码（若已在运行则复用）
+	if _, err := s.transcoder.StartTranscode(media, quality); err != nil {
 		return "", fmt.Errorf("启动转码失败: %w", err)
 	}
 
-	// 等待 m3u8 文件产出（最多等待 30 秒）
-	// 避免返回空播放列表导致 ExoPlayer 报 PlaylistStuckException
-	for i := 0; i < 60; i++ {
-		if _, err := os.Stat(m3u8Path); err == nil {
-			content, err := os.ReadFile(m3u8Path)
-			if err != nil {
-				return "", err
-			}
-			// 确保播放列表中至少有一个分片
-			if strings.Contains(string(content), ".ts") {
-				return string(content), nil
-			}
+	// 等待首片就绪：10 秒硬超时（对比旧版 60 秒，首包延迟大幅下降）
+	// 之所以从 60→10 秒：
+	//   1) hls_time 从 6→2 秒，理论首片 2~4 秒可出
+	//   2) 若 10 秒还没出，要么 FFmpeg 启动失败，要么硬件加速卡住，
+	//      返回占位 playlist 让客户端重试是更友好的体验
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := s.transcoder.WaitForFirstSegment(ctx, mediaID, quality); err == nil {
+		if content, err := os.ReadFile(m3u8Path); err == nil {
+			return string(content), nil
 		}
-		// 每 500ms 检查一次
-		select {
-		case <-context.Background().Done():
-			break
-		default:
-			// 使用 time.Sleep 等待
-		}
-		time.Sleep(500 * time.Millisecond)
 	}
 
-	// 超时仍未产出分片，返回带有正确格式的等待播放列表
-	s.logger.Warnf("HLS 转码等待超时: %s/%s", mediaID, quality)
-	return "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n", nil
+	// 超时：返回 EVENT 类型的空 playlist，客户端会继续轮询
+	// 由 HLS 规范，没有 #EXT-X-ENDLIST 的列表会被视为直播/事件流
+	s.logger.Warnf("HLS 首片等待超时: %s/%s，返回占位 playlist", mediaID, quality)
+	return "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n", nil
 }
 
 // ServeSegment 提供HLS分片文件
@@ -397,9 +460,15 @@ func (s *StreamService) ServeSegment(mediaID, quality, segment string, w http.Re
 }
 
 // getAvailableQualities 根据媒体信息确定可用质量
+// 委托给 TranscodeService 已有的智能实现（会根据原片分辨率筛选，不上采样）
 func (s *StreamService) getAvailableQualities(media *model.Media) []string {
-	// TODO: 根据原始视频分辨率智能选择
-	// 目前默认提供三种质量
+	if s.transcoder != nil {
+		qs := s.transcoder.GetAvailableQualities(media)
+		if len(qs) > 0 {
+			return qs
+		}
+	}
+	// fallback
 	return []string{"480p", "720p", "1080p"}
 }
 
@@ -594,8 +663,8 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 	// 等待 FFmpeg 进程结束
 	waitErr := cmd.Wait()
 
-	// 客户端断开连接是正常情况
-	if ctx.Err() == context.Canceled {
+	// 客户端断开连接是正常情况（ctx cancel、copy 中断、进程被杀都属于此类）
+	if ctx.Err() != nil {
 		s.logger.Debugf("Remux 流已断开（客户端关闭）: %s", mediaID)
 		return nil
 	}

@@ -3,6 +3,7 @@ import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
+import { streamApi } from '@/api/stream'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle, SubtitlePreprocessTask } from '@/types'
 import {
@@ -529,12 +530,20 @@ export default function VideoPlayer({
         setNextCountdown(5)
       }
     }
+    // Seek 完成立即通知后端新位置（非 Remux 路径），避免 throttleLoop 按旧位置误挂起/恢复
+    const onSeeked = () => {
+      const pos = video.currentTime + remuxOffsetRef.current
+      if (pos > 0) {
+        streamApi.reportPlayback(mediaId, pos).catch(() => {})
+      }
+    }
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('timeupdate', onTimeUpdate)
     video.addEventListener('durationchange', onDurationChange)
     video.addEventListener('volumechange', onVolumeChange)
     video.addEventListener('ended', onEnded)
+    video.addEventListener('seeked', onSeeked)
     return () => {
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
@@ -542,8 +551,9 @@ export default function VideoPlayer({
       video.removeEventListener('durationchange', onDurationChange)
       video.removeEventListener('volumechange', onVolumeChange)
       video.removeEventListener('ended', onEnded)
+      video.removeEventListener('seeked', onSeeked)
     }
-  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext])
+  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext, mediaId])
 
   // 自动下一集倒计时逻辑
   useEffect(() => {
@@ -560,16 +570,24 @@ export default function VideoPlayer({
   }, [nextCountdown, onNext])
 
   // 定期上报播放进度
+  // - 每 3s 向后端 /stream/:id/playback 上报一次，驱动 FFmpeg Throttling（挂起/恢复）
+  // - 每 ~15s 额外写一次数据库 WatchHistory
   useEffect(() => {
+    let tick = 0
     progressReportRef.current = window.setInterval(() => {
       const video = videoRef.current
-      if (video && !video.paused && video.currentTime > 0) {
-        // Remux 模式下需要加上偏移量，保存正确的绝对播放位置
-        const actualTime = video.currentTime + remuxOffsetRef.current
-        const actualDuration = displayDuration > 0 ? displayDuration : video.duration
+      if (!video || video.paused || video.currentTime <= 0) return
+      // Remux 模式下 video.currentTime 是相对 seek 点的时间，需要加上偏移
+      const actualTime = video.currentTime + remuxOffsetRef.current
+      const actualDuration = displayDuration > 0 ? displayDuration : video.duration
+      // 驱动后端节流（高频）
+      streamApi.reportPlayback(mediaId, actualTime).catch(() => {})
+      // 写观看历史（低频，每 5 次 = 15s）
+      tick++
+      if (tick % 5 === 0) {
         userApi.updateProgress(mediaId, actualTime, actualDuration).catch(() => {})
       }
-    }, 15000)
+    }, 3000)
     return () => clearInterval(progressReportRef.current)
   }, [mediaId, displayDuration])
 
@@ -635,7 +653,9 @@ export default function VideoPlayer({
     remuxOffsetRef.current = targetTime
     video.src = newSrc
     video.play().catch(() => {})
-  }, [src, mode])
+    // 立即通知后端新位置，避免 throttleLoop 按旧位置误挂起/恢复
+    streamApi.reportPlayback(mediaId, targetTime).catch(() => {})
+  }, [src, mode, mediaId])
 
   // Remux 时间偏移：记录 Seek 的起始时间，用于计算真实播放位置
   const remuxOffsetRef = useRef(0)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,11 +13,31 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
+)
+
+// ==================== 节流（Throttling）配置 ====================
+//
+// 参考 Emby：转码 FFmpeg 领先播放进度一定秒数后挂起，播放进度逼近缓冲尾部时恢复。
+// 这种策略的核心目的是：
+//  1) 节省 GPU/CPU：点播时不需要提前把整部片都编完；
+//  2) 降低带宽/内存：避免生成大量未播放的 .ts 缓存；
+//  3) 响应用户 seek：被挂起的进程可以快速 Kill，由新进程接力。
+const (
+	// 缓冲领先超过此秒数则挂起 ffmpeg
+	throttleAheadHighWatermark = 60.0
+	// 缓冲领先低于此秒数则恢复 ffmpeg
+	throttleAheadLowWatermark = 15.0
+	// 节流轮询间隔
+	throttleTickInterval = 2 * time.Second
+	// 首个分片目标 2s（HLS），实现秒开。低于 2s 会显著放大码流。
+	hlsTargetSegmentSeconds = 2
 )
 
 // 质量预设（包含 4K 和 2K）
@@ -62,6 +83,35 @@ type TranscodeJob struct {
 	Quality string
 	Cancel  chan struct{}
 	cmd     *exec.Cmd // 当前正在执行的 FFmpeg 进程，用于取消
+
+	// ==================== 节流相关 ====================
+	// 播放器上报的当前播放位置（秒），原子更新。
+	playbackPos atomic.Uint64 // 以 *100 的定点数存储，避免 float64 的原子操作
+	// ffmpeg 当前已转码到的位置（秒），由 parseFFmpegProgress 实时更新。
+	transcodedPos atomic.Uint64
+	// 节流状态：0=运行，1=已挂起
+	suspended atomic.Int32
+	// 起始偏移（-ss 参数），秒。用户 seek 后会重建 job 并把该值置非零。
+	startOffset float64
+	// 节流 ticker 退出信号
+	throttleDone chan struct{}
+}
+
+// SetPlaybackPosition 由 handler 层在收到播放进度上报时调用。
+// 单位秒，支持 float 精度；节流协程会周期性读取。
+func (j *TranscodeJob) SetPlaybackPosition(sec float64) {
+	if sec < 0 {
+		sec = 0
+	}
+	j.playbackPos.Store(uint64(sec * 100))
+}
+
+func (j *TranscodeJob) getPlaybackPosition() float64 {
+	return float64(j.playbackPos.Load()) / 100
+}
+
+func (j *TranscodeJob) getTranscodedPosition() float64 {
+	return float64(j.transcodedPos.Load()) / 100
 }
 
 func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
@@ -88,7 +138,40 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		go ts.worker(i)
 	}
 
+	// 恢复重启前未完成的任务：把 DB 中仍为 pending/running 的任务置为 failed
+	// 避免前端看到僵尸"运行中"任务（因为 goroutine 已随进程退出而消亡）
+	go ts.recoverPendingTasks()
+
 	return ts
+}
+
+// recoverPendingTasks 清理服务重启前的僵尸任务
+// TranscodeService 的 running map 是纯内存态，重启后原来的 goroutine 全部消失，
+// 但 DB 中的任务状态仍是 running/pending，会导致：
+//  1. 前端显示永远"运行中"；
+//  2. StartTranscode 检查缓存时因 FindByMediaAndQuality 只认 "done" 状态，重复提交任务；
+//  3. 但 OutputDir 已有残留文件，可能造成脏数据。
+//
+// 策略：简单粗暴地把所有 pending/running 标为 failed，让用户重新触发即可。
+func (s *TranscodeService) recoverPendingTasks() {
+	// 稍等片刻确保服务完全启动
+	// 此处不阻塞主流程，放 goroutine 中异步执行
+	running, err := s.repo.ListRunning()
+	if err != nil {
+		s.logger.Warnf("恢复转码任务状态失败: %v", err)
+		return
+	}
+	if len(running) == 0 {
+		return
+	}
+	for i := range running {
+		running[i].Status = "failed"
+		running[i].Error = "服务重启导致任务中断"
+		if err := s.repo.Update(&running[i]); err != nil {
+			s.logger.Warnf("重置僵尸任务状态失败: %s, %v", running[i].ID, err)
+		}
+	}
+	s.logger.Infof("已重置 %d 个重启前未完成的转码任务为 failed", len(running))
 }
 
 // detectHWAccel 检测可用的硬件加速方式
@@ -168,7 +251,9 @@ func (s *TranscodeService) detectNvidiaSmi() bool {
 }
 
 // buildFFmpegArgs 根据硬件加速模式构建FFmpeg参数
-func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string) []string {
+// media 参数用于 HDR 检测：HEVC/VP9/AV1 源视频会自动追加 tonemap 滤镜，避免 SDR 设备播放偏灰
+// startOffset>0 时启用 -ss input seeking，实现 seek 后快速续转（Emby 秒开关键）
+func (s *TranscodeService) buildFFmpegArgs(media *model.Media, inputPath, outputDir, quality string, startOffset float64) []string {
 	qc, ok := qualityPresets[quality]
 	if !ok {
 		qc = qualityPresets["720p"]
@@ -178,20 +263,46 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 	segmentPath := filepath.Join(outputDir, "seg%04d.ts")
 
 	// 基础参数
-	baseArgs := []string{"-y", "-i", inputPath}
+	// input seeking: -ss 必须放在 -i 前面才能 demux 层快速跳转
+	baseArgs := []string{"-y"}
+	if startOffset > 0.5 {
+		baseArgs = append(baseArgs, "-ss", fmt.Sprintf("%.2f", startOffset))
+	}
+	baseArgs = append(baseArgs, "-i", inputPath)
 
-	// HLS输出参数
+	// HLS 秒开参数组：
+	//   hls_time 2             -> 首片 2s 即可产出，浏览器/ExoPlayer 拿到即可起播
+	//   hls_list_size 0        -> 保留所有分片索引，支持完整回看
+	//   hls_playlist_type event-> m3u8 增量更新，前端轮询 playlist 能拿到新分片
+	//   hls_flags independent_segments+append_list+program_date_time
+	//     - independent_segments: 每片独立可解码
+	//     - append_list:          增量追加而非每次重写
+	//     - program_date_time:    便于客户端计算 live edge
+	//   start_number 由 startOffset 决定：seek 场景下用 startOffset/hlsTargetSegmentSeconds
+	//     可避免客户端误复用旧编号的分片。
+	startNumber := 0
+	if startOffset > 0 {
+		startNumber = int(startOffset / float64(hlsTargetSegmentSeconds))
+	}
 	hlsArgs := []string{
 		"-f", "hls",
-		"-hls_time", "6",
+		"-hls_time", strconv.Itoa(hlsTargetSegmentSeconds),
 		"-hls_list_size", "0",
 		"-hls_segment_filename", segmentPath,
-		"-hls_flags", "independent_segments",
+		"-hls_flags", "independent_segments+append_list+program_date_time",
+		"-hls_playlist_type", "event",
+		"-start_number", strconv.Itoa(startNumber),
+		// force_key_frames 对齐到 hls_time 边界，首片产出更快更稳定
+		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", hlsTargetSegmentSeconds),
 		outputPath,
 	}
 
 	// 音频参数（通用）
 	audioArgs := []string{"-c:a", "aac", "-b:a", qc.AudioBitrate, "-ac", "2"}
+
+	// 关键帧间隔（GOP），按 2 秒 hls_time × 帧率 25 估算 = 50
+	// 配合 force_key_frames 让首片能立刻 flush
+	gopSize := strconv.Itoa(hlsTargetSegmentSeconds * 25)
 
 	var videoArgs []string
 
@@ -202,9 +313,14 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 		videoArgs = []string{
 			"-c:v", "h264_nvenc",
 			"-preset", "p4", // 平衡质量和速度
+			"-tune", "ll", // low-latency，秒开关键
 			"-b:v", qc.VideoBitrate,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-			"-vf", fmt.Sprintf("scale_cuda=%d:%d", qc.Width, qc.Height),
+			"-maxrate", qc.VideoBitrate,
+			"-bufsize", qc.VideoBitrate, // 1x 码率 buffer，低延迟
+			"-g", gopSize,
+			"-keyint_min", gopSize,
+			"-sc_threshold", "0", // 禁用场景切换插入 I 帧，避免 GOP 不规则
+			"-vf", fmt.Sprintf("scale_cuda=%d:%d:format=nv12", qc.Width, qc.Height),
 		}
 
 	case "qsv":
@@ -214,7 +330,8 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 			"-c:v", "h264_qsv",
 			"-preset", s.cfg.App.TranscodePreset,
 			"-global_quality", "23",
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
+			"-g", gopSize,
+			"-pix_fmt", "yuv420p",
 			"-vf", fmt.Sprintf("scale_qsv=%d:%d", qc.Width, qc.Height),
 		}
 
@@ -228,18 +345,25 @@ func (s *TranscodeService) buildFFmpegArgs(inputPath, outputDir, quality string)
 		videoArgs = []string{
 			"-c:v", "h264_vaapi",
 			"-b:v", qc.VideoBitrate,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
+			"-g", gopSize,
+			"-pix_fmt", "yuv420p",
 			"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", qc.Width, qc.Height),
 		}
 
 	default:
-		// 软件编码
+		// 软件编码（fallback）
+		// -tune zerolatency 是秒开关键参数，配合小 GOP 让首片立刻能封装出来
+		vfFilter := s.buildFFmpegHDRTonemapFilter(media, qc.Width, qc.Height)
 		videoArgs = []string{
 			"-c:v", "libx264",
 			"-preset", s.cfg.App.TranscodePreset,
+			"-tune", "zerolatency",
 			"-crf", "23",
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-			"-vf", fmt.Sprintf("scale=%d:%d", qc.Width, qc.Height),
+			"-g", gopSize,
+			"-keyint_min", gopSize,
+			"-sc_threshold", "0",
+			"-pix_fmt", "yuv420p",
+			"-vf", vfFilter,
 		}
 	}
 
@@ -260,13 +384,39 @@ func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
 
 // StartTranscode 发起转码任务
 func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*model.TranscodeTask, error) {
-	// 检查是否已有完成的转码
-	if task, err := s.repo.FindByMediaAndQuality(media.ID, quality); err == nil {
-		outputDir := s.GetOutputDir(media.ID, quality)
-		m3u8Path := filepath.Join(outputDir, "stream.m3u8")
-		if _, err := os.Stat(m3u8Path); err == nil {
-			return task, nil // 已有缓存
+	return s.startTranscodeInternal(media, quality, 0)
+}
+
+// StartTranscodeWithStart 从指定秒数开始转码（用于播放器 seek 场景的快速预热）
+// 与 StartTranscode 的区别：不复用缓存（因为 startOffset 不同，m3u8 内容不同）。
+// 调用方应确保 outputDir 目录独立，避免和 0 起点缓存冲突。
+func (s *TranscodeService) StartTranscodeWithStart(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
+	return s.startTranscodeInternal(media, quality, startOffset)
+}
+
+func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
+	// 只有 startOffset=0 时才复用已完成缓存；seek 场景直接新建
+	if startOffset == 0 {
+		if task, err := s.repo.FindByMediaAndQuality(media.ID, quality); err == nil {
+			outputDir := s.GetOutputDir(media.ID, quality)
+			m3u8Path := filepath.Join(outputDir, "stream.m3u8")
+			if _, err := os.Stat(m3u8Path); err == nil {
+				return task, nil // 已有缓存
+			}
 		}
+	}
+
+	// 检查是否已有该 media+quality 的 job 正在运行；如有则直接返回，避免重复启动
+	// 这对防止首片就绪轮询期间重复触发转码很关键
+	if startOffset == 0 {
+		s.mu.RLock()
+		for _, j := range s.running {
+			if j.Media.ID == media.ID && j.Quality == quality && j.startOffset == 0 {
+				s.mu.RUnlock()
+				return j.Task, nil
+			}
+		}
+		s.mu.RUnlock()
 	}
 
 	outputDir := s.GetOutputDir(media.ID, quality)
@@ -284,10 +434,12 @@ func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*
 	}
 
 	job := &TranscodeJob{
-		Task:    task,
-		Media:   media,
-		Quality: quality,
-		Cancel:  make(chan struct{}),
+		Task:         task,
+		Media:        media,
+		Quality:      quality,
+		Cancel:       make(chan struct{}),
+		startOffset:  startOffset,
+		throttleDone: make(chan struct{}),
 	}
 
 	s.mu.Lock()
@@ -297,6 +449,33 @@ func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*
 	s.jobs <- job
 
 	return task, nil
+}
+
+// WaitForFirstSegment 等待指定 media+quality 的首片生成。
+// 相对于之前 GetSegmentPlaylist 里的 500ms*120 轮询，这里采用短间隔轮询
+// 并且只等待到 ".ts" 出现即返回，配合 hls_time=2 首片通常 1~3 秒内就绪。
+// ctx 过期时返回 ctx 错误。
+func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, quality string) error {
+	outputDir := s.GetOutputDir(mediaID, quality)
+	m3u8Path := filepath.Join(outputDir, "stream.m3u8")
+
+	// 快速 100ms 间隔轮询，降低首包延迟
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if _, err := os.Stat(m3u8Path); err == nil {
+			content, err := os.ReadFile(m3u8Path)
+			if err == nil && strings.Contains(string(content), ".ts") {
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // worker 转码工作协程
@@ -323,7 +502,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 		Message: fmt.Sprintf("开始转码: %s (%s)", job.Media.Title, job.Quality),
 	})
 
-	args := s.buildFFmpegArgs(job.Media.FilePath, job.Task.OutputDir, job.Quality)
+	args := s.buildFFmpegArgs(job.Media, job.Media.FilePath, job.Task.OutputDir, job.Quality, job.startOffset)
 	s.logger.Debugf("FFmpeg命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(args, " "))
 
 	cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
@@ -356,6 +535,17 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	if stderrPipe != nil {
 		go s.parseFFmpegProgress(stderrPipe, job)
 	}
+
+	// 启动节流协程：根据播放位置 vs 转码位置决定挂起/恢复 ffmpeg
+	go s.throttleLoop(job)
+	// 无论后续走到 cancel / failed / done 哪个分支，都必须停掉节流协程
+	defer func() {
+		select {
+		case <-job.throttleDone: // 已关闭
+		default:
+			close(job.throttleDone)
+		}
+	}()
 
 	// 支持取消：监听 Cancel channel
 	done := make(chan error, 1)
@@ -434,6 +624,7 @@ func (s *TranscodeService) parseFFmpegProgress(stderr io.ReadCloser, job *Transc
 	scanner.Split(bufio.ScanLines)
 
 	var lastProgress float64
+	var lastDBProgress float64
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -450,27 +641,34 @@ func (s *TranscodeService) parseFFmpegProgress(stderr io.ReadCloser, job *Transc
 		centis, _ := strconv.ParseFloat(timeMatches[4], 64)
 		currentTime := hours*3600 + minutes*60 + seconds + centis/100
 
+		// 同步更新节流所需的"已转码位置"（包含 startOffset）
+		job.transcodedPos.Store(uint64((currentTime + job.startOffset) * 100))
+
 		progress := (currentTime / totalDuration) * 100
 		if progress > 100 {
 			progress = 100
 		}
 
-		// 只在进度变化超过1%时更新，避免频繁广播
-		if progress-lastProgress < 1 {
-			continue
-		}
-		lastProgress = progress
-
-		// 解析速度
+		// 解析速度（无论是否更新DB都解析，用于WS广播）
 		speed := ""
 		speedMatches := speedRegex.FindStringSubmatch(line)
 		if len(speedMatches) >= 2 {
 			speed = speedMatches[1] + "x"
 		}
 
-		// 更新任务进度
+		// WS 广播：每 1% 更新一次（低延迟，前端体验好）
+		if progress-lastProgress < 1 {
+			continue
+		}
+		lastProgress = progress
+
+		// DB 持久化：每 5% 才写一次（减少 SQLite 写锁竞争，避免 SLOW SQL）
+		// WS 广播仍然每 1% 触发，前端进度条不受影响
 		job.Task.Progress = progress
-		s.repo.Update(job.Task)
+		if progress-lastDBProgress >= 5 || progress >= 99.5 {
+			lastDBProgress = progress
+			s.repo.UpdateProgress(job.Task.ID, progress)
+		}
 
 		// 广播进度事件
 		s.broadcastTranscodeEvent(EventTranscodeProgress, &TranscodeProgressData{
@@ -490,6 +688,91 @@ func (s *TranscodeService) broadcastTranscodeEvent(eventType string, data *Trans
 	if s.wsHub != nil {
 		s.wsHub.BroadcastEvent(eventType, data)
 	}
+}
+
+// ==================== Throttling（Emby 风格的转码节流）====================
+
+// throttleLoop 周期性对比 "已转码位置" vs "播放位置"，
+// 当领先 > throttleAheadHighWatermark 时挂起 ffmpeg，领先 < throttleAheadLowWatermark 时恢复。
+// 节流目标：点播时节省 GPU/CPU，避免提前把整部片编完。
+//
+// 注意：只有客户端通过 SetPlaybackPosition 上报了播放位置时，节流才会生效；
+// 未上报时保持常规全速转码，行为与旧版一致，不破坏向后兼容。
+func (s *TranscodeService) throttleLoop(job *TranscodeJob) {
+	ticker := time.NewTicker(throttleTickInterval)
+	defer ticker.Stop()
+
+	// 未收到任何播放位置上报前，不进行节流（避免在 prebuffer 阶段误暂停）
+	// 策略：playbackPos==0 且 transcodedPos<30 时视为"刚开始"，跳过节流判断。
+	for {
+		select {
+		case <-job.throttleDone:
+			return
+		case <-job.Cancel:
+			return
+		case <-ticker.C:
+		}
+
+		playback := job.getPlaybackPosition()
+		transcoded := job.getTranscodedPosition()
+
+		// 无上报或转码刚起步，不节流
+		if playback <= 0 {
+			continue
+		}
+
+		ahead := transcoded - playback
+		wasSuspended := job.suspended.Load() == 1
+
+		switch {
+		case !wasSuspended && ahead > throttleAheadHighWatermark:
+			// 领先太多 → 挂起
+			if job.cmd != nil && job.cmd.Process != nil {
+				if err := suspendProcess(job.cmd.Process); err == nil {
+					job.suspended.Store(1)
+					s.logger.Debugf("[throttle] suspend ffmpeg media=%s quality=%s ahead=%.1fs",
+						job.Media.ID, job.Quality, ahead)
+				} else {
+					s.logger.Warnf("[throttle] suspend failed: %v", err)
+				}
+			}
+		case wasSuspended && ahead < throttleAheadLowWatermark:
+			// 缓冲不足 → 恢复
+			if job.cmd != nil && job.cmd.Process != nil {
+				if err := resumeProcess(job.cmd.Process); err == nil {
+					job.suspended.Store(0)
+					s.logger.Debugf("[throttle] resume ffmpeg media=%s quality=%s ahead=%.1fs",
+						job.Media.ID, job.Quality, ahead)
+				} else {
+					s.logger.Warnf("[throttle] resume failed: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// SetPlaybackPosition 对外暴露：客户端通过 /api/stream/:id/playback 上报播放进度时调用。
+// 会更新该 media 正在运行的所有 quality 的 playback position。
+func (s *TranscodeService) SetPlaybackPosition(mediaID string, positionSec float64) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, j := range s.running {
+		if j.Media.ID == mediaID {
+			j.SetPlaybackPosition(positionSec)
+		}
+	}
+}
+
+// FindRunningJob 根据 media+quality 查找正在运行的 job（用于 Throttle 调试等）
+func (s *TranscodeService) FindRunningJob(mediaID, quality string) *TranscodeJob {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, j := range s.running {
+		if j.Media.ID == mediaID && j.Quality == quality {
+			return j
+		}
+	}
+	return nil
 }
 
 // GetRunningJobs 获取正在运行的转码任务
@@ -631,4 +914,67 @@ func (s *TranscodeService) buildFFmpegHDRTonemapFilter(media *model.Media, width
 			"format=yuv420p,scale=%d:%d",
 		width, height,
 	)
+}
+
+// CleanupStaleCache 清理过期的转码缓存（供 Scheduler cleanup 任务调用）
+//
+// 清理规则：
+//   - done 且 updated_at < now - doneRetainDays 天 → 删除目录 + DB 记录
+//   - failed/cancelled 且 updated_at < now - failedRetainDays 天 → 删除目录 + DB 记录
+//   - 正在运行（running/pending）的任务不会被触碰
+//
+// 返回：(清理的目录数, 清理的 DB 记录数, 错误)
+func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays int) (int, int, error) {
+	if doneRetainDays <= 0 {
+		doneRetainDays = 30
+	}
+	if failedRetainDays <= 0 {
+		failedRetainDays = 7
+	}
+
+	now := time.Now()
+	dirsCleaned := 0
+	recordsCleaned := 0
+
+	// 清理 done 状态
+	doneStale, err := s.repo.ListStaleDone(now.AddDate(0, 0, -doneRetainDays))
+	if err != nil {
+		return 0, 0, fmt.Errorf("查询过期完成任务失败: %w", err)
+	}
+	for _, t := range doneStale {
+		// 安全检查：如果任务还在 running map 里（理论上不该，但兜底），跳过
+		s.mu.RLock()
+		_, stillRunning := s.running[t.ID]
+		s.mu.RUnlock()
+		if stillRunning {
+			continue
+		}
+		dir := s.GetOutputDir(t.MediaID, t.Quality)
+		if err := os.RemoveAll(dir); err == nil {
+			dirsCleaned++
+		} else {
+			s.logger.Warnf("清理目录失败 %s: %v", dir, err)
+		}
+		if err := s.repo.DeleteByID(t.ID); err == nil {
+			recordsCleaned++
+		}
+	}
+
+	// 清理 failed/cancelled 状态
+	failedStale, err := s.repo.ListStaleFailed(now.AddDate(0, 0, -failedRetainDays))
+	if err != nil {
+		return dirsCleaned, recordsCleaned, fmt.Errorf("查询过期失败任务失败: %w", err)
+	}
+	for _, t := range failedStale {
+		dir := s.GetOutputDir(t.MediaID, t.Quality)
+		if err := os.RemoveAll(dir); err == nil {
+			dirsCleaned++
+		}
+		if err := s.repo.DeleteByID(t.ID); err == nil {
+			recordsCleaned++
+		}
+	}
+
+	s.logger.Infof("缓存清理完成: 删除 %d 个目录, %d 条 DB 记录", dirsCleaned, recordsCleaned)
+	return dirsCleaned, recordsCleaned, nil
 }

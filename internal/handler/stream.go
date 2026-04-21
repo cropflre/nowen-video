@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,8 +15,9 @@ import (
 
 // StreamHandler 流媒体处理器
 type StreamHandler struct {
-	streamService *service.StreamService
-	logger        *zap.SugaredLogger
+	streamService    *service.StreamService
+	transcodeService *service.TranscodeService // 用于接收播放进度上报驱动节流
+	logger           *zap.SugaredLogger
 }
 
 // Direct 直接提供原始文件流（支持Range请求，用于MP4等浏览器兼容格式）
@@ -181,4 +183,36 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 
 	c.Header("Cache-Control", "public, max-age=86400, must-revalidate") // 缓存1天，但必须重新验证
 	c.File(posterPath)
+}
+
+// Playback 接收前端上报的播放位置（秒），驱动 Throttling 决策。
+// POST /api/stream/:id/playback?position=123.4
+//
+// 前端（HLS.js/video.js/Shaka 等）只需每 2~5 秒调用一次即可，
+// 服务端会对比这个位置与 ffmpeg 当前转码位置，决定是否挂起/恢复进程。
+//
+// 为什么单独开一个接口而不复用 /api/watch/history？
+//  1. watch history 写 DB 是带副作用的；节流只需要内存态的位置。
+//  2. 前端可以高频调（<5s 一次），不污染观看历史。
+//  3. 解耦：不触发推荐系统的"已观看"判定。
+func (h *StreamHandler) Playback(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
+		return
+	}
+	positionStr := c.Query("position")
+	if positionStr == "" {
+		// 也支持 form / JSON 体
+		positionStr = c.PostForm("position")
+	}
+	position, err := strconv.ParseFloat(positionStr, 64)
+	if err != nil || position < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid position"})
+		return
+	}
+	if h.transcodeService != nil {
+		h.transcodeService.SetPlaybackPosition(id, position)
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

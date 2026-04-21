@@ -26,6 +26,13 @@ export const streamApi = {
   getRemuxUrl: (mediaId: string) =>
     withToken(`/api/stream/${mediaId}/remux`),
 
+  // 上报当前播放位置，驱动后端 FFmpeg 节流（Throttling）
+  // position: 当前播放时间（秒，绝对位置）
+  reportPlayback: (mediaId: string, position: number) =>
+    api.post(`/stream/${mediaId}/playback`, null, {
+      params: { position: position.toFixed(2) },
+    }),
+
   getPosterUrl: (mediaId: string) =>
     withToken(`/api/media/${mediaId}/poster`),
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
+	embyh "github.com/nowen-video/nowen-video/internal/handler/emby"
 	"github.com/nowen-video/nowen-video/internal/middleware"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -21,6 +22,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func main() {
@@ -39,7 +41,19 @@ func main() {
 	sugar := logger.Sugar()
 
 	// 初始化数据库
-	db, err := gorm.Open(sqlite.Open(cfg.GetDBDSN()), &gorm.Config{})
+	// 配置 GORM Logger：忽略 RecordNotFound 日志噪音，保留慢 SQL 警告
+	gormLog := gormlogger.New(
+		log.Default(),
+		gormlogger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  gormlogger.Warn,
+			IgnoreRecordNotFoundError: true, // 消除正常业务查询的 "record not found" 噪音
+			Colorful:                  false,
+		},
+	)
+	db, err := gorm.Open(sqlite.Open(cfg.GetDBDSN()), &gorm.Config{
+		Logger: gormLog,
+	})
 	if err != nil {
 		sugar.Fatalf("连接数据库失败: %v", err)
 	}
@@ -150,6 +164,8 @@ func main() {
 		api.GET("/stream/:id/remux", handlers.Stream.Remux)
 		api.GET("/stream/:id/master.m3u8", handlers.Stream.Master)
 		api.GET("/stream/:id/:quality/:segment", handlers.Stream.Segment)
+		// 播放进度上报（驱动 Throttling 节流）
+		api.POST("/stream/:id/playback", handlers.Stream.Playback)
 
 		// 海报/缩略图
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
@@ -614,6 +630,13 @@ func main() {
 		federation.GET("/health", handlers.Federation.Health)
 		federation.GET("/media", handlers.Federation.MediaList)
 	}
+
+	// ==================== Emby / Infuse 兼容层 ====================
+	// 独立挂载到 /emby/* 与根路径的 Emby 标准路径（/System /Users /Items /Videos 等）。
+	// 复用现有的 AuthService / StreamService / Repositories，不做侵入式改动。
+	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, services.Transcode, repos)
+	embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
+	sugar.Info("Emby 兼容层已启用：/emby/* 与根路径 Emby 端点（供 Infuse 等客户端使用）")
 
 	// 静态文件（前端构建产物）
 	r.Static("/assets", cfg.App.WebDir+"/assets")
