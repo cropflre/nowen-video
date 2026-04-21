@@ -958,14 +958,14 @@ func (s *PreprocessService) transcodeWithFallback(
 			return baseArgs, videoArgs, audioArgs
 		},
 		"qsv": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y", "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-i", task.InputPath}
+			baseArgs := []string{"-y", "-hwaccel", "qsv", "-i", task.InputPath}
 			videoArgs := []string{
 				"-c:v", "h264_qsv",
 				"-preset", "medium",
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
-				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
+				"-pix_fmt", "nv12",
 				"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",

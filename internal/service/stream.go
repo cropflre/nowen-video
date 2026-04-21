@@ -625,7 +625,12 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 
 	args = append(args,
 		"-i", media.FilePath,
-		"-c", "copy",
+		"-map", "0:v:0",   // 仅映射第一个视频流
+		"-map", "0:a?",     // 映射所有音频流（如无则跳过）
+		"-c:v", "copy",     // 视频直接复制
+		"-c:a", "copy",     // 音频直接复制
+		"-sn",              // 忽略字幕流（避免 ASS/SSA 等不兼容 MP4 的字幕导致失败）
+		"-dn",              // 忽略数据流
 		"-movflags", "frag_mp4+empty_moov+default_base_moof",
 		"-f", "mp4",
 		"-y",

@@ -221,14 +221,14 @@ func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABR
 		}
 
 	case "qsv":
-		baseArgs = append([]string{"-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}, baseArgs...)
+		baseArgs = append([]string{"-hwaccel", "qsv"}, baseArgs...)
 		videoArgs = []string{
 			"-c:v", "h264_qsv",
 			"-preset", "medium",
 			"-b:v", profile.VideoBitrate,
 			"-maxrate", profile.MaxBitrate,
 			"-bufsize", profile.BufSize,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
+			"-pix_fmt", "nv12",
 			"-vf", fmt.Sprintf("scale_qsv=%d:%d", profile.Width, profile.Height),
 			"-g", "48",
 			"-keyint_min", "48",

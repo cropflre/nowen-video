@@ -325,13 +325,15 @@ func (s *TranscodeService) buildFFmpegArgs(media *model.Media, inputPath, output
 
 	case "qsv":
 		// Intel Quick Sync Video
-		baseArgs = append([]string{"-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}, baseArgs...)
+		// 不设置 -hwaccel_output_format qsv，允许 FFmpeg 在 QSV 无法解码时自动回退到软件解码
+		// 仅用 QSV 做编码，避免 10-bit HEVC 等 QSV 不支持的格式导致崩溃
+		baseArgs = append([]string{"-hwaccel", "qsv"}, baseArgs...)
 		videoArgs = []string{
 			"-c:v", "h264_qsv",
 			"-preset", s.cfg.App.TranscodePreset,
 			"-global_quality", "23",
 			"-g", gopSize,
-			"-pix_fmt", "yuv420p",
+			"-pix_fmt", "nv12",
 			"-vf", fmt.Sprintf("scale_qsv=%d:%d", qc.Width, qc.Height),
 		}
 
@@ -578,7 +580,88 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	}
 
 	if waitErr != nil {
-		s.logger.Errorf("转码失败: %s, 错误: %v", job.Media.Title, waitErr)
+		s.logger.Warnf("转码失败(hwAccel=%s): %s, 错误: %v，尝试回退到软件编码", s.hwAccel, job.Media.Title, waitErr)
+
+		// 硬件加速失败时自动回退到软件编码（仅非 software 模式时回退）
+		if s.hwAccel != "none" {
+			// 清理已生成的分片文件，保留目录以便重试
+			entries, _ := os.ReadDir(job.Task.OutputDir)
+			for _, e := range entries {
+				os.Remove(filepath.Join(job.Task.OutputDir, e.Name()))
+			}
+
+			// 用软件编码重新构建 FFmpeg 参数
+			fallbackHwAccel := "none"
+			origHwAccel := s.hwAccel
+			s.hwAccel = fallbackHwAccel
+			fallbackArgs := s.buildFFmpegArgs(job.Media, job.Media.FilePath, job.Task.OutputDir, job.Quality, job.startOffset)
+			s.hwAccel = origHwAccel // 恢复原始设置，不影响后续任务
+
+			s.logger.Infof("回退到软件编码: %s (%s)", job.Media.Title, job.Quality)
+			s.logger.Debugf("回退FFmpeg命令: %s %s", s.cfg.App.FFmpegPath, strings.Join(fallbackArgs, " "))
+
+			fallbackCmd := exec.Command(s.cfg.App.FFmpegPath, fallbackArgs...)
+			setLowPriority(fallbackCmd)
+			job.cmd = fallbackCmd
+
+			// 捕获 stderr
+			if stderrPipe, err := fallbackCmd.StderrPipe(); err == nil {
+				go s.parseFFmpegProgress(stderrPipe, job)
+			}
+
+			if err := fallbackCmd.Start(); err != nil {
+				s.logger.Errorf("回退软件编码启动失败: %s, 错误: %v", job.Media.Title, err)
+				job.Task.Status = "failed"
+				job.Task.Error = fmt.Sprintf("硬件加速失败(%v)，软件编码启动也失败(%v)", waitErr, err)
+				s.repo.Update(job.Task)
+				s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
+					TaskID:  job.Task.ID,
+					MediaID: job.Media.ID,
+					Title:   job.Media.Title,
+					Quality: job.Quality,
+					Message: fmt.Sprintf("转码失败（回退也失败）: %v", err),
+				})
+				return
+			}
+
+			// 等待回退转码完成
+			fallbackDone := make(chan error, 1)
+			go func() {
+				fallbackDone <- fallbackCmd.Wait()
+			}()
+
+			select {
+			case <-job.Cancel:
+				if fallbackCmd.Process != nil {
+					fallbackCmd.Process.Kill()
+				}
+				s.logger.Infof("回退转码任务已取消: %s (%s)", job.Media.Title, job.Quality)
+				job.Task.Status = "cancelled"
+				s.repo.Update(job.Task)
+				s.mu.Lock()
+				delete(s.running, job.Task.ID)
+				s.mu.Unlock()
+				return
+			case fallbackErr := <-fallbackDone:
+				if fallbackErr != nil {
+					s.logger.Errorf("回退软件编码也失败: %s, 错误: %v", job.Media.Title, fallbackErr)
+					job.Task.Status = "failed"
+					job.Task.Error = fmt.Sprintf("硬件加速失败(%v)，软件编码也失败(%v)", waitErr, fallbackErr)
+					s.repo.Update(job.Task)
+					s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
+						TaskID:  job.Task.ID,
+						MediaID: job.Media.ID,
+						Title:   job.Media.Title,
+						Quality: job.Quality,
+						Message: fmt.Sprintf("转码失败（回退也失败）: %v", fallbackErr),
+					})
+					return
+				}
+				// 回退成功
+				goto success
+			}
+		}
+
 		job.Task.Status = "failed"
 		job.Task.Error = waitErr.Error()
 		s.repo.Update(job.Task)
@@ -591,6 +674,8 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 		})
 		return
 	}
+
+success:
 
 	job.Task.Status = "done"
 	job.Task.Progress = 100
