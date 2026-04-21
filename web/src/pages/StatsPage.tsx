@@ -170,7 +170,9 @@ export default function StatsPage() {
                 <div className="relative mx-auto aspect-[2/3] w-full overflow-hidden rounded-xl" style={{ background: 'var(--bg-surface)' }}>
                   {item.poster_path ? (
                     <img
-                      src={streamApi.getPosterUrl(item.media_id)}
+                      src={item.media_type === 'series'
+                        ? streamApi.getSeriesPosterUrl(item.media_id)
+                        : streamApi.getPosterUrl(item.media_id)}
                       alt={item.title as string}
                       className="h-full w-full object-cover"
                       loading="lazy"

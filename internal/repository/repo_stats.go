@@ -119,14 +119,30 @@ func (r *PlaybackStatsRepo) GetMediaStats(mediaID string) (totalMinutes float64,
 	return
 }
 
+// GetMostWatchedMedia 获取用户观看最多的影视（电影按 media 维度聚合，电视剧按 series 维度聚合）
+// 对于剧集类型（media_type='episode'），使用所属剧集合集（series）的标题与海报进行展示，
+// 避免显示为单集的文件名；同一部电视剧的所有集的观看时长会累加到一起。
+// 返回字段中的 media_type 为 'series'（电视剧）或 'movie'（电影），便于前端选择正确的海报接口。
 func (r *PlaybackStatsRepo) GetMostWatchedMedia(userID string, limit int) ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
+	// 使用子查询先计算出聚合维度（media_id/title/poster_path/media_type），
+	// 外层再按这些别名进行 GROUP BY，避免 SQLite 在 GROUP BY 时因 m.title 与 s.title
+	// 同名而报 "ambiguous column name: title" 的错误。
 	err := r.db.Raw(`
-		SELECT ps.media_id, m.title, m.poster_path, SUM(ps.watch_minutes) as total_minutes
-		FROM playback_stats ps
-		JOIN media m ON ps.media_id = m.id
-		WHERE ps.user_id = ?
-		GROUP BY ps.media_id
+		SELECT media_id, title, poster_path, media_type, SUM(watch_minutes) as total_minutes
+		FROM (
+			SELECT
+				CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN m.series_id ELSE ps.media_id END AS media_id,
+				CASE WHEN m.media_type = 'episode' AND s.title != '' THEN s.title ELSE m.title END AS title,
+				CASE WHEN m.media_type = 'episode' AND s.poster_path != '' THEN s.poster_path ELSE m.poster_path END AS poster_path,
+				CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN 'series' ELSE 'movie' END AS media_type,
+				ps.watch_minutes AS watch_minutes
+			FROM playback_stats ps
+			JOIN media m ON ps.media_id = m.id AND m.deleted_at IS NULL
+			LEFT JOIN series s ON m.series_id = s.id AND s.deleted_at IS NULL
+			WHERE ps.user_id = ?
+		) t
+		GROUP BY media_id, title, poster_path, media_type
 		ORDER BY total_minutes DESC
 		LIMIT ?
 	`, userID, limit).Scan(&results).Error

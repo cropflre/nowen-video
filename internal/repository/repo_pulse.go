@@ -97,18 +97,33 @@ type TopContentItem struct {
 }
 
 // GetTopContent 获取热门内容排行
+// 电影按 media 维度聚合；电视剧按 series（剧集合集）维度聚合，显示剧集合集的名称和海报，
+// 同一部剧的所有集观看时长/次数/观看人数会合并统计，避免显示单集文件名。
+// 返回的 media_type 为 'series'（电视剧）或 'movie'（电影），便于前端选择对应的海报接口。
+// 使用子查询计算聚合维度，避免 SQLite 在 GROUP BY 时因 m.title 与 s.title 同名导致
+// "ambiguous column name: title" 错误。
 func (r *PulseRepo) GetTopContent(days, limit int) ([]TopContentItem, error) {
 	startDate := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 	var results []TopContentItem
 	err := r.db.Raw(`
-		SELECT ps.media_id, m.title, m.poster_path, m.media_type,
-			COALESCE(SUM(ps.watch_minutes), 0) as total_minutes,
+		SELECT media_id, title, poster_path, media_type,
+			COALESCE(SUM(watch_minutes), 0) as total_minutes,
 			COUNT(*) as play_count,
-			COUNT(DISTINCT ps.user_id) as unique_users
-		FROM playback_stats ps
-		JOIN media m ON ps.media_id = m.id AND m.deleted_at IS NULL
-		WHERE ps.date >= ?
-		GROUP BY ps.media_id
+			COUNT(DISTINCT user_id) as unique_users
+		FROM (
+			SELECT
+				CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN m.series_id ELSE ps.media_id END AS media_id,
+				CASE WHEN m.media_type = 'episode' AND s.title != '' THEN s.title ELSE m.title END AS title,
+				CASE WHEN m.media_type = 'episode' AND s.poster_path != '' THEN s.poster_path ELSE m.poster_path END AS poster_path,
+				CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN 'series' ELSE 'movie' END AS media_type,
+				ps.user_id AS user_id,
+				ps.watch_minutes AS watch_minutes
+			FROM playback_stats ps
+			JOIN media m ON ps.media_id = m.id AND m.deleted_at IS NULL
+			LEFT JOIN series s ON m.series_id = s.id AND s.deleted_at IS NULL
+			WHERE ps.date >= ?
+		) t
+		GROUP BY media_id, title, poster_path, media_type
 		ORDER BY total_minutes DESC
 		LIMIT ?
 	`, startDate, limit).Scan(&results).Error
@@ -162,14 +177,23 @@ type RecentPlayItem struct {
 }
 
 // GetRecentPlays 获取最近播放记录
+// GetRecentPlays 获取最近播放记录
+// 电视剧单集的标题/海报/ID 将替换为所属剧集合集（series）的标题/海报/ID，
+// 方便用户识别和跳转；电影保持不变。
+// 返回的 media_type 为 'series'（电视剧）或 'movie'（电影），便于前端选择对应的海报接口。
 func (r *PulseRepo) GetRecentPlays(limit int) ([]RecentPlayItem, error) {
 	var results []RecentPlayItem
 	err := r.db.Raw(`
-		SELECT ps.user_id, u.username, ps.media_id, m.title, m.poster_path, m.media_type,
+		SELECT ps.user_id, u.username,
+			CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN m.series_id ELSE ps.media_id END AS media_id,
+			CASE WHEN m.media_type = 'episode' AND s.title != '' THEN s.title ELSE m.title END AS title,
+			CASE WHEN m.media_type = 'episode' AND s.poster_path != '' THEN s.poster_path ELSE m.poster_path END AS poster_path,
+			CASE WHEN m.media_type = 'episode' AND m.series_id != '' THEN 'series' ELSE 'movie' END AS media_type,
 			ps.watch_minutes, ps.date, ps.created_at
 		FROM playback_stats ps
 		JOIN users u ON ps.user_id = u.id AND u.deleted_at IS NULL
 		JOIN media m ON ps.media_id = m.id AND m.deleted_at IS NULL
+		LEFT JOIN series s ON m.series_id = s.id AND s.deleted_at IS NULL
 		ORDER BY ps.created_at DESC
 		LIMIT ?
 	`, limit).Scan(&results).Error

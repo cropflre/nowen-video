@@ -570,7 +570,9 @@ function TopContentList({ items }: { items: PulseTopContentItem[] }) {
           <div className="h-10 w-7 flex-shrink-0 overflow-hidden rounded-md" style={{ background: 'var(--bg-card)' }}>
             {item.poster_path ? (
               <img
-                src={streamApi.getPosterUrl(item.media_id)}
+                src={item.media_type === 'series'
+                  ? streamApi.getSeriesPosterUrl(item.media_id)
+                  : streamApi.getPosterUrl(item.media_id)}
                 alt={item.title}
                 className="h-full w-full object-cover"
                 loading="lazy"
@@ -584,7 +586,7 @@ function TopContentList({ items }: { items: PulseTopContentItem[] }) {
           <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.title}</p>
             <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              {item.media_type === 'episode' ? '📺' : '🎬'} {Math.round(item.total_minutes)} min · {item.unique_users} 人观看
+              {item.media_type === 'series' || item.media_type === 'episode' ? '📺' : '🎬'} {Math.round(item.total_minutes)} min · {item.unique_users} 人观看
             </p>
           </div>
         </div>
@@ -654,7 +656,7 @@ function RecentPlayList({ items }: { items: PulseRecentPlayItem[] }) {
               </td>
               <td className="py-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px]">{item.media_type === 'episode' ? '📺' : '🎬'}</span>
+                  <span className="text-[10px]">{item.media_type === 'series' || item.media_type === 'episode' ? '📺' : '🎬'}</span>
                   <span className="truncate text-xs" style={{ color: 'var(--text-primary)', maxWidth: 200 }}>{item.title}</span>
                 </div>
               </td>

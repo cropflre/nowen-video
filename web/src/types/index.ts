@@ -162,7 +162,7 @@ export interface UserStatsOverview {
   total_hours: number
   daily_stats: { date: string; total_minutes: number; media_count: number }[]
   top_genres: { genres: string; total_minutes: number }[]
-  most_watched: { media_id: string; title: string; poster_path: string; total_minutes: number }[]
+  most_watched: { media_id: string; title: string; poster_path: string; total_minutes: number; media_type?: string }[]
 }
 
 export interface SeasonInfo {
