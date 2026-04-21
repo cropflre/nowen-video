@@ -17,7 +17,8 @@ type SchedulerService struct {
 	libRepo             *repository.LibraryRepo
 	libService          *LibraryService
 	subtitlePreprocess  *SubtitlePreprocessService
-	subtitleTargetLangs string // 字幕目标翻译语言配置
+	transcodeService    *TranscodeService // 用于 cleanup 任务清理转码缓存
+	subtitleTargetLangs string            // 字幕目标翻译语言配置
 	wsHub               *WSHub
 	logger              *zap.SugaredLogger
 	stopCh              chan struct{}
@@ -54,6 +55,11 @@ func (s *SchedulerService) SetWSHub(hub *WSHub) {
 func (s *SchedulerService) SetSubtitlePreprocessService(svc *SubtitlePreprocessService, targetLangs string) {
 	s.subtitlePreprocess = svc
 	s.subtitleTargetLangs = targetLangs
+}
+
+// SetTranscodeService 延迟注入转码服务（用于 cleanup 任务）
+func (s *SchedulerService) SetTranscodeService(svc *TranscodeService) {
+	s.transcodeService = svc
 }
 
 // Start 启动调度器，每分钟检查一次到期任务
@@ -222,10 +228,27 @@ func (s *SchedulerService) executeScrapeTask(task *model.ScheduledTask) error {
 	return s.executeScanTask(task)
 }
 
-// executeCleanupTask 执行清理任务（清理过期缓存、日志等）
+// executeCleanupTask 执行清理任务（清理过期的转码缓存 + DB 记录）
+//
+// 清理策略：
+//   - done 状态超过 30 天 → 删除转码文件 + DB 记录
+//   - failed/cancelled 状态超过 7 天 → 删除残留文件 + DB 记录
+//
+// 清理只影响已完成/失败的任务，正在运行的任务不会被触碰。
 func (s *SchedulerService) executeCleanupTask(task *model.ScheduledTask) error {
-	s.logger.Info("执行缓存清理任务")
-	// 此处可扩展：清理转码缓存、过期的访问日志等
+	s.logger.Info("开始执行缓存清理任务")
+
+	if s.transcodeService == nil {
+		s.logger.Warn("TranscodeService 未注入，跳过转码缓存清理")
+		return nil
+	}
+
+	dirs, records, err := s.transcodeService.CleanupStaleCache(30, 7)
+	if err != nil {
+		return fmt.Errorf("清理转码缓存失败: %w", err)
+	}
+
+	s.logger.Infof("缓存清理任务完成: 删除 %d 个目录, %d 条记录", dirs, records)
 	return nil
 }
 
@@ -281,7 +304,12 @@ func (s *SchedulerService) getSubtitleTargetLangs() []string {
 }
 
 // calcNextRun 根据调度表达式计算下次运行时间
-// 支持简单的间隔表达式：@every 1h, @every 6h, @every 24h, @daily, @weekly
+// 仅支持以下三种语法（不支持标准 cron "0 2 * * *"）：
+//   - @daily          → 每天凌晨 2:00
+//   - @weekly         → 每周日凌晨 3:00
+//   - @every <dur>    → 按 Go 的 time.ParseDuration 解析，如 @every 6h / @every 30m
+//
+// 其他表达式（包括标准 cron）会被识别为无效，fallback 到 6 小时后。
 func (s *SchedulerService) calcNextRun(schedule string, from time.Time) time.Time {
 	schedule = strings.TrimSpace(strings.ToLower(schedule))
 
@@ -310,7 +338,8 @@ func (s *SchedulerService) calcNextRun(schedule string, from time.Time) time.Tim
 		return from.Add(duration)
 
 	default:
-		// 默认6小时后
+		// 未识别的表达式（包括标准 cron "0 2 * * *"），fallback 到 6 小时
+		s.logger.Warnf("不支持的调度表达式 %q，仅支持 @daily / @weekly / @every 6h；默认 6 小时后执行", schedule)
 		return from.Add(6 * time.Hour)
 	}
 }

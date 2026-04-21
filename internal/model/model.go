@@ -392,7 +392,7 @@ type ScheduledTask struct {
 	ID        string     `json:"id" gorm:"primaryKey;type:text"`
 	Name      string     `json:"name" gorm:"type:text;not null"`     // 任务名称
 	Type      string     `json:"type" gorm:"type:text;not null"`     // scan, scrape, cleanup
-	Schedule  string     `json:"schedule" gorm:"type:text;not null"` // cron表达式或间隔，如 "@every 6h", "0 2 * * *"
+	Schedule  string     `json:"schedule" gorm:"type:text;not null"` // 调度表达式，仅支持：@daily / @weekly / @every 6h（不支持标准cron）
 	TargetID  string     `json:"target_id" gorm:"type:text"`         // 目标ID（如媒体库ID）
 	Enabled   bool       `json:"enabled" gorm:"default:true"`
 	LastRun   *time.Time `json:"last_run"`

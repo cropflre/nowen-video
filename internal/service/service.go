@@ -89,6 +89,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建调度器服务
 	scheduler := NewSchedulerService(repos.ScheduledTask, repos.Library, logger)
 	scheduler.SetLibraryService(libService)
+	scheduler.SetTranscodeService(transcoder) // 注入转码服务，用于 cleanup 任务
 	scheduler.SetWSHub(wsHub)
 	scheduler.Start()
 

@@ -14,6 +14,11 @@ dist/
 *.test
 *.out
 
+# 运行日志
+*.log
+stdout.log
+stderr.log
+
 # 依赖
 vendor/
 node_modules/

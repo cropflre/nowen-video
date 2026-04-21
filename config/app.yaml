@@ -10,10 +10,10 @@ gpu_safety_enabled: true
 gpu_temperature_recovery: 70
 gpu_temperature_threshold: 80
 gpu_utilization_threshold: 85
-hw_accel: auto
-max_transcode_jobs: 1
+hw_accel: nvenc
+max_transcode_jobs: 2
 port: 8080
-resource_limit: 5
-transcode_preset: ultrafast
+resource_limit: 70
+transcode_preset: veryfast
 vaapi_device: /dev/dri/renderD128
 web_dir: ./web/dist

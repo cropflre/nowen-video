@@ -950,8 +950,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
-				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-				"-vf", fmt.Sprintf("scale_cuda=%d:%d", variant.Width, variant.Height),
+				"-vf", fmt.Sprintf("scale_cuda=%d:%d:format=nv12", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
 				"-sc_threshold", "0",
@@ -1022,12 +1021,22 @@ func (s *PreprocessService) transcodeWithFallback(
 	}
 
 	// 根据当前硬件加速模式确定尝试顺序
+	// 修复：Windows 上不存在 QSV/VAAPI 设备，跳过无意义的回退尝试，
+	// 避免每次回退都要启动 FFmpeg、等待超时、清理分片，浪费大量时间
 	var attempts []string
 	switch actualHWAccel {
 	case "nvenc":
-		attempts = []string{"nvenc", "qsv", "vaapi", "none"}
+		if runtime.GOOS == "windows" {
+			attempts = []string{"nvenc", "none"}
+		} else {
+			attempts = []string{"nvenc", "qsv", "vaapi", "none"}
+		}
 	case "qsv":
-		attempts = []string{"qsv", "vaapi", "none"}
+		if runtime.GOOS == "windows" {
+			attempts = []string{"qsv", "none"}
+		} else {
+			attempts = []string{"qsv", "vaapi", "none"}
+		}
 	case "vaapi":
 		attempts = []string{"vaapi", "qsv", "none"}
 	default:
