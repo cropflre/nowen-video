@@ -1,0 +1,2 @@
+# Shell 脚本必须使用 LF 行尾，否则 Linux 上 bash 会报 "bad interpreter: /bin/bash^M"
+*.sh text eol=lf
