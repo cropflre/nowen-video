@@ -22,6 +22,21 @@ services:
     # 如需锁定版本：
     # image: cropflre/nowen-video:v1.1.3
     container_name: nowen-video
+    # ================= 超级管理员权限（容器侧）=================
+    # 容器内以 root 运行，规避 NAS 挂载目录 UID 不一致导致的权限问题。
+    # 飞牛 OS / 绿联 / 威联通等 NAS 的 /vol01 /volume1 往往是 root:root 或
+    # 自定义 UID，以 root 跑是最省心的方案。
+    user: "0:0"
+    privileged: true
+    cap_add:
+      - SYS_ADMIN        # WebDAV/Alist/S3 等远程挂载（FUSE）需要
+      - NET_ADMIN
+      - SYS_PTRACE
+      - DAC_READ_SEARCH  # 跨属主读媒体文件
+    security_opt:
+      - apparmor:unconfined
+      - seccomp:unconfined
+    # =========================================================
     ports:
       - "8080:8080"
     volumes:
@@ -39,6 +54,8 @@ services:
     devices:
       # 通用 DRM 节点（Mali / 瑞芯微 / Amlogic 都会暴露）
       - /dev/dri:/dev/dri
+      # FUSE（WebDAV/Alist 挂载用；需宿主机先 `modprobe fuse`）
+      - /dev/fuse:/dev/fuse
       # ---- 瑞芯微 RK3566 / RK3568 (OECT / Radxa E25 等) ----
       # - /dev/mpp_service:/dev/mpp_service
       # - /dev/rga:/dev/rga
@@ -52,6 +69,10 @@ services:
       - NOWEN_APP_PORT=8080
       - NOWEN_APP_DATA_DIR=/data
       - NOWEN_APP_WEB_DIR=/app/web/dist
+      # ---- 容器进程用户（配合 user: "0:0"）----
+      - PUID=0
+      - PGID=0
+      - UMASK=000
       # 硬件加速：ARM SBC 建议先用 auto，不稳就改 none 走 CPU
       - NOWEN_APP_HW_ACCEL=auto
       - NOWEN_APP_TRANSCODE_PRESET=veryfast
@@ -63,7 +84,6 @@ services:
       - NOWEN_CACHE_CACHE_DIR=/cache
       - NOWEN_LOGGING_LEVEL=info
       - TZ=Asia/Shanghai
-    privileged: true
     restart: unless-stopped
     deploy:
       resources:
@@ -72,3 +92,21 @@ services:
           memory: 1G
         reservations:
           memory: 256M
+
+# ================= 应用层"超级管理员"获取方式 =================
+# 本项目的权限模型：users.role = "admin" / "user"
+#
+# 1) 推荐做法（零配置）：
+#    首次启动后访问 http://<host>:8080 → 注册 → 第一个注册用户自动是 admin（超级管理员）。
+#    后续再开放/关闭注册和邀请码（管理后台 → 用户 / 注册）。
+#
+# 2) 把现有普通用户提权为 admin：
+#    docker exec -it nowen-video sqlite3 /data/nowen.db \
+#      "UPDATE users SET role='admin' WHERE username='yourname';"
+#    然后让该用户重新登录即可。
+#
+# 3) 忘记 admin 密码时重置：
+#    docker exec -it nowen-video sqlite3 /data/nowen.db \
+#      "UPDATE users SET must_change_pwd=1 WHERE role='admin';"
+#    再用任意 admin 账号登录触发改密流程。
+# =============================================================

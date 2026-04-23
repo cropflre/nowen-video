@@ -3,21 +3,31 @@ import { storageApi } from '@/api'
 import type { AlistConfig, AlistStatus, S3Config, S3Status } from '@/api/storage'
 import {
   Cloud,
-  CheckCircle2,
-  XCircle,
   Loader2,
   Save,
   Wifi,
-  Eye,
-  EyeOff,
   Server,
   Database,
   RefreshCw,
+  Link2,
 } from 'lucide-react'
-import clsx from 'clsx'
+import {
+  SectionShell,
+  FieldGroup,
+  Field,
+  Input,
+  Toggle,
+  ActionBar,
+  ActionButton,
+  Toast,
+  StatusBadge,
+  VersionBadge,
+  EyeToggle,
+  ProviderState,
+} from './storage/StorageUIKit'
 
 // ==================== V2.3: 远程存储扩展管理 ====================
-// 为 StorageTab 提供 Alist / S3 两个独立 section
+// Alist / S3 两个 section，样式与 WebDAV 完全对齐
 
 // ---------- 默认值 ----------
 
@@ -51,6 +61,13 @@ const DEFAULT_S3: S3Config = {
   read_block_count: 4,
 }
 
+function toProviderState(status: { enabled?: boolean; connected?: boolean } | null | undefined): ProviderState {
+  if (!status) return 'disabled'
+  if (!status.enabled) return 'disabled'
+  if (status.connected) return 'connected'
+  return 'error'
+}
+
 // ==================== Alist Section ====================
 
 export function AlistSection() {
@@ -59,7 +76,7 @@ export function AlistSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null)
   const [showPwd, setShowPwd] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [pwdDirty, setPwdDirty] = useState(false)
@@ -87,6 +104,7 @@ export function AlistSection() {
 
   const handleSave = async () => {
     setSaving(true)
+    setToast(null)
     try {
       const payload: Partial<AlistConfig> = { ...config }
       if (!pwdDirty) delete payload.password
@@ -94,9 +112,10 @@ export function AlistSection() {
       await storageApi.updateAlistConfig(payload)
       setPwdDirty(false)
       setTokenDirty(false)
+      setToast({ ok: true, msg: 'Alist 配置已保存' })
       await load()
     } catch (e: any) {
-      alert('保存失败: ' + (e.response?.data?.error || e.message))
+      setToast({ ok: false, msg: '保存失败: ' + (e.response?.data?.error || e.message) })
     } finally {
       setSaving(false)
     }
@@ -104,7 +123,7 @@ export function AlistSection() {
 
   const handleTest = async () => {
     setTesting(true)
-    setTestResult(null)
+    setToast(null)
     try {
       await storageApi.testAlistConnection({
         server_url: config.server_url,
@@ -113,9 +132,9 @@ export function AlistSection() {
         token: tokenDirty ? config.token : '',
         base_path: config.base_path,
       })
-      setTestResult({ ok: true, msg: '连接测试成功' })
+      setToast({ ok: true, msg: 'Alist 连接测试成功' })
     } catch (e: any) {
-      setTestResult({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
+      setToast({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
     } finally {
       setTesting(false)
     }
@@ -124,253 +143,198 @@ export function AlistSection() {
   if (loading) {
     return (
       <section className="flex items-center justify-center py-8">
-        <Loader2 className="animate-spin text-neon" size={20} />
+        <Loader2 className="animate-spin text-primary-400" size={20} />
       </section>
     )
   }
 
   return (
-    <section>
-      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        <Cloud size={20} className="text-purple-400/80" />
-        Alist 聚合网盘
-        <span className="ml-2 rounded-full bg-purple-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-purple-300">
-          V2.3
-        </span>
-        {status && (
-          <span
-            className={clsx(
-              'ml-auto inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1 font-medium',
-              status.connected
-                ? 'bg-green-500/10 text-green-400'
-                : status.enabled
-                ? 'bg-red-500/10 text-red-400'
-                : 'bg-surface-700 text-surface-400'
-            )}
-          >
-            {status.connected ? (
-              <>
-                <CheckCircle2 size={12} />
-                已连接
-              </>
-            ) : status.enabled ? (
-              <>
-                <XCircle size={12} />
-                未连接
-              </>
-            ) : (
-              <>未启用</>
-            )}
-          </span>
-        )}
-      </h2>
-
-      <p className="text-xs text-surface-500 mb-4 leading-relaxed">
-        通过 Alist 统一对接 20+ 网盘（阿里云盘/115/夸克/百度网盘/OneDrive/Google Drive 等），
-        媒体库路径使用 <code className="px-1 py-0.5 bg-surface-800 rounded">alist://</code> 前缀。
-        推荐使用 Token 模式避免明文密码。
-      </p>
-
-      <div className="glass-panel-subtle rounded-xl p-5 space-y-4">
-        <label className="flex items-center gap-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
-            className="w-4 h-4 accent-purple-500"
-          />
-          <span className="text-sm">启用 Alist 存储</span>
-        </label>
-
-        <div>
-          <label className="block text-xs text-surface-400 mb-1.5">服务器地址</label>
-          <input
-            type="text"
-            value={config.server_url}
-            onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
-            placeholder="https://alist.example.com"
-            className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">用户名（可选）</label>
-            <input
-              type="text"
-              value={config.username}
-              onChange={(e) => setConfig({ ...config, username: e.target.value })}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">密码（可选）</label>
-            <div className="relative">
-              <input
-                type={showPwd ? 'text' : 'password'}
-                value={config.password}
-                onChange={(e) => {
-                  setConfig({ ...config, password: e.target.value })
-                  setPwdDirty(true)
-                }}
-                className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm pr-9"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
-              >
-                {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
+    <SectionShell
+      icon={<Cloud size={18} />}
+      title="Alist 聚合网盘"
+      subtitle="统一对接阿里云盘 / 115 / 夸克 / 百度网盘 / OneDrive 等"
+      badge={<VersionBadge accent="purple">V2.3</VersionBadge>}
+      statusSlot={<StatusBadge state={toProviderState(status)} />}
+      accent="purple"
+      description={
+        <>
+          媒体库路径使用 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-purple-300">alist://</code> 前缀。
+          推荐使用 <strong>长期 Token</strong> 模式，避免明文保存密码。
+        </>
+      }
+    >
+      {/* 启用开关行 */}
+      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-800/40 border border-surface-700/30 px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link2 size={16} className="text-purple-300 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              启用 Alist 存储
+            </div>
+            <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+              启用后可将 Alist 挂载的网盘作为媒体库数据源
             </div>
           </div>
         </div>
+        <Toggle
+          checked={config.enabled}
+          onChange={(v) => setConfig({ ...config, enabled: v })}
+          accent="purple"
+        />
+      </div>
 
-        <div>
-          <label className="block text-xs text-surface-400 mb-1.5">
-            长期 Token（推荐，优先于用户名密码）
-          </label>
-          <div className="relative">
-            <input
+      {/* 连接配置 */}
+      <FieldGroup title="连接" description="Alist 服务地址与基础路径">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="服务器地址" required fullWidth>
+            <Input
+              type="url"
+              value={config.server_url}
+              onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
+              placeholder="https://alist.example.com"
+              disabled={!config.enabled}
+            />
+          </Field>
+          <Field label="基础路径" hint="所有相对路径基于此路径解析">
+            <Input
+              type="text"
+              value={config.base_path}
+              onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
+              placeholder="/aliyun/movies"
+              disabled={!config.enabled}
+            />
+          </Field>
+          <Field label="超时（秒）">
+            <Input
+              type="number"
+              min={1}
+              value={config.timeout}
+              onChange={(e) => setConfig({ ...config, timeout: parseInt(e.target.value) || 30 })}
+              disabled={!config.enabled}
+            />
+          </Field>
+        </div>
+      </FieldGroup>
+
+      {/* 鉴权 */}
+      <FieldGroup title="鉴权" description="推荐使用 Token，二者都填时 Token 优先">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="用户名">
+            <Input
+              type="text"
+              value={config.username}
+              onChange={(e) => setConfig({ ...config, username: e.target.value })}
+              disabled={!config.enabled}
+              autoComplete="username"
+            />
+          </Field>
+          <Field label="密码">
+            <Input
+              type={showPwd ? 'text' : 'password'}
+              value={config.password}
+              onChange={(e) => {
+                setConfig({ ...config, password: e.target.value })
+                setPwdDirty(true)
+              }}
+              disabled={!config.enabled}
+              placeholder={pwdDirty ? '' : '留空保持原密码'}
+              autoComplete="current-password"
+              suffix={<EyeToggle visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />}
+            />
+          </Field>
+          <Field label="长期 Token（推荐）" fullWidth hint="优先于用户名密码使用，避免每次登录换取 JWT">
+            <Input
               type={showToken ? 'text' : 'password'}
               value={config.token}
               onChange={(e) => {
                 setConfig({ ...config, token: e.target.value })
                 setTokenDirty(true)
               }}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm pr-9 font-mono"
+              disabled={!config.enabled}
+              placeholder={tokenDirty ? '' : '留空保持原 Token'}
+              className="font-mono"
+              suffix={<EyeToggle visible={showToken} onToggle={() => setShowToken((v) => !v)} />}
             />
-            <button
-              type="button"
-              onClick={() => setShowToken((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
-            >
-              {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
+          </Field>
         </div>
+      </FieldGroup>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">基础路径</label>
-            <input
-              type="text"
-              value={config.base_path}
-              onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
-              placeholder="/aliyun/movies"
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">超时时间（秒）</label>
-            <input
-              type="number"
-              value={config.timeout}
-              onChange={(e) =>
-                setConfig({ ...config, timeout: parseInt(e.target.value) || 30 })
-              }
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">缓存 TTL（小时）</label>
-            <input
-              type="number"
-              value={config.cache_ttl_hours}
-              onChange={(e) =>
-                setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 12 })
-              }
-              disabled={!config.enable_cache}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm disabled:opacity-40"
-            />
-          </div>
-          <div>
-            <label className="flex items-center gap-2 mt-6 cursor-pointer select-none">
-              <input
-                type="checkbox"
+      {/* 性能（折叠） */}
+      <FieldGroup title="性能调优" collapsible defaultOpen={false} description="影响流式播放的缓存和分块读取策略">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Field label="启用元数据缓存">
+            <div className="flex items-center h-9">
+              <Toggle
                 checked={config.enable_cache}
-                onChange={(e) => setConfig({ ...config, enable_cache: e.target.checked })}
-                className="w-4 h-4 accent-purple-500"
+                onChange={(v) => setConfig({ ...config, enable_cache: v })}
+                disabled={!config.enabled}
+                accent="purple"
               />
-              <span className="text-xs">启用元数据缓存</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">
-              播放缓存块大小（MiB）
-            </label>
-            <input
+            </div>
+          </Field>
+          <Field label="缓存 TTL（小时）">
+            <Input
               type="number"
+              min={0}
+              value={config.cache_ttl_hours}
+              onChange={(e) => setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 12 })}
+              disabled={!config.enabled || !config.enable_cache}
+            />
+          </Field>
+          <Field label="块大小（MiB）">
+            <Input
+              type="number"
+              min={1}
               value={config.read_block_size_mb}
-              onChange={(e) =>
-                setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })
-              }
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              onChange={(e) => setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })}
+              disabled={!config.enabled}
             />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">每文件最大块数</label>
-            <input
+          </Field>
+          <Field label="每文件最大块数">
+            <Input
               type="number"
+              min={1}
               value={config.read_block_count}
-              onChange={(e) =>
-                setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })
-              }
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              onChange={(e) => setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })}
+              disabled={!config.enabled}
             />
-          </div>
+          </Field>
         </div>
+      </FieldGroup>
 
-        {testResult && (
-          <div
-            className={clsx(
-              'text-xs rounded-lg p-2',
-              testResult.ok
-                ? 'bg-green-500/10 text-green-400'
-                : 'bg-red-500/10 text-red-400'
-            )}
-          >
-            {testResult.msg}
-          </div>
-        )}
+      {toast && <Toast ok={toast.ok} msg={toast.msg} onDismiss={() => setToast(null)} />}
 
-        <div className="flex items-center gap-2 pt-2">
-          <button
-            onClick={handleTest}
-            disabled={testing || !config.server_url}
-            className="inline-flex items-center gap-2 rounded-lg bg-surface-800 px-3 py-2 text-sm hover:bg-surface-700 disabled:opacity-40"
-          >
-            {testing ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Wifi size={14} />
-            )}
-            测试连接
-          </button>
-          <button
+      <ActionBar
+        inline
+        secondaryActions={
+          <>
+            <ActionButton
+              variant="secondary"
+              accent="purple"
+              onClick={handleTest}
+              disabled={!config.enabled || !config.server_url || testing || saving}
+              loading={testing}
+              icon={<Wifi size={16} />}
+            >
+              测试连接
+            </ActionButton>
+            <ActionButton variant="icon" onClick={load} icon={<RefreshCw size={16} />} aria-label="刷新" />
+          </>
+        }
+        primaryActions={
+          <ActionButton
+            variant="primary"
+            accent="purple"
             onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white hover:bg-purple-600 disabled:opacity-40"
+            disabled={saving || testing}
+            loading={saving}
+            icon={<Save size={16} />}
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             保存配置
-          </button>
-          <button
-            onClick={load}
-            className="ml-auto text-surface-500 hover:text-surface-300"
-            title="刷新状态"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-    </section>
+          </ActionButton>
+        }
+      />
+    </SectionShell>
   )
 }
 
@@ -382,7 +346,7 @@ export function S3Section() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null)
   const [showSecret, setShowSecret] = useState(false)
   const [secretDirty, setSecretDirty] = useState(false)
 
@@ -408,14 +372,16 @@ export function S3Section() {
 
   const handleSave = async () => {
     setSaving(true)
+    setToast(null)
     try {
       const payload: Partial<S3Config> = { ...config }
       if (!secretDirty) delete payload.secret_key
       await storageApi.updateS3Config(payload)
       setSecretDirty(false)
+      setToast({ ok: true, msg: 'S3 配置已保存' })
       await load()
     } catch (e: any) {
-      alert('保存失败: ' + (e.response?.data?.error || e.message))
+      setToast({ ok: false, msg: '保存失败: ' + (e.response?.data?.error || e.message) })
     } finally {
       setSaving(false)
     }
@@ -423,7 +389,7 @@ export function S3Section() {
 
   const handleTest = async () => {
     setTesting(true)
-    setTestResult(null)
+    setToast(null)
     try {
       await storageApi.testS3Connection({
         endpoint: config.endpoint,
@@ -434,9 +400,9 @@ export function S3Section() {
         base_path: config.base_path,
         path_style: config.path_style,
       })
-      setTestResult({ ok: true, msg: '连接测试成功' })
+      setToast({ ok: true, msg: 'S3 连接测试成功' })
     } catch (e: any) {
-      setTestResult({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
+      setToast({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
     } finally {
       setTesting(false)
     }
@@ -445,257 +411,216 @@ export function S3Section() {
   if (loading) {
     return (
       <section className="flex items-center justify-center py-8">
-        <Loader2 className="animate-spin text-neon" size={20} />
+        <Loader2 className="animate-spin text-primary-400" size={20} />
       </section>
     )
   }
 
   return (
-    <section>
-      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        <Database size={20} className="text-amber-400/80" />
-        S3 兼容对象存储
-        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-300">
-          V2.3
-        </span>
-        {status && (
-          <span
-            className={clsx(
-              'ml-auto inline-flex items-center gap-1.5 text-xs rounded-full px-3 py-1 font-medium',
-              status.connected
-                ? 'bg-green-500/10 text-green-400'
-                : status.enabled
-                ? 'bg-red-500/10 text-red-400'
-                : 'bg-surface-700 text-surface-400'
-            )}
+    <SectionShell
+      icon={<Database size={18} />}
+      title="S3 兼容对象存储"
+      subtitle="AWS S3 / MinIO / R2 / 阿里云 OSS / 腾讯云 COS / B2"
+      badge={<VersionBadge accent="amber">V2.3</VersionBadge>}
+      statusSlot={<StatusBadge state={toProviderState(status)} />}
+      accent="amber"
+      description={
+        <>
+          媒体库路径使用 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-amber-300">s3://</code> 前缀；
+          MinIO 等自建服务请勾选 <strong>Path-Style</strong>；播放通过预签名 URL（有效期 2 小时）。
+        </>
+      }
+    >
+      {/* 启用 */}
+      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-800/40 border border-surface-700/30 px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Database size={16} className="text-amber-300 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              启用 S3 存储
+            </div>
+            <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+              启用后可将对象存储桶作为媒体库数据源
+            </div>
+          </div>
+        </div>
+        <Toggle
+          checked={config.enabled}
+          onChange={(v) => setConfig({ ...config, enabled: v })}
+          accent="amber"
+        />
+      </div>
+
+      {/* 连接 */}
+      <FieldGroup title="连接" description="Endpoint、Region 与 Bucket">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="Endpoint"
+            required
+            fullWidth
+            hint="如 https://s3.amazonaws.com、https://minio.example.com:9000"
           >
-            {status.connected ? (
-              <>
-                <CheckCircle2 size={12} />
-                已连接
-              </>
-            ) : status.enabled ? (
-              <>
-                <XCircle size={12} />
-                未连接
-              </>
-            ) : (
-              <>未启用</>
-            )}
-          </span>
-        )}
-      </h2>
-
-      <p className="text-xs text-surface-500 mb-4 leading-relaxed">
-        支持 AWS S3 / MinIO / Cloudflare R2 / 阿里云 OSS / 腾讯云 COS / Backblaze B2 等，
-        媒体库路径使用 <code className="px-1 py-0.5 bg-surface-800 rounded">s3://</code> 前缀。
-        MinIO 等请勾选"Path-Style"。播放走预签名 URL，默认有效期 2 小时。
-      </p>
-
-      <div className="glass-panel-subtle rounded-xl p-5 space-y-4">
-        <label className="flex items-center gap-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
-            className="w-4 h-4 accent-amber-500"
-          />
-          <span className="text-sm">启用 S3 存储</span>
-        </label>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className="block text-xs text-surface-400 mb-1.5">
-              Endpoint
-              <span className="ml-1 text-surface-600">
-                （如 https://s3.amazonaws.com 或 https://minio.example.com:9000）
-              </span>
-            </label>
-            <input
-              type="text"
+            <Input
+              type="url"
               value={config.endpoint}
               onChange={(e) => setConfig({ ...config, endpoint: e.target.value })}
               placeholder="https://s3.amazonaws.com"
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              disabled={!config.enabled}
             />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">Region</label>
-            <input
+          </Field>
+          <Field label="Region">
+            <Input
               type="text"
               value={config.region}
               onChange={(e) => setConfig({ ...config, region: e.target.value })}
               placeholder="us-east-1"
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              disabled={!config.enabled}
             />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">Bucket</label>
-            <input
+          </Field>
+          <Field label="Bucket" required>
+            <Input
               type="text"
               value={config.bucket}
               onChange={(e) => setConfig({ ...config, bucket: e.target.value })}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              disabled={!config.enabled}
             />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">Access Key</label>
-            <input
-              type="text"
-              value={config.access_key}
-              onChange={(e) => setConfig({ ...config, access_key: e.target.value })}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm font-mono"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">Secret Key</label>
-            <div className="relative">
-              <input
-                type={showSecret ? 'text' : 'password'}
-                value={config.secret_key}
-                onChange={(e) => {
-                  setConfig({ ...config, secret_key: e.target.value })
-                  setSecretDirty(true)
-                }}
-                className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm pr-9 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
-              >
-                {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">基础路径前缀</label>
-            <input
+          </Field>
+          <Field label="基础路径前缀" hint="例如 media/，所有对象 key 以此为根">
+            <Input
               type="text"
               value={config.base_path}
               onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
               placeholder="media/"
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              disabled={!config.enabled}
             />
-          </div>
-          <div>
-            <label className="flex items-center gap-2 mt-6 cursor-pointer select-none">
-              <input
-                type="checkbox"
+          </Field>
+          <Field label="Path-Style 寻址">
+            <div className="flex items-center h-9 gap-2">
+              <Toggle
                 checked={config.path_style}
-                onChange={(e) => setConfig({ ...config, path_style: e.target.checked })}
-                className="w-4 h-4 accent-amber-500"
+                onChange={(v) => setConfig({ ...config, path_style: v })}
+                disabled={!config.enabled}
+                accent="amber"
               />
-              <span className="text-xs flex items-center gap-1">
-                <Server size={12} />
-                Path-Style 寻址（MinIO 必选）
+              <span className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
+                <Server size={12} /> MinIO 等自建必选
               </span>
-            </label>
-          </div>
+            </div>
+          </Field>
         </div>
+      </FieldGroup>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">缓存 TTL（小时）</label>
-            <input
-              type="number"
-              value={config.cache_ttl_hours}
-              onChange={(e) =>
-                setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 24 })
-              }
-              disabled={!config.enable_cache}
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm disabled:opacity-40"
+      {/* 鉴权 */}
+      <FieldGroup title="鉴权" description="Access Key + Secret Key">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Access Key" required>
+            <Input
+              type="text"
+              value={config.access_key}
+              onChange={(e) => setConfig({ ...config, access_key: e.target.value })}
+              disabled={!config.enabled}
+              className="font-mono"
+              autoComplete="off"
             />
-          </div>
-          <div>
-            <label className="flex items-center gap-2 mt-6 cursor-pointer select-none">
-              <input
-                type="checkbox"
+          </Field>
+          <Field label="Secret Key" required>
+            <Input
+              type={showSecret ? 'text' : 'password'}
+              value={config.secret_key}
+              onChange={(e) => {
+                setConfig({ ...config, secret_key: e.target.value })
+                setSecretDirty(true)
+              }}
+              disabled={!config.enabled}
+              placeholder={secretDirty ? '' : '留空保持原 Secret'}
+              className="font-mono"
+              autoComplete="off"
+              suffix={<EyeToggle visible={showSecret} onToggle={() => setShowSecret((v) => !v)} />}
+            />
+          </Field>
+        </div>
+      </FieldGroup>
+
+      {/* 性能（折叠） */}
+      <FieldGroup
+        title="性能调优"
+        collapsible
+        defaultOpen={false}
+        description="影响流式播放的缓存和分块读取策略"
+      >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Field label="启用元数据缓存">
+            <div className="flex items-center h-9">
+              <Toggle
                 checked={config.enable_cache}
-                onChange={(e) => setConfig({ ...config, enable_cache: e.target.checked })}
-                className="w-4 h-4 accent-amber-500"
+                onChange={(v) => setConfig({ ...config, enable_cache: v })}
+                disabled={!config.enabled}
+                accent="amber"
               />
-              <span className="text-xs">启用元数据缓存</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">
-              播放缓存块大小（MiB）
-            </label>
-            <input
+            </div>
+          </Field>
+          <Field label="缓存 TTL（小时）">
+            <Input
               type="number"
+              min={0}
+              value={config.cache_ttl_hours}
+              onChange={(e) => setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 24 })}
+              disabled={!config.enabled || !config.enable_cache}
+            />
+          </Field>
+          <Field label="块大小（MiB）">
+            <Input
+              type="number"
+              min={1}
               value={config.read_block_size_mb}
-              onChange={(e) =>
-                setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })
-              }
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              onChange={(e) => setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })}
+              disabled={!config.enabled}
             />
-          </div>
-          <div>
-            <label className="block text-xs text-surface-400 mb-1.5">每文件最大块数</label>
-            <input
+          </Field>
+          <Field label="每文件最大块数">
+            <Input
               type="number"
+              min={1}
               value={config.read_block_count}
-              onChange={(e) =>
-                setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })
-              }
-              className="w-full rounded-lg bg-surface-800 px-3 py-2 text-sm"
+              onChange={(e) => setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })}
+              disabled={!config.enabled}
             />
-          </div>
+          </Field>
         </div>
+      </FieldGroup>
 
-        {testResult && (
-          <div
-            className={clsx(
-              'text-xs rounded-lg p-2',
-              testResult.ok
-                ? 'bg-green-500/10 text-green-400'
-                : 'bg-red-500/10 text-red-400'
-            )}
-          >
-            {testResult.msg}
-          </div>
-        )}
+      {toast && <Toast ok={toast.ok} msg={toast.msg} onDismiss={() => setToast(null)} />}
 
-        <div className="flex items-center gap-2 pt-2">
-          <button
-            onClick={handleTest}
-            disabled={testing || !config.endpoint || !config.bucket}
-            className="inline-flex items-center gap-2 rounded-lg bg-surface-800 px-3 py-2 text-sm hover:bg-surface-700 disabled:opacity-40"
-          >
-            {testing ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Wifi size={14} />
-            )}
-            测试连接
-          </button>
-          <button
+      <ActionBar
+        inline
+        secondaryActions={
+          <>
+            <ActionButton
+              variant="secondary"
+              accent="amber"
+              onClick={handleTest}
+              disabled={!config.enabled || !config.endpoint || !config.bucket || testing || saving}
+              loading={testing}
+              icon={<Wifi size={16} />}
+            >
+              测试连接
+            </ActionButton>
+            <ActionButton variant="icon" onClick={load} icon={<RefreshCw size={16} />} aria-label="刷新" />
+          </>
+        }
+        primaryActions={
+          <ActionButton
+            variant="primary"
+            accent="amber"
             onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-40"
+            disabled={saving || testing}
+            loading={saving}
+            icon={<Save size={16} />}
           >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             保存配置
-          </button>
-          <button
-            onClick={load}
-            className="ml-auto text-surface-500 hover:text-surface-300"
-            title="刷新状态"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-    </section>
+          </ActionButton>
+        }
+      />
+    </SectionShell>
   )
 }
