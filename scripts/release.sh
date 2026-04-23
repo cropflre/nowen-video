@@ -88,6 +88,16 @@ run() {
     fi
 }
 
+# run_argv：按参数数组原样执行（不经 eval 二次解析），用于参数含空格/等号等
+# 特殊字符的场景（例如 docker build 的 --label k=v 参数）。
+run_argv() {
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "  ${C_YELLOW}DRY-RUN${C_RESET} $*"
+    else
+        "$@"
+    fi
+}
+
 # -------------------- 前置检查 --------------------
 # 定位到仓库根目录（脚本可能被从任意目录调用）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -217,11 +227,14 @@ OCI_LABELS=(
 )
 
 step "开始构建"
-BUILD_CMD=( docker build "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" . )
+# 明确 -f Dockerfile 与上下文路径 "$REPO_ROOT"，避免个别环境下 docker build 被
+# 劫持为 buildx bake 模式时无法正确定位 Dockerfile（报错 #2 transferring
+# dockerfile: 2B / failed to read dockerfile: no such file or directory）
+BUILD_CMD=( docker build -f "$REPO_ROOT/Dockerfile" "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" "$REPO_ROOT" )
 echo "  ${BUILD_CMD[*]}"
 
 BUILD_START=$(date +%s)
-run "${BUILD_CMD[@]}"
+run_argv "${BUILD_CMD[@]}"
 BUILD_END=$(date +%s)
 BUILD_DURATION=$((BUILD_END - BUILD_START))
 ok "构建完成，用时 ${BUILD_DURATION}s"
