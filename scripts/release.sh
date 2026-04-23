@@ -249,11 +249,37 @@ fi
 # -------------------- git tag --------------------
 if [ "$DO_GIT_TAG" = "1" ]; then
     step "打 git tag 并推送到 GitHub"
-    info "git tag -a ${VERSION_TAG} -m 'Release ${VERSION_TAG}'"
-    run "git tag -a \"${VERSION_TAG}\" -m \"Release ${VERSION_TAG}\""
+    # 本地 tag：已存在就跳过创建（可能上次 push 失败后重试）
+    if git rev-parse -q --verify "refs/tags/${VERSION_TAG}" >/dev/null 2>&1; then
+        info "本地 tag ${VERSION_TAG} 已存在，跳过创建"
+    else
+        info "git tag -a ${VERSION_TAG} -m 'Release ${VERSION_TAG}'"
+        run "git tag -a \"${VERSION_TAG}\" -m \"Release ${VERSION_TAG}\""
+    fi
     info "git push origin ${VERSION_TAG}"
-    run "git push origin \"${VERSION_TAG}\""
-    ok "git tag ${VERSION_TAG} 已推送"
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "  (dry-run) git push origin \"${VERSION_TAG}\""
+    elif git push origin "${VERSION_TAG}"; then
+        ok "git tag ${VERSION_TAG} 已推送"
+    else
+        echo
+        echo "${C_YELLOW}[!] git push tag 失败（镜像已成功推送至 Docker Hub，本地 tag 已保留）${C_RESET}"
+        echo "    常见原因：GitHub 已禁用密码认证，需使用 PAT 或 SSH key"
+        echo "    修复方式任选一种，然后补推："
+        echo "      git push origin ${VERSION_TAG}"
+        echo
+        echo "    方案 A（PAT，推荐）："
+        echo "      1. https://github.com/settings/tokens 生成 fine-grained token（Contents: RW）"
+        echo "      2. git config --global credential.helper store"
+        echo "      3. git push origin ${VERSION_TAG}   # 用户名: GitHub 用户名；密码: 粘贴 PAT"
+        echo
+        echo "    方案 B（SSH key）："
+        echo "      1. ssh-keygen -t ed25519 -C \"\$(hostname)\""
+        echo "      2. cat ~/.ssh/id_ed25519.pub  → 添加到 https://github.com/settings/keys"
+        echo "      3. git remote set-url origin git@github.com:<user>/<repo>.git"
+        echo "      4. git push origin ${VERSION_TAG}"
+        die "git tag 推送失败"
+    fi
 else
     info "跳过 git tag（--no-git-tag）"
 fi
