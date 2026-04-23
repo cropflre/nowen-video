@@ -2,7 +2,15 @@ version: '3.8'
 
 services:
   nowen-video:
-    build: .
+    build:
+      context: .
+      # 多架构构建（使用 docker buildx 时生效）
+      # 本机架构会自动选择，如需强制指定可取消注释：
+      # platforms:
+      #   - linux/amd64
+      #   - linux/arm64
+    # 如果在 x86 主机上拉取 ARM 镜像（或反之），可通过 platform 显式指定
+    # platform: linux/arm64
     container_name: nowen-video
     ports:
       - "8080:8080"
@@ -17,10 +25,17 @@ services:
       # 示例: 分别挂载不同媒体目录
       # - /volume1/Media/电影:/media/电影
       # - /volume1/Media/电视剧:/media/电视剧
-      # 群晖/绿联NAS：挂载GPU设备以支持硬件加速
-      # 如果没有硬件加速需求可以注释掉
+    # 硬件加速设备映射
+    # - amd64 (Intel QSV/VAAPI): /dev/dri
+    # - arm64 (树莓派 V4L2 / 瑞芯微 RKMPP / Mali GPU): /dev/dri, /dev/video*
+    # 如果没有硬件加速需求可以注释掉整个 devices 段
     devices:
       - /dev/dri:/dev/dri
+      # ARM SBC 额外可能需要的设备（按需开启）
+      # - /dev/video10:/dev/video10   # 树莓派 V4L2 H.264 编码
+      # - /dev/video11:/dev/video11
+      # - /dev/video12:/dev/video12
+      # - /dev/mpp_service:/dev/mpp_service  # 瑞芯微 RKMPP
     environment:
       # ---- 应用配置 ----
       - NOWEN_APP_PORT=8080

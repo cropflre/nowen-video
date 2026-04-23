@@ -1,7 +1,18 @@
+# syntax=docker/dockerfile:1.6
 # =============================================
-# 阶段1: 构建前端
+# 多架构构建：支持 linux/amd64 与 linux/arm64
+# 使用方式：
+#   docker buildx build --platform linux/amd64,linux/arm64 -t nowen-video:latest .
+# 说明：
+#   - 前端阶段固定在构建机架构，产物是纯静态文件，与运行架构无关
+#   - 后端走 Go 原生交叉编译（纯 Go SQLite，CGO=0）
+#   - 运行阶段按架构条件安装硬件加速驱动（Intel 驱动仅 amd64）
 # =============================================
-FROM node:20-alpine AS frontend
+
+# =============================================
+# 阶段1: 构建前端（锁定在构建机本地架构，避免 QEMU 跑 npm 极慢）
+# =============================================
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 WORKDIR /app/web
 COPY web/package*.json ./
 RUN npm ci
@@ -9,44 +20,62 @@ COPY web/ .
 RUN npm run build
 
 # =============================================
-# 阶段2: 构建后端
+# 阶段2: 构建后端（在构建机本地架构运行 Go 工具链，交叉编译到目标架构）
 # =============================================
-FROM golang:1.22-alpine AS backend
-RUN apk add --no-cache gcc musl-dev
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS backend
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
-RUN CGO_ENABLED=1 go build -o nowen-video ./cmd/server
+# 使用纯 Go SQLite (glebarez/sqlite)，可以 CGO_ENABLED=0 直接交叉编译
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o nowen-video ./cmd/server
 
 # =============================================
-# 阶段3: 运行镜像
+# 阶段3: 运行镜像（目标架构的 alpine）
 # =============================================
 FROM alpine:3.19
+ARG TARGETARCH
 
-# 安装FFmpeg（含硬件加速支持）、su-exec 和必要运行时
-# 注意：apk add 不支持行内注释，注释必须独立成行
+# 基础依赖：所有架构都需要
 RUN apk add --no-cache \
     ffmpeg \
     tzdata \
     ca-certificates \
     su-exec \
     coreutils \
-    intel-media-driver \
-    libva-intel-driver \
-    mesa-va-gallium \
-    libva-utils \
     && rm -rf /var/cache/apk/* \
-    && ln -sf /bin/nice /usr/bin/nice \
-    && echo '#!/bin/sh' > /usr/local/bin/check-gpu \
-    && echo 'if [ -c /dev/dri/renderD128 ]; then' >> /usr/local/bin/check-gpu \
-    && echo '  echo "Intel GPU available: $(vainfo 2>/dev/null | grep -o "driver.*" | head -1)"' >> /usr/local/bin/check-gpu \
-    && echo '  exit 0' >> /usr/local/bin/check-gpu \
-    && echo 'else' >> /usr/local/bin/check-gpu \
-    && echo '  echo "No GPU device found, falling back to software transcoding"' >> /usr/local/bin/check-gpu \
-    && echo '  exit 1' >> /usr/local/bin/check-gpu \
-    && echo 'fi' >> /usr/local/bin/check-gpu \
+    && ln -sf /bin/nice /usr/bin/nice
+
+# 架构相关的硬件加速驱动
+# - amd64: Intel QSV/VAAPI (intel-media-driver + libva-intel-driver)
+# - arm64: 通用 mesa VAAPI 驱动（Mali/Panfrost/RPi 等），Intel 专有驱动不可用
+RUN set -eux; \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
+        apk add --no-cache \
+            intel-media-driver \
+            libva-intel-driver \
+            mesa-va-gallium \
+            libva-utils; \
+    else \
+        apk add --no-cache \
+            mesa-va-gallium \
+            libva-utils; \
+    fi; \
+    rm -rf /var/cache/apk/*
+
+# GPU 检测脚本
+RUN printf '#!/bin/sh\n\
+if [ -c /dev/dri/renderD128 ]; then\n\
+  echo "GPU device available: $(vainfo 2>/dev/null | grep -o "driver.*" | head -1)"\n\
+  exit 0\n\
+else\n\
+  echo "No GPU device found, falling back to software transcoding"\n\
+  exit 1\n\
+fi\n' > /usr/local/bin/check-gpu \
     && chmod +x /usr/local/bin/check-gpu
 
 # 创建非root用户
