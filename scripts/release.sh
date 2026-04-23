@@ -23,6 +23,10 @@ set -euo pipefail
 # -------------------- 配置 --------------------
 IMAGE_NAME="cropflre/nowen-video"
 DEFAULT_BRANCH="main"
+# 多架构平台：覆盖 x86_64 服务器 + ARM64 设备（OES / A311D / OECT / RK3566 等）
+DEFAULT_PLATFORMS="linux/amd64,linux/arm64"
+# buildx builder 名称（自动创建）
+BUILDX_BUILDER="nowen-video-builder"
 
 # -------------------- 彩色输出 --------------------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]; then
@@ -50,6 +54,9 @@ DO_PULL=1
 DO_LATEST=1
 DO_GIT_TAG=1
 DRY_RUN=0
+# 多架构相关
+PLATFORMS="$DEFAULT_PLATFORMS"
+MULTIARCH=1
 
 usage() {
     cat <<EOF
@@ -61,6 +68,9 @@ usage() {
       --no-pull            不执行 git pull
       --no-latest          不打 :latest tag
       --no-git-tag         不打 git tag / 不推送到 GitHub
+      --no-multiarch       只构建本机架构（单架构 + 本地 load，不走 buildx push）
+      --platform LIST      指定构建平台（默认: $DEFAULT_PLATFORMS）
+                           示例: linux/amd64,linux/arm64,linux/arm/v7
       --dry-run            仅打印命令，不真实执行
   -h, --help               显示帮助
 EOF
@@ -74,6 +84,8 @@ while [ $# -gt 0 ]; do
         --no-pull)      DO_PULL=0; shift ;;
         --no-latest)    DO_LATEST=0; shift ;;
         --no-git-tag)   DO_GIT_TAG=0; shift ;;
+        --no-multiarch) MULTIARCH=0; shift ;;
+        --platform)     PLATFORMS="${2:-}"; shift 2 ;;
         --dry-run)      DRY_RUN=1; shift ;;
         -h|--help)      usage ;;
         *)              die "未知参数: $1（使用 -h 查看帮助）" ;;
@@ -113,6 +125,12 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
 # docker 可用
 command -v docker >/dev/null 2>&1 || die "未安装 docker"
 docker info >/dev/null 2>&1 || die "docker daemon 不可用（请启动 docker）"
+
+# buildx 可用（多架构构建必需）
+if [ "$MULTIARCH" = "1" ]; then
+    docker buildx version >/dev/null 2>&1 \
+        || die "docker buildx 不可用。Debian 上安装: apt install docker-buildx-plugin，或参考 https://docs.docker.com/build/install-buildx/"
+fi
 
 # Dockerfile 存在
 [ -f Dockerfile ] || die "仓库根目录未找到 Dockerfile"
@@ -201,6 +219,13 @@ echo "  镜像仓库      : ${IMAGE_NAME}"
 echo "  版本 tag      : ${VERSION_TAG}"
 echo "  同步 latest   : $([ "$DO_LATEST" = "1" ] && echo yes || echo no)"
 echo "  同步 git tag  : $([ "$DO_GIT_TAG" = "1" ] && echo yes || echo no)"
+if [ "$MULTIARCH" = "1" ]; then
+    echo "  构建架构      : ${PLATFORMS}"
+    echo "  构建模式      : buildx 多架构（build + push 合并）"
+else
+    echo "  构建架构      : 本机单架构（--no-multiarch）"
+    echo "  构建模式      : 经典 docker build + docker push"
+fi
 echo "  git commit    : ${GIT_COMMIT}"
 echo "  构建时间      : ${BUILD_DATE}"
 [ "$DRY_RUN" = "1" ] && echo "  ${C_YELLOW}模式          : DRY-RUN（不真实执行）${C_RESET}"
@@ -211,7 +236,10 @@ if [ "$ASSUME_YES" != "1" ]; then
     case "$ans" in [yY]|[yY][eE][sS]) ;; *) die "已取消" ;; esac
 fi
 
-# -------------------- build --------------------
+# -------------------- build & push --------------------
+# 多架构模式：使用 buildx，一次性 build + push（多架构 image 无法 load 到
+# 本地 daemon，必须直接推远端）
+# 单架构模式：沿用传统 docker build + docker push 两步
 START_TS=$(date +%s)
 
 BUILD_TAGS=( -t "${IMAGE_NAME}:${VERSION_TAG}" )
@@ -226,37 +254,85 @@ OCI_LABELS=(
     --label "org.opencontainers.image.title=nowen-video"
 )
 
-step "开始构建"
-# 明确 -f Dockerfile 与上下文路径 "$REPO_ROOT"，避免个别环境下 docker build 被
-# 劫持为 buildx bake 模式时无法正确定位 Dockerfile（报错 #2 transferring
-# dockerfile: 2B / failed to read dockerfile: no such file or directory）
-BUILD_CMD=( docker build -f "$REPO_ROOT/Dockerfile" "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" "$REPO_ROOT" )
-echo "  ${BUILD_CMD[*]}"
+if [ "$MULTIARCH" = "1" ]; then
+    # ========== 多架构路径 ==========
+    step "准备 buildx builder"
+    # 如果当前 current builder 不是 docker-container 驱动，就创建/使用专用 builder
+    NEED_BUILDER=1
+    if docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
+        info "复用已存在的 builder: $BUILDX_BUILDER"
+        run_argv docker buildx use "$BUILDX_BUILDER"
+        NEED_BUILDER=0
+    fi
+    if [ "$NEED_BUILDER" = "1" ]; then
+        info "创建 buildx builder: $BUILDX_BUILDER（docker-container 驱动）"
+        run_argv docker buildx create --name "$BUILDX_BUILDER" --driver docker-container --use
+    fi
+    # 启动并拉取 QEMU 模拟器（跨架构构建在 x86 主机上需要）
+    info "初始化 builder（bootstrap QEMU 多架构支持）"
+    run_argv docker buildx inspect --bootstrap
 
-BUILD_START=$(date +%s)
-run_argv "${BUILD_CMD[@]}"
-BUILD_END=$(date +%s)
-BUILD_DURATION=$((BUILD_END - BUILD_START))
-ok "构建完成，用时 ${BUILD_DURATION}s"
+    step "开始构建并推送（多架构：${PLATFORMS}）"
+    BUILD_CMD=(
+        docker buildx build
+        --platform "$PLATFORMS"
+        -f "$REPO_ROOT/Dockerfile"
+        "${BUILD_TAGS[@]}"
+        "${OCI_LABELS[@]}"
+        --push
+        "$REPO_ROOT"
+    )
+    echo "  ${BUILD_CMD[*]}"
 
-# -------------------- push --------------------
-step "推送镜像"
+    BUILD_START=$(date +%s)
+    run_argv "${BUILD_CMD[@]}"
+    BUILD_END=$(date +%s)
+    BUILD_DURATION=$((BUILD_END - BUILD_START))
+    PUSH_DURATION=0   # buildx --push 已经推送完成，push 阶段耗时合并进 build
+    ok "多架构构建+推送完成，用时 ${BUILD_DURATION}s"
 
-PUSH_START=$(date +%s)
-info "推送：${IMAGE_NAME}:${VERSION_TAG}"
-run "docker push \"${IMAGE_NAME}:${VERSION_TAG}\""
+    # 拉取 manifest 确认多架构
+    if [ "$DRY_RUN" != "1" ]; then
+        info "远端 manifest 摘要："
+        docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev/null \
+            | grep -E 'Name:|MediaType:|Platform:' | head -20 || true
+    fi
+else
+    # ========== 单架构路径（沿用经典 build + push） ==========
+    step "开始构建（单架构）"
+    # 明确 -f Dockerfile 与上下文路径 "$REPO_ROOT"，避免个别环境下 docker build 被
+    # 劫持为 buildx bake 模式时无法正确定位 Dockerfile
+    BUILD_CMD=( docker build -f "$REPO_ROOT/Dockerfile" "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" "$REPO_ROOT" )
+    echo "  ${BUILD_CMD[*]}"
 
-if [ "$DO_LATEST" = "1" ]; then
-    info "推送：${IMAGE_NAME}:latest"
-    run "docker push \"${IMAGE_NAME}:latest\""
+    BUILD_START=$(date +%s)
+    run_argv "${BUILD_CMD[@]}"
+    BUILD_END=$(date +%s)
+    BUILD_DURATION=$((BUILD_END - BUILD_START))
+    ok "构建完成，用时 ${BUILD_DURATION}s"
+
+    step "推送镜像"
+    PUSH_START=$(date +%s)
+    info "推送：${IMAGE_NAME}:${VERSION_TAG}"
+    run_argv docker push "${IMAGE_NAME}:${VERSION_TAG}"
+    if [ "$DO_LATEST" = "1" ]; then
+        info "推送：${IMAGE_NAME}:latest"
+        run_argv docker push "${IMAGE_NAME}:latest"
+    fi
+    PUSH_END=$(date +%s)
+    PUSH_DURATION=$((PUSH_END - PUSH_START))
 fi
-PUSH_END=$(date +%s)
-PUSH_DURATION=$((PUSH_END - PUSH_START))
 
 # 尝试获取 digest
 DIGEST=""
 if [ "$DRY_RUN" != "1" ]; then
-    DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev/null || echo "")"
+    if [ "$MULTIARCH" = "1" ]; then
+        # 多架构：从 imagetools 读取 manifest list digest
+        DIGEST="$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}" --format '{{.Manifest.Digest}}' 2>/dev/null || echo "")"
+        [ -n "$DIGEST" ] && DIGEST="${IMAGE_NAME}@${DIGEST}"
+    else
+        DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev/null || echo "")"
+    fi
 fi
 
 # -------------------- git tag --------------------
