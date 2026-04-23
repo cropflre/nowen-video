@@ -79,6 +79,18 @@ func NewDoubanService(mediaRepo *repository.MediaRepo, cfg *config.Config, logge
 
 // ==================== 核心方法 ====================
 
+// applyDoubanAuth 统一注入豆瓣 Cookie 认证信息（如用户配置了 Cookie）
+// 传入 nil 时会自动跳过。Cookie 以原始字符串形式注入请求头。
+func (s *DoubanService) applyDoubanAuth(req *http.Request) {
+	if req == nil {
+		return
+	}
+	cookie := s.cfg.GetDoubanCookie()
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+}
+
 // ScrapeMedia 为单个媒体刮削豆瓣元数据（作为TMDb的补充）
 func (s *DoubanService) ScrapeMedia(media *model.Media, searchTitle string, year int) error {
 	s.logger.Debugf("豆瓣刮削: %s (year=%d)", searchTitle, year)
@@ -191,6 +203,7 @@ func (s *DoubanService) searchDouban(query string, year int) ([]DoubanSearchResu
 	setBrowserHeaders(req, "https://movie.douban.com/")
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	s.applyDoubanAuth(req)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -274,6 +287,7 @@ func (s *DoubanService) getSubjectDetail(doubanID string) (*DoubanSubjectDetail,
 	req.Header.Set("Accept", "application/json, text/javascript, */*; q=0.01")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	s.applyDoubanAuth(req)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -333,6 +347,7 @@ func (s *DoubanService) downloadDoubanCover(media *model.Media, coverURL string)
 	}
 	req.Header.Set("User-Agent", getRandomUserAgent())
 	req.Header.Set("Referer", "https://movie.douban.com/")
+	s.applyDoubanAuth(req)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -417,4 +432,85 @@ func absInt(n int) int {
 		return -n
 	}
 	return n
+}
+
+// ==================== Cookie 有效性校验 ====================
+
+// ValidateDoubanCookie 校验当前配置的豆瓣 Cookie 是否有效
+// 返回值：
+//   - valid: 是否有效（登录态正常）
+//   - username: 识别到的豆瓣昵称（可能为空）
+//   - err: 网络错误或其他非预期错误
+//
+// 判定规则：
+//  1. 若未配置 Cookie，直接返回 valid=false（匿名模式）
+//  2. 访问 https://www.douban.com/mine/，若被重定向到登录页或 accounts.douban.com 视为失效
+//  3. 若页面中能提取到用户昵称（<a class="bn-more">...</a>）视为有效
+func (s *DoubanService) ValidateDoubanCookie() (valid bool, username string, err error) {
+	cookie := s.cfg.GetDoubanCookie()
+	if cookie == "" {
+		return false, "", nil
+	}
+
+	// 禁止自动重定向，以便观测 302 跳转到登录页
+	noRedirectClient := &http.Client{
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	req, err := http.NewRequest("GET", "https://www.douban.com/mine/", nil)
+	if err != nil {
+		return false, "", err
+	}
+	setBrowserHeaders(req, "https://www.douban.com/")
+	req.Header.Set("Cookie", cookie)
+
+	resp, err := noRedirectClient.Do(req)
+	if err != nil {
+		return false, "", fmt.Errorf("请求豆瓣失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 302 跳转到登录页：Cookie 已失效
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		location := resp.Header.Get("Location")
+		if strings.Contains(location, "accounts.douban.com") || strings.Contains(location, "login") {
+			return false, "", nil
+		}
+		// 其他重定向：无法判定，保守视为失效
+		return false, "", nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("豆瓣返回状态码: %d", resp.StatusCode)
+	}
+
+	// 读取响应体前 64KB 用于解析昵称
+	limited := io.LimitReader(resp.Body, 64*1024)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return false, "", err
+	}
+	html := string(body)
+
+	// 页面中若包含登录提示视为失效
+	if strings.Contains(html, "passport/login") || strings.Contains(html, "登录豆瓣") {
+		return false, "", nil
+	}
+
+	// 尝试提取昵称：<a href="https://www.douban.com/people/{uid}/" class="bn-more">...<span>昵称</span></a>
+	nicknameRegex := regexp.MustCompile(`<a[^>]*class="bn-more"[^>]*>\s*<span>([^<]+)</span>`)
+	if m := nicknameRegex.FindStringSubmatch(html); len(m) >= 2 {
+		return true, strings.TrimSpace(m[1]), nil
+	}
+	// 兜底：title 中含有"的帐号"表示已登录
+	titleRegex := regexp.MustCompile(`<title>\s*([^<]+?)的帐号\s*</title>`)
+	if m := titleRegex.FindStringSubmatch(html); len(m) >= 2 {
+		return true, strings.TrimSpace(m[1]), nil
+	}
+
+	// 页面返回 200 但提取不到昵称：保守视为有效（避免误杀）
+	return true, "", nil
 }

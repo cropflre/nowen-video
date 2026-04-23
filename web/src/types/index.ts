@@ -5,6 +5,50 @@ export interface User {
   role: 'admin' | 'user'
   avatar: string
   created_at: string
+  // P0~P2 新增字段
+  nickname?: string
+  email?: string
+  disabled?: boolean
+  must_change_pwd?: boolean
+  last_login_at?: string | null
+  last_login_ip?: string
+}
+
+// 登录日志
+export interface LoginLog {
+  id: string
+  user_id: string
+  username: string
+  ip: string
+  user_agent: string
+  success: boolean
+  reason: string
+  created_at: string
+}
+
+// 审计日志
+export interface AuditLog {
+  id: string
+  operator_id: string
+  operator: string
+  action: string
+  target_type: string
+  target_id: string
+  detail: string
+  ip: string
+  created_at: string
+}
+
+// 邀请码
+export interface InviteCode {
+  id: string
+  code: string
+  max_uses: number
+  used_count: number
+  expires_at?: string | null
+  creator_id?: string
+  note?: string
+  created_at: string
 }
 
 // ==================== 认证 ====================
@@ -16,6 +60,7 @@ export interface LoginRequest {
 export interface RegisterRequest {
   username: string
   password: string
+  invite_code?: string
 }
 
 export interface TokenResponse {
@@ -749,6 +794,18 @@ export interface AITestResult {
 export interface BangumiConfigStatus {
   configured: boolean
   masked_token: string
+}
+
+// ==================== 豆瓣 Cookie 配置 ====================
+export interface DoubanConfigStatus {
+  configured: boolean
+  masked_cookie: string
+}
+
+export interface DoubanValidateResult {
+  valid: boolean
+  username?: string
+  message: string
 }
 
 // ==================== 刮削数据管理 ====================

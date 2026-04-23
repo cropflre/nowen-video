@@ -87,6 +87,62 @@ func (s *PermissionService) CheckLibraryAccess(userID, libraryID string) bool {
 	return false
 }
 
+// GetAllowedLibraryIDs 返回用户允许访问的库 ID 列表；
+// 第二个返回值 restricted=true 表示"有限制"（即非空），false 表示无限制（空=全部）
+func (s *PermissionService) GetAllowedLibraryIDs(userID string) (ids []string, restricted bool) {
+	perm, err := s.permRepo.FindByUserID(userID)
+	if err != nil || perm.AllowedLibraries == "" {
+		return nil, false
+	}
+	for _, id := range strings.Split(perm.AllowedLibraries, ",") {
+		if v := strings.TrimSpace(id); v != "" {
+			ids = append(ids, v)
+		}
+	}
+	restricted = len(ids) > 0
+	return
+}
+
+// FilterLibraries 过滤用户可访问的媒体库列表
+func (s *PermissionService) FilterLibraries(userID string, libs []model.Library) []model.Library {
+	ids, restricted := s.GetAllowedLibraryIDs(userID)
+	if !restricted {
+		return libs
+	}
+	allowMap := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		allowMap[id] = true
+	}
+	filtered := make([]model.Library, 0, len(libs))
+	for _, lib := range libs {
+		if allowMap[lib.ID] {
+			filtered = append(filtered, lib)
+		}
+	}
+	return filtered
+}
+
+// CheckMediaAccess 综合校验：用户 -> 媒体（library + rating 双重校验）
+// 需要 mediaRepo 查询媒体的 library_id；为避免循环依赖，使用回调
+type MediaLibraryLookup func(mediaID string) (libraryID string, err error)
+
+func (s *PermissionService) CheckMediaAccess(userID, mediaID string, lookup MediaLibraryLookup) error {
+	if lookup != nil {
+		if libID, err := lookup(mediaID); err == nil && libID != "" {
+			if !s.CheckLibraryAccess(userID, libID) {
+				return ErrForbidden
+			}
+		}
+	}
+	if !s.CheckContentRating(userID, mediaID) {
+		return ErrContentRestricted
+	}
+	if ok, _, _ := s.CheckDailyTimeLimit(userID); !ok {
+		return ErrTimeLimitExceeded
+	}
+	return nil
+}
+
 // CheckContentRating 检查用户是否可以观看该分级内容
 func (s *PermissionService) CheckContentRating(userID, mediaID string) bool {
 	// 获取内容分级

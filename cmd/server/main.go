@@ -100,6 +100,22 @@ func main() {
 		sugar.Warn("⚠️  正在使用自动生成的 JWT Secret，建议在配置文件中设置固定值以避免重启后令牌失效")
 	}
 
+	// 带服务端校验的 JWT 中间件：支持 TokenVersion 吸销 + 封禁账号拦截
+	jwtMiddleware := middleware.JWTAuthWithValidator(
+		cfg.Secrets.JWTSecret,
+		services.Auth.ValidateTokenVersion,
+	)
+
+	// 登录日志清理定时任务：保留90天
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		_ = repos.LoginLog.CleanOlderThan(90)
+		for range ticker.C {
+			_ = repos.LoginLog.CleanOlderThan(90)
+		}
+	}()
+
 	// 公开路由（无需认证）
 	auth := r.Group("/api/auth")
 	{
@@ -110,7 +126,7 @@ func main() {
 
 	// 需要认证的auth路由
 	authProtected := r.Group("/api/auth")
-	authProtected.Use(middleware.JWTAuth(cfg.Secrets.JWTSecret))
+	authProtected.Use(jwtMiddleware)
 	{
 		authProtected.POST("/refresh", handlers.Auth.RefreshToken)
 		authProtected.PUT("/password", handlers.Auth.ChangePassword)
@@ -126,11 +142,11 @@ func main() {
 	})
 
 	// WebSocket路由（需要认证）
-	r.GET("/api/ws", middleware.JWTAuth(cfg.Secrets.JWTSecret), handlers.WS.HandleWebSocket)
+	r.GET("/api/ws", jwtMiddleware, handlers.WS.HandleWebSocket)
 
 	// 需要认证的路由
 	api := r.Group("/api")
-	api.Use(middleware.JWTAuth(cfg.Secrets.JWTSecret))
+	api.Use(jwtMiddleware)
 	{
 		// 媒体库
 		api.GET("/libraries", handlers.Library.List)
@@ -140,15 +156,20 @@ func main() {
 		api.POST("/libraries/:id/reindex", middleware.AdminOnly(), handlers.Library.Reindex)
 		api.DELETE("/libraries/:id", middleware.AdminOnly(), handlers.Library.Delete)
 
+		// 媒体守卫：非管理员访问媒体时校验媒体库权限 + 内容分级 + 每日时长
+		guardByMediaID := handler.MediaPermissionGuard(services.Permission, repos.Media, "id")
+		guardByMediaIDParam := handler.MediaPermissionGuard(services.Permission, repos.Media, "mediaId")
+		guardByLibraryQuery := handler.LibraryPermissionGuard(services.Permission, "")
+
 		// 媒体内容
-		api.GET("/media", handlers.Media.List)
-		api.GET("/media/:id", handlers.Media.Detail)
-		api.GET("/media/:id/enhanced", handlers.Media.DetailEnhanced)
+		api.GET("/media", guardByLibraryQuery, handlers.Media.List)
+		api.GET("/media/:id", guardByMediaID, handlers.Media.Detail)
+		api.GET("/media/:id/enhanced", guardByMediaID, handlers.Media.DetailEnhanced)
 		api.GET("/media/recent", handlers.Media.Recent)
 		api.GET("/media/recent/aggregated", handlers.Media.RecentAggregated)
 		api.GET("/media/recent/mixed", handlers.Media.RecentMixed)
-		api.GET("/media/aggregated", handlers.Media.ListAggregated)
-		api.GET("/media/mixed", handlers.Media.ListMixed)
+		api.GET("/media/aggregated", guardByLibraryQuery, handlers.Media.ListAggregated)
+		api.GET("/media/mixed", guardByLibraryQuery, handlers.Media.ListMixed)
 		api.GET("/media/continue", handlers.Media.Continue)
 
 		// 剧集合集
@@ -158,17 +179,20 @@ func main() {
 		api.GET("/series/:id/seasons/:season", handlers.Series.SeasonEpisodes)
 		api.GET("/series/:id/next", handlers.Series.NextEpisode)
 
-		// 流媒体
-		api.GET("/stream/:id/info", handlers.Stream.MediaInfo)
-		api.GET("/stream/:id/direct", handlers.Stream.Direct)
-		api.GET("/stream/:id/remux", handlers.Stream.Remux)
-		api.GET("/stream/:id/master.m3u8", handlers.Stream.Master)
-		api.GET("/stream/:id/:quality/:segment", handlers.Stream.Segment)
+		// 流媒体（全部挂载媒体权限守卫）
+		api.GET("/stream/:id/info", guardByMediaID, handlers.Stream.MediaInfo)
+		api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
+		api.GET("/stream/:id/remux", guardByMediaID, handlers.Stream.Remux)
+		api.GET("/stream/:id/master.m3u8", guardByMediaID, handlers.Stream.Master)
+		api.GET("/stream/:id/:quality/:segment", guardByMediaID, handlers.Stream.Segment)
 		// 播放进度上报（驱动 Throttling 节流）
-		api.POST("/stream/:id/playback", handlers.Stream.Playback)
+		api.POST("/stream/:id/playback", guardByMediaID, handlers.Stream.Playback)
 
-		// 海报/缩略图
+		// 海报/缩略图（不做权限校验：海报属于媒体元信息，不可播放）
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
+
+		_ = guardByMediaIDParam // 单保留变量供下文使用
+
 		api.GET("/series/:id/poster", handlers.Series.Poster)
 		api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
 		api.GET("/series/:id/persons", handlers.Series.GetPersons)
@@ -222,6 +246,8 @@ func main() {
 
 		// 用户
 		api.GET("/users/me", handlers.User.Profile)
+		api.PUT("/users/me", handlers.User.UpdateProfile)
+		api.GET("/users/me/login-logs", handlers.User.LoginLogs)
 		api.PUT("/users/me/progress/:mediaId", handlers.User.UpdateProgress)
 		api.GET("/users/me/favorites", handlers.User.Favorites)
 		api.POST("/users/me/favorites/:mediaId", handlers.User.AddFavorite)
@@ -329,11 +355,23 @@ func main() {
 
 	// 管理路由
 	admin := r.Group("/api/admin")
-	admin.Use(middleware.JWTAuth(cfg.Secrets.JWTSecret), middleware.AdminOnly())
+	admin.Use(jwtMiddleware, middleware.AdminOnly())
 	{
 		admin.GET("/users", handlers.Admin.ListUsers)
+		admin.POST("/users", handlers.Admin.CreateUser)
+		admin.PUT("/users/:id", handlers.Admin.UpdateUser)
+		admin.POST("/users/:id/disabled", handlers.Admin.SetUserDisabled)
 		admin.DELETE("/users/:id", handlers.Admin.DeleteUser)
 		admin.PUT("/users/:id/password", handlers.Admin.ResetUserPassword)
+
+		// 登录日志 / 审计日志
+		admin.GET("/login-logs", handlers.Admin.ListLoginLogs)
+		admin.GET("/audit-logs", handlers.Admin.ListAuditLogs)
+
+		// 邀请码管理
+		admin.GET("/invite-codes", handlers.Admin.ListInviteCodes)
+		admin.POST("/invite-codes", handlers.Admin.CreateInviteCode)
+		admin.DELETE("/invite-codes/:id", handlers.Admin.DeleteInviteCode)
 		admin.GET("/system", handlers.Admin.SystemInfo)
 		admin.GET("/transcode/status", handlers.Admin.TranscodeStatus)
 		admin.POST("/transcode/:taskId/cancel", handlers.Admin.CancelTranscode)
@@ -400,6 +438,24 @@ func main() {
 		// 文件系统浏览
 		admin.GET("/fs/browse", handlers.Admin.BrowseFS)
 
+		// ==================== V2.1: WebDAV 存储管理 ====================
+		admin.GET("/storage/webdav", handlers.Storage.GetWebDAVConfig)
+		admin.PUT("/storage/webdav", handlers.Storage.UpdateWebDAVConfig)
+		admin.POST("/storage/webdav/test", handlers.Storage.TestWebDAVConnection)
+		admin.GET("/storage/webdav/status", handlers.Storage.GetWebDAVStatus)
+		admin.POST("/storage/webdav/libraries/register", handlers.Storage.RegisterWebDAVLibrary)
+		admin.GET("/storage/status", handlers.Storage.GetStorageStatus)
+
+		// ==================== V2.3: Alist 聚合网盘管理 ====================
+		admin.GET("/storage/alist", handlers.Storage.GetAlistConfig)
+		admin.PUT("/storage/alist", handlers.Storage.UpdateAlistConfig)
+		admin.POST("/storage/alist/test", handlers.Storage.TestAlistConnection)
+
+		// ==================== V2.3: S3 兼容对象存储管理 ====================
+		admin.GET("/storage/s3", handlers.Storage.GetS3Config)
+		admin.PUT("/storage/s3", handlers.Storage.UpdateS3Config)
+		admin.POST("/storage/s3/test", handlers.Storage.TestS3Connection)
+
 		// 一键清空数据（保留影视文件）
 		admin.POST("/system/clear-data", handlers.Admin.ClearAllData)
 
@@ -416,6 +472,11 @@ func main() {
 		admin.GET("/metadata/douban/search", handlers.Admin.SearchDouban)
 		admin.POST("/media/:mediaId/match/douban", handlers.Admin.MatchMediaDouban)
 		admin.POST("/series/:seriesId/match/douban", handlers.Admin.MatchSeriesDouban)
+		// 豆瓣 Cookie 配置
+		admin.GET("/settings/douban", handlers.Admin.GetDoubanConfig)
+		admin.PUT("/settings/douban", handlers.Admin.UpdateDoubanConfig)
+		admin.DELETE("/settings/douban", handlers.Admin.ClearDoubanConfig)
+		admin.POST("/settings/douban/validate", handlers.Admin.ValidateDoubanConfig)
 
 		// TheTVDB 数据源
 		admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)

@@ -13,6 +13,7 @@ import (
 // LibraryHandler 媒体库处理器
 type LibraryHandler struct {
 	libService *service.LibraryService
+	permSvc    *service.PermissionService
 	logger     *zap.SugaredLogger
 }
 
@@ -52,12 +53,18 @@ type UpdateLibraryRequest struct {
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
 
-// List 获取所有媒体库
+// List 获取所有媒体库（按用户权限过滤）
 func (h *LibraryHandler) List(c *gin.Context) {
 	libs, err := h.libService.List()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取媒体库列表失败"})
 		return
+	}
+	// 管理员不限制；普通用户按 UserPermission 过滤
+	if role, _ := c.Get("role"); role != "admin" && h.permSvc != nil {
+		if uid, ok := c.Get("user_id"); ok {
+			libs = h.permSvc.FilterLibraries(uid.(string), libs)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": libs})
 }

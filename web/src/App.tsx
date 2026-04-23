@@ -5,6 +5,7 @@ import { ToastProvider } from '@/components/Toast'
 import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import LoginPage from '@/pages/LoginPage'
+import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -70,10 +71,22 @@ function PageLoader() {
 // 需要登录的路由守卫
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const user = useAuthStore((s) => s.user)
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
+  // 强制改密拦截：有 must_change_pwd 标记时强制跳转
+  if (user?.must_change_pwd && window.location.pathname !== '/force-change-password') {
+    return <Navigate to="/force-change-password" replace />
+  }
   return <>{children}</>
+}
+
+// 强制改密页路由包装：只要登录过就能访问（绕过强制改密拦截本身）
+function ForceChangePasswordRoute() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  return <ForceChangePasswordPage />
 }
 
 export default function App() {
@@ -85,6 +98,8 @@ export default function App() {
           <Routes>
             {/* 公开路由 */}
             <Route path="/login" element={<LoginPage />} />
+            {/* 强制改密页面（需要登录但绕过强制改密拦截） */}
+            <Route path="/force-change-password" element={<ForceChangePasswordRoute />} />
 
             {/* 播放页面（全屏，不含布局） */}
             <Route

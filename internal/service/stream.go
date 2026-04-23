@@ -89,6 +89,7 @@ type StreamService struct {
 	settingRepo *repository.SystemSettingRepo
 	cfg         *config.Config
 	logger      *zap.SugaredLogger
+	vfsMgr      *VFSManager // V2.1: VFS 管理器，支持 webdav:// 路径
 }
 
 func NewStreamService(
@@ -105,6 +106,37 @@ func NewStreamService(
 		cfg:        cfg,
 		logger:     logger,
 	}
+}
+
+// SetVFSManager 设置 VFS 管理器（V2.1）
+func (s *StreamService) SetVFSManager(vfsMgr *VFSManager) {
+	s.vfsMgr = vfsMgr
+}
+
+// statMediaFile 返回文件判断：同时支持本地路径和 webdav:// 路径
+func (s *StreamService) statMediaFile(p string) (os.FileInfo, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		return s.vfsMgr.Stat(p)
+	}
+	return os.Stat(p)
+}
+
+// OpenMediaFile 打开媒体文件（支持 WebDAV 与本地路径）
+// V2.1: 供 handler 层在 webdav:// 路径下通过 VFS 流式服务文件
+func (s *StreamService) OpenMediaFile(p string) (VFSFile, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		return s.vfsMgr.Open(p)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	return &localFile{File: f}, nil
+}
+
+// openMediaFile 打开媒体文件（支持 WebDAV）
+func (s *StreamService) openMediaFile(p string) (VFSFile, error) {
+	return s.OpenMediaFile(p)
 }
 
 // SetPreprocessService 注入预处理服务（延迟注入，避免循环依赖）
@@ -285,9 +317,12 @@ func (s *StreamService) GetDirectStreamInfo(mediaID string) (string, string, err
 		return "__strm__", media.StreamURL, nil
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(media.FilePath); os.IsNotExist(err) {
-		return "", "", fmt.Errorf("文件不存在: %s", media.FilePath)
+	// 检查文件是否存在（支持 WebDAV 路径）
+	if _, err := s.statMediaFile(media.FilePath); err != nil {
+		if os.IsNotExist(err) {
+			return "", "", fmt.Errorf("文件不存在: %s", media.FilePath)
+		}
+		return "", "", fmt.Errorf("媒体文件访问失败: %w", err)
 	}
 
 	ext := strings.ToLower(filepath.Ext(media.FilePath))
@@ -297,6 +332,27 @@ func (s *StreamService) GetDirectStreamInfo(mediaID string) (string, string, err
 	}
 
 	return media.FilePath, contentType, nil
+}
+
+// vfsJoinPath 路径拼接：对 webdav:// 使用正斜杠（避免 Windows 下 filepath.Join 破坏前缀）
+func vfsJoinPath(base, name string) string {
+	if IsWebDAVPath(base) {
+		base = strings.TrimRight(base, "/")
+		return base + "/" + strings.TrimLeft(name, "/")
+	}
+	return filepath.Join(base, name)
+}
+
+// vfsDir 目录提取：对 webdav:// 使用正斜杠规则
+func vfsDir(p string) string {
+	if IsWebDAVPath(p) {
+		i := strings.LastIndex(p, "/")
+		if i <= len("webdav:/") { // 保护 webdav:// 前缀
+			return p
+		}
+		return p[:i]
+	}
+	return filepath.Dir(p)
 }
 
 // GetPosterPath 获取海报文件路径
@@ -309,13 +365,13 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 
 	// 优先查找媒体自身的海报路径
 	if media.PosterPath != "" {
-		if _, err := os.Stat(media.PosterPath); err == nil {
+		if _, err := s.statMediaFile(media.PosterPath); err == nil {
 			return media.PosterPath, nil
 		}
 	}
 
 	// 查找同目录下的海报文件
-	dir := filepath.Dir(media.FilePath)
+	dir := vfsDir(media.FilePath)
 	base := strings.TrimSuffix(filepath.Base(media.FilePath), filepath.Ext(media.FilePath))
 
 	posterExts := []string{".jpg", ".jpeg", ".png", ".webp"}
@@ -328,8 +384,8 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 
 	for _, name := range posterNames {
 		for _, ext := range posterExts {
-			candidate := filepath.Join(dir, name+ext)
-			if _, err := os.Stat(candidate); err == nil {
+			candidate := vfsJoinPath(dir, name+ext)
+			if _, err := s.statMediaFile(candidate); err == nil {
 				return candidate, nil
 			}
 		}
@@ -341,7 +397,7 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 		if err == nil {
 			// 检查 Series 数据库中的海报路径
 			if series.PosterPath != "" {
-				if _, err := os.Stat(series.PosterPath); err == nil {
+				if _, err := s.statMediaFile(series.PosterPath); err == nil {
 					return series.PosterPath, nil
 				}
 			}
@@ -350,8 +406,8 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 				seriesPosterNames := []string{"poster", "cover", "folder", "show"}
 				for _, name := range seriesPosterNames {
 					for _, ext := range posterExts {
-						candidate := filepath.Join(series.FolderPath, name+ext)
-						if _, err := os.Stat(candidate); err == nil {
+						candidate := vfsJoinPath(series.FolderPath, name+ext)
+						if _, err := s.statMediaFile(candidate); err == nil {
 							return candidate, nil
 						}
 					}

@@ -34,6 +34,8 @@ type Services struct {
 	Stats          *StatsService
 	Webhook        *WebhookService
 	VFS            *VFSManager
+	WebDAV         *WebDAVService
+	RemoteStorage  *RemoteStorageService // V2.3: Alist / S3 统一管理
 	WSHub          *WSHub
 	AI             *AIService
 	ScrapeManager  *ScrapeManagerService
@@ -113,6 +115,22 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	statsService := NewStatsService(repos.PlaybackStats, repos.Media, logger)
 	webhookService := NewWebhookService(logger)
 	vfsManager := NewVFSManager(logger)
+
+	// 创建 WebDAV 存储服务
+	webdavService := NewWebDAVService(cfg, logger, vfsManager)
+	if err := webdavService.Initialize(); err != nil {
+		logger.Warnf("WebDAV 服务初始化失败（可稍后在管理页面重新配置）: %v", err)
+	}
+
+	// V2.3: 创建远程存储统一服务（Alist + S3）
+	remoteStorageService := NewRemoteStorageService(cfg, logger, vfsManager)
+	if err := remoteStorageService.Initialize(); err != nil {
+		logger.Warnf("远程存储服务初始化失败（可稍后在管理页面重新配置）: %v", err)
+	}
+	// 注入到全局 URL 解析器
+	SetGlobalRemoteStorageService(remoteStorageService)
+
+	// V2.1: 将 VFSManager 注入到 scanner 与 transcoder，支持 webdav:// 路径扫描
 
 	// 创建 AI 服务
 	aiService := NewAIService(cfg.AI, cfg, repos.Media, repos.AICache, logger)
@@ -266,8 +284,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	pulseService.SetWSHub(wsHub)
 
 	svcs := &Services{
-		User:           NewUserService(repos.User, cfg, logger),
-		Auth:           NewAuthService(repos.User, cfg, logger),
+		User:           NewUserService(repos.User, repos.AuditLog, cfg, logger),
+		Auth:           NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
 		Library:        libService,
 		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
 		Series:         NewSeriesService(repos.Series, repos.Media, logger),
@@ -288,6 +306,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Stats:          statsService,
 		Webhook:        webhookService,
 		VFS:            vfsManager,
+		WebDAV:         webdavService,
+		RemoteStorage:  remoteStorageService,
 		WSHub:          wsHub,
 		AI:             aiService,
 		ScrapeManager:  scrapeManager,
@@ -336,6 +356,12 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 延迟注入：StreamService 需要 SystemSettingRepo（用于读取播放偏好设置）
 	svcs.Stream.SetSettingRepo(repos.SystemSetting)
+
+	// V2.1 延迟注入：Scanner 与 Stream 都需要 VFSManager（支持 webdav:// 路径）
+	scanner.SetVFSManager(vfsManager)
+	svcs.Stream.SetVFSManager(vfsManager)
+	preprocessService.SetVFSManager(vfsManager)
+	nfoService.SetVFSManager(vfsManager)
 
 	// 延迟注入：SchedulerService 需要 SubtitlePreprocessService（用于定时字幕预处理）
 	scheduler.SetSubtitlePreprocessService(subtitlePreprocessService, cfg.AI.SubtitleTargetLangs)

@@ -22,6 +22,7 @@ type StreamHandler struct {
 
 // Direct 直接提供原始文件流（支持Range请求，用于MP4等浏览器兼容格式）
 // 对于 STRM 远程流，通过后端代理转发
+// 对于 WebDAV 路径（webdav://），通过 VFS 打开并使用 http.ServeContent（支持 Range）
 func (h *StreamHandler) Direct(c *gin.Context) {
 	id := c.Param("id")
 	filePath, contentType, err := h.streamService.GetDirectStreamInfo(id)
@@ -42,10 +43,35 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 		return
 	}
 
-	// 本地文件：使用http.ServeFile自动处理Range请求（断点续播、拖动进度条）
 	c.Header("Content-Type", contentType)
 	c.Header("Accept-Ranges", "bytes")
 	c.Header("Cache-Control", "public, max-age=86400")
+
+	// WebDAV 远程文件：使用 VFS 打开，并借助 http.ServeContent 提供 Range 支持
+	if service.IsWebDAVPath(filePath) {
+		vfsFile, err := h.streamService.OpenMediaFile(filePath)
+		if err != nil {
+			h.logger.Warnf("WebDAV 打开文件失败: %s, 错误: %v", filePath, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "打开远程文件失败: " + err.Error()})
+			return
+		}
+		defer vfsFile.Close()
+
+		stat, err := vfsFile.Stat()
+		if err != nil {
+			h.logger.Warnf("WebDAV 获取文件信息失败: %s, 错误: %v", filePath, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取文件信息失败: " + err.Error()})
+			return
+		}
+
+		// webdavFile 实现了 io.ReadSeeker（通过 ReadAt + 自实现 Seeker 适配）
+		// 这里用 seekAdapter 包裹 VFSFile 为 io.ReadSeeker
+		reader := service.NewVFSReadSeeker(vfsFile, stat.Size())
+		http.ServeContent(c.Writer, c.Request, filepath.Base(filePath), stat.ModTime(), reader)
+		return
+	}
+
+	// 本地文件：使用http.ServeFile自动处理Range请求（断点续播、拖动进度条）
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 
@@ -150,6 +176,39 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 		return
 	}
 
+	// V2.1: WebDAV 海报 —— 通过 VFS 读取并流式输出
+	if service.IsWebDAVPath(posterPath) {
+		vfsFile, openErr := h.streamService.OpenMediaFile(posterPath)
+		if openErr != nil {
+			c.Header("Content-Type", "image/svg+xml")
+			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Header("X-Poster-Placeholder", "true")
+			c.String(http.StatusOK, posterPlaceholderSVG)
+			return
+		}
+		defer vfsFile.Close()
+
+		stat, statErr := vfsFile.Stat()
+		if statErr != nil {
+			c.Header("Content-Type", "image/svg+xml")
+			c.Header("X-Poster-Placeholder", "true")
+			c.String(http.StatusOK, posterPlaceholderSVG)
+			return
+		}
+		etag := fmt.Sprintf(`"%x-%x"`, stat.ModTime().UnixNano(), stat.Size())
+		c.Header("ETag", etag)
+		if match := c.GetHeader("If-None-Match"); match == etag {
+			c.Status(http.StatusNotModified)
+			return
+		}
+		setPosterContentType(c, posterPath)
+		c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+		// 通过 VFSReadSeeker 提供完整文件（支持 Range，但海报一般很小）
+		reader := service.NewVFSReadSeeker(vfsFile, stat.Size())
+		http.ServeContent(c.Writer, c.Request, filepath.Base(posterPath), stat.ModTime(), reader)
+		return
+	}
+
 	// 基于文件修改时间生成 ETag，支持条件请求（If-None-Match）
 	fileInfo, statErr := os.Stat(posterPath)
 	if statErr != nil {
@@ -169,6 +228,13 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 		return
 	}
 
+	setPosterContentType(c, posterPath)
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate") // 缓存1天，但必须重新验证
+	c.File(posterPath)
+}
+
+// setPosterContentType 根据扩展名设置海报 Content-Type
+func setPosterContentType(c *gin.Context, posterPath string) {
 	ext := strings.ToLower(filepath.Ext(posterPath))
 	switch ext {
 	case ".jpg", ".jpeg":
@@ -180,9 +246,6 @@ func (h *StreamHandler) Poster(c *gin.Context) {
 	default:
 		c.Header("Content-Type", "application/octet-stream")
 	}
-
-	c.Header("Cache-Control", "public, max-age=86400, must-revalidate") // 缓存1天，但必须重新验证
-	c.File(posterPath)
 }
 
 // Playback 接收前端上报的播放位置（秒），驱动 Throttling 决策。

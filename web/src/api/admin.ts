@@ -15,9 +15,14 @@ import type {
   TMDbImageInfo,
   BangumiSubject,
   BangumiConfigStatus,
+  DoubanConfigStatus,
+  DoubanValidateResult,
   SystemSettings,
   DoubanSearchResult,
   TheTVDBSearchResult,
+  LoginLog,
+  AuditLog,
+  InviteCode,
 } from '@/types'
 
 // ==================== 管理 ====================
@@ -25,11 +30,40 @@ export const adminApi = {
   listUsers: () =>
     api.get<ListResponse<User>>('/admin/users'),
 
+  createUser: (data: { username: string; password: string; role?: 'admin' | 'user'; nickname?: string; email?: string }) =>
+    api.post<{ data: User }>('/admin/users', data),
+
+  updateUser: (id: string, data: { role?: 'admin' | 'user'; nickname?: string; email?: string; avatar?: string }) =>
+    api.put<{ data: User }>(`/admin/users/${id}`, data),
+
+  setUserDisabled: (id: string, disabled: boolean) =>
+    api.post<{ message: string }>(`/admin/users/${id}/disabled`, { disabled }),
+
   deleteUser: (id: string) =>
     api.delete(`/admin/users/${id}`),
 
-  resetUserPassword: (id: string, newPassword: string) =>
-    api.put<{ message: string }>(`/admin/users/${id}/password`, { new_password: newPassword }),
+  resetUserPassword: (id: string, newPassword: string, forceChangeOnNextLogin: boolean = true) =>
+    api.put<{ message: string }>(`/admin/users/${id}/password`, {
+      new_password: newPassword,
+      force_change_on_next_login: forceChangeOnNextLogin,
+    }),
+
+  // 登录日志 & 审计日志
+  listLoginLogs: (params?: { page?: number; size?: number; only_failed?: boolean }) =>
+    api.get<ListResponse<LoginLog>>('/admin/login-logs', { params }),
+
+  listAuditLogs: (params?: { page?: number; size?: number; action?: string }) =>
+    api.get<ListResponse<AuditLog>>('/admin/audit-logs', { params }),
+
+  // 邀请码
+  listInviteCodes: () =>
+    api.get<ListResponse<InviteCode>>('/admin/invite-codes'),
+
+  createInviteCode: (data: { code?: string; max_uses?: number; expires_in_hours?: number; note?: string }) =>
+    api.post<{ data: InviteCode }>('/admin/invite-codes', data),
+
+  deleteInviteCode: (id: string) =>
+    api.delete(`/admin/invite-codes/${id}`),
 
   systemInfo: () =>
     api.get<{ data: SystemInfo }>('/admin/system'),
@@ -231,6 +265,19 @@ export const adminApi = {
 
   clearBangumiConfig: () =>
     api.delete<{ message: string; data: BangumiConfigStatus }>('/admin/settings/bangumi'),
+
+  // 豆瓣 Cookie 配置管理
+  getDoubanConfig: () =>
+    api.get<{ data: DoubanConfigStatus }>('/admin/settings/douban'),
+
+  updateDoubanConfig: (cookie: string) =>
+    api.put<{ message: string; data: DoubanConfigStatus }>('/admin/settings/douban', { cookie }),
+
+  clearDoubanConfig: () =>
+    api.delete<{ message: string; data: DoubanConfigStatus }>('/admin/settings/douban'),
+
+  validateDoubanConfig: () =>
+    api.post<{ data: DoubanValidateResult }>('/admin/settings/douban/validate'),
 
   // 文件系统浏览
   browseFS: (path: string) =>

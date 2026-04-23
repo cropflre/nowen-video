@@ -191,6 +191,7 @@ type ScannerService struct {
 	wsHub          *WSHub                 // WebSocket事件广播
 	nfoService     *NFOService            // NFO 本地元数据解析服务
 	onScanComplete func(libraryID string) // 扫描完成回调（用于触发预处理）
+	vfsMgr         *VFSManager            // V2.1: VFS 管理器（支持 webdav:// 路径）
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -206,6 +207,52 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *ScannerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+// SetVFSManager 设置 VFS 管理器（V2.1: 用于 webdav:// 路径支持）
+func (s *ScannerService) SetVFSManager(vfsMgr *VFSManager) {
+	s.vfsMgr = vfsMgr
+}
+
+// walkLibraryPath 根据媒体库路径前缀自动选择 VFS 遍历
+// 返回的 path 是完整路径（LocalFS 返回原生路径；WebDAVFS 返回 webdav:// 前缀路径）
+func (s *ScannerService) walkLibraryPath(root string, fn filepath.WalkFunc) error {
+	if s.vfsMgr != nil && IsWebDAVPath(root) {
+		return s.vfsMgr.Walk(root, fn)
+	}
+	return filepath.Walk(root, fn)
+}
+
+// statLibraryPath 根据路径前缀选择合适的 Stat 实现
+func (s *ScannerService) statLibraryPath(p string) (os.FileInfo, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		return s.vfsMgr.Stat(p)
+	}
+	return os.Stat(p)
+}
+
+// readDirLibraryPath 根据路径前缀选择合适的 ReadDir 实现
+func (s *ScannerService) readDirLibraryPath(p string) ([]os.DirEntry, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		entries, err := s.vfsMgr.ReadDir(p)
+		if err != nil {
+			return nil, err
+		}
+		// fs.DirEntry 与 os.DirEntry 在 Go 1.16+ 其实是同一接口别名
+		result := make([]os.DirEntry, len(entries))
+		copy(result, entries)
+		return result, nil
+	}
+	return os.ReadDir(p)
+}
+
+// vfsJoin 拼接路径：对 webdav:// 前缀的路径使用正斜杠，避免 filepath.Join 在 Windows 下把前缀破坏为 webdav:\
+func vfsJoin(base, name string) string {
+	if IsWebDAVPath(base) {
+		base = strings.TrimRight(base, "/")
+		return base + "/" + strings.TrimLeft(name, "/")
+	}
+	return filepath.Join(base, name)
 }
 
 // SetOnScanComplete 设置扫描完成回调（用于触发视频预处理）
@@ -294,7 +341,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
 	var pendingList []pendingMedia
 
-	err = filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
+	err = s.walkLibraryPath(library.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			s.logger.Warnf("访问文件失败: %s, 错误: %v", path, err)
 			return nil
@@ -584,7 +631,7 @@ func detectVersionTag(filename string) string {
 func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	s.logger.Infof("混合媒体库扫描: %s (%s)", library.Name, library.Path)
 
-	entries, err := os.ReadDir(library.Path)
+	entries, err := s.readDirLibraryPath(library.Path)
 	if err != nil {
 		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
 	}
@@ -608,7 +655,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 		}
 
 		dirName := entry.Name()
-		folderPath := filepath.Join(library.Path, dirName)
+		folderPath := vfsJoin(library.Path, dirName)
 
 		// 智能判断：该目录是电视剧还是电影
 		if s.isTVShowFolder(folderPath) {
@@ -651,8 +698,8 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 
 	// === 阶段三：处理电影目录（扫描目录内的视频文件作为电影） ===
 	for _, entry := range movieDirs {
-		folderPath := filepath.Join(library.Path, entry.Name())
-		err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		folderPath := vfsJoin(library.Path, entry.Name())
+		err := s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -735,7 +782,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	if cleanupErr == nil && allPaths != nil {
 		staleRemoved := 0
 		for dbPath := range allPaths {
-			if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+			if _, statErr := s.statLibraryPath(dbPath); os.IsNotExist(statErr) {
 				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
 					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
 						s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", dbPath, delErr)
@@ -770,7 +817,7 @@ func (s *ScannerService) isTVShowFolder(folderPath string) bool {
 	}
 
 	// 读取目录内容
-	entries, err := os.ReadDir(folderPath)
+	entries, err := s.readDirLibraryPath(folderPath)
 	if err != nil {
 		return false
 	}
@@ -785,7 +832,7 @@ func (s *ScannerService) isTVShowFolder(folderPath string) bool {
 				}
 			}
 			// 递归检查子目录中的视频文件（只深入一层）
-			subEntries, err := os.ReadDir(filepath.Join(folderPath, entry.Name()))
+			subEntries, err := s.readDirLibraryPath(vfsJoin(folderPath, entry.Name()))
 			if err == nil {
 				for _, subEntry := range subEntries {
 					if !subEntry.IsDir() {
@@ -925,7 +972,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 	s.logger.Infof("剧集库扫描开始: %s, 路径: %s", library.Name, library.Path)
 
 	// 遍历媒体库根目录的第一层子目录，每个子目录视为一个剧集
-	entries, err := os.ReadDir(library.Path)
+	entries, err := s.readDirLibraryPath(library.Path)
 	if err != nil {
 		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
 	}
@@ -1137,7 +1184,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 	if ppErr == nil && allPaths != nil {
 		staleRemoved := 0
 		for dbPath := range allPaths {
-			if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+			if _, statErr := s.statLibraryPath(dbPath); os.IsNotExist(statErr) {
 				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
 					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
 						s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", dbPath, delErr)
@@ -1585,7 +1632,7 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 func (s *ScannerService) collectEpisodes(folderPath string) []EpisodeInfo {
 	var episodes []EpisodeInfo
 
-	filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+	s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

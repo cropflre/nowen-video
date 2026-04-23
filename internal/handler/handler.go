@@ -52,16 +52,18 @@ type Handlers struct {
 	SubtitlePreprocess *SubtitlePreprocessHandler
 	// 电影系列合集
 	Collection *CollectionHandler
+	// V2.1: WebDAV 存储管理
+	Storage *StorageHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
 	return &Handlers{
 		Auth:    &AuthHandler{authService: services.Auth, logger: logger},
-		Library: &LibraryHandler{libService: services.Library, logger: logger},
+		Library: &LibraryHandler{libService: services.Library, permSvc: services.Permission, logger: logger},
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Stream:  &StreamHandler{streamService: services.Stream, transcodeService: services.Transcode, logger: logger},
-		User:    &UserHandler{userService: services.User, mediaService: services.Media, logger: logger},
+		User:    &UserHandler{userService: services.User, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
 		Admin: &AdminHandler{
 			userService:       services.User,
 			authService:       services.Auth,
@@ -74,6 +76,9 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			seriesService:     services.Series,
 			settingRepo:       repos.SystemSetting,
 			libraryRepo:       repos.Library,
+			loginLogRepo:      repos.LoginLog,
+			auditLogRepo:      repos.AuditLog,
+			inviteRepo:        repos.InviteCode,
 			cfg:               cfg,
 			logger:            logger,
 			db:                repos.DB(),
@@ -114,5 +119,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		SubtitlePreprocess: NewSubtitlePreprocessHandler(services.SubtitlePreprocess),
 		// 电影系列合集
 		Collection: &CollectionHandler{collectionService: services.Collection, streamService: services.Stream, logger: logger},
+		// V2.1: WebDAV 存储管理
+		Storage: NewStorageHandler(services.WebDAV, services.RemoteStorage, cfg, logger),
 	}
 }

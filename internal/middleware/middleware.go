@@ -44,14 +44,27 @@ func CORS(allowedOrigins ...string) gin.HandlerFunc {
 
 // Claims JWT令牌声明
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	UserID       string `json:"user_id"`
+	Username     string `json:"username"`
+	Role         string `json:"role"`
+	TokenVersion int    `json:"tv"` // 令牌版本号，用于服务端吊销旧 Token（改密/封禁/降级时自增）
 	jwt.RegisteredClaims
 }
 
-// JWTAuth JWT认证中间件
+// TokenVersionProvider 令牌版本号提供者（解耦，避免中间件依赖 repository）
+// 返回 (当前版本号, 是否被禁用, 错误)
+type TokenVersionProvider func(userID string) (version int, disabled bool, err error)
+
+// JWTAuth JWT认证中间件（基础版：只验签、不检查版本号）
 func JWTAuth(secret string) gin.HandlerFunc {
+	return JWTAuthWithValidator(secret, nil)
+}
+
+// JWTAuthWithValidator JWT认证中间件（带服务端令牌校验）
+// 当 validator 非空时，会在令牌签名通过后，进一步校验：
+//  1. 用户是否已被禁用（disabled=true 则拒绝）
+//  2. 令牌版本号是否已失效（claims.TokenVersion < 数据库中的 token_version 则拒绝）
+func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
 
@@ -84,6 +97,26 @@ func JWTAuth(secret string) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效或已过期"})
 			c.Abort()
 			return
+		}
+
+		// 服务端校验：用户状态 + 令牌版本号
+		if validator != nil {
+			curVersion, disabled, verr := validator(claims.UserID)
+			if verr != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在或已被删除"})
+				c.Abort()
+				return
+			}
+			if disabled {
+				c.JSON(http.StatusForbidden, gin.H{"error": "账号已被禁用，请联系管理员"})
+				c.Abort()
+				return
+			}
+			if claims.TokenVersion < curVersion {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "登录凭证已失效，请重新登录"})
+				c.Abort()
+				return
+			}
 		}
 
 		// 将用户信息存入上下文

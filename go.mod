@@ -12,6 +12,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/viper v1.18.2
+	github.com/studio-b12/gowebdav v0.9.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.21.0
 	golang.org/x/text v0.14.0

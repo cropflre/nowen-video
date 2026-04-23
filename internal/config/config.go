@@ -53,6 +53,11 @@ type SecretsConfig struct {
 	// 申请地址: https://fanart.tv/get-an-api-key/
 	// 留空则跳过 Fanart.tv 图片增强
 	FanartTVAPIKey string `mapstructure:"fanart_tv_api_key"`
+	// 豆瓣登录 Cookie（可选，用于提升豆瓣刮削成功率和降低风控概率）
+	// 从浏览器登录豆瓣后 F12 -> Network -> Request Headers 中复制完整 Cookie 字符串
+	// 关键字段：bid / dbcl2 / ck。留空则以匿名方式访问豆瓣，仍可工作但成功率较低。
+	// 注意：Cookie 有效期约 1 个月，失效时需重新获取。仅供个人使用，请勿分享。
+	DoubanCookie string `mapstructure:"douban_cookie"`
 	// 预留：其他第三方服务密钥可在此扩展
 }
 
@@ -248,6 +253,116 @@ type RegistrationConfig struct {
 	InviteCode string `mapstructure:"invite_code"`
 }
 
+// StorageConfig 存储配置（支持本地、WebDAV、网盘等多种存储后端）
+type StorageConfig struct {
+	// ==================== WebDAV 存储配置 ====================
+	WebDAV WebDAVConfig `mapstructure:"webdav"`
+
+	// ==================== V2.3: Alist 聚合网盘配置 ====================
+	// 通过 Alist HTTP API 对接阿里云盘 / 115 / 夸克 / 百度网盘 / OneDrive 等 20+ 网盘
+	Alist AlistConfig `mapstructure:"alist"`
+
+	// ==================== V2.3: S3 兼容对象存储配置 ====================
+	// 对接 AWS S3 / MinIO / Cloudflare R2 / 阿里云 OSS / 腾讯云 COS 等
+	S3 S3Config `mapstructure:"s3"`
+
+	// ==================== 预留：未来扩展 ====================
+	// OneDrive    OneDriveConfig    `mapstructure:"onedrive"`
+}
+
+// AlistConfig Alist 聚合网盘配置（V2.3）
+//
+// Alist 官网: https://alist.nn.ci/
+// 认证模式：
+//  1. Token 模式（推荐）：预先获取长期 Token，直接填入 Token 字段
+//  2. 用户名密码模式：首次请求时调用 /api/auth/login 换取 Token
+type AlistConfig struct {
+	// 是否启用 Alist 存储
+	Enabled bool `mapstructure:"enabled"`
+	// Alist 服务器地址（如 https://alist.example.com）
+	ServerURL string `mapstructure:"server_url"`
+	// 用户名（Token 模式可不填）
+	Username string `mapstructure:"username"`
+	// 密码（Token 模式可不填）
+	Password string `mapstructure:"password"`
+	// 长期 Token（优先于用户名密码）
+	Token string `mapstructure:"token"`
+	// 基础路径（Alist 内的根目录，如 /aliyun/movies）
+	BasePath string `mapstructure:"base_path"`
+	// 连接超时（秒，默认 30）
+	Timeout int `mapstructure:"timeout"`
+	// 是否启用元数据缓存
+	EnableCache bool `mapstructure:"enable_cache"`
+	// 元数据缓存 TTL（小时，默认 12）
+	CacheTTLHours int `mapstructure:"cache_ttl_hours"`
+	// ReadAt 块缓存大小（MiB，默认 8，<=0 禁用）
+	ReadBlockSizeMB int `mapstructure:"read_block_size_mb"`
+	// ReadAt 块缓存最大块数（每文件，默认 4，<=0 禁用）
+	ReadBlockCount int `mapstructure:"read_block_count"`
+}
+
+// S3Config S3 兼容对象存储配置（V2.3）
+type S3Config struct {
+	// 是否启用 S3 存储
+	Enabled bool `mapstructure:"enabled"`
+	// S3 Endpoint（如 https://s3.amazonaws.com、https://minio.example.com:9000）
+	Endpoint string `mapstructure:"endpoint"`
+	// 区域（AWS 必填，MinIO 可留空或 us-east-1）
+	Region string `mapstructure:"region"`
+	// Access Key
+	AccessKey string `mapstructure:"access_key"`
+	// Secret Key
+	SecretKey string `mapstructure:"secret_key"`
+	// Bucket 名称
+	Bucket string `mapstructure:"bucket"`
+	// 基础路径前缀（Object Key 前缀，如 media/）
+	BasePath string `mapstructure:"base_path"`
+	// 是否使用 Path-Style 寻址（MinIO 必开，AWS 默认 Virtual-Host-Style）
+	PathStyle bool `mapstructure:"path_style"`
+	// 连接超时（秒，默认 30）
+	Timeout int `mapstructure:"timeout"`
+	// 是否启用元数据缓存
+	EnableCache bool `mapstructure:"enable_cache"`
+	// 元数据缓存 TTL（小时，默认 24）
+	CacheTTLHours int `mapstructure:"cache_ttl_hours"`
+	// ReadAt 块缓存大小（MiB，默认 8，<=0 禁用）
+	ReadBlockSizeMB int `mapstructure:"read_block_size_mb"`
+	// ReadAt 块缓存最大块数（每文件，默认 4，<=0 禁用）
+	ReadBlockCount int `mapstructure:"read_block_count"`
+}
+
+// WebDAVConfig WebDAV 远程存储配置
+type WebDAVConfig struct {
+	// 是否启用 WebDAV 存储
+	Enabled bool `mapstructure:"enabled"`
+	// WebDAV 服务器地址（如 https://dav.example.com）
+	ServerURL string `mapstructure:"server_url"`
+	// 用户名
+	Username string `mapstructure:"username"`
+	// 密码
+	Password string `mapstructure:"password"`
+	// 基础路径（服务器上的根目录，如 /media）
+	BasePath string `mapstructure:"base_path"`
+	// 连接超时（秒，默认 30）
+	Timeout int `mapstructure:"timeout"`
+	// 是否启用连接池
+	EnablePool bool `mapstructure:"enable_pool"`
+	// 连接池大小（默认 5）
+	PoolSize int `mapstructure:"pool_size"`
+	// 是否启用缓存（本地缓存远程文件元数据）
+	EnableCache bool `mapstructure:"enable_cache"`
+	// 缓存过期时间（小时，默认 24）
+	CacheTTLHours int `mapstructure:"cache_ttl_hours"`
+	// 最大重试次数（默认 3）
+	MaxRetries int `mapstructure:"max_retries"`
+	// 重试间隔（秒，默认 2）
+	RetryInterval int `mapstructure:"retry_interval"`
+	// V2.1: ReadAt 块缓存大小（MiB，默认 8，<=0 禁用）
+	ReadBlockSizeMB int `mapstructure:"read_block_size_mb"`
+	// V2.1: ReadAt 块缓存最大块数（每文件，默认 4，<=0 禁用）
+	ReadBlockCount int `mapstructure:"read_block_count"`
+}
+
 // Config 应用主配置（聚合所有子模块）
 type Config struct {
 	mu sync.RWMutex `mapstructure:"-"`
@@ -260,6 +375,7 @@ type Config struct {
 	Cache        CacheConfig        `mapstructure:"cache"`
 	AI           AIConfig           `mapstructure:"ai"`
 	Registration RegistrationConfig `mapstructure:"registration"`
+	Storage      StorageConfig      `mapstructure:"storage"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -364,6 +480,7 @@ func setDefaults() {
 	viper.SetDefault("secrets.bangumi_access_token", "")
 	viper.SetDefault("secrets.thetvdb_api_key", "")
 	viper.SetDefault("secrets.fanart_tv_api_key", "")
+	viper.SetDefault("secrets.douban_cookie", "")
 
 	// ---- 应用 ----
 	viper.SetDefault("app.port", 8080)
@@ -422,6 +539,47 @@ func setDefaults() {
 	viper.SetDefault("registration.enabled", false)
 	viper.SetDefault("registration.invite_code", "")
 
+	// ---- 存储配置 ----
+	// WebDAV 存储配置
+	viper.SetDefault("storage.webdav.enabled", false)
+	viper.SetDefault("storage.webdav.server_url", "")
+	viper.SetDefault("storage.webdav.username", "")
+	viper.SetDefault("storage.webdav.password", "")
+	viper.SetDefault("storage.webdav.base_path", "")
+	viper.SetDefault("storage.webdav.timeout", 30)
+	viper.SetDefault("storage.webdav.enable_pool", true)
+	viper.SetDefault("storage.webdav.pool_size", 5)
+	viper.SetDefault("storage.webdav.enable_cache", true)
+	viper.SetDefault("storage.webdav.cache_ttl_hours", 24)
+	viper.SetDefault("storage.webdav.max_retries", 3)
+	viper.SetDefault("storage.webdav.retry_interval", 2)
+	// V2.1: ReadAt 块缓存（播放器 seek 加速）
+	viper.SetDefault("storage.webdav.read_block_size_mb", 8)
+	viper.SetDefault("storage.webdav.read_block_count", 4)
+
+	// V2.3: Alist 聚合网盘默认值
+	viper.SetDefault("storage.alist.enabled", false)
+	viper.SetDefault("storage.alist.server_url", "")
+	viper.SetDefault("storage.alist.base_path", "/")
+	viper.SetDefault("storage.alist.timeout", 30)
+	viper.SetDefault("storage.alist.enable_cache", true)
+	viper.SetDefault("storage.alist.cache_ttl_hours", 12)
+	viper.SetDefault("storage.alist.read_block_size_mb", 8)
+	viper.SetDefault("storage.alist.read_block_count", 4)
+
+	// V2.3: S3 兼容对象存储默认值
+	viper.SetDefault("storage.s3.enabled", false)
+	viper.SetDefault("storage.s3.endpoint", "")
+	viper.SetDefault("storage.s3.region", "us-east-1")
+	viper.SetDefault("storage.s3.bucket", "")
+	viper.SetDefault("storage.s3.base_path", "")
+	viper.SetDefault("storage.s3.path_style", true)
+	viper.SetDefault("storage.s3.timeout", 30)
+	viper.SetDefault("storage.s3.enable_cache", true)
+	viper.SetDefault("storage.s3.cache_ttl_hours", 24)
+	viper.SetDefault("storage.s3.read_block_size_mb", 8)
+	viper.SetDefault("storage.s3.read_block_count", 4)
+
 	// ---- 旧版兼容默认值（当使用扁平 key 时） ----
 	viper.SetDefault("port", 8080)
 	viper.SetDefault("debug", false)
@@ -461,6 +619,7 @@ func mergeConfigDir() error {
 			{name: "logging", prefix: "logging"},
 			{name: "cache", prefix: "cache"},
 			{name: "ai", prefix: "ai"},
+			{name: "storage", prefix: "storage"},
 		}
 
 		for _, cf := range configFiles {
@@ -674,6 +833,49 @@ func (c *Config) SetTMDbAPIKey(key string) error {
 // ClearTMDbAPIKey 清除 TMDb API Key 并持久化
 func (c *Config) ClearTMDbAPIKey() error {
 	return c.SetTMDbAPIKey("")
+}
+
+// ==================== 豆瓣 Cookie 管理 ====================
+
+// GetDoubanCookie 获取豆瓣登录 Cookie（线程安全）
+func (c *Config) GetDoubanCookie() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Secrets.DoubanCookie
+}
+
+// GetDoubanCookieMasked 获取掩码后的豆瓣 Cookie（用于前端展示）
+// 仅展示总长度和首尾几位，中间以 * 号遮蔽
+func (c *Config) GetDoubanCookieMasked() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cookie := c.Secrets.DoubanCookie
+	if cookie == "" {
+		return ""
+	}
+	if len(cookie) <= 16 {
+		return strings.Repeat("*", len(cookie))
+	}
+	return cookie[:8] + strings.Repeat("*", 12) + cookie[len(cookie)-8:]
+}
+
+// SetDoubanCookie 设置豆瓣 Cookie 并持久化到配置文件
+func (c *Config) SetDoubanCookie(cookie string) error {
+	c.mu.Lock()
+	c.Secrets.DoubanCookie = cookie
+	c.mu.Unlock()
+
+	viper.Set("secrets.douban_cookie", cookie)
+
+	// 同时更新分片配置文件（如果存在），避免重启后被旧的空值覆盖
+	c.updateSecretsFile("douban_cookie", cookie)
+
+	return c.saveConfig()
+}
+
+// ClearDoubanCookie 清除豆瓣 Cookie 并持久化
+func (c *Config) ClearDoubanCookie() error {
+	return c.SetDoubanCookie("")
 }
 
 // UpdatePerformanceConfig 更新性能配置并持久化

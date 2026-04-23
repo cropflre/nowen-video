@@ -33,9 +33,16 @@ func (s *PlaylistService) List(userID string) ([]model.Playlist, error) {
 	return s.repo.ListByUserID(userID)
 }
 
-// Get 获取播放列表详情
-func (s *PlaylistService) Get(id string) (*model.Playlist, error) {
-	return s.repo.FindByID(id)
+// Get 获取播放列表详情（需校验归属）
+func (s *PlaylistService) Get(id, userID string) (*model.Playlist, error) {
+	p, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if p.UserID != userID {
+		return nil, ErrForbidden
+	}
+	return p, nil
 }
 
 // Delete 删除播放列表

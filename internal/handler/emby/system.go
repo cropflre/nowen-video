@@ -76,8 +76,8 @@ func (h *Handler) SystemEndpointHandler(c *gin.Context) {
 		strings.HasPrefix(remote, "192.168.") ||
 		remote == "::1"
 	c.JSON(http.StatusOK, gin.H{
-		"IsLocal":         isLocal,
-		"IsInNetwork":     isLocal,
+		"IsLocal":     isLocal,
+		"IsInNetwork": isLocal,
 	})
 }
 
@@ -92,7 +92,7 @@ func (h *Handler) PublicUsersHandler(c *gin.Context) {
 // AuthenticateByNameRequest 对应 Emby 登录请求体。
 type AuthenticateByNameRequest struct {
 	Username string `json:"Username"`
-	Pw       string `json:"Pw"` // 新版字段
+	Pw       string `json:"Pw"`       // 新版字段
 	Password string `json:"Password"` // 旧版 MD5 字段（大部分客户端仍发送 Pw）
 }
 
@@ -114,7 +114,7 @@ func (h *Handler) AuthenticateByNameHandler(c *gin.Context) {
 	}
 
 	loginReq := &service.LoginRequest{Username: req.Username, Password: password}
-	tok, err := h.auth.Login(loginReq)
+	tok, err := h.auth.Login(loginReq, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
 		h.logger.Infof("[emby] 登录失败 user=%s err=%v", req.Username, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"Error": "Invalid username or password"})

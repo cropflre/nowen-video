@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, SystemSettings } from '@/types'
+import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, DoubanConfigStatus, SystemSettings } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import {
   Server,
@@ -27,6 +27,7 @@ import {
   Settings,
   Trash2,
   Sparkles,
+  HardDrive,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -35,6 +36,7 @@ import DashboardTab from '@/components/admin/DashboardTab'
 import UsersTab from '@/components/admin/UsersTab'
 import TasksTab from '@/components/admin/TasksTab'
 import AITab from '@/components/admin/AITab'
+import StorageTab from '@/components/admin/StorageTab'
 import { useTranslation } from '@/i18n'
 
 // ==================== 标签页定义 ====================
@@ -45,6 +47,7 @@ const TABS = [
   { id: 'tasks', labelKey: 'admin.tabTasks', icon: ListTodo, shortLabelKey: 'admin.shortTasks' },
   { id: 'monitor', labelKey: 'admin.tabMonitor', icon: Activity, shortLabelKey: 'admin.shortMonitor' },
   { id: 'ai', labelKey: 'admin.tabAI', icon: Sparkles, shortLabelKey: 'admin.shortAI' },
+  { id: 'storage', labelKey: 'admin.tabStorage', icon: HardDrive, shortLabelKey: 'admin.shortStorage' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -230,6 +233,15 @@ export default function AdminPage() {
   const [tmdbSaving, setTmdbSaving] = useState(false)
   const [tmdbMessage, setTmdbMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+  // 豆瓣 Cookie 配置状态
+  const [doubanConfig, setDoubanConfig] = useState<DoubanConfigStatus | null>(null)
+  const [doubanCookieInput, setDoubanCookieInput] = useState('')
+  const [doubanEditing, setDoubanEditing] = useState(false)
+  const [doubanShowCookie, setDoubanShowCookie] = useState(false)
+  const [doubanSaving, setDoubanSaving] = useState(false)
+  const [doubanValidating, setDoubanValidating] = useState(false)
+  const [doubanMessage, setDoubanMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
+
   // WebSocket 实时进度
   const { connected, on, off } = useWebSocket()
   const [scanProgress, setScanProgress] = useState<Record<string, ScanProgressData>>({})
@@ -382,12 +394,13 @@ export default function AdminPage() {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [sysRes, libRes, userRes, transRes, tmdbRes, settingsRes] = await Promise.all([
+        const [sysRes, libRes, userRes, transRes, tmdbRes, doubanRes, settingsRes] = await Promise.all([
           adminApi.systemInfo(),
           libraryApi.list(),
           adminApi.listUsers(),
           adminApi.transcodeStatus(),
           adminApi.getTMDbConfig(),
+          adminApi.getDoubanConfig(),
           adminApi.getSystemSettings(),
         ])
         setSystemInfo(sysRes.data.data)
@@ -395,6 +408,7 @@ export default function AdminPage() {
         setUsers(userRes.data.data || [])
         setTranscodeJobs(transRes.data.data || [])
         setTmdbConfig(tmdbRes.data.data)
+        setDoubanConfig(doubanRes.data.data)
         if (settingsRes.data.data) setSysSettings(settingsRes.data.data)
       } catch {
         // 静默处理
@@ -438,6 +452,58 @@ export default function AdminPage() {
       showTmdbMessage('success', t('admin.tmdbClearSuccess'))
     } catch {
       showTmdbMessage('error', t('admin.tmdbClearFailed'))
+    }
+  }
+
+  // ==================== 豆瓣 Cookie 配置操作 ====================
+  const showDoubanMessage = (type: 'success' | 'error' | 'info', text: string) => {
+    setDoubanMessage({ type, text })
+    setTimeout(() => setDoubanMessage(null), 5000)
+  }
+
+  const handleSaveDoubanCookie = async () => {
+    const cookie = doubanCookieInput.trim()
+    if (!cookie) return
+    setDoubanSaving(true)
+    try {
+      const res = await adminApi.updateDoubanConfig(cookie)
+      setDoubanConfig(res.data.data)
+      setDoubanCookieInput('')
+      setDoubanEditing(false)
+      setDoubanShowCookie(false)
+      showDoubanMessage('success', '豆瓣 Cookie 已保存')
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || '保存失败，请稍后重试'
+      showDoubanMessage('error', msg)
+    } finally {
+      setDoubanSaving(false)
+    }
+  }
+
+  const handleClearDoubanCookie = async () => {
+    if (!confirm('确定要清除豆瓣 Cookie 吗？清除后豆瓣刮削将回退到匿名模式（成功率较低）。')) return
+    try {
+      const res = await adminApi.clearDoubanConfig()
+      setDoubanConfig(res.data.data)
+      setDoubanCookieInput('')
+      setDoubanEditing(false)
+      showDoubanMessage('success', '豆瓣 Cookie 已清除')
+    } catch {
+      showDoubanMessage('error', '清除失败，请稍后重试')
+    }
+  }
+
+  const handleValidateDoubanCookie = async () => {
+    setDoubanValidating(true)
+    try {
+      const res = await adminApi.validateDoubanConfig()
+      const { valid, message } = res.data.data
+      showDoubanMessage(valid ? 'success' : 'error', message)
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || '校验失败'
+      showDoubanMessage('error', msg)
+    } finally {
+      setDoubanValidating(false)
     }
   }
 
@@ -743,6 +809,166 @@ export default function AdminPage() {
                 </div>
               </div>
             </section>
+
+            {/* ===== 豆瓣 Cookie 配置卡片 ===== */}
+            <section>
+              <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                <Film size={20} className="text-neon/60" />
+                豆瓣刮削登录配置
+              </h2>
+              <div className="glass-panel rounded-xl p-5">
+                {/* 说明信息 */}
+                <div className="mb-5 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    配置豆瓣登录 <span className="font-medium text-neon">Cookie</span> 后可提升豆瓣刮削成功率、降低风控概率，并获取更完整的元数据。
+                    未配置时将以匿名模式访问（成功率较低）。
+                  </p>
+                  <p className="mt-2 text-xs text-surface-400">
+                    获取方式：浏览器登录豆瓣 → F12 打开开发者工具 → Network 标签 → 刷新页面 → 任意请求的 Request Headers → 复制完整 <code className="text-neon font-mono">Cookie</code> 值
+                  </p>
+                  <a
+                    href="https://www.douban.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-neon hover:text-neon-blue transition-colors"
+                  >
+                    <ExternalLink size={14} />
+                    打开豆瓣登录
+                  </a>
+                </div>
+
+                {/* 当前状态 */}
+                <div className="mb-4 flex items-center gap-3">
+                  <div className={clsx(
+                    'flex h-10 w-10 items-center justify-center rounded-lg',
+                    doubanConfig?.configured ? 'bg-green-500/10' : ''
+                  )}
+                    style={!doubanConfig?.configured ? { background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' } : undefined}
+                  >
+                    <Key size={18} className={doubanConfig?.configured ? 'text-green-400' : 'text-surface-500'} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {doubanConfig?.configured ? 'Cookie 已配置' : 'Cookie 未配置（匿名模式）'}
+                    </p>
+                    {doubanConfig?.configured && doubanConfig.masked_cookie && (
+                      <p className="mt-0.5 flex items-center gap-2 text-xs text-surface-400 font-mono truncate">
+                        {doubanShowCookie ? doubanConfig.masked_cookie : '••••••••••••••••••••'}
+                        <button
+                          onClick={() => setDoubanShowCookie(!doubanShowCookie)}
+                          className="text-surface-500 hover:text-surface-300 transition-colors flex-shrink-0"
+                          title={doubanShowCookie ? '隐藏' : '显示掩码'}
+                        >
+                          {doubanShowCookie ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 操作提示消息 */}
+                {doubanMessage && (
+                  <div className={clsx(
+                    'mb-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm',
+                    doubanMessage.type === 'success' && 'bg-green-500/10 text-green-400',
+                    doubanMessage.type === 'error' && 'bg-red-500/10 text-red-400',
+                    doubanMessage.type === 'info' && 'bg-blue-500/10 text-blue-400'
+                  )}>
+                    {doubanMessage.type === 'success' ? <Check size={16} /> : <X size={16} />}
+                    {doubanMessage.text}
+                  </div>
+                )}
+
+                {/* 编辑表单 */}
+                {doubanEditing ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                        豆瓣 Cookie 字符串
+                      </label>
+                      <textarea
+                        value={doubanCookieInput}
+                        onChange={(e) => setDoubanCookieInput(e.target.value)}
+                        className="input font-mono text-xs min-h-[120px] resize-y"
+                        placeholder='示例：bid=xxxxxxxxxxxx; ll="108288"; dbcl2="xxxxxxx:xxxxxxx"; ck=xxxx; ...'
+                        autoFocus
+                      />
+                      <p className="mt-1.5 text-xs text-surface-500">
+                        应当包含 <code className="text-neon font-mono">bid</code> / <code className="text-neon font-mono">dbcl2</code> 等关键字段。Cookie 有效期约 1 个月，失效后需重新获取。
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={handleSaveDoubanCookie}
+                        disabled={!doubanCookieInput.trim() || doubanSaving}
+                        className="btn-primary gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
+                      >
+                        {doubanSaving ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            保存中...
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} />
+                            保存
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDoubanEditing(false)
+                          setDoubanCookieInput('')
+                        }}
+                        className="btn-ghost px-4 py-2 text-sm"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => setDoubanEditing(true)}
+                      className="btn-primary gap-1.5 px-4 py-2 text-sm"
+                    >
+                      <Key size={14} />
+                      {doubanConfig?.configured ? '修改 Cookie' : '配置 Cookie'}
+                    </button>
+                    {doubanConfig?.configured && (
+                      <>
+                        <button
+                          onClick={handleValidateDoubanCookie}
+                          disabled={doubanValidating}
+                          className="btn-ghost gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
+                        >
+                          {doubanValidating ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Check size={14} />
+                          )}
+                          测试连接
+                        </button>
+                        <button
+                          onClick={handleClearDoubanCookie}
+                          className="btn-ghost gap-1.5 px-4 py-2 text-sm text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 size={14} />
+                          清除 Cookie
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* 安全提示 */}
+                <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-default)' }}>
+                  <p className="text-xs text-surface-500 leading-relaxed">
+                    ⚠️ <span className="font-medium text-surface-400">安全提示</span>：Cookie 等同于您的豆瓣登录凭证，请妥善保管。仅供个人刮削使用，请勿分享或用于商业/公共服务。如账号被豆瓣风控，请先清除 Cookie 使用匿名模式。
+                  </p>
+                </div>
+              </div>
+            </section>
           </div>
         )}
 
@@ -789,6 +1015,11 @@ export default function AdminPage() {
         {/* ===== AI 配置标签页 ===== */}
         {activeTab === 'ai' && (
           <AITab />
+        )}
+
+        {/* ===== 存储管理标签页 ===== */}
+        {activeTab === 'storage' && (
+          <StorageTab />
         )}
       </div>
 

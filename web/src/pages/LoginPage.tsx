@@ -15,15 +15,20 @@ export default function LoginPage() {
   const [isRegister, setIsRegister] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [initialized, setInitialized] = useState(true) // 系统是否已初始化（有用户）
+  const [inviteRequired, setInviteRequired] = useState(false)
+  const [registrationOpen, setRegistrationOpen] = useState(true)
 
   // 检查系统初始化状态
   useEffect(() => {
     authApi.getStatus().then((res) => {
       const status = res.data.data
       setInitialized(status.initialized)
+      setInviteRequired(!!(status as { invite_required?: boolean }).invite_required)
+      setRegistrationOpen(!!status.registration_open)
       // 系统未初始化时（无用户），自动切换到注册模式
       if (!status.initialized) {
         setIsRegister(true)
@@ -39,10 +44,17 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const api = isRegister ? authApi.register : authApi.login
-      const res = await api({ username, password })
+      const res = isRegister
+        ? await authApi.register({ username, password, invite_code: inviteCode || undefined })
+        : await authApi.login({ username, password })
       setAuth(res.data.token, res.data.user)
-      navigate('/')
+      // 返回 must_change_password 时，跳转到强制改密页
+      const mustChange = (res.data as { must_change_password?: boolean }).must_change_password
+      if (mustChange) {
+        navigate('/force-change-password')
+      } else {
+        navigate('/')
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || t('auth.operationFailed'))
@@ -175,6 +187,23 @@ export default function LoginPage() {
                 minLength={6}
               />
             </div>
+
+            {/* 邀请码（仅非首用户注册 + 系统要求时显示） */}
+            {isRegister && initialized && inviteRequired && (
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                  邀请码
+                </label>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  className="input"
+                  placeholder="请输入管理员下发的邀请码"
+                  required
+                />
+              </div>
+            )}
           </div>
 
           <motion.button
@@ -193,17 +222,19 @@ export default function LoginPage() {
           </motion.button>
 
           <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegister(!isRegister)
-                setError('')
-              }}
-              className="text-sm transition-colors hover:text-neon"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {isRegister ? t('auth.switchToLogin') : t('auth.switchToRegister')}
-            </button>
+            {(!initialized || registrationOpen) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(!isRegister)
+                  setError('')
+                }}
+                className="text-sm transition-colors hover:text-neon"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {isRegister ? t('auth.switchToLogin') : t('auth.switchToRegister')}
+              </button>
+            )}
           </div>
         </motion.form>
 

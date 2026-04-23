@@ -7,6 +7,8 @@ var (
 	ErrInvalidCredentials   = errors.New("用户名或密码错误")
 	ErrUserExists           = errors.New("用户名已存在")
 	ErrUserNotFound         = errors.New("用户不存在")
+	ErrUserDisabled         = errors.New("账号已被禁用，请联系管理员")
+	ErrLastAdmin            = errors.New("不能删除或降级最后一个管理员")
 	ErrLibraryNotFound      = errors.New("媒体库不存在")
 	ErrMediaNotFound        = errors.New("媒体不存在")
 	ErrAlreadyFavorited     = errors.New("已收藏")

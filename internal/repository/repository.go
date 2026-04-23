@@ -43,6 +43,10 @@ type Repositories struct {
 	SubtitlePreprocess *SubtitlePreprocessRepo
 	// 电影系列合集
 	MovieCollection *MovieCollectionRepo
+	// 多用户安全（审计 / 登录日志 / 邀请码）
+	LoginLog   *LoginLogRepo
+	AuditLog   *AuditLogRepo
+	InviteCode *InviteCodeRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -83,6 +87,10 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		SubtitlePreprocess: &SubtitlePreprocessRepo{db: db},
 		// 电影系列合集
 		MovieCollection: &MovieCollectionRepo{db: db},
+		// 多用户安全
+		LoginLog:   &LoginLogRepo{db: db},
+		AuditLog:   &AuditLogRepo{db: db},
+		InviteCode: &InviteCodeRepo{db: db},
 	}
 }
 

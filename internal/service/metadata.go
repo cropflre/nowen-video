@@ -2325,6 +2325,11 @@ func (s *MetadataService) SearchDouban(query string, year int) ([]DoubanSearchRe
 	return s.douban.searchDouban(query, year)
 }
 
+// ValidateDoubanCookie 校验豆瓣 Cookie 有效性（代理到 DoubanService）
+func (s *MetadataService) ValidateDoubanCookie() (bool, string, error) {
+	return s.douban.ValidateDoubanCookie()
+}
+
 // MatchMediaWithDouban 手动关联豆瓣结果到指定媒体
 func (s *MetadataService) MatchMediaWithDouban(mediaID string, doubanID string) error {
 	media, err := s.mediaRepo.FindByID(mediaID)

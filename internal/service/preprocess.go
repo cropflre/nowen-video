@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,6 +84,14 @@ type PreprocessService struct {
 
 	// GPU 安全监控
 	gpuMonitor *GPUMonitor
+
+	// V2.1: VFS 管理器（用于 WebDAV 路径验证）
+	vfsMgr *VFSManager
+}
+
+// SetVFSManager 设置 VFS 管理器（V2.1）
+func (s *PreprocessService) SetVFSManager(vfsMgr *VFSManager) {
+	s.vfsMgr = vfsMgr
 }
 
 // NewPreprocessService 创建预处理服务
@@ -167,9 +176,23 @@ func (s *PreprocessService) SubmitMedia(mediaID string, priority int) (*model.Pr
 		return nil, fmt.Errorf("STRM 远程流不支持预处理")
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(media.FilePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("媒体文件不存在: %s", media.FilePath)
+	// V2.1: WebDAV 路径 → HTTP URL（FFmpeg 会直接流式读取，不需要全文件下载）
+	inputPath := media.FilePath
+	if IsWebDAVPath(inputPath) {
+		// 通过 VFS 检查文件存在性
+		if s.vfsMgr != nil {
+			if _, err := s.vfsMgr.Stat(inputPath); err != nil {
+				return nil, fmt.Errorf("WebDAV 媒体文件不可访问: %s, %w", inputPath, err)
+			}
+		}
+		// 翻译为 HTTP URL（ffmpeg 直读）
+		inputPath = ResolveRemoteFFmpegURL(s.cfg, inputPath)
+		s.logger.Infof("WebDAV 预处理输入: %s", SprintSafeFFmpegURL(inputPath))
+	} else {
+		// 本地文件存在性检查
+		if _, err := os.Stat(media.FilePath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("媒体文件不存在: %s", media.FilePath)
+		}
 	}
 
 	outputDir := filepath.Join(s.cfg.Cache.CacheDir, "preprocess", mediaID)
@@ -180,7 +203,7 @@ func (s *PreprocessService) SubmitMedia(mediaID string, priority int) (*model.Pr
 		Status:     "pending",
 		Priority:   priority,
 		Message:    "等待处理...",
-		InputPath:  media.FilePath,
+		InputPath:  inputPath,
 		OutputDir:  outputDir,
 		MediaTitle: media.DisplayTitle(),
 		MaxRetry:   3,
@@ -775,14 +798,19 @@ type videoProbeInfo struct {
 
 // probeVideo 使用 FFprobe 探测视频信息
 func (s *PreprocessService) probeVideo(inputPath string) (*videoProbeInfo, error) {
-	cmd := exec.Command(s.cfg.App.FFprobePath,
+	ffprobeArgs := []string{
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
 		"-select_streams", "v:0",
-		inputPath,
-	)
+	}
+	// V2.1: HTTP 输入时注入超时与重连参数
+	if httpArgs := BuildFFmpegInputArgs(inputPath); len(httpArgs) > 0 {
+		ffprobeArgs = append(ffprobeArgs, httpArgs...)
+	}
+	ffprobeArgs = append(ffprobeArgs, inputPath)
+	cmd := exec.Command(s.cfg.App.FFprobePath, ffprobeArgs...)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -834,15 +862,22 @@ func (s *PreprocessService) extractThumbnail(task *model.PreprocessTask) (string
 
 	// P2 优化：-ss 在 -i 之前 = input seeking（基于关键帧快速跳转）
 	// 比 output seeking（-ss 在 -i 之后）快 10~100x，尤其对长视频
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	ffmpegArgs := []string{
 		"-y",
 		"-ss", seekPos,
+	}
+	// V2.1: HTTP 输入时注入重连与超时参数
+	if httpArgs := BuildFFmpegInputArgs(task.InputPath); len(httpArgs) > 0 {
+		ffmpegArgs = append(ffmpegArgs, httpArgs...)
+	}
+	ffmpegArgs = append(ffmpegArgs,
 		"-i", task.InputPath,
 		"-frames:v", "1",
 		"-q:v", "2",
 		"-vf", "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
 		thumbnailPath,
 	)
+	cmd := exec.Command(s.cfg.App.FFmpegPath, ffmpegArgs...)
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("封面提取失败: %w", err)
@@ -870,9 +905,14 @@ func (s *PreprocessService) extractKeyframes(task *model.PreprocessTask) (string
 
 	// P1 优化：使用 -skip_frame nokey 让解码器跳过非关键帧，
 	// 配合 fps 滤镜大幅减少解码工作量（对长视频提升 5~10x）
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	kfArgs := []string{
 		"-y",
 		"-skip_frame", "nokey",
+	}
+	if httpArgs := BuildFFmpegInputArgs(task.InputPath); len(httpArgs) > 0 {
+		kfArgs = append(kfArgs, httpArgs...)
+	}
+	kfArgs = append(kfArgs,
 		"-i", task.InputPath,
 		"-vf", fmt.Sprintf("fps=1/%.0f,scale=320:-1", interval),
 		"-vsync", "vfr",
@@ -880,6 +920,7 @@ func (s *PreprocessService) extractKeyframes(task *model.PreprocessTask) (string
 		"-frames:v", "20",
 		filepath.Join(keyframesDir, "kf_%03d.jpg"),
 	)
+	cmd := exec.Command(s.cfg.App.FFmpegPath, kfArgs...)
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("关键帧提取失败: %w", err)
@@ -919,7 +960,85 @@ func (s *PreprocessService) transcodeVariant(
 
 	audioArgs := []string{"-c:a", "aac", "-b:a", variant.AudioBitrate, "-ac", "2"}
 
-	// 尝试硬件加速转码，失败时回退到软件转码
+	// V2.1: 尝试硬件加速转码，失败时回退到软件转码；
+	// 如果 InputPath 是 WebDAV HTTP URL 且全部尝试都失败，再降级到"先下载到本地再转码"
+	return s.transcodeVariantWithWebDAVFallback(task, variant, hlsArgs, audioArgs, m3u8Path, segmentPath, onProgress)
+}
+
+// transcodeVariantWithWebDAVFallback 包装 transcodeWithFallback，在 WebDAV 源失败时降级为本地下载再转码。
+//
+// 流程：
+//  1. 第一轮：使用原 InputPath（HTTP URL 直读）执行完整回退链
+//  2. 若失败且 InputPath 是 HTTP 源 → 完整下载到本地缓存
+//  3. 第二轮：用本地路径重跑一次 transcodeWithFallback（此时 BuildFFmpegInputArgs 返回空，走本地文件流）
+//  4. 下载文件在最后通过 defer 清理
+func (s *PreprocessService) transcodeVariantWithWebDAVFallback(
+	task *model.PreprocessTask,
+	variant ABRProfile,
+	hlsArgs, audioArgs []string,
+	m3u8Path, segmentPath string,
+	onProgress func(progress float64, speed string),
+) error {
+	// 第一轮：HTTP 直读尝试
+	err := s.transcodeWithFallback(task, variant, hlsArgs, audioArgs, m3u8Path, segmentPath, onProgress)
+	if err == nil {
+		return nil
+	}
+
+	// 用户取消，不降级
+	if _, cancelled := s.cancelJobs.Load(task.ID); cancelled {
+		return err
+	}
+
+	// 判断是否具备降级条件
+	if !shouldFallbackToLocalDownload(s.cfg, task.InputPath) {
+		return err
+	}
+
+	s.logger.Warnf("WebDAV 源转码失败，尝试降级为本地下载: task=%s, err=%v", task.MediaTitle, err)
+
+	// 下载到本地
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 同时监听取消信号
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+				if _, cancelled := s.cancelJobs.Load(task.ID); cancelled {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	localPath, cleanup, dlErr := downloadWebDAVToLocal(ctx, task.InputPath, s.cfg.Cache.CacheDir, task.MediaID, s.logger)
+	if dlErr != nil {
+		return fmt.Errorf("WebDAV 降级下载失败: %w (原转码错误: %v)", dlErr, err)
+	}
+	defer cleanup()
+
+	// 第二轮：用本地路径重跑
+	// 先清理前次失败残留
+	os.Remove(m3u8Path)
+	cleanupDir := filepath.Dir(segmentPath)
+	if entries, err := os.ReadDir(cleanupDir); err == nil {
+		for _, entry := range entries {
+			os.Remove(filepath.Join(cleanupDir, entry.Name()))
+		}
+	}
+	os.MkdirAll(cleanupDir, 0755)
+
+	// 临时替换 InputPath
+	originalInput := task.InputPath
+	task.InputPath = localPath
+	defer func() { task.InputPath = originalInput }()
+
+	s.logger.Infof("WebDAV 降级：使用本地文件重新转码 %s", localPath)
 	return s.transcodeWithFallback(task, variant, hlsArgs, audioArgs, m3u8Path, segmentPath, onProgress)
 }
 
@@ -940,10 +1059,15 @@ func (s *PreprocessService) transcodeWithFallback(
 	m3u8Path, segmentPath string,
 	onProgress func(progress float64, speed string),
 ) error {
+	// V2.1: 为 HTTP 源构造超时/重连前置参数（非 HTTP 返回 nil，不影响本地文件）
+	httpInputArgs := BuildFFmpegInputArgs(task.InputPath)
+
 	// 构建硬件加速配置映射（使用 map 替代嵌套循环查找）
 	hwAccelConfigs := map[string]func() ([]string, []string, []string){
 		"nvenc": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y", "-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", task.InputPath}
+			baseArgs := []string{"-y"}
+			baseArgs = append(baseArgs, httpInputArgs...)
+			baseArgs = append(baseArgs, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", task.InputPath)
 			videoArgs := []string{
 				"-c:v", "h264_nvenc",
 				"-preset", "p4",
@@ -958,14 +1082,16 @@ func (s *PreprocessService) transcodeWithFallback(
 			return baseArgs, videoArgs, audioArgs
 		},
 		"qsv": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y", "-hwaccel", "qsv", "-i", task.InputPath}
+			baseArgs := []string{"-y"}
+			baseArgs = append(baseArgs, httpInputArgs...)
+			baseArgs = append(baseArgs, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-i", task.InputPath)
 			videoArgs := []string{
 				"-c:v", "h264_qsv",
 				"-preset", "medium",
 				"-b:v", variant.VideoBitrate,
 				"-maxrate", variant.MaxBitrate,
 				"-bufsize", variant.BufSize,
-				"-pix_fmt", "nv12",
+				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
 				"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
 				"-g", "48",
 				"-keyint_min", "48",
@@ -975,11 +1101,14 @@ func (s *PreprocessService) transcodeWithFallback(
 		"vaapi": func() ([]string, []string, []string) {
 			baseArgs := []string{
 				"-y",
+			}
+			baseArgs = append(baseArgs, httpInputArgs...)
+			baseArgs = append(baseArgs,
 				"-hwaccel", "vaapi",
 				"-hwaccel_output_format", "vaapi",
 				"-vaapi_device", s.cfg.App.VAAPIDevice,
 				"-i", task.InputPath,
-			}
+			)
 			videoArgs := []string{
 				"-c:v", "h264_vaapi",
 				"-b:v", variant.VideoBitrate,
@@ -993,7 +1122,9 @@ func (s *PreprocessService) transcodeWithFallback(
 			return baseArgs, videoArgs, audioArgs
 		},
 		"none": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y", "-i", task.InputPath}
+			baseArgs := []string{"-y"}
+			baseArgs = append(baseArgs, httpInputArgs...)
+			baseArgs = append(baseArgs, "-i", task.InputPath)
 			videoArgs := []string{
 				"-c:v", "libx264",
 				"-preset", s.cfg.App.TranscodePreset,

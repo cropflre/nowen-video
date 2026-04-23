@@ -10,14 +10,83 @@ import (
 
 // User 用户模型
 type User struct {
-	ID        string         `json:"id" gorm:"primaryKey;type:text"`
-	Username  string         `json:"username" gorm:"uniqueIndex;type:text;not null"`
-	Password  string         `json:"-" gorm:"type:text;not null"`        // bcrypt哈希，JSON不输出
-	Role      string         `json:"role" gorm:"type:text;default:user"` // admin / user
-	Avatar    string         `json:"avatar" gorm:"type:text"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID       string `json:"id" gorm:"primaryKey;type:text"`
+	Username string `json:"username" gorm:"uniqueIndex;type:text;not null"`
+	Password string `json:"-" gorm:"type:text;not null"`        // bcrypt哈希，JSON不输出
+	Role     string `json:"role" gorm:"type:text;default:user"` // admin / user
+	Avatar   string `json:"avatar" gorm:"type:text"`
+	// 扩展资料
+	Nickname string `json:"nickname" gorm:"type:text"`
+	Email    string `json:"email" gorm:"type:text;index"`
+	// 账号状态
+	Disabled      bool `json:"disabled" gorm:"default:false"`        // 是否被封禁
+	MustChangePwd bool `json:"must_change_pwd" gorm:"default:false"` // 首次登录强制改密
+	// 会话版本号：用于吊销旧 Token（密码/角色/封禁变更时自增）
+	TokenVersion int `json:"-" gorm:"default:0"`
+	// 最近登录
+	LastLoginAt *time.Time     `json:"last_login_at"`
+	LastLoginIP string         `json:"last_login_ip" gorm:"type:text"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// LoginLog 登录日志
+type LoginLog struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:text"`
+	UserID    string    `json:"user_id" gorm:"index;type:text"`
+	Username  string    `json:"username" gorm:"type:text"` // 冗余便于展示（用户删除后仍可回溯）
+	IP        string    `json:"ip" gorm:"type:text"`
+	UserAgent string    `json:"user_agent" gorm:"type:text"`
+	Success   bool      `json:"success" gorm:"index"`
+	Reason    string    `json:"reason" gorm:"type:text"` // 失败原因（password_error / user_disabled / user_not_found）
+	CreatedAt time.Time `json:"created_at" gorm:"index"`
+}
+
+func (l *LoginLog) BeforeCreate(tx *gorm.DB) error {
+	if l.ID == "" {
+		l.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// AuditLog 管理员操作审计
+type AuditLog struct {
+	ID         string    `json:"id" gorm:"primaryKey;type:text"`
+	OperatorID string    `json:"operator_id" gorm:"index;type:text"`
+	Operator   string    `json:"operator" gorm:"type:text"`     // 操作者用户名（冗余）
+	Action     string    `json:"action" gorm:"index;type:text"` // user.create / user.delete / user.reset_password / user.disable ...
+	TargetType string    `json:"target_type" gorm:"type:text"`  // user / library / media / system
+	TargetID   string    `json:"target_id" gorm:"type:text"`
+	Detail     string    `json:"detail" gorm:"type:text"` // JSON 或文本描述
+	IP         string    `json:"ip" gorm:"type:text"`
+	CreatedAt  time.Time `json:"created_at" gorm:"index"`
+}
+
+func (a *AuditLog) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == "" {
+		a.ID = uuid.New().String()
+	}
+	return nil
+}
+
+// InviteCode 邀请码（支持一码一用、过期、多次使用）
+type InviteCode struct {
+	ID        string     `json:"id" gorm:"primaryKey;type:text"`
+	Code      string     `json:"code" gorm:"uniqueIndex;type:text;not null"`
+	MaxUses   int        `json:"max_uses" gorm:"default:1"` // 最大使用次数，0 表示无限
+	UsedCount int        `json:"used_count" gorm:"default:0"`
+	ExpiresAt *time.Time `json:"expires_at"` // 过期时间（nil 表示永不过期）
+	CreatorID string     `json:"creator_id" gorm:"type:text"`
+	Note      string     `json:"note" gorm:"type:text"`
+	CreatedAt time.Time  `json:"created_at" gorm:"index"`
+}
+
+func (i *InviteCode) BeforeCreate(tx *gorm.DB) error {
+	if i.ID == "" {
+		i.ID = uuid.New().String()
+	}
+	return nil
 }
 
 // Library 媒体库
@@ -589,6 +658,9 @@ func (t *SubtitlePreprocessTask) BeforeCreate(tx *gorm.DB) error {
 func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&User{},
+		&LoginLog{},
+		&AuditLog{},
+		&InviteCode{},
 		&Library{},
 		&SystemSetting{},
 		&Series{},
@@ -663,6 +735,15 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "last_scrape_at", DDL: "ALTER TABLE `media` ADD COLUMN `last_scrape_at` datetime"},
 			{Column: "collection_id", DDL: "ALTER TABLE `media` ADD COLUMN `collection_id` text DEFAULT ''"},
 			{Column: "stream_url", DDL: "ALTER TABLE `media` ADD COLUMN `stream_url` text DEFAULT ''"},
+		},
+		"users": {
+			{Column: "nickname", DDL: "ALTER TABLE `users` ADD COLUMN `nickname` text DEFAULT ''"},
+			{Column: "email", DDL: "ALTER TABLE `users` ADD COLUMN `email` text DEFAULT ''"},
+			{Column: "disabled", DDL: "ALTER TABLE `users` ADD COLUMN `disabled` numeric DEFAULT 0"},
+			{Column: "must_change_pwd", DDL: "ALTER TABLE `users` ADD COLUMN `must_change_pwd` numeric DEFAULT 0"},
+			{Column: "token_version", DDL: "ALTER TABLE `users` ADD COLUMN `token_version` integer DEFAULT 0"},
+			{Column: "last_login_at", DDL: "ALTER TABLE `users` ADD COLUMN `last_login_at` datetime"},
+			{Column: "last_login_ip", DDL: "ALTER TABLE `users` ADD COLUMN `last_login_ip` text DEFAULT ''"},
 		},
 		"series": {
 			{Column: "tmdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tmdb_id` integer DEFAULT 0"},

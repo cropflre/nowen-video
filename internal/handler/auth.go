@@ -22,9 +22,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.Login(&req)
+	token, err := h.authService.Login(&req, c.ClientIP(), c.Request.UserAgent())
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		switch err {
+		case service.ErrUserDisabled:
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -49,7 +54,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.Register(&req)
+	token, err := h.authService.Register(&req, c.ClientIP(), c.Request.UserAgent())
 	if err != nil {
 		switch err {
 		case service.ErrUserExists:
@@ -90,6 +95,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 }
 
 // ChangePassword 修改密码（需要认证）
+// 成功后旧 Token 失效，前端需用返回的新 Token 继续访问。
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 
@@ -112,5 +118,11 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+	// 修改密码后自动签发新 Token，避免用户被强制退出登录
+	token, err := h.authService.RefreshToken(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功，请重新登录"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功", "data": token})
 }

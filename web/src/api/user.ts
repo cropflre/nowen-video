@@ -4,12 +4,19 @@ import type {
   WatchHistory,
   Favorite,
   PaginatedResponse,
+  LoginLog,
 } from '@/types'
 
 // ==================== 用户 ====================
 export const userApi = {
   profile: () =>
     api.get<{ data: User }>('/users/me'),
+
+  updateProfile: (data: { nickname?: string; email?: string; avatar?: string }) =>
+    api.put<{ data: User }>('/users/me', data),
+
+  loginLogs: () =>
+    api.get<{ data: LoginLog[] }>('/users/me/login-logs'),
 
   updateProgress: (mediaId: string, position: number, duration: number) =>
     api.put(`/users/me/progress/${mediaId}`, { position, duration }),

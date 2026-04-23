@@ -422,3 +422,125 @@ func (h *AdminHandler) ClearBangumiConfig(c *gin.Context) {
 		},
 	})
 }
+
+// ==================== 豆瓣 Cookie 配置管理 ====================
+
+// GetDoubanConfig 获取豆瓣 Cookie 配置状态
+func (h *AdminHandler) GetDoubanConfig(c *gin.Context) {
+	maskedCookie := h.cfg.GetDoubanCookieMasked()
+	configured := h.cfg.GetDoubanCookie() != ""
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"configured":    configured,
+			"masked_cookie": maskedCookie,
+		},
+	})
+}
+
+// UpdateDoubanConfigRequest 更新豆瓣 Cookie 请求
+type UpdateDoubanConfigRequest struct {
+	Cookie string `json:"cookie" binding:"required"`
+}
+
+// UpdateDoubanConfig 更新豆瓣登录 Cookie
+func (h *AdminHandler) UpdateDoubanConfig(c *gin.Context) {
+	var req UpdateDoubanConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供有效的 Cookie 字符串"})
+		return
+	}
+
+	cookie := strings.TrimSpace(req.Cookie)
+	// 长度校验：豆瓣 Cookie 通常不少于 50 字符、不超过 4096
+	if len(cookie) < 20 || len(cookie) > 4096 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 格式不正确，请复制浏览器中完整的 Cookie 字符串"})
+		return
+	}
+
+	// 简单合法性检查：应包含豆瓣登录态核心字段之一
+	if !strings.Contains(cookie, "bid=") && !strings.Contains(cookie, "dbcl2=") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 不包含豆瓣登录态字段（bid / dbcl2），请检查后重试"})
+		return
+	}
+
+	if err := h.cfg.SetDoubanCookie(cookie); err != nil {
+		h.logger.Errorf("保存豆瓣 Cookie 失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败: " + err.Error()})
+		return
+	}
+
+	h.logger.Info("豆瓣 Cookie 已更新")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "豆瓣 Cookie 已保存",
+		"data": gin.H{
+			"configured":    true,
+			"masked_cookie": h.cfg.GetDoubanCookieMasked(),
+		},
+	})
+}
+
+// ClearDoubanConfig 清除豆瓣 Cookie
+func (h *AdminHandler) ClearDoubanConfig(c *gin.Context) {
+	if err := h.cfg.ClearDoubanCookie(); err != nil {
+		h.logger.Errorf("清除豆瓣 Cookie 失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "清除配置失败: " + err.Error()})
+		return
+	}
+
+	h.logger.Info("豆瓣 Cookie 已清除")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "豆瓣 Cookie 已清除",
+		"data": gin.H{
+			"configured":    false,
+			"masked_cookie": "",
+		},
+	})
+}
+
+// ValidateDoubanConfig 校验当前豆瓣 Cookie 是否有效（登录态探测）
+func (h *AdminHandler) ValidateDoubanConfig(c *gin.Context) {
+	if h.cfg.GetDoubanCookie() == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"valid":   false,
+				"message": "未配置 Cookie，当前为匿名模式",
+			},
+		})
+		return
+	}
+
+	valid, username, err := h.metadataService.ValidateDoubanCookie()
+	if err != nil {
+		h.logger.Warnf("校验豆瓣 Cookie 失败: %v", err)
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"valid":   false,
+				"message": "校验失败: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	if !valid {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"valid":   false,
+				"message": "Cookie 已失效，请重新从浏览器复制最新 Cookie",
+			},
+		})
+		return
+	}
+
+	msg := "Cookie 有效，豆瓣登录态正常"
+	if username != "" {
+		msg = "Cookie 有效，已识别豆瓣账号：" + username
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"valid":    true,
+			"username": username,
+			"message":  msg,
+		},
+	})
+}

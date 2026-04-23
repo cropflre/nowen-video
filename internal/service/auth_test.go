@@ -33,7 +33,7 @@ func setupAuthService(t *testing.T) *AuthService {
 	cfg := &config.Config{}
 	cfg.Secrets.JWTSecret = "test-secret-key-for-unit-tests"
 	cfg.Registration.Enabled = true // 测试中允许注册
-	authService := NewAuthService(repos.User, cfg, logger.Sugar())
+	authService := NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger.Sugar())
 	return authService
 }
 
@@ -46,7 +46,7 @@ func TestRegister_FirstUserIsAdmin(t *testing.T) {
 		Password: "password123",
 	}
 
-	resp, err := authService.Register(req)
+	resp, err := authService.Register(req, "", "")
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestRegister_SecondUserIsNormalUser(t *testing.T) {
 	_, err := authService.Register(&RegisterRequest{
 		Username: "admin",
 		Password: "password123",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册第一个用户失败: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRegister_SecondUserIsNormalUser(t *testing.T) {
 	resp, err := authService.Register(&RegisterRequest{
 		Username: "user1",
 		Password: "password123",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册第二个用户失败: %v", err)
 	}
@@ -104,12 +104,12 @@ func TestRegister_DuplicateUsername(t *testing.T) {
 		Password: "password123",
 	}
 
-	_, err := authService.Register(req)
+	_, err := authService.Register(req, "", "")
 	if err != nil {
 		t.Fatalf("首次注册不应失败: %v", err)
 	}
 
-	_, err = authService.Register(req)
+	_, err = authService.Register(req, "", "")
 	if err != ErrUserExists {
 		t.Errorf("重复注册应返回ErrUserExists, 实际: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestLogin_Success(t *testing.T) {
 	_, err := authService.Register(&RegisterRequest{
 		Username: "logintest",
 		Password: "mypassword",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestLogin_Success(t *testing.T) {
 	resp, err := authService.Login(&LoginRequest{
 		Username: "logintest",
 		Password: "mypassword",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("登录失败: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	_, err := authService.Register(&RegisterRequest{
 		Username: "pwdtest",
 		Password: "correctpwd",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	_, err = authService.Login(&LoginRequest{
 		Username: "pwdtest",
 		Password: "wrongpwd",
-	})
+	}, "", "")
 	if err != ErrInvalidCredentials {
 		t.Errorf("错误密码应返回ErrInvalidCredentials, 实际: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestLogin_NonexistentUser(t *testing.T) {
 	_, err := authService.Login(&LoginRequest{
 		Username: "nonexistent",
 		Password: "whatever",
-	})
+	}, "", "")
 	if err != ErrInvalidCredentials {
 		t.Errorf("不存在的用户应返回ErrInvalidCredentials, 实际: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestRefreshToken_Success(t *testing.T) {
 	regResp, err := authService.Register(&RegisterRequest{
 		Username: "refreshtest",
 		Password: "password123",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestGenerateToken_ContainsValidClaims(t *testing.T) {
 	resp, err := authService.Register(&RegisterRequest{
 		Username: "claimtest",
 		Password: "password123",
-	})
+	}, "", "")
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}

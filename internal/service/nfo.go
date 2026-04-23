@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,12 +14,80 @@ import (
 
 // NFOService NFO 本地元数据解析服务
 // 支持 Kodi / Emby / Jellyfin 风格的 NFO XML 文件
+//
+// V2.1: 支持 webdav:// 前缀路径，通过 VFSManager 读取远程 NFO 与图片
 type NFOService struct {
 	logger *zap.SugaredLogger
+
+	// V2.1: VFS 管理器（可选，nil 时纯本地模式）
+	vfsMgr *VFSManager
 }
 
 func NewNFOService(logger *zap.SugaredLogger) *NFOService {
 	return &NFOService{logger: logger}
+}
+
+// SetVFSManager 注入 VFS 管理器（V2.1，用于 webdav:// NFO 支持）
+func (s *NFOService) SetVFSManager(vfsMgr *VFSManager) {
+	s.vfsMgr = vfsMgr
+}
+
+// ==================== VFS 辅助方法 ====================
+
+// readFile 读取文件（支持 webdav://）
+func (s *NFOService) readFile(p string) ([]byte, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		f, err := s.vfsMgr.Open(p)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		return io.ReadAll(f)
+	}
+	return os.ReadFile(p)
+}
+
+// statPath 获取文件信息（支持 webdav://）
+func (s *NFOService) statPath(p string) (os.FileInfo, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		return s.vfsMgr.Stat(p)
+	}
+	return os.Stat(p)
+}
+
+// readDir 读取目录（支持 webdav://）
+func (s *NFOService) readDir(p string) ([]os.DirEntry, error) {
+	if s.vfsMgr != nil && IsWebDAVPath(p) {
+		entries, err := s.vfsMgr.ReadDir(p)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]os.DirEntry, len(entries))
+		copy(result, entries)
+		return result, nil
+	}
+	return os.ReadDir(p)
+}
+
+// joinPath 路径拼接（webdav:// 用正斜杠）
+func (s *NFOService) joinPath(base, name string) string {
+	if IsWebDAVPath(base) {
+		base = strings.TrimRight(base, "/")
+		return base + "/" + strings.TrimLeft(name, "/")
+	}
+	return filepath.Join(base, name)
+}
+
+// dirOf 提取目录（webdav:// 用正斜杠规则）
+func (s *NFOService) dirOf(p string) string {
+	if IsWebDAVPath(p) {
+		i := strings.LastIndex(p, "/")
+		if i <= len("webdav:/") {
+			return p
+		}
+		return p[:i]
+	}
+	return filepath.Dir(p)
 }
 
 // ==================== NFO XML 结构体 ====================
@@ -72,7 +141,7 @@ type NFOActor struct {
 
 // ParseMovieNFO 解析电影 NFO 文件并将数据应用到 Media 对象
 func (s *NFOService) ParseMovieNFO(nfoPath string, media *model.Media) error {
-	data, err := os.ReadFile(nfoPath)
+	data, err := s.readFile(nfoPath)
 	if err != nil {
 		return fmt.Errorf("读取NFO文件失败: %w", err)
 	}
@@ -95,7 +164,7 @@ func (s *NFOService) ParseMovieNFO(nfoPath string, media *model.Media) error {
 
 // ParseTVShowNFO 解析剧集 NFO 文件并将数据应用到 Series 对象
 func (s *NFOService) ParseTVShowNFO(nfoPath string, series *model.Series) error {
-	data, err := os.ReadFile(nfoPath)
+	data, err := s.readFile(nfoPath)
 	if err != nil {
 		return fmt.Errorf("读取NFO文件失败: %w", err)
 	}
@@ -111,7 +180,7 @@ func (s *NFOService) ParseTVShowNFO(nfoPath string, series *model.Series) error 
 
 // GetActorsFromNFO 从 NFO 文件中提取演员列表
 func (s *NFOService) GetActorsFromNFO(nfoPath string) ([]NFOActor, []string, error) {
-	data, err := os.ReadFile(nfoPath)
+	data, err := s.readFile(nfoPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -169,16 +238,16 @@ var standardBackdropNames = []string{
 // 支持 jpg、png、webp 等常见图片格式
 func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 	for _, name := range standardPosterNames {
-		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); err == nil {
+		path := s.joinPath(dir, name)
+		if _, err := s.statPath(path); err == nil {
 			poster = path
 			break
 		}
 	}
 
 	for _, name := range standardBackdropNames {
-		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); err == nil {
+		path := s.joinPath(dir, name)
+		if _, err := s.statPath(path); err == nil {
 			backdrop = path
 			break
 		}
@@ -186,14 +255,14 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 
 	// 如果没有找到标准命名的海报，尝试查找目录中的第一张图片作为海报
 	if poster == "" {
-		entries, err := os.ReadDir(dir)
+		entries, err := s.readDir(dir)
 		if err == nil {
 			for _, entry := range entries {
 				if !entry.IsDir() {
 					ext := strings.ToLower(filepath.Ext(entry.Name()))
 					if nfoImageExts[ext] {
 						// 排除已识别为backdrop的文件
-						candidate := filepath.Join(dir, entry.Name())
+						candidate := s.joinPath(dir, entry.Name())
 						if candidate != backdrop {
 							poster = candidate
 							break
@@ -211,11 +280,10 @@ func (s *NFOService) FindLocalImages(dir string) (poster, backdrop string) {
 // 方案 C：优先匹配与视频同名的图片，当目录下只有一个视频文件时才使用通用封面
 // 解决多部影片在同一目录下共用同一张封面的问题
 func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, backdrop string) {
-	dir := filepath.Dir(mediaFilePath)
+	dir := s.dirOf(mediaFilePath)
 	baseName := strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath))
 
 	// === 阶段1：优先查找与视频文件同名的图片 ===
-	// 例如：[48DRJ-60109] 影片A.mkv -> [48DRJ-60109] 影片A-poster.jpg 或 [48DRJ-60109] 影片A.jpg
 	posterSuffixes := []string{
 		"-poster.jpg", "-poster.png", "-poster.webp",
 		"-cover.jpg", "-cover.png", "-cover.webp",
@@ -229,16 +297,16 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 	}
 
 	for _, suffix := range posterSuffixes {
-		path := filepath.Join(dir, baseName+suffix)
-		if _, err := os.Stat(path); err == nil {
+		path := s.joinPath(dir, baseName+suffix)
+		if _, err := s.statPath(path); err == nil {
 			poster = path
 			break
 		}
 	}
 
 	for _, suffix := range backdropSuffixes {
-		path := filepath.Join(dir, baseName+suffix)
-		if _, err := os.Stat(path); err == nil {
+		path := s.joinPath(dir, baseName+suffix)
+		if _, err := s.statPath(path); err == nil {
 			backdrop = path
 			break
 		}
@@ -250,7 +318,7 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 	}
 
 	// === 阶段2：统计目录中的视频文件数量 ===
-	entries, err := os.ReadDir(dir)
+	entries, err := s.readDir(dir)
 	if err != nil {
 		return poster, backdrop
 	}
@@ -262,7 +330,7 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 			if nfoVideoExts[ext] {
 				videoCount++
 				if videoCount > 1 {
-					break // 已确认多个视频，无需继续计数
+					break
 				}
 			}
 		}
@@ -270,18 +338,17 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 
 	// === 阶段3：根据视频文件数量决定是否使用通用封面 ===
 	if videoCount <= 1 {
-		// 目录下只有一个视频文件（或没有），可以安全使用通用封面
 		for _, name := range standardPosterNames {
-			path := filepath.Join(dir, name)
-			if _, err := os.Stat(path); err == nil {
+			path := s.joinPath(dir, name)
+			if _, err := s.statPath(path); err == nil {
 				poster = path
 				break
 			}
 		}
 
 		for _, name := range standardBackdropNames {
-			path := filepath.Join(dir, name)
-			if _, err := os.Stat(path); err == nil {
+			path := s.joinPath(dir, name)
+			if _, err := s.statPath(path); err == nil {
 				backdrop = path
 				break
 			}
@@ -293,7 +360,7 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 				if !entry.IsDir() {
 					ext := strings.ToLower(filepath.Ext(entry.Name()))
 					if nfoImageExts[ext] {
-						candidate := filepath.Join(dir, entry.Name())
+						candidate := s.joinPath(dir, entry.Name())
 						if candidate != backdrop {
 							poster = candidate
 							break
@@ -303,7 +370,6 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 			}
 		}
 	} else {
-		// 目录下有多个视频文件，不使用通用封面，避免多部影片共用同一张图
 		s.logger.Debugf("目录 %s 下有 %d 个视频文件，跳过通用封面分配", dir, videoCount)
 	}
 
@@ -312,13 +378,13 @@ func (s *NFOService) FindLocalImagesForMedia(mediaFilePath string) (poster, back
 
 // FindNFOFile 在指定目录下查找 NFO 文件
 func (s *NFOService) FindNFOFile(dir string) string {
-	entries, err := os.ReadDir(dir)
+	entries, err := s.readDir(dir)
 	if err != nil {
 		return ""
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".nfo") {
-			return filepath.Join(dir, entry.Name())
+			return s.joinPath(dir, entry.Name())
 		}
 	}
 	return ""
@@ -329,12 +395,12 @@ func (s *NFOService) FindNFOForMedia(mediaFilePath string) string {
 	// 策略1: 同名 .nfo 文件
 	ext := filepath.Ext(mediaFilePath)
 	nfoPath := strings.TrimSuffix(mediaFilePath, ext) + ".nfo"
-	if _, err := os.Stat(nfoPath); err == nil {
+	if _, err := s.statPath(nfoPath); err == nil {
 		return nfoPath
 	}
 
 	// 策略2: 目录下任意 .nfo 文件
-	dir := filepath.Dir(mediaFilePath)
+	dir := s.dirOf(mediaFilePath)
 	return s.FindNFOFile(dir)
 }
 

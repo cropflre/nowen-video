@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
@@ -13,6 +14,7 @@ import (
 type UserHandler struct {
 	userService  *service.UserService
 	mediaService *service.MediaService
+	loginLogRepo *repository.LoginLogRepo
 	logger       *zap.SugaredLogger
 }
 
@@ -25,6 +27,38 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+// UpdateProfile 更新当前用户的资料（昵称/邮箱/头像）
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var req service.UpdateSelfProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
+		return
+	}
+	user, err := h.userService.UpdateSelfProfile(userID.(string), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+// LoginLogs 当前用户查看自己的登录历史
+func (h *UserHandler) LoginLogs(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	if h.loginLogRepo == nil {
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		return
+	}
+	limit := 20
+	logs, err := h.loginLogRepo.ListByUser(userID.(string), limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": logs})
 }
 
 // UpdateProgressRequest 更新观看进度请求

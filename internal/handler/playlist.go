@@ -51,8 +51,13 @@ func (h *PlaylistHandler) Create(c *gin.Context) {
 // Detail 获取播放列表详情
 func (h *PlaylistHandler) Detail(c *gin.Context) {
 	id := c.Param("id")
-	playlist, err := h.playlistService.Get(id)
+	userID, _ := c.Get("user_id")
+	playlist, err := h.playlistService.Get(id, userID.(string))
 	if err != nil {
+		if err == service.ErrForbidden {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权访问该播放列表"})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "播放列表不存在"})
 		return
 	}
