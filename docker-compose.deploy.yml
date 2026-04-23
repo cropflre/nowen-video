@@ -1,0 +1,74 @@
+# ============================================================
+# nowen-video 生产部署 compose（飞牛 OS / 绿联 NAS / 普通 Linux）
+# ============================================================
+# 用法：
+#   1. 从 Docker Hub 拉取官方镜像（已支持 linux/amd64 + linux/arm64）
+#   2. 根据下方注释修改挂载路径 / 环境变量
+#   3. docker compose -f docker-compose.deploy.yml up -d
+#
+# 飞牛 OS 图形界面用户：
+#   - 打开 Docker → Compose → 上传本文件
+#   - 或在「镜像」里直接拉 cropflre/nowen-video:latest 后用 GUI 创建容器
+#
+# 不要在飞牛 OS 上构建镜像（仓库未带完整构建上下文会报
+# "failed to read dockerfile"），直接拉预构建镜像即可。
+# ============================================================
+version: '3.8'
+
+services:
+  nowen-video:
+    # 直接使用 Docker Hub 预构建镜像（manifest list 自动选 amd64/arm64）
+    image: cropflre/nowen-video:latest
+    # 如需锁定版本：
+    # image: cropflre/nowen-video:v1.1.3
+    container_name: nowen-video
+    ports:
+      - "8080:8080"
+    volumes:
+      # 数据持久化（SQLite、上传、配置等）
+      - ./data:/data
+      # 转码缓存
+      - ./cache:/cache
+      # ---- 媒体目录挂载（按你的飞牛 OS 实际路径改）----
+      # 飞牛 OS 的存储池一般挂在 /vol01 /vol02，按实际情况：
+      # - /vol01/Media:/media
+      # 或分目录：
+      # - /vol01/Media/电影:/media/电影
+      # - /vol01/Media/电视剧:/media/电视剧
+    # 硬件加速设备（按 SoC 开启对应的）
+    devices:
+      # 通用 DRM 节点（Mali / 瑞芯微 / Amlogic 都会暴露）
+      - /dev/dri:/dev/dri
+      # ---- 瑞芯微 RK3566 / RK3568 (OECT / Radxa E25 等) ----
+      # - /dev/mpp_service:/dev/mpp_service
+      # - /dev/rga:/dev/rga
+      # - /dev/iep:/dev/iep
+      # ---- Amlogic S905X3 (OES) / A311D (VIM3 / OESV2) ----
+      # Amlogic 走 v4l2m2m，通常已通过 /dev/dri 暴露；少数镜像需要：
+      # - /dev/video10:/dev/video10
+      # - /dev/video11:/dev/video11
+      # - /dev/video12:/dev/video12
+    environment:
+      - NOWEN_APP_PORT=8080
+      - NOWEN_APP_DATA_DIR=/data
+      - NOWEN_APP_WEB_DIR=/app/web/dist
+      # 硬件加速：ARM SBC 建议先用 auto，不稳就改 none 走 CPU
+      - NOWEN_APP_HW_ACCEL=auto
+      - NOWEN_APP_TRANSCODE_PRESET=veryfast
+      # ARM 盒子 CPU 弱，并发转码建议 1；只有软解就别调高
+      - NOWEN_APP_MAX_TRANSCODE_JOBS=1
+      - NOWEN_DATABASE_DB_PATH=/data/nowen.db
+      # ⚠️ 必改：换成你自己的随机字符串（至少 32 位）
+      - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key
+      - NOWEN_CACHE_CACHE_DIR=/cache
+      - NOWEN_LOGGING_LEVEL=info
+      - TZ=Asia/Shanghai
+    privileged: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # ARM 盒子通常 2-4G 总内存，按你的设备改
+          memory: 1G
+        reservations:
+          memory: 256M
