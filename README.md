@@ -30,6 +30,9 @@ Single binary + SQLite, one-click Docker startup, zero configuration required.
 
 ---
 
+> **问题反馈 QQ 群 / Support QQ Group：`1093473044`**
+
+
 ## 📸 功能截图 | Screenshots
 
 ![功能截图1](1.png)
