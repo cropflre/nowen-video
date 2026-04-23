@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,14 +34,14 @@ type CPUMetrics struct {
 
 // MemoryMetrics 内存指标
 type MemoryMetrics struct {
-	TotalMB     uint64  `json:"total_mb"`
-	UsedMB      uint64  `json:"used_mb"`
-	FreeMB      uint64  `json:"free_mb"`
+	TotalMB     float64 `json:"total_mb"`
+	UsedMB      float64 `json:"used_mb"`
+	FreeMB      float64 `json:"free_mb"`
 	UsedPercent float64 `json:"used_percent"`
 	// Go运行时内存
-	GoAllocMB      uint64 `json:"go_alloc_mb"`
-	GoSysMB        uint64 `json:"go_sys_mb"`
-	GoTotalAllocMB uint64 `json:"go_total_alloc_mb"`
+	GoAllocMB      float64 `json:"go_alloc_mb"`
+	GoSysMB        float64 `json:"go_sys_mb"`
+	GoTotalAllocMB float64 `json:"go_total_alloc_mb"`
 }
 
 // DiskMetrics 磁盘指标
@@ -148,11 +149,15 @@ func (s *MonitorService) collect() {
 	}
 }
 
-// GetMetrics 获取当前指标快照
+// GetMetrics 获取当前指标快照（深拷贝，避免数据竞争）
 func (s *MonitorService) GetMetrics() *SystemMetrics {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.metrics
+	if s.metrics == nil {
+		return nil
+	}
+	cp := *s.metrics
+	return &cp
 }
 
 // collectCPU 采集CPU指标
@@ -170,9 +175,9 @@ func (s *MonitorService) collectMemory() MemoryMetrics {
 	runtime.ReadMemStats(&m)
 
 	mem := MemoryMetrics{
-		GoAllocMB:      m.Alloc / 1024 / 1024,
-		GoSysMB:        m.Sys / 1024 / 1024,
-		GoTotalAllocMB: m.TotalAlloc / 1024 / 1024,
+		GoAllocMB:      float64(m.Alloc) / 1024 / 1024,
+		GoSysMB:        float64(m.Sys) / 1024 / 1024,
+		GoTotalAllocMB: float64(m.TotalAlloc) / 1024 / 1024,
 	}
 
 	// 获取系统内存（跨平台）
@@ -181,7 +186,7 @@ func (s *MonitorService) collectMemory() MemoryMetrics {
 	mem.UsedMB = usedMB
 	if totalMB > 0 {
 		mem.FreeMB = totalMB - usedMB
-		mem.UsedPercent = float64(usedMB) / float64(totalMB) * 100
+		mem.UsedPercent = usedMB / totalMB * 100
 	}
 
 	return mem
@@ -243,10 +248,15 @@ func (s *MonitorService) getCPUUsage() float64 {
 	}
 
 	if runtime.GOOS == "windows" {
-		// Windows: 使用wmic获取简略CPU使用率
-		cmd := exec.Command("wmic", "cpu", "get", "loadpercentage")
-		output, err := cmd.Output()
-		if err == nil {
+		// 优先使用 PowerShell 获取 CPU 使用率（wmic 已弃用）
+		if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+			"(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average").Output(); err == nil {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); err == nil && v > 0 {
+				return v
+			}
+		}
+		// 降级到 wmic
+		if output, err := exec.Command("wmic", "cpu", "get", "loadpercentage").Output(); err == nil {
 			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
@@ -261,19 +271,19 @@ func (s *MonitorService) getCPUUsage() float64 {
 	return float64(runtime.NumGoroutine()) / float64(runtime.NumCPU()) * 10
 }
 
-// getSystemMemory 获取系统内存（MB）
-func (s *MonitorService) getSystemMemory() (totalMB, usedMB uint64) {
+// getSystemMemory 获取系统内存（MB，保留小数精度）
+func (s *MonitorService) getSystemMemory() (totalMB, usedMB float64) {
 	if runtime.GOOS == "linux" {
 		data, err := os.ReadFile("/proc/meminfo")
 		if err == nil {
 			lines := strings.Split(string(data), "\n")
-			var total, available uint64
+			var total, available float64
 			for _, line := range lines {
 				fields := strings.Fields(line)
 				if len(fields) < 2 {
 					continue
 				}
-				val, _ := strconv.ParseUint(fields[1], 10, 64)
+				val, _ := strconv.ParseFloat(fields[1], 64)
 				switch fields[0] {
 				case "MemTotal:":
 					total = val / 1024 // KB -> MB
@@ -287,10 +297,44 @@ func (s *MonitorService) getSystemMemory() (totalMB, usedMB uint64) {
 		}
 	}
 
+	if runtime.GOOS == "windows" {
+		// 优先使用 PowerShell（wmic 已弃用）
+		if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+			"(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json)").Output(); err == nil {
+			var result struct {
+				TotalVisibleMemorySize float64 `json:"TotalVisibleMemorySize"`
+				FreePhysicalMemory     float64 `json:"FreePhysicalMemory"`
+			}
+			if err := json.Unmarshal(out, &result); err == nil && result.TotalVisibleMemorySize > 0 {
+				totalMB = result.TotalVisibleMemorySize / 1024 // KB -> MB
+				freeMB := result.FreePhysicalMemory / 1024
+				return totalMB, totalMB - freeMB
+			}
+		}
+
+		// 降级到 wmic
+		if out, err := exec.Command("wmic", "OS", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/format:list").Output(); err == nil {
+			var total, free float64
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "TotalVisibleMemorySize=") {
+					total, _ = strconv.ParseFloat(strings.TrimPrefix(line, "TotalVisibleMemorySize="), 64)
+					total /= 1024 // KB -> MB
+				} else if strings.HasPrefix(line, "FreePhysicalMemory=") {
+					free, _ = strconv.ParseFloat(strings.TrimPrefix(line, "FreePhysicalMemory="), 64)
+					free /= 1024 // KB -> MB
+				}
+			}
+			if total > 0 {
+				return total, total - free
+			}
+		}
+	}
+
 	// 降级到Go运行时信息
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	return m.Sys / 1024 / 1024, m.Alloc / 1024 / 1024
+	return float64(m.Sys) / 1024 / 1024, float64(m.Alloc) / 1024 / 1024
 }
 
 // getDiskUsage 获取磁盘使用情况（GB）
@@ -318,10 +362,24 @@ func (s *MonitorService) getDiskUsage(path string) (totalGB, usedGB, freeGB floa
 	}
 
 	if runtime.GOOS == "windows" {
-		// Windows: 使用wmic获取磁盘信息
 		absPath, _ := filepath.Abs(path)
 		if len(absPath) >= 2 {
 			drive := absPath[:2] // 如 "C:"
+			// 优先使用 PowerShell（wmic 已弃用）
+			if out, err := exec.Command("powershell", "-NoProfile", "-Command",
+				"$d = Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='"+drive+"'\"; [PSCustomObject]@{Free=$d.FreeSpace;Size=$d.Size} | ConvertTo-Json").Output(); err == nil {
+				var result struct {
+					Free float64 `json:"Free"`
+					Size float64 `json:"Size"`
+				}
+				if err := json.Unmarshal(out, &result); err == nil && result.Size > 0 {
+					freeGB = result.Free / 1024 / 1024 / 1024
+					totalGB = result.Size / 1024 / 1024 / 1024
+					usedGB = totalGB - freeGB
+					return
+				}
+			}
+			// 降级到 wmic
 			cmd := exec.Command("wmic", "logicaldisk", "where", "DeviceID='"+drive+"'", "get", "FreeSpace,Size")
 			output, err := cmd.Output()
 			if err == nil {

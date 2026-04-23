@@ -331,6 +331,24 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// 获取系统级内存信息
+	sysMem := gin.H{
+		"alloc_mb":       float64(memStats.Alloc) / 1024 / 1024,
+		"total_alloc_mb": float64(memStats.TotalAlloc) / 1024 / 1024,
+		"sys_mb":         float64(memStats.Sys) / 1024 / 1024,
+	}
+
+	// 从 MonitorService 获取系统级内存数据（如果有）
+	if h.monitorService != nil {
+		if metrics := h.monitorService.GetMetrics(); metrics != nil {
+			if metrics.Memory.TotalMB > 0 {
+				sysMem["system_total_mb"] = metrics.Memory.TotalMB
+				sysMem["system_used_mb"] = metrics.Memory.UsedMB
+				sysMem["system_used_percent"] = metrics.Memory.UsedPercent
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
 			"version":    "0.1.0",
@@ -339,12 +357,8 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 			"arch":       runtime.GOARCH,
 			"cpus":       runtime.NumCPU(),
 			"goroutines": runtime.NumGoroutine(),
-			"memory": gin.H{
-				"alloc_mb":       memStats.Alloc / 1024 / 1024,
-				"total_alloc_mb": memStats.TotalAlloc / 1024 / 1024,
-				"sys_mb":         memStats.Sys / 1024 / 1024,
-			},
-			"hw_accel": h.transcodeService.GetHWAccelInfo(),
+			"memory":     sysMem,
+			"hw_accel":   h.transcodeService.GetHWAccelInfo(),
 		},
 	})
 }

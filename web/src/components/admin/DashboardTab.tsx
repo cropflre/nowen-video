@@ -295,20 +295,48 @@ export default function DashboardTab({
             <div className="glass-panel-subtle rounded-xl p-4">
               <div className="flex items-center gap-2 text-surface-400">
                 <Cpu size={16} className="text-neon/60" />
-                <span className="text-xs">CPU / 协程</span>
+                <span className="text-xs">CPU 核心数</span>
               </div>
               <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-                {systemInfo.cpus} 核 / {systemInfo.goroutines}
+                {systemInfo.cpus} 核
               </p>
+              <p className="text-xs text-surface-500">{systemInfo.goroutines} 协程</p>
             </div>
             <div className="glass-panel-subtle rounded-xl p-4">
               <div className="flex items-center gap-2 text-surface-400">
                 <HardDrive size={16} className="text-neon/60" />
-                <span className="text-xs">内存使用</span>
+                <span className="text-xs">系统内存</span>
               </div>
-              <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-                {systemInfo.memory.alloc_mb} MB
-              </p>
+              {systemInfo.memory.system_total_mb ? (
+                (() => {
+                  const usedGB = (systemInfo.memory.system_used_mb! / 1024).toFixed(1)
+                  const totalGB = (systemInfo.memory.system_total_mb! / 1024).toFixed(1)
+                  const pct = Math.round(systemInfo.memory.system_used_percent ?? 0)
+                  return (
+                    <>
+                      <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                        {usedGB} / {totalGB} GB
+                      </p>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min(pct, 100)}%`,
+                            background: pct > 85 ? '#EF4444' : pct > 60 ? '#F59E0B' : '#22C55E',
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-surface-500">
+                        使用率 {pct}%
+                      </p>
+                    </>
+                  )
+                })()
+              ) : (
+                <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                  {(systemInfo.memory.alloc_mb / 1024).toFixed(1)} GB
+                </p>
+              )}
             </div>
             <div className="glass-panel-subtle rounded-xl p-4">
               <div className="flex items-center gap-2 text-surface-400">

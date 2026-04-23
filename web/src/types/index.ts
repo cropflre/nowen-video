@@ -399,6 +399,9 @@ export interface SystemInfo {
     alloc_mb: number
     total_alloc_mb: number
     sys_mb: number
+    system_total_mb?: number
+    system_used_mb?: number
+    system_used_percent?: number
   }
   hw_accel: string
 }
