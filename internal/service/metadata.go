@@ -148,6 +148,74 @@ func (s *MetadataService) tmdbGetWithRetry(url string) (*http.Response, error) {
 	return nil, fmt.Errorf("TMDb 请求失败（已重试）: %w", lastErr)
 }
 
+// PingTMDb 测试 TMDb API Key 的连通性与有效性
+//
+// 参数：
+//
+//	apiKey  要测试的 API Key；传空字符串则使用当前已保存的配置
+//
+// 返回：
+//
+//	ok      是否连通且 Key 有效
+//	msg     展示给用户的文案（成功时包含简单的 TMDb 状态信息；失败时包含原因）
+//	err     非业务性的错误（一般可忽略，直接看 ok+msg 即可）
+//
+// 说明：
+//   - 使用 TMDb 的 /3/authentication 端点进行轻量级校验，不会消耗配额
+//   - 超时、网络错误等全部返回为 ok=false，并在 msg 中说明
+//   - 401 会被识别为「Key 无效」，其他 HTTP 错误返回状态码
+func (s *MetadataService) PingTMDb(apiKey string) (ok bool, msg string) {
+	key := strings.TrimSpace(apiKey)
+	if key == "" {
+		key = s.cfg.Secrets.TMDbAPIKey
+	}
+	if key == "" {
+		return false, "未配置 TMDb API Key"
+	}
+
+	base := s.getTMDbAPIBase()
+	// /3/authentication 端点非常轻量，返回 {"success":true} 即表示 Key 可用
+	apiURL := fmt.Sprintf("%s/3/authentication?api_key=%s", base, url.QueryEscape(key))
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return false, "构造请求失败: " + err.Error()
+	}
+	setAPIHeaders(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		// 网络/超时等
+		return false, "网络请求失败: " + err.Error() + "（请检查网络或 TMDb 代理配置）"
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var body struct {
+			Success bool `json:"success"`
+		}
+		if decErr := json.NewDecoder(resp.Body).Decode(&body); decErr != nil {
+			// 解析失败但 200，算连通但给出提示
+			return true, "连接成功，但响应解析异常"
+		}
+		if body.Success {
+			tip := "官方直连"
+			if s.cfg.Secrets.TMDbAPIProxy != "" {
+				tip = "代理: " + s.cfg.Secrets.TMDbAPIProxy
+			}
+			return true, "连接成功，API Key 有效（" + tip + "）"
+		}
+		return false, "TMDb 返回 success=false，Key 可能无效"
+	case http.StatusUnauthorized:
+		return false, "API Key 无效或已被禁用（401 Unauthorized）"
+	case http.StatusTooManyRequests:
+		return false, "请求过于频繁（429），请稍后再试"
+	default:
+		return false, fmt.Sprintf("TMDb 返回异常状态码：HTTP %d", resp.StatusCode)
+	}
+}
+
 // SetWSHub 设置WebSocket Hub（延迟注入）
 func (s *MetadataService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub

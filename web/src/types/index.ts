@@ -811,6 +811,26 @@ export interface DoubanValidateResult {
   message: string
 }
 
+// 懒人版一键导入 token 创建响应
+export interface DoubanImportTokenInfo {
+  token: string
+  expires_in: number
+  expires_at: number
+  import_url: string
+  bookmarklet: string
+  script: string
+  douban_url: string
+}
+
+// 懒人版一键导入 token 状态轮询响应
+export interface DoubanImportTokenStatus {
+  status: 'pending' | 'success' | 'failed' | 'expired'
+  message: string
+  username?: string
+  expires_at: number
+  remaining_secs: number
+}
+
 // ==================== 刮削数据管理 ====================
 export interface ScrapeTask {
   id: string

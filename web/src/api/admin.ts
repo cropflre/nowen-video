@@ -17,6 +17,8 @@ import type {
   BangumiConfigStatus,
   DoubanConfigStatus,
   DoubanValidateResult,
+  DoubanImportTokenInfo,
+  DoubanImportTokenStatus,
   SystemSettings,
   DoubanSearchResult,
   TheTVDBSearchResult,
@@ -83,6 +85,14 @@ export const adminApi = {
 
   clearTMDbConfig: () =>
     api.delete<{ message: string; data: TMDbConfigStatus }>('/admin/settings/tmdb'),
+
+  // 测试当前已保存的 TMDb API Key 是否能连接
+  validateTMDbConfig: () =>
+    api.get<{ data: { valid: boolean; message: string } }>('/admin/settings/tmdb/validate'),
+
+  // 测试尚未保存的 TMDb API Key（保存前预检）
+  testTMDbKey: (apiKey: string) =>
+    api.post<{ data: { valid: boolean; message: string } }>('/admin/settings/tmdb/test', { api_key: apiKey }),
 
   // 系统监控
   getMetrics: () =>
@@ -278,6 +288,16 @@ export const adminApi = {
 
   validateDoubanConfig: () =>
     api.post<{ data: DoubanValidateResult }>('/admin/settings/douban/validate'),
+
+  // 豆瓣 Cookie 懒人版一键导入：创建一次性 token + 脚本片段
+  createDoubanImportToken: () =>
+    api.post<{ data: DoubanImportTokenInfo }>('/admin/settings/douban/import-token'),
+
+  // 轮询懒人版导入 token 状态
+  getDoubanImportTokenStatus: (token: string) =>
+    api.get<{ data: DoubanImportTokenStatus }>('/admin/settings/douban/import-token', {
+      params: { token },
+    }),
 
   // 文件系统浏览
   browseFS: (path: string) =>

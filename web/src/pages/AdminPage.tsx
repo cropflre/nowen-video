@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, DoubanConfigStatus, SystemSettings } from '@/types'
+import type { SystemInfo, Library, User, TranscodeJob, TMDbConfigStatus, DoubanConfigStatus, DoubanImportTokenInfo, DoubanImportTokenStatus, SystemSettings } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, TranscodeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import {
   Server,
@@ -28,6 +28,10 @@ import {
   Trash2,
   Sparkles,
   HardDrive,
+  Zap as ZapIcon,
+  Copy as CopyIcon,
+  Bookmark,
+  RefreshCw,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -231,7 +235,8 @@ export default function AdminPage() {
   const [tmdbEditing, setTmdbEditing] = useState(false)
   const [tmdbShowKey, setTmdbShowKey] = useState(false)
   const [tmdbSaving, setTmdbSaving] = useState(false)
-  const [tmdbMessage, setTmdbMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [tmdbTesting, setTmdbTesting] = useState(false)
+  const [tmdbMessage, setTmdbMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 
   // 豆瓣 Cookie 配置状态
   const [doubanConfig, setDoubanConfig] = useState<DoubanConfigStatus | null>(null)
@@ -241,6 +246,14 @@ export default function AdminPage() {
   const [doubanSaving, setDoubanSaving] = useState(false)
   const [doubanValidating, setDoubanValidating] = useState(false)
   const [doubanMessage, setDoubanMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
+
+  // 豆瓣 Cookie 懒人版一键导入
+  const [doubanImportOpen, setDoubanImportOpen] = useState(false)
+  const [doubanImportInfo, setDoubanImportInfo] = useState<DoubanImportTokenInfo | null>(null)
+  const [doubanImportStatus, setDoubanImportStatus] = useState<DoubanImportTokenStatus | null>(null)
+  const [doubanImportLoading, setDoubanImportLoading] = useState(false)
+  const [doubanImportCopied, setDoubanImportCopied] = useState<'script' | 'bookmarklet' | null>(null)
+  const [doubanImportRemaining, setDoubanImportRemaining] = useState(0)
 
   // WebSocket 实时进度
   const { connected, on, off } = useWebSocket()
@@ -418,9 +431,9 @@ export default function AdminPage() {
   }, [])
 
   // ==================== TMDb 配置操作 ====================
-  const showTmdbMessage = (type: 'success' | 'error', text: string) => {
+  const showTmdbMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setTmdbMessage({ type, text })
-    setTimeout(() => setTmdbMessage(null), 4000)
+    setTimeout(() => setTmdbMessage(null), 5000)
   }
 
   const handleSaveTMDbKey = async () => {
@@ -452,6 +465,34 @@ export default function AdminPage() {
       showTmdbMessage('success', t('admin.tmdbClearSuccess'))
     } catch {
       showTmdbMessage('error', t('admin.tmdbClearFailed'))
+    }
+  }
+
+  // 测试 TMDb 连接是否可用
+  // - 编辑状态下：优先使用输入框中尚未保存的 key（保存前预检）
+  // - 非编辑状态下：测试当前已保存的 key
+  const handleTestTMDbKey = async () => {
+    const inputKey = tmdbKeyInput.trim()
+    const useInput = tmdbEditing && inputKey.length > 0
+
+    if (!useInput && !tmdbConfig?.configured) {
+      showTmdbMessage('error', t('admin.tmdbTestNoKey'))
+      return
+    }
+
+    setTmdbTesting(true)
+    showTmdbMessage('info', t('admin.tmdbTesting'))
+    try {
+      const res = useInput
+        ? await adminApi.testTMDbKey(inputKey)
+        : await adminApi.validateTMDbConfig()
+      const { valid, message } = res.data.data
+      showTmdbMessage(valid ? 'success' : 'error', message || (valid ? t('admin.tmdbTestOK') : t('admin.tmdbTestFailed')))
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || t('admin.tmdbTestFailed')
+      showTmdbMessage('error', msg)
+    } finally {
+      setTmdbTesting(false)
     }
   }
 
@@ -506,6 +547,73 @@ export default function AdminPage() {
       setDoubanValidating(false)
     }
   }
+
+  // ==================== 豆瓣 Cookie 懒人版一键导入 ====================
+  const openDoubanImport = async () => {
+    setDoubanImportOpen(true)
+    setDoubanImportInfo(null)
+    setDoubanImportStatus(null)
+    setDoubanImportCopied(null)
+    setDoubanImportLoading(true)
+    try {
+      const res = await adminApi.createDoubanImportToken()
+      setDoubanImportInfo(res.data.data)
+      setDoubanImportRemaining(res.data.data.expires_in)
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || '生成导入链接失败，请稍后重试'
+      showDoubanMessage('error', msg)
+      setDoubanImportOpen(false)
+    } finally {
+      setDoubanImportLoading(false)
+    }
+  }
+
+  const closeDoubanImport = () => {
+    setDoubanImportOpen(false)
+    setDoubanImportInfo(null)
+    setDoubanImportStatus(null)
+  }
+
+  const copyDoubanImportText = async (text: string, kind: 'script' | 'bookmarklet') => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setDoubanImportCopied(kind)
+      setTimeout(() => setDoubanImportCopied(null), 2000)
+    } catch {
+      // 回退：创建临时 textarea
+      const ta = document.createElement('textarea')
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      setDoubanImportCopied(kind)
+      setTimeout(() => setDoubanImportCopied(null), 2000)
+    }
+  }
+
+  // 轮询导入状态
+  useEffect(() => {
+    if (!doubanImportOpen || !doubanImportInfo) return
+    if (doubanImportStatus?.status === 'success' || doubanImportStatus?.status === 'expired') return
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await adminApi.getDoubanImportTokenStatus(doubanImportInfo.token)
+        setDoubanImportStatus(res.data.data)
+        setDoubanImportRemaining(res.data.data.remaining_secs)
+        if (res.data.data.status === 'success') {
+          // 导入成功，刷新豆瓣配置状态
+          const cfgRes = await adminApi.getDoubanConfig()
+          setDoubanConfig(cfgRes.data.data)
+          showDoubanMessage('success', res.data.data.message || '豆瓣 Cookie 已导入')
+        }
+      } catch {
+        // 静默失败，下一轮再试
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [doubanImportOpen, doubanImportInfo, doubanImportStatus?.status])
 
   // ==================== 搜索匹配 ====================
   // 快捷导航条目
@@ -697,9 +805,10 @@ export default function AdminPage() {
                   <div className={clsx(
                     'mb-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm',
                     tmdbMessage.type === 'success' && 'bg-green-500/10 text-green-400',
-                    tmdbMessage.type === 'error' && 'bg-red-500/10 text-red-400'
+                    tmdbMessage.type === 'error' && 'bg-red-500/10 text-red-400',
+                    tmdbMessage.type === 'info' && 'bg-blue-500/10 text-blue-400'
                   )}>
-                    {tmdbMessage.type === 'success' ? <Check size={16} /> : <X size={16} />}
+                    {tmdbMessage.type === 'success' ? <Check size={16} /> : tmdbMessage.type === 'error' ? <X size={16} /> : <Loader2 size={16} className="animate-spin" />}
                     {tmdbMessage.text}
                   </div>
                 )}
@@ -724,10 +833,10 @@ export default function AdminPage() {
                         {t('admin.tmdbInputHint')}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={handleSaveTMDbKey}
-                        disabled={!tmdbKeyInput.trim() || tmdbSaving}
+                        disabled={!tmdbKeyInput.trim() || tmdbSaving || tmdbTesting}
                         className="btn-primary gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
                       >
                         {tmdbSaving ? (
@@ -743,6 +852,24 @@ export default function AdminPage() {
                         )}
                       </button>
                       <button
+                        onClick={handleTestTMDbKey}
+                        disabled={!tmdbKeyInput.trim() || tmdbTesting || tmdbSaving}
+                        className="btn-ghost gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
+                        title={t('admin.tmdbTestInputHint')}
+                      >
+                        {tmdbTesting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            {t('admin.tmdbTesting')}
+                          </>
+                        ) : (
+                          <>
+                            <Wifi size={14} />
+                            {t('admin.tmdbTestBtn')}
+                          </>
+                        )}
+                      </button>
+                      <button
                         onClick={() => {
                           setTmdbEditing(false)
                           setTmdbKeyInput('')
@@ -754,7 +881,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => setTmdbEditing(true)}
                       className="btn-primary gap-1.5 px-4 py-2 text-sm"
@@ -762,6 +889,26 @@ export default function AdminPage() {
                       <Key size={14} />
                       {tmdbConfig?.configured ? t('admin.modifyApiKey') : t('admin.configApiKey')}
                     </button>
+                    {tmdbConfig?.configured && (
+                      <button
+                        onClick={handleTestTMDbKey}
+                        disabled={tmdbTesting}
+                        className="btn-ghost gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
+                        title={t('admin.tmdbTestSavedHint')}
+                      >
+                        {tmdbTesting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            {t('admin.tmdbTesting')}
+                          </>
+                        ) : (
+                          <>
+                            <Wifi size={14} />
+                            {t('admin.tmdbTestConnection')}
+                          </>
+                        )}
+                      </button>
+                    )}
                     {tmdbConfig?.configured && (
                       <button
                         onClick={handleClearTMDbKey}
@@ -929,11 +1076,20 @@ export default function AdminPage() {
                 ) : (
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
-                      onClick={() => setDoubanEditing(true)}
+                      onClick={openDoubanImport}
                       className="btn-primary gap-1.5 px-4 py-2 text-sm"
+                      style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                      title="无需 F12，通过浏览器书签一键导入 Cookie"
+                    >
+                      <ZapIcon size={14} />
+                      懒人版登录
+                    </button>
+                    <button
+                      onClick={() => setDoubanEditing(true)}
+                      className="btn-ghost gap-1.5 px-4 py-2 text-sm"
                     >
                       <Key size={14} />
-                      {doubanConfig?.configured ? '修改 Cookie' : '配置 Cookie'}
+                      {doubanConfig?.configured ? '手动修改 Cookie' : '手动配置 Cookie'}
                     </button>
                     {doubanConfig?.configured && (
                       <>
@@ -1026,6 +1182,183 @@ export default function AdminPage() {
       {/* 搜索遮罩 */}
       {searchQuery && quickNavItems.length > 0 && (
         <div className="fixed inset-0 z-40" onClick={() => setSearchQuery('')} />
+      )}
+
+      {/* ===== 豆瓣懒人版登录 模态框 ===== */}
+      {doubanImportOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(8px)' }}
+          onClick={closeDoubanImport}
+        >
+          <div
+            className="glass-panel w-full max-w-2xl rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
+                  <ZapIcon size={18} className="text-green-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>豆瓣懒人版登录</h3>
+                  <p className="text-xs text-surface-400">无需 F12，一键导入豆瓣 Cookie</p>
+                </div>
+              </div>
+              <button onClick={closeDoubanImport} className="btn-ghost p-1.5 rounded-lg">
+                <X size={16} />
+              </button>
+            </div>
+
+            {doubanImportLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin text-neon" />
+                <span className="ml-3 text-sm text-surface-400">正在生成一次性导入链接...</span>
+              </div>
+            )}
+
+            {doubanImportInfo && !doubanImportLoading && (
+              <>
+                {/* 状态条 */}
+                {doubanImportStatus?.status === 'success' ? (
+                  <div className="mb-5 rounded-lg bg-green-500/10 border border-green-500/30 p-4">
+                    <div className="flex items-center gap-2 text-green-400 font-medium text-sm">
+                      <Check size={18} /> 导入成功！
+                    </div>
+                    <p className="mt-1.5 text-xs text-surface-300">{doubanImportStatus.message}</p>
+                    <button
+                      onClick={closeDoubanImport}
+                      className="mt-3 btn-primary px-4 py-1.5 text-sm"
+                    >
+                      完成
+                    </button>
+                  </div>
+                ) : doubanImportStatus?.status === 'expired' ? (
+                  <div className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-4">
+                    <div className="flex items-center gap-2 text-red-400 font-medium text-sm">
+                      <X size={18} /> 链接已过期
+                    </div>
+                    <button
+                      onClick={openDoubanImport}
+                      className="mt-3 btn-primary gap-1.5 px-4 py-1.5 text-sm"
+                    >
+                      <RefreshCw size={13} />
+                      重新生成
+                    </button>
+                  </div>
+                ) : doubanImportStatus?.status === 'failed' ? (
+                  <div className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-4">
+                    <div className="flex items-center gap-2 text-red-400 font-medium text-sm">
+                      <X size={18} /> 导入失败
+                    </div>
+                    <p className="mt-1.5 text-xs text-surface-300">{doubanImportStatus.message}</p>
+                    <button
+                      onClick={openDoubanImport}
+                      className="mt-3 btn-primary gap-1.5 px-4 py-1.5 text-sm"
+                    >
+                      <RefreshCw size={13} />
+                      重新生成
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mb-5 rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+                    <div className="flex items-center gap-2 text-blue-400 font-medium text-sm">
+                      <Loader2 size={16} className="animate-spin" />
+                      等待您在豆瓣页面执行脚本...
+                    </div>
+                    <p className="mt-1.5 text-xs text-surface-400">
+                      链接 {doubanImportRemaining > 0 ? `将在 ${Math.floor(doubanImportRemaining / 60)}分${doubanImportRemaining % 60}秒 后过期` : '即将过期'}
+                    </p>
+                  </div>
+                )}
+
+                {/* 使用方法 Tab 区 */}
+                <div className="mb-4">
+                  <h4 className="mb-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    三种方式任选其一
+                  </h4>
+
+                  {/* 方式一：Bookmarklet 书签 */}
+                  <div className="mb-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Bookmark size={14} className="text-neon" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 1：浏览器书签（推荐）</span>
+                      <span className="ml-auto text-xs px-2 py-0.5 rounded bg-green-500/10 text-green-400">最简单</span>
+                    </div>
+                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal mb-3">
+                      <li>把下面的链接 <span className="text-neon">拖动</span> 到浏览器 <span className="text-neon">书签栏</span>（或右键加入书签）</li>
+                      <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并确保已登录</li>
+                      <li>点击刚刚创建的书签 → 自动提交 Cookie</li>
+                    </ol>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={doubanImportInfo.bookmarklet}
+                        onClick={(e) => e.preventDefault()}
+                        className="btn-primary gap-1.5 px-3 py-1.5 text-xs cursor-grab active:cursor-grabbing select-none"
+                        draggable
+                        title="拖到书签栏即可"
+                      >
+                        <Bookmark size={12} />
+                        📌 豆瓣一键登录
+                      </a>
+                      <button
+                        onClick={() => copyDoubanImportText(doubanImportInfo.bookmarklet, 'bookmarklet')}
+                        className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
+                      >
+                        {doubanImportCopied === 'bookmarklet' ? <Check size={12} className="text-green-400" /> : <CopyIcon size={12} />}
+                        复制书签地址
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 方式二：控制台脚本 */}
+                  <div className="mb-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Key size={14} className="text-neon" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 2：浏览器控制台</span>
+                    </div>
+                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal mb-3">
+                      <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并登录</li>
+                      <li>按 <kbd className="px-1.5 py-0.5 rounded bg-black/30 text-xs">F12</kbd> 打开开发者工具 → Console 标签</li>
+                      <li>粘贴下面脚本并回车</li>
+                    </ol>
+                    <div className="relative">
+                      <pre className="bg-black/40 rounded p-2 text-[11px] font-mono text-surface-300 max-h-32 overflow-auto whitespace-pre-wrap break-all">
+                        {doubanImportInfo.script.trim()}
+                      </pre>
+                      <button
+                        onClick={() => copyDoubanImportText(doubanImportInfo.script, 'script')}
+                        className="absolute top-2 right-2 btn-ghost gap-1 px-2 py-1 text-xs"
+                      >
+                        {doubanImportCopied === 'script' ? <Check size={11} className="text-green-400" /> : <CopyIcon size={11} />}
+                        {doubanImportCopied === 'script' ? '已复制' : '复制'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 方式三：浏览器插件（Cookie Editor） */}
+                  <div className="rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <ExternalLink size={14} className="text-neon" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 3：Cookie 浏览器插件</span>
+                    </div>
+                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal">
+                      <li>安装 Chrome 扩展 <span className="text-neon">"Cookie-Editor"</span> 或 <span className="text-neon">"EditThisCookie"</span></li>
+                      <li>访问豆瓣并登录 → 点开插件 → 导出 Cookie 字符串</li>
+                      <li>关闭本弹窗 → 使用"手动配置 Cookie"粘贴即可</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
+                  <p className="text-xs text-surface-500">
+                    🔒 本链接 <span className="text-neon">仅本次有效</span>，5 分钟后自动失效。Cookie 只会保存在您的服务器上，不会发送给第三方。
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

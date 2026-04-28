@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -72,6 +75,62 @@ func (h *AdminHandler) ClearTMDbConfig(c *gin.Context) {
 		"data": gin.H{
 			"configured": false,
 			"masked_key": "",
+		},
+	})
+}
+
+// ValidateTMDbConfig 测试当前已保存的 TMDb API Key 是否可用
+// GET /api/admin/settings/tmdb/validate
+//
+// 始终返回 200，结果放在 data.valid / data.message 中，方便前端统一处理。
+func (h *AdminHandler) ValidateTMDbConfig(c *gin.Context) {
+	if h.cfg.GetTMDbAPIKey() == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"valid":   false,
+				"message": "尚未配置 TMDb API Key，请先填写并保存",
+			},
+		})
+		return
+	}
+
+	ok, msg := h.metadataService.PingTMDb("")
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"valid":   ok,
+			"message": msg,
+		},
+	})
+}
+
+// TestTMDbAPIKeyRequest 临时测试 TMDb API Key 的请求体
+type TestTMDbAPIKeyRequest struct {
+	APIKey string `json:"api_key" binding:"required"`
+}
+
+// TestTMDbAPIKey 测试"用户输入但尚未保存"的 TMDb API Key 是否可用
+// POST /api/admin/settings/tmdb/test
+// Body: { "api_key": "xxx" }
+//
+// 不会修改任何配置，纯粹用于保存前的联通性/有效性预检。
+func (h *AdminHandler) TestTMDbAPIKey(c *gin.Context) {
+	var req TestTMDbAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供要测试的 api_key"})
+		return
+	}
+
+	key := strings.TrimSpace(req.APIKey)
+	if len(key) < 16 || len(key) > 64 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "API Key 格式不正确，请检查后重试"})
+		return
+	}
+
+	ok, msg := h.metadataService.PingTMDb(key)
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"valid":   ok,
+			"message": msg,
 		},
 	})
 }
@@ -543,4 +602,298 @@ func (h *AdminHandler) ValidateDoubanConfig(c *gin.Context) {
 			"message":  msg,
 		},
 	})
+}
+
+// ==================== 豆瓣 Cookie 懒人版一键导入 ====================
+//
+// 流程：
+//  1. 管理员点击"懒人版登录" → 前端请求 CreateDoubanImportToken，获得一次性 token 与脚本
+//  2. 管理员把 Bookmarklet 拖到书签栏 / 或浏览器插件触发 / 或手动执行脚本片段
+//  3. 已登录的 douban.com 页面执行该脚本，读取 document.cookie 并 POST 到
+//     /api/admin/settings/douban/import?token=xxx 完成导入
+//  4. 前端轮询 GetDoubanImportTokenStatus 获知导入状态，自动刷新 UI
+
+// doubanImportToken 一次性导入令牌
+type doubanImportToken struct {
+	Token     string
+	ExpiresAt time.Time
+	Consumed  bool      // 是否已被使用
+	Success   bool      // 导入是否成功
+	Message   string    // 导入结果消息
+	Username  string    // 豆瓣用户名（若成功）
+	UpdatedAt time.Time // 状态最后更新时间
+}
+
+// doubanImportTokens 全局 token 存储（进程内存，重启失效即可）
+var (
+	doubanImportTokens   = make(map[string]*doubanImportToken)
+	doubanImportTokensMu sync.Mutex
+)
+
+const doubanImportTokenTTL = 5 * time.Minute
+
+// cleanupExpiredDoubanImportTokens 清理过期 token（调用处已持有锁）
+func cleanupExpiredDoubanImportTokens() {
+	now := time.Now()
+	for k, v := range doubanImportTokens {
+		if now.After(v.ExpiresAt) {
+			delete(doubanImportTokens, k)
+		}
+	}
+}
+
+// CreateDoubanImportToken 创建一次性导入 token，并返回 Bookmarklet / 脚本片段
+func (h *AdminHandler) CreateDoubanImportToken(c *gin.Context) {
+	token, err := generateSecureToken(24)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成 token 失败: " + err.Error()})
+		return
+	}
+
+	doubanImportTokensMu.Lock()
+	cleanupExpiredDoubanImportTokens()
+	doubanImportTokens[token] = &doubanImportToken{
+		Token:     token,
+		ExpiresAt: time.Now().Add(doubanImportTokenTTL),
+		UpdatedAt: time.Now(),
+	}
+	doubanImportTokensMu.Unlock()
+
+	// 构造目标 URL（优先使用请求来源站点的绝对地址，保证脚本在 douban.com 跨域时能找到后端）
+	scheme := "http"
+	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	host := c.Request.Host
+	if fwdHost := c.GetHeader("X-Forwarded-Host"); fwdHost != "" {
+		host = fwdHost
+	}
+	importURL := fmt.Sprintf("%s://%s/api/admin/settings/douban/import?token=%s", scheme, host, token)
+
+	// Bookmarklet: 用户拖到书签栏 → 在已登录的 douban.com 页面点击即可
+	bookmarklet := buildDoubanBookmarklet(importURL)
+
+	// 纯净的一段 JS（控制台 / 浏览器插件使用）
+	script := buildDoubanImportScript(importURL)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"token":       token,
+			"expires_in":  int(doubanImportTokenTTL.Seconds()),
+			"expires_at":  doubanImportTokens[token].ExpiresAt.Unix(),
+			"import_url":  importURL,
+			"bookmarklet": bookmarklet,
+			"script":      script,
+			"douban_url":  "https://www.douban.com/",
+		},
+	})
+}
+
+// GetDoubanImportTokenStatus 查询 token 当前状态（前端轮询）
+func (h *AdminHandler) GetDoubanImportTokenStatus(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 token 参数"})
+		return
+	}
+
+	doubanImportTokensMu.Lock()
+	defer doubanImportTokensMu.Unlock()
+	cleanupExpiredDoubanImportTokens()
+
+	item, ok := doubanImportTokens[token]
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"status":  "expired",
+				"message": "token 已过期或不存在，请重新生成",
+			},
+		})
+		return
+	}
+
+	status := "pending"
+	if item.Consumed {
+		if item.Success {
+			status = "success"
+		} else {
+			status = "failed"
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"status":         status,
+			"message":        item.Message,
+			"username":       item.Username,
+			"expires_at":     item.ExpiresAt.Unix(),
+			"remaining_secs": int(time.Until(item.ExpiresAt).Seconds()),
+		},
+	})
+}
+
+// ImportDoubanCookieRequest 懒人版导入请求体
+type ImportDoubanCookieRequest struct {
+	Cookie string `json:"cookie" binding:"required"`
+}
+
+// ImportDoubanCookie 懒人版一键导入豆瓣 Cookie（由 Bookmarklet / 扩展 调用）
+//
+// 请求：POST /api/admin/settings/douban/import?token=xxx
+// Body：{"cookie": "bid=xxx; dbcl2=xxx; ..."}
+//
+// 注意：此接口使用独立的 CORS 放行中间件以允许 douban.com 跨域调用（见 main.go 中的路由注册）。
+func (h *AdminHandler) ImportDoubanCookie(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 token 参数"})
+		return
+	}
+
+	// 先在锁内取出并标记，避免长时间持锁
+	doubanImportTokensMu.Lock()
+	cleanupExpiredDoubanImportTokens()
+	item, ok := doubanImportTokens[token]
+	if !ok {
+		doubanImportTokensMu.Unlock()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token 无效或已过期，请回到后台重新生成"})
+		return
+	}
+	if item.Consumed {
+		doubanImportTokensMu.Unlock()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "此导入链接已被使用，请重新生成"})
+		return
+	}
+	doubanImportTokensMu.Unlock()
+
+	var req ImportDoubanCookieRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.markDoubanImportResult(token, false, "", "请求体解析失败: "+err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 Cookie 字段"})
+		return
+	}
+
+	cookie := strings.TrimSpace(req.Cookie)
+	if len(cookie) < 20 || len(cookie) > 8192 {
+		h.markDoubanImportResult(token, false, "", "Cookie 长度异常")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 长度异常，请确认已在豆瓣登录"})
+		return
+	}
+	if !strings.Contains(cookie, "bid=") && !strings.Contains(cookie, "dbcl2=") {
+		h.markDoubanImportResult(token, false, "", "未检测到豆瓣登录态字段（bid/dbcl2）")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "未检测到豆瓣登录态字段，请先在当前浏览器登录豆瓣后再试"})
+		return
+	}
+
+	// 保存配置
+	if err := h.cfg.SetDoubanCookie(cookie); err != nil {
+		h.logger.Errorf("保存豆瓣 Cookie 失败: %v", err)
+		h.markDoubanImportResult(token, false, "", "保存配置失败: "+err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败: " + err.Error()})
+		return
+	}
+
+	// 异步校验 Cookie 是否真的有效 + 获取用户名（不阻塞返回）
+	valid, username, verr := h.metadataService.ValidateDoubanCookie()
+	if verr != nil {
+		h.logger.Warnf("懒人版导入后校验豆瓣 Cookie 异常: %v", verr)
+	}
+
+	msg := "Cookie 已导入"
+	if valid && username != "" {
+		msg = "已导入并校验通过，豆瓣账号：" + username
+	} else if valid {
+		msg = "Cookie 已导入并校验通过"
+	} else {
+		msg = "Cookie 已导入，但校验未通过，可能 Cookie 不完整"
+	}
+
+	h.markDoubanImportResult(token, true, username, msg)
+	h.logger.Infof("豆瓣 Cookie 懒人版导入成功: user=%s ip=%s", username, c.ClientIP())
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"success":  true,
+			"username": username,
+			"message":  msg,
+		},
+	})
+}
+
+// markDoubanImportResult 标记 token 导入结果
+func (h *AdminHandler) markDoubanImportResult(token string, success bool, username, message string) {
+	doubanImportTokensMu.Lock()
+	defer doubanImportTokensMu.Unlock()
+	if item, ok := doubanImportTokens[token]; ok {
+		item.Consumed = true
+		item.Success = success
+		item.Username = username
+		item.Message = message
+		item.UpdatedAt = time.Now()
+	}
+}
+
+// buildDoubanBookmarklet 生成 javascript:... 形式的书签链接
+func buildDoubanBookmarklet(importURL string) string {
+	// 注意：Bookmarklet 里不能带换行，且需要 URL 编码特殊字符
+	inner := buildDoubanImportScript(importURL)
+	// 最小化：压缩空白
+	inner = strings.Join(strings.Fields(inner), " ")
+	return "javascript:(function(){" + inner + "})();void(0);"
+}
+
+// buildDoubanImportScript 生成用于在 douban.com 页面执行的 JS 脚本
+func buildDoubanImportScript(importURL string) string {
+	return `
+if (!/douban\.com$/i.test(location.hostname) && !/\.douban\.com$/i.test(location.hostname)) {
+	alert('请在 douban.com 已登录的页面执行此操作（当前不是豆瓣域名）');
+	return;
+}
+var c = document.cookie || '';
+if (c.length < 20) { alert('未检测到豆瓣 Cookie，请先登录豆瓣'); return; }
+fetch('` + importURL + `', {
+	method: 'POST',
+	mode: 'cors',
+	credentials: 'omit',
+	headers: { 'Content-Type': 'application/json' },
+	body: JSON.stringify({ cookie: c })
+}).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+.then(function(x){
+	if (x.ok && x.j && x.j.data && x.j.data.success) {
+		alert('✅ 豆瓣 Cookie 导入成功！' + (x.j.data.username ? ('\n账号：' + x.j.data.username) : '') + '\n请回到后台查看。');
+	} else {
+		alert('❌ 导入失败：' + ((x.j && (x.j.error || x.j.message)) || '未知错误'));
+	}
+})
+.catch(function(e){ alert('❌ 请求失败：' + e.message + '\n请确认后台服务可访问，或当前网络正常'); });
+`
+}
+
+// DoubanImportCORS 为豆瓣 Cookie 一键导入接口专属的 CORS 中间件
+// 只允许来自 *.douban.com 的跨域调用（Bookmarklet 场景）
+func DoubanImportCORS() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			// 允许豆瓣主域及其子域跨域调用
+			low := strings.ToLower(origin)
+			if strings.HasPrefix(low, "https://www.douban.com") ||
+				strings.HasPrefix(low, "https://douban.com") ||
+				strings.HasPrefix(low, "http://www.douban.com") ||
+				strings.HasPrefix(low, "http://douban.com") ||
+				strings.HasSuffix(strings.TrimPrefix(strings.TrimPrefix(low, "https://"), "http://"), ".douban.com") {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+				c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+				c.Writer.Header().Set("Access-Control-Max-Age", "300")
+				c.Writer.Header().Set("Vary", "Origin")
+			}
+		}
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
 }
