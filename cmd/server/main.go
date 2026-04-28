@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -92,6 +93,9 @@ func main() {
 		ExcludePaths: []string{"/api/ws"}, // WebSocket 不受速率限制
 	}))
 
+	// 请求日志中间件：记录所有 API 请求到系统日志
+	r.Use(middleware.RequestLogger(repos.SystemLog))
+
 	// JWT Secret 安全检查
 	if cfg.Secrets.JWTSecret == "" {
 		sugar.Fatal("JWT Secret 未配置或自动生成失败，无法启动")
@@ -114,6 +118,27 @@ func main() {
 		for range ticker.C {
 			_ = repos.LoginLog.CleanOlderThan(90)
 		}
+	}()
+
+	// 系统日志清理定时任务：保留30天
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		repos.SystemLog.CleanOlderThan(30)
+		for range ticker.C {
+			repos.SystemLog.CleanOlderThan(30)
+		}
+	}()
+
+	// 记录服务启动事件
+	go func() {
+		_ = repos.SystemLog.Create(&model.SystemLog{
+			Type:    model.LogTypeSystem,
+			Level:   model.LogLevelInfo,
+			Message: "服务启动",
+			Source:  "startup",
+			Detail:  fmt.Sprintf("版本: 0.1.0, Go: %s, OS: %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH),
+		})
 	}()
 
 	// 公开路由（无需认证）
@@ -240,6 +265,8 @@ func main() {
 		api.GET("/preprocess/media/:id/:quality/:segment", handlers.Preprocess.ServePreprocessedSegment)
 		api.GET("/preprocess/media/:id/thumbnail", handlers.Preprocess.ServeThumbnail)
 		api.GET("/preprocess/media/:id/keyframe/:index", handlers.Preprocess.ServeKeyframe)
+		api.GET("/preprocess/media/:id/sprite.jpg", handlers.Preprocess.ServeSprite)
+		api.GET("/preprocess/media/:id/sprite.vtt", handlers.Preprocess.ServeSpriteVTT)
 
 		// 元数据刮削（管理员）
 		api.POST("/media/:id/scrape", middleware.AdminOnly(), handlers.Metadata.ScrapeMedia)
@@ -304,6 +331,9 @@ func main() {
 		// 播放统计
 		api.POST("/stats/playback", handlers.Stats.RecordPlayback)
 		api.GET("/stats/me", handlers.Stats.GetUserStats)
+
+		// 播放错误上报（前端视频播放器错误日志）
+		api.POST("/logs/playback-error", handlers.SystemLog.ReportPlaybackError)
 
 		// ==================== V2: 音乐库 ====================
 		api.GET("/music/tracks", handlers.Music.ListTracks)
@@ -392,8 +422,11 @@ func main() {
 		admin.GET("/settings/system", handlers.Admin.GetSystemSettings)
 		admin.PUT("/settings/system", handlers.Admin.UpdateSystemSettings)
 
-		// 系统监控
-		admin.GET("/metrics", handlers.Admin.GetMetrics)
+		// 系统日志
+		admin.GET("/system-logs", handlers.SystemLog.ListSystemLogs)
+		admin.GET("/system-logs/stats", handlers.SystemLog.GetSystemLogStats)
+		admin.GET("/system-logs/export", handlers.SystemLog.ExportSystemLogs)
+		admin.POST("/system-logs/clean", handlers.SystemLog.CleanSystemLogs)
 
 		// 定时任务管理
 		admin.GET("/tasks", handlers.Admin.ListScheduledTasks)
@@ -727,6 +760,14 @@ func main() {
 		}
 	}
 
+	// ==================== mDNS 服务发现广播 ====================
+	// 让安卓 NowenVideo 客户端通过 mDNS/DNS-SD 自动发现本机服务器，
+	// 服务类型: _nowen-video._tcp，TXT 记录携带版本号和服务器名称。
+	mdnsService := service.NewMdnsService(cfg.Emby.ServerName, cfg.App.Port, "0.1.0", sugar)
+	if err := mdnsService.Start(); err != nil {
+		sugar.Warnf("mDNS 服务发现启动失败（可忽略）: %v", err)
+	}
+
 	// 静态文件（前端构建产物）
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
@@ -759,6 +800,9 @@ func main() {
 	if discovery != nil {
 		discovery.Stop()
 	}
+
+	// 停止 mDNS 服务发现
+	mdnsService.Stop()
 
 	// 设置 30 秒超时用于优雅关闭
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

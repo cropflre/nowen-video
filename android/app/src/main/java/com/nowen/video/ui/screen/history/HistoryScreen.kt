@@ -48,7 +48,7 @@ fun HistoryScreen(onMediaClick: (String) -> Unit, onSeriesClick: (String) -> Uni
             TopAppBar(title = { Text("观看历史", color = colorScheme.secondary, style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.sp)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = colorScheme.primary) } },
                 actions = { if (uiState.history.isNotEmpty()) IconButton({ showClearDialog = true }) { Icon(Icons.Default.DeleteSweep, "清空历史", tint = colorScheme.error.copy(alpha = 0.7f)) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.scrim.copy(alpha = 0.85f)))
+colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface.copy(alpha = 0.95f)))
         }) { padding ->
             if (uiState.loading) {
                 Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator(color = colorScheme.primary, trackColor = colorScheme.surfaceContainerHigh) }
@@ -87,7 +87,7 @@ private fun CyberHistoryItem(history: WatchHistory, serverUrl: String, token: St
         Row(Modifier.padding(12.dp), Arrangement.spacedBy(12.dp)) {
             Box(Modifier.width(80.dp).height(120.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(8.dp))) {
                 AsyncImage("$serverUrl/api/media/${media.id}/poster?token=$token", media.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                if (history.completed) Surface(Modifier.align(Alignment.TopEnd).padding(4.dp), RoundedCornerShape(4.dp), ElectricGreen) {
+if (history.completed) Surface(Modifier.align(Alignment.TopEnd).padding(4.dp), RoundedCornerShape(4.dp), colorScheme.tertiary) {
                     Icon(Icons.Default.Check, "已看完", Modifier.size(14.dp).padding(1.dp), tint = Color.White)
                 }
             }
@@ -98,7 +98,7 @@ private fun CyberHistoryItem(history: WatchHistory, serverUrl: String, token: St
                 Spacer(Modifier.height(8.dp))
                 // 霓虹进度条
                 Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(colorScheme.surfaceVariant)) {
-                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Brush.horizontalGradient(listOf(colorScheme.primary, ElectricGreen))))
+Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Brush.horizontalGradient(listOf(colorScheme.primary, colorScheme.tertiary))))
                 }
                 Text(if (history.completed) "已看完" else "${formatDuration(history.position)} / ${formatDuration(history.duration)}",
                     style = MaterialTheme.typography.labelSmall, color = colorScheme.outline, modifier = Modifier.padding(top = 4.dp))

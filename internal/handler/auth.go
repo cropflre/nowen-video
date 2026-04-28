@@ -11,6 +11,7 @@ import (
 // AuthHandler 认证处理器
 type AuthHandler struct {
 	authService *service.AuthService
+	serverName  string // 服务器名称（用于局域网发现识别）
 	logger      *zap.SugaredLogger
 }
 
@@ -37,13 +38,31 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 // Status 获取系统初始化状态（公开接口，无需认证）
+// 同时返回服务器身份信息，供安卓端局域网发现时识别 NowenVideo 服务器
 func (h *AuthHandler) Status(c *gin.Context) {
 	status, err := h.authService.GetInitStatus()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取状态失败"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": status})
+
+	// 构建响应：在原有 InitStatus 基础上追加服务器身份字段
+	serverName := h.serverName
+	if serverName == "" {
+		serverName = "NowenVideo"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"initialized":       status.Initialized,
+			"registration_open": status.RegistrationOpen,
+			"invite_required":   status.InviteRequired,
+			// 服务器身份信息（供局域网发现识别）
+			"server_name":  serverName,
+			"server_type":  "nowen-video",
+			"version":      "0.1.0",
+		},
+	})
 }
 
 // Register 用户注册

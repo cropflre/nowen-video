@@ -115,7 +115,7 @@ fun SearchScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = colorScheme.scrim.copy(alpha = 0.85f)
+containerColor = colorScheme.surface.copy(alpha = 0.95f)
                     )
                 )
             }

@@ -73,7 +73,7 @@ fun NotificationScreen(
                         CyberConnectionBadge(uiState.connectionState)
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f)
+containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     )
                 )
             }
@@ -134,7 +134,7 @@ fun NotificationScreen(
 @Composable
 private fun CyberConnectionBadge(state: WSConnectionState) {
     val stateColor = when (state) {
-        WSConnectionState.CONNECTED -> ElectricGreen
+WSConnectionState.CONNECTED -> MaterialTheme.colorScheme.tertiary
         WSConnectionState.CONNECTING, WSConnectionState.RECONNECTING -> AmberGold
         WSConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
     }
@@ -192,11 +192,11 @@ private fun CyberTaskCard(task: TaskInfo) {
     val taskColor = when (task.type) {
         TaskType.SCAN -> colorScheme.primary
         TaskType.SCRAPE -> colorScheme.secondary
-        TaskType.TRANSCODE -> ElectricGreen
+TaskType.TRANSCODE -> MaterialTheme.colorScheme.tertiary
     }
     val statusColor = when (task.status) {
         TaskStatus.RUNNING -> taskColor
-        TaskStatus.COMPLETED -> ElectricGreen
+TaskStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
         TaskStatus.FAILED -> colorScheme.error
     }
 

@@ -362,8 +362,7 @@ const enUS: Record<string, string> = {
   'admin.tabLibrary': 'Library Management',
   'admin.tabUsers': 'User Management',
   'admin.tabTasks': 'Tasks & Transcode',
-  'admin.tabMonitor': 'Monitor & Logs',
-  'admin.tabLogs': 'Access Logs',
+  'admin.tabLogs': 'Logs',
   'admin.tabBackup': 'Data Backup',
   'admin.tabLive': 'Live Sources',
   'admin.tabAI': 'AI Config',
@@ -374,7 +373,6 @@ const enUS: Record<string, string> = {
   'admin.shortLibrary': 'Library',
   'admin.shortUsers': 'Users',
   'admin.shortTasks': 'Tasks',
-  'admin.shortMonitor': 'Monitor',
   'admin.shortLogs': 'Logs',
   'admin.shortBackup': 'Backup',
   'admin.shortLive': 'Live',
@@ -423,7 +421,7 @@ const enUS: Record<string, string> = {
   'admin.quickNavTMDb': 'TMDb Scraping Config',
   'admin.quickNavUsers': 'User Management',
   'admin.quickNavTranscode': 'Transcode Tasks',
-  'admin.quickNavMonitor': 'System Monitor',
+  'admin.quickNavLogs': 'System Logs',
   'admin.quickNavAI': 'AI Config',
 
   // ==================== Media Detail (extra) ====================

@@ -29,90 +29,72 @@ import com.nowen.video.ui.screen.notification.NotificationScreen
 /**
  * 页面过渡动画时长
  */
-private const val ANIM_DURATION = 350
-private const val ANIM_FAST = 250
+private const val ANIM_DURATION = 300
+private const val ANIM_FAST = 220
 
 /**
- * 赛博朋克页面进入 — 从右侧滑入 + 缩放 + 淡入
+ * 柔和进入 — 淡入 + 微缩放（舒适自然）
  */
-private fun cyberEnterTransition(): EnterTransition {
-    return slideInHorizontally(
-        initialOffsetX = { fullWidth -> fullWidth / 3 },
+private fun softEnterTransition(): EnterTransition {
+    return fadeIn(
         animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
-    ) + fadeIn(
-        animationSpec = tween(ANIM_DURATION)
     ) + scaleIn(
-        initialScale = 0.92f,
+        initialScale = 0.96f,
         animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
     )
 }
 
 /**
- * 赛博朋克页面退出 — 向左侧滑出 + 缩小 + 淡出
+ * 柔和退出 — 淡出 + 微缩小
  */
-private fun cyberExitTransition(): ExitTransition {
-    return slideOutHorizontally(
-        targetOffsetX = { fullWidth -> -fullWidth / 4 },
-        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
-    ) + fadeOut(
-        animationSpec = tween(ANIM_FAST)
+private fun softExitTransition(): ExitTransition {
+    return fadeOut(
+        animationSpec = tween(ANIM_FAST, easing = EaseInOutCubic)
     ) + scaleOut(
-        targetScale = 0.95f,
+        targetScale = 0.96f,
+        animationSpec = tween(ANIM_FAST, easing = EaseInOutCubic)
+    )
+}
+
+/**
+ * 返回时的进入动画 — 淡入（无缩放，更平静）
+ */
+private fun softPopEnterTransition(): EnterTransition {
+    return fadeIn(
         animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
     )
 }
 
 /**
- * 返回时的进入动画 — 从左侧滑入 + 缩放回复
+ * 返回时的退出动画 — 淡出 + 微缩小
  */
-private fun cyberPopEnterTransition(): EnterTransition {
-    return slideInHorizontally(
-        initialOffsetX = { fullWidth -> -fullWidth / 4 },
-        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
-    ) + fadeIn(
-        animationSpec = tween(ANIM_DURATION)
+private fun softPopExitTransition(): ExitTransition {
+    return fadeOut(
+        animationSpec = tween(ANIM_FAST, easing = EaseInOutCubic)
+    ) + scaleOut(
+        targetScale = 0.97f,
+        animationSpec = tween(ANIM_FAST, easing = EaseInOutCubic)
+    )
+}
+
+/**
+ * 认证页面进入 — 淡入 + 轻微缩放
+ */
+private fun authEnterTransition(): EnterTransition {
+    return fadeIn(
+        animationSpec = tween(400, easing = EaseInOutCubic)
     ) + scaleIn(
-        initialScale = 0.95f,
-        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
+        initialScale = 0.94f,
+        animationSpec = tween(400, easing = EaseInOutCubic)
     )
 }
 
 /**
- * 返回时的退出动画 — 向右侧滑出 + 缩小
+ * 认证页面退出 — 淡出
  */
-private fun cyberPopExitTransition(): ExitTransition {
-    return slideOutHorizontally(
-        targetOffsetX = { fullWidth -> fullWidth / 3 },
-        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
-    ) + fadeOut(
-        animationSpec = tween(ANIM_FAST)
-    ) + scaleOut(
-        targetScale = 0.92f,
-        animationSpec = tween(ANIM_DURATION, easing = EaseInOutCubic)
-    )
-}
-
-/**
- * 全息投影式进入 — 缩放 + 淡入（用于认证页面）
- */
-private fun holoEnterTransition(): EnterTransition {
-    return scaleIn(
-        initialScale = 0.85f,
-        animationSpec = tween(450, easing = EaseInOutCubic)
-    ) + fadeIn(
-        animationSpec = tween(450)
-    )
-}
-
-/**
- * 全息投影式退出 — 缩放 + 淡出
- */
-private fun holoExitTransition(): ExitTransition {
-    return scaleOut(
-        targetScale = 1.1f,
-        animationSpec = tween(350, easing = EaseInOutCubic)
-    ) + fadeOut(
-        animationSpec = tween(350)
+private fun authExitTransition(): ExitTransition {
+    return fadeOut(
+        animationSpec = tween(300, easing = EaseInOutCubic)
     )
 }
 
@@ -127,16 +109,16 @@ fun NowenNavGraph(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        enterTransition = { cyberEnterTransition() },
-        exitTransition = { cyberExitTransition() },
-        popEnterTransition = { cyberPopEnterTransition() },
-        popExitTransition = { cyberPopExitTransition() }
+        enterTransition = { softEnterTransition() },
+        exitTransition = { softExitTransition() },
+        popEnterTransition = { softPopEnterTransition() },
+        popExitTransition = { softPopExitTransition() }
     ) {
         // 服务器配置 — 全息投影式过渡
         composable(
             route = Screen.ServerSetup.route,
-            enterTransition = { holoEnterTransition() },
-            exitTransition = { holoExitTransition() }
+            enterTransition = { authEnterTransition() },
+            exitTransition = { authExitTransition() }
         ) {
             ServerSetupScreen(
                 onServerConfigured = {
@@ -150,8 +132,8 @@ fun NowenNavGraph(
         // 登录 — 全息投影式过渡
         composable(
             route = Screen.Login.route,
-            enterTransition = { holoEnterTransition() },
-            exitTransition = { holoExitTransition() }
+            enterTransition = { authEnterTransition() },
+            exitTransition = { authExitTransition() }
         ) {
             LoginScreen(
                 onLoginSuccess = {
@@ -171,11 +153,10 @@ fun NowenNavGraph(
         composable(
             route = Screen.Home.route,
             enterTransition = {
-                fadeIn(animationSpec = tween(400)) +
-                        scaleIn(initialScale = 0.96f, animationSpec = tween(400, easing = EaseInOutCubic))
+                fadeIn(animationSpec = tween(350, easing = EaseInOutCubic))
             },
-            exitTransition = { cyberExitTransition() },
-            popEnterTransition = { cyberPopEnterTransition() }
+            exitTransition = { softExitTransition() },
+            popEnterTransition = { softPopEnterTransition() }
         ) {
             HomeScreen(
                 onMediaClick = { mediaId ->
@@ -270,17 +251,19 @@ fun NowenNavGraph(
             route = Screen.Player.route,
             arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             enterTransition = {
-                slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(400, easing = EaseInOutCubic)
-                ) + fadeIn(animationSpec = tween(300))
+                fadeIn(animationSpec = tween(300, easing = EaseInOutCubic)) +
+                    scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = tween(350, easing = EaseInOutCubic)
+                    )
             },
             exitTransition = { fadeOut(animationSpec = tween(200)) },
             popExitTransition = {
-                slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(400, easing = EaseInOutCubic)
-                ) + fadeOut(animationSpec = tween(300))
+                fadeOut(animationSpec = tween(250, easing = EaseInOutCubic)) +
+                    scaleOut(
+                        targetScale = 0.92f,
+                        animationSpec = tween(300, easing = EaseInOutCubic)
+                    )
             }
         ) { backStackEntry ->
             val mediaId = backStackEntry.arguments?.getString("mediaId") ?: return@composable

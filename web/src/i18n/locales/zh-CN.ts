@@ -413,8 +413,7 @@ const zhCN: Record<string, string> = {
   'admin.tabLibrary': '媒体库管理',
   'admin.tabUsers': '用户管理',
   'admin.tabTasks': '任务与转码',
-  'admin.tabMonitor': '监控与日志',
-  'admin.tabLogs': '访问日志',
+  'admin.tabLogs': '日志',
   'admin.tabBackup': '数据备份',
   'admin.tabLive': '直播源管理',
   'admin.tabAI': 'AI 配置',
@@ -425,7 +424,6 @@ const zhCN: Record<string, string> = {
   'admin.shortLibrary': '媒体库',
   'admin.shortUsers': '用户',
   'admin.shortTasks': '任务',
-  'admin.shortMonitor': '监控',
   'admin.shortLogs': '日志',
   'admin.shortBackup': '备份',
   'admin.shortLive': '直播源',
@@ -474,7 +472,7 @@ const zhCN: Record<string, string> = {
   'admin.quickNavTMDb': 'TMDb 刮削配置',
   'admin.quickNavUsers': '用户管理',
   'admin.quickNavTranscode': '转码任务',
-  'admin.quickNavMonitor': '系统监控',
+  'admin.quickNavLogs': '系统日志',
   'admin.quickNavAI': 'AI 配置',
 
   // ==================== 媒体详情（补充） ====================

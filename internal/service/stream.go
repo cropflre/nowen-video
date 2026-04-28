@@ -33,6 +33,8 @@ type MediaPlayInfo struct {
 	PreprocessedURL  string  `json:"preprocessed_url"`   // 预处理后的 HLS 地址
 	PreprocessStatus string  `json:"preprocess_status"`  // 预处理状态: none / pending / running / completed
 	ThumbnailURL     string  `json:"thumbnail_url"`      // 预处理封面缩略图
+	SpriteURL        string  `json:"sprite_url"`         // 进度条雪碧图地址（预处理完成后可用）
+	SpriteVTTURL     string  `json:"sprite_vtt_url"`     // 进度条雪碧图 WebVTT 索引地址
 	PreferDirectPlay bool    `json:"prefer_direct_play"` // 系统设置：优先直接播放（禁用自动转码）
 	CanRemux         bool    `json:"can_remux"`          // 是否支持 remux（MKV等容器内编码兼容但容器不兼容）
 	RemuxURL         string  `json:"remux_url"`          // Remux 播放地址（零转码，仅转封装）
@@ -290,6 +292,8 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 		info.PreprocessedURL = fmt.Sprintf("/api/preprocess/media/%s/master.m3u8", mediaID)
 		info.PreprocessStatus = "completed"
 		info.ThumbnailURL = fmt.Sprintf("/api/preprocess/media/%s/thumbnail", mediaID)
+		info.SpriteURL = fmt.Sprintf("/api/preprocess/media/%s/sprite.jpg", mediaID)
+		info.SpriteVTTURL = fmt.Sprintf("/api/preprocess/media/%s/sprite.vtt", mediaID)
 		// 预处理完成时，HLS 地址指向预处理内容（秒开）
 		info.HlsURL = info.PreprocessedURL
 	} else if s.preprocess != nil {
@@ -682,12 +686,12 @@ func (s *StreamService) RemuxStream(mediaID string, w http.ResponseWriter, r *ht
 
 	args = append(args,
 		"-i", media.FilePath,
-		"-map", "0:v:0",   // 仅映射第一个视频流
-		"-map", "0:a?",     // 映射所有音频流（如无则跳过）
-		"-c:v", "copy",     // 视频直接复制
-		"-c:a", "copy",     // 音频直接复制
-		"-sn",              // 忽略字幕流（避免 ASS/SSA 等不兼容 MP4 的字幕导致失败）
-		"-dn",              // 忽略数据流
+		"-map", "0:v:0", // 仅映射第一个视频流
+		"-map", "0:a?", // 映射所有音频流（如无则跳过）
+		"-c:v", "copy", // 视频直接复制
+		"-c:a", "copy", // 音频直接复制
+		"-sn", // 忽略字幕流（避免 ASS/SSA 等不兼容 MP4 的字幕导致失败）
+		"-dn", // 忽略数据流
 		"-movflags", "frag_mp4+empty_moov+default_base_moof",
 		"-f", "mp4",
 		"-y",

@@ -115,20 +115,20 @@ fun HomeScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = colorScheme.scrim.copy(alpha = 0.85f)
+                        containerColor = colorScheme.surface.copy(alpha = 0.95f)
                     )
                 )
             }
         ) { padding ->
             if (uiState.loading && uiState.libraries.isEmpty()) {
-                // 赛博朋克加载动画
+                // 骨架屏加载动画
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
-                    CyberLoadingIndicator()
+                    CyberSkeletonLoader()
                 }
             } else {
                 @OptIn(ExperimentalMaterial3Api::class)
@@ -146,7 +146,7 @@ fun HomeScreen(
                         // ===== 媒体库入口 =====
                         if (uiState.libraries.isNotEmpty()) {
                             item {
-                                CyberSectionTitle("媒体库", colorScheme.primary)
+                            CyberSectionTitle("媒体库", colorScheme.primary, colorScheme.onBackground)
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -187,7 +187,7 @@ fun HomeScreen(
                                 CyberQuickEntryCard(
                                     icon = Icons.Default.Collections,
                                     label = "影视合集",
-                                    glowColor = ElectricGreen,
+                                    glowColor = colorScheme.tertiary,
                                     onClick = onCollectionsClick,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -198,7 +198,7 @@ fun HomeScreen(
                         // ===== 继续观看 =====
                         if (uiState.continueWatching.isNotEmpty()) {
                             item {
-                                CyberSectionTitle("继续观看", ElectricGreen)
+                                CyberSectionTitle("继续观看", colorScheme.tertiary, colorScheme.onBackground)
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -228,7 +228,7 @@ fun HomeScreen(
                         // ===== 最近添加 =====
                         if (uiState.recentMixed.isNotEmpty()) {
                             item {
-                                CyberSectionTitle("最近添加", colorScheme.secondary)
+                                CyberSectionTitle("最近添加", colorScheme.secondary, colorScheme.onBackground)
                             }
                             item {
                                 LazyRow(
@@ -253,7 +253,7 @@ fun HomeScreen(
                             }
                         }
 
-                        // ===== 空状态 =====
+                        // ===== 空状态（带动效） =====
                         if (uiState.libraries.isEmpty() && uiState.recentMixed.isEmpty()) {
                             item {
                                 Box(
@@ -263,18 +263,34 @@ fun HomeScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            Icons.Default.VideoLibrary,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(64.dp),
-                                            tint = colorScheme.primary.copy(alpha = 0.4f)
-                                        )
-                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(80.dp)
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(
+                                                    Brush.radialGradient(
+                                                        colors = listOf(
+                                                            colorScheme.primary.copy(alpha = 0.08f),
+                                                            Color.Transparent
+                                                        )
+                                                    )
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.VideoLibrary,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(48.dp),
+                                                tint = colorScheme.primary.copy(alpha = 0.35f)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(20.dp))
                                         Text(
                                             "暂无媒体内容",
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = colorScheme.onSurfaceVariant
                                         )
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             "请在 Web 管理后台添加媒体库",
                                             style = MaterialTheme.typography.bodySmall,
@@ -294,43 +310,79 @@ fun HomeScreen(
 // ==================== 赛博朋克子组件 ====================
 
 /**
- * 赛博朋克加载指示器
+ * 骨架屏加载器 — 替代简单的加载指示器
  */
 @Composable
-private fun CyberLoadingIndicator() {
-    val colorScheme = MaterialTheme.colorScheme
-    val infiniteTransition = rememberInfiniteTransition(label = "loading")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        CircularProgressIndicator(
-            color = colorScheme.primary,
-            trackColor = colorScheme.surfaceContainerHigh,
-            strokeWidth = 3.dp
+private fun CyberSkeletonLoader() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 模拟媒体库芯片
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .width(80.dp)
+                        .height(36.dp)
+                        .shimmerEffect(cornerRadius = 20.dp)
+                )
+            }
+        }
+        // 模拟快捷入口
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(60.dp)
+                        .shimmerEffect(cornerRadius = 14.dp)
+                )
+            }
+        }
+        // 模拟标题
+        Box(
+            modifier = Modifier
+                .width(100.dp)
+                .height(20.dp)
+                .shimmerEffect(cornerRadius = 4.dp)
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            "数据加载中...",
-            color = colorScheme.primary.copy(alpha = 0.7f),
-            style = MaterialTheme.typography.bodySmall,
-            letterSpacing = 2.sp
-        )
+        // 模拟卡片行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .width(130.dp)
+                        .height(240.dp)
+                        .shimmerEffect(cornerRadius = 14.dp)
+                )
+            }
+        }
     }
 }
 
 /**
  * 赛博朋克章节标题
+ * @param accentColor 装饰线条颜色
+ * @param textColor 标题文字颜色（日间模式下应使用深色文字，避免高饱和色刺眼）
  */
 @Composable
-private fun CyberSectionTitle(title: String, accentColor: Color) {
+private fun CyberSectionTitle(
+    title: String,
+    accentColor: Color,
+    textColor: Color = accentColor
+) {
     Row(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -354,7 +406,7 @@ private fun CyberSectionTitle(title: String, accentColor: Color) {
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.sp
             ),
-            color = accentColor
+            color = textColor
         )
     }
 }
@@ -478,7 +530,7 @@ private fun CyberContinueWatchingCard(
         modifier = Modifier
             .width(200.dp)
             .clip(RoundedCornerShape(14.dp))
-            .cyberCard(cornerRadius = 14.dp, glowColor = ElectricGreen)
+            .cyberCard(cornerRadius = 14.dp, glowColor = colorScheme.tertiary)
             .clickable(onClick = onClick)
     ) {
         Column {
@@ -534,7 +586,7 @@ private fun CyberContinueWatchingCard(
                         .fillMaxHeight()
                         .background(
                             brush = Brush.horizontalGradient(
-                                colors = listOf(colorScheme.primary, ElectricGreen)
+                            colors = listOf(colorScheme.primary, colorScheme.tertiary)
                             )
                         )
                 )

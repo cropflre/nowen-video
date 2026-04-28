@@ -28,7 +28,6 @@ type Services struct {
 	Comment        *CommentService
 	Permission     *PermissionService
 	Scheduler      *SchedulerService
-	Monitor        *MonitorService
 	FileWatcher    *FileWatcherService
 	NFO            *NFOService
 	Stats          *StatsService
@@ -94,11 +93,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	scheduler.SetTranscodeService(transcoder) // 注入转码服务，用于 cleanup 任务
 	scheduler.SetWSHub(wsHub)
 	scheduler.Start()
-
-	// 创建监控服务
-	monitor := NewMonitorService(cfg, transcoder, logger)
-	monitor.SetWSHub(wsHub)
-	monitor.Start()
 
 	// 创建文件监听服务
 	fileWatcher := NewFileWatcherService(cfg, logger, repos.Library, repos.Media, repos.Series, scanner, metadata)
@@ -300,7 +294,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Comment:        NewCommentService(repos.Comment, repos.Media, logger),
 		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
 		Scheduler:      scheduler,
-		Monitor:        monitor,
 		FileWatcher:    fileWatcher,
 		NFO:            nfoService,
 		Stats:          statsService,

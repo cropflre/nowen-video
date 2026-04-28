@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,14 +19,9 @@ import (
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
+	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"go.uber.org/zap"
-)
-
-// P3 优化：预编译正则表达式，避免每次转码调用都重新编译
-var (
-	ffmpegTimeRegex  = regexp.MustCompile(`time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})`)
-	ffmpegSpeedRegex = regexp.MustCompile(`speed=\s*([\d.]+)x`)
 )
 
 // ==================== 预处理事件常量 ====================
@@ -629,13 +622,16 @@ func (s *PreprocessService) processTask(taskID string) {
 	var (
 		thumbnailPath string
 		keyframesDir  string
+		spritePath    string
+		vttPath       string
 		thumbnailErr  error
 		keyframesErr  error
+		spriteErr     error
 		phase23Wg     sync.WaitGroup
 	)
 
-	// P2 优化：Phase 2 和 Phase 3 互不依赖，并行执行可节省约 50% 的预处理前期时间
-	phase23Wg.Add(2)
+	// P2 优化：Phase 2、3、sprite 互不依赖，并行执行
+	phase23Wg.Add(3)
 
 	go func() {
 		defer phase23Wg.Done()
@@ -645,6 +641,11 @@ func (s *PreprocessService) processTask(taskID string) {
 	go func() {
 		defer phase23Wg.Done()
 		keyframesDir, keyframesErr = s.extractKeyframes(task)
+	}()
+
+	go func() {
+		defer phase23Wg.Done()
+		spritePath, vttPath, spriteErr = s.generateSprite(task)
 	}()
 
 	phase23Wg.Wait()
@@ -658,6 +659,12 @@ func (s *PreprocessService) processTask(taskID string) {
 		s.logger.Warnf("关键帧提取失败（非致命）: %v", keyframesErr)
 	} else {
 		task.KeyframesDir = keyframesDir
+	}
+	if spriteErr != nil {
+		s.logger.Warnf("雪碧图生成失败（非致命）: %v", spriteErr)
+	} else {
+		task.SpritePath = spritePath
+		task.SpriteVTTPath = vttPath
 	}
 	s.repo.Update(task)
 
@@ -929,6 +936,95 @@ func (s *PreprocessService) extractKeyframes(task *model.PreprocessTask) (string
 	return keyframesDir, nil
 }
 
+// generateSprite 生成进度条预览雪碧图和 WebVTT 索引文件
+// 每 10 秒一帧，拼成一张大图（10 列），同时生成 WebVTT 文件供前端进度条悬停预览
+func (s *PreprocessService) generateSprite(task *model.PreprocessTask) (spritePath string, vttPath string, err error) {
+	spriteDir := filepath.Join(task.OutputDir, "sprite")
+	os.MkdirAll(spriteDir, 0755)
+
+	spritePath = filepath.Join(spriteDir, "sprite.jpg")
+	vttPath = filepath.Join(spriteDir, "sprite.vtt")
+
+	duration := task.SourceDuration
+	if duration <= 0 {
+		duration = 600
+	}
+
+	// 每 10 秒一帧，最多 100 帧（避免雪碧图过大）
+	interval := 10.0
+	if duration > 1000 {
+		interval = math.Ceil(duration / 100)
+	}
+	frameCount := int(math.Ceil(duration / interval))
+	if frameCount < 1 {
+		frameCount = 1
+	}
+	if frameCount > 100 {
+		frameCount = 100
+	}
+
+	// 每帧缩略图尺寸：160x90（16:9）
+	const thumbW, thumbH = 160, 90
+	// 每行 10 帧
+	const cols = 10
+	rows := int(math.Ceil(float64(frameCount) / float64(cols)))
+
+	// 使用 FFmpeg tile 滤镜一次性生成雪碧图
+	// -vf "fps=1/10,scale=160:90,tile=10xN" 高效生成
+	tileFilter := fmt.Sprintf("fps=1/%.0f,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,tile=%dx%d",
+		interval, thumbW, thumbH, thumbW, thumbH, cols, rows)
+
+	spriteArgs := []string{
+		"-y",
+		"-skip_frame", "nokey",
+	}
+	if httpArgs := BuildFFmpegInputArgs(task.InputPath); len(httpArgs) > 0 {
+		spriteArgs = append(spriteArgs, httpArgs...)
+	}
+	spriteArgs = append(spriteArgs,
+		"-i", task.InputPath,
+		"-vf", tileFilter,
+		"-frames:v", "1",
+		"-q:v", "5",
+		spritePath,
+	)
+
+	cmd := exec.Command(s.cfg.App.FFmpegPath, spriteArgs...)
+	if runErr := cmd.Run(); runErr != nil {
+		return "", "", fmt.Errorf("雪碧图生成失败: %w", runErr)
+	}
+
+	// 生成 WebVTT 文件
+	vttContent := "WEBVTT\n\n"
+	for i := 0; i < frameCount; i++ {
+		startSec := float64(i) * interval
+		endSec := startSec + interval
+		if endSec > duration {
+			endSec = duration
+		}
+
+		col := i % cols
+		row := i / cols
+		xOffset := col * thumbW
+		yOffset := row * thumbH
+
+		// WebVTT 时间格式：HH:MM:SS.mmm
+		vttContent += fmt.Sprintf("%s --> %s\n",
+			formatVTTTime(startSec),
+			formatVTTTime(endSec),
+		)
+		// 使用相对路径，前端通过 /api/preprocess/media/:id/sprite 获取
+		vttContent += fmt.Sprintf("sprite.jpg#xywh=%d,%d,%d,%d\n\n",
+			xOffset, yOffset, thumbW, thumbH)
+	}
+
+	if writeErr := os.WriteFile(vttPath, []byte(vttContent), 0644); writeErr != nil {
+		return "", "", fmt.Errorf("WebVTT 写入失败: %w", writeErr)
+	}
+
+	return spritePath, vttPath, nil
+}
+
 // transcodeVariant 转码单个变体，支持硬件加速失败时回退到软件转码
 func (s *PreprocessService) transcodeVariant(
 	task *model.PreprocessTask,
@@ -1052,94 +1148,20 @@ func (s *PreprocessService) transcodeVariantWithWebDAVFallback(
 //
 // 每次尝试失败后会清理已生成的分片文件（保留目录），确保下次尝试从干净状态开始。
 // 如果任务被用户取消（通过 cancelJobs），会立即返回而不继续尝试。
+//
+// 参数 hlsArgs / audioArgs 为兼容旧签名保留，但内部实际参数由 ffmpeg.BuildHLSArgs 统一生成。
 func (s *PreprocessService) transcodeWithFallback(
 	task *model.PreprocessTask,
 	variant ABRProfile,
-	hlsArgs, audioArgs []string,
+	_hlsArgs, _audioArgs []string,
 	m3u8Path, segmentPath string,
 	onProgress func(progress float64, speed string),
 ) error {
+	_ = _hlsArgs
+	_ = _audioArgs
+
 	// V2.1: 为 HTTP 源构造超时/重连前置参数（非 HTTP 返回 nil，不影响本地文件）
 	httpInputArgs := BuildFFmpegInputArgs(task.InputPath)
-
-	// 构建硬件加速配置映射（使用 map 替代嵌套循环查找）
-	hwAccelConfigs := map[string]func() ([]string, []string, []string){
-		"nvenc": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y"}
-			baseArgs = append(baseArgs, httpInputArgs...)
-			baseArgs = append(baseArgs, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", task.InputPath)
-			videoArgs := []string{
-				"-c:v", "h264_nvenc",
-				"-preset", "p4",
-				"-b:v", variant.VideoBitrate,
-				"-maxrate", variant.MaxBitrate,
-				"-bufsize", variant.BufSize,
-				"-vf", fmt.Sprintf("scale_cuda=%d:%d:format=nv12", variant.Width, variant.Height),
-				"-g", "48",
-				"-keyint_min", "48",
-				"-sc_threshold", "0",
-			}
-			return baseArgs, videoArgs, audioArgs
-		},
-		"qsv": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y"}
-			baseArgs = append(baseArgs, httpInputArgs...)
-			baseArgs = append(baseArgs, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-i", task.InputPath)
-			videoArgs := []string{
-				"-c:v", "h264_qsv",
-				"-preset", "medium",
-				"-b:v", variant.VideoBitrate,
-				"-maxrate", variant.MaxBitrate,
-				"-bufsize", variant.BufSize,
-				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-				"-vf", fmt.Sprintf("scale_qsv=%d:%d", variant.Width, variant.Height),
-				"-g", "48",
-				"-keyint_min", "48",
-			}
-			return baseArgs, videoArgs, audioArgs
-		},
-		"vaapi": func() ([]string, []string, []string) {
-			baseArgs := []string{
-				"-y",
-			}
-			baseArgs = append(baseArgs, httpInputArgs...)
-			baseArgs = append(baseArgs,
-				"-hwaccel", "vaapi",
-				"-hwaccel_output_format", "vaapi",
-				"-vaapi_device", s.cfg.App.VAAPIDevice,
-				"-i", task.InputPath,
-			)
-			videoArgs := []string{
-				"-c:v", "h264_vaapi",
-				"-b:v", variant.VideoBitrate,
-				"-maxrate", variant.MaxBitrate,
-				"-bufsize", variant.BufSize,
-				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-				"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", variant.Width, variant.Height),
-				"-g", "48",
-				"-keyint_min", "48",
-			}
-			return baseArgs, videoArgs, audioArgs
-		},
-		"none": func() ([]string, []string, []string) {
-			baseArgs := []string{"-y"}
-			baseArgs = append(baseArgs, httpInputArgs...)
-			baseArgs = append(baseArgs, "-i", task.InputPath)
-			videoArgs := []string{
-				"-c:v", "libx264",
-				"-preset", s.cfg.App.TranscodePreset,
-				"-b:v", variant.VideoBitrate,
-				"-maxrate", variant.MaxBitrate,
-				"-bufsize", variant.BufSize,
-				"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-				"-vf", fmt.Sprintf("scale=%d:%d", variant.Width, variant.Height),
-				"-g", "48",
-				"-keyint_min", "48",
-				"-sc_threshold", "0",
-			}
-			return baseArgs, videoArgs, audioArgs
-		},
-	}
 
 	// GPU 安全保护：检查是否需要降级为 CPU 编码
 	actualHWAccel := s.hwAccel
@@ -1156,43 +1178,56 @@ func (s *PreprocessService) transcodeWithFallback(
 	// 避免每次回退都要启动 FFmpeg、等待超时、清理分片，浪费大量时间
 	var attempts []string
 	switch actualHWAccel {
-	case "nvenc":
+	case ffmpeg.HWAccelNVENC:
 		if runtime.GOOS == "windows" {
-			attempts = []string{"nvenc", "none"}
+			attempts = []string{ffmpeg.HWAccelNVENC, ffmpeg.HWAccelNone}
 		} else {
-			attempts = []string{"nvenc", "qsv", "vaapi", "none"}
+			attempts = []string{ffmpeg.HWAccelNVENC, ffmpeg.HWAccelQSV, ffmpeg.HWAccelVAAPI, ffmpeg.HWAccelNone}
 		}
-	case "qsv":
+	case ffmpeg.HWAccelQSV:
 		if runtime.GOOS == "windows" {
-			attempts = []string{"qsv", "none"}
+			attempts = []string{ffmpeg.HWAccelQSV, ffmpeg.HWAccelNone}
 		} else {
-			attempts = []string{"qsv", "vaapi", "none"}
+			attempts = []string{ffmpeg.HWAccelQSV, ffmpeg.HWAccelVAAPI, ffmpeg.HWAccelNone}
 		}
-	case "vaapi":
-		attempts = []string{"vaapi", "qsv", "none"}
+	case ffmpeg.HWAccelVAAPI:
+		attempts = []string{ffmpeg.HWAccelVAAPI, ffmpeg.HWAccelQSV, ffmpeg.HWAccelNone}
 	default:
-		attempts = []string{"none"}
+		attempts = []string{ffmpeg.HWAccelNone}
 	}
 
 	// 提前计算 FFmpeg 线程数（循环内不变，避免重复调用）
-	ffmpegThreads := s.calcFFmpegThreads()
+	ffmpegThreads := ffmpeg.CalcThreads(s.cfg)
+
+	// 变体目录即 segmentPath 所在目录（stream.m3u8 也在此）
+	outputDir := filepath.Dir(segmentPath)
 
 	// 尝试不同的转码方式
 	for _, attemptName := range attempts {
-		configFunc, ok := hwAccelConfigs[attemptName]
-		if !ok {
-			continue
-		}
-
 		// 确保输出目录存在（回退清理后需要重建）
-		os.MkdirAll(filepath.Dir(segmentPath), 0755)
+		os.MkdirAll(outputDir, 0755)
 
-		baseArgs, videoArgs, aArgs := configFunc()
-
-		args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
-		args = append(args, videoArgs...)
-		args = append(args, aArgs...)
-		args = append(args, hlsArgs...)
+		args := ffmpeg.BuildHLSArgs(ffmpeg.BuildOptions{
+			InputPath:  task.InputPath,
+			OutputDir:  outputDir,
+			ExtraInput: httpInputArgs,
+			HWAccel:    attemptName,
+			Profile: ffmpeg.Profile{
+				Width:        variant.Width,
+				Height:       variant.Height,
+				VideoBitrate: variant.VideoBitrate,
+				AudioBitrate: variant.AudioBitrate,
+				MaxBitrate:   variant.MaxBitrate,
+				BufSize:      variant.BufSize,
+			},
+			VAAPIDevice:           s.cfg.App.VAAPIDevice,
+			X264Preset:            s.cfg.App.TranscodePreset,
+			QSVPreset:             "medium",
+			Threads:               ffmpegThreads,
+			QSVAttachOutputFormat: true, // 预处理走全 GPU 管线
+			HLSTime:               4,
+			GOPSize:               48,
+		})
 
 		cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
 
@@ -1286,75 +1321,17 @@ func (s *PreprocessService) transcodeWithFallback(
 }
 
 // parseFFmpegProgressWithStderr 解析 FFmpeg stderr 进度输出，同时收集最后 N 行 stderr 用于错误诊断。
-// P2 优化：使用 bufio.Scanner 按行扫描，避免原始 Read 截断行导致正则匹配失败
-// P3 优化：使用预编译正则 + 进度变化阈值过滤，减少无效回调
+// 底层解析委托给 ffmpeg.ParseProgress，这里仅负责转接回调。
 // 返回值：stderr 最后 10 行输出（用于转码失败时的错误诊断）
 func (s *PreprocessService) parseFFmpegProgressWithStderr(stderr io.ReadCloser, totalDuration float64, onProgress func(float64, string)) []string {
-	scanner := bufio.NewScanner(stderr)
-	// FFmpeg 的 stderr 输出使用 \r 作为行分隔符，需要自定义 split 函数
-	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
+	return ffmpeg.ParseProgress(stderr, totalDuration, ffmpeg.ProgressOptions{
+		MinDeltaPct:        0.5,
+		CollectStderrLines: 10,
+	}, func(ev ffmpeg.ProgressEvent) {
+		if onProgress != nil {
+			onProgress(ev.Progress, ev.Speed)
 		}
-		// 查找 \r 或 \n 作为行分隔符
-		for i := 0; i < len(data); i++ {
-			if data[i] == '\n' || data[i] == '\r' {
-				return i + 1, data[:i], nil
-			}
-		}
-		if atEOF {
-			return len(data), data, nil
-		}
-		return 0, nil, nil
 	})
-
-	var lastProgress float64
-	// 环形缓冲区：保留最后 10 行 stderr 输出用于错误诊断
-	const maxStderrLines = 10
-	stderrRing := make([]string, 0, maxStderrLines)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// 收集非空行到环形缓冲区
-		if trimmed := strings.TrimSpace(line); trimmed != "" {
-			if len(stderrRing) >= maxStderrLines {
-				stderrRing = stderrRing[1:]
-			}
-			stderrRing = append(stderrRing, trimmed)
-		}
-
-		timeMatches := ffmpegTimeRegex.FindStringSubmatch(line)
-		if len(timeMatches) < 5 || totalDuration <= 0 {
-			continue
-		}
-
-		hours, _ := strconv.ParseFloat(timeMatches[1], 64)
-		minutes, _ := strconv.ParseFloat(timeMatches[2], 64)
-		seconds, _ := strconv.ParseFloat(timeMatches[3], 64)
-		centis, _ := strconv.ParseFloat(timeMatches[4], 64)
-		currentTime := hours*3600 + minutes*60 + seconds + centis/100
-		progress := (currentTime / totalDuration) * 100
-		if progress > 100 {
-			progress = 100
-		}
-
-		// P3 优化：进度变化不超过 0.5% 时跳过，减少无效回调和下游节流压力
-		if progress-lastProgress < 0.5 {
-			continue
-		}
-		lastProgress = progress
-
-		speed := ""
-		speedMatches := ffmpegSpeedRegex.FindStringSubmatch(line)
-		if len(speedMatches) >= 2 {
-			speed = speedMatches[1] + "x"
-		}
-
-		onProgress(progress, speed)
-	}
-
-	return stderrRing
 }
 
 // generateMasterPlaylist 生成 ABR 主播放列表
@@ -1749,22 +1726,7 @@ func (s *PreprocessService) dynamicLoadAdjuster() {
 }
 
 // calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
+// Deprecated: 保留兼容接口，实际委托给 ffmpeg.CalcThreads。
 func (s *PreprocessService) calcFFmpegThreads() int {
-	resourceLimit := s.cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-
-	cpuCount := runtime.NumCPU()
-	// 根据资源限制比例计算线程数
-	// 例如: 28核 * 80% = 22 线程，28核 * 20% = 5 线程
-	threads := cpuCount * resourceLimit / 100
-	if threads < 1 {
-		threads = 1
-	}
-	// 上限不超过 CPU 核心数
-	if threads > cpuCount {
-		threads = cpuCount
-	}
-	return threads
+	return ffmpeg.CalcThreads(s.cfg)
 }

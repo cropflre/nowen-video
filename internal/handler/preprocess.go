@@ -410,3 +410,33 @@ func (h *PreprocessHandler) ServeKeyframe(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=604800")
 	c.File(filePath)
 }
+
+// ServeSprite 提供进度条预览雪碧图
+func (h *PreprocessHandler) ServeSprite(c *gin.Context) {
+	mediaID := c.Param("id")
+
+	task, err := h.preprocessService.GetMediaTask(mediaID)
+	if err != nil || task.SpritePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "雪碧图不存在"})
+		return
+	}
+
+	c.Header("Content-Type", "image/jpeg")
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.File(task.SpritePath)
+}
+
+// ServeSpriteVTT 提供进度条预览 WebVTT 索引文件
+func (h *PreprocessHandler) ServeSpriteVTT(c *gin.Context) {
+	mediaID := c.Param("id")
+
+	task, err := h.preprocessService.GetMediaTask(mediaID)
+	if err != nil || task.SpriteVTTPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "WebVTT 索引不存在"})
+		return
+	}
+
+	c.Header("Content-Type", "text/vtt; charset=utf-8")
+	c.Header("Cache-Control", "public, max-age=604800")
+	c.File(task.SpriteVTTPath)
+}

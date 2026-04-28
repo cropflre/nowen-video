@@ -3,12 +3,9 @@ package service
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"go.uber.org/zap"
@@ -83,252 +80,6 @@ func (s *ABRService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
 }
 
-// GenerateABRPlaylist 生成 ABR 主播放列表（Master Playlist）
-// 为指定媒体生成多码率 HLS 主播放列表
-func (s *ABRService) GenerateABRPlaylist(mediaID, inputPath string, maxHeight int) (string, error) {
-	outputDir := filepath.Join(s.cacheDir, mediaID)
-	masterPath := filepath.Join(outputDir, "master.m3u8")
-
-	// 检查是否已有缓存
-	if _, err := os.Stat(masterPath); err == nil {
-		return masterPath, nil
-	}
-
-	os.MkdirAll(outputDir, 0755)
-
-	// 确定可用的质量等级（不超过原始分辨率）
-	var profiles []ABRProfile
-	for _, p := range abrProfiles {
-		if p.Height <= maxHeight {
-			profiles = append(profiles, p)
-		}
-	}
-	if len(profiles) == 0 {
-		profiles = abrProfiles[:1] // 至少保留 360p
-	}
-
-	// 生成 Master Playlist
-	var masterContent strings.Builder
-	masterContent.WriteString("#EXTM3U\n")
-	masterContent.WriteString("#EXT-X-VERSION:3\n\n")
-
-	for _, p := range profiles {
-		bandwidth := parseBitrate(p.VideoBitrate) + parseBitrate(p.AudioBitrate)
-		masterContent.WriteString(fmt.Sprintf(
-			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
-			bandwidth, p.Width, p.Height, p.Name,
-		))
-		masterContent.WriteString(fmt.Sprintf("%s/stream.m3u8\n\n", p.Name))
-	}
-
-	if err := os.WriteFile(masterPath, []byte(masterContent.String()), 0644); err != nil {
-		return "", fmt.Errorf("写入主播放列表失败: %w", err)
-	}
-
-	// 异步生成各质量等级的 HLS 流
-	go s.generateAllVariants(mediaID, inputPath, outputDir, profiles)
-
-	return masterPath, nil
-}
-
-// generateAllVariants 并行生成所有质量变体
-func (s *ABRService) generateAllVariants(mediaID, inputPath, outputDir string, profiles []ABRProfile) {
-	var wg sync.WaitGroup
-
-	// 根据资源限制配置动态计算并行度
-	resourceLimit := s.cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-	maxParallel := 1
-	if resourceLimit >= 30 && s.hwAccel != "none" {
-		maxParallel = 2
-	}
-	sem := make(chan struct{}, maxParallel)
-
-	for _, p := range profiles {
-		wg.Add(1)
-		sem <- struct{}{}
-
-		go func(profile ABRProfile) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			variantDir := filepath.Join(outputDir, profile.Name)
-			os.MkdirAll(variantDir, 0755)
-
-			// 检查是否已存在
-			m3u8Path := filepath.Join(variantDir, "stream.m3u8")
-			if _, err := os.Stat(m3u8Path); err == nil {
-				return
-			}
-
-			args := s.buildABRFFmpegArgs(inputPath, variantDir, profile)
-			s.logger.Debugf("ABR 转码: %s -> %s", profile.Name, strings.Join(args, " "))
-
-			cmd := exec.Command(s.cfg.App.FFmpegPath, args...)
-			setLowPriority(cmd) // 极低资源模式：FFmpeg 以最低优先级运行
-			cmd.Stderr = os.Stderr
-
-			if err := cmd.Run(); err != nil {
-				s.logger.Errorf("ABR 转码失败 (%s): %v", profile.Name, err)
-				return
-			}
-
-			s.logger.Infof("ABR 转码完成: %s (%s)", mediaID, profile.Name)
-		}(p)
-	}
-
-	wg.Wait()
-	s.logger.Infof("ABR 所有变体生成完成: %s", mediaID)
-}
-
-// buildABRFFmpegArgs 构建 ABR 转码 FFmpeg 参数
-func (s *ABRService) buildABRFFmpegArgs(inputPath, outputDir string, profile ABRProfile) []string {
-	outputPath := filepath.Join(outputDir, "stream.m3u8")
-	segmentPath := filepath.Join(outputDir, "seg%04d.ts")
-
-	baseArgs := []string{"-y", "-i", inputPath}
-
-	// HLS 输出参数
-	hlsArgs := []string{
-		"-f", "hls",
-		"-hls_time", "4", // 4秒分片（ABR 推荐更短）
-		"-hls_list_size", "0",
-		"-hls_segment_filename", segmentPath,
-		"-hls_flags", "independent_segments",
-		outputPath,
-	}
-
-	audioArgs := []string{"-c:a", "aac", "-b:a", profile.AudioBitrate, "-ac", "2"}
-
-	var videoArgs []string
-
-	switch s.hwAccel {
-	case "nvenc":
-		baseArgs = append([]string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_nvenc",
-			"-preset", "p4",
-			"-b:v", profile.VideoBitrate,
-			"-maxrate", profile.MaxBitrate,
-			"-bufsize", profile.BufSize,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-			"-vf", fmt.Sprintf("scale_cuda=%d:%d", profile.Width, profile.Height),
-			"-g", "48", // GOP 大小（关键帧间隔）
-			"-keyint_min", "48",
-			"-sc_threshold", "0",
-		}
-
-	case "qsv":
-		baseArgs = append([]string{"-hwaccel", "qsv"}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_qsv",
-			"-preset", "medium",
-			"-b:v", profile.VideoBitrate,
-			"-maxrate", profile.MaxBitrate,
-			"-bufsize", profile.BufSize,
-			"-pix_fmt", "nv12",
-			"-vf", fmt.Sprintf("scale_qsv=%d:%d", profile.Width, profile.Height),
-			"-g", "48",
-			"-keyint_min", "48",
-		}
-
-	case "vaapi":
-		baseArgs = append([]string{
-			"-hwaccel", "vaapi",
-			"-hwaccel_output_format", "vaapi",
-			"-vaapi_device", s.cfg.App.VAAPIDevice,
-		}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_vaapi",
-			"-b:v", profile.VideoBitrate,
-			"-maxrate", profile.MaxBitrate,
-			"-bufsize", profile.BufSize,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-			"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", profile.Width, profile.Height),
-			"-g", "48",
-			"-keyint_min", "48",
-		}
-
-	default:
-		videoArgs = []string{
-			"-c:v", "libx264",
-			"-preset", "medium",
-			"-b:v", profile.VideoBitrate,
-			"-maxrate", profile.MaxBitrate,
-			"-bufsize", profile.BufSize,
-			"-pix_fmt", "yuv420p", // 强制 8-bit 输出，确保所有设备兼容
-			"-vf", fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
-			"-g", "48",
-			"-keyint_min", "48",
-			"-sc_threshold", "0",
-		}
-	}
-
-	// 根据资源限制配置动态计算 FFmpeg 线程数
-	ffmpegThreads := s.calcFFmpegThreads()
-	args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
-	args = append(args, videoArgs...)
-	args = append(args, audioArgs...)
-	args = append(args, hlsArgs...)
-
-	return args
-}
-
-// GetGPUInfo 获取 GPU 信息
-func (s *ABRService) GetGPUInfo() *GPUInfo {
-	info := &GPUInfo{
-		Type: s.hwAccel,
-	}
-
-	if s.hwAccel == "none" {
-		return info
-	}
-
-	info.Available = true
-
-	switch s.hwAccel {
-	case "nvenc":
-		info.Name = "NVIDIA GPU"
-		info.Encoders = []string{"h264_nvenc", "hevc_nvenc"}
-		info.MaxStreams = 4
-		// 尝试获取 GPU 利用率
-		if out, err := exec.Command("nvidia-smi", "--query-gpu=utilization.gpu,memory.total", "--format=csv,noheader,nounits").Output(); err == nil {
-			fmt.Sscanf(strings.TrimSpace(string(out)), "%f, %d", &info.Utilization, &info.MemoryMB)
-		}
-
-	case "qsv":
-		info.Name = "Intel Quick Sync Video"
-		info.Encoders = []string{"h264_qsv", "hevc_qsv"}
-		info.MaxStreams = 3
-
-	case "vaapi":
-		info.Name = "VA-API"
-		info.Encoders = []string{"h264_vaapi", "hevc_vaapi"}
-		info.MaxStreams = 2
-	}
-
-	return info
-}
-
-// GetABRStatus 获取 ABR 状态
-func (s *ABRService) GetABRStatus() *ABRStatus {
-	gpu := s.GetGPUInfo()
-
-	profileNames := make([]string, len(abrProfiles))
-	for i, p := range abrProfiles {
-		profileNames[i] = p.Name
-	}
-
-	return &ABRStatus{
-		Enabled:    true,
-		GPU:        *gpu,
-		MaxStreams: gpu.MaxStreams,
-		Profiles:   profileNames,
-	}
-}
-
 // CleanABRCache 清理 ABR 缓存
 func (s *ABRService) CleanABRCache(mediaID string) error {
 	cacheDir := filepath.Join(s.cacheDir, mediaID)
@@ -378,28 +129,48 @@ func parseBitrate(s string) int {
 		multiplier = 1000000
 		s = strings.TrimSuffix(s, "M")
 	}
-
 	var val int
 	fmt.Sscanf(s, "%d", &val)
 	return val * multiplier
 }
 
-// 确保 time 包被使用
-var _ = time.Now
+// GetGPUInfo 获取 GPU 信息
+func (s *ABRService) GetGPUInfo() *GPUInfo {
+	info := &GPUInfo{
+		Type: s.hwAccel,
+	}
+	if s.hwAccel == "none" {
+		return info
+	}
+	info.Available = true
+	switch s.hwAccel {
+	case "nvenc":
+		info.Name = "NVIDIA GPU"
+		info.Encoders = []string{"h264_nvenc", "hevc_nvenc"}
+		info.MaxStreams = 4
+	case "qsv":
+		info.Name = "Intel Quick Sync Video"
+		info.Encoders = []string{"h264_qsv", "hevc_qsv"}
+		info.MaxStreams = 3
+	case "vaapi":
+		info.Name = "VA-API"
+		info.Encoders = []string{"h264_vaapi", "hevc_vaapi"}
+		info.MaxStreams = 2
+	}
+	return info
+}
 
-// calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
-func (s *ABRService) calcFFmpegThreads() int {
-	resourceLimit := s.cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
+// GetABRStatus 获取 ABR 状态
+func (s *ABRService) GetABRStatus() *ABRStatus {
+	gpu := s.GetGPUInfo()
+	profileNames := make([]string, len(abrProfiles))
+	for i, p := range abrProfiles {
+		profileNames[i] = p.Name
 	}
-	cpuCount := runtime.NumCPU()
-	threads := cpuCount * resourceLimit / 100
-	if threads < 1 {
-		threads = 1
+	return &ABRStatus{
+		Enabled:    true,
+		GPU:        *gpu,
+		MaxStreams: gpu.MaxStreams,
+		Profiles:   profileNames,
 	}
-	if threads > cpuCount {
-		threads = cpuCount
-	}
-	return threads
 }

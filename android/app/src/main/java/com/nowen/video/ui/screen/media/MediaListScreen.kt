@@ -315,7 +315,7 @@ fun MediaListScreen(
                             label = "剧集",
                             count = stats.third,
                             isSelected = mediaType == "series",
-                            color = ElectricGreen,
+                            color = MaterialTheme.colorScheme.tertiary,
                             onClick = { mediaType = if (mediaType == "series") "" else "series" },
                             modifier = Modifier.weight(1f)
                         )
@@ -963,7 +963,7 @@ private fun CyberMixedGridItem(
                         Text(
                             text = resolution,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                            color = ElectricGreen,
+                            color = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }

@@ -14,6 +14,7 @@ import com.nowen.video.data.local.ThemeMode
 /**
  * 赛博朋克暗色主题色彩方案
  * 深空背景 + 霓虹强调色 + 高对比度前景
+ * 优化：更精致的层级对比度和色彩搭配
  */
 private val CyberDarkColorScheme = darkColorScheme(
     // 主色调 — 赛博蓝
@@ -74,45 +75,51 @@ private val CyberDarkColorScheme = darkColorScheme(
 )
 
 /**
- * 赛博朋克浅色主题（保留但不作为默认推荐）
+ * 赛博朋克浅色主题
  * 在浅色模式下仍保留科技感色彩
  */
 private val CyberLightColorScheme = lightColorScheme(
-    primary = CyberBlueDark,
+    // 主色调 — 降低饱和度，日间模式更柔和
+    primary = Color(0xFF1A8CA8),          // 柔和青蓝，降低刺眼感
     onPrimary = Color.White,
-    primaryContainer = CyberBlueLight.copy(alpha = 0.3f),
-    onPrimaryContainer = CyberBlueDim,
+    primaryContainer = Color(0xFFD6F0F7), // 极淡青色容器
+    onPrimaryContainer = Color(0xFF004D5E),
 
-    secondary = NeonPurpleDark,
+    // 次色调 — 降低饱和度
+    secondary = Color(0xFF7B68C8),        // 柔和紫色
     onSecondary = Color.White,
-    secondaryContainer = NeonPurpleLight.copy(alpha = 0.3f),
-    onSecondaryContainer = NeonPurpleDim,
+    secondaryContainer = Color(0xFFE8E0F8),
+    onSecondaryContainer = Color(0xFF3D2470),
 
-    tertiary = ElectricGreenDark,
+    // 第三色 — 降低饱和度
+    tertiary = Color(0xFF2DA06A),          // 柔和绿色
     onTertiary = Color.White,
 
-    error = NeonPink,
+    // 错误色 — 降低饱和度
+    error = Color(0xFFD93B5C),
     onError = Color.White,
 
-    background = LightBackground,
-    onBackground = LightOnBackground,
-    surface = LightSurface,
-    onSurface = LightOnSurface,
-    surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = Color(0xFF475569),
-    surfaceTint = CyberBlueDark,
+    // 背景 — 微暖白，减少冷调
+    background = Color(0xFFF8F9FB),
+    onBackground = Color(0xFF1A1F2E),
+    surface = Color.White,
+    onSurface = Color(0xFF1E293B),
+    surfaceVariant = Color(0xFFF0F2F6),
+    onSurfaceVariant = Color(0xFF5A6478),  // 次要文本更深，提高可读性
+    surfaceTint = Color(0xFF1A8CA8),
 
-    outline = Color(0xFFCBD5E1),
+    // 边框/分割线 — 更柔和
+    outline = Color(0xFF94A3B8),           // 加深outline，年份文字更清晰
     outlineVariant = Color(0xFFE2E8F0),
 
     // Surface 容器层级（浅色模式）
-    surfaceContainerHighest = Color(0xFFDDE3EA),
-    surfaceContainerHigh = Color(0xFFE8EDF2),
-    surfaceContainer = Color(0xFFF0F4F8),
-    surfaceContainerLow = Color(0xFFF5F8FB),
+    surfaceContainerHighest = Color(0xFFE2E7ED),
+    surfaceContainerHigh = Color(0xFFECF0F4),
+    surfaceContainer = Color(0xFFF3F5F8),
+    surfaceContainerLow = Color(0xFFF8F9FB),
     surfaceContainerLowest = Color.White,
     surfaceBright = Color.White,
-    surfaceDim = Color(0xFFE0E5EB),
+    surfaceDim = Color(0xFFE8ECF0),
 
     // 反色
     inverseSurface = Color(0xFF2E3440),
@@ -123,7 +130,7 @@ private val CyberLightColorScheme = lightColorScheme(
 )
 
 /**
- * Nowen Video 主题 — 赛博朋克版
+ * Nowen Video 主题 — 科技优雅版
  *
  * 支持：
  * - Material You 动态取色（Android 12+）
@@ -134,7 +141,7 @@ private val CyberLightColorScheme = lightColorScheme(
 @Composable
 fun NowenVideoTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    dynamicColor: Boolean = false,  // 默认关闭动态取色，保持赛博朋克风格
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -144,7 +151,6 @@ fun NowenVideoTheme(
     }
 
     val colorScheme = when {
-        // Android 12+ 支持动态取色（Material You）
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context)
@@ -154,7 +160,7 @@ fun NowenVideoTheme(
         else -> CyberLightColorScheme
     }
 
-    // 自适应系统栏颜色 — 深色模式下系统栏全透明
+    // 自适应系统栏颜色
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

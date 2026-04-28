@@ -50,6 +50,8 @@ interface VideoPlayerProps {
   onRemuxFallback?: () => void
   /** 预处理完成回调，播放器会自动切换到预处理流 */
   onPreprocessReady?: () => void
+  /** 进度条雪碧图 WebVTT 索引地址（预处理完成后可用） */
+  spriteVttUrl?: string
 }
 
 export default function VideoPlayer({
@@ -65,6 +67,7 @@ export default function VideoPlayer({
   knownDuration,
   onPreprocessReady,
   onRemuxFallback,
+  spriteVttUrl,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
@@ -140,6 +143,16 @@ export default function VideoPlayer({
   // 进度条hover预览
   const [hoverProgress, setHoverProgress] = useState<number | null>(null)
   const [hoverTime, setHoverTime] = useState('')
+  // 进度条雪碧图预览
+  const [spriteVttCues, setSpriteVttCues] = useState<Array<{ start: number; end: number; x: number; y: number; w: number; h: number }>>([]
+  )
+  const [hoverSprite, setHoverSprite] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+
+  // 多音轨
+  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; name: string; lang: string }>>([]
+  )
+  const [currentAudioTrack, setCurrentAudioTrack] = useState(-1)
+  const [showAudioMenu, setShowAudioMenu] = useState(false)
 
   // 手势控制状态
   const [gestureOverlay, setGestureOverlay] = useState<{ type: string; value: string } | null>(null)
@@ -452,10 +465,19 @@ export default function VideoPlayer({
     } else {
       if (Hls.isSupported()) {
         const hls = new Hls({
+          // Worker 线程解封装，避免主线程卡顿
+          enableWorker: true,
           startLevel: -1,
           capLevelToPlayerSize: true,
+          // 缓冲策略优化
           maxBufferLength: 30,
           maxMaxBufferLength: 60,
+          maxBufferSize: 60 * 1000 * 1000, // 60MB 内存上限，防止长视频溢出
+          // ABR 带宽估算优化：保守估算避免频繁降级
+          abrBandWidthFactor: 0.95,
+          abrBandWidthUpFactor: 0.7,
+          // 首帧优化
+          testBandwidth: true,
           xhrSetup: (xhr: XMLHttpRequest, _url: string) => {
             // 为所有 HLS 请求（子 m3u8、.ts 分片）注入 JWT 认证头
             const token = useAuthStore.getState().token
@@ -477,6 +499,19 @@ export default function VideoPlayer({
         })
         hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
           setCurrentQuality(data.level)
+        })
+        // 多音轨支持
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
+          const tracks = data.audioTracks.map((t, i) => ({
+            id: i,
+            name: t.name || `音轨 ${i + 1}`,
+            lang: t.lang || '',
+          }))
+          setAudioTracks(tracks)
+          setCurrentAudioTrack(hls.audioTrack)
+        })
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
+          setCurrentAudioTrack(data.id)
         })
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (data.fatal) {
@@ -686,7 +721,14 @@ export default function VideoPlayer({
     const rect = e.currentTarget.getBoundingClientRect()
     const pos = (e.clientX - rect.left) / rect.width
     setHoverProgress(pos * 100)
-    setHoverTime(formatTime(pos * displayDuration))
+    const hoverSec = pos * displayDuration
+    setHoverTime(formatTime(hoverSec))
+    // 查找对应的雪碧图帧
+    if (spriteVttCues.length > 0) {
+      const cue = spriteVttCues.find(c => hoverSec >= c.start && hoverSec < c.end)
+        || spriteVttCues[spriteVttCues.length - 1]
+      setHoverSprite(cue ? { x: cue.x, y: cue.y, w: cue.w, h: cue.h } : null)
+    }
   }
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -724,6 +766,57 @@ export default function VideoPlayer({
     }
     setShowQuality(false)
   }
+
+  // 切换音轨
+  const switchAudioTrack = (id: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.audioTrack = id
+      setCurrentAudioTrack(id)
+    }
+    setShowAudioMenu(false)
+  }
+
+  // 解析 WebVTT sprite 索引文件
+  useEffect(() => {
+    if (!spriteVttUrl) {
+      setSpriteVttCues([])
+      return
+    }
+    const token = useAuthStore.getState().token
+    const url = token
+      ? `${spriteVttUrl}${spriteVttUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+      : spriteVttUrl
+    fetch(url)
+      .then(r => r.text())
+      .then(text => {
+        const cues: Array<{ start: number; end: number; x: number; y: number; w: number; h: number }> = []
+        // 解析 WebVTT：每个 cue 格式为 "HH:MM:SS.mmm --> HH:MM:SS.mmm\nsprite.jpg#xywh=x,y,w,h"
+        const blocks = text.split(/\n\n+/)
+        for (const block of blocks) {
+          const lines = block.trim().split('\n')
+          const timeLine = lines.find(l => l.includes('-->'))
+          const coordLine = lines.find(l => l.includes('#xywh='))
+          if (!timeLine || !coordLine) continue
+          const [startStr, endStr] = timeLine.split('-->').map(s => s.trim())
+          const parseVTTTime = (s: string) => {
+            const parts = s.split(':').map(Number)
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+          }
+          const match = coordLine.match(/#xywh=(\d+),(\d+),(\d+),(\d+)/)
+          if (!match) continue
+          cues.push({
+            start: parseVTTTime(startStr),
+            end: parseVTTTime(endStr),
+            x: parseInt(match[1]),
+            y: parseInt(match[2]),
+            w: parseInt(match[3]),
+            h: parseInt(match[4]),
+          })
+        }
+        setSpriteVttCues(cues)
+      })
+      .catch(() => setSpriteVttCues([]))
+  }, [spriteVttUrl])
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return '0:00'
@@ -921,6 +1014,7 @@ export default function VideoPlayer({
     setShowSpeedMenu(false)
     setShowTranslateMenu(false)
     setShowContentSearch(false)
+    setShowAudioMenu(false)
   }
 
   return (
@@ -1110,20 +1204,44 @@ export default function VideoPlayer({
           className="progress-bar group/progress mb-4"
           onClick={handleProgressClick}
           onMouseMove={handleProgressHover}
-          onMouseLeave={() => setHoverProgress(null)}
+          onMouseLeave={() => { setHoverProgress(null); setHoverSprite(null) }}
         >
-          {/* 预览时间提示 */}
+          {/* 预览时间提示 + 雪碧图缩略图 */}
           {hoverProgress !== null && (
             <div
-              className="absolute -top-8 -translate-x-1/2 rounded-md px-2 py-1 text-xs font-display text-white tracking-wide pointer-events-none"
+              className="absolute -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1"
               style={{
                 left: `${hoverProgress}%`,
-                background: 'var(--neon-blue-15)',
-                border: '1px solid var(--neon-blue-20)',
-                backdropFilter: 'blur(8px)',
+                bottom: '100%',
+                marginBottom: '8px',
               }}
             >
-          {hoverTime}
+              {/* 雪碧图缩略图预览 */}
+              {hoverSprite && spriteVttUrl && (
+                <div
+                  className="rounded-md overflow-hidden shadow-2xl"
+                  style={{
+                    width: `${hoverSprite.w}px`,
+                    height: `${hoverSprite.h}px`,
+                    border: '1px solid var(--neon-blue-20)',
+                    backgroundImage: `url(${spriteVttUrl.replace('sprite.vtt', 'sprite.jpg')}${spriteVttUrl.includes('?') ? '&' : '?'}token=${useAuthStore.getState().token || ''})`,
+                    backgroundPosition: `-${hoverSprite.x}px -${hoverSprite.y}px`,
+                    backgroundSize: 'auto',
+                    backgroundRepeat: 'no-repeat',
+                  }}
+                />
+              )}
+              {/* 时间文字 */}
+              <div
+                className="rounded-md px-2 py-1 text-xs font-display text-white tracking-wide"
+                style={{
+                  background: 'var(--neon-blue-15)',
+                  border: '1px solid var(--neon-blue-20)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                {hoverTime}
+              </div>
             </div>
           )}
           {/* 已转码范围指示（实时转码 EVENT 模式下，显示已转码的区域） */}
@@ -1586,6 +1704,50 @@ export default function VideoPlayer({
             )}
           </div>
 
+          {/* 多音轨切换 */}
+          {audioTracks.length > 1 && (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowAudioMenu(!showAudioMenu)
+                  setShowQuality(false)
+                  setShowSubtitleMenu(false)
+                  setShowCastPanel(false)
+                }}
+                className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
+                title="音轨"
+              >
+                <Languages size={18} />
+              </button>
+              {showAudioMenu && (
+                <div className="absolute bottom-full right-0 mb-2 min-w-[160px] rounded-xl py-1 shadow-2xl"
+                  style={{
+                    background: 'rgba(11, 17, 32, 0.9)',
+                    border: '1px solid var(--neon-blue-10)',
+                    backdropFilter: 'blur(20px)',
+                  }}
+                >
+                  <div className="px-4 py-1.5 text-xs text-surface-500 border-b border-white/5">音轨</div>
+                  {audioTracks.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => switchAudioTrack(t.id)}
+                      className={clsx(
+                        'block w-full px-4 py-2.5 text-left text-sm transition-colors',
+                        t.id === currentAudioTrack
+                          ? 'text-neon-blue'
+                          : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
+                      )}
+                      style={t.id === currentAudioTrack ? { background: 'var(--neon-blue-6)' } : {}}
+                    >
+                      {t.name}{t.lang ? ` (${t.lang})` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 画质选择 */}
           {qualities.length > 1 && (
             <div className="relative">
@@ -1653,7 +1815,7 @@ export default function VideoPlayer({
       </div>
 
       {/* 点击空白关闭弹出菜单 */}
-      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch) && (
+      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch || showAudioMenu) && (
         <div className="absolute inset-0 z-[-1]" onClick={closeAllMenus} />
       )}
 

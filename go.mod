@@ -1,6 +1,6 @@
 module github.com/nowen-video/nowen-video
 
-go 1.22
+go 1.25.0
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0
@@ -15,6 +15,7 @@ require (
 	github.com/studio-b12/gowebdav v0.9.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.21.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/text v0.14.0
 	gorm.io/gorm v1.25.7
 )

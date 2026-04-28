@@ -81,3 +81,9 @@ export const statsApi = {
   getMyStats: () =>
     api.get<{ data: import('@/types').UserStatsOverview }>('/stats/me'),
 }
+
+// ==================== 播放错误上报 ====================
+export const logApi = {
+  reportPlaybackError: (data: { media_id?: string; media_title?: string; message: string; detail?: string }) =>
+    api.post('/logs/playback-error', data),
+}

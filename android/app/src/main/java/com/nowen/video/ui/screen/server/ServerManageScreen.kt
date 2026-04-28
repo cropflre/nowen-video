@@ -42,16 +42,16 @@ fun ServerManageScreen(onBack: () -> Unit, onServerSwitch: () -> Unit, onAddServ
     LaunchedEffect(Unit) { viewModel.loadServers() }
     Box(Modifier.fillMaxSize().spaceBackground()) {
         Scaffold(containerColor = Color.Transparent, topBar = {
-            TopAppBar(title = { Text("服务器管理", color = ElectricGreen, style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.sp)) },
+            TopAppBar(title = { Text("服务器管理", color = colorScheme.primary, style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.sp)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = colorScheme.primary) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.scrim.copy(alpha = 0.85f)))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface.copy(alpha = 0.95f)))
         }, floatingActionButton = {
             FloatingActionButton(onClick = onAddServer, containerColor = colorScheme.primary) { Icon(Icons.Default.Add, "添加服务器", tint = Color.White) }
         }) { padding ->
             if (uiState.servers.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Dns, null, Modifier.size(64.dp), tint = ElectricGreen.copy(alpha = 0.4f))
+                        Icon(Icons.Default.Dns, null, Modifier.size(64.dp), tint = colorScheme.tertiary.copy(alpha = 0.4f))
                         Spacer(Modifier.height(16.dp)); Text("暂无服务器", style = MaterialTheme.typography.bodyLarge, color = colorScheme.onSurfaceVariant)
                         Text("点击右下角按钮添加服务器", style = MaterialTheme.typography.bodySmall, color = colorScheme.outline)
                     }
@@ -61,15 +61,15 @@ fun ServerManageScreen(onBack: () -> Unit, onServerSwitch: () -> Unit, onAddServ
                     items(uiState.servers) { server ->
                         val isActive = server.id == uiState.activeServerId
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                            .then(if (isActive) Modifier.border(1.dp, Brush.horizontalGradient(listOf(colorScheme.primary, ElectricGreen)), RoundedCornerShape(14.dp)).background(colorScheme.primary.copy(alpha = 0.06f))
+                            .then(if (isActive) Modifier.border(1.dp, Brush.horizontalGradient(listOf(colorScheme.primary, colorScheme.tertiary)), RoundedCornerShape(14.dp)).background(colorScheme.primary.copy(alpha = 0.06f))
                             else Modifier.glassMorphism(cornerRadius = 14.dp))
                             .clickable { if (!isActive) viewModel.switchServer(server.id, onServerSwitch) }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Icon(if (isActive) Icons.Default.CheckCircle else Icons.Default.Dns, null, Modifier.size(40.dp), tint = if (isActive) ElectricGreen else colorScheme.outline)
+                                Icon(if (isActive) Icons.Default.CheckCircle else Icons.Default.Dns, null, Modifier.size(40.dp), tint = if (isActive) colorScheme.tertiary else colorScheme.outline)
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(server.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), color = colorScheme.onSurface)
-                                        if (isActive) Surface(shape = RoundedCornerShape(4.dp), color = ElectricGreen) { Text("当前", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
+                                        if (isActive) Surface(shape = RoundedCornerShape(4.dp), color = colorScheme.tertiary) { Text("当前", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
                                     }
                                     Text(server.url, style = MaterialTheme.typography.bodySmall, color = if (isActive) colorScheme.primary.copy(alpha = 0.8f) else colorScheme.outline)
                                     if (server.username.isNotBlank()) Text("用户: ${server.username}", style = MaterialTheme.typography.labelSmall, color = colorScheme.outline)

@@ -588,6 +588,8 @@ type PreprocessTask struct {
 	// 预处理结果
 	ThumbnailPath  string  `json:"thumbnail_path" gorm:"type:text"`  // 封面缩略图路径
 	KeyframesDir   string  `json:"keyframes_dir" gorm:"type:text"`   // 关键帧预览目录
+	SpritePath     string  `json:"sprite_path" gorm:"type:text"`     // 进度条雪碧图路径
+	SpriteVTTPath  string  `json:"sprite_vtt_path" gorm:"type:text"` // 进度条雪碧图 WebVTT 索引路径
 	HLSMasterPath  string  `json:"hls_master_path" gorm:"type:text"` // HLS 主播放列表路径
 	Variants       string  `json:"variants" gorm:"type:text"`        // 已完成的变体列表（JSON: ["360p","720p","1080p"]）
 	SourceHeight   int     `json:"source_height"`                    // 源视频高度
@@ -621,7 +623,7 @@ type SubtitlePreprocessTask struct {
 	ID         string  `json:"id" gorm:"primaryKey;type:text"`
 	MediaID    string  `json:"media_id" gorm:"index;type:text;not null"`
 	Status     string  `json:"status" gorm:"type:text;default:pending"` // pending / running / completed / failed / cancelled / skipped
-	Phase      string  `json:"phase" gorm:"type:text"`                  // check / extract / generate / translate / done
+	Phase      string  `json:"phase" gorm:"type:text"`                  // check / extract / generate / clean / translate / done
 	Progress   float64 `json:"progress"`                                // 0-100 总体进度
 	Message    string  `json:"message" gorm:"type:text"`                // 当前状态描述
 	Error      string  `json:"error" gorm:"type:text"`                  // 错误信息
@@ -636,6 +638,9 @@ type SubtitlePreprocessTask struct {
 	SubtitleSource   string `json:"subtitle_source" gorm:"type:text"`   // 字幕来源: ai_cached / external_vtt / extracted / ai_generated
 	DetectedLanguage string `json:"detected_language" gorm:"type:text"` // 检测到的源语言
 	CueCount         int    `json:"cue_count"`                          // 字幕条目数
+	// 增强字段
+	FailedLangs     string `json:"failed_langs" gorm:"type:text"`      // 翻译失败的语言列表（逗号分隔），用于前端展示
+	CleanReportJSON string `json:"clean_report_json" gorm:"type:text"` // 清洗详细报告（JSON 字符串）
 	// 性能统计
 	StartedAt   *time.Time `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at"`
@@ -696,6 +701,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&SubtitlePreprocessTask{},
 		// 电影系列合集
 		&MovieCollection{},
+		// 系统日志
+		&SystemLog{},
 	); err != nil {
 		return err
 	}

@@ -229,7 +229,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 登录按钮 — 赛博蓝渐变
+            // 登录按钮 — 赛博蓝紫渐变
             Button(
                 onClick = { viewModel.submit(username, password, onLoginSuccess) },
                 modifier = Modifier
@@ -238,24 +238,40 @@ fun LoginScreen(
                 enabled = username.isNotBlank() && password.isNotBlank() && !uiState.loading,
                 shape = CyberButtonShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = colorScheme.primary,
-                    contentColor = colorScheme.scrim
-                )
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White,
+                    disabledContainerColor = colorScheme.surfaceVariant,
+                    disabledContentColor = colorScheme.outline
+                ),
+                contentPadding = PaddingValues()
             ) {
-                if (uiState.loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = colorScheme.scrim,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text = if (uiState.isRegisterMode) "创建账号" else "登  录",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = if (username.isNotBlank() && password.isNotBlank() && !uiState.loading)
+                                PrimaryButtonGradient
+                            else
+                                Brush.horizontalGradient(listOf(colorScheme.surfaceVariant, colorScheme.surfaceVariant)),
+                            shape = CyberButtonShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (uiState.loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
                         )
-                    )
+                    } else {
+                        Text(
+                            text = if (uiState.isRegisterMode) "创建账号" else "登  录",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        )
+                    }
                 }
             }
 

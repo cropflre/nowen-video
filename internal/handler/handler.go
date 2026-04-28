@@ -54,11 +54,13 @@ type Handlers struct {
 	Collection *CollectionHandler
 	// V2.1: WebDAV 存储管理
 	Storage *StorageHandler
+	// 系统日志
+	SystemLog *SystemLogHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
 	return &Handlers{
-		Auth:    &AuthHandler{authService: services.Auth, logger: logger},
+		Auth:    &AuthHandler{authService: services.Auth, serverName: cfg.Emby.ServerName, logger: logger},
 		Library: &LibraryHandler{libService: services.Library, permSvc: services.Permission, logger: logger},
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, mediaPersonRepo: repos.MediaPerson, logger: logger},
@@ -68,7 +70,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			userService:       services.User,
 			authService:       services.Auth,
 			transcodeService:  services.Transcode,
-			monitorService:    services.Monitor,
 			schedulerService:  services.Scheduler,
 			permissionService: services.Permission,
 			libraryService:    services.Library,
@@ -121,5 +122,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Collection: &CollectionHandler{collectionService: services.Collection, streamService: services.Stream, logger: logger},
 		// V2.1: WebDAV 存储管理
 		Storage: NewStorageHandler(services.WebDAV, services.RemoteStorage, cfg, logger),
+		// 系统日志
+		SystemLog: &SystemLogHandler{logRepo: repos.SystemLog, logger: logger},
 	}
 }

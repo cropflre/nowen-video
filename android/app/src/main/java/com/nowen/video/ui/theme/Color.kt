@@ -3,55 +3,58 @@ package com.nowen.video.ui.theme
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-// ==================== 科技感核心色彩 ====================
+// ==================== 科技感核心色彩（优化饱和度与对比度） ====================
 
-// 赛博蓝 — 主色调
-val CyberBlue = Color(0xFF00D4FF)
-val CyberBlueDark = Color(0xFF0099CC)
-val CyberBlueLight = Color(0xFF66E5FF)
+// 赛博蓝 — 主色调（微调为更柔和的科技蓝，减少刺眼感）
+val CyberBlue = Color(0xFF00C8F0)
+val CyberBlueDark = Color(0xFF0094B8)
+val CyberBlueLight = Color(0xFF5CE0FF)
 val CyberBlueDim = Color(0xFF004D66)
+val CyberBlueSubtle = Color(0xFF00C8F0).copy(alpha = 0.08f)
 
-// 霓虹紫 — 辅助色
-val NeonPurple = Color(0xFFBB86FC)
-val NeonPurpleDark = Color(0xFF8B5CF6)
-val NeonPurpleLight = Color(0xFFD4BBFF)
-val NeonPurpleDim = Color(0xFF4A2D7A)
+// 霓虹紫 — 辅助色（微调为更优雅的紫色）
+val NeonPurple = Color(0xFFA78BFA)
+val NeonPurpleDark = Color(0xFF7C5CE6)
+val NeonPurpleLight = Color(0xFFCBB5FF)
+val NeonPurpleDim = Color(0xFF3D2470)
+val NeonPurpleSubtle = Color(0xFFA78BFA).copy(alpha = 0.08f)
 
-// 电子绿 — 强调色
-val ElectricGreen = Color(0xFF00FF94)
-val ElectricGreenDark = Color(0xFF00CC76)
-val ElectricGreenDim = Color(0xFF005C35)
+// 电子绿 — 强调色（微调为更舒适的绿色）
+val ElectricGreen = Color(0xFF00E68A)
+val ElectricGreenDark = Color(0xFF00B86E)
+val ElectricGreenDim = Color(0xFF004D2E)
+val ElectricGreenSubtle = Color(0xFF00E68A).copy(alpha = 0.08f)
 
-// 霓虹粉 — 特殊强调
-val NeonPink = Color(0xFFFF006E)
-val NeonPinkLight = Color(0xFFFF4D94)
+// 霓虹粉 — 特殊强调（微调为更柔和的粉色）
+val NeonPink = Color(0xFFFF4081)
+val NeonPinkLight = Color(0xFFFF6B9D)
 val NeonPinkDim = Color(0xFF660029)
 
-// 琥珀金 — 评分/星级
-val AmberGold = Color(0xFFFFD700)
+// 琥珀金 — 评分/星级（微调为更温暖的金色）
+val AmberGold = Color(0xFFFFCA28)
 val AmberGoldDim = Color(0xFFB8860B)
 
-// ==================== 深空背景系统 ====================
+// ==================== 深空背景系统（优化层级对比度） ====================
 
-// 深色主题背景层级（从深到浅）
-val SpaceBlack = Color(0xFF030712)        // 最深背景
-val SpaceDarkBlue = Color(0xFF0A0F1E)     // 主背景
-val SpaceSurface = Color(0xFF111827)       // Surface 层
-val SpaceSurfaceHigh = Color(0xFF1A2332)   // Surface 提升层
-val SpaceSurfaceVariant = Color(0xFF1F2937) // Surface 变体
-val SpaceBorder = Color(0xFF374151)        // 边框/分割线
+// 深色主题背景层级（从深到浅，增强层次感）
+val SpaceBlack = Color(0xFF020610)        // 最深背景（纯净深空）
+val SpaceDarkBlue = Color(0xFF080D1C)     // 主背景（微蓝深空）
+val SpaceSurface = Color(0xFF0F1628)      // Surface 层（深蓝灰）
+val SpaceSurfaceHigh = Color(0xFF171E34)  // Surface 提升层
+val SpaceSurfaceVariant = Color(0xFF1E2740) // Surface 变体
+val SpaceBorder = Color(0xFF2A3550)       // 边框/分割线（更柔和）
 
-// 深色主题前景色
-val SpaceOnBg = Color(0xFFF1F5F9)         // 主文本
-val SpaceOnSurface = Color(0xFFE2E8F0)    // Surface 文本
-val SpaceOnSurfaceDim = Color(0xFF94A3B8)  // 次要文本
-val SpaceOnSurfaceVariant = Color(0xFF64748B) // 更次要文本
+// 深色主题前景色（优化可读性）
+val SpaceOnBg = Color(0xFFF0F4F8)         // 主文本（微暖白）
+val SpaceOnSurface = Color(0xFFDDE4EE)    // Surface 文本
+val SpaceOnSurfaceDim = Color(0xFF8B99B0)  // 次要文本（更柔和）
+val SpaceOnSurfaceVariant = Color(0xFF5C6B82) // 更次要文本
 
-// ==================== 浅色主题（备用） ====================
+// ==================== 浅色主题（优化） ====================
 
-val LightBackground = Color(0xFFF0F4F8)
+val LightBackground = Color(0xFFF5F7FA)
 val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceVariant = Color(0xFFE8EDF2)
+val LightSurfaceVariant = Color(0xFFEBEFF5)
 val LightOnBackground = Color(0xFF0F172A)
 val LightOnSurface = Color(0xFF1E293B)
 
@@ -81,13 +84,27 @@ val DarkOnBackground = SpaceOnBg
 val DarkOnSurface = SpaceOnSurface
 
 // ==================== 文本色彩别名 ====================
-// 为方便各屏幕统一引用
 
 val TextPrimary = SpaceOnBg              // 主文本
 val TextSecondary = SpaceOnSurfaceDim    // 次要文本
 val TextTertiary = SpaceOnSurfaceVariant // 更次要文本
 
-// ==================== 渐变色预设 ====================
+// ==================== 功能色彩别名 ====================
+
+val SuccessColor = ElectricGreen
+val WarningColor = AmberGold
+val ErrorColor = NeonPink
+val InfoColor = CyberBlue
+
+// ==================== 播放器专用色彩 ====================
+
+val PlayerControlBg = Color(0xFF0A0F1E)
+val PlayerControlBgAlpha = Color(0xFF0A0F1E).copy(alpha = 0.88f)
+val PlayerProgressTrack = Color(0xFFFFFFFF).copy(alpha = 0.12f)
+val PlayerProgressBuffer = Color(0xFFFFFFFF).copy(alpha = 0.28f)
+val PlayerAccent = CyberBlue
+
+// ==================== 渐变色预设（增强） ====================
 
 val CyberGradient = Brush.horizontalGradient(
     colors = listOf(CyberBlue, NeonPurple)
@@ -102,7 +119,7 @@ val NeonGradient = Brush.horizontalGradient(
 )
 
 val PurpleGlowGradient = Brush.radialGradient(
-    colors = listOf(NeonPurple.copy(alpha = 0.3f), Color.Transparent)
+    colors = listOf(NeonPurple.copy(alpha = 0.25f), Color.Transparent)
 )
 
 val SpaceGradient = Brush.verticalGradient(
@@ -111,7 +128,7 @@ val SpaceGradient = Brush.verticalGradient(
 
 val CardGlowGradient = Brush.verticalGradient(
     colors = listOf(
-        CyberBlue.copy(alpha = 0.08f),
+        CyberBlue.copy(alpha = 0.06f),
         Color.Transparent
     )
 )
@@ -121,4 +138,24 @@ val SurfaceGradient = Brush.verticalGradient(
         SpaceSurfaceHigh,
         SpaceSurface
     )
+)
+
+// 播放器进度条渐变
+val PlayerProgressGradient = Brush.horizontalGradient(
+    colors = listOf(CyberBlue, NeonPurple)
+)
+
+// 按钮渐变（主操作）
+val PrimaryButtonGradient = Brush.horizontalGradient(
+    colors = listOf(CyberBlue, NeonPurple.copy(alpha = 0.85f))
+)
+
+// 卡片悬浮光晕
+val CardHoverGlow = Brush.radialGradient(
+    colors = listOf(CyberBlue.copy(alpha = 0.12f), Color.Transparent)
+)
+
+// 底部遮罩渐变
+val BottomScrimGradient = Brush.verticalGradient(
+    colors = listOf(Color.Transparent, SpaceBlack.copy(alpha = 0.85f))
 )

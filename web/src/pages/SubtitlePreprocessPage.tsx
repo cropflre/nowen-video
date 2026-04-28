@@ -989,6 +989,7 @@ export default function SubtitlePreprocessPage() {
                           {task.phase === 'generate' && <Sparkles size={10} />}
                           {task.phase === 'translate' && <Globe size={10} />}
                           {task.phase === 'extract' && <FileText size={10} />}
+                          {task.phase === 'clean' && <Sparkles size={10} />}
                           {phaseLabels[task.phase] || task.phase}
                           {task.message && ` · ${task.message}`}
                         </span>
@@ -1024,6 +1025,12 @@ export default function SubtitlePreprocessPage() {
                       <span className="flex items-center gap-1">
                         <Languages size={10} />
                         翻译: {task.target_langs}
+                      </span>
+                    )}
+                    {task.failed_langs && (
+                      <span className="flex items-center gap-1 text-red-400" title={`翻译失败的语言: ${task.failed_langs}`}>
+                        <AlertCircle size={10} />
+                        失败语言: {task.failed_langs}
                       </span>
                     )}
                     {task.elapsed_sec > 0 && (

@@ -550,6 +550,30 @@ func setDefaults() {
 	viper.SetDefault("ai.max_concurrent", 3)
 	viper.SetDefault("ai.request_interval_ms", 200)
 
+	// ---- 字幕预处理（ASR/OCR/清洗）默认值 ----
+	viper.SetDefault("ai.subtitle_preprocess_workers", 1)
+	viper.SetDefault("ai.ocr_enabled", false)
+	viper.SetDefault("ai.tesseract_path", "tesseract")
+	viper.SetDefault("ai.tesseract_lang", "chi_sim+eng")
+
+	// 字幕清洗：默认行为偏保守，开启后也不会误杀
+	viper.SetDefault("ai.sub_clean_enabled", false)
+	viper.SetDefault("ai.sub_clean_remove_html", true)
+	viper.SetDefault("ai.sub_clean_remove_ass_style", true)
+	viper.SetDefault("ai.sub_clean_normalize_punct", false)
+	viper.SetDefault("ai.sub_clean_remove_sdh", true)
+	viper.SetDefault("ai.sub_clean_remove_ads", true)
+	viper.SetDefault("ai.sub_clean_merge_short", true)
+	viper.SetDefault("ai.sub_clean_split_long", true)
+	viper.SetDefault("ai.sub_clean_backup", true)
+	viper.SetDefault("ai.sub_clean_fallback_enc", "gbk")
+	viper.SetDefault("ai.sub_clean_time_offset_ms", 0)
+	viper.SetDefault("ai.sub_clean_min_duration_ms", 500)
+	viper.SetDefault("ai.sub_clean_max_duration_ms", 10000)
+	viper.SetDefault("ai.sub_clean_min_gap_ms", 200)
+	viper.SetDefault("ai.sub_clean_max_chars_per_line", 42)
+	viper.SetDefault("ai.sub_clean_max_lines_per_cue", 2)
+
 	// ---- 缓存 ----
 	viper.SetDefault("cache.cache_dir", "./cache")
 	viper.SetDefault("cache.max_disk_usage_mb", 0)

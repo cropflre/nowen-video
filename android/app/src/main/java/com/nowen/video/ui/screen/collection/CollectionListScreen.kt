@@ -44,7 +44,7 @@ fun CollectionListScreen(onCollectionClick: (String) -> Unit, onBack: () -> Unit
         Scaffold(containerColor = Color.Transparent, topBar = {
             TopAppBar(title = { Text("影视合集", color = colorScheme.secondary, style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.sp)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = colorScheme.primary) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.scrim.copy(alpha = 0.85f)))
+colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface.copy(alpha = 0.95f)))
         }) { padding ->
             if (uiState.loading) {
                 Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator(color = colorScheme.primary, trackColor = colorScheme.surfaceContainerHigh) }

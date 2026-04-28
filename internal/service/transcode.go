@@ -1,15 +1,12 @@
 package service
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +16,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
+	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	"go.uber.org/zap"
 )
 
@@ -174,209 +172,67 @@ func (s *TranscodeService) recoverPendingTasks() {
 	s.logger.Infof("已重置 %d 个重启前未完成的转码任务为 failed", len(running))
 }
 
-// detectHWAccel 检测可用的硬件加速方式
+// detectHWAccel 检测可用的硬件加速方式（委托给 ffmpeg 子包的公共实现）
 func (s *TranscodeService) detectHWAccel() string {
-	if s.cfg.App.HWAccel != "auto" && s.cfg.App.HWAccel != "" {
-		return s.cfg.App.HWAccel
-	}
-
-	// 尝试检测NVIDIA GPU
-	if s.detectNvidiaSmi() {
-		// 验证nvenc是否可用
-		cmd := exec.Command(s.cfg.App.FFmpegPath, "-hide_banner", "-encoders")
-		output, err := cmd.Output()
-		if err == nil && strings.Contains(string(output), "h264_nvenc") {
-			s.logger.Info("检测到NVIDIA GPU，使用NVENC硬件加速")
-			return "nvenc"
-		}
-	}
-
-	// 检测Intel QSV（群晖NAS常见）
-	if runtime.GOOS == "linux" {
-		if _, err := os.Stat("/dev/dri/renderD128"); err == nil {
-			cmd := exec.Command(s.cfg.App.FFmpegPath, "-hide_banner", "-encoders")
-			output, err := cmd.Output()
-			if err == nil {
-				if strings.Contains(string(output), "h264_qsv") {
-					s.logger.Info("检测到Intel QSV，使用QSV硬件加速")
-					return "qsv"
-				}
-				if strings.Contains(string(output), "h264_vaapi") {
-					s.logger.Info("检测到VAAPI，使用VAAPI硬件加速")
-					return "vaapi"
-				}
-			}
-		}
-	}
-
-	s.logger.Warn("未检测到硬件加速，使用软件编码")
-	return "none"
-}
-
-// detectNvidiaSmi 检测 nvidia-smi 是否可用
-// 在 Windows 上 LookPath 可能因 PATH 不完整而找不到 nvidia-smi，
-// 因此额外检查常见安装路径并尝试直接执行验证
-func (s *TranscodeService) detectNvidiaSmi() bool {
-	// 优先通过 PATH 查找
-	if _, err := exec.LookPath("nvidia-smi"); err == nil {
-		return true
-	}
-
-	// Windows 下 nvidia-smi 可能不在 PATH 中，尝试常见路径
-	if runtime.GOOS == "windows" {
-		commonPaths := []string{
-			filepath.Join(os.Getenv("SystemRoot"), "System32", "nvidia-smi.exe"),
-			filepath.Join(os.Getenv("ProgramFiles"), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"),
-		}
-		for _, p := range commonPaths {
-			if _, err := os.Stat(p); err == nil {
-				// 找到文件，尝试执行验证
-				if out, err := exec.Command(p, "--query-gpu=name", "--format=csv,noheader").Output(); err == nil {
-					gpuName := strings.TrimSpace(string(out))
-					s.logger.Infof("通过路径 %s 检测到 GPU: %s", p, gpuName)
-					return true
-				}
-			}
-		}
-
-		// 最后尝试直接执行（某些环境下 System32 不在 Go 的 LookPath 搜索范围内，但 CreateProcess 可以找到）
-		if out, err := exec.Command("nvidia-smi", "--query-gpu=name", "--format=csv,noheader").Output(); err == nil {
-			gpuName := strings.TrimSpace(string(out))
-			s.logger.Infof("直接执行 nvidia-smi 检测到 GPU: %s", gpuName)
-			return true
-		}
-	}
-
-	return false
+	return ffmpeg.DetectHWAccel(s.cfg, s.logger)
 }
 
 // buildFFmpegArgs 根据硬件加速模式构建FFmpeg参数
 // media 参数用于 HDR 检测：HEVC/VP9/AV1 源视频会自动追加 tonemap 滤镜，避免 SDR 设备播放偏灰
 // startOffset>0 时启用 -ss input seeking，实现 seek 后快速续转（Emby 秒开关键）
+//
+// 实现：底层参数组装委托给 ffmpeg.BuildHLSArgs，这里只负责把 transcode 场景
+// 特有的配置（实时秒开 / HDR tonemap / CRF 质量模式 / HLS event playlist）
+// 映射为 BuildOptions 字段。
 func (s *TranscodeService) buildFFmpegArgs(media *model.Media, inputPath, outputDir, quality string, startOffset float64) []string {
 	qc, ok := qualityPresets[quality]
 	if !ok {
 		qc = qualityPresets["720p"]
 	}
 
-	outputPath := filepath.Join(outputDir, "stream.m3u8")
-	segmentPath := filepath.Join(outputDir, "seg%04d.ts")
-
-	// 基础参数
-	// input seeking: -ss 必须放在 -i 前面才能 demux 层快速跳转
-	baseArgs := []string{"-y"}
-	if startOffset > 0.5 {
-		baseArgs = append(baseArgs, "-ss", fmt.Sprintf("%.2f", startOffset))
+	// 只有软件编码分支需要 HDR tonemap 滤镜；硬件加速分支保持默认 scale_xxx。
+	var videoFilter string
+	if s.hwAccel == ffmpeg.HWAccelNone || s.hwAccel == "" {
+		videoFilter = s.buildFFmpegHDRTonemapFilter(media, qc.Width, qc.Height)
 	}
-	baseArgs = append(baseArgs, "-i", inputPath)
 
-	// HLS 秒开参数组：
-	//   hls_time 2             -> 首片 2s 即可产出，浏览器/ExoPlayer 拿到即可起播
-	//   hls_list_size 0        -> 保留所有分片索引，支持完整回看
-	//   hls_playlist_type event-> m3u8 增量更新，前端轮询 playlist 能拿到新分片
-	//   hls_flags independent_segments+append_list+program_date_time
-	//     - independent_segments: 每片独立可解码
-	//     - append_list:          增量追加而非每次重写
-	//     - program_date_time:    便于客户端计算 live edge
-	//   start_number 由 startOffset 决定：seek 场景下用 startOffset/hlsTargetSegmentSeconds
-	//     可避免客户端误复用旧编号的分片。
+	// seek 场景下按分片粒度算 start_number，避免客户端误复用旧编号的分片
 	startNumber := 0
 	if startOffset > 0 {
 		startNumber = int(startOffset / float64(hlsTargetSegmentSeconds))
 	}
-	hlsArgs := []string{
-		"-f", "hls",
-		"-hls_time", strconv.Itoa(hlsTargetSegmentSeconds),
-		"-hls_list_size", "0",
-		"-hls_segment_filename", segmentPath,
-		"-hls_flags", "independent_segments+append_list+program_date_time",
-		"-hls_playlist_type", "event",
-		"-start_number", strconv.Itoa(startNumber),
-		// force_key_frames 对齐到 hls_time 边界，首片产出更快更稳定
-		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", hlsTargetSegmentSeconds),
-		outputPath,
+
+	// QSV 场景在 transcode 中使用 CQP 质量模式（不锁码率），与 preprocess 码率模式不同
+	qsvGlobalQuality := 0
+	if s.hwAccel == ffmpeg.HWAccelQSV {
+		qsvGlobalQuality = 23
 	}
 
-	// 音频参数（通用）
-	audioArgs := []string{"-c:a", "aac", "-b:a", qc.AudioBitrate, "-ac", "2"}
-
-	// 关键帧间隔（GOP），按 2 秒 hls_time × 帧率 25 估算 = 50
-	// 配合 force_key_frames 让首片能立刻 flush
-	gopSize := strconv.Itoa(hlsTargetSegmentSeconds * 25)
-
-	var videoArgs []string
-
-	switch s.hwAccel {
-	case "nvenc":
-		// NVIDIA NVENC
-		baseArgs = append([]string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_nvenc",
-			"-preset", "p4", // 平衡质量和速度
-			"-tune", "ll", // low-latency，秒开关键
-			"-b:v", qc.VideoBitrate,
-			"-maxrate", qc.VideoBitrate,
-			"-bufsize", qc.VideoBitrate, // 1x 码率 buffer，低延迟
-			"-g", gopSize,
-			"-keyint_min", gopSize,
-			"-sc_threshold", "0", // 禁用场景切换插入 I 帧，避免 GOP 不规则
-			"-vf", fmt.Sprintf("scale_cuda=%d:%d:format=nv12", qc.Width, qc.Height),
-		}
-
-	case "qsv":
-		// Intel Quick Sync Video
-		// 不设置 -hwaccel_output_format qsv，允许 FFmpeg 在 QSV 无法解码时自动回退到软件解码
-		// 仅用 QSV 做编码，避免 10-bit HEVC 等 QSV 不支持的格式导致崩溃
-		baseArgs = append([]string{"-hwaccel", "qsv"}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_qsv",
-			"-preset", s.cfg.App.TranscodePreset,
-			"-global_quality", "23",
-			"-g", gopSize,
-			"-pix_fmt", "nv12",
-			"-vf", fmt.Sprintf("scale_qsv=%d:%d", qc.Width, qc.Height),
-		}
-
-	case "vaapi":
-		// VAAPI
-		baseArgs = append([]string{
-			"-hwaccel", "vaapi",
-			"-hwaccel_output_format", "vaapi",
-			"-vaapi_device", s.cfg.App.VAAPIDevice,
-		}, baseArgs...)
-		videoArgs = []string{
-			"-c:v", "h264_vaapi",
-			"-b:v", qc.VideoBitrate,
-			"-g", gopSize,
-			"-pix_fmt", "yuv420p",
-			"-vf", fmt.Sprintf("scale_vaapi=w=%d:h=%d", qc.Width, qc.Height),
-		}
-
-	default:
-		// 软件编码（fallback）
-		// -tune zerolatency 是秒开关键参数，配合小 GOP 让首片立刻能封装出来
-		vfFilter := s.buildFFmpegHDRTonemapFilter(media, qc.Width, qc.Height)
-		videoArgs = []string{
-			"-c:v", "libx264",
-			"-preset", s.cfg.App.TranscodePreset,
-			"-tune", "zerolatency",
-			"-crf", "23",
-			"-g", gopSize,
-			"-keyint_min", gopSize,
-			"-sc_threshold", "0",
-			"-pix_fmt", "yuv420p",
-			"-vf", vfFilter,
-		}
-	}
-
-	// 根据资源限制配置动态计算 FFmpeg 线程数
-	ffmpegThreads := s.calcFFmpegThreads()
-	args := append(baseArgs, "-threads", fmt.Sprintf("%d", ffmpegThreads))
-	args = append(args, videoArgs...)
-	args = append(args, audioArgs...)
-	args = append(args, hlsArgs...)
-
-	return args
+	return ffmpeg.BuildHLSArgs(ffmpeg.BuildOptions{
+		InputPath:       inputPath,
+		OutputDir:       outputDir,
+		HWAccel:         s.hwAccel,
+		Profile:         ffmpeg.Profile{Width: qc.Width, Height: qc.Height, VideoBitrate: qc.VideoBitrate, AudioBitrate: qc.AudioBitrate},
+		VAAPIDevice:     s.cfg.App.VAAPIDevice,
+		X264Preset:      s.cfg.App.TranscodePreset,
+		QSVPreset:       s.cfg.App.TranscodePreset,
+		Threads:         ffmpeg.CalcThreads(s.cfg),
+		UseCRF:          true,
+		CRF:             23,
+		SoftwareTune:    "zerolatency",
+		NvencTune:       "ll",
+		QSVAttachOutputFormat: false, // 允许 QSV 解码失败时回退软件解码
+		QSVGlobalQuality: qsvGlobalQuality,
+		VideoFilter:     videoFilter,
+		HLSTime:         hlsTargetSegmentSeconds,
+		HLSFlags:        "independent_segments+append_list+program_date_time",
+		HLSPlaylistType: "event",
+		StartNumber:     startNumber,
+		ForceKeyFrames:  true,
+		StartOffsetSec:  startOffset,
+		GOPSize:         hlsTargetSegmentSeconds * 25,
+		SkipVAAPIRateLimits: true, // 保持 transcode 历史 VAAPI 行为一致
+	})
 }
 
 // GetOutputDir 获取转码输出目录
@@ -699,54 +555,18 @@ success:
 }
 
 // parseFFmpegProgress 解析FFmpeg stderr输出中的进度信息
+// 底层解析委托给 ffmpeg.ParseProgress，这里只负责把事件转换成 WS/DB 写入。
 func (s *TranscodeService) parseFFmpegProgress(stderr io.ReadCloser, job *TranscodeJob) {
-	// FFmpeg进度输出格式: frame=  120 fps= 60 ... time=00:00:05.00 ... speed=2.50x
-	timeRegex := regexp.MustCompile(`time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})`)
-	speedRegex := regexp.MustCompile(`speed=\s*([\d.]+)x`)
-
 	totalDuration := job.Media.Duration // 总时长（秒）
-	scanner := bufio.NewScanner(stderr)
-	scanner.Split(bufio.ScanLines)
-
-	var lastProgress float64
 	var lastDBProgress float64
 
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// 解析当前时间位置
-		timeMatches := timeRegex.FindStringSubmatch(line)
-		if len(timeMatches) < 5 || totalDuration <= 0 {
-			continue
-		}
-
-		hours, _ := strconv.ParseFloat(timeMatches[1], 64)
-		minutes, _ := strconv.ParseFloat(timeMatches[2], 64)
-		seconds, _ := strconv.ParseFloat(timeMatches[3], 64)
-		centis, _ := strconv.ParseFloat(timeMatches[4], 64)
-		currentTime := hours*3600 + minutes*60 + seconds + centis/100
-
+	ffmpeg.ParseProgress(stderr, totalDuration, ffmpeg.ProgressOptions{
+		MinDeltaPct: 1.0, // WS 广播：每 1% 更新一次（低延迟，前端体验好）
+	}, func(ev ffmpeg.ProgressEvent) {
 		// 同步更新节流所需的"已转码位置"（包含 startOffset）
-		job.transcodedPos.Store(uint64((currentTime + job.startOffset) * 100))
+		job.transcodedPos.Store(uint64((ev.CurrentSec + job.startOffset) * 100))
 
-		progress := (currentTime / totalDuration) * 100
-		if progress > 100 {
-			progress = 100
-		}
-
-		// 解析速度（无论是否更新DB都解析，用于WS广播）
-		speed := ""
-		speedMatches := speedRegex.FindStringSubmatch(line)
-		if len(speedMatches) >= 2 {
-			speed = speedMatches[1] + "x"
-		}
-
-		// WS 广播：每 1% 更新一次（低延迟，前端体验好）
-		if progress-lastProgress < 1 {
-			continue
-		}
-		lastProgress = progress
-
+		progress := ev.Progress
 		// DB 持久化：每 5% 才写一次（减少 SQLite 写锁竞争，避免 SLOW SQL）
 		// WS 广播仍然每 1% 触发，前端进度条不受影响
 		job.Task.Progress = progress
@@ -762,10 +582,10 @@ func (s *TranscodeService) parseFFmpegProgress(stderr io.ReadCloser, job *Transc
 			Title:    job.Media.Title,
 			Quality:  job.Quality,
 			Progress: progress,
-			Speed:    speed,
-			Message:  fmt.Sprintf("转码中: %.1f%% (速度: %s)", progress, speed),
+			Speed:    ev.Speed,
+			Message:  fmt.Sprintf("转码中: %.1f%% (速度: %s)", progress, ev.Speed),
 		})
-	}
+	})
 }
 
 // broadcastTranscodeEvent 广播转码事件
@@ -962,20 +782,9 @@ func (s *TranscodeService) CancelTranscode(taskID string) error {
 }
 
 // calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
+// Deprecated: 保留兼容接口，实际委托给 ffmpeg.CalcThreads。
 func (s *TranscodeService) calcFFmpegThreads() int {
-	resourceLimit := s.cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-	cpuCount := runtime.NumCPU()
-	threads := cpuCount * resourceLimit / 100
-	if threads < 1 {
-		threads = 1
-	}
-	if threads > cpuCount {
-		threads = cpuCount
-	}
-	return threads
+	return ffmpeg.CalcThreads(s.cfg)
 }
 
 // buildFFmpegHDRTonemapFilter 构建 HDR→SDR 色调映射滤镜

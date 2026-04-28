@@ -90,19 +90,29 @@ var (
 	htmlTagRegex = regexp.MustCompile(`<[^>]+>`)
 	// ASS 样式标签匹配（如 {\an8}, {\pos(320,50)}, {\fad(500,500)} 等）
 	assStyleRegex = regexp.MustCompile(`\{\\[^}]*\}`)
-	// SDH 标注匹配（方括号、圆括号、中文括号等）
-	sdhBracketRegex = regexp.MustCompile(`[\[\(（【《][^\]\)）】》]*[\]\)）】》]`)
-	// 广告/水印常见模式
+	// SDH 标注：仅匹配包含 SDH 关键词的括号内容，避免误伤书名号/剧情括号
+	// 关键词：音乐/笑声/掌声/叹息 等音效提示，以及全大写英文音效
+	sdhKeywordRegex = regexp.MustCompile(`(?i)(?:音乐|笑声|掌声|叹息|哭泣|欢呼|尖叫|咳嗽|敲门|电话铃|脚步|呻吟|喘息|音效|配乐|片头曲|片尾曲|music|laughter|applause|sighs?|cries|cheers|screams?|coughs?|knock|phone|footsteps|groans?|gasps?|sfx|laughing|sobbing|whispering)`)
+	sdhBracketRegex = regexp.MustCompile(`[\[\(（][^\]\)）]*[\]\)）]`)
+	// 广告/水印常见模式（改为行为：只对【首尾 3 条】且【整行只有广告】的 cue 生效）
 	adPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)(?:字幕|翻译|校对|时间轴|压制|后期|特效)[:：\s].*`),
-		regexp.MustCompile(`(?i)(?:www\.|http|\.com|\.cn|\.org|\.net|\.tv)`),
-		regexp.MustCompile(`(?i)(?:subtitle[sd]?|translated|synced|ripped|encoded)\s*(?:by|from).*`),
-		regexp.MustCompile(`(?i)(?:sub\.?(?:team|group|studio)|fansub|字幕组|字幕社)`),
-		regexp.MustCompile(`(?i)(?:opensubtitles|subscene|addic7ed|yifysubtitles)`),
-		regexp.MustCompile(`(?i)(?:@|＠)\s*\w+`), // @用户名 水印
+		// 字幕组署名：要求【整行由关键词+少量内容】构成
+		regexp.MustCompile(`(?i)^[\s\pP]*(?:字幕|翻译|校对|时间轴|压制|后期|特效|制作|翻譯|校對|時間軸|壓制|後期)\s*[:：]\s*\S`),
+		// 明显的网址行：整行为一个 URL 或以 www./http 开头
+		regexp.MustCompile(`(?i)^[\s\pP]*(?:https?://|www\.)\S+[\s\pP]*$`),
+		regexp.MustCompile(`(?i)\b[a-z0-9-]+\.(?:com|cn|org|net|tv|io|cc|me|top|xyz)(?:/\S*)?\s*$`),
+		// 英文字幕组典型格式
+		regexp.MustCompile(`(?i)^[\s\pP]*(?:subtitle[sd]?|translated|synced|ripped|encoded)\s*(?:by|from)\s+\S`),
+		regexp.MustCompile(`(?i)^[\s\pP]*(?:sub\.?(?:team|group|studio)|fansub|字幕组|字幕社|字幕組)[\s\pP]*\S*\s*$`),
+		regexp.MustCompile(`(?i)^[\s\pP]*(?:opensubtitles|subscene|addic7ed|yifysubtitles|yts|rarbg)[\s\pP]*$`),
+		// @ 水印：整行就是 @xxx
+		regexp.MustCompile(`(?i)^[\s\pP]*[@＠]\s*\w+\s*$`),
 	}
 	// VTT 时间戳格式匹配
 	vttTimeRegex = regexp.MustCompile(`^(\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}$`)
+	// 句子断点符（按优先级：句号 > 分号 > 逗号 > 空格）
+	sentenceBreakChars = []rune{'。', '！', '？', '.', '!', '?'}
+	clauseBreakChars   = []rune{'；', '，', ';', ','}
 )
 
 // ==================== 核心清洗方法 ====================
@@ -296,13 +306,24 @@ func readAll(r *transform.Reader) ([]byte, error) {
 
 // cleanTexts 清洗字幕文本内容
 // 返回值: (清洗后的cues, 去除的广告数, 去除的SDH数, 去除的空条目数)
+// 改进：
+// 1. 广告识别仅作用于字幕首尾各 3 条（广告几乎只在片头/片尾），避免误伤中间对白。
+// 2. SDH 仅匹配包含明确关键词（音乐/LAUGHS 等）的括号内容，保留剧情括号。
+// 3. 对识别到的广告/SDH 采用【行内替换】策略；若整 cue 变空再丢弃。
 func (c *SubtitleCleaner) cleanTexts(cues []vttCue) ([]vttCue, int, int, int) {
 	var cleaned []vttCue
 	removedAds := 0
 	removedSDH := 0
 	removedEmpty := 0
 
-	for _, cue := range cues {
+	adScanFromHead := 3
+	adScanFromTail := 3
+	if len(cues) < 10 {
+		adScanFromHead = len(cues) / 2
+		adScanFromTail = len(cues) / 2
+	}
+
+	for idx, cue := range cues {
 		text := cue.text
 
 		// 去除 HTML 标签
@@ -315,27 +336,28 @@ func (c *SubtitleCleaner) cleanTexts(cues []vttCue) ([]vttCue, int, int, int) {
 			text = assStyleRegex.ReplaceAllString(text, "")
 		}
 
-		// 去除广告水印
+		// 去除广告水印：仅在字幕首尾区域作用
 		if c.config.RemoveAds {
-			isAd := false
-			for _, p := range adPatterns {
-				if p.MatchString(text) {
-					isAd = true
-					break
+			isHeadOrTail := idx < adScanFromHead || idx >= len(cues)-adScanFromTail
+			if isHeadOrTail {
+				cleaned2, matched := stripAdContent(text)
+				if matched {
+					if strings.TrimSpace(cleaned2) == "" {
+						removedAds++
+						continue
+					}
+					text = cleaned2
+					removedAds++
 				}
-			}
-			if isAd {
-				removedAds++
-				continue
 			}
 		}
 
-		// 去除 SDH 标注
+		// 去除 SDH 标注（仅移除包含 SDH 关键词的括号内容）
 		if c.config.RemoveSDH {
-			originalLen := len(text)
-			text = sdhBracketRegex.ReplaceAllString(text, "")
-			if len(text) < originalLen {
+			newText, removed := stripSDHBrackets(text)
+			if removed {
 				removedSDH++
+				text = newText
 			}
 		}
 
@@ -357,6 +379,48 @@ func (c *SubtitleCleaner) cleanTexts(cues []vttCue) ([]vttCue, int, int, int) {
 	}
 
 	return cleaned, removedAds, removedSDH, removedEmpty
+}
+
+// stripAdContent 按行清理广告内容：逐行检查，命中广告模式的行整行移除
+// 返回 (清理后文本, 是否命中了任何广告模式)
+func stripAdContent(text string) (string, bool) {
+	lines := strings.Split(text, "\n")
+	var kept []string
+	matched := false
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "" {
+			kept = append(kept, line)
+			continue
+		}
+		hit := false
+		for _, p := range adPatterns {
+			if p.MatchString(trim) {
+				hit = true
+				break
+			}
+		}
+		if hit {
+			matched = true
+			continue // 丢弃此行
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n"), matched
+}
+
+// stripSDHBrackets 仅移除包含 SDH 关键词的括号内容（保留书名号《》和普通剧情括号）
+// 返回 (清理后文本, 是否做过移除)
+func stripSDHBrackets(text string) (string, bool) {
+	removed := false
+	result := sdhBracketRegex.ReplaceAllStringFunc(text, func(m string) string {
+		if sdhKeywordRegex.MatchString(m) {
+			removed = true
+			return ""
+		}
+		return m
+	})
+	return result, removed
 }
 
 // normalizePunctuation 统一标点符号
@@ -532,6 +596,12 @@ func (c *SubtitleCleaner) optimizeSegments(cues []vttCue) ([]vttCue, int, int) {
 }
 
 // splitCue 将过长的字幕条目拆分为多个
+// 改进：
+// 1. 优先按句末标点（。！？.!?）切分；
+// 2. 次优先按从句标点（；，;,）切分；
+// 3. 再次按空白切分；
+// 4. 最差情况才按 rune 硬切。
+// 时长按实际拆分后字符占比分配，避免平均切割导致末段过长/过短。
 func (c *SubtitleCleaner) splitCue(cue vttCue, maxChars int) []vttCue {
 	runes := []rune(cue.text)
 	totalRunes := len(runes)
@@ -542,37 +612,99 @@ func (c *SubtitleCleaner) splitCue(cue vttCue, maxChars int) []vttCue {
 	startMs := parseVTTTimeMs(cue.startTime)
 	endMs := parseVTTTimeMs(cue.endTime)
 	totalDuration := endMs - startMs
+	if totalDuration <= 0 {
+		totalDuration = int64(totalRunes) * 80 // 兜底：每字约 80ms
+	}
 
-	// 计算需要拆分为几段
-	parts := (totalRunes + maxChars - 1) / maxChars
-	if parts <= 1 {
+	segments := smartSplitText(runes, maxChars)
+	if len(segments) <= 1 {
 		return []vttCue{cue}
 	}
 
-	durationPerPart := totalDuration / int64(parts)
 	var result []vttCue
-
-	for i := 0; i < parts; i++ {
-		start := i * maxChars
-		end := start + maxChars
-		if end > totalRunes {
-			end = totalRunes
+	cursorMs := startMs
+	for i, seg := range segments {
+		ratio := float64(utf8.RuneCountInString(seg)) / float64(totalRunes)
+		segDur := int64(float64(totalDuration) * ratio)
+		segEnd := cursorMs + segDur
+		if i == len(segments)-1 {
+			segEnd = endMs
 		}
-
-		partStartMs := startMs + int64(i)*durationPerPart
-		partEndMs := partStartMs + durationPerPart
-		if i == parts-1 {
-			partEndMs = endMs // 最后一段用原始结束时间
+		if segEnd <= cursorMs {
+			segEnd = cursorMs + 500
 		}
-
 		result = append(result, vttCue{
-			startTime: formatVTTTimeFromMs(partStartMs),
-			endTime:   formatVTTTimeFromMs(partEndMs),
-			text:      string(runes[start:end]),
+			startTime: formatVTTTimeFromMs(cursorMs),
+			endTime:   formatVTTTimeFromMs(segEnd),
+			text:      strings.TrimSpace(seg),
 		})
+		cursorMs = segEnd
+	}
+	return result
+}
+
+// smartSplitText 按句末 → 从句 → 空白 → 硬切的优先级，将长文本切分为不超过 maxChars 的若干段
+func smartSplitText(runes []rune, maxChars int) []string {
+	if maxChars <= 0 {
+		return []string{string(runes)}
+	}
+	if len(runes) <= maxChars {
+		return []string{string(runes)}
 	}
 
+	var result []string
+	i := 0
+	for i < len(runes) {
+		remain := len(runes) - i
+		if remain <= maxChars {
+			result = append(result, string(runes[i:]))
+			break
+		}
+		// 在 [i, i+maxChars] 窗口内找最佳断点
+		windowEnd := i + maxChars
+		cut := -1
+		// 优先级 1：句末标点（从窗口尾往回找）
+		for j := windowEnd - 1; j > i+maxChars/2; j-- {
+			if isInRunes(runes[j], sentenceBreakChars) {
+				cut = j + 1
+				break
+			}
+		}
+		// 优先级 2：从句标点
+		if cut < 0 {
+			for j := windowEnd - 1; j > i+maxChars/2; j-- {
+				if isInRunes(runes[j], clauseBreakChars) {
+					cut = j + 1
+					break
+				}
+			}
+		}
+		// 优先级 3：空白字符
+		if cut < 0 {
+			for j := windowEnd - 1; j > i+maxChars/2; j-- {
+				if unicode.IsSpace(runes[j]) {
+					cut = j + 1
+					break
+				}
+			}
+		}
+		// 优先级 4：硬切
+		if cut < 0 || cut <= i {
+			cut = windowEnd
+		}
+		result = append(result, string(runes[i:cut]))
+		i = cut
+	}
 	return result
+}
+
+func isInRunes(r rune, list []rune) bool {
+	for _, x := range list {
+		if r == x {
+			return true
+		}
+	}
+	return false
 }
 
 // ==================== 时间工具函数 ====================

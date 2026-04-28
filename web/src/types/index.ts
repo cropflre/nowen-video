@@ -399,6 +399,10 @@ export interface SystemInfo {
     alloc_mb: number
     total_alloc_mb: number
     sys_mb: number
+    // 本进程占用（MB），等价于 sys_mb，供前端展示
+    process_used_mb?: number
+    // 本进程占主机物理内存的百分比
+    process_used_percent?: number
     system_total_mb?: number
     system_used_mb?: number
     system_used_percent?: number
@@ -429,6 +433,8 @@ export interface MediaPlayInfo {
   preprocessed_url?: string // 预处理后的 HLS 地址
   preprocess_status?: string // 预处理状态
   thumbnail_url?: string // 预处理封面缩略图
+  sprite_url?: string // 进度条雪碧图地址（预处理完成后可用）
+  sprite_vtt_url?: string // 进度条雪碧图 WebVTT 索引地址
   prefer_direct_play?: boolean // 系统设置：优先直接播放
   can_remux?: boolean // 是否支持 remux（容器不兼容但编码兼容）
   remux_url?: string // Remux 播放地址（零转码，仅转封装）
@@ -565,38 +571,6 @@ export interface CommentListResponse {
   size: number
   avg_rating: number
   rating_count: number
-}
-
-// ==================== 系统监控 ====================
-export interface SystemMetrics {
-  timestamp: number
-  cpu: {
-    usage_percent: number
-    cores: number
-    goroutines: number
-  }
-  memory: {
-    total_mb: number
-    used_mb: number
-    free_mb: number
-    used_percent: number
-    go_alloc_mb: number
-    go_sys_mb: number
-    go_total_alloc_mb: number
-  }
-  disk: {
-    total_gb: number
-    used_gb: number
-    free_gb: number
-    used_percent: number
-    cache_size_mb: number
-  }
-  transcode: {
-    active_jobs: number
-    queue_size: number
-    hw_accel: string
-  }
-  connections: number
 }
 
 // ==================== 定时任务 ====================
@@ -1716,7 +1690,7 @@ export interface SubtitlePreprocessTask {
   id: string
   media_id: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped'
-  phase: 'check' | 'extract' | 'generate' | 'translate' | 'done'
+  phase: 'check' | 'extract' | 'generate' | 'clean' | 'translate' | 'done'
   progress: number
   message: string
   error: string
@@ -1729,11 +1703,31 @@ export interface SubtitlePreprocessTask {
   subtitle_source: string
   detected_language: string
   cue_count: number
+  /** 翻译失败的语言列表（逗号分隔） */
+  failed_langs?: string
+  /** 字幕清洗详细报告（JSON 字符串） */
+  clean_report_json?: string
   started_at: string | null
   completed_at: string | null
   elapsed_sec: number
   created_at: string
   updated_at: string
+}
+
+/** 字幕清洗报告（后端 CleanReport） */
+export interface SubtitleCleanReport {
+  source_path: string
+  backup_path?: string
+  detected_encoding: string
+  original_cue_count: number
+  processed_cue_count: number
+  removed_ads: number
+  removed_sdh: number
+  removed_empty: number
+  merged_cues: number
+  split_cues: number
+  encoding_converted: boolean
+  warnings?: string[]
 }
 
 export interface SubtitlePreprocessStatistics {
@@ -1811,6 +1805,35 @@ export interface CollectionMediaItem {
 export interface CollectionWithMedia {
   collection: MovieCollection
   media: CollectionMediaItem[]
+}
+
+// ==================== 系统日志 ====================
+export interface SystemLog {
+  id: string
+  type: 'api' | 'playback' | 'system'
+  level: 'debug' | 'info' | 'warn' | 'error'
+  message: string
+  detail: string
+  method: string
+  path: string
+  status_code: number
+  latency_ms: number
+  client_ip: string
+  user_agent: string
+  user_id: string
+  username: string
+  media_id: string
+  media_title: string
+  source: string
+  created_at: string
+}
+
+export interface SystemLogStats {
+  total: number
+  today_count: number
+  today_errors: number
+  type_counts: Record<string, number>
+  level_counts: Record<string, number>
 }
 
 // ==================== 重复媒体检测 ====================

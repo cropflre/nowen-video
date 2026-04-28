@@ -120,9 +120,9 @@ fun MediaDetailScreen(
                                 }
                             }
                             if (media.resolution.isNotBlank()) {
-                                Surface(shape = RoundedCornerShape(6.dp), color = ElectricGreen.copy(alpha = 0.15f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, ElectricGreen.copy(alpha = 0.4f))) {
-                                    Text(media.resolution, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = ElectricGreen, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+Surface(shape = RoundedCornerShape(6.dp), color = colorScheme.tertiary.copy(alpha = 0.15f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, colorScheme.tertiary.copy(alpha = 0.4f))) {
+                Text(media.resolution, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = colorScheme.tertiary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                                 }
                             }
                         }
@@ -144,13 +144,13 @@ fun MediaDetailScreen(
                                 }
                             }
                         }
-                        // 播放按钮
+                        // 播放按钮 — 赛博蓝紫渐变
                         Button(onClick = { onPlayClick(media.id) }, Modifier.fillMaxWidth().height(54.dp), shape = CyberButtonShape,
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent), contentPadding = PaddingValues()) {
-                            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(colorScheme.primary, colorScheme.secondary)), CyberButtonShape), Alignment.Center) {
+                            Box(Modifier.fillMaxSize().background(PrimaryButtonGradient, CyberButtonShape), Alignment.Center) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Default.PlayArrow, null, tint = Color.White)
-                                    Text("播 放", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp), color = Color.White)
+                                    Text("播 放", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 3.sp), color = Color.White)
                                 }
                             }
                         }
@@ -182,7 +182,7 @@ fun MediaDetailScreen(
                         // 技术信息
                         Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp).padding(16.dp)) {
                             Column {
-                                Text("技术信息", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp), color = ElectricGreen, modifier = Modifier.padding(bottom = 10.dp))
+Text("技术信息", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp), color = colorScheme.tertiary, modifier = Modifier.padding(bottom = 10.dp))
                                 if (media.videoCodec.isNotBlank()) CyberInfoRow("视频编码", media.videoCodec)
                                 if (media.audioCodec.isNotBlank()) CyberInfoRow("音频编码", media.audioCodec)
                                 if (media.fileSize > 0) CyberInfoRow("文件大小", formatFileSize(media.fileSize))

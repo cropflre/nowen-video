@@ -19,7 +19,6 @@ type AdminHandler struct {
 	userService       *service.UserService
 	authService       *service.AuthService
 	transcodeService  *service.TranscodeService
-	monitorService    *service.MonitorService
 	schedulerService  *service.SchedulerService
 	permissionService *service.PermissionService
 	libraryService    *service.LibraryService
@@ -331,23 +330,19 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
-	// 获取系统级内存信息
+	// 本进程内存占用：
+	//  - alloc_mb：Go 堆上仍在使用的对象大小
+	//  - sys_mb：进程已从操作系统申请的内存总量（近似 RSS/进程常驻内存）
+	//  - process_used_mb：用于前端展示的"本进程占用"，取 Sys 作为进程内存占用
+	processUsedMB := float64(memStats.Sys) / 1024 / 1024
 	sysMem := gin.H{
-		"alloc_mb":       float64(memStats.Alloc) / 1024 / 1024,
-		"total_alloc_mb": float64(memStats.TotalAlloc) / 1024 / 1024,
-		"sys_mb":         float64(memStats.Sys) / 1024 / 1024,
+		"alloc_mb":        float64(memStats.Alloc) / 1024 / 1024,
+		"total_alloc_mb":  float64(memStats.TotalAlloc) / 1024 / 1024,
+		"sys_mb":          processUsedMB,
+		"process_used_mb": processUsedMB,
 	}
 
-	// 从 MonitorService 获取系统级内存数据（如果有）
-	if h.monitorService != nil {
-		if metrics := h.monitorService.GetMetrics(); metrics != nil {
-			if metrics.Memory.TotalMB > 0 {
-				sysMem["system_total_mb"] = metrics.Memory.TotalMB
-				sysMem["system_used_mb"] = metrics.Memory.UsedMB
-				sysMem["system_used_percent"] = metrics.Memory.UsedPercent
-			}
-		}
-	}
+	// 主机总内存仅用于展示"占主机百分比"参考值，不再作为主数值
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{

@@ -362,8 +362,7 @@ const jaJP: Record<string, string> = {
   'admin.tabLibrary': 'ライブラリ管理',
   'admin.tabUsers': 'ユーザー管理',
   'admin.tabTasks': 'タスク＆トランスコード',
-  'admin.tabMonitor': 'モニター＆ログ',
-  'admin.tabLogs': 'アクセスログ',
+  'admin.tabLogs': 'ログ',
   'admin.tabBackup': 'データバックアップ',
   'admin.tabLive': 'ライブソース',
   'admin.tabAI': 'AI設定',
@@ -374,7 +373,6 @@ const jaJP: Record<string, string> = {
   'admin.shortLibrary': 'ライブラリ',
   'admin.shortUsers': 'ユーザー',
   'admin.shortTasks': 'タスク',
-  'admin.shortMonitor': 'モニター',
   'admin.shortLogs': 'ログ',
   'admin.shortBackup': 'バックアップ',
   'admin.shortLive': 'ライブ',
@@ -423,7 +421,7 @@ const jaJP: Record<string, string> = {
   'admin.quickNavTMDb': 'TMDbスクレイピング設定',
   'admin.quickNavUsers': 'ユーザー管理',
   'admin.quickNavTranscode': 'トランスコードタスク',
-  'admin.quickNavMonitor': 'システムモニター',
+  'admin.quickNavLogs': 'システムログ',
   'admin.quickNavAI': 'AI設定',
 
   // ==================== メディア詳細（追加） ====================

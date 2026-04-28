@@ -79,7 +79,7 @@ fun SettingsScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceDim.copy(alpha = 0.85f)
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     )
                 )
             }
@@ -150,7 +150,7 @@ fun SettingsScreen(
                             Text(
                                 text = if (uiState.role == "admin") "管理员" else "普通用户",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (uiState.role == "admin") ElectricGreen else MaterialTheme.colorScheme.onSurfaceVariant
+color = if (uiState.role == "admin") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -176,7 +176,7 @@ fun SettingsScreen(
                         // 服务器管理
                         CyberSettingsItem(
                             icon = Icons.Default.Dns,
-                            iconColor = ElectricGreen,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
                             title = "服务器管理",
                             subtitle = uiState.serverUrl.ifBlank { "未配置" },
                             onClick = onServerManage
@@ -197,7 +197,7 @@ fun SettingsScreen(
 
                         // 后台任务
                         val wsColor = when (uiState.wsState) {
-                            WSConnectionState.CONNECTED -> ElectricGreen
+WSConnectionState.CONNECTED -> MaterialTheme.colorScheme.tertiary
                             WSConnectionState.CONNECTING, WSConnectionState.RECONNECTING -> AmberGold
                             WSConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
                         }

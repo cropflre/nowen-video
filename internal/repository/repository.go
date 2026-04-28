@@ -47,6 +47,8 @@ type Repositories struct {
 	LoginLog   *LoginLogRepo
 	AuditLog   *AuditLogRepo
 	InviteCode *InviteCodeRepo
+	// 系统日志
+	SystemLog *SystemLogRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -91,6 +93,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		LoginLog:   &LoginLogRepo{db: db},
 		AuditLog:   &AuditLogRepo{db: db},
 		InviteCode: &InviteCodeRepo{db: db},
+		// 系统日志
+		SystemLog: &SystemLogRepo{db: db},
 	}
 }
 

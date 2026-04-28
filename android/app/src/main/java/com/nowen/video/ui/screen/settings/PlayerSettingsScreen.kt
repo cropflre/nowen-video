@@ -67,7 +67,7 @@ fun PlayerSettingsScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f)
+containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                     )
                 )
             }
@@ -114,7 +114,7 @@ fun PlayerSettingsScreen(
                         val playModeLabels = listOf("自动选择", "直接播放", "Remux", "HLS 转码")
                         CyberClickItem(
                             icon = Icons.Default.PlayCircle,
-                            iconColor = ElectricGreen,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
                             title = "优先播放模式",
                             value = playModeLabels[uiState.preferredPlayMode],
                             onClick = { showPlayModeDialog = true }
@@ -192,7 +192,7 @@ fun PlayerSettingsScreen(
                         val decoderLabels = listOf("自动", "硬件解码优先", "软件解码优先")
                         CyberClickItem(
                             icon = Icons.Default.Memory,
-                            iconColor = ElectricGreen,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
                             title = "解码器优先级",
                             value = decoderLabels[uiState.decoderPriority],
                             onClick = { showDecoderDialog = true }
@@ -216,14 +216,14 @@ fun PlayerSettingsScreen(
                 }
 
                 // ==================== 字幕设置 ====================
-                CyberSectionTitle("字幕设置", ElectricGreen)
+                CyberSectionTitle("字幕设置", colorScheme.tertiary)
 
                 Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
                     Column {
                         // 自动加载字幕
                         CyberSwitchItem(
                             icon = Icons.Default.Subtitles,
-                            iconColor = ElectricGreen,
+                            iconColor = MaterialTheme.colorScheme.tertiary,
                             title = "自动加载字幕",
                             subtitle = "播放时自动加载可用字幕",
                             checked = uiState.autoLoadSubtitle,
@@ -256,7 +256,7 @@ fun PlayerSettingsScreen(
                 }
 
                 // ==================== 手势控制 ====================
-                CyberSectionTitle("手势控制", AmberGold)
+                CyberSectionTitle("手势控制", colorScheme.tertiary)
 
                 Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
                     Column {

@@ -2,6 +2,7 @@ package com.nowen.video.di
 
 import android.content.Context
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.nowen.video.data.discovery.ServerDiscoveryManager
 import com.nowen.video.data.local.PlayerPreferences
 import com.nowen.video.data.local.ServerManager
 import com.nowen.video.data.local.ThemePreferences
@@ -113,5 +114,13 @@ object NetworkModule {
         json: Json
     ): WebSocketManager {
         return WebSocketManager(tokenManager, json)
+    }
+
+    @Provides
+    @Singleton
+    fun provideServerDiscoveryManager(
+        @ApplicationContext context: Context
+    ): ServerDiscoveryManager {
+        return ServerDiscoveryManager(context)
     }
 }

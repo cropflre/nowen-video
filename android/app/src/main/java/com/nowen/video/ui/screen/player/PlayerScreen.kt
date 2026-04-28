@@ -93,11 +93,11 @@ import kotlin.math.abs
 
 private const val TAG = "PlayerDebug"
 
-// ==================== 主题色常量 ====================
-private val NeonBlue = Color(0xFF00D4FF)
-private val NeonBlueDim = Color(0xFF00D4FF).copy(alpha = 0.6f)
-private val ControlBg = Color(0xFF0B1120)
-private val ControlBgAlpha = Color(0xFF0B1120).copy(alpha = 0.85f)
+// ==================== 主题色常量（使用主题系统统一管理） ====================
+private val NeonBlue = com.nowen.video.ui.theme.PlayerAccent
+private val NeonBlueDim = com.nowen.video.ui.theme.PlayerAccent.copy(alpha = 0.6f)
+private val ControlBg = com.nowen.video.ui.theme.PlayerControlBg
+private val ControlBgAlpha = com.nowen.video.ui.theme.PlayerControlBgAlpha
 
 /**
  * 视频播放器页面
@@ -530,7 +530,7 @@ fun PlayerScreen(
                 )
         )
 
-        // ===== 锁定模式：只显示锁定按钮 =====
+        // ===== 锁定模式：只显示锁定按钮（毛玻璃风格） =====
         if (isLocked) {
             AnimatedVisibility(
                 visible = showControls,
@@ -542,8 +542,16 @@ fun PlayerScreen(
                     onClick = { isLocked = false },
                     modifier = Modifier
                         .padding(start = 16.dp)
-                        .size(48.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .size(52.dp)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    NeonBlue.copy(alpha = 0.15f),
+                                    Color.Black.copy(alpha = 0.5f)
+                                )
+                            ),
+                            CircleShape
+                        )
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = "解锁", tint = NeonBlue, modifier = Modifier.size(24.dp))
                 }
@@ -653,11 +661,11 @@ fun PlayerScreen(
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 8.dp)
                 ) {
-                    // ===== 进度条 =====
+                    // ===== 进度条（渐变 + 精致缓冲指示） =====
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(32.dp)
+                            .height(36.dp)
                             .pointerInput(Unit) {
                                 detectTapGestures { offset ->
                                     if (totalDuration > 0) {
@@ -687,47 +695,55 @@ fun PlayerScreen(
                             },
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        // 背景轨道
+                        // 背景轨道（更柔和）
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(Color.White.copy(alpha = 0.15f))
+                                .height(if (isSeeking) 4.dp else 3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(com.nowen.video.ui.theme.PlayerProgressTrack)
                         )
-                        // 缓冲进度
+                        // 缓冲进度（半透明白色）
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(bufferedProgress)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(Color.White.copy(alpha = 0.3f))
+                                .height(if (isSeeking) 4.dp else 3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(com.nowen.video.ui.theme.PlayerProgressBuffer)
                         )
-                        // 播放进度
+                        // 播放进度（渐变色）
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(NeonBlue)
+                                .height(if (isSeeking) 4.dp else 3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    brush = com.nowen.video.ui.theme.PlayerProgressGradient
+                                )
                         )
-                        // 进度条拖拽圆点
-                        Box(
-                            modifier = Modifier
-                                .offset(x = ((progress.coerceIn(0f, 1f)) * (this@Box).run { 0 }).dp) // 占位，实际用 fraction
-                        ) {
-                            // 使用 fillMaxWidth(fraction) 的方式定位
-                        }
+                        // 进度条拖拽圆点（带光晕）
                         Row(
                             modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)),
                             horizontalArrangement = Arrangement.End
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(if (isSeeking) 16.dp else 12.dp)
-                                    .clip(CircleShape)
-                                    .background(NeonBlue)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                // 外层光晕
+                                if (isSeeking) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(NeonBlue.copy(alpha = 0.2f))
+                                    )
+                                }
+                                // 内层圆点
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (isSeeking) 14.dp else 10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                )
+                            }
                         }
                     }
 
@@ -860,49 +876,82 @@ fun PlayerScreen(
             }
         }
 
-        // ===== 中央大播放按钮（暂停时显示）=====
+        // ===== 中央大播放按钮（暂停时显示，带光晕） =====
         AnimatedVisibility(
             visible = !isPlaying && !uiState.loading && showControls && !isLocked,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center)
         ) {
-            Surface(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .clickable { exoPlayer.play() },
-                shape = CircleShape,
-                color = NeonBlue.copy(alpha = 0.2f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = "播放",
-                        tint = Color.White,
-                        modifier = Modifier.size(40.dp)
+            Box(contentAlignment = Alignment.Center) {
+                // 外层光晕
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    NeonBlue.copy(alpha = 0.18f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+                // 播放按钮
+                Surface(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .clickable { exoPlayer.play() },
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        Color.White.copy(alpha = 0.2f)
                     )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // ===== 手势提示（居中）=====
+        // ===== 手势提示（居中，毛玻璃圆角卡片） =====
         AnimatedVisibility(
             visible = gestureInfo != null,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(300)),
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(250)),
             modifier = Modifier.align(Alignment.Center)
         ) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = ControlBgAlpha
-            ) {
-                Text(
-                    text = gestureInfo ?: "",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 14.dp)
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.72f),
+                shadowElevation = 8.dp,
+                border = androidx.compose.foundation.BorderStroke(
+                    0.5.dp,
+                    NeonBlue.copy(alpha = 0.15f)
                 )
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = gestureInfo ?: "",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = Color.White
+                    )
+                }
             }
         }
 
@@ -938,16 +987,16 @@ fun PlayerScreen(
         }
     }
 
-    // ==================== 播放设置面板（ModalBottomSheet）====================
+    // ==================== 播放设置面板（ModalBottomSheet，统一主题色） ====================
     if (showSettingsPanel) {
         ModalBottomSheet(
             onDismissRequest = {
                 showSettingsPanel = false
                 settingsCategory = null
             },
-            containerColor = Color(0xFF1A1A2E),
+            containerColor = com.nowen.video.ui.theme.SpaceSurface,
             contentColor = Color.White,
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            shape = com.nowen.video.ui.theme.CyberBottomSheetShape
         ) {
             Column(
                 modifier = Modifier
@@ -1315,9 +1364,9 @@ fun PlayerScreen(
                 subtitlePanelTab = "tracks"
                 showTranslateMenu = false
             },
-            containerColor = Color(0xFF0B1120),
+            containerColor = com.nowen.video.ui.theme.SpaceDarkBlue,
             contentColor = Color.White,
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            shape = com.nowen.video.ui.theme.CyberBottomSheetShape
         ) {
             Column(
                 modifier = Modifier
@@ -1521,7 +1570,7 @@ fun PlayerScreen(
                                     SubtitleTrackItem(
                                         title = "AI 生成字幕",
                                         subtitle = "✓ 已就绪",
-                                        subtitleColor = Color(0xFF34D399),
+subtitleColor = com.nowen.video.ui.theme.ElectricGreen,
                                         isSelected = uiState.activeSubtitle == "ai:",
                                         icon = Icons.Default.AutoAwesome,
                                         onClick = {
@@ -1623,7 +1672,7 @@ fun PlayerScreen(
                                     SubtitleTrackItem(
                                         title = getTranslateLanguageName(sub.language),
                                         subtitle = "✓ 已翻译",
-                                        subtitleColor = Color(0xFF34D399),
+subtitleColor = com.nowen.video.ui.theme.ElectricGreen,
                                         isSelected = uiState.activeSubtitle == trackId,
                                         icon = Icons.Default.Translate,
                                         onClick = {
@@ -2217,7 +2266,7 @@ private fun SubtitleTrackItem(
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isDisabled) Color(0xFFEF4444).copy(alpha = 0.6f) else subtitleColor
+color = if (isDisabled) com.nowen.video.ui.theme.NeonPink.copy(alpha = 0.6f) else subtitleColor
                     )
                 }
             }
@@ -2233,7 +2282,7 @@ private fun SubtitleTrackItem(
                 Text(
                     text = disabledReason,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFEF4444).copy(alpha = 0.6f)
+color = com.nowen.video.ui.theme.NeonPink.copy(alpha = 0.6f)
                 )
             }
         }

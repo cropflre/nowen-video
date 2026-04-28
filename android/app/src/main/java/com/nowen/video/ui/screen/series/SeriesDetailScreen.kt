@@ -59,7 +59,7 @@ fun SeriesDetailScreen(
                 TopAppBar(
                     title = { Text(uiState.series?.title ?: "剧集详情", color = colorScheme.primary, style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 1.sp)) },
                     navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = colorScheme.primary) } },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.scrim.copy(alpha = 0.85f))
+colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface.copy(alpha = 0.95f))
                 )
             }
         ) { padding ->

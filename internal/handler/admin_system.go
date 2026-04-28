@@ -11,14 +11,6 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
-// ==================== 系统监控 ====================
-
-// GetMetrics 获取实时系统指标
-func (h *AdminHandler) GetMetrics(c *gin.Context) {
-	metrics := h.monitorService.GetMetrics()
-	c.JSON(http.StatusOK, gin.H{"data": metrics})
-}
-
 // ==================== 定时任务管理 ====================
 
 // CreateScheduledTaskRequest 创建定时任务请求

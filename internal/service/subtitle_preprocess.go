@@ -2,11 +2,14 @@ package service
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +19,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 )
 
 // ==================== 字幕预处理事件常量 ====================
@@ -55,9 +59,17 @@ type SubtitlePreprocessService struct {
 	maxWorkers  int32
 	jobQueue    chan string // 任务 ID 队列
 	cancelJobs  sync.Map    // 取消的任务 ID 集合
+	inQueueIDs  sync.Map    // 已在队列或处理中的任务 ID，用于 reconciler 去重
 
 	// 进度广播节流
 	lastBroadcast sync.Map // taskID -> time.Time
+
+	// ASR 健康检查结果缓存（避免为每个任务反复外网探测）
+	asrHealthMu      sync.Mutex
+	asrHealthExpire  time.Time
+	asrHealthHealthy bool
+	asrHealthEngine  string
+	asrHealthErr     string
 }
 
 // NewSubtitlePreprocessService 创建字幕预处理服务
@@ -94,6 +106,9 @@ func NewSubtitlePreprocessService(
 	// 恢复未完成的任务
 	go s.recoverPendingTasks()
 
+	// TODO P2: 启动 pending reconciler，防止任务因队列满而永远被丢掉（方法待实现）
+	// go s.pendingReconciler()
+
 	return s
 }
 
@@ -103,6 +118,16 @@ func (s *SubtitlePreprocessService) SetWSHub(hub *WSHub) {
 }
 
 // ==================== 公开 API ====================
+
+// enqueueTask 将任务入队，如队列满则仅记录 inQueueIDs、等待 reconciler 后续拉起
+func (s *SubtitlePreprocessService) enqueueTask(taskID string) {
+	select {
+	case s.jobQueue <- taskID:
+		s.inQueueIDs.Store(taskID, true)
+	default:
+		s.logger.Warnf("字幕预处理队列已满，任务 %s 将在下次调度时处理", taskID)
+	}
+}
 
 // CheckASRHealth 检查 ASR 服务健康状态
 func (s *SubtitlePreprocessService) CheckASRHealth() map[string]interface{} {
@@ -129,6 +154,28 @@ func (s *SubtitlePreprocessService) CheckASRHealth() map[string]interface{} {
 	return result
 }
 
+// checkASRHealthCached 带缓存的健康检查（默认 60 秒内复用上次结果）
+func (s *SubtitlePreprocessService) checkASRHealthCached() (bool, string, string) {
+	s.asrHealthMu.Lock()
+	defer s.asrHealthMu.Unlock()
+
+	if time.Now().Before(s.asrHealthExpire) {
+		return s.asrHealthHealthy, s.asrHealthEngine, s.asrHealthErr
+	}
+
+	healthy, engine, errMsg := s.asrService.CheckWhisperHealth()
+	s.asrHealthHealthy = healthy
+	s.asrHealthEngine = engine
+	s.asrHealthErr = errMsg
+	if healthy {
+		s.asrHealthExpire = time.Now().Add(60 * time.Second)
+	} else {
+		// 不健康时缩短缓存，方便快速恢复
+		s.asrHealthExpire = time.Now().Add(15 * time.Second)
+	}
+	return healthy, engine, errMsg
+}
+
 // RetryAllFailed 一键重试所有失败任务
 func (s *SubtitlePreprocessService) RetryAllFailed() (int, error) {
 	tasks, err := s.repo.RetryAllFailed()
@@ -138,10 +185,7 @@ func (s *SubtitlePreprocessService) RetryAllFailed() (int, error) {
 
 	// 将任务重新入队
 	for _, task := range tasks {
-		select {
-		case s.jobQueue <- task.ID:
-		default:
-		}
+		s.enqueueTask(task.ID)
 	}
 
 	return len(tasks), nil
@@ -198,11 +242,7 @@ func (s *SubtitlePreprocessService) SubmitMedia(mediaID string, targetLangs []st
 	}
 
 	// 入队
-	select {
-	case s.jobQueue <- task.ID:
-	default:
-		s.logger.Warnf("字幕预处理队列已满，任务 %s 将在下次调度时处理", task.ID)
-	}
+	s.enqueueTask(task.ID)
 
 	return task, nil
 }
@@ -284,10 +324,7 @@ func (s *SubtitlePreprocessService) RetryTask(taskID string) error {
 	task.Message = "重试中..."
 	s.repo.Update(task)
 
-	select {
-	case s.jobQueue <- task.ID:
-	default:
-	}
+	s.enqueueTask(task.ID)
 
 	return nil
 }
@@ -349,8 +386,12 @@ func (s *SubtitlePreprocessService) DeleteTask(taskID string) error {
 func (s *SubtitlePreprocessService) worker(id int) {
 	s.logger.Infof("字幕预处理工作协程 #%d 启动", id)
 	for taskID := range s.jobQueue {
+		// 出队时从 inQueueIDs 清除
+		s.inQueueIDs.Delete(taskID)
+
 		// 检查是否已取消
 		if _, cancelled := s.cancelJobs.LoadAndDelete(taskID); cancelled {
+			s.lastBroadcast.Delete(taskID)
 			continue
 		}
 
@@ -358,7 +399,8 @@ func (s *SubtitlePreprocessService) worker(id int) {
 		s.processTask(taskID)
 		atomic.AddInt32(&s.workerCount, -1)
 
-		// 清理广播节流缓存
+		// 统一清理那些【运行中被取消】而未在出队时清理的条目
+		s.cancelJobs.Delete(taskID)
 		s.lastBroadcast.Delete(taskID)
 	}
 }
@@ -410,7 +452,7 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 		}
 
 		// 跳到翻译阶段
-		s.updatePhase(task, "translate", 50, "已有字幕，开始翻译...")
+		s.updatePhase(task, "translate", 55, "已有字幕，开始翻译...")
 	} else {
 		// ========== Phase 2: 字幕格式标准化（提取/转换为 VTT） ==========
 		if s.isCancelled(taskID) {
@@ -423,7 +465,7 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 			task.OriginalVTTPath = extractedPath
 			task.SubtitleSource = extractSource
 			task.CueCount = s.countVTTCues(extractedPath)
-			s.updatePhase(task, "extract", 30, fmt.Sprintf("已提取字幕（%d 条, %s）", task.CueCount, extractSource))
+			s.updatePhase(task, "extract", 35, fmt.Sprintf("已提取字幕（%d 条, %s）", task.CueCount, extractSource))
 		} else {
 			// ========== Phase 3: AI 字幕生成 ==========
 			if s.isCancelled(taskID) {
@@ -443,8 +485,8 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 				return
 			}
 
-			// P0: ASR 已配置但可能不可用（如 API 不支持 Whisper），预检
-			healthy, engine, healthErr := s.asrService.CheckWhisperHealth()
+			// P0: ASR 已配置但可能不可用，预检（走缓存，避免每次打外网）
+			healthy, engine, healthErr := s.checkASRHealthCached()
 			if !healthy {
 				// ASR 配置了但不可用，降级为 skipped 而非 failed
 				task.Status = "skipped"
@@ -469,7 +511,7 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 			task.OriginalVTTPath = vttPath
 			task.SubtitleSource = "ai_generated"
 			task.CueCount = s.countVTTCues(vttPath)
-			s.updatePhase(task, "generate", 50, fmt.Sprintf("AI 字幕生成完成（%d 条）", task.CueCount))
+			s.updatePhase(task, "generate", 45, fmt.Sprintf("AI 字幕生成完成（%d 条）", task.CueCount))
 		}
 	}
 
@@ -479,25 +521,35 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 	}
 
 	if s.cfg.AI.SubCleanEnabled && task.OriginalVTTPath != "" {
-		s.updatePhase(task, "clean", 40, "正在清洗字幕内容...")
+		s.updatePhase(task, "clean", 48, "正在清洗字幕内容...")
 
 		cleaner := NewSubtitleCleaner(s.buildCleanConfig(), s.logger)
 		report, err := cleaner.CleanVTT(task.OriginalVTTPath)
 		if err != nil {
 			s.logger.Warnf("字幕清洗失败（不影响后续流程）: %v", err)
-			s.updatePhase(task, "clean", 45, fmt.Sprintf("字幕清洗失败: %v", err))
+			s.updatePhase(task, "clean", 52, fmt.Sprintf("字幕清洗失败: %v", err))
 		} else {
 			task.CueCount = report.ProcessedCueCount
+			// 将详细报告持久化为 JSON，方便前端展示详情
+			if reportBytes, jerr := json.Marshal(report); jerr == nil {
+				task.CleanReportJSON = string(reportBytes)
+			}
 			msg := fmt.Sprintf("字幕清洗完成（%d→%d 条, 编码: %s",
 				report.OriginalCueCount, report.ProcessedCueCount, report.DetectedEncoding)
 			if report.RemovedAds > 0 {
 				msg += fmt.Sprintf(", 去广告: %d", report.RemovedAds)
 			}
+			if report.RemovedSDH > 0 {
+				msg += fmt.Sprintf(", 去SDH: %d", report.RemovedSDH)
+			}
 			if report.MergedCues > 0 {
 				msg += fmt.Sprintf(", 合并: %d", report.MergedCues)
 			}
+			if report.SplitCues > 0 {
+				msg += fmt.Sprintf(", 拆分: %d", report.SplitCues)
+			}
 			msg += "）"
-			s.updatePhase(task, "clean", 48, msg)
+			s.updatePhase(task, "clean", 55, msg)
 		}
 	}
 
@@ -507,37 +559,87 @@ func (s *SubtitlePreprocessService) processTask(taskID string) {
 	}
 
 	if task.TargetLangs != "" && task.OriginalVTTPath != "" {
-		targetLangs := strings.Split(task.TargetLangs, ",")
-		translatedPaths := make(map[string]string)
-
-		for i, lang := range targetLangs {
-			lang = strings.TrimSpace(lang)
-			if lang == "" {
-				continue
+		raw := strings.Split(task.TargetLangs, ",")
+		var targetLangs []string
+		for _, l := range raw {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				targetLangs = append(targetLangs, l)
 			}
-			if s.isCancelled(taskID) {
-				return
-			}
-
-			progress := 50 + float64(i+1)/float64(len(targetLangs))*40
-			s.updatePhase(task, "translate", progress,
-				fmt.Sprintf("正在翻译为 %s (%d/%d)...", lang, i+1, len(targetLangs)))
-
-			translatedPath, err := s.translateSubtitle(media, lang)
-			if err != nil {
-				s.logger.Warnf("翻译为 %s 失败: %v", lang, err)
-				continue
-			}
-			translatedPaths[lang] = translatedPath
 		}
 
-		// 序列化翻译路径
-		if len(translatedPaths) > 0 {
-			var parts []string
-			for lang, path := range translatedPaths {
-				parts = append(parts, fmt.Sprintf("%s=%s", lang, path))
+		if len(targetLangs) > 0 {
+			// P1: 多语言并发翻译（信号量控制最多 3 并发）
+			translatedPaths := sync.Map{}
+			failedLangs := sync.Map{}
+			var successCount int32
+			var doneCount int32
+
+			maxPar := 3
+			if len(targetLangs) < maxPar {
+				maxPar = len(targetLangs)
 			}
-			task.TranslatedPaths = strings.Join(parts, "|")
+			sem := semaphore.NewWeighted(int64(maxPar))
+			ctx := context.Background()
+			var wg sync.WaitGroup
+
+			s.updatePhase(task, "translate", 60, fmt.Sprintf("正在并发翻译 %d 种语言（最多 %d 并发）...", len(targetLangs), maxPar))
+
+			for _, lang := range targetLangs {
+				lang := lang
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := sem.Acquire(ctx, 1); err != nil {
+						return
+					}
+					defer sem.Release(1)
+
+					if s.isCancelled(taskID) {
+						return
+					}
+
+					translatedPath, err := s.translateSubtitle(media, lang)
+					if err != nil {
+						s.logger.Warnf("翻译为 %s 失败: %v", lang, err)
+						failedLangs.Store(lang, err.Error())
+					} else {
+						translatedPaths.Store(lang, translatedPath)
+						atomic.AddInt32(&successCount, 1)
+					}
+
+					done := atomic.AddInt32(&doneCount, 1)
+					progress := 60 + float64(done)/float64(len(targetLangs))*35
+					s.updatePhase(task, "translate", progress,
+						fmt.Sprintf("翻译进度 %d/%d（成功 %d）", done, len(targetLangs), atomic.LoadInt32(&successCount)))
+				}()
+			}
+			wg.Wait()
+
+			// 序列化成功语言路径
+			var parts []string
+			translatedPaths.Range(func(k, v interface{}) bool {
+				parts = append(parts, fmt.Sprintf("%s=%s", k.(string), v.(string)))
+				return true
+			})
+			if len(parts) > 0 {
+				task.TranslatedPaths = strings.Join(parts, "|")
+			}
+			// 记录失败语言
+			var failed []string
+			failedLangs.Range(func(k, _ interface{}) bool {
+				failed = append(failed, k.(string))
+				return true
+			})
+			if len(failed) > 0 {
+				task.FailedLangs = strings.Join(failed, ",")
+			}
+
+			// P1: 如果所有目标语言都翻译失败，应视为任务失败
+			if atomic.LoadInt32(&successCount) == 0 {
+				s.failTask(task, fmt.Sprintf("所有目标语言翻译均失败: %s", strings.Join(failed, ", ")))
+				return
+			}
 		}
 	}
 
@@ -638,7 +740,8 @@ func (s *SubtitlePreprocessService) tryExtractSubtitle(media *model.Media) (stri
 			ext := strings.ToLower(filepath.Ext(subPath))
 			switch ext {
 			case ".srt", ".ass", ".ssa":
-				vttPath, err := s.scanner.ConvertSubtitleToVTT(subPath)
+				// P2: 使用带编码检测的转换函数，避免 GBK/Big5/SJIS 文件直接产生乱码
+				vttPath, err := s.scanner.ConvertSubtitleToVTTWithEncoding(subPath)
 				if err == nil {
 					return vttPath, "extracted"
 				}
@@ -1102,8 +1205,14 @@ func (s *SubtitlePreprocessService) writeVTTFile(vttPath string, cues []vttCue) 
 
 // parseFloatSafe 安全解析浮点数
 func parseFloatSafe(s string) float64 {
-	var f float64
-	fmt.Sscanf(s, "%f", &f)
+	s = strings.TrimSpace(s)
+	if s == "" || s == "N/A" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
 	return f
 }
 
@@ -1166,6 +1275,9 @@ func (s *SubtitlePreprocessService) completeTask(task *model.SubtitlePreprocessT
 		if task.TranslatedPaths != "" {
 			translatedCount := len(strings.Split(task.TranslatedPaths, "|"))
 			parts = append(parts, fmt.Sprintf(", 翻译 %d 种语言", translatedCount))
+		}
+		if task.FailedLangs != "" {
+			parts = append(parts, fmt.Sprintf(", 失败语言: %s", task.FailedLangs))
 		}
 		task.Message = strings.Join(parts, "") + "）"
 	}
@@ -1254,28 +1366,63 @@ func (s *SubtitlePreprocessService) buildCleanConfig() SubtitleCleanConfig {
 func (s *SubtitlePreprocessService) recoverPendingTasks() {
 	time.Sleep(5 * time.Second) // 等待服务完全启动
 
-	tasks, err := s.repo.ListPending(50)
+	tasks, err := s.repo.ListPending(200)
 	if err != nil {
 		return
 	}
 
 	// 将之前 running 的任务重置为 pending
 	running, _ := s.repo.ListRunning()
-	for _, task := range running {
+	for i := range running {
+		task := &running[i]
 		task.Status = "pending"
 		task.Message = "服务重启后恢复..."
-		s.repo.Update(&task)
-		tasks = append(tasks, task)
+		s.repo.Update(task)
+		tasks = append(tasks, *task)
 	}
 
 	for _, task := range tasks {
-		select {
-		case s.jobQueue <- task.ID:
-		default:
-		}
+		s.enqueueTask(task.ID)
 	}
 
 	if len(tasks) > 0 {
 		s.logger.Infof("恢复 %d 个未完成的字幕预处理任务", len(tasks))
+	}
+}
+
+// pendingReconciler 定期扫描 pending 任务重新入队，防止因 jobQueue 容量满导致永久卡住
+func (s *SubtitlePreprocessService) pendingReconciler() {
+	time.Sleep(30 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// 队列较空时才推新任务
+		if len(s.jobQueue) >= cap(s.jobQueue)/2 {
+			continue
+		}
+
+		tasks, err := s.repo.ListPending(200)
+		if err != nil {
+			continue
+		}
+
+		enqueued := 0
+		for _, task := range tasks {
+			// 跳过已在队列中的
+			if _, ok := s.inQueueIDs.Load(task.ID); ok {
+				continue
+			}
+			select {
+			case s.jobQueue <- task.ID:
+				s.inQueueIDs.Store(task.ID, true)
+				enqueued++
+			default:
+				return
+			}
+		}
+		if enqueued > 0 {
+			s.logger.Infof("pending reconciler 重新入队 %d 个字幕预处理任务", enqueued)
+		}
 	}
 }

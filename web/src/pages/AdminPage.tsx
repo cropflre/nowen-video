@@ -32,10 +32,11 @@ import {
   Copy as CopyIcon,
   Bookmark,
   RefreshCw,
+  FileText,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
-import SystemMonitor from '@/components/SystemMonitor'
+import LogsTab from '@/components/admin/LogsTab'
 import DashboardTab from '@/components/admin/DashboardTab'
 import UsersTab from '@/components/admin/UsersTab'
 import TasksTab from '@/components/admin/TasksTab'
@@ -49,7 +50,7 @@ const TABS = [
   { id: 'library', labelKey: 'admin.tabLibrary', icon: FolderOpen, shortLabelKey: 'admin.shortLibrary' },
   { id: 'users', labelKey: 'admin.tabUsers', icon: Users, shortLabelKey: 'admin.shortUsers' },
   { id: 'tasks', labelKey: 'admin.tabTasks', icon: ListTodo, shortLabelKey: 'admin.shortTasks' },
-  { id: 'monitor', labelKey: 'admin.tabMonitor', icon: Activity, shortLabelKey: 'admin.shortMonitor' },
+  { id: 'logs', labelKey: 'admin.tabLogs', icon: FileText, shortLabelKey: 'admin.shortLogs' },
   { id: 'ai', labelKey: 'admin.tabAI', icon: Sparkles, shortLabelKey: 'admin.shortAI' },
   { id: 'storage', labelKey: 'admin.tabStorage', icon: HardDrive, shortLabelKey: 'admin.shortStorage' },
 ] as const
@@ -627,7 +628,7 @@ export default function AdminPage() {
       { label: t('admin.quickNavTMDb'), tab: 'library' as TabId, icon: Film },
       { label: t('admin.quickNavUsers'), tab: 'users' as TabId, icon: Users },
       { label: t('admin.quickNavTranscode'), tab: 'tasks' as TabId, icon: Zap },
-      { label: t('admin.quickNavMonitor'), tab: 'monitor' as TabId, icon: Activity },
+      { label: t('admin.quickNavLogs'), tab: 'logs' as TabId, icon: FileText },
       { label: t('admin.quickNavAI'), tab: 'ai' as TabId, icon: Sparkles },
     ]
     if (!searchQuery.trim()) return []
@@ -1141,31 +1142,9 @@ export default function AdminPage() {
           />
         )}
 
-        {/* ===== 监控与日志标签页 ===== */}        {activeTab === 'monitor' && (
-          <div className="space-y-8">
-            <SystemMonitor />
-
-            {/* 最近活动日志 */}
-            <section>
-              <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-                <Activity size={20} className="text-neon/60" />
-                {t('admin.recentActivity')}
-              </h2>
-              {realtimeMessages.length > 0 ? (
-                <div className="glass-panel-subtle max-h-64 overflow-y-auto rounded-xl p-4 space-y-1.5">
-                  {realtimeMessages.map((msg, i) => (
-                    <p key={i} className={clsx('text-xs font-mono', i === 0 ? 'text-surface-300' : 'text-surface-500')}>
-                      {msg}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <div className="glass-panel-subtle flex items-center justify-center rounded-xl py-12 text-center">
-                  <p className="text-sm text-surface-500">{t('admin.noActivity')}</p>
-                </div>
-              )}
-            </section>
-          </div>
+        {/* ===== 日志标签页 ===== */}
+        {activeTab === 'logs' && (
+          <LogsTab />
         )}
 
         {/* ===== AI 配置标签页 ===== */}
