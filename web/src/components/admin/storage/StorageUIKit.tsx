@@ -33,8 +33,8 @@ export function StatusBadge({ state, label, size = 'md' }: StatusBadgeProps) {
       defaultLabel: '异常',
     },
     disabled: {
-      bg: 'bg-surface-700/30 border-surface-700/40',
-      text: 'text-surface-400',
+      bg: 'bg-slate-500/10 border-slate-500/30',
+      text: 'text-slate-500 dark:text-slate-400',
       icon: <WifiOff size={size === 'sm' ? 11 : 13} />,
       defaultLabel: '未启用',
     },
@@ -77,6 +77,11 @@ export function Toggle({ checked, onChange, disabled, accent = 'neon' }: ToggleP
     purple: 'bg-purple-500',
     amber: 'bg-amber-500',
   }
+  const accentShadow: Record<string, string> = {
+    neon: 'shadow-primary-400/30',
+    purple: 'shadow-purple-500/30',
+    amber: 'shadow-amber-500/30',
+  }
   return (
     <button
       type="button"
@@ -88,15 +93,15 @@ export function Toggle({ checked, onChange, disabled, accent = 'neon' }: ToggleP
         'relative h-6 w-11 shrink-0 rounded-full border transition-all duration-200',
         'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-900',
         checked
-          ? `${accentBg[accent]} border-transparent shadow-lg shadow-${accent === 'neon' ? 'primary-400' : accent === 'purple' ? 'purple-500' : 'amber-500'}/30`
-          : 'bg-surface-700/60 border-surface-600/40',
+          ? `${accentBg[accent]} border-transparent shadow-lg ${accentShadow[accent]}`
+          : 'bg-slate-300 dark:bg-slate-700 border-slate-400/60 dark:border-slate-600/50',
         disabled && 'opacity-40 cursor-not-allowed'
       )}
     >
       <span
         className={clsx(
-          'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200',
-          checked ? 'translate-x-5' : 'translate-x-0.5'
+          'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-transform duration-200',
+          checked ? 'translate-x-5' : 'translate-x-0'
         )}
       />
     </button>
