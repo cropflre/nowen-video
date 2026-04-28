@@ -24,6 +24,8 @@ import type {
   LoginLog,
   AuditLog,
   InviteCode,
+  TidalStatus,
+  TidalConfig,
 } from '@/types'
 
 // ==================== 管理 ====================
@@ -191,6 +193,16 @@ export const adminApi = {
 
   updateSystemSettings: (data: Partial<SystemSettings>) =>
     api.put<{ data: SystemSettings }>('/admin/settings/system', data),
+
+  // 潮汐调度器（无人时全力预处理，有人时让路）
+  getIdleSchedulerStatus: () =>
+    api.get<{ data: TidalStatus }>('/admin/idle-scheduler/status'),
+
+  getIdleSchedulerConfig: () =>
+    api.get<{ data: TidalConfig }>('/admin/idle-scheduler/config'),
+
+  updateIdleSchedulerConfig: (data: Partial<TidalConfig>) =>
+    api.put<{ message: string; data: TidalConfig }>('/admin/idle-scheduler/config', data),
 
   // 图片管理
   searchTMDbImages: (tmdbId: number, type_: string = 'movie') =>

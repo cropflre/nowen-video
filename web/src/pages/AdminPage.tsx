@@ -42,6 +42,8 @@ import UsersTab from '@/components/admin/UsersTab'
 import TasksTab from '@/components/admin/TasksTab'
 import AITab from '@/components/admin/AITab'
 import StorageTab from '@/components/admin/StorageTab'
+import AdultScraperSection from '@/components/admin/AdultScraperTab'
+import AdultScraperProSection from '@/components/admin/AdultScraperPro'
 import { useTranslation } from '@/i18n'
 
 // ==================== 标签页定义 ====================
@@ -228,6 +230,7 @@ export default function AdminPage() {
     auto_preprocess_on_scan: false,
     auto_transcode_on_play: false,
     prefer_direct_play: true,
+    abr_strategy: 'recommended',
   })
 
   // TMDb 配置状态
@@ -1126,6 +1129,12 @@ export default function AdminPage() {
                 </div>
               </div>
             </section>
+
+            {/* ===== 番号刮削配置 ===== */}
+            <AdultScraperSection />
+
+            {/* ===== 番号刮削运营中心 ===== */}
+            <AdultScraperProSection />
           </div>
         )}
 
@@ -1156,6 +1165,7 @@ export default function AdminPage() {
         {activeTab === 'storage' && (
           <StorageTab />
         )}
+
       </div>
 
       {/* 搜索遮罩 */}

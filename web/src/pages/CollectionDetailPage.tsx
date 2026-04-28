@@ -115,6 +115,14 @@ export default function CollectionDetailPage() {
             className="h-full w-full object-cover"
             style={{ filter: 'blur(40px) brightness(0.3) saturate(1.5)', transform: 'scale(1.2)' }}
           />
+          {/* 多层渐变遮罩，确保日间/夜间模式下内容都清晰可读 */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background: 'var(--bg-base)',
+              opacity: 0.55,
+            }}
+          />
           <div
             className="absolute inset-0"
             style={{
@@ -128,14 +136,27 @@ export default function CollectionDetailPage() {
           {/* 返回按钮 */}
           <button
             onClick={() => navigate(-1)}
-            className="mb-6 flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-all hover:bg-white/10"
-            style={{ color: 'var(--text-secondary)' }}
+            className="mb-6 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
+            style={{
+              color: 'var(--text-primary)',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-elevated)'
+              e.currentTarget.style.borderColor = 'var(--border-hover)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-surface)'
+              e.currentTarget.style.borderColor = 'var(--border-default)'
+            }}
           >
             <ArrowLeft size={16} />
             返回
           </button>
 
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
             {/* 合集海报 */}
             <div className="flex-shrink-0">
               <div className="relative h-56 w-40 overflow-hidden rounded-xl shadow-2xl sm:h-64 sm:w-44"

@@ -325,6 +325,9 @@ func (c *ProviderChain) isProviderApplicable(provider MetadataProvider, mediaTyp
 		case "image":
 			// 图片增强源，始终适用
 			return true
+		case "adult":
+			// 成人内容源，始终适用（Provider 内部会自行判断是否为成人内容）
+			return true
 		}
 	}
 

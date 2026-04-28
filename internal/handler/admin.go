@@ -29,6 +29,7 @@ type AdminHandler struct {
 	loginLogRepo      *repository.LoginLogRepo
 	auditLogRepo      *repository.AuditLogRepo
 	inviteRepo        *repository.InviteCodeRepo
+	idleScheduler     *service.IdleScheduler
 	cfg               *config.Config
 	logger            *zap.SugaredLogger
 	db                *gorm.DB

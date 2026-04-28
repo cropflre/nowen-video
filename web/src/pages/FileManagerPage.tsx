@@ -5,6 +5,8 @@ import { fileManagerApi, libraryApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import AIAssistant, { AIAssistantButton, AIAssistantPanel } from '@/components/AIAssistant'
 import ScrapeManagerPage from '@/pages/ScrapeManagerPage'
+import AdultScraperSection from '@/components/admin/AdultScraperTab'
+import AdultScraperProSection from '@/components/admin/AdultScraperPro'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import {
   FolderOpen,
@@ -13,6 +15,7 @@ import {
   History,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldAlert,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -40,10 +43,12 @@ export default function FileManagerPage() {
   const { on, off } = useWebSocket()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Tab 状态（支持从URL参数读取，如 /files?tab=scrape）
+  // Tab 状态（支持从URL参数读取，如 /files?tab=scrape&tab=adult）
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     const tab = searchParams.get('tab')
-    return tab === 'scrape' ? 'scrape' : 'files'
+    if (tab === 'scrape') return 'scrape'
+    if (tab === 'adult') return 'adult'
+    return 'files'
   })
 
   // 切换Tab时同步URL参数
@@ -416,11 +421,33 @@ export default function FileManagerPage() {
           <Globe size={16} />
           刮削任务
         </button>
+        <button
+          onClick={() => handleTabChange('adult')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+            activeTab === 'adult'
+              ? 'bg-neon-blue/10 text-neon shadow-sm'
+              : 'text-surface-400 hover:text-surface-200 hover:bg-white/5'
+          )}
+        >
+          <ShieldAlert size={16} />
+          成人刮削
+        </button>
       </div>
 
       {/* ==================== 刮削任务 Tab ==================== */}
       {activeTab === 'scrape' && (
         <ScrapeManagerPage embedded />
+      )}
+
+      {/* ==================== 成人刮削 Tab ==================== */}
+      {activeTab === 'adult' && (
+        <div className="space-y-5">
+          {/* 番号刮削配置（数据源、API Key、映射表、架构可视化）*/}
+          <AdultScraperSection />
+          {/* 运营中心（批量刮削 / 镜像管理 / 缓存 / 定时调度 / 分析报表）*/}
+          <AdultScraperProSection />
+        </div>
       )}
 
       {/* ==================== 文件列表 Tab ==================== */}

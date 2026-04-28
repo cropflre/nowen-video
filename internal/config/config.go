@@ -274,6 +274,93 @@ type EmbyConfig struct {
 	CustomCss string `mapstructure:"custom_css"`
 }
 
+// AdultScraperConfig 番号刮削配置（混合架构：Go 原生爬虫 + Python 微服务）
+type AdultScraperConfig struct {
+	// 是否启用番号刮削功能（总开关）
+	Enabled bool `mapstructure:"enabled"`
+	// 是否启用 JavBus 数据源（Go 原生爬虫）
+	EnableJavBus bool `mapstructure:"enable_javbus"`
+	// JavBus 镜像地址（留空使用默认 https://www.javbus.com）
+	JavBusURL string `mapstructure:"javbus_url"`
+	// 是否启用 JavDB 数据源（Go 原生爬虫）
+	EnableJavDB bool `mapstructure:"enable_javdb"`
+	// JavDB 镜像地址（留空使用默认 https://javdb.com）
+	JavDBURL string `mapstructure:"javdb_url"`
+
+	// ==================== P1 扩展：更多数据源 ====================
+	// 是否启用 Freejavbt 数据源（Go 原生爬虫，中文元数据优秀）
+	EnableFreejavbt bool `mapstructure:"enable_freejavbt"`
+	// Freejavbt 镜像地址（留空使用默认 https://freejavbt.com）
+	FreejavbtURL string `mapstructure:"freejavbt_url"`
+	// 是否启用 JAV321 数据源（Go 原生爬虫，中文简介丰富）
+	EnableJav321 bool `mapstructure:"enable_jav321"`
+	// JAV321 镜像地址（留空使用默认 https://www.jav321.com）
+	Jav321URL string `mapstructure:"jav321_url"`
+
+	// ==================== P2 扩展：更多数据源 ====================
+	// 是否启用 Fanza (DMM) 官方数据源（数据最权威，封面最清晰）
+	EnableFanza bool `mapstructure:"enable_fanza"`
+	// Fanza 站点地址（留空使用默认 https://www.dmm.co.jp）
+	FanzaURL string `mapstructure:"fanza_url"`
+	// 是否启用 MGStage 数据源（MGS 系列和 200GANA 等素人番号专用）
+	EnableMGStage bool `mapstructure:"enable_mgstage"`
+	// MGStage 站点地址（留空使用默认 https://www.mgstage.com）
+	MGStageURL string `mapstructure:"mgstage_url"`
+	// 是否启用 FC2Hub 数据源（FC2-PPV 无码作品专用）
+	EnableFC2Hub bool `mapstructure:"enable_fc2hub"`
+	// FC2Hub 站点地址（留空使用默认 https://fc2hub.com）
+	FC2HubURL string `mapstructure:"fc2hub_url"`
+
+	// ==================== P2 扩展：聚合模式 + 封面处理 ====================
+	// 聚合刮削模式：并发调用所有启用的数据源，按字段优先级合并最完整结果
+	// 开启后耗时变长但数据最完整，适合精刮场景
+	EnableAggregatedMode bool `mapstructure:"enable_aggregated_mode"`
+	// 封面裁剪：把横版大图裁剪成 2:3 竖版 poster（Emby 媒体墙更美观）
+	EnablePosterCrop bool `mapstructure:"enable_poster_crop"`
+
+	// ==================== P1 扩展：多媒体资源下载 ====================
+	// 是否下载剧照（ExtraFanart，供 Emby/Jellyfin 显示多张剧照）
+	DownloadExtraFanart bool `mapstructure:"download_extra_fanart"`
+	// 最多下载多少张剧照（0 = 全部，默认 10）
+	MaxExtraFanart int `mapstructure:"max_extra_fanart"`
+	// 是否下载演员头像（写入 .actors/ 目录供 Emby 使用）
+	DownloadActorPhoto bool `mapstructure:"download_actor_photo"`
+	// 是否抓取 Trailer 预告片 URL（写入 NFO）
+	FetchTrailer bool `mapstructure:"fetch_trailer"`
+
+	// ==================== P1 扩展：翻译配置 ====================
+	// 是否启用标题/简介翻译（日文 -> 中文）
+	EnableTranslate bool `mapstructure:"enable_translate"`
+	// 翻译服务提供商：google / baidu / youdao / deeplx / disabled
+	TranslateProvider string `mapstructure:"translate_provider"`
+	// 翻译服务接口地址（自建 deeplx 时必填，格式 http://host:port/translate）
+	TranslateEndpoint string `mapstructure:"translate_endpoint"`
+	// 翻译服务 API Key（百度/有道等商业服务需要）
+	TranslateAPIKey string `mapstructure:"translate_api_key"`
+	// 翻译服务 API Secret（百度/有道需要）
+	TranslateAPISecret string `mapstructure:"translate_api_secret"`
+	// 翻译目标语言（默认 zh-CN）
+	TranslateTargetLang string `mapstructure:"translate_target_lang"`
+
+	// Python 刮削微服务地址（用于 Cloudflare 等强反爬场景的 fallback）
+	// 留空则不使用 Python 微服务
+	// 示例: http://localhost:5000
+	PythonServiceURL string `mapstructure:"python_service_url"`
+	// Python 微服务 API Key（可选，用于认证）
+	PythonServiceAPIKey string `mapstructure:"python_service_api_key"`
+	// 是否在 Go 后端启动时自动拉起 Python 微服务子进程
+	// 为 true 时，Go 进程会 fork 出一个 python app.py 子进程，并在主服务关闭时一并回收
+	AutoStartPython bool `mapstructure:"auto_start_python"`
+	// Python 可执行文件路径（留空自动探测 python3/python/py）
+	PythonExecutable string `mapstructure:"python_executable"`
+	// Python 微服务脚本目录（留空使用默认 scripts/adult-scraper）
+	PythonServiceDir string `mapstructure:"python_service_dir"`
+	// 请求间隔最小值（毫秒，默认 1500，防止被封 IP）
+	MinRequestInterval int `mapstructure:"min_request_interval"`
+	// 请求间隔最大值（毫秒，默认 3000）
+	MaxRequestInterval int `mapstructure:"max_request_interval"`
+}
+
 // StorageConfig 存储配置（支持本地、WebDAV、网盘等多种存储后端）
 type StorageConfig struct {
 	// ==================== WebDAV 存储配置 ====================
@@ -398,6 +485,7 @@ type Config struct {
 	Registration RegistrationConfig `mapstructure:"registration"`
 	Storage      StorageConfig      `mapstructure:"storage"`
 	Emby         EmbyConfig         `mapstructure:"emby"`
+	AdultScraper AdultScraperConfig `mapstructure:"adult_scraper"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -634,6 +722,20 @@ func setDefaults() {
 	viper.SetDefault("storage.s3.cache_ttl_hours", 24)
 	viper.SetDefault("storage.s3.read_block_size_mb", 8)
 	viper.SetDefault("storage.s3.read_block_count", 4)
+
+	// ---- 番号刮削 ----
+	viper.SetDefault("adult_scraper.enabled", false)
+	viper.SetDefault("adult_scraper.enable_javbus", true)
+	viper.SetDefault("adult_scraper.javbus_url", "")
+	viper.SetDefault("adult_scraper.enable_javdb", true)
+	viper.SetDefault("adult_scraper.javdb_url", "")
+	viper.SetDefault("adult_scraper.python_service_url", "")
+	viper.SetDefault("adult_scraper.python_service_api_key", "")
+	viper.SetDefault("adult_scraper.auto_start_python", true)
+	viper.SetDefault("adult_scraper.python_executable", "")
+	viper.SetDefault("adult_scraper.python_service_dir", "scripts/adult-scraper")
+	viper.SetDefault("adult_scraper.min_request_interval", 1500)
+	viper.SetDefault("adult_scraper.max_request_interval", 3000)
 
 	// ---- 旧版兼容默认值（当使用扁平 key 时） ----
 	viper.SetDefault("port", 8080)
@@ -1069,6 +1171,30 @@ func (c *Config) GetPerformanceConfig() map[string]interface{} {
 		"hw_accel":           c.App.HWAccel,
 		"vaapi_device":       c.App.VAAPIDevice,
 	}
+}
+
+// SaveAdultScraperConfig 将当前 AdultScraper 配置持久化到配置文件
+// 调用前应先在内存中更新 c.AdultScraper 字段，本方法只负责同步到 viper 并写盘
+func (c *Config) SaveAdultScraperConfig() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ac := c.AdultScraper
+	// 同步到 viper（使用 adult_scraper.* 命名空间，与 mapstructure 标签保持一致）
+	viper.Set("adult_scraper.enabled", ac.Enabled)
+	viper.Set("adult_scraper.enable_javbus", ac.EnableJavBus)
+	viper.Set("adult_scraper.javbus_url", ac.JavBusURL)
+	viper.Set("adult_scraper.enable_javdb", ac.EnableJavDB)
+	viper.Set("adult_scraper.javdb_url", ac.JavDBURL)
+	viper.Set("adult_scraper.python_service_url", ac.PythonServiceURL)
+	viper.Set("adult_scraper.python_service_api_key", ac.PythonServiceAPIKey)
+	viper.Set("adult_scraper.auto_start_python", ac.AutoStartPython)
+	viper.Set("adult_scraper.python_executable", ac.PythonExecutable)
+	viper.Set("adult_scraper.python_service_dir", ac.PythonServiceDir)
+	viper.Set("adult_scraper.min_request_interval", ac.MinRequestInterval)
+	viper.Set("adult_scraper.max_request_interval", ac.MaxRequestInterval)
+
+	return c.saveConfig()
 }
 
 // saveConfig 将当前配置写入配置文件

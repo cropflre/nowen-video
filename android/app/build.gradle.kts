@@ -22,10 +22,14 @@ android {
     }
 
     signingConfigs {
-        // 使用 debug 签名打包 release（方便测试分发）
-        // 正式发布时请替换为自己的 keystore
         getByName("debug") {
             // 使用 Android SDK 自带的 debug.keystore
+        }
+        create("release") {
+            storeFile = file("nowen-release.keystore")
+            storePassword = "nowen2026"
+            keyAlias = "nowen-video"
+            keyPassword = "nowen2026"
         }
     }
 
@@ -33,7 +37,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

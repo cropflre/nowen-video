@@ -11,9 +11,6 @@ import {
   X,
   Settings,
   Activity,
-  FolderOpen,
-  Users,
-  ListTodo,
   FolderCog,
   Link,
   Save,
@@ -26,14 +23,7 @@ import {
   MonitorPlay,
 } from 'lucide-react'
 import { adminApi } from '@/api'
-
-// 标签页快捷入口定义
-const SHORTCUT_TABS = [
-  { id: 'library', label: '媒体库管理', icon: FolderOpen },
-  { id: 'users', label: '用户管理', icon: Users },
-  { id: 'tasks', label: '任务与转码', icon: ListTodo },
-  { id: 'monitor', label: '监控与日志', icon: Activity },
-] as const
+import IdleSchedulerPanel from './IdleSchedulerPanel'
 
 interface DashboardTabProps {
   systemInfo: SystemInfo | null
@@ -55,8 +45,6 @@ export default function DashboardTab({
   scrapeProgress,
   transcodeProgress,
   scanPhase,
-  realtimeMessages,
-  switchTab,
 }: DashboardTabProps) {
   const [sysSettingsSaving, setSysSettingsSaving] = useState(false)
   const [sysSettingsMsg, setSysSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -490,6 +478,48 @@ export default function DashboardTab({
             <ToggleButton checked={sysSettings.auto_transcode_on_play} onChange={() => setSysSettings((s) => ({ ...s, auto_transcode_on_play: !s.auto_transcode_on_play }))} />
           </div>
 
+          <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+          {/* ABR 多码率策略 */}
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <MonitorPlay size={16} style={{ color: '#06B6D4' }} />
+              <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>ABR 多码率策略（预处理）</h4>
+            </div>
+            <p className="mt-1 mb-3 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+              决定视频预处理时生成多少档可供自适应切换的清晰度。档位越多、磁盘占用越大、预处理越慢；弱网场景下更多档位可显著改善流畅度。
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'off', label: '关闭', desc: '仅生成源档 · 磁盘最省' },
+                { value: 'conservative', label: '保守', desc: '源档 + 下一档（2 档）' },
+                { value: 'recommended', label: '推荐 ⭐', desc: '源档 + 1080p + 720p（3 档）' },
+                { value: 'aggressive', label: '激进', desc: '源档 + 1080p + 720p + 480p（4 档）' },
+              ] as const).map((opt) => {
+                const active = sysSettings.abr_strategy === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSysSettings((s) => ({ ...s, abr_strategy: opt.value }))}
+                    className="rounded-lg px-3 py-2.5 text-left transition-all"
+                    style={{
+                      background: active ? 'var(--neon-blue-6)' : 'var(--nav-hover-bg)',
+                      border: active ? '1px solid var(--neon-blue)' : '1px solid var(--border-default)',
+                    }}
+                  >
+                    <div className="text-xs font-semibold" style={{ color: active ? 'var(--neon-blue)' : 'var(--text-primary)' }}>{opt.label}</div>
+                    <div className="mt-0.5 text-[11px] leading-tight" style={{ color: 'var(--text-muted)' }}>{opt.desc}</div>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              ⚠️ 仅对<strong>新提交</strong>的预处理任务生效，已完成的任务不会自动重新生成。
+              播放器会在加载到多档 HLS 时自动切换到最合适的清晰度（默认 AUTO），也可在播放器控制条手动指定。
+            </p>
+          </div>
+
           {/* 保存 */}
           <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: '1rem' }}>
             {sysSettingsMsg && (
@@ -507,42 +537,8 @@ export default function DashboardTab({
         </div>
       </section>
 
-      {/* 活动日志 */}
-      <section>
-        <h2 className="mb-3 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <Activity size={20} className="text-neon/60" />
-          活动日志
-        </h2>
-        {realtimeMessages.length > 0 ? (
-          <div className="glass-panel-subtle max-h-48 overflow-y-auto rounded-xl p-4 space-y-1.5">
-            {realtimeMessages.map((msg, i) => (
-              <p key={i} className="text-xs font-mono" style={{ color: i === 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>{msg}</p>
-            ))}
-          </div>
-        ) : (
-          <div className="glass-panel-subtle flex items-center justify-center rounded-xl py-12 text-center">
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>暂无活动日志</p>
-          </div>
-        )}
-      </section>
-
-      {/* 快捷入口 */}
-      <section>
-        <h2 className="mb-4 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>快捷入口</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {SHORTCUT_TABS.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button key={tab.id} onClick={() => switchTab(tab.id)} className="glass-panel-subtle group flex flex-col items-center gap-3 rounded-xl p-5 transition-all duration-300 hover:border-neon-blue/20 hover:shadow-card-hover">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110" style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)' }}>
-                  <Icon size={22} className="text-neon/70 transition-colors group-hover:text-neon" />
-                </div>
-                <span className="text-sm font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-secondary)' }}>{tab.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      {/* 潮汐调度：闲时全力预处理，有用户时让路 */}
+      <IdleSchedulerPanel />
 
       {/* 剧集合并管理 */}
       <section>

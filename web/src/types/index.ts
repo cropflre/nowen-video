@@ -652,7 +652,11 @@ export interface SystemSettings {
   auto_preprocess_on_scan: boolean   // 扫描后自动触发预处理
   auto_transcode_on_play: boolean    // 播放时自动触发转码
   prefer_direct_play: boolean        // 优先直接播放（禁用自动转码）
+  abr_strategy: ABRStrategy          // ABR 多码率策略
 }
+
+/** ABR 多码率策略 */
+export type ABRStrategy = 'off' | 'conservative' | 'recommended' | 'aggressive'
 
 // ==================== 豆瓣数据源 ====================
 export interface DoubanSearchResult {
@@ -803,6 +807,42 @@ export interface DoubanImportTokenStatus {
   username?: string
   expires_at: number
   remaining_secs: number
+}
+
+// ==================== 潮汐调度 ====================
+// 潮汐模式：空闲 / 在线 / 播放
+export type TidalMode = 'idle' | 'busy' | 'playing'
+
+// 潮汐调度配置
+export interface TidalConfig {
+  enabled: boolean
+  idle_cpu_percent: number
+  busy_cpu_percent: number
+  playing_cpu_percent: number
+  playing_action: 'pause' | 'throttle'
+  debounce_sec: number
+}
+
+// 潮汐调度状态
+export interface TidalStatus {
+  running: boolean
+  current_mode: TidalMode
+  pending_mode: TidalMode | ''
+  pending_for_ms: number
+  paused_task_cnt: number
+  online_users: number
+  playing_jobs: number
+  config: TidalConfig
+  preprocess?: {
+    mode: TidalMode
+    config_resource_limit: number
+    override_resource_limit: number | null
+    effective_resource_limit: number
+    active_workers: number
+    cur_workers: number
+    max_workers: number
+    queue_size: number
+  }
 }
 
 // ==================== 刮削数据管理 ====================

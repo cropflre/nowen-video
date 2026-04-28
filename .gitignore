@@ -55,3 +55,9 @@ android/.cxx/
 *.aab
 *.aar
 *.ap_
+*.keystore
+*.jks
+
+# 第三方参考源码（不纳入本仓库）
+mdcx-master/
+

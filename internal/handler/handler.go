@@ -56,10 +56,12 @@ type Handlers struct {
 	Storage *StorageHandler
 	// 系统日志
 	SystemLog *SystemLogHandler
+	// 番号刮削管理
+	AdultScraper *AdultScraperHandler
 }
 
 func NewHandlers(services *service.Services, repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Handlers {
-	return &Handlers{
+	h := &Handlers{
 		Auth:    &AuthHandler{authService: services.Auth, serverName: cfg.Emby.ServerName, logger: logger},
 		Library: &LibraryHandler{libService: services.Library, permSvc: services.Permission, logger: logger},
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
@@ -80,6 +82,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			loginLogRepo:      repos.LoginLog,
 			auditLogRepo:      repos.AuditLog,
 			inviteRepo:        repos.InviteCode,
+			idleScheduler:     services.IdleScheduler,
 			cfg:               cfg,
 			logger:            logger,
 			db:                repos.DB(),
@@ -124,5 +127,18 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Storage: NewStorageHandler(services.WebDAV, services.RemoteStorage, cfg, logger),
 		// 系统日志
 		SystemLog: &SystemLogHandler{logRepo: repos.SystemLog, logger: logger},
+		// 番号刮削管理
+		AdultScraper: &AdultScraperHandler{scraperService: services.AdultScraper, cfg: cfg, logger: logger},
 	}
+
+	// P3~P5：注入番号刮削扩展服务
+	h.AdultScraper.SetP3Services(
+		services.AdultBatch,
+		services.AdultTaskStore,
+		services.AdultProxy,
+		services.AdultCache,
+		services.AdultScheduler,
+	)
+
+	return h
 }

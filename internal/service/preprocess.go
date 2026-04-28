@@ -57,6 +57,9 @@ type PreprocessService struct {
 	logger     *zap.SugaredLogger
 	wsHub      *WSHub
 
+	// 系统设置仓储（延迟注入，用于读取 ABR 策略等全局设置）
+	settingRepo *repository.SystemSettingRepo
+
 	// 工作协程控制
 	workerCount int32       // 当前活跃工作协程数
 	maxWorkers  int32       // 最大并发工作协程数（上限，固定为 1）
@@ -80,11 +83,21 @@ type PreprocessService struct {
 
 	// V2.1: VFS 管理器（用于 WebDAV 路径验证）
 	vfsMgr *VFSManager
+
+	// 潮汐调度：运行时覆盖的 ResourceLimit（-1 = 未覆盖）
+	// 由 IdleScheduler 动态设置，用于在有用户在线 / 播放时自动降低算力占用
+	tidalResourceLimit int32 // atomic；-1 表示不覆盖，走 cfg.App.ResourceLimit
+	tidalMode          atomic.Value // string: "idle" / "busy" / "playing"
 }
 
 // SetVFSManager 设置 VFS 管理器（V2.1）
 func (s *PreprocessService) SetVFSManager(vfsMgr *VFSManager) {
 	s.vfsMgr = vfsMgr
+}
+
+// SetSettingRepo 注入系统设置仓储（延迟注入，用于读取 ABR 策略等全局配置）
+func (s *PreprocessService) SetSettingRepo(repo *repository.SystemSettingRepo) {
+	s.settingRepo = repo
 }
 
 // NewPreprocessService 创建预处理服务
@@ -1371,18 +1384,112 @@ func (s *PreprocessService) generateMasterPlaylist(task *model.PreprocessTask, v
 	return masterPath, nil
 }
 
-// determineVariants 根据源视频高度确定需要生成的变体
+// determineVariants 根据源视频高度与系统 ABR 策略确定需要生成的变体
+//
+// 策略说明（从系统设置读取 abr_strategy）：
+//   - off          : 只生成源分辨率最近档（单档）
+//   - conservative : 源档 + 向下一档（共 2 档）
+//   - recommended  : 源档 + 1080p + 720p（共 3 档，去重后可能更少）
+//   - aggressive   : 源档 + 1080p + 720p + 480p（共 4 档）
+//
+// 所有策略都不会生成高于源的档位（避免伪高清）。
+// 未配置或配置无效时默认使用 recommended。
 func (s *PreprocessService) determineVariants(sourceHeight int) []ABRProfile {
+	strategy := s.getABRStrategy()
+
+	// 1. 先找出"源档"：≤源高度里最高的那一档（避免伪高清）
+	//    例：源 1080p → 源档=1080p；源 1440p → 源档=2K；源 720p → 源档=720p
+	var source *ABRProfile
+	for i := range abrProfiles {
+		p := abrProfiles[i]
+		if p.Height <= sourceHeight {
+			if source == nil || p.Height > source.Height {
+				source = &p
+			}
+		}
+	}
+	if source == nil {
+		// 源比最低档还低（< 360p 的稀有情况），退回最低档
+		fallback := abrProfiles[0]
+		return []ABRProfile{fallback}
+	}
+
+	// 2. 根据策略拼装目标档位列表（按高度升序存入 set 去重）
+	selectedHeights := map[int]bool{source.Height: true}
+
+	switch strategy {
+	case "off":
+		// 仅源档
+
+	case "conservative":
+		// 源档 + 下调一档：找出低于源的最高档
+		for i := len(abrProfiles) - 1; i >= 0; i-- {
+			if abrProfiles[i].Height < source.Height {
+				selectedHeights[abrProfiles[i].Height] = true
+				break
+			}
+		}
+
+	case "aggressive":
+		// 激进：源档 + 1080p + 720p + 480p（不超过源高度）
+		for _, h := range []int{1080, 720, 480} {
+			if h < source.Height {
+				selectedHeights[h] = true
+			}
+		}
+
+	default:
+		// recommended（默认）：源档 + 1080p + 720p
+		for _, h := range []int{1080, 720} {
+			if h < source.Height {
+				selectedHeights[h] = true
+			}
+		}
+	}
+
+	// 3. 按照 abrProfiles 原始顺序（由低到高）筛选出被选中的档位
 	var variants []ABRProfile
 	for _, p := range abrProfiles {
-		if p.Height <= sourceHeight {
+		if selectedHeights[p.Height] {
 			variants = append(variants, p)
 		}
 	}
+
 	if len(variants) == 0 {
-		variants = abrProfiles[:1] // 至少保留 360p
+		// 兜底：至少保留源档
+		variants = []ABRProfile{*source}
 	}
+
+	s.logger.Infof("ABR 变体决策: 源=%dp, 策略=%s, 生成档位=%v",
+		sourceHeight, strategy, variantNames(variants))
+
 	return variants
+}
+
+// getABRStrategy 读取当前 ABR 策略配置，读不到或无效时返回 "recommended"
+func (s *PreprocessService) getABRStrategy() string {
+	if s.settingRepo == nil {
+		return "recommended"
+	}
+	v, err := s.settingRepo.Get("abr_strategy")
+	if err != nil || v == "" {
+		return "recommended"
+	}
+	switch v {
+	case "off", "conservative", "recommended", "aggressive":
+		return v
+	default:
+		return "recommended"
+	}
+}
+
+// variantNames 取变体的名称列表（用于日志）
+func variantNames(vs []ABRProfile) []string {
+	names := make([]string, len(vs))
+	for i, v := range vs {
+		names[i] = v.Name
+	}
+	return names
 }
 
 // ==================== 辅助方法 ====================
@@ -1690,7 +1797,8 @@ func (s *PreprocessService) dynamicLoadAdjuster() {
 		max := atomic.LoadInt32(&s.maxWorkers)
 
 		// 根据用户配置的资源限制动态调整 worker 数量
-		resourceLimit := float64(s.cfg.App.ResourceLimit)
+		// 潮汐调度可能临时覆盖此值（有用户在线 / 播放时降低）
+		resourceLimit := float64(s.effectiveResourceLimit())
 		if resourceLimit <= 0 || resourceLimit > 80 {
 			resourceLimit = 80
 		}
@@ -1729,4 +1837,143 @@ func (s *PreprocessService) dynamicLoadAdjuster() {
 // Deprecated: 保留兼容接口，实际委托给 ffmpeg.CalcThreads。
 func (s *PreprocessService) calcFFmpegThreads() int {
 	return ffmpeg.CalcThreads(s.cfg)
+}
+
+// ==================== 潮汐调度（Tidal Scheduling） ====================
+//
+// 潮汐调度：无人使用时全力预处理，有用户在线/播放时自动让路。
+// 通过覆盖 ResourceLimit 实现（动态负载调整器会读取 effectiveResourceLimit()）。
+
+// 潮汐模式常量
+const (
+	TidalModeIdle    = "idle"    // 空闲：无人在线，全力处理
+	TidalModeBusy    = "busy"    // 忙碌：有用户在线但未播放，限制资源
+	TidalModePlaying = "playing" // 播放：有用户在播放，暂停或极限资源
+)
+
+// effectiveResourceLimit 返回当前实际生效的 ResourceLimit
+// 如果潮汐调度器设置了覆盖值（>=0）则返回覆盖值，否则返回配置值
+func (s *PreprocessService) effectiveResourceLimit() int {
+	override := atomic.LoadInt32(&s.tidalResourceLimit)
+	if override >= 0 {
+		return int(override)
+	}
+	return s.cfg.App.ResourceLimit
+}
+
+// ApplyTidalResourceLimit 设置潮汐覆盖的 ResourceLimit
+//   - limit < 0 : 清除覆盖，恢复使用配置值
+//   - limit = 0 : 暂停所有 worker（CPU 超过 0% 即暂停）
+//   - limit > 0 : 覆盖资源上限（1-100）
+func (s *PreprocessService) ApplyTidalResourceLimit(limit int) {
+	prev := atomic.LoadInt32(&s.tidalResourceLimit)
+	var newVal int32
+	if limit < 0 {
+		newVal = -1
+	} else if limit > 100 {
+		newVal = 100
+	} else {
+		newVal = int32(limit)
+	}
+	if prev != newVal {
+		atomic.StoreInt32(&s.tidalResourceLimit, newVal)
+		s.logger.Infof("潮汐调度: ResourceLimit 覆盖值 %d -> %d", prev, newVal)
+	}
+}
+
+// SetTidalMode 设置当前潮汐模式（仅用于状态展示与日志）
+func (s *PreprocessService) SetTidalMode(mode string) {
+	prev, _ := s.tidalMode.Load().(string)
+	if prev != mode {
+		s.tidalMode.Store(mode)
+		s.logger.Infof("潮汐调度: 模式切换 %s -> %s", prev, mode)
+	} else if prev == "" {
+		s.tidalMode.Store(mode)
+	}
+}
+
+// GetTidalMode 获取当前潮汐模式
+func (s *PreprocessService) GetTidalMode() string {
+	if v, ok := s.tidalMode.Load().(string); ok && v != "" {
+		return v
+	}
+	return TidalModeIdle
+}
+
+// GetTidalStatus 获取潮汐调度当前状态（用于 API 返回）
+func (s *PreprocessService) GetTidalStatus() map[string]interface{} {
+	override := atomic.LoadInt32(&s.tidalResourceLimit)
+	var overrideVal interface{}
+	if override < 0 {
+		overrideVal = nil
+	} else {
+		overrideVal = override
+	}
+	return map[string]interface{}{
+		"mode":                    s.GetTidalMode(),
+		"config_resource_limit":   s.cfg.App.ResourceLimit,
+		"override_resource_limit": overrideVal,
+		"effective_resource_limit": s.effectiveResourceLimit(),
+		"active_workers":          atomic.LoadInt32(&s.workerCount),
+		"cur_workers":             atomic.LoadInt32(&s.curWorkers),
+		"max_workers":             atomic.LoadInt32(&s.maxWorkers),
+		"queue_size":              len(s.jobQueue),
+	}
+}
+
+// PauseAllRunningTasks 暂停所有正在运行的预处理任务（潮汐：播放时让路用）
+// 返回被暂停的任务 ID 列表
+func (s *PreprocessService) PauseAllRunningTasks() []string {
+	running, err := s.repo.ListRunning()
+	if err != nil {
+		s.logger.Warnf("潮汐调度: 查询运行中任务失败: %v", err)
+		return nil
+	}
+	var paused []string
+	for _, t := range running {
+		if err := s.PauseTask(t.ID); err == nil {
+			paused = append(paused, t.ID)
+		}
+	}
+	if len(paused) > 0 {
+		s.logger.Infof("潮汐调度: 已暂停 %d 个正在运行的预处理任务", len(paused))
+	}
+	return paused
+}
+
+// ResumePausedTasks 恢复指定的一批暂停任务（潮汐：恢复空闲后使用）
+// 仅恢复传入的 ID 列表中仍处于 paused 状态的任务
+func (s *PreprocessService) ResumePausedTasks(taskIDs []string) int {
+	resumed := 0
+	for _, id := range taskIDs {
+		task, err := s.repo.FindByID(id)
+		if err != nil || task.Status != "paused" {
+			continue
+		}
+		if err := s.ResumeTask(id); err == nil {
+			resumed++
+		}
+	}
+	if resumed > 0 {
+		s.logger.Infof("潮汐调度: 已恢复 %d 个暂停任务", resumed)
+	}
+	return resumed
+}
+
+// ResumeAllPausedTasks 恢复所有 paused 状态的任务（不论是否潮汐暂停）
+func (s *PreprocessService) ResumeAllPausedTasks() int {
+	tasks, _, err := s.repo.ListAll(1, 1000, "paused")
+	if err != nil {
+		return 0
+	}
+	resumed := 0
+	for _, t := range tasks {
+		if err := s.ResumeTask(t.ID); err == nil {
+			resumed++
+		}
+	}
+	if resumed > 0 {
+		s.logger.Infof("潮汐调度: 已恢复 %d 个暂停任务（全量）", resumed)
+	}
+	return resumed
 }

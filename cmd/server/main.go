@@ -78,6 +78,16 @@ func main() {
 	// 启动时清理孤立数据（处理历史遗留的数据不一致问题）
 	services.Library.CleanOrphanedData()
 
+	// 若配置开启，随主服务拉起 Python 番号刮削微服务（子进程）
+	pythonLauncher := service.NewAdultPythonLauncher(cfg, sugar)
+	if err := pythonLauncher.Start(); err != nil {
+		sugar.Warnf("[adult-python] 启动 Python 微服务失败（不影响主服务）: %v", err)
+	}
+	// 将启动器注入到 handler，用户在前端保存配置时可按需拉起 / 回收子进程
+	if handlers.AdultScraper != nil {
+		handlers.AdultScraper.SetPythonLauncher(pythonLauncher)
+	}
+
 	// 设置路由
 	if !cfg.App.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -422,6 +432,11 @@ func main() {
 		admin.GET("/settings/system", handlers.Admin.GetSystemSettings)
 		admin.PUT("/settings/system", handlers.Admin.UpdateSystemSettings)
 
+		// 潮汐调度（Idle Scheduler）：无人在线时预处理全力跑，有人时让路
+		admin.GET("/idle-scheduler/status", handlers.Admin.GetIdleSchedulerStatus)
+		admin.GET("/idle-scheduler/config", handlers.Admin.GetIdleSchedulerConfig)
+		admin.PUT("/idle-scheduler/config", handlers.Admin.UpdateIdleSchedulerConfig)
+
 		// 系统日志
 		admin.GET("/system-logs", handlers.SystemLog.ListSystemLogs)
 		admin.GET("/system-logs/stats", handlers.SystemLog.GetSystemLogStats)
@@ -537,6 +552,45 @@ func main() {
 
 		// 用户观影统计（管理员）
 		admin.GET("/stats/:userId", handlers.Stats.GetUserStatsAdmin)
+
+		// ==================== 番号刮削管理 ====================
+		admin.GET("/adult-scraper/config", handlers.AdultScraper.GetConfig)
+		admin.PUT("/adult-scraper/config", handlers.AdultScraper.UpdateConfig)
+		admin.POST("/adult-scraper/scrape", handlers.AdultScraper.ScrapeByCode)
+		admin.GET("/adult-scraper/parse", handlers.AdultScraper.ParseCode)
+		admin.GET("/adult-scraper/python-health", handlers.AdultScraper.PythonServiceHealth)
+
+		// P2：聚合刮削 / 多源测试 / 映射表管理 / 扩展配置
+		admin.POST("/adult-scraper/aggregate", handlers.AdultScraper.ScrapeAggregated)
+		admin.GET("/adult-scraper/test-sources", handlers.AdultScraper.TestAllSources)
+		admin.GET("/adult-scraper/mappings", handlers.AdultScraper.GetMappings)
+		admin.POST("/adult-scraper/mappings", handlers.AdultScraper.AddMappings)
+		admin.POST("/adult-scraper/normalize-test", handlers.AdultScraper.TestNormalize)
+		admin.PUT("/adult-scraper/config-ext", handlers.AdultScraper.UpdateConfigExtended)
+
+		// P3~P5：批量刮削 / 镜像管理 / 缓存 / 调度 / 报表
+		admin.POST("/adult-scraper/batch/start", handlers.AdultScraper.StartBatch)
+		admin.POST("/adult-scraper/batch/:id/pause", handlers.AdultScraper.PauseBatch)
+		admin.POST("/adult-scraper/batch/:id/resume", handlers.AdultScraper.ResumeBatch)
+		admin.POST("/adult-scraper/batch/:id/cancel", handlers.AdultScraper.CancelBatch)
+		admin.GET("/adult-scraper/batch/:id", handlers.AdultScraper.GetBatchStatus)
+		admin.GET("/adult-scraper/batch", handlers.AdultScraper.ListBatchTasks)
+
+		admin.GET("/adult-scraper/mirrors", handlers.AdultScraper.ListMirrors)
+		admin.POST("/adult-scraper/mirrors/health-check", handlers.AdultScraper.HealthCheckMirrors)
+		admin.POST("/adult-scraper/mirrors/:source", handlers.AdultScraper.SetMirrors)
+
+		admin.GET("/adult-scraper/cache", handlers.AdultScraper.GetCacheStats)
+		admin.DELETE("/adult-scraper/cache", handlers.AdultScraper.ClearCache)
+		admin.DELETE("/adult-scraper/cache/:code", handlers.AdultScraper.InvalidateCache)
+
+		admin.GET("/adult-scraper/scheduler", handlers.AdultScraper.GetSchedulerConfig)
+		admin.PUT("/adult-scraper/scheduler", handlers.AdultScraper.UpdateSchedulerConfig)
+		admin.POST("/adult-scraper/scheduler/run", handlers.AdultScraper.TriggerScheduler)
+
+		admin.GET("/adult-scraper/report", handlers.AdultScraper.GetReport)
+		admin.GET("/adult-scraper/failed-items", handlers.AdultScraper.GetFailedItems)
+		admin.POST("/adult-scraper/retry-failed", handlers.AdultScraper.RetryFailed)
 
 		// 刮削数据管理
 		admin.POST("/scrape/tasks", handlers.ScrapeManager.CreateTask)
@@ -803,6 +857,9 @@ func main() {
 
 	// 停止 mDNS 服务发现
 	mdnsService.Stop()
+
+	// 停止 Python 番号刮削微服务子进程
+	pythonLauncher.Stop()
 
 	// 设置 30 秒超时用于优雅关闭
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

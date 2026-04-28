@@ -45,7 +45,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 // Tab 类型
-export type TabType = 'files' | 'scrape'
+export type TabType = 'files' | 'scrape' | 'adult'
 
 // 对话框类型
 export type DialogType = 'none' | 'import' | 'batchImport' | 'scanDir' | 'edit' | 'detail' | 'rename' | 'logs'

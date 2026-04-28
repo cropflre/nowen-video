@@ -55,6 +55,8 @@ export default function MediaDetailPage() {
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
   const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi' | 'douban' | 'thetvdb'>('tmdb')
+  const [matchSelectedId, setMatchSelectedId] = useState<number | string | null>(null)
+  const [matchApplying, setMatchApplying] = useState(false)
   const [editForm, setEditForm] = useState<{
     title: string; orig_title: string; year: number; overview: string;
     rating: number; genres: string; country: string; language: string;
@@ -166,7 +168,32 @@ export default function MediaDetailPage() {
     setMatchQuery(media.title)
     setMatchResults([])
     setMatchSource('tmdb')
+    setMatchSelectedId(null)
     setShowMatchModal(true)
+  }
+
+  // 重新拉取详情相关数据（元数据替换/刷新后调用）
+  const refreshMediaDetail = async (mediaId: string) => {
+    try {
+      const [detailRes, enhancedRes, personsRes, recommendRes] = await Promise.all([
+        mediaApi.detail(mediaId),
+        mediaApi.detailEnhanced(mediaId).catch(() => null),
+        mediaApi.getPersons(mediaId).catch(() => null),
+        recommendApi.getSimilarMedia(mediaId, 12).catch(() => null),
+      ])
+      setMedia(detailRes.data.data)
+      if (enhancedRes) {
+        const data = enhancedRes.data.data
+        setTechSpecs(data.tech_specs)
+        setFileInfo(data.file_info)
+        setLibraryInfo(data.library)
+        setPlaybackStats(data.playback_stats)
+      }
+      if (personsRes) setPersons(personsRes.data.data || [])
+      if (recommendRes) setRecommendations(recommendRes.data.data || [])
+    } catch {
+      // 详情刷新失败不致命，已提示成功
+    }
   }
 
   const handleMatchSearch = async () => {
@@ -214,27 +241,39 @@ export default function MediaDetailPage() {
     }
   }
 
-  const handleMatchSelect = async (resultId: number | string) => {
-    if (!id) return
+  // 选中一个搜索结果（仅高亮，不提交）
+  const handleMatchSelect = (resultId: number | string) => {
+    if (matchSource === 'thetvdb') {
+      toast.info('TheTVDB 主要用于剧集匹配')
+      return
+    }
+    setMatchSelectedId(resultId)
+  }
+
+  // 点击"应用"按钮：提交替换元数据并刷新详情
+  const handleMatchApply = async () => {
+    if (!id || matchSelectedId === null) return
+    setMatchApplying(true)
     try {
       const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
       if (matchSource === 'tmdb') {
-        await adminApi.matchMetadata(id, resultId as number)
+        await adminApi.matchMetadata(id, matchSelectedId as number)
       } else if (matchSource === 'douban') {
-        await adminApi.matchMediaDouban(id, resultId as string)
-      } else if (matchSource === 'thetvdb') {
-        // TheTVDB 主要用于剧集，但媒体也可以尝试
+        await adminApi.matchMediaDouban(id, matchSelectedId as string)
+      } else if (matchSource === 'bangumi') {
+        await adminApi.matchMediaBangumi(id, matchSelectedId as number)
+      } else {
         toast.info('TheTVDB 主要用于剧集匹配')
         return
-      } else {
-        await adminApi.matchMediaBangumi(id, resultId as number)
       }
-      const res = await mediaApi.detail(id)
-      setMedia(res.data.data)
+      await refreshMediaDetail(id)
       setShowMatchModal(false)
+      setMatchSelectedId(null)
       toast.success(t('mediaDetail.matchSuccess', { source: sourceNameMap[matchSource] }))
-    } catch {
-      toast.error(t('mediaDetail.matchFailed'))
+    } catch (err) {
+      toast.error(formatErrMsg(err, t('mediaDetail.matchFailed')))
+    } finally {
+      setMatchApplying(false)
     }
   }
 
@@ -446,7 +485,7 @@ export default function MediaDetailPage() {
             {/* 数据源切换 */}
             <div className="mb-4 flex flex-wrap gap-2">
               <button
-                onClick={() => { setMatchSource('tmdb'); setMatchResults([]) }}
+                onClick={() => { setMatchSource('tmdb'); setMatchResults([]); setMatchSelectedId(null) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
                   background: matchSource === 'tmdb' ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))' : 'var(--bg-surface)',
@@ -457,7 +496,7 @@ export default function MediaDetailPage() {
                 🎬 TMDb
               </button>
               <button
-                onClick={() => { setMatchSource('douban'); setMatchResults([]) }}
+                onClick={() => { setMatchSource('douban'); setMatchResults([]); setMatchSelectedId(null) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
                   background: matchSource === 'douban' ? 'linear-gradient(135deg, #00b414, #009910)' : 'var(--bg-surface)',
@@ -468,7 +507,7 @@ export default function MediaDetailPage() {
                 🎯 {t('mediaDetail.doubanLabel')}
               </button>
               <button
-                onClick={() => { setMatchSource('bangumi'); setMatchResults([]) }}
+                onClick={() => { setMatchSource('bangumi'); setMatchResults([]); setMatchSelectedId(null) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
                   background: matchSource === 'bangumi' ? 'linear-gradient(135deg, #f09199, #e8788a)' : 'var(--bg-surface)',
@@ -479,7 +518,7 @@ export default function MediaDetailPage() {
                 📺 Bangumi
               </button>
               <button
-                onClick={() => { setMatchSource('thetvdb'); setMatchResults([]) }}
+                onClick={() => { setMatchSource('thetvdb'); setMatchResults([]); setMatchSelectedId(null) }}
                 className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
                 style={{
                   background: matchSource === 'thetvdb' ? 'linear-gradient(135deg, #6dc849, #4fa82d)' : 'var(--bg-surface)',
@@ -554,12 +593,18 @@ export default function MediaDetailPage() {
                   posterUrl = result.images?.common || result.images?.medium || null
                 }
 
+                const isSelected = matchSelectedId === result.id
                 return (
                   <button
                     key={resultKey}
                     onClick={() => handleMatchSelect(result.id)}
-                    className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01]"
-                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+                    disabled={matchApplying}
+                    className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{
+                      background: isSelected ? 'linear-gradient(135deg, rgba(56,189,248,0.12), rgba(56,189,248,0.06))' : 'var(--bg-surface)',
+                      border: isSelected ? '1px solid var(--neon-blue, #38bdf8)' : '1px solid var(--border-default)',
+                      boxShadow: isSelected ? '0 0 0 2px rgba(56,189,248,0.25)' : undefined,
+                    }}
                   >
                     {posterUrl ? (
                       <img src={posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
@@ -609,14 +654,31 @@ export default function MediaDetailPage() {
                 </div>
               )}
             </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => setShowMatchModal(false)}
-                className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80"
-                style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-              >
-                {t('common.cancel')}
-              </button>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {matchSelectedId !== null ? '已选中 1 项，点击右侧“应用”即可替换元数据' : '提示：先选中搜索结果，再点击“应用”'}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMatchModal(false)}
+                  disabled={matchApplying}
+                  className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80 disabled:opacity-50"
+                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleMatchApply}
+                  disabled={matchSelectedId === null || matchApplying}
+                  className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ background: { tmdb: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))', douban: 'linear-gradient(135deg, #00b414, #009910)', bangumi: 'linear-gradient(135deg, #f09199, #e8788a)', thetvdb: 'linear-gradient(135deg, #6dc849, #4fa82d)' }[matchSource] }}
+                >
+                  {matchApplying && (
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  )}
+                  {matchApplying ? '应用中...' : '应用'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

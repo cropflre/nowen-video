@@ -728,6 +728,12 @@ func (s *ScrapeManagerService) detectSource(urlStr string) string {
 		return "imdb" // IMDB 通过 TMDb Find API 桥接查询
 	case strings.Contains(host, "bgm.tv") || strings.Contains(host, "bangumi"):
 		return "bangumi"
+	case strings.Contains(host, "javbus"):
+		return "javbus"
+	case strings.Contains(host, "javdb"):
+		return "javdb"
+	case strings.Contains(host, "javlibrary"):
+		return "javlibrary"
 	default:
 		return "url"
 	}

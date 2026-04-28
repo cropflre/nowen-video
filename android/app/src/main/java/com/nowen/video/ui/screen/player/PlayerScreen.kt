@@ -102,7 +102,8 @@ private val ControlBgAlpha = com.nowen.video.ui.theme.PlayerControlBgAlpha
 /**
  * 视频播放器页面
  * 参考 Web 端 Emby 风格设计，完全自定义控制 UI
- * 支持四种播放模式：Direct / Remux / HLS / Preprocessed HLS
+ * 支持两种播放模式：Direct / Preprocessed HLS
+ * ExoPlayer 原生支持 MKV/AVI/MOV/FLV 等容器，无需 Remux 或 HLS 实时转码
  * 播放失败自动降级 + 字幕选择 + 手势控制 + 播放设置面板
  */
 @kotlin.OptIn(ExperimentalMaterial3Api::class)
@@ -225,7 +226,7 @@ fun PlayerScreen(
         val mediaItemBuilder = MediaItem.Builder().setUri(url)
 
         when (uiState.playbackMode) {
-            PlaybackMode.HLS, PlaybackMode.PREPROCESSED_HLS -> {
+            PlaybackMode.PREPROCESSED_HLS -> {
                 mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
             }
             else -> {}
@@ -253,7 +254,7 @@ fun PlayerScreen(
         // 构建主视频 MediaSource
         val videoMediaItem = MediaItem.Builder().setUri(url).apply {
             when (uiState.playbackMode) {
-                PlaybackMode.HLS, PlaybackMode.PREPROCESSED_HLS -> setMimeType(MimeTypes.APPLICATION_M3U8)
+                PlaybackMode.PREPROCESSED_HLS -> setMimeType(MimeTypes.APPLICATION_M3U8)
                 else -> {}
             }
         }.build()
@@ -612,8 +613,6 @@ fun PlayerScreen(
                                 Text(
                                     text = when (uiState.playbackMode) {
                                         PlaybackMode.DIRECT -> "直接播放"
-                                        PlaybackMode.REMUX -> "Remux"
-                                        PlaybackMode.HLS -> "HLS转码"
                                         PlaybackMode.PREPROCESSED_HLS -> "预处理HLS"
                                         else -> ""
                                     },
@@ -1081,14 +1080,12 @@ fun PlayerScreen(
                                     shape = RoundedCornerShape(4.dp),
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                                 ) {
-                                    Text(
-                                        text = when (uiState.playbackMode) {
-                                            PlaybackMode.DIRECT -> "直接播放"
-                                            PlaybackMode.REMUX -> "Remux 转封装"
-                                            PlaybackMode.HLS -> "HLS 实时转码"
-                                            PlaybackMode.PREPROCESSED_HLS -> "预处理 HLS"
-                                            else -> ""
-                                        },
+                                Text(
+                                    text = when (uiState.playbackMode) {
+                                        PlaybackMode.DIRECT -> "直接播放"
+                                        PlaybackMode.PREPROCESSED_HLS -> "预处理 HLS"
+                                        else -> ""
+                                    },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -2459,8 +2456,6 @@ private fun formatTime(seconds: Long): String {
 
 enum class PlaybackMode {
     DIRECT,
-    REMUX,
-    HLS,
     PREPROCESSED_HLS
 }
 
@@ -2564,12 +2559,15 @@ class PlayerViewModel @Inject constructor(
 
             // 获取流信息
             mediaRepository.getStreamInfo(mediaId).onSuccess { info ->
-                Log.d(TAG, "StreamInfo: preprocessed=${info.preprocessed}, canDirectPlay=${info.canDirectPlay}, canRemux=${info.canRemux}, videoCodec=${info.videoCodec}")
+                Log.d(TAG, "StreamInfo: preprocessed=${info.preprocessed}, canDirectPlay=${info.canDirectPlay}, videoCodec=${info.videoCodec}")
                 _uiState.value = _uiState.value.copy(streamInfo = info)
                 resolvePlaybackMode(info)
             }.onFailure { e ->
                 Log.e(TAG, "获取流信息失败", e)
-                fallbackToHLS()
+                // 流信息获取失败时，直接尝试播放原始文件
+                val url = "$serverUrl/api/stream/$mediaId/direct?token=$token"
+                Log.d(TAG, "流信息获取失败，尝试直接播放")
+                setPlayback(PlaybackMode.DIRECT, url)
             }
 
             _uiState.value = _uiState.value.copy(loading = false)
@@ -2734,43 +2732,46 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
-     * 智能播放模式选择（Android 端优化版）
+     * 智能播放模式选择（Android 端优化版 — 无 HLS 转码）
      *
-     * Android 端的 ExoPlayer 原生支持 MKV/AVI/MOV/FLV 等容器格式，
-     * 不像浏览器只能播放 MP4/WebM。因此 Android 端的策略是：
-     * 只要设备硬件支持视频编码（H.264/H.265/VP9/AV1），就直接播放原始文件，
-     * 无需 Remux 或转码，实现真正的"秒开"体验。
+     * Android 端的 ExoPlayer 原生支持 MKV/AVI/MOV/FLV 等几乎所有容器格式，
+     * 并且通过 setEnableDecoderFallback(true) 启用了软件解码器兜底。
+     * 因此 Android 端完全不需要服务端 HLS 实时转码或 Remux 转封装。
      *
-     * 优先级：Direct Play（Android 原生支持） > 预处理 HLS > Remux > HLS 转码
-     * 注意：Android 端优先直接播放，因为 ExoPlayer 支持的格式远多于浏览器
+     * 策略：
+     *   1. 设备支持该编码 或 编码信息为空 → 直接播放（ExoPlayer 自动探测）
+     *   2. 设备不支持但有预处理 HLS → 使用预处理 HLS
+     *   3. 其他情况 → 仍然尝试直接播放（ExoPlayer 软解兜底）
+     *
+     * 优先级：Direct Play > Preprocessed HLS > Direct Play（软解兜底）
      */
     private fun resolvePlaybackMode(info: StreamInfo) {
         val baseUrl = "$serverUrl/api/stream/$currentMediaId"
 
         when {
-            // 1. Android 端核心优化：只要设备支持该编码，直接播放原始文件（包括 MKV/AVI/MOV 等）
-            //    ExoPlayer 原生支持这些容器格式，无需 Remux，零延迟秒开
+            // 1. 设备支持该编码 → 直接播放原始文件（包括 MKV/AVI/MOV 等容器）
             isDeviceSupported(info.videoCodec) -> {
                 val url = "$baseUrl/direct?token=$token"
-                Log.d(TAG, "Android 直接播放: codec=${info.videoCodec}, 跳过转码")
+                Log.d(TAG, "Android 直接播放: codec=${info.videoCodec}")
                 setPlayback(PlaybackMode.DIRECT, url)
             }
-            // 2. 设备不支持该编码，但有预处理完成的 HLS → 使用预处理的 HLS 流
+            // 2. 编码信息为空（服务端未安装 FFprobe）→ 直接播放，ExoPlayer 自动探测
+            info.videoCodec.isBlank() -> {
+                val url = "$baseUrl/direct?token=$token"
+                Log.d(TAG, "编码信息为空，Android 直接播放（ExoPlayer 自动探测）")
+                setPlayback(PlaybackMode.DIRECT, url)
+            }
+            // 3. 设备不支持该编码，但有预处理 HLS → 使用预处理的 HLS 流
             info.preprocessed -> {
                 val url = "$serverUrl/api/preprocess/media/$currentMediaId/master.m3u8?token=$token"
                 Log.d(TAG, "使用预处理 HLS: codec=${info.videoCodec}")
                 setPlayback(PlaybackMode.PREPROCESSED_HLS, url)
             }
-            // 3. 可以 Remux → 转封装播放
-            info.canRemux -> {
-                val url = "$baseUrl/remux?token=$token"
-                Log.d(TAG, "使用 Remux: codec=${info.videoCodec}")
-                setPlayback(PlaybackMode.REMUX, url)
-            }
-            // 4. 兜底：HLS 实时转码
+            // 4. 兜底：仍然尝试直接播放（ExoPlayer 软解兜底，覆盖 MPEG-2/VC-1 等罕见编码）
             else -> {
-                Log.d(TAG, "降级到 HLS 转码: codec=${info.videoCodec}")
-                fallbackToHLS()
+                val url = "$baseUrl/direct?token=$token"
+                Log.d(TAG, "编码 ${info.videoCodec} 未知，尝试直接播放（ExoPlayer 软解兜底）")
+                setPlayback(PlaybackMode.DIRECT, url)
             }
         }
     }
@@ -2785,15 +2786,6 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
-    private fun fallbackToHLS() {
-        val url = "$serverUrl/api/stream/$currentMediaId/master.m3u8?token=$token"
-        triedModes.add(PlaybackMode.HLS)
-        _uiState.value = _uiState.value.copy(
-            playbackUrl = url,
-            playbackMode = PlaybackMode.HLS
-        )
-    }
-
     fun onPlaybackError(error: PlaybackException) {
         val currentMode = _uiState.value.playbackMode ?: return
         Log.e(TAG, "播放错误: mode=$currentMode, error=${error.message}", error)
@@ -2801,33 +2793,19 @@ class PlayerViewModel @Inject constructor(
         val info = _uiState.value.streamInfo
         val nextMode = when (currentMode) {
             PlaybackMode.DIRECT -> {
-                // 直接播放失败 → 尝试预处理 HLS（如果有）→ Remux → HLS
-                when {
-                    info?.preprocessed == true && PlaybackMode.PREPROCESSED_HLS !in triedModes -> PlaybackMode.PREPROCESSED_HLS
-                    info?.canRemux == true && PlaybackMode.REMUX !in triedModes -> PlaybackMode.REMUX
-                    PlaybackMode.HLS !in triedModes -> PlaybackMode.HLS
-                    else -> null
+                // 直接播放失败 → 尝试预处理 HLS（如果有）
+                if (info?.preprocessed == true && PlaybackMode.PREPROCESSED_HLS !in triedModes) {
+                    PlaybackMode.PREPROCESSED_HLS
+                } else {
+                    null
                 }
             }
-            PlaybackMode.PREPROCESSED_HLS -> {
-                // 预处理 HLS 失败 → 尝试 Remux → HLS
-                when {
-                    info?.canRemux == true && PlaybackMode.REMUX !in triedModes -> PlaybackMode.REMUX
-                    PlaybackMode.HLS !in triedModes -> PlaybackMode.HLS
-                    else -> null
-                }
-            }
-            PlaybackMode.REMUX -> if (PlaybackMode.HLS !in triedModes) PlaybackMode.HLS else null
-            PlaybackMode.HLS -> null
+            PlaybackMode.PREPROCESSED_HLS -> null // 预处理 HLS 也失败，无更多降级选项
         }
 
         if (nextMode != null) {
-            val baseUrl = "$serverUrl/api/stream/$currentMediaId"
-
             val url = when (nextMode) {
-                PlaybackMode.DIRECT -> "$baseUrl/direct?token=$token"
-                PlaybackMode.REMUX -> "$baseUrl/remux?token=$token"
-                PlaybackMode.HLS -> "$baseUrl/master.m3u8?token=$token"
+                PlaybackMode.DIRECT -> "$serverUrl/api/stream/$currentMediaId/direct?token=$token"
                 PlaybackMode.PREPROCESSED_HLS -> "$serverUrl/api/preprocess/media/$currentMediaId/master.m3u8?token=$token"
             }
 
@@ -2839,8 +2817,6 @@ class PlayerViewModel @Inject constructor(
                 fallbackMessage = "已自动切换到${
                     when (nextMode) {
                         PlaybackMode.DIRECT -> "直接播放"
-                        PlaybackMode.REMUX -> "Remux 播放"
-                        PlaybackMode.HLS -> "HLS 转码播放"
                         PlaybackMode.PREPROCESSED_HLS -> "预处理播放"
                     }
                 }"
@@ -2864,19 +2840,54 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 判断设备是否支持指定视频编码
+     *
+     * 覆盖范围：
+     * - H.264/AVC: 所有 Android 设备均支持（硬解）
+     * - H.265/HEVC: Android 5.0+ 大部分设备支持（查询硬件解码器）
+     * - VP8: Android 4.0+ 全部支持
+     * - VP9: Android 4.4+ 大部分设备支持（查询硬件解码器）
+     * - AV1: Android 10+ 部分设备支持（查询硬件解码器）
+     * - MPEG-4 Part 2: 几乎所有 Android 设备支持
+     * - MPEG-2: Android 5.0+ 大部分设备支持
+     * - VC-1/WMV3: 部分高端设备有硬件解码器
+     *
+     * 注意：即使此函数返回 false，ExoPlayer 的软件解码器（通过 setEnableDecoderFallback）
+     * 仍然可能成功播放，因此 resolvePlaybackMode 的兜底策略也是直接播放。
+     */
     private fun isDeviceSupported(codec: String): Boolean {
         val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
         return when (codec.lowercase()) {
+            // H.264/AVC — 所有 Android 设备均支持
             "h264", "avc", "avc1" -> true
+            // VP8 — Android 4.0+ 全部支持
+            "vp8" -> true
+            // MPEG-4 Part 2 — 几乎所有 Android 设备支持
+            "mpeg4", "mp4v", "mp4v-es" -> true
+            // H.265/HEVC — 查询硬件解码器
             "h265", "hevc" -> codecList.codecInfos.any { info ->
                 !info.isEncoder && info.supportedTypes.any { it.contains("hevc", ignoreCase = true) }
             }
-            "av1" -> codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.contains("av01", ignoreCase = true) }
-            }
+            // VP9 — 查询硬件解码器
             "vp9" -> codecList.codecInfos.any { info ->
                 !info.isEncoder && info.supportedTypes.any { it.contains("vp9", ignoreCase = true) }
             }
+            // AV1 — 查询硬件解码器
+            "av1" -> codecList.codecInfos.any { info ->
+                !info.isEncoder && info.supportedTypes.any { it.contains("av01", ignoreCase = true) }
+            }
+            // MPEG-2 — 查询硬件解码器
+            "mpeg2video", "mpeg2" -> codecList.codecInfos.any { info ->
+                !info.isEncoder && info.supportedTypes.any { it.contains("mpeg2", ignoreCase = true) }
+            }
+            // VC-1/WMV — 查询硬件解码器
+            "vc1", "wmv3", "wmv" -> codecList.codecInfos.any { info ->
+                !info.isEncoder && info.supportedTypes.any {
+                    it.contains("vc1", ignoreCase = true) || it.contains("wmv", ignoreCase = true)
+                }
+            }
+            // 未知编码 — 返回 false，但 resolvePlaybackMode 的兜底策略仍会尝试直接播放
             else -> false
         }
     }

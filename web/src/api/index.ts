@@ -47,6 +47,10 @@ export { pulseApi } from './pulse'
 // V6: P1~P3 新增功能
 export { batchMoveApi } from './v4'
 
+// 番号刮削管理
+export { adultScraperApi } from './adultScraper'
+export type { AdultScraperConfig, AdultScraperSource, AdultMetadata, ParseCodeResult, PythonServiceHealth } from './adultScraper'
+
 // V2.1: WebDAV 存储管理
 export { storageApi } from './storage'
 export type { WebDAVConfig, WebDAVStatus, StorageStatus, TestWebDAVRequest } from './storage'

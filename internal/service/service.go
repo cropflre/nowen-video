@@ -67,6 +67,20 @@ type Services struct {
 	GPUMonitor         *GPUMonitor
 	// 电影系列合集
 	Collection *CollectionService
+	// 潮汐调度器（利用空闲/忙碌态动态分配预处理资源）
+	IdleScheduler *IdleScheduler
+	// 番号刮削服务（混合架构：Go 原生爬虫 + Python 微服务）
+	AdultScraper *AdultScraperService
+	// P3：番号批量刮削 + 进度推送
+	AdultBatch *AdultBatchService
+	// P3：智能镜像管理（多数据源可用性检测 + 熔断）
+	AdultProxy *AdultProxyManager
+	// P3：任务持久化存储
+	AdultTaskStore *AdultTaskStore
+	// P5：定时调度器（每日自动补刮）
+	AdultScheduler *AdultScheduler
+	// P5：元数据缓存（LRU+TTL，避免重复抓取）
+	AdultCache *AdultMetadataCache
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -138,8 +152,15 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建 Fanart.tv 服务（图片增强源）
 	fanartService := NewFanartService(repos.Media, repos.Series, cfg, logger)
 
+	// 创建番号刮削服务（混合架构：Go 原生爬虫 + Python 微服务）
+	adultScraper := NewAdultScraperService(cfg, repos.Media, logger)
+	// 注入 NFO 服务，使番号刮削成功后自动生成 .nfo 文件
+	// 这样 Emby/Jellyfin/Infuse 等客户端能正确识别番号元数据
+	adultScraper.SetNFOService(nfoService)
+
 	// 创建多数据源调度链（第三阶段：统一 Provider 接口）
 	providerChain := NewProviderChain(logger)
+	providerChain.Register(NewAdultProvider(adultScraper))       // 优先级 5：番号内容（最高优先级，仅匹配成人内容）
 	providerChain.Register(NewTMDbProvider(metadata))            // 优先级 10：主数据源
 	providerChain.Register(NewDoubanProvider(metadata.douban))   // 优先级 20：豆瓣补充
 	providerChain.Register(NewTheTVDBProvider(thetvdbService))   // 优先级 25：剧集增强
@@ -333,7 +354,31 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		GPUMonitor:         gpuMonitor,
 		// 电影系列合集
 		Collection: NewCollectionService(repos.MovieCollection, repos.Media, logger),
+		// 番号刮削
+		AdultScraper: adultScraper,
 	}
+
+	// ==================== P3~P5：番号刮削扩展服务 ====================
+	adultProxy := NewAdultProxyManager()
+	adultCache := NewAdultMetadataCache(cfg.App.DataDir)
+	adultTaskStore := NewAdultTaskStore(cfg.App.DataDir)
+	adultBatch := NewAdultBatchService(adultScraper, wsHub)
+	adultBatch.SetTaskStore(adultTaskStore)
+	adultScheduler := NewAdultScheduler(adultBatch, adultProxy, adultScraper)
+
+	svcs.AdultProxy = adultProxy
+	svcs.AdultCache = adultCache
+	svcs.AdultTaskStore = adultTaskStore
+	svcs.AdultBatch = adultBatch
+	svcs.AdultScheduler = adultScheduler
+
+	// 启动调度器（后台循环，默认未启用，需配置开启）
+	adultScheduler.Start()
+
+	// 创建并启动潮汐调度器（控制预处理在空闲/忙碌态下的资源占用）
+	idleScheduler := NewIdleScheduler(preprocessService, wsHub, transcoder, repos.SystemSetting, logger)
+	idleScheduler.Start()
+	svcs.IdleScheduler = idleScheduler
 
 	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
 	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
@@ -349,6 +394,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 延迟注入：StreamService 需要 SystemSettingRepo（用于读取播放偏好设置）
 	svcs.Stream.SetSettingRepo(repos.SystemSetting)
+
+	// 延迟注入：PreprocessService 需要 SystemSettingRepo（用于读取 ABR 策略等配置）
+	preprocessService.SetSettingRepo(repos.SystemSetting)
 
 	// V2.1 延迟注入：Scanner 与 Stream 都需要 VFSManager（支持 webdav:// 路径）
 	scanner.SetVFSManager(vfsManager)
