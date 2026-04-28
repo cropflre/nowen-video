@@ -291,7 +291,7 @@ export default function DashboardTab({
             <Server size={20} className="text-neon/60" />
             系统状态
           </h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             <div className="glass-panel-subtle rounded-xl p-4">
               <div className="flex items-center gap-2 text-surface-400">
                 <Cpu size={16} className="text-neon/60" />
@@ -300,7 +300,16 @@ export default function DashboardTab({
               <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
                 {systemInfo.cpus} 核
               </p>
-              <p className="text-xs text-surface-500">{systemInfo.goroutines} 协程</p>
+            </div>
+            <div className="glass-panel-subtle rounded-xl p-4">
+              <div className="flex items-center gap-2 text-surface-400">
+                <Activity size={16} className="text-neon/60" />
+                <span className="text-xs">Go 协程</span>
+              </div>
+              <p className="mt-2 font-display text-lg font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+                {systemInfo.goroutines}
+              </p>
+              <p className="text-xs text-surface-500">活跃 goroutine</p>
             </div>
             <div className="glass-panel-subtle rounded-xl p-4">
               <div className="flex items-center gap-2 text-surface-400">

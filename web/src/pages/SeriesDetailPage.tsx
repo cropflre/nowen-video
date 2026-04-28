@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import { CastGrid } from '@/components/media'
+import { formatErrMsg } from '@/utils/error'
 import type { Series, SeasonInfo, Media, Playlist, WatchHistory, MediaPerson } from '@/types'
 import {
   Play,
@@ -176,14 +177,14 @@ export default function SeriesDetailPage() {
           toast.info('Bangumi 未找到匹配结果，可尝试切换类型（动画/三次元）或更换关键词')
         }
       }
-    } catch {
+    } catch (err) {
       const errorMap: Record<string, string> = {
-        tmdb: '搜索失败，请检查 TMDb API Key 配置',
+        tmdb: '搜索失败，请检查 TMDb API Key 或网络/代理配置',
         douban: '豆瓣搜索失败',
         thetvdb: 'TheTVDB 搜索失败，请检查 API Key 配置',
         bangumi: 'Bangumi 搜索失败',
       }
-      toast.error(errorMap[matchSource] || '搜索失败')
+      toast.error(formatErrMsg(err, errorMap[matchSource] || '搜索失败'))
     } finally {
       setMatchSearching(false)
     }
@@ -244,8 +245,8 @@ export default function SeriesDetailPage() {
       const res = await seriesApi.detail(id)
       setSeries(res.data.data)
       toast.success('元数据刷新成功')
-    } catch {
-      toast.error('元数据刷新失败')
+    } catch (err) {
+      toast.error(formatErrMsg(err, '元数据刷新失败'))
     } finally {
       setScraping(false)
     }

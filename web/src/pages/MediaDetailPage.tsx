@@ -9,6 +9,7 @@ import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
 import { useTranslation } from '@/i18n'
+import { formatErrMsg } from '@/utils/error'
 import { motion, AnimatePresence } from 'framer-motion'
 import { easeSmooth, durations } from '@/lib/motion'
 
@@ -142,8 +143,8 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       toast.success(t('mediaDetail.scrapeSuccess'))
-    } catch {
-      toast.error(t('mediaDetail.scrapeFailed'))
+    } catch (err) {
+      toast.error(formatErrMsg(err, t('mediaDetail.scrapeFailed')))
     } finally {
       setScraping(false)
     }
@@ -200,14 +201,14 @@ export default function MediaDetailPage() {
           toast.info(t('mediaDetail.bangumiNoResult'))
         }
       }
-    } catch {
+    } catch (err) {
       const errorMap: Record<string, string> = {
         tmdb: t('mediaDetail.tmdbSearchFailed'),
         douban: t('mediaDetail.doubanSearchFailed'),
         thetvdb: t('mediaDetail.thetvdbSearchFailed'),
         bangumi: t('mediaDetail.bangumiSearchFailed'),
       }
-      toast.error(errorMap[matchSource] || t('mediaDetail.matchFailed'))
+      toast.error(formatErrMsg(err, errorMap[matchSource] || t('mediaDetail.matchFailed')))
     } finally {
       setMatchSearching(false)
     }
@@ -258,8 +259,8 @@ export default function MediaDetailPage() {
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
       toast.success(t('mediaDetail.refreshSuccess'))
-    } catch {
-      toast.error(t('mediaDetail.refreshFailed'))
+    } catch (err) {
+      toast.error(formatErrMsg(err, t('mediaDetail.refreshFailed')))
     } finally {
       setScraping(false)
     }
