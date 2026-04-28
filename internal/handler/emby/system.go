@@ -27,10 +27,9 @@ func (h *Handler) PingHandler(c *gin.Context) {
 // SystemInfoPublicHandler 对应 /System/Info/Public，无需认证。
 // 重要：Infuse 在添加服务器时首先打这个端点来识别服务。
 func (h *Handler) SystemInfoPublicHandler(c *gin.Context) {
-	hostname, _ := os.Hostname()
 	info := SystemInfoPublic{
 		LocalAddress:           resolveLocalAddress(c),
-		ServerName:             nvl(hostname, "nowen-video"),
+		ServerName:             h.resolveServerName(),
 		Version:                embyServerVersion,
 		ProductName:            embyProductName,
 		OperatingSystem:        runtime.GOOS,
@@ -42,10 +41,9 @@ func (h *Handler) SystemInfoPublicHandler(c *gin.Context) {
 
 // SystemInfoHandler 对应 /System/Info，需要认证。
 func (h *Handler) SystemInfoHandler(c *gin.Context) {
-	hostname, _ := os.Hostname()
 	pub := SystemInfoPublic{
 		LocalAddress:           resolveLocalAddress(c),
-		ServerName:             nvl(hostname, "nowen-video"),
+		ServerName:             h.resolveServerName(),
 		Version:                embyServerVersion,
 		ProductName:            embyProductName,
 		OperatingSystem:        runtime.GOOS,
@@ -84,11 +82,39 @@ func (h *Handler) SystemEndpointHandler(c *gin.Context) {
 // ==================== 用户与认证 ====================
 
 // PublicUsersHandler 对应 /Users/Public，返回可选用户列表（无需认证）。
-// 为了防止暴露所有用户名，默认返回空数组——Emby 客户端会自动走 "手动输入用户名密码" 流程。
+//
+// 行为取决于配置 Emby.PublicUserListEnabled：
+//   - false（默认）：返回空数组，客户端走"手动输入用户名密码"流程，保护用户名隐私；
+//   - true：         返回所有非隐藏、未禁用的用户，登录页可点击头像直接进入。
+//
+// 注意：仅返回用户标识信息，不含 Policy / Configuration 等详情。
 func (h *Handler) PublicUsersHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, []EmbyUser{})
+	if !h.cfg.Emby.PublicUserListEnabled {
+		c.JSON(http.StatusOK, []EmbyUser{})
+		return
+	}
+	users, err := h.userRepo.List()
+	if err != nil {
+		c.JSON(http.StatusOK, []EmbyUser{})
+		return
+	}
+	out := make([]EmbyUser, 0, len(users))
+	for i := range users {
+		u := &users[i]
+		// 跳过已禁用的用户
+		if u.Disabled {
+			continue
+		}
+		out = append(out, EmbyUser{
+			Name:                  u.Username,
+			ServerId:              h.serverID,
+			Id:                    h.idMap.ToEmbyID(u.ID),
+			HasPassword:           true,
+			HasConfiguredPassword: true,
+		})
+	}
+	c.JSON(http.StatusOK, out)
 }
-
 // AuthenticateByNameRequest 对应 Emby 登录请求体。
 type AuthenticateByNameRequest struct {
 	Username string `json:"Username"`
@@ -288,4 +314,16 @@ func nvl(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// resolveServerName 计算对外展示的 ServerName。
+// 优先级：配置 Emby.ServerName > 主机名 > "nowen-video"。
+func (h *Handler) resolveServerName() string {
+	if name := strings.TrimSpace(h.cfg.Emby.ServerName); name != "" {
+		return name
+	}
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		return hostname
+	}
+	return "nowen-video"
 }

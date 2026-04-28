@@ -20,6 +20,12 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 	// CORS 在整个子路由上统一开启（与全局 CORS 并行不冲突）
 	corsMW := EmbyCORS()
 
+	// WebSocket 集线器（在所有前缀下共享）
+	var wsHub *WSHub
+	if h.cfg.Emby.EnableWebSocket {
+		wsHub = NewWSHub(h.logger)
+	}
+
 	for _, prefix := range []string{"", "/emby"} {
 		mount := func(group *gin.RouterGroup) {
 			registerEmbyPublic(group, h)
@@ -27,6 +33,12 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 			// 需要认证的路由
 			secured := group.Group("", EmbyAuth(jwtSecret))
 			registerEmbyAuthed(secured, h)
+
+			// WebSocket（路径固定 /embywebsocket 与 /socket，自带 query token 鉴权）
+			if wsHub != nil {
+				group.GET("/embywebsocket", wsHub.Handler(jwtSecret))
+				group.GET("/socket", wsHub.Handler(jwtSecret))
+			}
 		}
 
 		if prefix == "" {
@@ -62,6 +74,17 @@ func registerEmbyPublic(g *gin.RouterGroup, h *Handler) {
 	g.POST("/Users/AuthenticateByName", h.AuthenticateByNameHandler)
 	g.GET("/Users/Public", h.PublicUsersHandler)
 
+	// Branding / Localization / QuickConnect
+	// 这些端点不涉及隐私且被 Jellyfin/Emby Web 客户端在登录页无条件拉取，因此对外公开。
+	g.GET("/Branding/Configuration", h.BrandingConfigHandler)
+	g.GET("/Branding/Css", h.BrandingCssHandler)
+	g.GET("/Branding/Css.css", h.BrandingCssHandler)
+	g.GET("/Localization/Cultures", h.LocalizationCulturesHandler)
+	g.GET("/Localization/Countries", h.LocalizationCountriesHandler)
+	g.GET("/Localization/Options", h.LocalizationOptionsHandler)
+	g.GET("/Localization/ParentalRatings", h.LocalizationParentalRatingsHandler)
+	g.GET("/QuickConnect/Enabled", h.QuickConnectEnabledHandler)
+
 	// 图片端点允许无 token（Infuse 有时从缓存的 URL 拉图时会丢失 token）
 	g.GET("/Items/:id/Images/:type", h.ImageHandler)
 	g.GET("/Items/:id/Images/:type/:index", h.ImageHandler)
@@ -77,6 +100,7 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	// System（已登录视角）
 	g.GET("/System/Info", h.SystemInfoHandler)
 	g.GET("/System/Endpoint", h.SystemEndpointHandler)
+	g.GET("/System/Configuration", h.SystemConfigurationHandler)
 
 	// 用户
 	g.POST("/Sessions/Logout", h.LogoutHandler)

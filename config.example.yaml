@@ -65,6 +65,26 @@ cache:
   auto_cleanup: false
   cleanup_interval_min: 60
 
+# ==================== Emby / Jellyfin 兼容层配置 ====================
+# 用于移动端 Emby/Infuse/Jellyfin 客户端登录与播放。无需客户端额外配置，
+# 将手机客户端的"服务器地址"填为 http://<server-ip>:8080 即可登录。
+emby:
+  # 对外显示的服务器名称（留空则使用主机名）
+  server_name: ""
+  # 是否启用 UDP 7359 局域网服务器自动发现（Emby/Jellyfin 标准协议）
+  # 开启后同网段的手机客户端在"添加服务器"时会自动发现本机，无需手动输入 IP
+  enable_auto_discovery: true
+  # 自动发现监听端口（标准 7359，一般无需修改）
+  auto_discovery_port: 7359
+  # 是否在登录页公开用户列表（true=显示用户头像可点击登录；false=必须手动输入用户名）
+  public_user_list_enabled: false
+  # 是否启用 WebSocket 长连接（消除客户端连接失败告警）
+  enable_websocket: true
+  # 登录页免责声明（Jellyfin 客户端会在登录页展示此文字）
+  login_disclaimer: ""
+  # 自定义 CSS（仅 Jellyfin Web 客户端使用）
+  custom_css: ""
+
 # ==================== 旧版扁平格式（向后兼容） ====================
 # 如果你使用旧版格式，以下 key 仍然有效：
 #

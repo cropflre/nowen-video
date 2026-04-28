@@ -353,6 +353,11 @@ func main() {
 
 	}
 
+	// 豆瓣 Cookie 懒人版一键导入（公开路由，通过一次性 token 鉴权，专供 douban.com 页面 Bookmarklet 跨域调用）
+	// 自带跨域放行：仅放行 douban.com / www.douban.com / *.douban.com
+	r.OPTIONS("/api/admin/settings/douban/import", handler.DoubanImportCORS(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	r.POST("/api/admin/settings/douban/import", handler.DoubanImportCORS(), handlers.Admin.ImportDoubanCookie)
+
 	// 管理路由
 	admin := r.Group("/api/admin")
 	admin.Use(jwtMiddleware, middleware.AdminOnly())
@@ -380,6 +385,8 @@ func main() {
 		admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)
 		admin.PUT("/settings/tmdb", handlers.Admin.UpdateTMDbConfig)
 		admin.DELETE("/settings/tmdb", handlers.Admin.ClearTMDbConfig)
+		admin.GET("/settings/tmdb/validate", handlers.Admin.ValidateTMDbConfig)
+		admin.POST("/settings/tmdb/test", handlers.Admin.TestTMDbAPIKey)
 
 		// 系统全局设置
 		admin.GET("/settings/system", handlers.Admin.GetSystemSettings)
@@ -477,6 +484,9 @@ func main() {
 		admin.PUT("/settings/douban", handlers.Admin.UpdateDoubanConfig)
 		admin.DELETE("/settings/douban", handlers.Admin.ClearDoubanConfig)
 		admin.POST("/settings/douban/validate", handlers.Admin.ValidateDoubanConfig)
+		// 豆瓣 Cookie 懒人版一键导入：生成 token / 查询 token 状态（均需管理员登录）
+		admin.POST("/settings/douban/import-token", handlers.Admin.CreateDoubanImportToken)
+		admin.GET("/settings/douban/import-token", handlers.Admin.GetDoubanImportTokenStatus)
 
 		// TheTVDB 数据源
 		admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)
@@ -699,6 +709,24 @@ func main() {
 	embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
 	sugar.Info("Emby 兼容层已启用：/emby/* 与根路径 Emby 端点（供 Infuse 等客户端使用）")
 
+	// ==================== UDP 7359 服务器自动发现 ====================
+	// 让同网段的移动端 Emby/Jellyfin 客户端在"添加服务器"时自动发现本机，
+	// 省去用户手动输入 IP 的步骤。启动失败不影响主服务（常见于端口被占或防火墙）。
+	var discovery *embyh.DiscoveryService
+	if cfg.Emby.EnableAutoDiscovery {
+		discovery = embyh.NewDiscoveryService(
+			cfg.Emby.AutoDiscoveryPort,
+			embyHandler.ServerID(),
+			cfg.Emby.ServerName,
+			cfg.App.Port,
+			sugar,
+		)
+		if err := discovery.Start(); err != nil {
+			sugar.Warnf("Emby 自动发现启动失败（可忽略）: %v", err)
+			discovery = nil
+		}
+	}
+
 	// 静态文件（前端构建产物）
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
@@ -726,6 +754,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	sugar.Info("正在关闭服务器...")
+
+	// 停止 UDP 服务发现
+	if discovery != nil {
+		discovery.Stop()
+	}
 
 	// 设置 30 秒超时用于优雅关闭
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

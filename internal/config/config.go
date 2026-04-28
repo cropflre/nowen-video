@@ -253,6 +253,27 @@ type RegistrationConfig struct {
 	InviteCode string `mapstructure:"invite_code"`
 }
 
+// EmbyConfig Emby/Jellyfin 兼容层配置（供移动端/桌面 Emby/Infuse/Jellyfin 客户端登录与播放）
+type EmbyConfig struct {
+	// 服务器对外显示名称（留空则使用主机名或 "nowen-video"）
+	ServerName string `mapstructure:"server_name"`
+	// 是否启用 UDP 7359 局域网服务器自动发现（Emby / Jellyfin 标准协议）
+	// 开启后同网段的客户端会在"添加服务器"时自动发现本机
+	EnableAutoDiscovery bool `mapstructure:"enable_auto_discovery"`
+	// UDP 自动发现监听端口，默认 7359（Emby/Jellyfin 标准）
+	AutoDiscoveryPort int `mapstructure:"auto_discovery_port"`
+	// 是否在 /Users/Public 暴露用户列表（登录页展示用户头像点击登录）
+	// 默认 false 以保护用户名隐私；开启更适合家庭共享场景
+	PublicUserListEnabled bool `mapstructure:"public_user_list_enabled"`
+	// 是否启用 WebSocket（/embywebsocket），消除客户端连接失败告警
+	EnableWebSocket bool `mapstructure:"enable_websocket"`
+	// 登录品牌自定义文案（Jellyfin 客户端 /Branding/Configuration 使用）
+	// 登录页顶部欢迎语
+	LoginDisclaimer string `mapstructure:"login_disclaimer"`
+	// 自定义 CSS（Jellyfin Web 客户端 /Branding/Css）
+	CustomCss string `mapstructure:"custom_css"`
+}
+
 // StorageConfig 存储配置（支持本地、WebDAV、网盘等多种存储后端）
 type StorageConfig struct {
 	// ==================== WebDAV 存储配置 ====================
@@ -376,6 +397,7 @@ type Config struct {
 	AI           AIConfig           `mapstructure:"ai"`
 	Registration RegistrationConfig `mapstructure:"registration"`
 	Storage      StorageConfig      `mapstructure:"storage"`
+	Emby         EmbyConfig         `mapstructure:"emby"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -538,6 +560,15 @@ func setDefaults() {
 	// ---- 注册控制 ----
 	viper.SetDefault("registration.enabled", false)
 	viper.SetDefault("registration.invite_code", "")
+
+	// ---- Emby 兼容层 ----
+	viper.SetDefault("emby.server_name", "")
+	viper.SetDefault("emby.enable_auto_discovery", true)
+	viper.SetDefault("emby.auto_discovery_port", 7359)
+	viper.SetDefault("emby.public_user_list_enabled", false)
+	viper.SetDefault("emby.enable_websocket", true)
+	viper.SetDefault("emby.login_disclaimer", "")
+	viper.SetDefault("emby.custom_css", "")
 
 	// ---- 存储配置 ----
 	// WebDAV 存储配置
