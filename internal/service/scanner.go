@@ -59,6 +59,114 @@ var extrasSuffixes = []string{
 	"-interview", "-scene", "-short", "-trailer", "-sample",
 }
 
+// ==================== xiaoya / 小雅多级分类目录适配 ====================
+//
+// 适配以下典型目录结构（媒体库根直接选到 /media/xiaoya 即可，无需用户配置）：
+//   xiaoya/
+//     ├── 115/
+//     │   ├── 电视剧/【我推的孩子】(2024)/Season 1/*.mkv
+//     │   ├── 电影/...
+//     │   └── 动漫/...
+//     ├── 电视剧/...
+//     ├── 电影/...
+//     └── ISO/                 ← 直接跳过
+//
+// 策略：
+//   1. 扫描入口会先调用 expandCategoryRoots 把"分类目录"穿透展开成真实媒体根列表；
+//   2. extrasExcludeDirs + xiaoyaSkipDirs 在 Walk 过程中直接 SkipDir；
+//   3. 标题提取同时兼容中文/全角括号与【】《》等装饰符号。
+
+// xiaoyaCategoryDirs 已知的"分类目录"名（需要穿透递归，向下一层找真正的剧集/电影目录）
+// key 使用原样（含中文）的目录名；比较时会忽略大小写
+var xiaoyaCategoryDirs = map[string]bool{
+	"电视剧": true, "电影": true, "动漫": true, "短剧": true,
+	"纪录片": true, "纪录片（已刮削）": true, "纪录片(已刮削)": true,
+	"综艺": true, "演唱会": true, "音乐": true, "每日更新": true,
+	// xiaoya 常见的"来源分组"目录
+	"115": true, "115盘": true, "阿里云盘": true, "夸克": true, "夸克网盘": true,
+	"每日更新夸克": true, "xiaoya": true, "小雅": true,
+}
+
+// xiaoyaSkipDirs 完全跳过（不扫描内部）的特殊目录
+// 比较时会忽略大小写
+var xiaoyaSkipDirs = map[string]bool{
+	"iso":  true,
+	"json": true,
+	"画质演示":              true,
+	"画质演示测试":            true,
+	"画质演示测试（4k，8k，hdr，dolby）": true,
+	"bdmv":  true, // 完整蓝光结构，当前不支持解析
+	"certificate": true,
+	"backup":      true,
+}
+
+// isCategoryDirName 按名字判断是否为已知的"分类目录"
+func isCategoryDirName(name string) bool {
+	return xiaoyaCategoryDirs[strings.ToLower(strings.TrimSpace(name))] ||
+		xiaoyaCategoryDirs[strings.TrimSpace(name)]
+}
+
+// isXiaoyaSkipDir 按名字判断是否为需要完全跳过的特殊目录
+func isXiaoyaSkipDir(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if xiaoyaSkipDirs[lower] {
+		return true
+	}
+	// 简单兜底：目录名以 "画质演示" 开头的一律跳过
+	if strings.HasPrefix(strings.TrimSpace(name), "画质演示") {
+		return true
+	}
+	return false
+}
+
+// yearInNameAnyBracketPattern 兼容中文/全角括号的年份正则
+//
+//	支持: (2024) [2024] （2024） 【2024】
+var yearInNameAnyBracketPattern = regexp.MustCompile(`[\(\[（【]\s*((?:19|20)\d{2})\s*[\)\]）】]`)
+
+// normalizeXiaoyaTitle 清洗 xiaoya/小雅风格的标题，返回去除装饰符号后的干净标题
+// 例如：
+//
+//	"【我推的孩子】"     → "我推的孩子"
+//	"#居酒屋新干线"     → "居酒屋新干线"
+//	"《三体》"           → "三体"
+//	"3 Body Problem"  → "3 Body Problem"（保持不变）
+func normalizeXiaoyaTitle(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	s := raw
+
+	// 1. 移除首尾常见装饰前缀/后缀字符（# ＃ ★ ☆ ♥ ♡ 以及未配对的半边括号）
+	s = regexp.MustCompile(`^[#＃★☆♥♡・·\s]+`).ReplaceAllString(s, "")
+
+	// 2. 成对装饰括号内容保留：【xxx】→ xxx，《xxx》→ xxx，「xxx」→ xxx，『xxx』→ xxx
+	pairPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`[【](.*?)[】]`),
+		regexp.MustCompile(`[《](.*?)[》]`),
+		regexp.MustCompile(`[「](.*?)[」]`),
+		regexp.MustCompile(`[『](.*?)[』]`),
+		regexp.MustCompile(`[〈](.*?)[〉]`),
+	}
+	for _, p := range pairPatterns {
+		// 反复替换直到稳定（处理嵌套情况）
+		for {
+			next := p.ReplaceAllString(s, "$1")
+			if next == s {
+				break
+			}
+			s = next
+		}
+	}
+
+	// 3. 全角空格 → 半角空格，全角破折号 → 半角
+	s = strings.ReplaceAll(s, "　", " ")
+
+	// 4. 清理多余空格
+	s = regexp.MustCompile(`\s+`).ReplaceAllString(s, " ")
+	return strings.TrimSpace(s)
+}
+
 // isExtrasPath 判断文件路径是否在非正片目录下
 func isExtrasPath(filePath string) bool {
 	parts := strings.Split(filepath.ToSlash(filePath), "/")
@@ -114,8 +222,15 @@ var versionPatterns = []*regexp.Regexp{
 }
 
 // extractYearFromName 从文件名/文件夹名中提取年份
+// 优先匹配标准 ASCII 括号 (2024)/[2024]；失败时再尝试中文/全角括号 （2024）/【2024】（xiaoya 常见）
 func extractYearFromName(name string) int {
 	if m := yearInNamePattern.FindStringSubmatch(name); len(m) >= 2 {
+		year, _ := strconv.Atoi(m[1])
+		if year >= 1900 && year <= 2099 {
+			return year
+		}
+	}
+	if m := yearInNameAnyBracketPattern.FindStringSubmatch(name); len(m) >= 2 {
 		year, _ := strconv.Atoi(m[1])
 		if year >= 1900 && year <= 2099 {
 			return year
@@ -254,6 +369,125 @@ func vfsJoin(base, name string) string {
 	}
 	return filepath.Join(base, name)
 }
+
+// collectMediaRoots 将媒体库根路径展开为一个或多个"真实媒体根目录"列表
+//
+// 适配 xiaoya/小雅 这种多级分类结构（如 xiaoya/115/电视剧/xxx）：
+//   - 若 root 本身或其子目录是已知分类目录（xiaoyaCategoryDirs）且不包含直接视频文件，
+//     则递归穿透；
+//   - 若目录名命中 xiaoyaSkipDirs 或 extrasExcludeDirs，则直接跳过；
+//   - 最多穿透 maxDepth 层，防止无限递归；
+//   - 如果没有任何分类目录命中，直接返回 [root]（完全向后兼容）。
+//
+// kind 仅影响日志打印，不影响展开规则。
+func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
+	const maxDepth = 4
+	var results []string
+	seen := make(map[string]bool)
+
+	var walk func(path string, depth int)
+	walk = func(path string, depth int) {
+		if seen[path] {
+			return
+		}
+		seen[path] = true
+
+		base := filepath.Base(path)
+		if isXiaoyaSkipDir(base) || extrasExcludeDirs[strings.ToLower(base)] {
+			s.logger.Debugf("[xiaoya] 跳过特殊目录: %s", path)
+			return
+		}
+
+		// depth==0 即 root 本身，不论是否命中分类名都要尝试穿透；
+		// depth>0 时只有命中分类白名单 或 目录内没视频才穿透
+		entries, err := s.readDirLibraryPath(path)
+		if err != nil {
+			// 无法读取的目录保守当做普通媒体根加入
+			results = append(results, path)
+			return
+		}
+
+		var hasVideoFile bool
+		var subDirs []os.DirEntry
+		for _, e := range entries {
+			if e.IsDir() {
+				subDirs = append(subDirs, e)
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if supportedExts[ext] {
+				hasVideoFile = true
+			}
+			// 已有 NFO 也视为"当前目录已是媒体根"
+			lower := strings.ToLower(e.Name())
+			if lower == "tvshow.nfo" || lower == "movie.nfo" {
+				hasVideoFile = true
+			}
+		}
+
+		// 已是真实媒体目录 —— 不再下钻
+		if hasVideoFile {
+			results = append(results, path)
+			return
+		}
+
+		// 分类目录识别：
+		// - depth == 0：总是尝试穿透（用户把库根设在 xiaoya 上层也能工作）
+		// - depth >  0：仅当目录名命中分类白名单 或 子目录数 >= 3（无视频+多子目录特征）
+		shouldExpand := depth == 0
+		if !shouldExpand {
+			if isCategoryDirName(base) {
+				shouldExpand = true
+			} else if len(subDirs) >= 3 && !hasVideoFile {
+				// 兜底启发式：无视频 + 多子目录，很可能也是分类目录
+				shouldExpand = true
+			}
+		}
+
+		if !shouldExpand || depth >= maxDepth {
+			results = append(results, path)
+			return
+		}
+
+		// 穿透：把每个子目录递归展开
+		expandedCount := 0
+		for _, sd := range subDirs {
+			if isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
+				continue
+			}
+			childPath := vfsJoin(path, sd.Name())
+			before := len(results)
+			walk(childPath, depth+1)
+			if len(results) > before {
+				expandedCount++
+			}
+		}
+
+		// 如果穿透后一个结果都没有（极端情况），保底把当前目录加入
+		if expandedCount == 0 {
+			results = append(results, path)
+		}
+	}
+
+	walk(root, 0)
+
+	// 去重并保持顺序
+	uniq := make([]string, 0, len(results))
+	dedup := make(map[string]bool)
+	for _, r := range results {
+		if dedup[r] {
+			continue
+		}
+		dedup[r] = true
+		uniq = append(uniq, r)
+	}
+
+	if len(uniq) > 1 {
+		s.logger.Infof("[xiaoya] %s 库多级分类展开: %s → 共 %d 个媒体根目录", kind, root, len(uniq))
+	}
+	return uniq
+}
+
 
 // SetOnScanComplete 设置扫描完成回调（用于触发视频预处理）
 func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
@@ -631,45 +865,64 @@ func detectVersionTag(filename string) string {
 func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	s.logger.Infof("混合媒体库扫描: %s (%s)", library.Name, library.Path)
 
-	entries, err := s.readDirLibraryPath(library.Path)
-	if err != nil {
-		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
-	}
-
-	s.logger.Infof("混合库根目录包含 %d 个条目", len(entries))
+	// [xiaoya 适配] 将媒体库根展开为多个"真实媒体根"
+	mediaRoots := s.collectMediaRoots(library.Path, "mixed")
 
 	var totalCount int
 	// === 阶段一：收集子目录，按标准化系列名分组（用于多季合并检测） ===
 	seriesDirGroups := make(map[string][]seriesFolder) // 标准化系列名 -> 目录列表
-	var movieDirs []os.DirEntry                        // 被判定为电影的目录
-	var looseVideoFiles []os.DirEntry                  // 根目录散落的视频文件
+	type movieDirEntry struct {
+		entry    os.DirEntry
+		rootPath string
+	}
+	type looseEntry struct {
+		entry    os.DirEntry
+		rootPath string
+	}
+	var movieDirs []movieDirEntry      // 被判定为电影的目录
+	var looseVideoFiles []looseEntry   // 根目录散落的视频文件
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			// 根目录下的散落视频文件
-			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if supportedExts[ext] {
-				looseVideoFiles = append(looseVideoFiles, entry)
-			}
+	for _, root := range mediaRoots {
+		entries, err := s.readDirLibraryPath(root)
+		if err != nil {
+			s.logger.Warnf("读取混合库根目录失败: %s, 错误: %v", root, err)
 			continue
 		}
+		s.logger.Infof("混合库根 %s 包含 %d 个条目", root, len(entries))
 
-		dirName := entry.Name()
-		folderPath := vfsJoin(library.Path, dirName)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				// 根目录下的散落视频文件
+				ext := strings.ToLower(filepath.Ext(entry.Name()))
+				if supportedExts[ext] {
+					looseVideoFiles = append(looseVideoFiles, looseEntry{entry: entry, rootPath: root})
+				}
+				continue
+			}
 
-		// 智能判断：该目录是电视剧还是电影
-		if s.isTVShowFolder(folderPath) {
-			// 电视剧目录：按标准化系列名分组（支持多季合并）
-			normalizedName := s.normalizeSeriesName(dirName)
-			seasonNum := s.extractSeasonFromDirName(dirName)
-			seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
-				path:      folderPath,
-				dirName:   dirName,
-				seasonNum: seasonNum,
-			})
-		} else {
-			// 电影目录
-			movieDirs = append(movieDirs, entry)
+			dirName := entry.Name()
+			// [xiaoya 适配] 跳过特殊目录（ISO/json/画质演示/extras 等）
+			if isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
+				s.logger.Debugf("[xiaoya] 混合库扫描跳过特殊目录: %s", dirName)
+				continue
+			}
+
+			folderPath := vfsJoin(root, dirName)
+
+			// 智能判断：该目录是电视剧还是电影
+			if s.isTVShowFolder(folderPath) {
+				// 电视剧目录：按标准化系列名分组（支持多季合并）
+				normalizedName := s.normalizeSeriesName(dirName)
+				seasonNum := s.extractSeasonFromDirName(dirName)
+				seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
+					path:      folderPath,
+					dirName:   dirName,
+					seasonNum: seasonNum,
+				})
+			} else {
+				// 电影目录
+				movieDirs = append(movieDirs, movieDirEntry{entry: entry, rootPath: root})
+			}
 		}
 	}
 
@@ -698,7 +951,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 
 	// === 阶段三：处理电影目录（扫描目录内的视频文件作为电影） ===
 	for _, entry := range movieDirs {
-		folderPath := vfsJoin(library.Path, entry.Name())
+		folderPath := vfsJoin(entry.rootPath, entry.entry.Name())
 		err := s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
@@ -742,15 +995,15 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 
 	// === 阶段四：处理根目录散落的视频文件（作为电影） ===
 	for _, entry := range looseVideoFiles {
-		filePath := filepath.Join(library.Path, entry.Name())
+		filePath := filepath.Join(entry.rootPath, entry.entry.Name())
 		if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
 			continue // 已存在
 		}
-		info, err := entry.Info()
+		info, err := entry.entry.Info()
 		if err != nil {
 			continue
 		}
-		title := s.extractTitle(entry.Name())
+		title := s.extractTitle(entry.entry.Name())
 		media := &model.Media{
 			LibraryID: library.ID,
 			Title:     title,
@@ -971,60 +1224,72 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 
 	s.logger.Infof("剧集库扫描开始: %s, 路径: %s", library.Name, library.Path)
 
-	// 遍历媒体库根目录的第一层子目录，每个子目录视为一个剧集
-	entries, err := s.readDirLibraryPath(library.Path)
-	if err != nil {
-		return 0, fmt.Errorf("读取媒体库目录失败: %w", err)
-	}
+	// [xiaoya 适配] 将媒体库根展开为多个"真实剧集根"
+	// 普通用户的平铺目录会返回 [library.Path]（完全向后兼容）
+	mediaRoots := s.collectMediaRoots(library.Path, "tvshow")
 
-	s.logger.Infof("剧集库根目录包含 %d 个条目", len(entries))
-
-	// 收集根目录下的散落视频文件，按系列名分组
+	// 收集根目录下的散落视频文件，按系列名分组（跨所有 roots）
 	type looseFile struct {
-		entry os.DirEntry
-		info  os.FileInfo
+		entry    os.DirEntry
+		info     os.FileInfo
+		rootPath string
 	}
 	seriesGroups := make(map[string][]looseFile) // 系列名 -> 文件列表
 
-	// === 阶段一：收集所有子目录，按标准化系列名分组 ===
-	// 标准化系列名 -> 目录列表
+	// 标准化系列名 -> 目录列表（跨所有 roots）
 	seriesDirGroups := make(map[string][]seriesFolder)
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			// 根目录下的视频文件
-			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if supportedExts[ext] {
-				filePath := filepath.Join(library.Path, entry.Name())
-				if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
-					continue // 已存在
-				}
-				info, _ := entry.Info()
-				if info == nil {
-					continue
-				}
-				// 从文件名提取系列名称用于智能归类
-				seriesName := s.extractSeriesNameFromFile(entry.Name())
-				if seriesName == "" {
-					seriesName = "__ungrouped__"
-				}
-				seriesGroups[seriesName] = append(seriesGroups[seriesName], looseFile{entry: entry, info: info})
-			}
+	// === 阶段一：对每个媒体根分别收集剧集目录和散落视频 ===
+	for _, root := range mediaRoots {
+		entries, err := s.readDirLibraryPath(root)
+		if err != nil {
+			s.logger.Warnf("读取剧集根目录失败: %s, 错误: %v", root, err)
 			continue
 		}
+		s.logger.Infof("剧集根 %s 包含 %d 个条目", root, len(entries))
 
-		dirName := entry.Name()
-		folderPath := filepath.Join(library.Path, dirName)
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				// 根目录下的视频文件
+				ext := strings.ToLower(filepath.Ext(entry.Name()))
+				if supportedExts[ext] {
+					filePath := vfsJoin(root, entry.Name())
+					if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+						continue // 已存在
+					}
+					info, _ := entry.Info()
+					if info == nil {
+						continue
+					}
+					// 从文件名提取系列名称用于智能归类
+					seriesName := s.extractSeriesNameFromFile(entry.Name())
+					if seriesName == "" {
+						seriesName = "__ungrouped__"
+					}
+					seriesGroups[seriesName] = append(seriesGroups[seriesName], looseFile{entry: entry, info: info, rootPath: root})
+				}
+				continue
+			}
 
-		// 从目录名提取标准化系列名（去掉季号标识）和季号
-		normalizedName := s.normalizeSeriesName(dirName)
-		seasonNum := s.extractSeasonFromDirName(dirName)
+			dirName := entry.Name()
+			// [xiaoya 适配] 跳过特殊目录（ISO/json/画质演示/extras 等）
+			if isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
+				s.logger.Debugf("[xiaoya] 剧集扫描跳过特殊目录: %s", dirName)
+				continue
+			}
 
-		seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
-			path:      folderPath,
-			dirName:   dirName,
-			seasonNum: seasonNum,
-		})
+			folderPath := vfsJoin(root, dirName)
+
+			// 从目录名提取标准化系列名（去掉季号标识）和季号
+			normalizedName := s.normalizeSeriesName(dirName)
+			seasonNum := s.extractSeasonFromDirName(dirName)
+
+			seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
+				path:      folderPath,
+				dirName:   dirName,
+				seasonNum: seasonNum,
+			})
+		}
 	}
 
 	// === 阶段二：处理分组后的目录 ===
@@ -1056,7 +1321,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		if len(files) <= 1 && seriesName == "__ungrouped__" {
 			// 单个无法识别系列名的文件，作为独立媒体处理
 			for _, f := range files {
-				filePath := filepath.Join(library.Path, f.entry.Name())
+				filePath := vfsJoin(f.rootPath, f.entry.Name())
 				title := s.extractTitle(f.entry.Name())
 				media := &model.Media{
 					LibraryID: library.ID,
@@ -1084,7 +1349,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		if seriesName == "__ungrouped__" {
 			// 多个无法识别系列名的文件，使用文件名作为标题独立存储
 			for _, f := range files {
-				filePath := filepath.Join(library.Path, f.entry.Name())
+				filePath := vfsJoin(f.rootPath, f.entry.Name())
 				title := s.extractTitle(f.entry.Name())
 				media := &model.Media{
 					LibraryID: library.ID,
@@ -1129,7 +1394,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		var newCount int
 
 		for _, f := range files {
-			filePath := filepath.Join(library.Path, f.entry.Name())
+			filePath := vfsJoin(f.rootPath, f.entry.Name())
 			ep := s.parseEpisodeInfo(f.entry.Name())
 			if ep.SeasonNum == 0 {
 				ep.SeasonNum = 1

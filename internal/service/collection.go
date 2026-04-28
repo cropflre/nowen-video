@@ -232,11 +232,17 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 	}
 
 	// ===== 第一层：精确模式匹配（数字序号、罗马数字等） =====
+	// 增强：先尝试组合式深度提取（L2+L1），再退回纯 L1
+	//   示例："逃学威龙3之龙过鸡年" -> L2 得 "逃学威龙3" -> L1 得 "逃学威龙"
+	//   示例："逃学威龙2"           -> 组合式无命中 -> L1 得 "逃学威龙"
 	groups := make(map[string][]model.Media)
 	var unmatchedMovies []model.Media // 第一层未匹配到的电影，留给第二层处理
 
 	for _, m := range movies {
-		baseName := extractSeriesBaseName(m.Title)
+		baseName := matcher.ExtractBaseNameDeep(m.Title)
+		if baseName == "" {
+			baseName = extractSeriesBaseName(m.Title)
+		}
 		if baseName != "" {
 			groups[baseName] = append(groups[baseName], m)
 		} else {
@@ -283,6 +289,49 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 	for baseName, mediaList := range spaceGroups {
 		groups[baseName] = append(groups[baseName], mediaList...)
 		s.logger.Infof("[空格分割] 发现系列基础名 '%s'，包含 %d 部电影", baseName, len(mediaList))
+	}
+
+	// ===== 第四层：裸标题吸附 =====
+	// 对前三层都未匹配的"裸标题"电影（如 "逃学威龙"、"Toy Story"），
+	// 如果其标题（归一化后）恰好等于本次已形成的某个分组 key，或等于数据库中已存在的合集名，
+	// 就把它吸附到对应分组。这样"系列首部"不会因为没有任何数字/连接词而游离在合集之外。
+	//
+	// 构造"归一化 key -> 原始 key"映射，提高匹配鲁棒性（忽略空白/全半角/标点）
+	normalizedGroupKeys := make(map[string]string, len(groups))
+	for k := range groups {
+		nk := matcher.NormalizeForCompare(k)
+		if nk != "" {
+			normalizedGroupKeys[nk] = k
+		}
+	}
+
+	absorbed := 0
+	for _, m := range unmatchedMovies {
+		if matchedIDs[m.ID] {
+			continue
+		}
+		norm := matcher.NormalizeForCompare(m.Title)
+		if norm == "" {
+			continue
+		}
+		// 1) 先尝试吸附到本次已形成的分组
+		if origKey, ok := normalizedGroupKeys[norm]; ok {
+			groups[origKey] = append(groups[origKey], m)
+			matchedIDs[m.ID] = true
+			absorbed++
+			s.logger.Infof("[裸标题吸附] '%s' 归入分组 '%s'", m.Title, origKey)
+			continue
+		}
+		// 2) 再尝试吸附到数据库中已存在的同名合集（例如历史数据已建好"逃学威龙"合集）
+		if existing, err := s.collRepo.FindByNameFuzzy(m.Title); err == nil && existing != nil {
+			groups[existing.Name] = append(groups[existing.Name], m)
+			matchedIDs[m.ID] = true
+			absorbed++
+			s.logger.Infof("[裸标题吸附] '%s' 归入既有合集 '%s'", m.Title, existing.Name)
+		}
+	}
+	if absorbed > 0 {
+		s.logger.Infof("[裸标题吸附] 共吸附 %d 部系列首部电影到既有/新建分组", absorbed)
 	}
 
 	created := 0
