@@ -25,7 +25,9 @@ RUN npm run build
 # =============================================
 # 阶段2: 构建后端（在构建机本地架构运行 Go 工具链，交叉编译到目标架构）
 # =============================================
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS backend
+# 注意：镜像 Go 版本必须 >= go.mod 中声明的版本，否则会报
+# "go.mod requires go >= 1.25.0 (running go 1.22.x; GOTOOLCHAIN=local)"
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /app
