@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { libraryApi } from '@/api'
 import type { Library, CreateLibraryRequest } from '@/types'
+import { getLibraryPaths } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
 import { useToast } from './Toast'
 import CreateLibraryModal from './CreateLibraryModal'
@@ -330,13 +331,23 @@ export default function LibraryManager({
                       className="flex-shrink-0"
                       style={{ color: 'var(--text-muted)' }}
                     />
-                    <span
-                      className="truncate text-sm font-mono"
-                      style={{ color: 'var(--text-secondary)' }}
-                      title={lib.path}
-                    >
-                      {lib.path}
-                    </span>
+                    {(() => {
+                      const allPaths = getLibraryPaths(lib)
+                      const pathTitle = allPaths.join('\n')
+                      const displayText =
+                        allPaths.length > 1
+                          ? `${allPaths[0]}  +${allPaths.length - 1}`
+                          : allPaths[0] || lib.path
+                      return (
+                        <span
+                          className="truncate text-sm font-mono"
+                          style={{ color: 'var(--text-secondary)' }}
+                          title={pathTitle}
+                        >
+                          {displayText}
+                        </span>
+                      )
+                    })()}
                   </div>
 
                   {/* 类型标签 */}

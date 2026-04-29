@@ -711,13 +711,15 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
 
       {/* 服务端文件浏览器 */}
       <FileBrowser
-        open={showFileBrowser}
-        onClose={() => setShowFileBrowser(false)}
+        open={browsingIndex !== null}
+        onClose={() => setBrowsingIndex(null)}
         onSelect={(selectedPath) => {
-          setPath(selectedPath)
-          setError('')
+          if (browsingIndex !== null) {
+            setPaths((prev) => prev.map((x, i) => (i === browsingIndex ? selectedPath : x)))
+            setError('')
+          }
         }}
-        initialPath={path || '/'}
+        initialPath={(browsingIndex !== null ? paths[browsingIndex] : '') || '/'}
       />
     </div>
   )
