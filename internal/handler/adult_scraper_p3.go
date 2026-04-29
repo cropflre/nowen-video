@@ -271,7 +271,7 @@ func (h *AdultScraperHandler) GetReport(c *gin.Context) {
 		}
 	}
 	if h.taskStore == nil {
-		c.JSON(http.StatusOK, gin.H{"data": gin.H{}})
+		c.JSON(http.StatusOK, gin.H{"data": service.BuildReport(nil, days)})
 		return
 	}
 	report := service.BuildReport(h.taskStore, days)
@@ -288,7 +288,7 @@ func (h *AdultScraperHandler) GetFailedItems(c *gin.Context) {
 		}
 	}
 	if h.taskStore == nil {
-		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}, "count": 0})
 		return
 	}
 	items := h.taskStore.FailedItems(days)

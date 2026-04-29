@@ -50,7 +50,7 @@ type AdultScrapeReport struct {
 // BuildReport 从 TaskStore 历史数据生成报表
 func BuildReport(store *AdultTaskStore, days int) AdultScrapeReport {
 	if store == nil {
-		return AdultScrapeReport{GeneratedAt: time.Now()}
+		return emptyReport(days)
 	}
 	cutoff := time.Time{}
 	if days > 0 {
@@ -201,7 +201,33 @@ func BuildReport(store *AdultTaskStore, days int) AdultScrapeReport {
 		report.BestHours = append(report.BestHours, h.hour)
 	}
 
+	// 确保切片字段为非 nil（JSON 序列化为 []，避免前端 .map/.length 崩溃）
+	if report.BySource == nil {
+		report.BySource = []SourceStats{}
+	}
+	if report.ByPrefix == nil {
+		report.ByPrefix = []PrefixStats{}
+	}
+	if report.TopFailures == nil {
+		report.TopFailures = []string{}
+	}
+	if report.BestHours == nil {
+		report.BestHours = []int{}
+	}
+
 	return report
+}
+
+// emptyReport 返回一份字段完整（切片非 nil）的空报表
+func emptyReport(days int) AdultScrapeReport {
+	return AdultScrapeReport{
+		Period:      periodLabel(days),
+		GeneratedAt: time.Now(),
+		BySource:    []SourceStats{},
+		ByPrefix:    []PrefixStats{},
+		TopFailures: []string{},
+		BestHours:   []int{},
+	}
 }
 
 // extractCodePrefix 从番号中提取字母前缀（SSIS-001 -> SSIS）

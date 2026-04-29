@@ -532,9 +532,11 @@ function ReportPanel() {
   const [loading, setLoading] = useState(false)
   const [failedCount, setFailedCount] = useState(0)
   const [retrying, setRetrying] = useState(false)
+  const [loadErr, setLoadErr] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadErr('')
     try {
       const [r1, r2] = await Promise.all([
         adultScraperApi.getReport(days),
@@ -542,6 +544,8 @@ function ReportPanel() {
       ])
       setReport(r1.data.data)
       setFailedCount(r2.data.count || 0)
+    } catch (e: any) {
+      setLoadErr(e?.response?.data?.error || e?.message || '加载报表失败')
     } finally {
       setLoading(false)
     }
@@ -588,69 +592,96 @@ function ReportPanel() {
         )}
       </div>
 
+      {loadErr && (
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+          ⚠️ {loadErr}
+        </div>
+      )}
+
+      {!report && !loadErr && loading && (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          正在生成报表...
+        </div>
+      )}
+
       {report && (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="总处理数" value={report.total_processed} />
-            <StatCard label="成功" value={report.total_success} />
-            <StatCard label="失败" value={report.total_failed} />
-            <StatCard label="总成功率" value={`${(report.overall_rate * 100).toFixed(1)}%`} />
+            <StatCard label="总处理数" value={report.total_processed ?? 0} />
+            <StatCard label="成功" value={report.total_success ?? 0} />
+            <StatCard label="失败" value={report.total_failed ?? 0} />
+            <StatCard label="总成功率" value={`${((report.overall_rate ?? 0) * 100).toFixed(1)}%`} />
           </div>
 
           <div>
             <div className="mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>各数据源成功率</div>
-            <div className="space-y-1">
-              {report.by_source.map((s) => (
-                <div key={s.source} className="rounded p-2 text-xs" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{s.source}</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{s.success}/{s.total} ({(s.success_rate * 100).toFixed(1)}%)</span>
+            {(report.by_source ?? []).length === 0 ? (
+              <div className="rounded-lg p-3 text-center text-xs" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}>
+                暂无数据（请先执行批量刮削或文件夹刮削生成历史记录）
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {(report.by_source ?? []).map((s) => (
+                  <div key={s.source} className="rounded p-2 text-xs" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{s.source}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{s.success}/{s.total} ({(s.success_rate * 100).toFixed(1)}%)</span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full" style={{ background: 'var(--border-default)' }}>
+                      <div className="h-full bg-green-500" style={{ width: `${s.success_rate * 100}%` }} />
+                    </div>
                   </div>
-                  <div className="h-1 overflow-hidden rounded-full" style={{ background: 'var(--border-default)' }}>
-                    <div className="h-full bg-green-500" style={{ width: `${s.success_rate * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div>
-            <div className="mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>TOP 番号前缀</div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {report.by_prefix.slice(0, 8).map((p) => (
-                <div key={p.prefix} className="rounded px-2 py-1 text-xs" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
-                  <div className="font-mono" style={{ color: 'var(--text-primary)' }}>{p.prefix}</div>
-                  <div style={{ color: 'var(--text-secondary)' }}>{p.success}/{p.total} · {(p.success_rate * 100).toFixed(0)}%</div>
-                </div>
-              ))}
+          {(report.by_prefix ?? []).length > 0 && (
+            <div>
+              <div className="mb-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>TOP 番号前缀</div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {(report.by_prefix ?? []).slice(0, 8).map((p) => (
+                  <div key={p.prefix} className="rounded px-2 py-1 text-xs" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
+                    <div className="font-mono" style={{ color: 'var(--text-primary)' }}>{p.prefix}</div>
+                    <div style={{ color: 'var(--text-secondary)' }}>{p.success}/{p.total} · {(p.success_rate * 100).toFixed(0)}%</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {report.top_failures.length > 0 && (
+          {(report.top_failures ?? []).length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-red-500">
                 <AlertTriangle className="h-4 w-4" />
                 最常失败番号
               </div>
               <div className="flex flex-wrap gap-1">
-                {report.top_failures.map((c) => (
+                {(report.top_failures ?? []).map((c) => (
                   <span key={c} className="rounded bg-red-500/15 px-2 py-0.5 text-xs font-mono text-red-500 dark:text-red-300">{c}</span>
                 ))}
               </div>
             </div>
           )}
 
-          {report.best_hours.length > 0 && (
+          {(report.best_hours ?? []).length > 0 && (
             <div>
               <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-green-600 dark:text-green-300">
                 <CheckCircle2 className="h-4 w-4" />
                 成功率最高时段（可用于调整定时执行时间）
               </div>
               <div className="flex gap-2">
-                {report.best_hours.map((h) => (
+                {(report.best_hours ?? []).map((h) => (
                   <span key={h} className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-600 dark:text-green-300">{h}:00</span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {(report.total_processed ?? 0) === 0 && (
+            <div className="rounded-lg p-4 text-center text-xs" style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--border-default)', color: 'var(--text-secondary)' }}>
+              所选时间范围内没有刮削记录。开始一次批量刮削后，报表会自动填充。
             </div>
           )}
         </>
