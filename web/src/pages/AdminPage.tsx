@@ -562,7 +562,6 @@ export default function AdminPage() {
     try {
       const res = await adminApi.createDoubanImportToken()
       setDoubanImportInfo(res.data.data)
-      setDoubanImportRemaining(res.data.data.expires_in)
     } catch (err: any) {
       const msg = err?.response?.data?.error || '生成导入链接失败，请稍后重试'
       showDoubanMessage('error', msg)
@@ -656,7 +655,6 @@ export default function AdminPage() {
       try {
         const res = await adminApi.getDoubanImportTokenStatus(doubanImportInfo.token)
         setDoubanImportStatus(res.data.data)
-        setDoubanImportRemaining(res.data.data.remaining_secs)
         if (res.data.data.status === 'success') {
           // 导入成功，刷新豆瓣配置状态
           const cfgRes = await adminApi.getDoubanConfig()
