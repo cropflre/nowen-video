@@ -1,7 +1,9 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,11 +93,15 @@ func (i *InviteCode) BeforeCreate(tx *gorm.DB) error {
 
 // Library 媒体库
 type Library struct {
-	ID       string     `json:"id" gorm:"primaryKey;type:text"`
-	Name     string     `json:"name" gorm:"type:text;not null"`
-	Path     string     `json:"path" gorm:"type:text;not null"`      // 媒体文件目录路径
-	Type     string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
-	LastScan *time.Time `json:"last_scan"`
+	ID   string `json:"id" gorm:"primaryKey;type:text"`
+	Name string `json:"name" gorm:"type:text;not null"`
+	// Path 主路径（第一个媒体文件夹，保留以兼容历史数据）
+	Path string `json:"path" gorm:"type:text;not null"`
+	// ExtraPaths 额外媒体文件夹列表（JSON 数组），用于支持多个目录
+	// 对外字段名为 extra_paths；聚合后的完整路径列表请使用 AllPaths()
+	ExtraPaths string     `json:"extra_paths" gorm:"type:text"`
+	Type       string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
+	LastScan   *time.Time `json:"last_scan"`
 	// 高级设置
 	PreferLocalNFO    bool   `json:"prefer_local_nfo" gorm:"default:true"`         // 优先读取本地NFO和图片
 	MinFileSize       int    `json:"min_file_size" gorm:"default:3"`               // 排除小于此大小(MB)的视频文件
@@ -111,6 +117,59 @@ type Library struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+// AllPaths 返回媒体库的全部媒体文件夹路径（主路径 + ExtraPaths）
+// 结果已去重、剔除空值；始终把 Path 作为第一个元素以保持主路径顺序
+func (l *Library) AllPaths() []string {
+	result := make([]string, 0, 4)
+	seen := make(map[string]bool)
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		result = append(result, p)
+	}
+	add(l.Path)
+	if strings.TrimSpace(l.ExtraPaths) != "" {
+		var extras []string
+		if err := json.Unmarshal([]byte(l.ExtraPaths), &extras); err == nil {
+			for _, p := range extras {
+				add(p)
+			}
+		}
+	}
+	return result
+}
+
+// SetAllPaths 根据完整路径数组写入 Path + ExtraPaths
+// 第一个路径作为主路径（Path），其余序列化为 JSON 写入 ExtraPaths
+func (l *Library) SetAllPaths(paths []string) {
+	cleaned := make([]string, 0, len(paths))
+	seen := make(map[string]bool)
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		cleaned = append(cleaned, p)
+	}
+	if len(cleaned) == 0 {
+		// 保留原主路径以免破坏 not null 约束，调用方应在此之前完成校验
+		l.ExtraPaths = ""
+		return
+	}
+	l.Path = cleaned[0]
+	if len(cleaned) == 1 {
+		l.ExtraPaths = ""
+		return
+	}
+	if data, err := json.Marshal(cleaned[1:]); err == nil {
+		l.ExtraPaths = string(data)
+	}
 }
 
 // Series 剧集合集（电视剧系列）

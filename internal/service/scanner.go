@@ -496,7 +496,7 @@ func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
 
 // ScanLibrary 扫描媒体库目录
 func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
-	s.logger.Infof("开始扫描媒体库: %s (%s)", library.Name, library.Path)
+	s.logger.Infof("开始扫描媒体库: %s (路径数: %d)", library.Name, len(library.AllPaths()))
 
 	// 发送扫描开始事件
 	s.broadcastScanEvent(EventScanStarted, &ScanProgressData{
@@ -561,7 +561,8 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		lastScanTime = *library.LastScan
 	}
 
-	s.logger.Infof("电影库扫描开始: %s, 路径: %s, 上次扫描: %v", library.Name, library.Path, lastScanTime)
+	allPaths := library.AllPaths()
+	s.logger.Infof("电影库扫描开始: %s, 路径: %v, 上次扫描: %v", library.Name, allPaths, lastScanTime)
 
 	// P2: 文件路径预加载到内存 Set（避免 N+1 查询）
 	existingPaths, err := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
@@ -575,7 +576,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
 	var pendingList []pendingMedia
 
-	err = s.walkLibraryPath(library.Path, func(path string, info os.FileInfo, err error) error {
+	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			s.logger.Warnf("访问文件失败: %s, 错误: %v", path, err)
 			return nil
@@ -690,7 +691,16 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		// 收集到待处理列表（FFprobe 后续并行处理）
 		pendingList = append(pendingList, pendingMedia{media: media, path: path, info: info})
 		return nil
-	})
+	}
+
+	// 遍历所有媒体路径（支持多文件夹）
+	for _, root := range allPaths {
+		if walkErr := s.walkLibraryPath(root, walkFn); walkErr != nil {
+			s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
+			err = walkErr
+			// 继续扫描其他路径，不立即返回
+		}
+	}
 
 	// P2: 并行 FFprobe 探测 + 批量入库
 	if len(pendingList) > 0 {
@@ -863,10 +873,14 @@ func detectVersionTag(filename string) string {
 // - 如果子目录内只有单个视频文件且不匹配剧集模式，则视为电影
 // - 根目录下的散落视频文件按电影处理
 func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
-	s.logger.Infof("混合媒体库扫描: %s (%s)", library.Name, library.Path)
+	allPaths := library.AllPaths()
+	s.logger.Infof("混合媒体库扫描: %s (路径数: %d)", library.Name, len(allPaths))
 
-	// [xiaoya 适配] 将媒体库根展开为多个"真实媒体根"
-	mediaRoots := s.collectMediaRoots(library.Path, "mixed")
+	// [xiaoya 适配] 将所有媒体库根展开为平铺的真实媒体根集合
+	var mediaRoots []string
+	for _, p := range allPaths {
+		mediaRoots = append(mediaRoots, s.collectMediaRoots(p, "mixed")...)
+	}
 
 	var totalCount int
 	// === 阶段一：收集子目录，按标准化系列名分组（用于多季合并检测） ===
@@ -1031,10 +1045,10 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	// 收尾清理：遍历该库 DB 中所有文件路径，用 os.Stat 检查磁盘是否真的存在，
 	// 不存在的直接删除。这样无论文件原来属于电影目录还是剧集目录，都能正确清理。
 	// 之前的"限定范围"策略会遗漏被判为剧集目录的电影文件夹中的失效记录。
-	allPaths, cleanupErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
-	if cleanupErr == nil && allPaths != nil {
+	dbPathSet, cleanupErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
+	if cleanupErr == nil && dbPathSet != nil {
 		staleRemoved := 0
-		for dbPath := range allPaths {
+		for dbPath := range dbPathSet {
 			if _, statErr := s.statLibraryPath(dbPath); os.IsNotExist(statErr) {
 				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
 					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
@@ -1222,11 +1236,15 @@ type EpisodeInfo struct {
 func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) {
 	var totalNewEpisodes int
 
-	s.logger.Infof("剧集库扫描开始: %s, 路径: %s", library.Name, library.Path)
+	allPaths := library.AllPaths()
+	s.logger.Infof("剧集库扫描开始: %s, 路径数: %d", library.Name, len(allPaths))
 
-	// [xiaoya 适配] 将媒体库根展开为多个"真实剧集根"
-	// 普通用户的平铺目录会返回 [library.Path]（完全向后兼容）
-	mediaRoots := s.collectMediaRoots(library.Path, "tvshow")
+	// [xiaoya 适配] 将所有媒体库根展开为多个"真实剧集根"
+	// 普通用户的平铺目录会返回 [library.AllPaths()]（完全向后兼容）
+	var mediaRoots []string
+	for _, p := range allPaths {
+		mediaRoots = append(mediaRoots, s.collectMediaRoots(p, "tvshow")...)
+	}
 
 	// 收集根目录下的散落视频文件，按系列名分组（跨所有 roots）
 	type looseFile struct {
@@ -1445,10 +1463,10 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 	}
 
 	// 收尾清理：检查该库 DB 中所有文件路径，磁盘上不存在的视为失效记录删除
-	allPaths, ppErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
-	if ppErr == nil && allPaths != nil {
+	dbPathSet, ppErr := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
+	if ppErr == nil && dbPathSet != nil {
 		staleRemoved := 0
-		for dbPath := range allPaths {
+		for dbPath := range dbPathSet {
 			if _, statErr := s.statLibraryPath(dbPath); os.IsNotExist(statErr) {
 				if m, findErr := s.mediaRepo.FindByFilePath(dbPath); findErr == nil && m != nil {
 					if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {

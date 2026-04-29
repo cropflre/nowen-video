@@ -142,17 +142,30 @@ func (s *LibraryService) CleanOrphanedData() {
 	}
 }
 
-// Create 创建媒体库
+// Create 创建媒体库（单路径，兼容旧调用）
 func (s *LibraryService) Create(name, path, libType string) (*model.Library, error) {
+	return s.CreateWithPaths(name, []string{path}, libType)
+}
+
+// CreateWithPaths 创建媒体库（支持多个路径）
+// paths[0] 作为主路径写入 Path，其余写入 ExtraPaths
+func (s *LibraryService) CreateWithPaths(name string, paths []string, libType string) (*model.Library, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("至少需要一个媒体文件夹路径")
+	}
 	lib := &model.Library{
 		Name: name,
-		Path: path,
 		Type: libType,
 	}
+	lib.SetAllPaths(paths)
 	if err := s.repo.Create(lib); err != nil {
 		return nil, err
 	}
-	s.logger.Infof("创建媒体库: %s -> %s", name, path)
+	if len(paths) > 1 {
+		s.logger.Infof("创建媒体库: %s -> %d 个路径 (主: %s)", name, len(paths), lib.Path)
+	} else {
+		s.logger.Infof("创建媒体库: %s -> %s", name, lib.Path)
+	}
 
 	// 如果启用了文件监控，自动注册监听
 	if lib.EnableFileWatch && s.fileWatcher != nil {
@@ -174,33 +187,40 @@ func (s *LibraryService) Scan(id string) error {
 		return ErrLibraryNotFound
 	}
 
-	// 同步检查媒体库路径是否存在且可访问
-	info, err := os.Stat(lib.Path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			s.logger.Errorf("媒体库路径不存在: %s (媒体库: %s)", lib.Path, lib.Name)
-			return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", lib.Path)
+	// 同步检查每个媒体库路径是否存在且可访问
+	allPaths := lib.AllPaths()
+	if len(allPaths) == 0 {
+		return fmt.Errorf("媒体库未配置任何路径")
+	}
+	totalEntries := 0
+	for _, p := range allPaths {
+		info, err := os.Stat(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				s.logger.Errorf("媒体库路径不存在: %s (媒体库: %s)", p, lib.Name)
+				return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", p)
+			}
+			if os.IsPermission(err) {
+				s.logger.Errorf("无权限访问媒体库路径: %s (媒体库: %s)", p, lib.Name)
+				return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", p)
+			}
+			s.logger.Errorf("访问媒体库路径失败: %s, 错误: %v", p, err)
+			return fmt.Errorf("访问媒体库路径失败: %v", err)
 		}
-		if os.IsPermission(err) {
-			s.logger.Errorf("无权限访问媒体库路径: %s (媒体库: %s)", lib.Path, lib.Name)
-			return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", lib.Path)
+		if !info.IsDir() {
+			return fmt.Errorf("媒体库路径不是目录: %s", p)
 		}
-		s.logger.Errorf("访问媒体库路径失败: %s, 错误: %v", lib.Path, err)
-		return fmt.Errorf("访问媒体库路径失败: %v", err)
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			s.logger.Errorf("读取媒体库目录失败: %s, 错误: %v", p, err)
+			return fmt.Errorf("读取媒体库目录失败: %v", err)
+		}
+		totalEntries += len(entries)
 	}
-	if !info.IsDir() {
-		return fmt.Errorf("媒体库路径不是目录: %s", lib.Path)
-	}
-
-	// 检查目录是否为空（给出提示但不阻止扫描）
-	entries, err := os.ReadDir(lib.Path)
-	if err != nil {
-		s.logger.Errorf("读取媒体库目录失败: %s, 错误: %v", lib.Path, err)
-		return fmt.Errorf("读取媒体库目录失败: %v", err)
-	}
-	if len(entries) == 0 {
-		s.logger.Warnf("媒体库目录为空: %s (媒体库: %s)", lib.Path, lib.Name)
-		return fmt.Errorf("媒体库目录为空: %s，请确认路径下有影视文件", lib.Path)
+	// 所有路径均为空时才提示
+	if totalEntries == 0 {
+		s.logger.Warnf("媒体库所有路径均为空 (媒体库: %s)", lib.Name)
+		return fmt.Errorf("媒体库目录为空，请确认路径下有影视文件")
 	}
 
 	// 防止重复扫描
@@ -341,9 +361,11 @@ func (s *LibraryService) Delete(id string) error {
 		libName = lib.Name
 	}
 
-	// 取消文件监听
+	// 取消文件监听（逐个路径）
 	if lib != nil && s.fileWatcher != nil {
-		s.fileWatcher.UnwatchLibrary(lib.Path)
+		for _, p := range lib.AllPaths() {
+			s.fileWatcher.UnwatchLibrary(p)
+		}
 	}
 
 	// 级联删除关联数据（先清理收藏和观看历史，再删除媒体和合集）
@@ -455,19 +477,21 @@ func (s *LibraryService) Reindex(id string) error {
 		return ErrLibraryNotFound
 	}
 
-	// 同步检查媒体库路径是否存在且可访问
-	info, err := os.Stat(lib.Path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", lib.Path)
+	// 同步检查每个媒体库路径是否存在且可访问
+	for _, p := range lib.AllPaths() {
+		info, err := os.Stat(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", p)
+			}
+			if os.IsPermission(err) {
+				return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", p)
+			}
+			return fmt.Errorf("访问媒体库路径失败: %v", err)
 		}
-		if os.IsPermission(err) {
-			return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", lib.Path)
+		if !info.IsDir() {
+			return fmt.Errorf("媒体库路径不是目录: %s", p)
 		}
-		return fmt.Errorf("访问媒体库路径失败: %v", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("媒体库路径不是目录: %s", lib.Path)
 	}
 
 	// 防止重复操作

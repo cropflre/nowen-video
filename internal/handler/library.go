@@ -4,11 +4,35 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
+
+// normalizeLibraryPaths 将 Paths 和 Path 合并为单一的完整路径列表，去除空白与重复项
+// paths 优先；若 paths 为空则退化为 [path]。结果可能为空切片。
+func normalizeLibraryPaths(paths []string, path string) []string {
+	out := make([]string, 0, len(paths)+1)
+	seen := make(map[string]bool)
+	append1 := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	if len(paths) > 0 {
+		for _, p := range paths {
+			append1(p)
+		}
+	} else {
+		append1(path)
+	}
+	return out
+}
 
 // LibraryHandler 媒体库处理器
 type LibraryHandler struct {
@@ -20,8 +44,11 @@ type LibraryHandler struct {
 // CreateLibraryRequest 创建媒体库请求
 type CreateLibraryRequest struct {
 	Name string `json:"name" binding:"required"`
-	Path string `json:"path" binding:"required"`
-	Type string `json:"type" binding:"required,oneof=movie tvshow mixed other"`
+	// Path 主路径（保留以兼容旧客户端）。如传入 Paths 则以 Paths[0] 为主路径
+	Path string `json:"path"`
+	// Paths 完整的媒体文件夹列表（支持多个）。与 Path 二选一，优先使用 Paths
+	Paths []string `json:"paths"`
+	Type  string   `json:"type" binding:"required,oneof=movie tvshow mixed other"`
 	// 高级设置
 	PreferLocalNFO    *bool   `json:"prefer_local_nfo"`
 	EnableFileFilter  *bool   `json:"enable_file_filter"`
@@ -38,8 +65,10 @@ type CreateLibraryRequest struct {
 // UpdateLibraryRequest 更新媒体库请求（所有字段可选）
 type UpdateLibraryRequest struct {
 	Name *string `json:"name"`
-	Path *string `json:"path"`
-	Type *string `json:"type"`
+	// Path 主路径（保留）。传入 Paths 时优先使用 Paths
+	Path  *string  `json:"path"`
+	Paths []string `json:"paths"`
+	Type  *string  `json:"type"`
 	// 高级设置
 	PreferLocalNFO    *bool   `json:"prefer_local_nfo"`
 	EnableFileFilter  *bool   `json:"enable_file_filter"`
@@ -77,26 +106,35 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 验证媒体库路径是否存在且可访问
-	info, err := os.Stat(req.Path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", req.Path)})
-			return
-		}
-		if os.IsPermission(err) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s，请检查文件权限", req.Path)})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败: %v", err)})
-		return
-	}
-	if !info.IsDir() {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", req.Path)})
+	// 归一化路径列表：优先使用 Paths，其次 Path
+	paths := normalizeLibraryPaths(req.Paths, req.Path)
+	if len(paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请至少指定一个媒体文件夹路径"})
 		return
 	}
 
-	lib, err := h.libService.Create(req.Name, req.Path, req.Type)
+	// 逐个校验每个路径是否存在且为目录
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", p)})
+				return
+			}
+			if os.IsPermission(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s，请检查文件权限", p)})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败 %s: %v", p, err)})
+			return
+		}
+		if !info.IsDir() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", p)})
+			return
+		}
+	}
+
+	lib, err := h.libService.CreateWithPaths(req.Name, paths, req.Type)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建媒体库失败"})
 		return
@@ -196,28 +234,49 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 	if req.Name != nil && *req.Name != "" {
 		lib.Name = *req.Name
 	}
-	if req.Path != nil && *req.Path != "" {
-		// 路径变更时验证新路径是否存在且可访问
-		if *req.Path != lib.Path {
-			pathInfo, pathErr := os.Stat(*req.Path)
-			if pathErr != nil {
-				if os.IsNotExist(pathErr) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s", *req.Path)})
-					return
+	// 路径更新：优先使用 Paths（多路径）；如仅传 Path 则视为单路径媒体库
+	var newPaths []string
+	if len(req.Paths) > 0 {
+		newPaths = normalizeLibraryPaths(req.Paths, "")
+	} else if req.Path != nil && *req.Path != "" {
+		// 单路径时保留已有的 ExtraPaths（避免旧客户端误清除）
+		newPaths = append([]string{strings.TrimSpace(*req.Path)}, lib.AllPaths()[1:]...)
+		newPaths = normalizeLibraryPaths(newPaths, "")
+	}
+	if len(newPaths) > 0 {
+		// 对比是否有路径真正变更，变更就全量验证存在性
+		oldPaths := lib.AllPaths()
+		changed := len(oldPaths) != len(newPaths)
+		if !changed {
+			for i := range newPaths {
+				if oldPaths[i] != newPaths[i] {
+					changed = true
+					break
 				}
-				if os.IsPermission(pathErr) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s", *req.Path)})
-					return
-				}
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败: %v", pathErr)})
-				return
-			}
-			if !pathInfo.IsDir() {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", *req.Path)})
-				return
 			}
 		}
-		lib.Path = *req.Path
+		if changed {
+			for _, p := range newPaths {
+				pathInfo, pathErr := os.Stat(p)
+				if pathErr != nil {
+					if os.IsNotExist(pathErr) {
+						c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不存在: %s", p)})
+						return
+					}
+					if os.IsPermission(pathErr) {
+						c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无权限访问路径: %s", p)})
+						return
+					}
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("访问路径失败 %s: %v", p, pathErr)})
+					return
+				}
+				if !pathInfo.IsDir() {
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("路径不是目录: %s", p)})
+					return
+				}
+			}
+		}
+		lib.SetAllPaths(newPaths)
 	}
 	if req.Type != nil && *req.Type != "" {
 		lib.Type = *req.Type

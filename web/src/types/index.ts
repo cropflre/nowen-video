@@ -73,7 +73,10 @@ export interface TokenResponse {
 export interface Library {
   id: string
   name: string
+  /** 主路径（第一个媒体文件夹，保留以兼容旧数据） */
   path: string
+  /** 额外媒体文件夹列表（JSON 字符串），使用 paths() 工具函数获取完整数组更方便 */
+  extra_paths?: string
   type: 'movie' | 'tvshow' | 'mixed' | 'other'
   last_scan: string | null
   created_at: string
@@ -87,6 +90,28 @@ export interface Library {
   auto_download_sub: boolean
   auto_scrape_metadata: boolean
   enable_file_watch: boolean
+}
+
+/** 从 Library 中解析出完整的媒体文件夹列表（主路径 + extra_paths） */
+export function getLibraryPaths(lib: Pick<Library, 'path' | 'extra_paths'>): string[] {
+  const result: string[] = []
+  const seen = new Set<string>()
+  const add = (p: string) => {
+    const trimmed = (p || '').trim()
+    if (!trimmed || seen.has(trimmed)) return
+    seen.add(trimmed)
+    result.push(trimmed)
+  }
+  add(lib.path)
+  if (lib.extra_paths && lib.extra_paths.trim() !== '') {
+    try {
+      const extras = JSON.parse(lib.extra_paths) as string[]
+      if (Array.isArray(extras)) extras.forEach(add)
+    } catch {
+      /* ignore invalid JSON */
+    }
+  }
+  return result
 }
 
 /** 创建媒体库 — 高级设置（媒体库级别） */
@@ -103,7 +128,10 @@ export interface LibraryAdvancedSettings {
 
 export interface CreateLibraryRequest {
   name: string
-  path: string
+  /** 单一路径（兼容模式），与 paths 二选一。优先使用 paths */
+  path?: string
+  /** 多路径模式：第一个路径将作为主路径 */
+  paths?: string[]
   type: 'movie' | 'tvshow' | 'mixed' | 'other'
   // 高级设置（可选）
   prefer_local_nfo?: boolean

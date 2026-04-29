@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Library, LibraryAdvancedSettings } from '@/types'
+import { getLibraryPaths } from '@/types'
 import { libraryApi } from '@/api'
 import {
   X,
@@ -16,6 +17,8 @@ import {
   Eye,
   Save,
   Search,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import FileBrowser from './FileBrowser'
 
@@ -117,7 +120,8 @@ function ToggleSwitch({
 export default function EditLibraryModal({ open, library, onClose, onUpdate }: EditLibraryModalProps) {
   const [selectedType, setSelectedType] = useState<Library['type']>('movie')
   const [name, setName] = useState('')
-  const [path, setPath] = useState('')
+  // 多路径模式
+  const [paths, setPaths] = useState<string[]>([''])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [advanced, setAdvanced] = useState<LibraryAdvancedSettings>({
     prefer_local_nfo: true,
@@ -132,7 +136,7 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
   const [showLangDropdown, setShowLangDropdown] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [showFileBrowser, setShowFileBrowser] = useState(false)
+  const [browsingIndex, setBrowsingIndex] = useState<number | null>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -141,7 +145,8 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
     if (open && library) {
       setSelectedType(library.type)
       setName(library.name)
-      setPath(library.path)
+      const existingPaths = getLibraryPaths(library)
+      setPaths(existingPaths.length > 0 ? existingPaths : [''])
       setAdvanced({
         prefer_local_nfo: library.prefer_local_nfo,
         enable_file_filter: library.enable_file_filter,
@@ -190,8 +195,14 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
       nameInputRef.current?.focus()
       return
     }
-    if (!path.trim()) {
-      setError('请输入媒体文件夹路径')
+    const cleanedPaths = paths.map((p) => p.trim()).filter((p) => p.length > 0)
+    if (cleanedPaths.length === 0) {
+      setError('请至少添加一个媒体文件夹路径')
+      return
+    }
+    const dedup = Array.from(new Set(cleanedPaths))
+    if (dedup.length !== cleanedPaths.length) {
+      setError('存在重复的路径，请删除重复项')
       return
     }
     setError('')
@@ -199,7 +210,7 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
     try {
       const res = await libraryApi.update(library.id, {
         name: name.trim(),
-        path: path.trim(),
+        paths: dedup,
         type: selectedType,
         ...advanced,
       })
@@ -362,37 +373,66 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
                 >
                   媒体文件夹
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setPaths((prev) => [...prev, ''])}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors hover:bg-[var(--nav-hover-bg)]"
+                  style={{ color: 'var(--neon-blue)' }}
+                  title="添加另一个文件夹"
+                >
+                  <Plus size={14} />
+                  添加文件夹
+                </button>
               </div>
               <p
                 className="mb-2.5 text-xs leading-relaxed"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                修改路径后建议重新扫描媒体库以更新索引
+                修改路径后建议重新扫描媒体库以更新索引。第一个路径为主路径。
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFileBrowser(true)}
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors cursor-pointer hover:bg-[var(--nav-hover-bg)]"
-                  style={{
-                    border: '1.5px dashed var(--border-hover)',
-                    color: 'var(--text-tertiary)',
-                  }}
-                  title="浏览服务器目录"
-                >
-                  <FolderPlus size={18} />
-                </button>
-                <input
-                  type="text"
-                  value={path}
-                  onChange={(e) => {
-                    setPath(e.target.value)
-                    setError('')
-                  }}
-                  className="input flex-1"
-                  placeholder="如: /media/movies 或 D:\Videos"
-                  onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                />
+              <div className="space-y-2">
+                {paths.map((p, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBrowsingIndex(idx)}
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors cursor-pointer hover:bg-[var(--nav-hover-bg)]"
+                      style={{
+                        border: '1.5px dashed var(--border-hover)',
+                        color: 'var(--text-tertiary)',
+                      }}
+                      title="浏览服务器目录"
+                    >
+                      <FolderPlus size={18} />
+                    </button>
+                    <input
+                      type="text"
+                      value={p}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setPaths((prev) => prev.map((x, i) => (i === idx ? v : x)))
+                        setError('')
+                      }}
+                      className="input flex-1"
+                      placeholder={idx === 0 ? '主路径，如: /media/movies 或 D:\\Videos' : '额外路径'}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                    />
+                    {paths.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaths((prev) => prev.filter((_, i) => i !== idx))
+                          setError('')
+                        }}
+                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-red-500/5"
+                        style={{ color: 'var(--text-tertiary)' }}
+                        title="移除该路径"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 

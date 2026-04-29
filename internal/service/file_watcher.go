@@ -104,7 +104,7 @@ func (fw *FileWatcherService) Stop() {
 	fw.logger.Info("文件监听服务已停止")
 }
 
-// WatchLibrary 为指定媒体库注册文件监听
+// WatchLibrary 为指定媒体库注册文件监听（支持多路径）
 func (fw *FileWatcherService) WatchLibrary(lib *model.Library) {
 	if fw.watcher == nil {
 		return
@@ -113,38 +113,45 @@ func (fw *FileWatcherService) WatchLibrary(lib *model.Library) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	// 检查是否已在监听
-	if _, exists := fw.watching[lib.Path]; exists {
+	allPaths := lib.AllPaths()
+	if len(allPaths) == 0 {
 		return
 	}
 
-	// 递归添加目录及其子目录
-	watchCount := 0
-	err := filepath.Walk(lib.Path, func(path string, info os.FileInfo, err error) error {
+	for _, libPath := range allPaths {
+		// 检查是否已在监听
+		if _, exists := fw.watching[libPath]; exists {
+			continue
+		}
+
+		// 递归添加目录及其子目录
+		watchCount := 0
+		err := filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // 跳过无法访问的目录
+			}
+			if info.IsDir() {
+				// 忽略隐藏目录
+				if strings.HasPrefix(filepath.Base(path), ".") && path != libPath {
+					return filepath.SkipDir
+				}
+				if watchErr := fw.watcher.Add(path); watchErr != nil {
+					fw.logger.Debugf("监听目录失败: %s - %v", path, watchErr)
+				} else {
+					watchCount++
+				}
+			}
+			return nil
+		})
+
 		if err != nil {
-			return nil // 跳过无法访问的目录
+			fw.logger.Errorf("遍历媒体库目录失败: %s - %v", libPath, err)
+			continue
 		}
-		if info.IsDir() {
-			// 忽略隐藏目录
-			if strings.HasPrefix(filepath.Base(path), ".") && path != lib.Path {
-				return filepath.SkipDir
-			}
-			if watchErr := fw.watcher.Add(path); watchErr != nil {
-				fw.logger.Debugf("监听目录失败: %s - %v", path, watchErr)
-			} else {
-				watchCount++
-			}
-		}
-		return nil
-	})
 
-	if err != nil {
-		fw.logger.Errorf("遍历媒体库目录失败: %s - %v", lib.Path, err)
-		return
+		fw.watching[libPath] = lib.ID
+		fw.logger.Infof("已开始监听媒体库: %s (%s), 监听 %d 个目录", lib.Name, libPath, watchCount)
 	}
-
-	fw.watching[lib.Path] = lib.ID
-	fw.logger.Infof("已开始监听媒体库: %s (%s), 监听 %d 个目录", lib.Name, lib.Path, watchCount)
 }
 
 // UnwatchLibrary 取消指定媒体库的文件监听
@@ -305,7 +312,7 @@ func (fw *FileWatcherService) triggerIncrementalScan(libraryID string) {
 		return
 	}
 
-	fw.logger.Infof("文件变更触发增量扫描: %s (%s)", lib.Name, lib.Path)
+	fw.logger.Infof("文件变更触发增量扫描: %s (主路径: %s)", lib.Name, lib.Path)
 
 	// 通过 WebSocket 通知前端
 	if fw.wsHub != nil {
