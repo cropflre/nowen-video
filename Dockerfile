@@ -1,12 +1,15 @@
 # syntax=docker/dockerfile:1.6
 # =============================================
-# 多架构构建：支持 linux/amd64 与 linux/arm64
+# 多架构构建：支持 linux/amd64 / linux/arm64 / linux/arm/v7
 # 使用方式：
-#   docker buildx build --platform linux/amd64,linux/arm64 -t nowen-video:latest .
+#   docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 \
+#       -t nowen-video:latest .
 # 说明：
 #   - 前端阶段固定在构建机架构，产物是纯静态文件，与运行架构无关
 #   - 后端走 Go 原生交叉编译（纯 Go SQLite，CGO=0）
-#   - 运行阶段按架构条件安装硬件加速驱动（Intel 驱动仅 amd64）
+#   - 运行阶段按架构条件安装硬件加速驱动 / Python 刮削微服务依赖
+#   - Python 依赖全部来自 Alpine 官方仓库的预编译 wheel（py3-lxml / py3-flask 等），
+#     不走 pip 编译，ARM 下也秒装
 # =============================================
 
 # =============================================
@@ -40,19 +43,32 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM alpine:3.19
 ARG TARGETARCH
 
-# 基础依赖：所有架构都需要
+# ---- 基础依赖（全架构通用） ----
 RUN apk add --no-cache \
     ffmpeg \
     tzdata \
     ca-certificates \
     su-exec \
     coreutils \
+    wget \
     && rm -rf /var/cache/apk/* \
     && ln -sf /bin/nice /usr/bin/nice
 
-# 架构相关的硬件加速驱动
+# ---- Python 番号刮削微服务依赖 ----
+# 全部走 Alpine 社区仓库的预编译包，amd64/arm64/armv7 通用，QEMU 下也秒装
+# flask / requests / beautifulsoup4 / lxml 四个核心依赖 + pip（用于 update）
+RUN apk add --no-cache \
+        python3 \
+        py3-pip \
+        py3-flask \
+        py3-requests \
+        py3-beautifulsoup4 \
+        py3-lxml \
+    && rm -rf /var/cache/apk/*
+
+# ---- 架构相关的硬件加速驱动 ----
 # - amd64: Intel QSV/VAAPI (intel-media-driver + libva-intel-driver)
-# - arm64: 通用 mesa VAAPI 驱动（Mali/Panfrost/RPi 等），Intel 专有驱动不可用
+# - arm64 / armv7: 通用 mesa VAAPI 驱动（Mali/Panfrost/RPi/RKMPP 等走 /dev/dri）
 RUN set -eux; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
         apk add --no-cache \
@@ -84,11 +100,14 @@ RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
 
 COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
-# 复制前端构建产物
+# 前端构建产物
 COPY --from=frontend /app/web/dist /app/web/dist
+# Python 番号刮削微服务源码（Go 后端通过 AdultPythonLauncher 拉起）
+COPY scripts/adult-scraper /app/scripts/adult-scraper
 
 # 创建数据目录并设置权限（确保挂载卷时nowen用户也能写入）
-RUN mkdir -p /data /cache /media && chown -R nowen:nowen /data /cache /media
+RUN mkdir -p /data /cache /media \
+    && chown -R nowen:nowen /data /cache /media /app/scripts
 
 # 默认环境变量
 ENV NOWEN_APP_PORT=8080
@@ -100,6 +119,12 @@ ENV NOWEN_APP_MAX_TRANSCODE_JOBS=2
 ENV NOWEN_DATABASE_DB_PATH=/data/nowen.db
 ENV NOWEN_CACHE_CACHE_DIR=/cache
 ENV NOWEN_LOGGING_LEVEL=info
+# ---- 番号刮削 / Python 微服务默认值（容器内开箱即用） ----
+# 总开关默认关（避免无 NSFW 需求的用户被动加载）；开启方式：设置为 true
+ENV NOWEN_ADULT_SCRAPER_ENABLED=false
+ENV NOWEN_ADULT_SCRAPER_AUTO_START_PYTHON=true
+ENV NOWEN_ADULT_SCRAPER_PYTHON_EXECUTABLE=/usr/bin/python3
+ENV NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_DIR=/app/scripts/adult-scraper
 ENV TZ=Asia/Shanghai
 
 EXPOSE 8080
@@ -126,6 +151,13 @@ fi\n\
 chown -R nowen:nowen /data /cache 2>/dev/null || true\n\
 # 确保 /media 目录可读（不递归 chown，避免大量文件耗时）\n\
 chown nowen:nowen /media 2>/dev/null || true\n\
+# Python 刮削脚本目录（用户通常不会改，若挂了卷也 chown 一次）\n\
+chown -R nowen:nowen /app/scripts 2>/dev/null || true\n\
+\n\
+# PUID=0 时不需要 su-exec，直接以 root 启动（NAS 场景常用）\n\
+if [ "$PUID" = "0" ]; then\n\
+  exec nowen-video\n\
+fi\n\
 \n\
 exec su-exec nowen nowen-video\n' > /entrypoint.sh \
     && chmod +x /entrypoint.sh

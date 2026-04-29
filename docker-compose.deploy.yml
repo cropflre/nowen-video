@@ -1,8 +1,8 @@
 # ============================================================
-# nowen-video 生产部署 compose（飞牛 OS / 绿联 NAS / 普通 Linux）
+# nowen-video 生产部署 compose（飞牛 OS / 绿联 NAS / 普通 Linux / ARM SBC）
 # ============================================================
 # 用法：
-#   1. 从 Docker Hub 拉取官方镜像（已支持 linux/amd64 + linux/arm64）
+#   1. 从 Docker Hub 拉取官方镜像（已支持 linux/amd64 + linux/arm64 + linux/arm/v7）
 #   2. 根据下方注释修改挂载路径 / 环境变量
 #   3. docker compose -f docker-compose.deploy.yml up -d
 #
@@ -12,15 +12,23 @@
 #
 # 不要在飞牛 OS 上构建镜像（仓库未带完整构建上下文会报
 # "failed to read dockerfile"），直接拉预构建镜像即可。
+#
+# 支持设备：
+#   - x86_64 (Intel/AMD) — QSV / VAAPI / NVENC
+#   - ARM64  (树莓派4/5、瑞芯微 RK3566/3568/3588、Amlogic S905X3、A311D、
+#            飞牛 fnOS ARM 版、绿联 DH2600/DXP6800 等) — mesa VAAPI / RKMPP
+#   - ARMv7  (树莓派2/3、老款 ARM 盒子) — 仅支持软解，性能有限
 # ============================================================
 version: '3.8'
 
 services:
   nowen-video:
-    # 直接使用 Docker Hub 预构建镜像（manifest list 自动选 amd64/arm64）
+    # 直接使用 Docker Hub 预构建镜像（manifest list 自动选 amd64/arm64/armv7）
     image: cropflre/nowen-video:latest
     # 如需锁定版本：
-    # image: cropflre/nowen-video:v1.1.3
+    # image: cropflre/nowen-video:v1.2.0
+    # 如需在混合架构主机强制指定，取消注释：
+    # platform: linux/arm64
     container_name: nowen-video
     # ================= 超级管理员权限（容器侧）=================
     # 容器内以 root 运行，规避 NAS 挂载目录 UID 不一致导致的权限问题。
@@ -39,24 +47,29 @@ services:
     # =========================================================
     ports:
       - "8080:8080"
+      # Python 番号刮削微服务（内部自动拉起，默认仅监听 127.0.0.1；
+      # 如需外部直接访问该微服务，取消下行 + 修改 SCRAPER_HOST 为 0.0.0.0）
+      # - "5000:5000"
     volumes:
       # 数据持久化（SQLite、上传、配置等）
       - ./data:/data
       # 转码缓存
       - ./cache:/cache
-      # ---- 媒体目录挂载（按你的飞牛 OS 实际路径改）----
+      # ---- 媒体目录挂载（按你的 NAS 实际路径改）----
       # 飞牛 OS 的存储池一般挂在 /vol01 /vol02，按实际情况：
       # - /vol01/Media:/media
       # 或分目录：
       # - /vol01/Media/电影:/media/电影
       # - /vol01/Media/电视剧:/media/电视剧
+      # 绿联 NAS 示例：
+      # - /volume1/Media:/media
     # 硬件加速设备（按 SoC 开启对应的）
     devices:
-      # 通用 DRM 节点（Mali / 瑞芯微 / Amlogic 都会暴露）
+      # 通用 DRM 节点（Mali / 瑞芯微 / Amlogic / Intel 都会暴露这个）
       - /dev/dri:/dev/dri
       # FUSE（WebDAV/Alist 挂载用；需宿主机先 `modprobe fuse`）
       - /dev/fuse:/dev/fuse
-      # ---- 瑞芯微 RK3566 / RK3568 (OECT / Radxa E25 等) ----
+      # ---- 瑞芯微 RK3566 / RK3568 / RK3588 (OECT / Radxa E25 / 香橙派 5 等) ----
       # - /dev/mpp_service:/dev/mpp_service
       # - /dev/rga:/dev/rga
       # - /dev/iep:/dev/iep
@@ -65,6 +78,9 @@ services:
       # - /dev/video10:/dev/video10
       # - /dev/video11:/dev/video11
       # - /dev/video12:/dev/video12
+      # ---- 树莓派 4/5 ----
+      # - /dev/video10:/dev/video10   # H.264 编码
+      # - /dev/video11:/dev/video11   # H.264 解码
     environment:
       - NOWEN_APP_PORT=8080
       - NOWEN_APP_DATA_DIR=/data
@@ -83,6 +99,14 @@ services:
       - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key
       - NOWEN_CACHE_CACHE_DIR=/cache
       - NOWEN_LOGGING_LEVEL=info
+      # ---- 番号刮削（默认关闭）----
+      # 改为 true 后 Go 后端会自动拉起 /app/scripts/adult-scraper/app.py 子进程
+      # 依赖已全部预装（python3 + flask + bs4 + lxml + requests），开箱即用
+      - NOWEN_ADULT_SCRAPER_ENABLED=false
+      - NOWEN_ADULT_SCRAPER_AUTO_START_PYTHON=true
+      - NOWEN_ADULT_SCRAPER_PYTHON_EXECUTABLE=/usr/bin/python3
+      - NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_DIR=/app/scripts/adult-scraper
+      # - NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_API_KEY=your-random-key
       - TZ=Asia/Shanghai
     restart: unless-stopped
     deploy:
@@ -109,4 +133,20 @@ services:
 #    docker exec -it nowen-video sqlite3 /data/nowen.db \
 #      "UPDATE users SET must_change_pwd=1 WHERE role='admin';"
 #    再用任意 admin 账号登录触发改密流程。
+# =============================================================
+
+# ================= 多架构发布命令（维护者参考）=================
+# 1. 创建并使用 buildx builder（首次）：
+#    docker buildx create --name nowen-builder --use
+#    docker buildx inspect --bootstrap
+#
+# 2. 构建并推送 manifest list（amd64 + arm64 + armv7）：
+#    docker buildx build \
+#      --platform linux/amd64,linux/arm64,linux/arm/v7 \
+#      -t cropflre/nowen-video:latest \
+#      -t cropflre/nowen-video:v1.2.0 \
+#      --push .
+#
+# 3. 验证 manifest：
+#    docker buildx imagetools inspect cropflre/nowen-video:latest
 # =============================================================

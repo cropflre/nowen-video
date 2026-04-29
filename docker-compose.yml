@@ -9,6 +9,7 @@ services:
       # platforms:
       #   - linux/amd64
       #   - linux/arm64
+      #   - linux/arm/v7
     # 如果在 x86 主机上拉取 ARM 镜像（或反之），可通过 platform 显式指定
     # platform: linux/arm64
     container_name: nowen-video
@@ -35,6 +36,9 @@ services:
     # =========================================================
     ports:
       - "8080:8080"
+      # Python 番号刮削微服务（内部已由主进程自动拉起，默认绑 127.0.0.1）
+      # 如需从容器外直接调试该微服务，取消下行注释并把 SCRAPER_HOST 改成 0.0.0.0
+      # - "5000:5000"
     volumes:
       # 数据持久化
       - ./data:/data
@@ -82,6 +86,13 @@ services:
       - NOWEN_LOGGING_LEVEL=info
       # ---- CORS（多个用逗号分隔，留空禁止跨域，*允许所有） ----
       # - NOWEN_APP_CORS_ORIGINS=http://localhost:3000
+      # ---- 番号刮削（可选，默认关闭；改成 true 并重启即可启用） ----
+      - NOWEN_ADULT_SCRAPER_ENABLED=false
+      - NOWEN_ADULT_SCRAPER_AUTO_START_PYTHON=true
+      - NOWEN_ADULT_SCRAPER_PYTHON_EXECUTABLE=/usr/bin/python3
+      - NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_DIR=/app/scripts/adult-scraper
+      # Python 微服务 API Key（留空则不鉴权；多节点部署建议填写）
+      # - NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_API_KEY=your-random-key
       - TZ=Asia/Shanghai
     restart: unless-stopped
     # 资源限制（NAS场景建议限制，避免拖垮系统）
@@ -105,3 +116,12 @@ services:
 #   docker exec -it nowen-video sqlite3 /data/nowen.db \
 #     "UPDATE users SET role='admin' WHERE username='yourname';"
 # ==========================================================
+
+# ================= 多架构构建命令（开发者参考）=================
+# 在支持 buildx 的环境下：
+#   docker buildx create --name nowen-builder --use
+#   docker buildx build \
+#     --platform linux/amd64,linux/arm64,linux/arm/v7 \
+#     -t yourname/nowen-video:latest \
+#     --push .
+# =============================================================

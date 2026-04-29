@@ -2,8 +2,6 @@
 .gitignore
 *.exe
 *.apk
-*.png
-*.md
 *.log
 cache/
 data/
@@ -13,7 +11,20 @@ web/dist/
 config.yaml
 config.example.yaml
 docker-compose.yml
+docker-compose.deploy.yml
 stderr.log
 stdout.log
 package-lock.json
 Makefile
+
+# Python 番号刮削微服务：只排除运行时文件，保留源码
+scripts/adult-scraper/__pycache__/
+scripts/adult-scraper/.venv/
+scripts/adult-scraper/venv/
+scripts/adult-scraper/*.pyc
+
+# 项目文档与 IDE 目录
+*.md
+!scripts/adult-scraper/README.md
+.idea/
+.vscode/
