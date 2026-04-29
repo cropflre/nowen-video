@@ -6,7 +6,7 @@ import VideoPlayer from '@/components/VideoPlayer'
 import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
-import { Zap, Loader2, Cpu } from 'lucide-react'
+import { Zap, Loader2, Cpu, ArrowLeft } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
 
 /** 检测浏览器是否支持 HEVC 硬解（Safari / Chrome macOS 116+） */
@@ -216,8 +216,29 @@ export default function PlayerPage() {
     ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined
 
+  // 返回逻辑：剧集回到系列页，其它回到详情页
+  // 使用 replace:true 避免往历史栈追加新记录（否则从详情页再返回会回到播放器）
+  const handleBack = () => {
+    if (media.media_type === 'episode' && media.series_id) {
+      navigate(`/series/${media.series_id}`, { replace: true })
+    } else {
+      navigate(`/media/${id}`, { replace: true })
+    }
+  }
+
   return (
     <div className="h-screen w-screen bg-black relative">
+      {/* 左上角常驻返回按钮（不受播放器 showControls 显隐影响） */}
+      <button
+        onClick={handleBack}
+        aria-label="返回"
+        title="返回"
+        className="absolute left-4 top-4 z-[60] flex h-9 w-9 items-center justify-center rounded-full text-white backdrop-blur-md transition-all hover:scale-105"
+        style={{ background: 'rgba(0,0,0,0.55)', border: '1px solid var(--neon-blue-15)' }}
+      >
+        <ArrowLeft size={18} />
+      </button>
+
       {/* 预处理状态提示 */}
       {(playInfo.preprocess_status && playInfo.preprocess_status !== 'none') || canDirectHEVC || mode === 'webcodecs' ? (
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs backdrop-blur-md"
@@ -258,13 +279,7 @@ export default function PlayerPage() {
           title={playerTitle}
           startPosition={switchPosition}
           knownDuration={playInfo.duration}
-          onBack={() => {
-            if (media.media_type === 'episode' && media.series_id) {
-              navigate(`/series/${media.series_id}`)
-            } else {
-              navigate(`/media/${id}`)
-            }
-          }}
+          onBack={handleBack}
           onNext={nextEpisode ? handleNext : undefined}
           nextTitle={nextTitle}
           onFallback={handleWebCodecsFallback}
@@ -281,13 +296,7 @@ export default function PlayerPage() {
           spriteVttUrl={playInfo.sprite_vtt_url ? streamApi.withTokenUrl(playInfo.sprite_vtt_url) : undefined}
           onPreprocessReady={handlePreprocessReady}
           onRemuxFallback={mode === 'remux' ? handleRemuxFallback : undefined}
-          onBack={() => {
-            if (media.media_type === 'episode' && media.series_id) {
-              navigate(`/series/${media.series_id}`)
-            } else {
-              navigate(`/media/${id}`)
-            }
-          }}
+          onBack={handleBack}
           onNext={nextEpisode ? handleNext : undefined}
           nextTitle={nextTitle}
         />

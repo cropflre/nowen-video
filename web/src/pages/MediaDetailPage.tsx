@@ -12,6 +12,7 @@ import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { motion, AnimatePresence } from 'framer-motion'
 import { easeSmooth, durations } from '@/lib/motion'
+import { ArrowLeft } from 'lucide-react'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -383,8 +384,26 @@ export default function MediaDetailPage() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
-      className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
+      className="relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
     >
+      {/* 常驻返回按钮（左上角） */}
+      <button
+        onClick={() => {
+          // 如果有历史栈就后退，否则回首页（避免直接外链打开时按返回卡住）
+          if (window.history.length > 1) {
+            navigate(-1)
+          } else {
+            navigate('/')
+          }
+        }}
+        aria-label="返回"
+        title="返回"
+        className="absolute left-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full text-white backdrop-blur-md transition-all hover:scale-105"
+        style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid var(--neon-blue-15)' }}
+      >
+        <ArrowLeft size={18} />
+      </button>
+
       {/* 英雄区 */}
       <HeroSection
         media={media}
