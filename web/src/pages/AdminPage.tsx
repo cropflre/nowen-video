@@ -30,6 +30,7 @@ import {
   HardDrive,
   Zap as ZapIcon,
   Copy as CopyIcon,
+  ClipboardPaste,
   Bookmark,
   RefreshCw,
   FileText,
@@ -593,6 +594,57 @@ export default function AdminPage() {
       document.body.removeChild(ta)
       setDoubanImportCopied(kind)
       setTimeout(() => setDoubanImportCopied(null), 2000)
+    }
+  }
+
+  // 【剪贴板中转方案】从剪贴板读取豆瓣 Cookie 并走同域接口导入
+  const [doubanPasting, setDoubanPasting] = useState(false)
+  const handlePasteImportDoubanCookie = async () => {
+    setDoubanPasting(true)
+    try {
+      let cookie = ''
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        try {
+          cookie = (await navigator.clipboard.readText()) || ''
+        } catch {
+          cookie = ''
+        }
+      }
+      // 回退：弹出 prompt 让用户手动粘贴
+      if (!cookie) {
+        const input = window.prompt('无法自动读取剪贴板，请在下方手动粘贴豆瓣 Cookie：', '')
+        cookie = (input || '').trim()
+      }
+      cookie = cookie.trim()
+      if (!cookie) {
+        showDoubanMessage('error', '未读取到 Cookie，请先在豆瓣页面执行脚本')
+        return
+      }
+      if (cookie.length < 20) {
+        showDoubanMessage('error', 'Cookie 内容过短，请确认已在豆瓣页面成功执行脚本')
+        return
+      }
+      if (!cookie.includes('dbcl2=')) {
+        showDoubanMessage('error', '剪贴板内容中缺少登录凭证 dbcl2（浏览器将其标为 HttpOnly，JS 读不到）。请改用『方式 3：Cookie 浏览器插件』导出完整 Cookie')
+        return
+      }
+      const res = await adminApi.updateDoubanConfig(cookie)
+      setDoubanConfig(res.data.data)
+      showDoubanMessage('success', '豆瓣 Cookie 已导入，正在校验登录态...')
+      // 自动校验一次，获取用户名
+      try {
+        const vres = await adminApi.validateDoubanConfig()
+        const { valid, message } = vres.data.data
+        showDoubanMessage(valid ? 'success' : 'error', message)
+      } catch {
+        // 校验失败不影响导入结果
+      }
+      closeDoubanImport()
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || '导入失败，请确认 Cookie 格式正确'
+      showDoubanMessage('error', msg)
+    } finally {
+      setDoubanPasting(false)
     }
   }
 
@@ -1191,7 +1243,7 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>豆瓣懒人版登录</h3>
-                  <p className="text-xs text-surface-400">无需 F12，一键导入豆瓣 Cookie</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>无需 F12，剪贴板中转导入豆瓣 Cookie</p>
                 </div>
               </div>
               <button onClick={closeDoubanImport} className="btn-ghost p-1.5 rounded-lg">
@@ -1202,7 +1254,7 @@ export default function AdminPage() {
             {doubanImportLoading && (
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={24} className="animate-spin text-neon" />
-                <span className="ml-3 text-sm text-surface-400">正在生成一次性导入链接...</span>
+                <span className="ml-3 text-sm" style={{ color: 'var(--text-secondary)' }}>正在生成一次性导入链接...</span>
               </div>
             )}
 
@@ -1210,11 +1262,11 @@ export default function AdminPage() {
               <>
                 {/* 状态条 */}
                 {doubanImportStatus?.status === 'success' ? (
-                  <div className="mb-5 rounded-lg bg-green-500/10 border border-green-500/30 p-4">
-                    <div className="flex items-center gap-2 text-green-400 font-medium text-sm">
+                  <div className="mb-5 rounded-lg p-4" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)' }}>
+                    <div className="flex items-center gap-2 font-medium text-sm" style={{ color: 'rgb(5,150,105)' }}>
                       <Check size={18} /> 导入成功！
                     </div>
-                    <p className="mt-1.5 text-xs text-surface-300">{doubanImportStatus.message}</p>
+                    <p className="mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{doubanImportStatus.message}</p>
                     <button
                       onClick={closeDoubanImport}
                       className="mt-3 btn-primary px-4 py-1.5 text-sm"
@@ -1223,8 +1275,8 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : doubanImportStatus?.status === 'expired' ? (
-                  <div className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-4">
-                    <div className="flex items-center gap-2 text-red-400 font-medium text-sm">
+                  <div className="mb-5 rounded-lg p-4" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)' }}>
+                    <div className="flex items-center gap-2 font-medium text-sm" style={{ color: 'rgb(220,38,38)' }}>
                       <X size={18} /> 链接已过期
                     </div>
                     <button
@@ -1236,11 +1288,11 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : doubanImportStatus?.status === 'failed' ? (
-                  <div className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-4">
-                    <div className="flex items-center gap-2 text-red-400 font-medium text-sm">
+                  <div className="mb-5 rounded-lg p-4" style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)' }}>
+                    <div className="flex items-center gap-2 font-medium text-sm" style={{ color: 'rgb(220,38,38)' }}>
                       <X size={18} /> 导入失败
                     </div>
-                    <p className="mt-1.5 text-xs text-surface-300">{doubanImportStatus.message}</p>
+                    <p className="mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{doubanImportStatus.message}</p>
                     <button
                       onClick={openDoubanImport}
                       className="mt-3 btn-primary gap-1.5 px-4 py-1.5 text-sm"
@@ -1250,98 +1302,141 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="mb-5 rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
-                    <div className="flex items-center gap-2 text-blue-400 font-medium text-sm">
-                      <Loader2 size={16} className="animate-spin" />
-                      等待您在豆瓣页面执行脚本...
+                  <div className="mb-5 rounded-lg p-4" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)' }}>
+                    <div className="flex items-center gap-2 font-medium text-sm" style={{ color: 'rgb(5,150,105)' }}>
+                      <ClipboardPaste size={16} />
+                      已在豆瓣页面执行完脚本？点下面按钮导入
                     </div>
-                    <p className="mt-1.5 text-xs text-surface-400">
-                      链接 {doubanImportRemaining > 0 ? `将在 ${Math.floor(doubanImportRemaining / 60)}分${doubanImportRemaining % 60}秒 后过期` : '即将过期'}
+                    <p className="mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      脚本已将豆瓣 Cookie 复制到剪贴板，点击下方按钮即可完成导入（无需跨域）。
                     </p>
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={handlePasteImportDoubanCookie}
+                        disabled={doubanPasting}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition-all disabled:opacity-50 hover:brightness-110"
+                        style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                      >
+                        {doubanPasting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            正在导入...
+                          </>
+                        ) : (
+                          <>
+                            <ClipboardPaste size={14} />
+                            📋 从剪贴板粘贴并导入
+                          </>
+                        )}
+                      </button>
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        未执行脚本？请按下面方式一/方式二操作
+                      </span>
+                    </div>
                   </div>
                 )}
 
                 {/* 使用方法 Tab 区 */}
                 <div className="mb-4">
                   <h4 className="mb-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    三种方式任选其一
+                    在豆瓣页面执行脚本（三种方式任选其一）
                   </h4>
 
-                  {/* 方式一：Bookmarklet 书签 */}
-                  <div className="mb-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Bookmark size={14} className="text-neon" />
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 1：浏览器书签（推荐）</span>
-                      <span className="ml-auto text-xs px-2 py-0.5 rounded bg-green-500/10 text-green-400">最简单</span>
-                    </div>
-                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal mb-3">
-                      <li>把下面的链接 <span className="text-neon">拖动</span> 到浏览器 <span className="text-neon">书签栏</span>（或右键加入书签）</li>
-                      <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并确保已登录</li>
-                      <li>点击刚刚创建的书签 → 自动提交 Cookie</li>
-                    </ol>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={doubanImportInfo.bookmarklet}
-                        onClick={(e) => e.preventDefault()}
-                        className="btn-primary gap-1.5 px-3 py-1.5 text-xs cursor-grab active:cursor-grabbing select-none"
-                        draggable
-                        title="拖到书签栏即可"
-                      >
-                        <Bookmark size={12} />
-                        📌 豆瓣一键登录
-                      </a>
-                      <button
-                        onClick={() => copyDoubanImportText(doubanImportInfo.bookmarklet, 'bookmarklet')}
-                        className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
-                      >
-                        {doubanImportCopied === 'bookmarklet' ? <Check size={12} className="text-green-400" /> : <CopyIcon size={12} />}
-                        复制书签地址
-                      </button>
-                    </div>
+                {/* ⭐ 关键提示条：解释 HttpOnly 限制 */}
+                <div className="mb-4 rounded-lg p-4" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.4)' }}>
+                  <div className="flex items-center gap-2 mb-1.5 text-sm font-medium" style={{ color: 'rgb(217,119,6)' }}>
+                    ⚠️ 重要：方式 1/2 在大多数现代浏览器中已失效
                   </div>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    豆瓣的核心登录凭证 <code className="text-neon font-mono">dbcl2</code> 被设为 <code className="font-mono">HttpOnly</code>，浏览器禁止所有 JS / Bookmarklet 读取。
+                    仅能复制到不包含登录态的跟踪 Cookie，导入后测试连接仍会提示未登录。<br/>
+                    <span className="font-medium" style={{ color: 'rgb(5,150,105)' }}>✅ 强烈推荐使用方式 3（Cookie 浏览器插件）</span>，可靠完整地导出包含 <code className="font-mono">dbcl2</code> 在内的所有 Cookie。
+                  </p>
+                </div>
 
-                  {/* 方式二：控制台脚本 */}
-                  <div className="mb-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Key size={14} className="text-neon" />
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 2：浏览器控制台</span>
-                    </div>
-                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal mb-3">
-                      <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并登录</li>
-                      <li>按 <kbd className="px-1.5 py-0.5 rounded bg-black/30 text-xs">F12</kbd> 打开开发者工具 → Console 标签</li>
-                      <li>粘贴下面脚本并回车</li>
-                    </ol>
-                    <div className="relative">
-                      <pre className="bg-black/40 rounded p-2 text-[11px] font-mono text-surface-300 max-h-32 overflow-auto whitespace-pre-wrap break-all">
-                        {doubanImportInfo.script.trim()}
-                      </pre>
-                      <button
-                        onClick={() => copyDoubanImportText(doubanImportInfo.script, 'script')}
-                        className="absolute top-2 right-2 btn-ghost gap-1 px-2 py-1 text-xs"
-                      >
-                        {doubanImportCopied === 'script' ? <Check size={11} className="text-green-400" /> : <CopyIcon size={11} />}
-                        {doubanImportCopied === 'script' ? '已复制' : '复制'}
-                      </button>
-                    </div>
+                {/* 方式三：浏览器插件（Cookie Editor）—— 最靠谱，置顶 */}
+                <div className="glass-panel-subtle mb-4 rounded-lg p-4" style={{ border: '1px solid rgba(16,185,129,0.4)' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <ExternalLink size={14} className="text-neon" />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 3：Cookie 浏览器插件</span>
+                    <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.15)', color: 'rgb(5,150,105)' }}>✅ 最可靠·推荐</span>
                   </div>
+                  <ol className="text-xs space-y-1 ml-5 list-decimal mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    <li>在 Chrome / Edge / Firefox 扩展商店搜索安装 <span className="text-neon font-medium">Cookie-Editor</span>（或 <span className="text-neon">EditThisCookie</span>）</li>
+                    <li>访问 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并确认已登录</li>
+                    <li>点击插件图标 → 右下角 <span className="text-neon font-medium">Export → Header String</span>（正好是分号分隔格式）</li>
+                    <li>关闭本弹窗 → 点击『手动配置 Cookie』→ 粘贴 → 保存 → 测试连接</li>
+                  </ol>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    💡 这样导出的 Cookie 包含 <code className="text-neon font-mono">dbcl2</code>、<code className="text-neon font-mono">dbcl</code> 等完整登录态，测试连接一定能通过。
+                  </p>
+                </div>
 
-                  {/* 方式三：浏览器插件（Cookie Editor） */}
-                  <div className="rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <ExternalLink size={14} className="text-neon" />
-                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 3：Cookie 浏览器插件</span>
-                    </div>
-                    <ol className="text-xs text-surface-400 space-y-1 ml-5 list-decimal">
-                      <li>安装 Chrome 扩展 <span className="text-neon">"Cookie-Editor"</span> 或 <span className="text-neon">"EditThisCookie"</span></li>
-                      <li>访问豆瓣并登录 → 点开插件 → 导出 Cookie 字符串</li>
-                      <li>关闭本弹窗 → 使用"手动配置 Cookie"粘贴即可</li>
-                    </ol>
+                {/* 方式一：Bookmarklet 书签（降级为备选） */}
+                <div className="glass-panel-subtle mb-4 rounded-lg p-4" style={{ opacity: 0.85 }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Bookmark size={14} className="text-surface-400" />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 1：浏览器书签（Bookmarklet）</span>
+                    <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: 'rgb(217,119,6)' }}>⚠️ 仅在未启用 HttpOnly 时可用</span>
+                  </div>
+                  <ol className="text-xs space-y-1 ml-5 list-decimal mb-3" style={{ color: 'var(--text-secondary)' }}>
+                    <li>把下面的链接 <span className="text-neon">拖动</span> 到浏览器 <span className="text-neon">书签栏</span>（或右键加入书签）</li>
+                    <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并确保已登录</li>
+                    <li>点击刚刚创建的书签 → 若提示缺少 dbcl2 请改用方式 3</li>
+                    <li>成功后回到本页面 → 点击上方 <span style={{ color: 'rgb(5,150,105)' }} className="font-medium">《从剪贴板粘贴并导入》</span></li>
+                  </ol>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={doubanImportInfo.bookmarklet}
+                      onClick={(e) => e.preventDefault()}
+                      className="btn-primary gap-1.5 px-3 py-1.5 text-xs cursor-grab active:cursor-grabbing select-none"
+                      draggable
+                      title="拖到书签栏即可"
+                    >
+                      <Bookmark size={12} />
+                      📌 豆瓣一键登录
+                    </a>
+                    <button
+                      onClick={() => copyDoubanImportText(doubanImportInfo.bookmarklet, 'bookmarklet')}
+                      className="btn-ghost gap-1.5 px-3 py-1.5 text-xs"
+                    >
+                      {doubanImportCopied === 'bookmarklet' ? <Check size={12} className="text-green-400" /> : <CopyIcon size={12} />}
+                      复制书签地址
+                    </button>
                   </div>
                 </div>
 
+                {/* 方式二：控制台脚本（降级为备选） */}
+                <div className="glass-panel-subtle rounded-lg p-4" style={{ opacity: 0.85 }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Key size={14} className="text-surface-400" />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>方式 2：浏览器控制台</span>
+                    <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: 'rgb(217,119,6)' }}>⚠️ 仅在未启用 HttpOnly 时可用</span>
+                  </div>
+                  <ol className="text-xs space-y-1 ml-5 list-decimal mb-3" style={{ color: 'var(--text-secondary)' }}>
+                    <li>打开 <a href={doubanImportInfo.douban_url} target="_blank" rel="noopener noreferrer" className="text-neon underline">豆瓣首页</a> 并登录</li>
+                    <li>按 <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>F12</kbd> 打开开发者工具 → Console 标签</li>
+                    <li>粘贴下面脚本并回车 → 若提示缺少 dbcl2 请改用方式 3</li>
+                    <li>成功后回到本页面 → 点击上方 <span style={{ color: 'rgb(5,150,105)' }} className="font-medium">《从剪贴板粘贴并导入》</span></li>
+                  </ol>
+                  <div className="relative">
+                    <pre className="rounded p-2 text-[11px] font-mono max-h-32 overflow-auto whitespace-pre-wrap break-all" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>
+                      {doubanImportInfo.script.trim()}
+                    </pre>
+                    <button
+                      onClick={() => copyDoubanImportText(doubanImportInfo.script, 'script')}
+                      className="absolute top-2 right-2 btn-ghost gap-1 px-2 py-1 text-xs"
+                    >
+                      {doubanImportCopied === 'script' ? <Check size={11} className="text-green-500" /> : <CopyIcon size={11} />}
+                      {doubanImportCopied === 'script' ? '已复制' : '复制'}
+                    </button>
+                  </div>
+                </div>
+                </div>
+
                 <div className="pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
-                  <p className="text-xs text-surface-500">
-                    🔒 本链接 <span className="text-neon">仅本次有效</span>，5 分钟后自动失效。Cookie 只会保存在您的服务器上，不会发送给第三方。
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    🔒 本方案采用<span className="text-neon">剪贴板中转</span>，豆瓣页面不会直接访问后台，适用于 HTTP / 内网部署场景。Cookie 仅保存在您的服务器上，不会发送给第三方。
                   </p>
                 </div>
               </>

@@ -517,9 +517,9 @@ func (h *AdminHandler) UpdateDoubanConfig(c *gin.Context) {
 		return
 	}
 
-	// 简单合法性检查：应包含豆瓣登录态核心字段之一
-	if !strings.Contains(cookie, "bid=") && !strings.Contains(cookie, "dbcl2=") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 不包含豆瓣登录态字段（bid / dbcl2），请检查后重试"})
+	// 硬性校验：必须包含豆瓣登录凭证 dbcl2（bid 只是匿名访客 ID，不代表登录态）
+	if !strings.Contains(cookie, "dbcl2=") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 中缺少豆瓣登录凭证 dbcl2（通常被 HttpOnly 保护，JS 无法读取）。请使用浏览器扩展 Cookie-Editor / EditThisCookie 导出完整 Cookie 后再粘贴"})
 		return
 	}
 
@@ -582,10 +582,16 @@ func (h *AdminHandler) ValidateDoubanConfig(c *gin.Context) {
 	}
 
 	if !valid {
+		// 区分"缺少 dbcl2"和"dbcl2 已过期"两种情况，给用户更精确的提示
+		saved := h.cfg.GetDoubanCookie()
+		msg := "Cookie 已过期或被风控，请退出豆瓣重新登录后再导出"
+		if !strings.Contains(saved, "dbcl2=") {
+			msg = "当前 Cookie 中不含登录凭证 dbcl2，豆瓣以匿名身份访问被重定向。请使用浏览器扩展（Cookie-Editor / EditThisCookie）导出完整 Cookie（包含 HttpOnly 字段）后重新保存"
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"data": gin.H{
 				"valid":   false,
-				"message": "Cookie 已失效，请重新从浏览器复制最新 Cookie",
+				"message": msg,
 			},
 		})
 		return
@@ -779,9 +785,9 @@ func (h *AdminHandler) ImportDoubanCookie(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 长度异常，请确认已在豆瓣登录"})
 		return
 	}
-	if !strings.Contains(cookie, "bid=") && !strings.Contains(cookie, "dbcl2=") {
-		h.markDoubanImportResult(token, false, "", "未检测到豆瓣登录态字段（bid/dbcl2）")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "未检测到豆瓣登录态字段，请先在当前浏览器登录豆瓣后再试"})
+	if !strings.Contains(cookie, "dbcl2=") {
+		h.markDoubanImportResult(token, false, "", "Cookie 中缺少登录凭证 dbcl2（可能被 HttpOnly 保护，JS 读不到）")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cookie 中缺少豆瓣登录凭证 dbcl2（浏览器已将其标记为 HttpOnly，JS / Bookmarklet 无法读取）。请改用方式 3：安装 Cookie-Editor / EditThisCookie 扩展导出完整 Cookie"})
 		return
 	}
 
@@ -843,7 +849,11 @@ func buildDoubanBookmarklet(importURL string) string {
 }
 
 // buildDoubanImportScript 生成用于在 douban.com 页面执行的 JS 脚本
+// 【剪贴板中转方案】：不直接跨域请求后端（避免 http 后台 + https 豆瓣的混合内容问题），
+// 而是把 document.cookie 写入剪贴板，由用户回到后台粘贴导入。
+// 参数 importURL 保留以兼容签名，但新版脚本中并不使用。
 func buildDoubanImportScript(importURL string) string {
+	_ = importURL
 	return `
 if (!/douban\.com$/i.test(location.hostname) && !/\.douban\.com$/i.test(location.hostname)) {
 	alert('请在 douban.com 已登录的页面执行此操作（当前不是豆瓣域名）');
@@ -851,21 +861,29 @@ if (!/douban\.com$/i.test(location.hostname) && !/\.douban\.com$/i.test(location
 }
 var c = document.cookie || '';
 if (c.length < 20) { alert('未检测到豆瓣 Cookie，请先登录豆瓣'); return; }
-fetch('` + importURL + `', {
-	method: 'POST',
-	mode: 'cors',
-	credentials: 'omit',
-	headers: { 'Content-Type': 'application/json' },
-	body: JSON.stringify({ cookie: c })
-}).then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
-.then(function(x){
-	if (x.ok && x.j && x.j.data && x.j.data.success) {
-		alert('✅ 豆瓣 Cookie 导入成功！' + (x.j.data.username ? ('\n账号：' + x.j.data.username) : '') + '\n请回到后台查看。');
-	} else {
-		alert('❌ 导入失败：' + ((x.j && (x.j.error || x.j.message)) || '未知错误'));
+if (c.indexOf('dbcl2=') < 0) {
+	alert('⚠️ 当前浏览器无法读取豆瓣登录凭证 dbcl2（通常被设为 HttpOnly，出于安全原因 JS 读不到）。\n\n此方式在你的浏览器中不可用，请改用【方式 3：Cookie 浏览器插件】：\n1. 安装扩展 Cookie-Editor 或 EditThisCookie\n2. 在豆瓣已登录页打开扩展\n3. 点 Export → Header String\n4. 回到管理后台使用【手动配置 Cookie】粘贴保存');
+	return;
+}
+function done(){ alert('✅ 豆瓣 Cookie 已复制到剪贴板！\n\n请回到管理后台弹窗，点击【从剪贴板粘贴并导入】按钮即可完成登录。'); }
+function fallback(){
+	try {
+		var ta = document.createElement('textarea');
+		ta.value = c; ta.style.position='fixed'; ta.style.opacity='0';
+		document.body.appendChild(ta); ta.select();
+		var ok = document.execCommand('copy');
+		document.body.removeChild(ta);
+		if (ok) { done(); }
+		else { prompt('自动复制失败，请手动复制以下 Cookie 并回到后台粘贴：', c); }
+	} catch(e) {
+		prompt('自动复制失败，请手动复制以下 Cookie 并回到后台粘贴：', c);
 	}
-})
-.catch(function(e){ alert('❌ 请求失败：' + e.message + '\n请确认后台服务可访问，或当前网络正常'); });
+}
+if (navigator.clipboard && navigator.clipboard.writeText) {
+	navigator.clipboard.writeText(c).then(done).catch(fallback);
+} else {
+	fallback();
+}
 `
 }
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -436,6 +437,54 @@ func absInt(n int) int {
 
 // ==================== Cookie 有效性校验 ====================
 
+// fetchDoubanNickname 访问豆瓣用户主页，尽量解析出昵称
+// 失败时返回空字符串，不会中断登录校验流程
+func (s *DoubanService) fetchDoubanNickname(peopleURL, cookie string) string {
+	req, err := http.NewRequest("GET", peopleURL, nil)
+	if err != nil {
+		return ""
+	}
+	setBrowserHeaders(req, "https://www.douban.com/")
+	req.Header.Set("Cookie", cookie)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		s.logger.Debugf("[fetchDoubanNickname] 请求失败：%v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	// gzip 兜底
+	var reader io.Reader = io.LimitReader(resp.Body, 128*1024)
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		if gz, gzErr := gzip.NewReader(reader); gzErr == nil {
+			defer gz.Close()
+			reader = gz
+		}
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return ""
+	}
+	html := string(body)
+
+	// 豆瓣个人主页通常 <title>{昵称}的广播</title> 或 <title>{昵称}</title>
+	if m := regexp.MustCompile(`<title>\s*([^<]+?)(?:的广播|的帐号|的日记)?\s*</title>`).FindStringSubmatch(html); len(m) >= 2 {
+		name := strings.TrimSpace(m[1])
+		if name != "" && name != "豆瓣" {
+			return name
+		}
+	}
+	// 兜底：<h1>{昵称}</h1>
+	if m := regexp.MustCompile(`<h1[^>]*>\s*([^<]+?)\s*</h1>`).FindStringSubmatch(html); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
 // ValidateDoubanCookie 校验当前配置的豆瓣 Cookie 是否有效
 // 返回值：
 //   - valid: 是否有效（登录态正常）
@@ -473,13 +522,37 @@ func (s *DoubanService) ValidateDoubanCookie() (valid bool, username string, err
 	}
 	defer resp.Body.Close()
 
-	// 302 跳转到登录页：Cookie 已失效
+	// 记录调试日志：真实 StatusCode / Location / Content-Encoding
+	// 线上排查"Cookie 过期或被风控"时，先看这条日志判断是 302 风控还是 200 后解析失败
+	location := resp.Header.Get("Location")
+	contentEncoding := resp.Header.Get("Content-Encoding")
+	s.logger.Infof("[ValidateDoubanCookie] status=%d location=%q content-encoding=%q cookie-len=%d",
+		resp.StatusCode, location, contentEncoding, len(cookie))
+
+	// 3xx 跳转处理
+	//
+	// 豆瓣 /mine/ 的行为：
+	//   - 未登录：302 -> https://accounts.douban.com/passport/login?...
+	//   - 已登录：302 -> https://www.douban.com/people/{uid}/   ← 这是登录成功的标志！
+	//   - 被风控：302 -> https://sec.douban.com/... 之类
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		location := resp.Header.Get("Location")
-		if strings.Contains(location, "accounts.douban.com") || strings.Contains(location, "login") {
+		// 情况 1：跳到登录页/验证页 → 失效
+		if strings.Contains(location, "accounts.douban.com") ||
+			strings.Contains(location, "passport") ||
+			strings.Contains(location, "sec.douban.com") ||
+			strings.Contains(location, "/login") {
+			s.logger.Warnf("[ValidateDoubanCookie] 登录态失效/被风控：重定向到 %s", location)
 			return false, "", nil
 		}
-		// 其他重定向：无法判定，保守视为失效
+		// 情况 2：跳到 https://www.douban.com/people/{uid}/ → 已登录 ✅
+		// 顺带抓一次 people 页把昵称读出来
+		if strings.Contains(location, "www.douban.com/people/") {
+			s.logger.Infof("[ValidateDoubanCookie] 登录成功，跳转到用户主页 %s", location)
+			uname := s.fetchDoubanNickname(location, cookie)
+			return true, uname, nil
+		}
+		// 情况 3：其他未知跳转，保守视为失效并记日志便于排查
+		s.logger.Warnf("[ValidateDoubanCookie] 未知重定向 %s -> %s，保守视为失效", req.URL, location)
 		return false, "", nil
 	}
 
@@ -487,16 +560,37 @@ func (s *DoubanService) ValidateDoubanCookie() (valid bool, username string, err
 		return false, "", fmt.Errorf("豆瓣返回状态码: %d", resp.StatusCode)
 	}
 
-	// 读取响应体前 64KB 用于解析昵称
-	limited := io.LimitReader(resp.Body, 64*1024)
-	body, err := io.ReadAll(limited)
+	// 读取响应体前 128KB 用于解析昵称
+	// 注意：Go net/http 会根据请求头决定是否自动解压：
+	//   - 若本方未手动设 Accept-Encoding，Go 会自动加 gzip 并自动解压（resp.Uncompressed=true，Content-Encoding 被清空）
+	//   - 若本方手动设了 Accept-Encoding，Go 不会解压，这里需要手动 gunzip
+	// 这里做一次兜底：如果 Content-Encoding 仍为 gzip，则手动解压
+	var reader io.Reader = io.LimitReader(resp.Body, 128*1024)
+	if strings.EqualFold(contentEncoding, "gzip") {
+		gz, gzErr := gzip.NewReader(reader)
+		if gzErr != nil {
+			s.logger.Warnf("[ValidateDoubanCookie] gzip 解压失败：%v（可能是误判的压缩头）", gzErr)
+		} else {
+			defer gz.Close()
+			reader = gz
+		}
+	}
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return false, "", err
 	}
 	html := string(body)
 
+	// 调试日志：响应体长度 + 前 200 字节（脱敏用，便于定位是"HTML 页面"还是"二进制乱码"）
+	preview := html
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	s.logger.Debugf("[ValidateDoubanCookie] body-len=%d preview=%q", len(html), preview)
+
 	// 页面中若包含登录提示视为失效
 	if strings.Contains(html, "passport/login") || strings.Contains(html, "登录豆瓣") {
+		s.logger.Warnf("[ValidateDoubanCookie] 页面中出现登录提示，判定为失效")
 		return false, "", nil
 	}
 
@@ -512,5 +606,6 @@ func (s *DoubanService) ValidateDoubanCookie() (valid bool, username string, err
 	}
 
 	// 页面返回 200 但提取不到昵称：保守视为有效（避免误杀）
+	s.logger.Warnf("[ValidateDoubanCookie] 200 但未能提取昵称，保守视为有效")
 	return true, "", nil
 }

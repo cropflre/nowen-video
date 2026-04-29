@@ -47,6 +47,9 @@ warn()  { echo "${C_YELLOW}[!]${C_RESET} $*" >&2; }
 die()   { echo "${C_RED}[✗]${C_RESET} $*" >&2; exit 1; }
 step()  { echo; echo "${C_BOLD}${C_CYAN}==== $* ====${C_RESET}"; }
 
+# Ctrl-C 友好退出
+trap 'echo; die "已被用户中断（SIGINT）"' INT
+
 # -------------------- 参数解析 --------------------
 VERSION=""
 ASSUME_YES=0
@@ -58,13 +61,22 @@ DRY_RUN=0
 PLATFORMS="$DEFAULT_PLATFORMS"
 MULTIARCH=1
 
+# 跟踪用户是否通过命令行显式指定了某些选项
+# （显式指定过，则交互式菜单不再询问，直接用用户给的值）
+EXPLICIT_LATEST=0
+EXPLICIT_GIT_TAG=0
+EXPLICIT_MULTIARCH=0
+EXPLICIT_PLATFORM=0
+
 usage() {
     cat <<EOF
 用法: $0 [选项]
 
+不带任何参数运行时，进入${C_BOLD}懒人交互模式${C_RESET}（一路回车即用默认值）。
+
 选项:
   -v, --version VERSION    指定版本号（例: 1.3.0 或 v1.3.0）
-  -y, --yes                跳过所有确认
+  -y, --yes                跳过所有确认（全默认，适合 CI）
       --no-pull            不执行 git pull
       --no-latest          不打 :latest tag
       --no-git-tag         不打 git tag / 不推送到 GitHub
@@ -73,6 +85,12 @@ usage() {
                            示例: linux/amd64,linux/arm64,linux/arm/v7
       --dry-run            仅打印命令，不真实执行
   -h, --help               显示帮助
+
+示例:
+  $0                              # 全交互（懒人模式）
+  $0 -y                           # 全默认，适合 CI / 重复发布
+  $0 -v 1.3.0                     # 指定版本 + 其余交互
+  $0 -v 1.3.0-rc.1 --no-latest    # 预发布，不动 latest
 EOF
     exit 0
 }
@@ -82,10 +100,10 @@ while [ $# -gt 0 ]; do
         -v|--version)   VERSION="${2:-}"; shift 2 ;;
         -y|--yes)       ASSUME_YES=1; shift ;;
         --no-pull)      DO_PULL=0; shift ;;
-        --no-latest)    DO_LATEST=0; shift ;;
-        --no-git-tag)   DO_GIT_TAG=0; shift ;;
-        --no-multiarch) MULTIARCH=0; shift ;;
-        --platform)     PLATFORMS="${2:-}"; shift 2 ;;
+        --no-latest)    DO_LATEST=0; EXPLICIT_LATEST=1; shift ;;
+        --no-git-tag)   DO_GIT_TAG=0; EXPLICIT_GIT_TAG=1; shift ;;
+        --no-multiarch) MULTIARCH=0; EXPLICIT_MULTIARCH=1; shift ;;
+        --platform)     PLATFORMS="${2:-}"; EXPLICIT_PLATFORM=1; shift 2 ;;
         --dry-run)      DRY_RUN=1; shift ;;
         -h|--help)      usage ;;
         *)              die "未知参数: $1（使用 -h 查看帮助）" ;;
@@ -145,11 +163,11 @@ if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
     fi
 fi
 
-# 工作区脏检查
-if ! git diff-index --quiet HEAD --; then
-    warn "工作区有未提交的改动："
+# 工作区脏检查（包含未跟踪文件）
+if [ -n "$(git status --porcelain)" ]; then
+    warn "工作区有未提交的改动或未跟踪文件："
     git status --short | head -20
-    die "请先提交或 stash 再发布"
+    die "请先提交/stash/忽略后再发布"
 fi
 
 # 暂存区检查
@@ -177,10 +195,14 @@ suggest_next_version() {
     fi
     # 只取基础 MAJOR.MINOR.PATCH，忽略预发布后缀
     local base="${latest%%-*}"
-    local major minor patch
-    IFS='.' read -r major minor patch <<EOF
-$base
-EOF
+    local major="${base%%.*}"
+    local rest="${base#*.}"
+    local minor="${rest%%.*}"
+    local patch="${rest#*.}"
+    # 防御：非数字时退化为 0
+    [[ "$major" =~ ^[0-9]+$ ]] || major=0
+    [[ "$minor" =~ ^[0-9]+$ ]] || minor=0
+    [[ "$patch" =~ ^[0-9]+$ ]] || patch=0
     patch=$((patch + 1))
     echo "${major}.${minor}.${patch}"
 }
@@ -207,6 +229,73 @@ VERSION_TAG="v${VERSION}"
 # 检查 git tag 是否已存在
 if [ "$DO_GIT_TAG" = "1" ] && git rev-parse "refs/tags/${VERSION_TAG}" >/dev/null 2>&1; then
     die "git tag ${VERSION_TAG} 已存在"
+fi
+
+# -------------------- 懒人交互菜单 --------------------
+# 非 -y 模式下，针对用户未显式指定的选项逐项询问，全部带默认值，回车即选默认。
+# 已通过命令行显式指定过的选项会被跳过，尊重用户的输入。
+if [ "$ASSUME_YES" != "1" ]; then
+    step "发布选项（回车使用默认值）"
+
+    # 1) 构建模式
+    if [ "$EXPLICIT_MULTIARCH" = "0" ] && [ "$EXPLICIT_PLATFORM" = "0" ]; then
+        echo "  构建模式："
+        echo "    ${C_GREEN}1)${C_RESET} 多架构（${DEFAULT_PLATFORMS}） ${C_BOLD}[默认，推荐]${C_RESET}"
+        echo "    2) 仅本机架构（最快，仅本地自用）"
+        echo "    3) 自定义平台列表"
+        read -r -p "  选择 [1/2/3]（默认 1）: " mode_ans
+        case "${mode_ans:-1}" in
+            1|"")
+                MULTIARCH=1
+                PLATFORMS="$DEFAULT_PLATFORMS"
+                ;;
+            2)
+                MULTIARCH=0
+                ;;
+            3)
+                MULTIARCH=1
+                read -r -p "  输入平台列表（逗号分隔，如 linux/amd64,linux/arm64,linux/arm/v7）: " custom_platforms
+                if [ -z "$custom_platforms" ]; then
+                    warn "未输入，回退到默认 $DEFAULT_PLATFORMS"
+                    PLATFORMS="$DEFAULT_PLATFORMS"
+                else
+                    PLATFORMS="$custom_platforms"
+                fi
+                ;;
+            *)
+                die "无效选择：$mode_ans"
+                ;;
+        esac
+        echo
+    fi
+
+    # 2) 是否同步打 :latest
+    if [ "$EXPLICIT_LATEST" = "0" ]; then
+        default_hint="Y/n"
+        read -r -p "  同时打 :latest tag？[${default_hint}]（默认 Y）: " latest_ans
+        case "${latest_ans:-y}" in
+            [yY]|[yY][eE][sS]) DO_LATEST=1 ;;
+            [nN]|[nN][oO])     DO_LATEST=0 ;;
+            *)                 DO_LATEST=1 ;;
+        esac
+        echo
+    fi
+
+    # 3) 是否打 git tag 并推送
+    if [ "$EXPLICIT_GIT_TAG" = "0" ]; then
+        read -r -p "  同时打 git tag 并推送到 GitHub？[Y/n]（默认 Y）: " tag_ans
+        case "${tag_ans:-y}" in
+            [yY]|[yY][eE][sS]) DO_GIT_TAG=1 ;;
+            [nN]|[nN][oO])     DO_GIT_TAG=0 ;;
+            *)                 DO_GIT_TAG=1 ;;
+        esac
+        echo
+    fi
+
+    # 用户选择打 git tag 时，再次校验 tag 冲突（避免用户在菜单里改主意后漏检）
+    if [ "$DO_GIT_TAG" = "1" ] && git rev-parse "refs/tags/${VERSION_TAG}" >/dev/null 2>&1; then
+        die "git tag ${VERSION_TAG} 已存在"
+    fi
 fi
 
 # -------------------- 发布摘要 --------------------
@@ -252,7 +341,20 @@ OCI_LABELS=(
     --label "org.opencontainers.image.created=${BUILD_DATE}"
     --label "org.opencontainers.image.source=https://github.com/cropflre/nowen-video"
     --label "org.opencontainers.image.title=nowen-video"
+    --label "org.opencontainers.image.description=nowen-video release image (multi-arch: ${PLATFORMS})"
 )
+
+# Docker Hub 登录预检：避免最后 push 阶段才失败
+if [ "$DRY_RUN" != "1" ]; then
+    if ! docker system info 2>/dev/null | grep -qE '^\s*Username:'; then
+        warn "未检测到 Docker Hub 登录态（docker info 未发现 Username）"
+        warn "若推送到 ${IMAGE_NAME} 需要认证，请先执行：docker login"
+        if [ "$ASSUME_YES" != "1" ]; then
+            read -r -p "仍然继续？[y/N] " ans
+            case "$ans" in [yY]|[yY][eE][sS]) ;; *) die "已取消" ;; esac
+        fi
+    fi
+fi
 
 if [ "$MULTIARCH" = "1" ]; then
     # ========== 多架构路径 ==========
@@ -293,9 +395,14 @@ if [ "$MULTIARCH" = "1" ]; then
 
     # 拉取 manifest 确认多架构
     if [ "$DRY_RUN" != "1" ]; then
-        info "远端 manifest 摘要："
+        info "远端 manifest 摘要（${VERSION_TAG}）："
         docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev/null \
             | grep -E 'Name:|MediaType:|Platform:' | head -20 || true
+        if [ "$DO_LATEST" = "1" ]; then
+            info "远端 manifest 摘要（latest）："
+            docker buildx imagetools inspect "${IMAGE_NAME}:latest" 2>/dev/null \
+                | grep -E 'Name:|MediaType:|Platform:' | head -20 || true
+        fi
     fi
 else
     # ========== 单架构路径（沿用经典 build + push） ==========
@@ -381,7 +488,11 @@ step "发布完成"
 echo "  ${C_GREEN}${IMAGE_NAME}:${VERSION_TAG}${C_RESET}  ←  已推送"
 [ "$DO_LATEST" = "1" ] && echo "  ${C_GREEN}${IMAGE_NAME}:latest${C_RESET}  ←  已推送"
 [ "$DO_GIT_TAG" = "1" ] && echo "  ${C_GREEN}git tag ${VERSION_TAG}${C_RESET}  ←  已推送到 GitHub"
-echo "  总耗时        : ${TOTAL}s （build ${BUILD_DURATION}s + push ${PUSH_DURATION}s）"
+if [ "$MULTIARCH" = "1" ]; then
+    echo "  总耗时        : ${TOTAL}s （buildx build+push ${BUILD_DURATION}s）"
+else
+    echo "  总耗时        : ${TOTAL}s （build ${BUILD_DURATION}s + push ${PUSH_DURATION}s）"
+fi
 [ -n "$DIGEST" ] && echo "  digest        : ${DIGEST}"
 
 echo
