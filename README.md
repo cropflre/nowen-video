@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite" alt="SQLite">
   <img src="https://img.shields.io/badge/Docker-Alpine_3.19-2496ED?style=flat-square&logo=docker" alt="Docker">
-  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="License">
 </p>
 
 <p align="center">
@@ -1209,6 +1209,13 @@ devices:
 ---
 # 问题反馈QQ群：1093473044
 
-## 📜 License
+## 📜 开源协议
 
-MIT
+本项目采用 [GNU General Public License v3.0](./LICENSE)（GPL-3.0）开源协议发布。
+
+- 你可以自由地运行、研究、修改和分发本软件。
+- 基于本项目的任何派生作品（源码修改或二次开发）在对外分发时，**必须同样以 GPL-3.0 协议开源**，并保留原作者版权声明与许可证全文。
+- 如果通过网络提供本软件的服务，建议一并公开修改后的源码，以尊重开源社区。
+- 本软件按“原样”提供，不附带任何明示或默示的担保，作者不对使用本软件导致的任何损失负责。
+
+许可证全文见仓库根目录下的 [`LICENSE`](./LICENSE) 文件。
