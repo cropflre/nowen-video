@@ -81,6 +81,8 @@ type Services struct {
 	AdultScheduler *AdultScheduler
 	// P5：元数据缓存（LRU+TTL，避免重复抓取）
 	AdultCache *AdultMetadataCache
+	// 自定义文件夹批量刮削（参考 mdcx：用户自选任意路径进行扫描+刮削）
+	AdultFolderBatch *AdultFolderBatchService
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
@@ -365,12 +367,14 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	adultBatch := NewAdultBatchService(adultScraper, wsHub)
 	adultBatch.SetTaskStore(adultTaskStore)
 	adultScheduler := NewAdultScheduler(adultBatch, adultProxy, adultScraper)
+	adultFolderBatch := NewAdultFolderBatchService(adultScraper)
 
 	svcs.AdultProxy = adultProxy
 	svcs.AdultCache = adultCache
 	svcs.AdultTaskStore = adultTaskStore
 	svcs.AdultBatch = adultBatch
 	svcs.AdultScheduler = adultScheduler
+	svcs.AdultFolderBatch = adultFolderBatch
 
 	// 启动调度器（后台循环，默认未启用，需配置开启）
 	adultScheduler.Start()

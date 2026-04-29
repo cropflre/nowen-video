@@ -359,6 +359,20 @@ type AdultScraperConfig struct {
 	MinRequestInterval int `mapstructure:"min_request_interval"`
 	// 请求间隔最大值（毫秒，默认 3000）
 	MaxRequestInterval int `mapstructure:"max_request_interval"`
+
+	// ==================== Cookie 登录配置（参考 mdcx）====================
+	// 某些站点（尤其 JavDB）非登录态内容受限，通过设置登录后的 Cookie 头
+	// 可解锁：高清封面、完整演员信息、评分、预告片等
+	// 格式：浏览器复制的完整 Cookie 字符串，如 "locale=zh; _jdb_session=abc..."
+	//
+	// 获取方法：登录网站 → F12 → Network → 任一请求 → 复制 Cookie 头
+	CookieJavBus     string `mapstructure:"cookie_javbus"`
+	CookieJavDB      string `mapstructure:"cookie_javdb"`
+	CookieFreejavbt  string `mapstructure:"cookie_freejavbt"`
+	CookieJav321     string `mapstructure:"cookie_jav321"`
+	CookieFanza      string `mapstructure:"cookie_fanza"`
+	CookieMGStage    string `mapstructure:"cookie_mgstage"`
+	CookieFC2Hub     string `mapstructure:"cookie_fc2hub"`
 }
 
 // StorageConfig 存储配置（支持本地、WebDAV、网盘等多种存储后端）
@@ -1193,6 +1207,15 @@ func (c *Config) SaveAdultScraperConfig() error {
 	viper.Set("adult_scraper.python_service_dir", ac.PythonServiceDir)
 	viper.Set("adult_scraper.min_request_interval", ac.MinRequestInterval)
 	viper.Set("adult_scraper.max_request_interval", ac.MaxRequestInterval)
+
+	// Cookie 登录（参考 mdcx 的设计，每个站点一个完整 Cookie 字符串）
+	viper.Set("adult_scraper.cookie_javbus", ac.CookieJavBus)
+	viper.Set("adult_scraper.cookie_javdb", ac.CookieJavDB)
+	viper.Set("adult_scraper.cookie_freejavbt", ac.CookieFreejavbt)
+	viper.Set("adult_scraper.cookie_jav321", ac.CookieJav321)
+	viper.Set("adult_scraper.cookie_fanza", ac.CookieFanza)
+	viper.Set("adult_scraper.cookie_mgstage", ac.CookieMGStage)
+	viper.Set("adult_scraper.cookie_fc2hub", ac.CookieFC2Hub)
 
 	return c.saveConfig()
 }

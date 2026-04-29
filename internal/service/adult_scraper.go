@@ -156,7 +156,7 @@ func (s *AdultScraperService) scrapeJavBus(code string) (*AdultMetadata, error) 
 	if err != nil {
 		return nil, fmt.Errorf("构造请求失败: %w", err)
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -307,7 +307,7 @@ func (s *AdultScraperService) scrapeJavDB(code string) (*AdultMetadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("构造请求失败: %w", err)
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -339,7 +339,7 @@ func (s *AdultScraperService) scrapeJavDB(code string) (*AdultMetadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("构造详情请求失败: %w", err)
 	}
-	setAdultScraperHeaders(req2)
+	s.applyBrowserHeaders(req2)
 
 	resp2, err := s.client.Do(req2)
 	if err != nil {
@@ -874,7 +874,7 @@ func (s *AdultScraperService) downloadCover(media *model.Media, coverURL string)
 	if err != nil {
 		return "", err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	// 设置 Referer（部分站点需要）
 	if strings.Contains(coverURL, "javbus") {
 		req.Header.Set("Referer", "https://www.javbus.com/")
@@ -918,6 +918,7 @@ func (s *AdultScraperService) downloadCover(media *model.Media, coverURL string)
 // ==================== 辅助方法 ====================
 
 // setAdultScraperHeaders 设置爬虫请求头（模拟浏览器）
+// 注意：这是一个包级函数，不带 Cookie；如需注入站点 Cookie 请用 AdultScraperService.applyBrowserHeaders
 func setAdultScraperHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", getRandomUserAgent())
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
@@ -929,6 +930,46 @@ func setAdultScraperHeaders(req *http.Request) {
 	req.Header.Set("Sec-Fetch-Mode", "navigate")
 	req.Header.Set("Sec-Fetch-Site", "none")
 	req.Header.Set("Sec-Fetch-User", "?1")
+}
+
+// applyBrowserHeaders 在 setAdultScraperHeaders 基础上追加站点 Cookie
+// 会根据请求 URL 的 host 匹配配置中的对应站点 Cookie 自动注入
+// 参考 mdcx：每个站点一个完整 Cookie 字符串（来自浏览器 F12 复制）
+func (s *AdultScraperService) applyBrowserHeaders(req *http.Request) {
+	setAdultScraperHeaders(req)
+	if req == nil || req.URL == nil || s == nil || s.cfg == nil {
+		return
+	}
+	cookie := s.lookupSiteCookie(req.URL.Host)
+	if cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+}
+
+// lookupSiteCookie 根据域名返回对应站点的 Cookie 字符串（无匹配时返回空串）
+func (s *AdultScraperService) lookupSiteCookie(host string) string {
+	if s == nil || s.cfg == nil || host == "" {
+		return ""
+	}
+	h := strings.ToLower(host)
+	ac := &s.cfg.AdultScraper
+	switch {
+	case strings.Contains(h, "javbus"):
+		return strings.TrimSpace(ac.CookieJavBus)
+	case strings.Contains(h, "javdb"):
+		return strings.TrimSpace(ac.CookieJavDB)
+	case strings.Contains(h, "freejavbt"):
+		return strings.TrimSpace(ac.CookieFreejavbt)
+	case strings.Contains(h, "jav321"):
+		return strings.TrimSpace(ac.CookieJav321)
+	case strings.Contains(h, "dmm") || strings.Contains(h, "fanza"):
+		return strings.TrimSpace(ac.CookieFanza)
+	case strings.Contains(h, "mgstage"):
+		return strings.TrimSpace(ac.CookieMGStage)
+	case strings.Contains(h, "fc2hub"):
+		return strings.TrimSpace(ac.CookieFC2Hub)
+	}
+	return ""
 }
 
 // IsAdultContent 判断媒体是否为成人内容（通过文件名/路径中的番号特征）

@@ -27,6 +27,16 @@ export interface AdultScraperConfig {
   min_request_interval: number
   max_request_interval: number
   supported_formats: SupportedFormat[]
+  /** 各站点 Cookie（参考 mdcx，每个站点一个完整 Cookie 字符串） */
+  cookies?: {
+    javbus?: string
+    javdb?: string
+    freejavbt?: string
+    jav321?: string
+    fanza?: string
+    mgstage?: string
+    fc2hub?: string
+  }
 }
 
 /** 番号刮削结果 */
@@ -73,6 +83,60 @@ export interface PythonServiceHealth {
   message: string
   url?: string
   http_code?: number
+}
+
+/** 文件夹扫描单条目 */
+export interface FolderScanEntry {
+  path: string
+  filename: string
+  rel_path: string
+  size_mb: number
+  detected_code: string
+  has_code: boolean
+  has_nfo: boolean
+  has_poster: boolean
+}
+
+/** 文件夹扫描结果 */
+export interface FolderScanResult {
+  root: string
+  total: number
+  with_code: number
+  without_code: number
+  already_done: number
+  entries: FolderScanEntry[]
+  scanned_at: string
+}
+
+/** 文件夹批量刮削任务 */
+export interface FolderBatchTask {
+  id: string
+  status: 'running' | 'paused' | 'cancelled' | 'completed' | 'failed'
+  total: number
+  current: number
+  success: number
+  failed: number
+  skipped: number
+  started_at: string
+  finished_at?: string
+  aggregated: boolean
+  concurrency: number
+  results: Array<{
+    path: string
+    code: string
+    status: 'success' | 'failed' | 'skipped'
+    message?: string
+    source?: string
+    at: string
+  }>
+}
+
+/** Cookie 测试结果 */
+export interface CookieTestResult {
+  ok: boolean
+  message: string
+  status_code: number
+  site: string
 }
 
 // ==================== P3~P5 扩展类型 ====================
@@ -185,6 +249,14 @@ export const adultScraperApi = {
     python_service_api_key?: string
     min_request_interval?: number
     max_request_interval?: number
+    // Cookie 登录（参考 mdcx）
+    cookie_javbus?: string
+    cookie_javdb?: string
+    cookie_freejavbt?: string
+    cookie_jav321?: string
+    cookie_fanza?: string
+    cookie_mgstage?: string
+    cookie_fc2hub?: string
   }) =>
     api.put<{ message: string }>('/admin/adult-scraper/config', data),
 
@@ -311,4 +383,42 @@ export const adultScraperApi = {
     api.post<{ data: { task_id: string; retry_count: number } }>(
       '/admin/adult-scraper/retry-failed', data,
     ),
+
+  // ==================== 文件夹扫描 + 自定义文件夹刮削（参考 mdcx）====================
+
+  /** 扫描指定目录，返回视频文件列表及番号识别结果 */
+  scanFolder: (path: string, recursive = true, maxDepth = 0) =>
+    api.get<{ data: FolderScanResult }>('/admin/adult-scraper/folder/scan', {
+      params: { path, recursive, max_depth: maxDepth },
+    }),
+
+  /** 启动自定义文件夹批量刮削任务 */
+  startFolderBatch: (data: {
+    paths: string[]
+    aggregated?: boolean
+    concurrency?: number
+    skip_if_has_nfo?: boolean
+    override_code?: string
+  }) =>
+    api.post<{ data: { task_id: string } }>('/admin/adult-scraper/folder/batch/start', data),
+
+  /** 列出所有文件夹刮削任务 */
+  listFolderBatch: () =>
+    api.get<{ data: { active: FolderBatchTask[]; history: FolderBatchTask[] } }>(
+      '/admin/adult-scraper/folder/batch',
+    ),
+
+  /** 查询单个文件夹刮削任务 */
+  getFolderBatch: (id: string) =>
+    api.get<{ data: FolderBatchTask }>(`/admin/adult-scraper/folder/batch/${id}`),
+
+  /** 取消文件夹刮削任务 */
+  cancelFolderBatch: (id: string) =>
+    api.post<{ message: string }>(`/admin/adult-scraper/folder/batch/${id}/cancel`),
+
+  /** 测试站点 Cookie 连通性 */
+  testCookie: (site: string) =>
+    api.get<{ data: CookieTestResult }>('/admin/adult-scraper/cookie/test', {
+      params: { site },
+    }),
 }

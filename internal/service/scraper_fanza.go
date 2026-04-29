@@ -98,7 +98,7 @@ func (s *AdultScraperService) fetchFanzaHTML(targetURL, referer string) (string,
 	if err != nil {
 		return "", err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	// Fanza 的年龄认证 cookie（必需）
 	req.AddCookie(&http.Cookie{Name: "age_check_done", Value: "1"})
 	req.AddCookie(&http.Cookie{Name: "ckcy", Value: "1"})

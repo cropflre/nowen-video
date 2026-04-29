@@ -47,7 +47,7 @@ func (s *AdultScraperService) fetchMGStageHTML(targetURL, referer string) (strin
 	if err != nil {
 		return "", err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	req.AddCookie(&http.Cookie{Name: "adc", Value: "1"})
 	if referer != "" {
 		req.Header.Set("Referer", referer)

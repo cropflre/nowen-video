@@ -139,6 +139,8 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		services.AdultCache,
 		services.AdultScheduler,
 	)
+	// 自定义文件夹扫描 / 批量刮削（参考 mdcx）
+	h.AdultScraper.SetFolderBatchService(services.AdultFolderBatch)
 
 	return h
 }

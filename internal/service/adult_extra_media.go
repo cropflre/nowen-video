@@ -157,7 +157,7 @@ func (s *AdultScraperService) downloadFileForAdult(fileURL, localPath, referer s
 	if err != nil {
 		return err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}
@@ -198,7 +198,7 @@ func (s *AdultScraperService) postFormForAdult(targetURL, referer string, form u
 	if err != nil {
 		return "", err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if referer != "" {
 		req.Header.Set("Referer", referer)

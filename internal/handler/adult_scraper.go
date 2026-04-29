@@ -24,12 +24,20 @@ type AdultScraperHandler struct {
 
 	// Python 子进程启动器（可选注入，用于运行时按需拉起 Python 微服务）
 	pythonLauncher *service.AdultPythonLauncher
+
+	// 文件夹扫描 + 自定义文件夹刮削服务（参考 mdcx 项目）
+	folderBatch *service.AdultFolderBatchService
 }
 
 // SetPythonLauncher 注入 Python 微服务启动器
 // 注入后，UpdateConfig 若检测到配置变更，会按需拉起 / 回收 Python 子进程
 func (h *AdultScraperHandler) SetPythonLauncher(l *service.AdultPythonLauncher) {
 	h.pythonLauncher = l
+}
+
+// SetFolderBatchService 注入自定义文件夹刮削服务
+func (h *AdultScraperHandler) SetFolderBatchService(fs *service.AdultFolderBatchService) {
+	h.folderBatch = fs
 }
 
 // SetP3Services 注入 P3~P5 扩展服务（由 NewHandlers 调用）
@@ -110,6 +118,17 @@ func (h *AdultScraperHandler) GetConfig(c *gin.Context) {
 				{"type": "uncensored", "pattern": "123456-789", "example": "1pondo/caribbeancom 格式"},
 				{"type": "heyzo", "pattern": "HEYZO-1234", "example": "HEYZO-1234"},
 			},
+			// Cookie 登录配置（参考 mdcx：每个站点一个完整 Cookie 字符串）
+			// 出于安全考虑，返回原始 cookie 完整内容仅在 admin 场景下进行（本接口仅 admin 可访问）
+			"cookies": gin.H{
+				"javbus":    cfg.CookieJavBus,
+				"javdb":     cfg.CookieJavDB,
+				"freejavbt": cfg.CookieFreejavbt,
+				"jav321":    cfg.CookieJav321,
+				"fanza":     cfg.CookieFanza,
+				"mgstage":   cfg.CookieMGStage,
+				"fc2hub":    cfg.CookieFC2Hub,
+			},
 		},
 	})
 }
@@ -127,6 +146,14 @@ func (h *AdultScraperHandler) UpdateConfig(c *gin.Context) {
 		AutoStartPython     *bool   `json:"auto_start_python"`
 		MinRequestInterval  *int    `json:"min_request_interval"`
 		MaxRequestInterval  *int    `json:"max_request_interval"`
+		// Cookie 登录（参考 mdcx，每个站点一个完整 Cookie 字符串）
+		CookieJavBus    *string `json:"cookie_javbus"`
+		CookieJavDB     *string `json:"cookie_javdb"`
+		CookieFreejavbt *string `json:"cookie_freejavbt"`
+		CookieJav321    *string `json:"cookie_jav321"`
+		CookieFanza     *string `json:"cookie_fanza"`
+		CookieMGStage   *string `json:"cookie_mgstage"`
+		CookieFC2Hub    *string `json:"cookie_fc2hub"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
@@ -167,6 +194,28 @@ func (h *AdultScraperHandler) UpdateConfig(c *gin.Context) {
 	}
 	if req.MaxRequestInterval != nil && *req.MaxRequestInterval > 0 {
 		h.cfg.AdultScraper.MaxRequestInterval = *req.MaxRequestInterval
+	}
+	// Cookie 登录配置
+	if req.CookieJavBus != nil {
+		h.cfg.AdultScraper.CookieJavBus = *req.CookieJavBus
+	}
+	if req.CookieJavDB != nil {
+		h.cfg.AdultScraper.CookieJavDB = *req.CookieJavDB
+	}
+	if req.CookieFreejavbt != nil {
+		h.cfg.AdultScraper.CookieFreejavbt = *req.CookieFreejavbt
+	}
+	if req.CookieJav321 != nil {
+		h.cfg.AdultScraper.CookieJav321 = *req.CookieJav321
+	}
+	if req.CookieFanza != nil {
+		h.cfg.AdultScraper.CookieFanza = *req.CookieFanza
+	}
+	if req.CookieMGStage != nil {
+		h.cfg.AdultScraper.CookieMGStage = *req.CookieMGStage
+	}
+	if req.CookieFC2Hub != nil {
+		h.cfg.AdultScraper.CookieFC2Hub = *req.CookieFC2Hub
 	}
 
 	// 持久化配置到磁盘，确保重启后不丢失

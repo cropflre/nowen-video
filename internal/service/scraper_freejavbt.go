@@ -164,13 +164,13 @@ func (s *AdultScraperService) parseFreejavbtHTML(html, code string) (*AdultMetad
 	return meta, nil
 }
 
-// fetchHTMLForAdult 抓取 HTML（复用 setAdultScraperHeaders 并自动带 Referer）
+// fetchHTMLForAdult 抓取 HTML（复用 applyBrowserHeaders 并自动带 Referer，自动注入站点 Cookie）
 func (s *AdultScraperService) fetchHTMLForAdult(targetURL, referer string) (string, error) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		return "", err
 	}
-	setAdultScraperHeaders(req)
+	s.applyBrowserHeaders(req)
 	if referer != "" {
 		req.Header.Set("Referer", referer)
 	}

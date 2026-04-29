@@ -592,6 +592,16 @@ func main() {
 		admin.GET("/adult-scraper/failed-items", handlers.AdultScraper.GetFailedItems)
 		admin.POST("/adult-scraper/retry-failed", handlers.AdultScraper.RetryFailed)
 
+		// 文件夹扫描 + 自定义文件夹批量刮削（参考 mdcx 项目）
+		admin.GET("/adult-scraper/folder/scan", handlers.AdultScraper.ScanFolder)
+		admin.POST("/adult-scraper/folder/batch/start", handlers.AdultScraper.StartFolderBatch)
+		admin.GET("/adult-scraper/folder/batch", handlers.AdultScraper.ListFolderBatch)
+		admin.GET("/adult-scraper/folder/batch/:id", handlers.AdultScraper.GetFolderBatch)
+		admin.POST("/adult-scraper/folder/batch/:id/cancel", handlers.AdultScraper.CancelFolderBatch)
+
+		// Cookie 连通性测试
+		admin.GET("/adult-scraper/cookie/test", handlers.AdultScraper.TestCookie)
+
 		// 刮削数据管理
 		admin.POST("/scrape/tasks", handlers.ScrapeManager.CreateTask)
 		admin.POST("/scrape/tasks/batch", handlers.ScrapeManager.BatchCreateTasks)

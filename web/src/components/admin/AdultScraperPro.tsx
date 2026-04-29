@@ -14,6 +14,8 @@ import type {
   AdultScrapeReport,
   MirrorStatus,
 } from '@/api/adultScraper'
+import AdultFolderScraperPanel from './AdultFolderScraperPanel'
+import AdultCookieLoginPanel from './AdultCookieLoginPanel'
 import {
   Play,
   Pause,
@@ -32,10 +34,12 @@ import {
   TrendingUp,
   History,
   RotateCw,
+  FolderSearch,
+  Cookie,
 } from 'lucide-react'
 import clsx from 'clsx'
 
-type Tab = 'batch' | 'mirrors' | 'cache' | 'scheduler' | 'report'
+type Tab = 'batch' | 'folder' | 'cookies' | 'mirrors' | 'cache' | 'scheduler' | 'report'
 
 export default function AdultScraperProSection() {
   const [tab, setTab] = useState<Tab>('batch')
@@ -49,6 +53,8 @@ export default function AdultScraperProSection() {
 
       <div className="mb-4 flex flex-wrap gap-2 pb-2" style={{ borderBottom: '1px solid var(--border-default)' }}>
         <TabButton active={tab === 'batch'} onClick={() => setTab('batch')} icon={<Play className="h-4 w-4" />} label="批量刮削" />
+        <TabButton active={tab === 'folder'} onClick={() => setTab('folder')} icon={<FolderSearch className="h-4 w-4" />} label="文件夹刮削" />
+        <TabButton active={tab === 'cookies'} onClick={() => setTab('cookies')} icon={<Cookie className="h-4 w-4" />} label="Cookie 登录" />
         <TabButton active={tab === 'mirrors'} onClick={() => setTab('mirrors')} icon={<Globe className="h-4 w-4" />} label="镜像管理" />
         <TabButton active={tab === 'cache'} onClick={() => setTab('cache')} icon={<Database className="h-4 w-4" />} label="缓存管理" />
         <TabButton active={tab === 'scheduler'} onClick={() => setTab('scheduler')} icon={<Clock className="h-4 w-4" />} label="定时调度" />
@@ -56,6 +62,8 @@ export default function AdultScraperProSection() {
       </div>
 
       {tab === 'batch' && <BatchPanel />}
+      {tab === 'folder' && <AdultFolderScraperPanel />}
+      {tab === 'cookies' && <AdultCookieLoginPanel />}
       {tab === 'mirrors' && <MirrorsPanel />}
       {tab === 'cache' && <CachePanel />}
       {tab === 'scheduler' && <SchedulerPanel />}
