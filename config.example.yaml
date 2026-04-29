@@ -46,6 +46,21 @@ app:
   resource_limit: 70    # CPU资源限制百分比（1-80），建议60-80，过低会导致预处理任务无法执行
   cors_origins: []
 
+# ==================== 转码调度 / HLS ABR / 节流 ====================
+# 上述能力均为内建行为，当前无需独立配置：
+#   - ABR（多码率自适应）：前端请求 /api/stream/:id/master.m3u8 时，后端会并行预转码
+#     所有可用档位（默认 360p/480p/720p/1080p/2K/4K，根据原片分辨率自动裁剪）。
+#     hls.js 在客户端端根据实时带宽在档位间无缝切换。
+#   - 客户端带宽协商：hls.js 会通过 POST /api/stream/:id/bandwidth 上报 EWMA 评估带宽，
+#     前端据此在下次请求 master.m3u8 时带上 ?maxBitrate=xxx，弱网自动降档。
+#     Emby/Infuse 客户端则通过 PlaybackInfo 的 MaxStreamingBitrate 字段协商。
+#   - 节流（Throttling）：客户端通过 /api/stream/:id/playback 上报当前播放位置，
+#     服务端对比"转码前沿"与"播放前沿"：
+#       * 领先 > 60s 时挂起 FFmpeg（Linux: SIGSTOP / Windows: NtSuspendProcess）
+#       * 领先 < 15s 时唤醒 FFmpeg
+#     可通过 GET /admin/transcode/throttle 查看节流累积统计（节省的 GPU 时间）。
+#   - GPU 安全限流：gpu_safety_* 系列配置详见下方 gpu 小节（暂未独立暴露，默认启用）。
+
 # 日志配置
 logging:
   level: info

@@ -23,6 +23,7 @@ import {
   StatusBadge,
   VersionBadge,
   EyeToggle,
+  EnableRow,
   ProviderState,
 } from './storage/StorageUIKit'
 
@@ -158,30 +159,27 @@ export function AlistSection() {
       accent="purple"
       description={
         <>
-          媒体库路径使用 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-purple-300">alist://</code> 前缀。
-          推荐使用 <strong>长期 Token</strong> 模式，避免明文保存密码。
+          媒体库路径使用{' '}
+          <code
+            className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-purple-600 dark:text-purple-300"
+            style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)' }}
+          >
+            alist://
+          </code>
+          {' '}前缀。推荐使用 <strong>长期 Token</strong> 模式，避免明文保存密码。
         </>
       }
     >
       {/* 启用开关行 */}
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-800/40 border border-surface-700/30 px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link2 size={16} className="text-purple-300 flex-shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              启用 Alist 存储
-            </div>
-            <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-              启用后可将 Alist 挂载的网盘作为媒体库数据源
-            </div>
-          </div>
-        </div>
-        <Toggle
-          checked={config.enabled}
-          onChange={(v) => setConfig({ ...config, enabled: v })}
-          accent="purple"
-        />
-      </div>
+      <EnableRow
+        icon={<Link2 size={16} />}
+        title="启用 Alist 存储"
+        description="启用后可将 Alist 挂载的网盘作为媒体库数据源"
+        checked={config.enabled}
+        onChange={(v) => setConfig({ ...config, enabled: v })}
+        accent="purple"
+        iconColorClass="text-purple-600 dark:text-purple-300"
+      />
 
       {/* 连接配置 */}
       <FieldGroup title="连接" description="Alist 服务地址与基础路径">
@@ -426,30 +424,27 @@ export function S3Section() {
       accent="amber"
       description={
         <>
-          媒体库路径使用 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-amber-300">s3://</code> 前缀；
-          MinIO 等自建服务请勾选 <strong>Path-Style</strong>；播放通过预签名 URL（有效期 2 小时）。
+          媒体库路径使用{' '}
+          <code
+            className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-300"
+            style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
+          >
+            s3://
+          </code>
+          {' '}前缀；MinIO 等自建服务请勾选 <strong>Path-Style</strong>；播放通过预签名 URL（有效期 2 小时）。
         </>
       }
     >
       {/* 启用 */}
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-800/40 border border-surface-700/30 px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Database size={16} className="text-amber-300 flex-shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              启用 S3 存储
-            </div>
-            <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-              启用后可将对象存储桶作为媒体库数据源
-            </div>
-          </div>
-        </div>
-        <Toggle
-          checked={config.enabled}
-          onChange={(v) => setConfig({ ...config, enabled: v })}
-          accent="amber"
-        />
-      </div>
+      <EnableRow
+        icon={<Database size={16} />}
+        title="启用 S3 存储"
+        description="启用后可将对象存储桶作为媒体库数据源"
+        checked={config.enabled}
+        onChange={(v) => setConfig({ ...config, enabled: v })}
+        accent="amber"
+        iconColorClass="text-amber-600 dark:text-amber-300"
+      />
 
       {/* 连接 */}
       <FieldGroup title="连接" description="Endpoint、Region 与 Bucket">

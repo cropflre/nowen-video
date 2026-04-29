@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+﻿import { useRef, useEffect, useCallback, useState } from 'react'
 import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
@@ -94,9 +94,19 @@ export default function VideoPlayer({
   } = usePlayerStore()
 
   const [showQuality, setShowQuality] = useState(false)
-  const [qualities, setQualities] = useState<{ index: number; label: string }[]>([])
+  const [qualities, setQualities] = useState<{ index: number; label: string; bitrate?: number; height?: number }[]>([])
   const [currentQuality, setCurrentQuality] = useState(-1)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // 实时转码/带宽状态（Settings 面板展示）
+  const [currentBitrate, setCurrentBitrate] = useState(0) // 当前播放档位码率 bit/s
+  const [bandwidthEstimate, setBandwidthEstimate] = useState(0) // hls.js EWMA 平滑带宽 bit/s
+  const [throttleStatus, setThrottleStatus] = useState<{
+    running: boolean
+    active_qualities: string[] | null
+    suspended_count: number
+    ahead_seconds: number
+  } | null>(null)
 
   // 字幕状态
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
@@ -492,6 +502,8 @@ export default function VideoPlayer({
           const levels = data.levels.map((level, index) => ({
             index,
             label: `${level.height}p`,
+            bitrate: level.bitrate,
+            height: level.height,
           }))
           setQualities([{ index: -1, label: '自动' }, ...levels])
           if (startPosition > 0) video.currentTime = startPosition
@@ -499,6 +511,9 @@ export default function VideoPlayer({
         })
         hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
           setCurrentQuality(data.level)
+          // 记录当前档位码率，供 Settings 面板显示
+          const lv = hls.levels?.[data.level]
+          if (lv?.bitrate) setCurrentBitrate(lv.bitrate)
         })
         // 多音轨支持
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
@@ -513,6 +528,35 @@ export default function VideoPlayer({
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
           setCurrentAudioTrack(data.id)
         })
+        // 带宽上报（驱动服务端 ABR 档位过滤）
+        // hls.js 内部维护了 EWMA 平滑后的 bandwidthEstimate，
+        // 我们每 10 秒采样一次并上报服务端，用作后续 master.m3u8 请求的 maxBitrate 依据。
+        // 注意：低频上报（10s）避免频繁打扰后端；弱网场景下这个评估值会更保守。
+        let lastReportedBw = 0
+        let lastReportAt = 0
+        const reportBandwidth = () => {
+          const bw = Math.round((hls as unknown as { bandwidthEstimate: number }).bandwidthEstimate || 0)
+          if (bw > 0) setBandwidthEstimate(bw) // 每个片段都更新本地展示
+          const now = Date.now()
+          if (now - lastReportAt < 10_000) return // 10 秒节流
+          if (bw <= 0) return
+          // 仅在带宽变化 >20% 时上报，避免噪声
+          if (lastReportedBw > 0 && Math.abs(bw - lastReportedBw) / lastReportedBw < 0.2) return
+          lastReportAt = now
+          lastReportedBw = bw
+          streamApi.reportBandwidth(mediaId, bw).then((res) => {
+            if (res?.data?.throttle) {
+              const t = res.data.throttle
+              setThrottleStatus({
+                running: t.running,
+                active_qualities: t.active_qualities,
+                suspended_count: t.suspended_count,
+                ahead_seconds: t.ahead_seconds,
+              })
+            }
+          }).catch(() => {})
+        }
+        hls.on(Hls.Events.FRAG_LOADED, reportBandwidth)
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (data.fatal) {
             switch (data.type) {
@@ -691,6 +735,31 @@ export default function VideoPlayer({
     // 立即通知后端新位置，避免 throttleLoop 按旧位置误挂起/恢复
     streamApi.reportPlayback(mediaId, targetTime).catch(() => {})
   }, [src, mode, mediaId])
+
+  // 节流状态轮询：仅 HLS 转码模式下，每 5s 拉一次后端节流快照
+  // 用于 Settings 面板实时展示（running / 挂起档位数 / 领先秒数等）
+  useEffect(() => {
+    if (!mediaId || mode === 'direct' || mode === 'remux') return
+    let alive = true
+    const poll = () => {
+      streamApi.getThrottleStatus(mediaId).then((res) => {
+        if (!alive || !res?.data?.data) return
+        const t = res.data.data
+        setThrottleStatus({
+          running: t.running,
+          active_qualities: t.active_qualities,
+          suspended_count: t.suspended_count,
+          ahead_seconds: t.ahead_seconds,
+        })
+      }).catch(() => {})
+    }
+    poll()
+    const timer = setInterval(poll, 5000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [mediaId, mode])
 
   // Remux 时间偏移：记录 Seek 的起始时间，用于计算真实播放位置
   const remuxOffsetRef = useRef(0)
@@ -1763,7 +1832,7 @@ export default function VideoPlayer({
               </button>
 
               {showQuality && (
-                <div className="absolute bottom-full right-0 mb-2 min-w-[140px] rounded-xl py-1 shadow-2xl"
+                <div className="absolute bottom-full right-0 mb-2 min-w-[220px] rounded-xl py-1 shadow-2xl"
                   style={{
                     background: 'rgba(11, 17, 32, 0.9)',
                     border: '1px solid var(--neon-blue-10)',
@@ -1782,9 +1851,59 @@ export default function VideoPlayer({
                       )}
                       style={q.index === currentQuality ? { background: 'var(--neon-blue-6)' } : {}}
                     >
-                      {q.label}
+                      <span>{q.label}</span>
+                      {q.bitrate ? (
+                        <span className="ml-2 text-[11px] text-surface-400">
+                          {(q.bitrate / 1_000_000).toFixed(1)} Mbps
+                        </span>
+                      ) : null}
                     </button>
                   ))}
+
+                  {/* 实时状态面板：仅 HLS 转码模式有意义 */}
+                  {mode !== 'direct' && mode !== 'remux' && (
+                    <div className="mt-1 border-t border-white/10 px-4 py-2.5 text-[11px] leading-relaxed text-surface-400">
+                      <div className="mb-1 text-surface-300">实时状态</div>
+                      {currentBitrate > 0 && (
+                        <div className="flex justify-between">
+                          <span>当前码率</span>
+                          <span className="text-white">{(currentBitrate / 1_000_000).toFixed(2)} Mbps</span>
+                        </div>
+                      )}
+                      {bandwidthEstimate > 0 && (
+                        <div className="flex justify-between">
+                          <span>带宽评估</span>
+                          <span className="text-white">{(bandwidthEstimate / 1_000_000).toFixed(2)} Mbps</span>
+                        </div>
+                      )}
+                      {throttleStatus && (
+                        <>
+                          <div className="flex justify-between">
+                            <span>转码</span>
+                            <span className={throttleStatus.running ? 'text-emerald-400' : 'text-surface-500'}>
+                              {throttleStatus.running ? '运行中' : '空闲'}
+                            </span>
+                          </div>
+                          {throttleStatus.active_qualities && throttleStatus.active_qualities.length > 0 && (
+                            <div className="flex justify-between">
+                              <span>活跃档位</span>
+                              <span className="text-white">{throttleStatus.active_qualities.join('/')}</span>
+                            </div>
+                          )}
+                          {throttleStatus.suspended_count > 0 && (
+                            <div className="flex justify-between">
+                              <span>已挂起</span>
+                              <span className="text-amber-400">{throttleStatus.suspended_count}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span>缓冲领先</span>
+                            <span className="text-white">{throttleStatus.ahead_seconds.toFixed(0)}s</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

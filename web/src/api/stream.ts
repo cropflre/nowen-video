@@ -33,6 +33,41 @@ export const streamApi = {
       params: { position: position.toFixed(2) },
     }),
 
+  // 上报客户端 hls.js 的带宽评估（bit/s），驱动服务端 ABR 档位过滤建议
+  // 服务端会在响应中返回推荐的 maxBitrate（留 20% 余量）和当前节流状态，
+  // 前端可用于：
+  //   1. 下次请求 master.m3u8 时带上 ?maxBitrate=xxx
+  //   2. 在 Settings 菜单显示节流/转码状态
+  reportBandwidth: (mediaId: string, bitrate: number) =>
+    api.post<{
+      ok: boolean
+      reported_bitrate: number
+      recommended_max: number
+      throttle?: {
+        media_id: string
+        running: boolean
+        active_qualities: string[] | null
+        suspended_count: number
+        playback_pos: number
+        transcoded_pos: number
+        ahead_seconds: number
+      }
+    }>(`/stream/${mediaId}/bandwidth`, null, { params: { bitrate: Math.round(bitrate) } }),
+
+  // 独立查询节流/转码状态（低频，5s 一次即可）
+  getThrottleStatus: (mediaId: string) =>
+    api.get<{
+      data: {
+        media_id: string
+        running: boolean
+        active_qualities: string[] | null
+        suspended_count: number
+        playback_pos: number
+        transcoded_pos: number
+        ahead_seconds: number
+      }
+    }>(`/stream/${mediaId}/throttle`),
+
   getPosterUrl: (mediaId: string) =>
     withToken(`/api/media/${mediaId}/poster`),
 

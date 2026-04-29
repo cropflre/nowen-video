@@ -67,7 +67,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Stream:  &StreamHandler{streamService: services.Stream, transcodeService: services.Transcode, logger: logger},
-		User:    &UserHandler{userService: services.User, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
+		User:    &UserHandler{userService: services.User, authService: services.Auth, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
 		Admin: &AdminHandler{
 			userService:       services.User,
 			authService:       services.Auth,

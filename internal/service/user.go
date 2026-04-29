@@ -196,14 +196,35 @@ func (s *UserService) SetUserDisabled(id string, disabled bool) error {
 
 // UpdateSelfProfileRequest 用户自助更新资料
 type UpdateSelfProfileRequest struct {
+	Username *string `json:"username,omitempty" binding:"omitempty,min=3,max=32"`
 	Nickname *string `json:"nickname,omitempty"`
 	Email    *string `json:"email,omitempty"`
 	Avatar   *string `json:"avatar,omitempty"`
 }
 
-// UpdateSelfProfile 用户更新自己的昵称、邮箱、头像
-func (s *UserService) UpdateSelfProfile(userID string, req *UpdateSelfProfileRequest) (*model.User, error) {
+// UpdateSelfProfile 用户更新自己的资料（用户名/昵称/邮箱/头像）
+// 返回值：更新后的用户、用户名是否发生变更（用于上层决定是否签发新 Token）、错误
+// 注意：用户名变更会自增 token_version 使旧 Token 失效，上层需签发新 Token 以避免当前会话掉线。
+func (s *UserService) UpdateSelfProfile(userID string, req *UpdateSelfProfileRequest) (*model.User, bool, error) {
+	current, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, false, ErrUserNotFound
+	}
+
 	fields := map[string]interface{}{}
+	usernameChanged := false
+
+	if req.Username != nil {
+		newName := *req.Username
+		if newName != current.Username {
+			// 唯一性预检
+			if _, err := s.repo.FindByUsername(newName); err == nil {
+				return nil, false, ErrUserExists
+			}
+			fields["username"] = newName
+			usernameChanged = true
+		}
+	}
 	if req.Nickname != nil {
 		fields["nickname"] = *req.Nickname
 	}
@@ -213,12 +234,23 @@ func (s *UserService) UpdateSelfProfile(userID string, req *UpdateSelfProfileReq
 	if req.Avatar != nil {
 		fields["avatar"] = *req.Avatar
 	}
+
 	if len(fields) > 0 {
 		if err := s.repo.UpdateFields(userID, fields); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return s.repo.FindByID(userID)
+	if usernameChanged {
+		// 用户名随 JWT Claims 漫游，改名后必须自增版本号吊销旧 Token
+		_ = s.repo.IncrTokenVersion(userID)
+		s.logger.Infof("用户 %s 修改了用户名 -> %s", current.Username, *req.Username)
+	}
+
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, false, err
+	}
+	return user, usernameChanged, nil
 }
 
 // DeleteUser 删除用户

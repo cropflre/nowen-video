@@ -356,6 +356,7 @@ func (mp *MediaPerson) BeforeCreate(tx *gorm.DB) error {
 type WatchHistory struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:text"`
 	UserID    string    `json:"user_id" gorm:"index;type:text;not null"`
+	ProfileID string    `json:"profile_id" gorm:"index;type:text"` // Profile 隔离（空=账号级历史，兼容旧数据）
 	MediaID   string    `json:"media_id" gorm:"index;type:text;not null"`
 	Position  float64   `json:"position"`  // 观看进度（秒）
 	Duration  float64   `json:"duration"`  // 总时长（秒）
@@ -371,6 +372,7 @@ type WatchHistory struct {
 type Favorite struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:text"`
 	UserID    string    `json:"user_id" gorm:"index;type:text;not null"`
+	ProfileID string    `json:"profile_id" gorm:"index;type:text"` // Profile 隔离（空=账号级收藏，兼容旧数据）
 	MediaID   string    `json:"media_id" gorm:"index;type:text;not null"`
 	CreatedAt time.Time `json:"created_at"`
 
@@ -820,6 +822,12 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "language", DDL: "ALTER TABLE `series` ADD COLUMN `language` text DEFAULT ''"},
 			{Column: "studio", DDL: "ALTER TABLE `series` ADD COLUMN `studio` text DEFAULT ''"},
 			{Column: "tagline", DDL: "ALTER TABLE `series` ADD COLUMN `tagline` text DEFAULT ''"},
+		},
+		"watch_histories": {
+			{Column: "profile_id", DDL: "ALTER TABLE `watch_histories` ADD COLUMN `profile_id` text DEFAULT ''"},
+		},
+		"favorites": {
+			{Column: "profile_id", DDL: "ALTER TABLE `favorites` ADD COLUMN `profile_id` text DEFAULT ''"},
 		},
 	}
 

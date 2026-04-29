@@ -76,9 +76,18 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 }
 
 // Master 获取HLS主播放列表
+//
+// 支持通过 ?maxBitrate=3000000 参数声明客户端最大可承受码率（bit/s），
+// 服务端将过滤掉超过此上限的档位，配合 hls.js 的 bandwidth-report 实现弱网降档。
 func (h *StreamHandler) Master(c *gin.Context) {
 	id := c.Param("id")
-	playlist, err := h.streamService.GetMasterPlaylist(id)
+	maxBitrate := 0
+	if mb := c.Query("maxBitrate"); mb != "" {
+		if v, err := strconv.Atoi(mb); err == nil && v > 0 {
+			maxBitrate = v
+		}
+	}
+	playlist, err := h.streamService.GetMasterPlaylistFiltered(id, maxBitrate)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -90,6 +99,13 @@ func (h *StreamHandler) Master(c *gin.Context) {
 }
 
 // Segment 提供HLS分片或子播放列表
+//
+// 分片回退顺序：
+//  1. 优先命中主转码目录 /cache/transcode/:id/:quality/seg_NNNN.ts（已转码的范围）
+//  2. 未命中时，回退到按需切片目录 /cache/transcode/:id/:quality/ondemand/seg_NNNN.ts
+//     不存在则独立起 FFmpeg 从 N*2 秒切 2 秒并落盘返回
+//
+// 这样前端 seek 到远未转码区域时可以秒出分片，不必等主转码追上来。
 func (h *StreamHandler) Segment(c *gin.Context) {
 	id := c.Param("id")
 	quality := c.Param("quality")
@@ -108,8 +124,51 @@ func (h *StreamHandler) Segment(c *gin.Context) {
 		return
 	}
 
-	// 提供.ts分片文件
-	if err := h.streamService.ServeSegment(id, quality, segment, c.Writer, c.Request); err != nil {
+	// 先试主转码目录
+	if err := h.streamService.ServeSegment(id, quality, segment, c.Writer, c.Request); err == nil {
+		return
+	}
+
+	// 主转码未产出该分片 → 按需切片兜底
+	if err := h.streamService.ServeOnDemandSegment(id, quality, segment, c.Writer, c.Request); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+}
+
+// AudioPlaylist 按需音轨 playlist
+// GET /api/stream/:id/audio-track/:trackIdx.m3u8
+func (h *StreamHandler) AudioPlaylist(c *gin.Context) {
+	id := c.Param("id")
+	trackParam := c.Param("trackIdx")
+	// trackIdx 在路由里是 ":trackIdx.m3u8" 形式（带扩展名），需要先去掉 .m3u8
+	trackParam = strings.TrimSuffix(trackParam, ".m3u8")
+	trackIdx, err := strconv.Atoi(trackParam)
+	if err != nil || trackIdx < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid track index"})
+		return
+	}
+	playlist, err := h.streamService.GetAudioPlaylist(id, trackIdx)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Content-Type", "application/vnd.apple.mpegurl")
+	c.Header("Cache-Control", "no-cache")
+	c.String(http.StatusOK, playlist)
+}
+
+// AudioSegment 按需音轨分片
+// GET /api/stream/:id/audio-track/:trackIdx/:seg
+func (h *StreamHandler) AudioSegment(c *gin.Context) {
+	id := c.Param("id")
+	trackIdx, err := strconv.Atoi(c.Param("trackIdx"))
+	if err != nil || trackIdx < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid track index"})
+		return
+	}
+	segName := c.Param("seg")
+	if err := h.streamService.ServeAudioSegment(id, trackIdx, segName, c.Writer, c.Request); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
@@ -278,4 +337,67 @@ func (h *StreamHandler) Playback(c *gin.Context) {
 		h.transcodeService.SetPlaybackPosition(id, position)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// Bandwidth 接收前端 hls.js 上报的网络带宽评估（bit/s），
+// 返回带建议的 maxBitrate。前端可在下次请求 master.m3u8 时带上 ?maxBitrate=xxx。
+//
+// POST /api/stream/:id/bandwidth?bitrate=2500000
+//
+// 实现策略：
+//   - 服务端不存储历史带宽（避免成为状态源），仅对客户端的上报做回显/策略建议
+//   - 策略：在上报值基础上留 20% 余量（乘以 0.8），作为推荐 maxBitrate
+//   - 前端 hls.js 的 bandwidthEstimate 已经是 EWMA 平滑后的值，无需再次平滑
+//
+// 这样设计的好处：
+//  1. 幂等、无副作用，重复上报不污染任何状态
+//  2. 弱网切换 master.m3u8 的决策权完全由客户端（hls.js）掌握，
+//     服务端只提供对"档位应该取哪个上限"的建议
+func (h *StreamHandler) Bandwidth(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
+		return
+	}
+	bitrateStr := c.Query("bitrate")
+	if bitrateStr == "" {
+		bitrateStr = c.PostForm("bitrate")
+	}
+	bitrate, err := strconv.Atoi(bitrateStr)
+	if err != nil || bitrate <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bitrate"})
+		return
+	}
+	// 留 20% 余量作为推荐上限
+	recommended := bitrate * 80 / 100
+
+	// 同时返回该 media 的节流/转码状态，前端 UI 就可以一次请求拿齐所有信息
+	// 避免单独再开一个查询端点
+	resp := gin.H{
+		"ok":               true,
+		"reported_bitrate": bitrate,
+		"recommended_max":  recommended,
+	}
+	if h.transcodeService != nil {
+		resp["throttle"] = h.transcodeService.GetMediaThrottleStatus(id)
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ThrottleStatus 返回单个 media 的节流/转码快照。
+// GET /api/stream/:id/throttle
+//
+// 前端播放器 Settings 菜单用此端点做可视化。与 Bandwidth 不同，
+// 这里是纯查询接口、低频（通常 5s 一次），不改变任何状态。
+func (h *StreamHandler) ThrottleStatus(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
+		return
+	}
+	if h.transcodeService == nil {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"media_id": id, "running": false}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": h.transcodeService.GetMediaThrottleStatus(id)})
 }

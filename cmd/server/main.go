@@ -222,6 +222,16 @@ func main() {
 		api.GET("/stream/:id/:quality/:segment", guardByMediaID, handlers.Stream.Segment)
 		// 播放进度上报（驱动 Throttling 节流）
 		api.POST("/stream/:id/playback", guardByMediaID, handlers.Stream.Playback)
+		// 客户端带宽上报（驱动 ABR 档位过滤建议）
+		api.POST("/stream/:id/bandwidth", guardByMediaID, handlers.Stream.Bandwidth)
+		// 节流/转码状态快照（供前端播放器 Settings 菜单可视化）
+		api.GET("/stream/:id/throttle", guardByMediaID, handlers.Stream.ThrottleStatus)
+
+		// 多音轨 HLS 路由（独立于 /stream/:id/:quality/... 避免参数冲突）
+		// /api/audio-track/:id/:trackIdx.m3u8       按需音轨 playlist
+		// /api/audio-track/:id/:trackIdx/:seg        按需音轨分片
+		api.GET("/audio-track/:id/:trackIdx", guardByMediaID, handlers.Stream.AudioPlaylist)
+		api.GET("/audio-track/:id/:trackIdx/:seg", guardByMediaID, handlers.Stream.AudioSegment)
 
 		// 海报/缩略图（不做权限校验：海报属于媒体元信息，不可播放）
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
@@ -419,6 +429,7 @@ func main() {
 		admin.DELETE("/invite-codes/:id", handlers.Admin.DeleteInviteCode)
 		admin.GET("/system", handlers.Admin.SystemInfo)
 		admin.GET("/transcode/status", handlers.Admin.TranscodeStatus)
+		admin.GET("/transcode/throttle", handlers.Admin.TranscodeThrottleStats)
 		admin.POST("/transcode/:taskId/cancel", handlers.Admin.CancelTranscode)
 
 		// TMDb 配置管理

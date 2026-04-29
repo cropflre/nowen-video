@@ -424,7 +424,26 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 }
 
 // GetMasterPlaylist 获取HLS主播放列表（多码率自适应）
+//
+// 行为：
+//  1. 根据原始分辨率筛选可用档位（不上采样）
+//  2. 【ABR 核心】并行预转码所有档位，最低档最早产出保证可播放下限，
+//     hls.js 会在客户端带宽允许时无缝切换到更高档位
+//  3. 返回 Master Playlist，每个 #EXT-X-STREAM-INF 带 BANDWIDTH/RESOLUTION
 func (s *StreamService) GetMasterPlaylist(mediaID string) (string, error) {
+	return s.GetMasterPlaylistFiltered(mediaID, 0)
+}
+
+// GetMasterPlaylistFiltered 带带宽上限过滤的 Master Playlist 生成。
+//
+// maxBitrate > 0 时，只返回码率 <= maxBitrate 的档位（单位 bit/s）。
+// 该参数来自：
+//   - 前端 hls.js 的 bandwidth-report 上报（弱网环境自动降档）
+//   - Emby/Infuse 客户端 PlaybackInfo 请求里的 MaxStreamingBitrate 字段
+//
+// 这样前端/客户端就能在请求 master.m3u8 时通过 ?maxBitrate=xxx 约束返回档位，
+// 避免 hls.js 在高档和低档之间频繁抖动切换。
+func (s *StreamService) GetMasterPlaylistFiltered(mediaID string, maxBitrate int) (string, error) {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return "", ErrMediaNotFound
@@ -438,17 +457,61 @@ func (s *StreamService) GetMasterPlaylist(mediaID string) (string, error) {
 	// 根据原始视频分辨率确定可用的质量选项
 	qualities := s.getAvailableQualities(media)
 
+	// 根据 maxBitrate 过滤（超过客户端上限的档位不提供）
+	if maxBitrate > 0 {
+		filtered := make([]string, 0, len(qualities))
+		for _, q := range qualities {
+			preset, ok := qualityPresets[q]
+			if !ok {
+				continue
+			}
+			if s.estimateBandwidth(preset.VideoBitrate) <= maxBitrate {
+				filtered = append(filtered, q)
+			}
+		}
+		if len(filtered) > 0 {
+			qualities = filtered
+		} else if len(qualities) > 0 {
+			// 所有档位都超过上限时，至少保留最低档，避免返回空列表
+			qualities = qualities[:1]
+		}
+	}
+
+	// 【ABR 核心】触发并行预转码所有档位
+	// startTranscodeInternal 内部会去重（同 media+quality 已有 job 直接复用），
+	// 所以重复调用（客户端切换档位时重新请求 master.m3u8）不会导致重复转码。
+	if s.transcoder != nil {
+		go func() {
+			if _, err := s.transcoder.StartABRTranscode(media, qualities); err != nil {
+				s.logger.Debugf("ABR 预转码提交失败（可能只因所有档位已完成）: %v", err)
+			}
+		}()
+	}
+
+	// 多音轨支持：探测音轨，≥2 条时输出 #EXT-X-MEDIA:TYPE=AUDIO
+	// 单音轨的 media 保持原有行为（音频走主转码的 .ts 里）
+	audioTracks := s.GetAudioTracks(mediaID)
+	hasMultiAudio := len(audioTracks) >= 2
+
 	// 生成master.m3u8
 	var builder strings.Builder
 	builder.WriteString("#EXTM3U\n")
 
+	if hasMultiAudio {
+		builder.WriteString(s.BuildAudioMediaEntries(mediaID, audioTracks))
+	}
+
 	for _, q := range qualities {
 		preset := qualityPresets[q]
 		bandwidth := s.estimateBandwidth(preset.VideoBitrate)
-		builder.WriteString(fmt.Sprintf(
-			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
+		streamInf := fmt.Sprintf(
+			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"",
 			bandwidth, preset.Width, preset.Height, q,
-		))
+		)
+		if hasMultiAudio {
+			streamInf += `,AUDIO="audio"`
+		}
+		builder.WriteString(streamInf + "\n")
 		builder.WriteString(fmt.Sprintf("/api/stream/%s/%s/stream.m3u8\n", mediaID, q))
 	}
 

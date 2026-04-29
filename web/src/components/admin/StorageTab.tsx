@@ -26,6 +26,7 @@ import {
   Toast,
   StatusBadge,
   EyeToggle,
+  EnableRow,
   type ProviderState,
 } from './storage/StorageUIKit'
 
@@ -261,10 +262,20 @@ export default function StorageTab() {
             statusSlot={<StatusBadge state={toState(status?.enabled, status?.connected)} />}
             description={
               <>
-                媒体库路径使用 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-primary-300">webdav://</code> 前缀。
-                扫描时会自动从远程目录拉取文件列表。
+                媒体库路径使用{' '}
+                <code
+                  className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px]"
+                  style={{
+                    background: 'var(--nav-hover-bg)',
+                    color: 'var(--neon-blue)',
+                    border: '1px solid var(--border-default)',
+                  }}
+                >
+                  webdav://
+                </code>{' '}
+                前缀。扫描时会自动从远程目录拉取文件列表。
                 {status?.error && (
-                  <div className="mt-2 text-red-400">
+                  <div className="mt-2 text-red-500 dark:text-red-400">
                     <strong>错误：</strong>{status.error}
                   </div>
                 )}
@@ -272,24 +283,14 @@ export default function StorageTab() {
             }
           >
             {/* 启用开关 */}
-            <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-800/40 border border-surface-700/30 px-4 py-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <Link2 size={16} className="text-primary-300 flex-shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    启用 WebDAV 存储
-                  </div>
-                  <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-                    启用后可为媒体库挂载远程 WebDAV 目录
-                  </div>
-                </div>
-              </div>
-              <Toggle
-                checked={config.enabled}
-                onChange={(v) => setConfig({ ...config, enabled: v })}
-                accent="neon"
-              />
-            </div>
+            <EnableRow
+              icon={<Link2 size={16} />}
+              title="启用 WebDAV 存储"
+              description="启用后可为媒体库挂载远程 WebDAV 目录"
+              checked={config.enabled}
+              onChange={(v) => setConfig({ ...config, enabled: v })}
+              accent="neon"
+            />
 
             {/* 连接 */}
             <FieldGroup title="连接" description="WebDAV 服务器地址与基础路径">
@@ -463,17 +464,38 @@ export default function StorageTab() {
               description={
                 <>
                   将 WebDAV 存储挂载到媒体库后，扫描时会自动从远程读取文件。
-                  媒体库路径需以 <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-primary-300">webdav://</code>、
-                  <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-purple-300">alist://</code> 或
-                  <code className="mx-0.5 rounded bg-surface-900/60 px-1.5 py-0.5 font-mono text-[11px] text-amber-300">s3://</code>
-                  开头才会走远程存储。
+                  媒体库路径需以{' '}
+                  <code
+                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px]"
+                    style={{ background: 'var(--nav-hover-bg)', color: 'var(--neon-blue)', border: '1px solid var(--border-default)' }}
+                  >
+                    webdav://
+                  </code>
+                  、
+                  <code
+                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-purple-600 dark:text-purple-300"
+                    style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}
+                  >
+                    alist://
+                  </code>
+                  {' '}或{' '}
+                  <code
+                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-300"
+                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
+                  >
+                    s3://
+                  </code>
+                  {' '}开头才会走远程存储。
                 </>
               }
             >
               {libraries.length === 0 ? (
                 <div
-                  className="rounded-lg border border-dashed border-surface-700/40 py-10 text-center text-sm"
-                  style={{ color: 'var(--text-tertiary)' }}
+                  className="rounded-lg py-10 text-center text-sm"
+                  style={{
+                    color: 'var(--text-tertiary)',
+                    border: '1px dashed var(--storage-enable-row-border, var(--border-strong))',
+                  }}
                 >
                   暂无媒体库
                 </div>
@@ -487,19 +509,25 @@ export default function StorageTab() {
                     return (
                       <li
                         key={lib.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-surface-700/30 bg-surface-800/30 p-3 transition-colors hover:border-surface-600/50"
+                        className="flex items-center justify-between gap-3 rounded-lg p-3 transition-colors"
+                        style={{
+                          background: 'var(--storage-enable-row-bg, var(--nav-hover-bg))',
+                          border: '1px solid var(--storage-enable-row-border, var(--border-strong))',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--neon-blue)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--storage-enable-row-border, var(--border-strong))')}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <div
                             className={
                               'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ' +
                               (isWebDAV
-                                ? 'bg-primary-400/10 text-primary-300'
+                                ? 'bg-primary-400/10 text-primary-600 dark:text-primary-300'
                                 : isAlist
-                                ? 'bg-purple-500/10 text-purple-300'
+                                ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300'
                                 : isS3
-                                ? 'bg-amber-500/10 text-amber-300'
-                                : 'bg-emerald-500/10 text-emerald-300')
+                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300')
                             }
                           >
                             {isWebDAV ? (

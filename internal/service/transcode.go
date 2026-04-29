@@ -67,6 +67,39 @@ type TranscodeService struct {
 	hwAccel   string    // 检测到的硬件加速方式
 	hwAccelMu sync.Once // 硬件加速检测只执行一次
 	wsHub     *WSHub    // WebSocket事件广播
+
+	// ==================== 节流统计（供 admin 观测）====================
+	// 累积挂起时长（秒），atomic 读写
+	throttleSuspendSeconds atomic.Uint64
+	// 累积挂起次数
+	throttleSuspendCount atomic.Uint64
+}
+
+// ThrottleStats 节流统计（对外暴露）
+type ThrottleStats struct {
+	// 当前正在被挂起的 job 数量
+	ActiveSuspended int `json:"active_suspended"`
+	// 累积挂起次数
+	TotalSuspendCount uint64 `json:"total_suspend_count"`
+	// 累积挂起秒数（估算节省的 GPU/CPU 计算时间）
+	TotalSuspendSeconds uint64 `json:"total_suspend_seconds"`
+}
+
+// GetThrottleStats 返回节流统计
+func (s *TranscodeService) GetThrottleStats() ThrottleStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	active := 0
+	for _, j := range s.running {
+		if j.suspended.Load() == 1 {
+			active++
+		}
+	}
+	return ThrottleStats{
+		ActiveSuspended:     active,
+		TotalSuspendCount:   s.throttleSuspendCount.Load(),
+		TotalSuspendSeconds: s.throttleSuspendSeconds.Load(),
+	}
 }
 
 // SetWSHub 设置WebSocket Hub（延迟注入）
@@ -243,6 +276,41 @@ func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
 // StartTranscode 发起转码任务
 func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*model.TranscodeTask, error) {
 	return s.startTranscodeInternal(media, quality, 0)
+}
+
+// StartABRTranscode 并行启动多档位 ABR 预转码。
+//
+// 与 StartTranscode 的区别：
+//   - 传入多档位（qualities），本函数会批量提交任务，最低档标记为高优先级插队，
+//     其余档位按 qualities 顺序排队；
+//   - 每档位独立走 StartTranscode 的去重/缓存复用逻辑，已完成或正在跑的会直接复用；
+//   - 用户通过 Master Playlist 播放时，hls.js 会根据客户端带宽在档位间无缝切换，
+//     最低档优先产出保证可播放下限，高档异步追赶。
+//
+// 注意：调用方应当基于 GetAvailableQualities(media) 过滤，避免提交超过原始分辨率的档位。
+func (s *TranscodeService) StartABRTranscode(media *model.Media, qualities []string) ([]*model.TranscodeTask, error) {
+	if len(qualities) == 0 {
+		return nil, fmt.Errorf("qualities 不能为空")
+	}
+	tasks := make([]*model.TranscodeTask, 0, len(qualities))
+	for _, q := range qualities {
+		if _, ok := qualityPresets[q]; !ok {
+			s.logger.Warnf("StartABRTranscode: 跳过未知档位 %s", q)
+			continue
+		}
+		task, err := s.startTranscodeInternal(media, q, 0)
+		if err != nil {
+			// 单档失败不影响其他档位继续提交
+			s.logger.Warnf("StartABRTranscode: 启动 %s 档位失败: %v", q, err)
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("所有档位启动均失败")
+	}
+	s.logger.Infof("ABR 并行预转码已提交: media=%s qualities=%v", media.ID, qualities)
+	return tasks, nil
 }
 
 // StartTranscodeWithStart 从指定秒数开始转码（用于播放器 seek 场景的快速预热）
@@ -607,13 +675,23 @@ func (s *TranscodeService) throttleLoop(job *TranscodeJob) {
 	ticker := time.NewTicker(throttleTickInterval)
 	defer ticker.Stop()
 
+	// 记录最近一次挂起的时间戳（Unix 秒），用于累计 throttleSuspendSeconds
+	var suspendedAt int64
+
 	// 未收到任何播放位置上报前，不进行节流（避免在 prebuffer 阶段误暂停）
 	// 策略：playbackPos==0 且 transcodedPos<30 时视为"刚开始"，跳过节流判断。
 	for {
 		select {
 		case <-job.throttleDone:
+			// 退出前把剩余挂起时长结算
+			if suspendedAt > 0 {
+				s.throttleSuspendSeconds.Add(uint64(time.Now().Unix() - suspendedAt))
+			}
 			return
 		case <-job.Cancel:
+			if suspendedAt > 0 {
+				s.throttleSuspendSeconds.Add(uint64(time.Now().Unix() - suspendedAt))
+			}
 			return
 		case <-ticker.C:
 		}
@@ -635,6 +713,8 @@ func (s *TranscodeService) throttleLoop(job *TranscodeJob) {
 			if job.cmd != nil && job.cmd.Process != nil {
 				if err := suspendProcess(job.cmd.Process); err == nil {
 					job.suspended.Store(1)
+					suspendedAt = time.Now().Unix()
+					s.throttleSuspendCount.Add(1)
 					s.logger.Debugf("[throttle] suspend ffmpeg media=%s quality=%s ahead=%.1fs",
 						job.Media.ID, job.Quality, ahead)
 				} else {
@@ -646,6 +726,10 @@ func (s *TranscodeService) throttleLoop(job *TranscodeJob) {
 			if job.cmd != nil && job.cmd.Process != nil {
 				if err := resumeProcess(job.cmd.Process); err == nil {
 					job.suspended.Store(0)
+					if suspendedAt > 0 {
+						s.throttleSuspendSeconds.Add(uint64(time.Now().Unix() - suspendedAt))
+						suspendedAt = 0
+					}
 					s.logger.Debugf("[throttle] resume ffmpeg media=%s quality=%s ahead=%.1fs",
 						job.Media.ID, job.Quality, ahead)
 				} else {
@@ -666,6 +750,49 @@ func (s *TranscodeService) SetPlaybackPosition(mediaID string, positionSec float
 			j.SetPlaybackPosition(positionSec)
 		}
 	}
+}
+
+// MediaThrottleStatus 单个 media 的当前节流/转码快照，供前端 UI 显示
+type MediaThrottleStatus struct {
+	MediaID           string  `json:"media_id"`
+	Running           bool    `json:"running"`            // 是否仍有 FFmpeg 在运行
+	ActiveQualityList []string `json:"active_qualities"`  // 正在转码的档位
+	SuspendedCount    int     `json:"suspended_count"`    // 其中被挂起的档位数
+	PlaybackPos       float64 `json:"playback_pos"`       // 最近一次上报的播放位置（秒）
+	TranscodedPos     float64 `json:"transcoded_pos"`     // 最快档位的转码前沿（秒）
+	AheadSeconds      float64 `json:"ahead_seconds"`      // 转码前沿 - 播放位置
+}
+
+// GetMediaThrottleStatus 返回单个 media 的节流快照（每档一条记录合并）。
+// 前端播放器 Settings 菜单每 5s 查询一次，用于可视化展示。
+func (s *TranscodeService) GetMediaThrottleStatus(mediaID string) MediaThrottleStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	status := MediaThrottleStatus{MediaID: mediaID}
+	var maxTranscoded float64
+	var playback float64
+	for _, j := range s.running {
+		if j.Media.ID != mediaID {
+			continue
+		}
+		status.Running = true
+		status.ActiveQualityList = append(status.ActiveQualityList, j.Quality)
+		if j.suspended.Load() == 1 {
+			status.SuspendedCount++
+		}
+		if t := j.getTranscodedPosition(); t > maxTranscoded {
+			maxTranscoded = t
+		}
+		if p := j.getPlaybackPosition(); p > playback {
+			playback = p
+		}
+	}
+	status.PlaybackPos = playback
+	status.TranscodedPos = maxTranscoded
+	if maxTranscoded > playback {
+		status.AheadSeconds = maxTranscoded - playback
+	}
+	return status
 }
 
 // FindRunningJob 根据 media+quality 查找正在运行的 job（用于 Throttle 调试等）

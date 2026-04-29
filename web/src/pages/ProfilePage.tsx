@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/api'
+import { authApi, userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import {
@@ -10,20 +10,59 @@ import {
   Save,
   Loader2,
   LogOut,
+  AtSign,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function ProfilePage() {
-  const { user, logout } = useAuthStore()
+  const { user, setAuth, updateUser, logout } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
   const { t } = useTranslation()
+
+  // 修改用户名
+  const [newUsername, setNewUsername] = useState(user?.username ?? '')
+  const [savingUsername, setSavingUsername] = useState(false)
 
   // 修改密码
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPwd, setChangingPwd] = useState(false)
+
+  const handleChangeUsername = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = newUsername.trim()
+    if (trimmed.length < 3 || trimmed.length > 32) {
+      toast.error(t('profile.usernameInvalid'))
+      return
+    }
+    if (trimmed === user?.username) {
+      return
+    }
+
+    setSavingUsername(true)
+    try {
+      const res = await userApi.updateProfile({ username: trimmed })
+      const updatedUser = res.data.data
+      // 若后端一并下发新 Token，则直接替换认证信息，避免因 token_version 自增而掉线
+      if (res.data.token) {
+        setAuth(res.data.token, updatedUser)
+      } else {
+        updateUser(updatedUser)
+      }
+      toast.success(t('profile.usernameChangeSuccess'))
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        toast.error(t('profile.usernameTaken'))
+      } else {
+        const msg = err?.response?.data?.error
+        toast.error(msg || t('profile.usernameChangeFailed'))
+      }
+    } finally {
+      setSavingUsername(false)
+    }
+  }
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,6 +139,42 @@ toast.error(t('profile.passwordMismatch'))
             </div>
           </div>
         </div>
+      </section>
+
+      {/* 修改用户名 */}
+      <section>
+        <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <AtSign size={20} className="text-neon/60" />
+          {t('profile.updateUsername')}
+        </h2>
+        <form onSubmit={handleChangeUsername} className="glass-panel rounded-2xl p-6 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+              {t('profile.username')}
+            </label>
+            <input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              className="input w-full"
+              placeholder={t('profile.usernamePlaceholder')}
+              minLength={3}
+              maxLength={32}
+              required
+            />
+            <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+              {t('profile.usernameHint')}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
+            className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
+          >
+            {savingUsername ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {t('profile.saveUsername')}
+          </button>
+        </form>
       </section>
 
       {/* 修改密码 */}

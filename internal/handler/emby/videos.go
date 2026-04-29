@@ -119,7 +119,9 @@ func (h *Handler) OriginalVideoHandler(c *gin.Context) {
 // ==================== HLS 流 ====================
 
 // HLSMasterHandler 对应 GET /Videos/{id}/master.m3u8。
-// 复用现有的 StreamService.GetMasterPlaylist，返回 master playlist 文本。
+// 复用现有的 StreamService.GetMasterPlaylistFiltered，返回 master playlist 文本。
+// 支持 ?maxBitrate=xxx 参数（由 PlaybackInfo 的 MaxStreamingBitrate 带入），
+// 用于过滤超过客户端网络上限的档位。
 func (h *Handler) HLSMasterHandler(c *gin.Context) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
@@ -127,7 +129,11 @@ func (h *Handler) HLSMasterHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "Item not found"})
 		return
 	}
-	playlist, err := h.stream.GetMasterPlaylist(uuid)
+	maxBitrate := 0
+	if v := c.Query("maxBitrate"); v != "" {
+		maxBitrate = atoiSafe(v)
+	}
+	playlist, err := h.stream.GetMasterPlaylistFiltered(uuid, maxBitrate)
 	if err != nil {
 		h.logger.Warnf("[emby] master playlist failed media=%s err=%v", uuid, err)
 		c.JSON(http.StatusNotFound, gin.H{"Error": "HLS not available"})

@@ -13,6 +13,7 @@ import (
 // UserHandler 用户处理器
 type UserHandler struct {
 	userService  *service.UserService
+	authService  *service.AuthService
 	mediaService *service.MediaService
 	loginLogRepo *repository.LoginLogRepo
 	logger       *zap.SugaredLogger
@@ -29,7 +30,8 @@ func (h *UserHandler) Profile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": user})
 }
 
-// UpdateProfile 更新当前用户的资料（昵称/邮箱/头像）
+// UpdateProfile 更新当前用户的资料（用户名/昵称/邮箱/头像）
+// 若用户名发生变更，会一并下发新 Token，避免当前会话因 token_version 自增而掉线。
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	var req service.UpdateSelfProfileRequest
@@ -37,12 +39,28 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
 		return
 	}
-	user, err := h.userService.UpdateSelfProfile(userID.(string), &req)
+	user, usernameChanged, err := h.userService.UpdateSelfProfile(userID.(string), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		switch err {
+		case service.ErrUserExists:
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case service.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			h.logger.Errorf("更新资料失败: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新失败"})
+		}
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": user})
+
+	resp := gin.H{"data": user}
+	if usernameChanged && h.authService != nil {
+		if token, tokenErr := h.authService.RefreshToken(userID.(string)); tokenErr == nil {
+			resp["token"] = token.Token
+			resp["expires_at"] = token.ExpiresAt
+		}
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // LoginLogs 当前用户查看自己的登录历史

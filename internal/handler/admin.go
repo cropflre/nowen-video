@@ -379,6 +379,18 @@ func (h *AdminHandler) TranscodeStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+// TranscodeThrottleStats 返回节流统计
+// GET /admin/transcode/throttle
+//
+// 用于监控节流策略对 GPU/CPU 的节省效果。字段：
+//   - active_suspended：当前处于挂起状态的 FFmpeg 进程数
+//   - total_suspend_count：服务启动以来累积挂起次数
+//   - total_suspend_seconds：服务启动以来累积挂起秒数（近似等于节省的 GPU/CPU 计算时间）
+func (h *AdminHandler) TranscodeThrottleStats(c *gin.Context) {
+	stats := h.transcodeService.GetThrottleStats()
+	c.JSON(http.StatusOK, gin.H{"data": stats})
+}
+
 // CancelTranscode 取消正在运行的转码任务
 func (h *AdminHandler) CancelTranscode(c *gin.Context) {
 	taskID := c.Param("taskId")
