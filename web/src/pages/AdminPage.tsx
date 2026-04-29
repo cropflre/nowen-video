@@ -258,7 +258,6 @@ export default function AdminPage() {
   const [doubanImportStatus, setDoubanImportStatus] = useState<DoubanImportTokenStatus | null>(null)
   const [doubanImportLoading, setDoubanImportLoading] = useState(false)
   const [doubanImportCopied, setDoubanImportCopied] = useState<'script' | 'bookmarklet' | null>(null)
-  const [doubanImportRemaining, setDoubanImportRemaining] = useState(0)
 
   // WebSocket 实时进度
   const { connected, on, off } = useWebSocket()
