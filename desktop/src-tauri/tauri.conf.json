@@ -51,12 +51,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "resources/mpv/libmpv-2.dll",
-      "resources/shaders/*.glsl",
-      "resources/yt-dlp.exe",
-      "resources/fonts/*"
-    ],
+    "resources": {
+      "resources/mpv/libmpv-2.dll": "./libmpv-2.dll",
+      "resources/yt-dlp.exe": "./yt-dlp.exe",
+      "resources/shaders/": "./resources/shaders/",
+      "resources/fonts/": "./resources/fonts/"
+    },
     "externalBin": [
       "bin/nowen-video"
     ],
