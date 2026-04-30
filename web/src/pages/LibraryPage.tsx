@@ -64,6 +64,18 @@ export default function LibraryPage() {
     setSearchParams(params, { replace: true })
   }, [searchParams, setSearchParams])
 
+  // 每页数量变化时同步到 URL，并重置到第一页
+  const setSize = useCallback((newSize: number) => {
+    const params = new URLSearchParams(searchParams)
+    if (newSize === 30) {
+      params.delete('limit')
+    } else {
+      params.set('limit', String(newSize))
+    }
+    params.delete('page')
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
+
   // 切换媒体库时重置状态
   useEffect(() => {
     // 重置分页参数
@@ -90,7 +102,7 @@ export default function LibraryPage() {
       })
       .catch(() => { toast.error('加载媒体库内容失败') })
       .finally(() => setLoading(false))
-  }, [id, page])
+  }, [id, page, size])
 
   const totalPages = Math.ceil(total / size)
   const hasSeries = seriesList.length > 0
@@ -528,7 +540,9 @@ export default function LibraryPage() {
             totalPages={totalPages}
             total={total}
             pageSize={size}
+            pageSizeOptions={[20, 30, 50, 100]}
             onPageChange={setPage}
+            onPageSizeChange={setSize}
           />
 
           {/* 空状态 */}

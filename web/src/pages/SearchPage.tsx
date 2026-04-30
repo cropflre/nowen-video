@@ -45,12 +45,12 @@ export default function SearchPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
-  const size = 30
   const toast = useToast()
   const { t } = useTranslation()
 
   // 从 URL 参数读取分页状态
   const page = parseInt(searchParams.get('page') || '1', 10) || 1
+  const size = parseInt(searchParams.get('size') || '30', 10) || 30
 
   // 分页变化时同步到 URL
   const setPage = useCallback((newPage: number) => {
@@ -60,6 +60,18 @@ export default function SearchPage() {
     } else {
       params.set('page', String(newPage))
     }
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  // 每页数量变化时同步到 URL，并重置到第一页
+  const setSize = useCallback((newSize: number) => {
+    const params = new URLSearchParams(searchParams)
+    if (newSize === 30) {
+      params.delete('size')
+    } else {
+      params.set('size', String(newSize))
+    }
+    params.delete('page')
     setSearchParams(params, { replace: true })
   }, [searchParams, setSearchParams])
 
@@ -125,7 +137,7 @@ export default function SearchPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterType, sortBy, yearRange, minRating])
+  }, [filterType, sortBy, yearRange, minRating, size])
 
   // 防抖搜索
   useEffect(() => {
@@ -189,12 +201,12 @@ export default function SearchPage() {
     }
   }, [page, query, doSearch])
 
-// 筛选/排序变化时重新搜索
+// 筛选/排序/每页数量变化时重新搜索（回到第 1 页）
   useEffect(() => {
     if (query.trim() && searched) {
       doSearch(query, 1)
     }
-  }, [filterType, sortBy, yearRange, minRating])
+  }, [filterType, sortBy, yearRange, minRating, size])
 
   const totalPages = Math.ceil(total / size)
   const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0
@@ -413,7 +425,9 @@ placeholder={t('search.searchPlaceholder')}
         totalPages={totalPages}
         total={total}
         pageSize={size}
+        pageSizeOptions={[20, 30, 50, 100]}
         onPageChange={setPage}
+        onPageSizeChange={setSize}
       />
     </div>
   )
