@@ -260,30 +260,45 @@ fi
 if [ "$ASSUME_YES" != "1" ]; then
     step "发布选项（回车使用默认值）"
 
-    # 1) 构建模式
+    # 1) 构建模式（傻瓜式菜单：直接按数字选，不用懂 linux/amd64 这种平台串）
     if [ "$EXPLICIT_MULTIARCH" = "0" ] && [ "$EXPLICIT_PLATFORM" = "0" ]; then
-        echo "  构建模式："
-        echo "    ${C_GREEN}1)${C_RESET} 多架构（${DEFAULT_PLATFORMS}） ${C_BOLD}[默认，推荐]${C_RESET}"
-        echo "    2) 仅本机架构（最快，仅本地自用）"
-        echo "    3) 自定义平台列表"
-        read -r -p "  选择 [1/2/3]（默认 1）: " mode_ans
+        echo "  请选择要发布的架构："
+        echo "    ${C_GREEN}1)${C_RESET} amd64 + arm64  ${C_BOLD}[默认，推荐]${C_RESET}  适合同时发布到服务器和 ARM 设备"
+        echo "    2) 仅 amd64               只发 x86_64（服务器/PC/NAS）"
+        echo "    3) 仅 arm64               只发 ARM64（树莓派/OES/A311D/RK 系列等）"
+        echo "    4) 仅本机架构             最快，仅本地自测用（不推送多架构 manifest）"
+        echo "    5) 自定义平台列表         进阶：手动输入 linux/xxx,linux/yyy"
+        read -r -p "  选择 [1/2/3/4/5]（默认 1）: " mode_ans
         case "${mode_ans:-1}" in
             1|"")
                 MULTIARCH=1
                 PLATFORMS="$DEFAULT_PLATFORMS"
+                info "已选择：amd64 + arm64"
                 ;;
             2)
-                MULTIARCH=0
+                MULTIARCH=1
+                PLATFORMS="linux/amd64"
+                info "已选择：仅 amd64"
                 ;;
             3)
                 MULTIARCH=1
+                PLATFORMS="linux/arm64"
+                info "已选择：仅 arm64"
+                ;;
+            4)
+                MULTIARCH=0
+                info "已选择：仅本机架构"
+                ;;
+            5)
+                MULTIARCH=1
                 read -r -p "  输入平台列表（逗号分隔，如 linux/amd64,linux/arm64,linux/arm/v7）: " custom_platforms
-                if [ -z "$custom_platforms" ]; then
+                if [ -z "${custom_platforms// }" ]; then
                     warn "未输入，回退到默认 $DEFAULT_PLATFORMS"
                     PLATFORMS="$DEFAULT_PLATFORMS"
                 else
                     PLATFORMS="$custom_platforms"
                 fi
+                info "已选择：${PLATFORMS}"
                 ;;
             *)
                 die "无效选择：$mode_ans"
