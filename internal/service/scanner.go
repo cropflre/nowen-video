@@ -90,12 +90,12 @@ var xiaoyaCategoryDirs = map[string]bool{
 // xiaoyaSkipDirs 完全跳过（不扫描内部）的特殊目录
 // 比较时会忽略大小写
 var xiaoyaSkipDirs = map[string]bool{
-	"iso":  true,
-	"json": true,
-	"画质演示":              true,
-	"画质演示测试":            true,
+	"iso":    true,
+	"json":   true,
+	"画质演示":   true,
+	"画质演示测试": true,
 	"画质演示测试（4k，8k，hdr，dolby）": true,
-	"bdmv":  true, // 完整蓝光结构，当前不支持解析
+	"bdmv":        true, // 完整蓝光结构，当前不支持解析
 	"certificate": true,
 	"backup":      true,
 }
@@ -488,7 +488,6 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 	return uniq
 }
 
-
 // SetOnScanComplete 设置扫描完成回调（用于触发视频预处理）
 func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
 	s.onScanComplete = fn
@@ -596,7 +595,9 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		videoFiles++
 
 		// P0: 文件大小过滤（启用 MinFileSize 配置）
-		if library.EnableFileFilter && library.MinFileSize > 0 {
+		// 注意：.strm 是纯文本的远程流索引文件（通常仅几百字节），
+		// 其"大小"与实际媒体内容无关，必须豁免此过滤，否则会被误判为小样片而跳过
+		if library.EnableFileFilter && library.MinFileSize > 0 && ext != ".strm" {
 			minBytes := int64(library.MinFileSize) * 1024 * 1024
 			if info.Size() < minBytes {
 				s.logger.Debugf("跳过过小文件(%dMB < %dMB): %s",
@@ -893,8 +894,8 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 		entry    os.DirEntry
 		rootPath string
 	}
-	var movieDirs []movieDirEntry      // 被判定为电影的目录
-	var looseVideoFiles []looseEntry   // 根目录散落的视频文件
+	var movieDirs []movieDirEntry    // 被判定为电影的目录
+	var looseVideoFiles []looseEntry // 根目录散落的视频文件
 
 	for _, root := range mediaRoots {
 		entries, err := s.readDirLibraryPath(root)
