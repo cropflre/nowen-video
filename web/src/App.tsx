@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
+import { DesktopEventBinder, UpdateBanner } from '@/desktop'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -94,6 +95,10 @@ export default function App() {
     <ToastProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
+        {/* 桌面端事件绑定器（仅 Tauri 环境生效） */}
+        <DesktopEventBinder />
+        {/* 桌面端自动更新横幅 */}
+        <UpdateBanner />
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* 公开路由 */}

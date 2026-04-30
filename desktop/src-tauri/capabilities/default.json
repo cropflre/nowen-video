@@ -1,0 +1,77 @@
+
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "默认能力清单：允许主窗口调用桌面端所需的核心 API",
+  "windows": ["main", "mpv-embed"],
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "core:window:default",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-close",
+    "core:webview:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "core:path:default",
+    "core:resources:default",
+    "core:menu:default",
+    "core:tray:default",
+
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-confirm",
+
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-read-file",
+    "fs:allow-exists",
+    "fs:allow-stat",
+
+    "shell:default",
+    "shell:allow-open",
+
+    "http:default",
+
+    "os:default",
+    "os:allow-platform",
+    "os:allow-arch",
+    "os:allow-version",
+    "os:allow-family",
+    "os:allow-os-type",
+    "os:allow-hostname",
+    "os:allow-locale",
+
+    "process:default",
+    "process:allow-exit",
+    "process:allow-restart",
+
+    "notification:default",
+    "notification:allow-notify",
+
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download",
+    "updater:allow-install",
+    "updater:allow-download-and-install",
+
+    "deep-link:default",
+    "deep-link:allow-get-current",
+
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered"
+  ]
+}

@@ -1,0 +1,76 @@
+[package]
+name = "nowen-video-desktop"
+version = "0.1.0"
+description = "nowen-video 桌面客户端（Tauri + libmpv 双内核）"
+authors = ["nowen-video team"]
+edition = "2021"
+rust-version = "1.77"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = ["protocol-asset", "tray-icon", "image-png"] }
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-http = "2.0"
+tauri-plugin-os = "2.0"
+tauri-plugin-process = "2.0"
+tauri-plugin-notification = "2.0"
+tauri-plugin-updater = "2.0"
+tauri-plugin-deep-link = "2.0"
+tauri-plugin-single-instance = { version = "2.0", features = ["deep-link"] }
+tauri-plugin-global-shortcut = "2.0"
+
+# JSON 处理
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 日志
+log = "0.4"
+env_logger = "0.11"
+
+# 异步运行时
+tokio = { version = "1.0", features = ["full"] }
+
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+
+# HTTP 客户端（健康检查 sidecar）
+reqwest = { version = "0.12", features = ["json"] }
+
+# 系统信息
+sysinfo = "0.31"
+
+# 平台路径 / 二进制查找
+which = "6.0"
+dirs = "5.0"
+
+# URL 解析（deep link）
+url = "2.5"
+
+# libmpv FFI 嵌入（M4）
+# 通过 feature 开关：启用时才链接 libmpv 动态库，未启用走外部进程回退
+libmpv2 = { version = "4.1", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Tauri 的 WebviewWindow::hwnd() 返回 windows::HWND，需要该包在类型路径中可用
+windows = { version = "0.56", features = ["Win32_Foundation"] }
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+# 启用 libmpv FFI 嵌入（需系统安装 libmpv 开发库）
+embed-mpv = ["dep:libmpv2"]
+
+[profile.release]
+panic = "abort"      # 减小产物体积
+codegen-units = 1    # 最佳优化
+lto = true           # 链接时优化
+opt-level = "s"      # 优化体积
+strip = true         # 去除调试符号

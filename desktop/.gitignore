@@ -1,0 +1,11 @@
+
+# Tauri 产物
+src-tauri/target/
+src-tauri/gen/
+
+# sidecar 构建产物（按平台动态生成）
+bin/
+
+# IDE
+.vscode/
+.idea/
