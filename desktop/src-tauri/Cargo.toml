@@ -10,6 +10,8 @@ rust-version = "1.77"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
+# M2: build.rs 用 cc 定位 MSVC 工具链（lib.exe）
+cc = "1.0"
 
 [dependencies]
 tauri = { version = "2.0", features = ["protocol-asset", "tray-icon", "image-png"] }
@@ -53,8 +55,8 @@ dirs = "5.0"
 # URL 解析（deep link）
 url = "2.5"
 
-# libmpv FFI 嵌入（M4）
-# 通过 feature 开关：启用时才链接 libmpv 动态库，未启用走外部进程回退
+# libmpv FFI 嵌入（M2 默认启用，Hills Lite 核心能力）
+# build.rs 会自动从 resources/mpv/libmpv-2.dll 生成 MSVC 导入库
 libmpv2 = { version = "4.1", optional = true }
 
 # 窗口视觉特效：Mica / Acrylic / Vibrancy（M1 Hills 化核心视觉）
@@ -69,10 +71,11 @@ windows = { version = "0.56", features = [
 ] }
 
 [features]
+default = ["embed-mpv"]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
-# 启用 libmpv FFI 嵌入（需系统安装 libmpv 开发库）
+# 启用 libmpv FFI 嵌入（build.rs 会从 resources/mpv/libmpv-2.dll 自动生成 mpv.lib）
 embed-mpv = ["dep:libmpv2"]
 
 [profile.release]

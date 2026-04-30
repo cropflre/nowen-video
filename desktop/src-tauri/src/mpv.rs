@@ -339,8 +339,13 @@ pub struct PlayOptions {
 #[cfg(feature = "embed-mpv")]
 mod embed {
     use super::PlayOptions;
-    use anyhow::{Context, Result};
+    use anyhow::{anyhow, Result};
     use libmpv2::{Mpv, SetData};
+
+    /// libmpv2::Error -> anyhow::Error 桥接（libmpv2::Error 未实现 StdError，不能用 .context()）
+    fn map_err<T>(r: std::result::Result<T, libmpv2::Error>, msg: impl std::fmt::Display) -> Result<T> {
+        r.map_err(|e| anyhow!("{}: {:?}", msg, e))
+    }
 
     pub struct EmbeddedMpv {
         mpv: Mpv,
@@ -348,10 +353,10 @@ mod embed {
 
     impl EmbeddedMpv {
         pub fn new(wid: i64, options: &PlayOptions) -> Result<Self> {
-            let mpv = Mpv::new().context("创建 libmpv 实例失败")?;
+            let mpv = map_err(Mpv::new(), "创建 libmpv 实例失败")?;
 
             // 嵌入窗口（将 libmpv 渲染到指定原生窗口）
-            mpv.set_property("wid", wid).context("设置 wid 失败")?;
+            map_err(mpv.set_property("wid", wid), "设置 wid 失败")?;
 
             // ========== 通用核心参数 ==========
             mpv.set_property("keep-open", "yes").ok();
@@ -449,23 +454,22 @@ mod embed {
         }
 
         pub fn loadfile(&self, url: &str) -> Result<()> {
-            self.mpv
-                .command("loadfile", &[url, "replace"])
-                .context("loadfile 失败")
+            map_err(
+                self.mpv.command("loadfile", &[url, "replace"]),
+                "loadfile 失败",
+            )
         }
 
         pub fn command(&self, cmd: &str, args: &[String]) -> Result<()> {
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            self.mpv
-                .command(cmd, &arg_refs)
-                .with_context(|| format!("mpv {} 命令失败", cmd))
+            map_err(self.mpv.command(cmd, &arg_refs), format!("mpv {} 命令失败", cmd))
         }
 
         pub fn set_property(&self, name: &str, value: &str) -> Result<()> {
-            // libmpv2 的 set_property 对 &str 有实现
-            self.mpv
-                .set_property(name, value.to_string())
-                .with_context(|| format!("设置 mpv 属性 {} 失败", name))
+            map_err(
+                self.mpv.set_property(name, value.to_string()),
+                format!("设置 mpv 属性 {} 失败", name),
+            )
         }
     }
 

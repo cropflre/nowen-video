@@ -35,6 +35,10 @@ fn main() {
     log::info!("   nowen-video Desktop v{}", env!("CARGO_PKG_VERSION"));
     log::info!("========================================");
 
+    // M2: 把打包的 libmpv-2.dll 目录加入 DLL 搜索路径（必须在任何 mpv 调用之前）
+    #[cfg(all(target_os = "windows", feature = "embed-mpv"))]
+    ensure_libmpv_dll_path();
+
     let settings = settings::Settings::load().unwrap_or_else(|e| {
         log::warn!("加载应用设置失败，使用默认值: {}", e);
         settings::Settings::default()
@@ -244,4 +248,64 @@ fn main() {
     builder
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
+}
+
+/// M2: 把 libmpv-2.dll 所在目录加入进程 DLL 搜索路径
+///
+/// 搜索优先级（命中即返回）：
+/// 1. 开发模式 `<manifest_dir>/resources/mpv`（cargo run 时用）
+/// 2. 安装后 `<exe_dir>/resources/mpv`（打包后相对可执行文件）
+/// 3. 安装后 `<exe_dir>`（DLL 直接并排 exe 的情况）
+#[cfg(all(target_os = "windows", feature = "embed-mpv"))]
+fn ensure_libmpv_dll_path() {
+    use std::path::PathBuf;
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    // ① 开发模式：CARGO_MANIFEST_DIR 仅在 build 时设，但 option_env 让运行时也能拿到
+    if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
+        candidates.push(PathBuf::from(manifest).join("resources").join("mpv"));
+    }
+    // ② exe 同级 resources/mpv（Tauri bundle resource 默认释放位置）
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("resources").join("mpv"));
+            candidates.push(dir.to_path_buf());
+        }
+    }
+
+    for dir in candidates {
+        let dll = dir.join("libmpv-2.dll");
+        if dll.exists() {
+            log::info!("libmpv-2.dll 位于 {}", dll.display());
+            add_to_dll_search_path(&dir);
+            return;
+        }
+    }
+
+    log::warn!("未找到 libmpv-2.dll，嵌入式播放将不可用（可回退到外部进程）");
+}
+
+#[cfg(all(target_os = "windows", feature = "embed-mpv"))]
+fn add_to_dll_search_path(dir: &std::path::Path) {
+    use std::os::windows::ffi::OsStrExt;
+
+    // 方案 A: SetDllDirectoryW（影响 LoadLibrary 的默认搜索）
+    let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    unsafe {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn SetDllDirectoryW(path: *const u16) -> i32;
+        }
+        if SetDllDirectoryW(wide.as_ptr()) == 0 {
+            log::warn!("SetDllDirectoryW 失败");
+        }
+    }
+
+    // 方案 B: 同时把目录追加到 PATH（兼容一些用 LoadLibraryEx 的代码路径）
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let mut new_path = std::ffi::OsString::from(dir.as_os_str());
+    new_path.push(";");
+    new_path.push(&path);
+    std::env::set_var("PATH", new_path);
 }
