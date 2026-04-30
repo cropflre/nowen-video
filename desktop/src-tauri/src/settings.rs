@@ -51,7 +51,9 @@ pub struct ServerSettings {
 }
 
 fn default_sidecar_port() -> u16 {
-    8080
+    // 避让开发环境中本机 Go server 常用的 8080 端口，
+    // Tauri 内嵌 sidecar 使用专属端口 21114（"NY" → 21114 记忆位）。
+    21114
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -221,7 +221,8 @@ type MovieCollection struct {
 	Overview    string    `json:"overview" gorm:"type:text"`            // 合集简介
 	PosterPath  string    `json:"poster_path" gorm:"type:text"`         // 合集海报（取第一部的海报）
 	TMDbCollID  int       `json:"tmdb_coll_id" gorm:"index"`            // TMDb Collection ID
-	MediaCount  int       `json:"media_count"`                          // 包含的电影数量
+	MediaCount  int       `json:"media_count"`                          // 去重后的电影数量（同一部电影的不同版本算一部）
+	FileCount   int       `json:"file_count"`                           // 原始文件总数（每个版本各算一个）
 	AutoMatched bool      `json:"auto_matched" gorm:"default:true"`     // 是否自动匹配生成
 	YearRange   string    `json:"year_range" gorm:"type:text"`          // 年份范围（如"1991-1993"或"2020"）
 	CreatedAt   time.Time `json:"created_at" gorm:"index"`
@@ -887,6 +888,9 @@ func ensureSQLiteColumns(db *gorm.DB) {
 		},
 		"favorites": {
 			{Column: "profile_id", DDL: "ALTER TABLE `favorites` ADD COLUMN `profile_id` text DEFAULT ''"},
+		},
+		"movie_collections": {
+			{Column: "file_count", DDL: "ALTER TABLE `movie_collections` ADD COLUMN `file_count` integer DEFAULT 0"},
 		},
 	}
 

@@ -253,16 +253,27 @@ func (r *MovieCollectionRepo) FindCollectionByMediaID(mediaID string) (*model.Mo
 }
 
 // UpdateMediaCount 更新合集的电影数量和年份范围
+// media_count 按 version_group 去重（同一部电影的不同版本算 1 部），贴合前端"系列里有几部电影"的语义；
+// file_count 为原始文件总数（每个版本各算一个）。
 func (r *MovieCollectionRepo) UpdateMediaCount(collectionID string) error {
-	var count int64
-	r.db.Model(&model.Media{}).Where("collection_id = ?", collectionID).Count(&count)
+	var fileCount int64
+	r.db.Model(&model.Media{}).Where("collection_id = ?", collectionID).Count(&fileCount)
+
+	// 去重电影数：有 version_group 的按 version_group 聚合成 1 部；
+	// 无 version_group（空字符串）的每条独立算 1 部，用 id 兜底保证互不合并。
+	var movieCount int64
+	r.db.Model(&model.Media{}).
+		Where("collection_id = ?", collectionID).
+		Distinct("CASE WHEN version_group IS NULL OR version_group = '' THEN id ELSE version_group END").
+		Count(&movieCount)
 
 	// 计算年份范围
 	yearRange := r.computeYearRange(collectionID)
 
 	return r.db.Model(&model.MovieCollection{}).Where("id = ?", collectionID).
 		Updates(map[string]interface{}{
-			"media_count": count,
+			"media_count": movieCount,
+			"file_count":  fileCount,
 			"year_range":  yearRange,
 		}).Error
 }

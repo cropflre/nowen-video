@@ -486,10 +486,18 @@ function CollectionCard({ collection: coll, onClick }: { collection: MovieCollec
           <Film size={32} />
         </div>
 
-        {/* 数量标签 */}
-        <div className="absolute bottom-2 right-2 rounded-md px-2 py-0.5 text-xs font-bold backdrop-blur-md"
-          style={{ background: 'rgba(0,0,0,0.7)', color: 'var(--neon-blue)' }}>
-          {coll.media_count} 部
+        {/* 数量标签：角标主显「N 部电影」，右下再叠一行「N 文件」帮助识别多版本合集 */}
+        <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1">
+          <div className="rounded-md px-2 py-0.5 text-xs font-bold backdrop-blur-md"
+            style={{ background: 'rgba(0,0,0,0.7)', color: 'var(--neon-blue)' }}>
+            {coll.media_count} 部
+          </div>
+          {coll.file_count != null && coll.file_count > coll.media_count && (
+            <div className="rounded-md px-1.5 py-0.5 text-[10px] font-medium backdrop-blur-md"
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'var(--text-tertiary)' }}>
+              {coll.file_count} 文件
+            </div>
+          )}
         </div>
 
         {/* 来源标签 */}
@@ -524,7 +532,12 @@ function CollectionCard({ collection: coll, onClick }: { collection: MovieCollec
         <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
           {coll.year_range && <span>{coll.year_range}</span>}
           {coll.year_range && <span style={{ color: 'var(--text-muted)' }}>·</span>}
-          <span>{coll.media_count} 部</span>
+          <span>
+            {coll.media_count} 部
+            {coll.file_count != null && coll.file_count > coll.media_count && (
+              <span className="ml-1 opacity-70">/ {coll.file_count} 文件</span>
+            )}
+          </span>
         </div>
       </div>
     </div>
@@ -576,7 +589,12 @@ function CollectionListItem({ collection: coll }: { collection: MovieCollection 
       <div className="flex items-center gap-1.5 text-xs font-medium flex-shrink-0"
         style={{ color: 'var(--text-secondary)' }}>
         <Film size={14} />
-        <span>{coll.media_count} 部</span>
+        <span>
+          {coll.media_count} 部
+          {coll.file_count != null && coll.file_count > coll.media_count && (
+            <span className="ml-1 opacity-60">/ {coll.file_count} 文件</span>
+          )}
+        </span>
       </div>
     </Link>
   )

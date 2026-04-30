@@ -12,7 +12,7 @@
 
 import { useState } from 'react'
 import { Monitor, Sparkles, Zap } from 'lucide-react'
-import { usePlayerEngine, MediaProfile, PlayOptions } from '@/desktop'
+import { usePlayerEngine, useDesktop, MediaProfile, PlayOptions } from '@/desktop'
 
 interface Props {
   /** 媒体特征（可选，缺省时按文件名推断） */
@@ -36,11 +36,16 @@ export default function DesktopPlayerBadge({
 }: Props) {
   const { engine, reason, confidence, isDesktop, playInMpv, loading } =
     usePlayerEngine(profile)
+  const { embedAvailable } = useDesktop()
   const [launching, setLaunching] = useState(false)
   const [opened, setOpened] = useState(false)
 
   if (hidden || !isDesktop) return null
   if (loading) return null
+
+  // 嵌入式 mpv 可用时，PlayerPage 会直接渲染 MpvEmbedPlayer，
+  // 无需再显示"用 mpv 打开"按钮 / "Web 内核播放"徽章 —— 整体隐藏。
+  if (embedAvailable) return null
 
   const handleLaunchMpv = async () => {
     if (!streamUrl) return

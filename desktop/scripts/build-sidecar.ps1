@@ -45,7 +45,7 @@ $TripleMap = @{
 $Key = "$GoOs/$GoArch"
 $Triple = $TripleMap[$Key]
 if (-not $Triple) {
-    Write-Host "❌ 未识别的平台: $Key" -ForegroundColor Red
+    Write-Host "[ERROR] Unknown platform: $Key" -ForegroundColor Red
     exit 1
 }
 
@@ -68,7 +68,7 @@ Push-Location $ProjectRoot
 try {
     & go @BuildArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Go 构建失败（退出码 $LASTEXITCODE）"
+        throw "Go build failed (exit code $LASTEXITCODE)"
     }
 } finally {
     Pop-Location
@@ -83,12 +83,12 @@ $ConfigTarget = Join-Path $BinDir "config.yaml"
 $ConfigExample = Join-Path $ProjectRoot "config.example.yaml"
 if ((Test-Path $ConfigExample) -and -not (Test-Path $ConfigTarget)) {
     Copy-Item -Path $ConfigExample -Destination $ConfigTarget -Force
-    Write-Host "  已复制默认配置: $ConfigTarget" -ForegroundColor DarkGray
+    Write-Host "  Copied default config: $ConfigTarget" -ForegroundColor DarkGray
 }
 
 Write-Host ""
-Write-Host "✅ 构建完成" -ForegroundColor Green
+Write-Host "[OK] Build complete" -ForegroundColor Green
 Write-Host "  $OutPath"
 Write-Host "  $DevCopy"
 $size = [math]::Round((Get-Item $OutPath).Length / 1MB, 2)
-Write-Host "  大小: $size MB"
+Write-Host "  Size: $size MB"

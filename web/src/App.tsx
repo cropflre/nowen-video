@@ -7,7 +7,7 @@ import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
-import { DesktopEventBinder, UpdateBanner } from '@/desktop'
+import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -96,6 +96,8 @@ export default function App() {
     <ToastProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
+        {/* 桌面端：首次启动"服务器地址"引导（仅在默认端口探活失败时出现） */}
+        <DesktopServerPicker />
         {/* 桌面端事件绑定器（仅 Tauri 环境生效） */}
         <DesktopEventBinder />
         {/* 桌面端自动更新横幅 */}

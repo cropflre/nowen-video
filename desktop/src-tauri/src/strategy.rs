@@ -155,10 +155,11 @@ pub fn decide(profile: &MediaProfile, settings: &Settings) -> EngineDecision {
         };
     }
 
-    // 默认 Web
+    // 默认：桌面端一律走 mpv（内嵌 libmpv 性能/兼容性优于 Chromium <video>）
+    // 仅在用户显式 PlayerEngine::Web 时才走 web（上面已处理）
     EngineDecision {
-        engine: "web".into(),
-        reason: "轻量内容，Web 播放启动快".into(),
+        engine: "mpv".into(),
+        reason: "桌面端默认使用 mpv 内核（更稳 & 原画）".into(),
         confidence: "fallback".into(),
     }
 }
@@ -181,7 +182,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mp4_h264_web() {
+    fn test_mp4_h264_default_mpv_on_desktop() {
+        // 桌面端内嵌 libmpv，Auto 默认走 mpv（即使是轻量 MP4/H.264）
         let p = MediaProfile {
             container: "mp4".into(),
             video_codec: "h264".into(),
@@ -191,7 +193,8 @@ mod tests {
         };
         let s = Settings::default();
         let d = decide(&p, &s);
-        assert_eq!(d.engine, "web");
+        assert_eq!(d.engine, "mpv");
+        assert_eq!(d.confidence, "fallback");
     }
 
     #[test]

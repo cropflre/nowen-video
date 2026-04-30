@@ -160,7 +160,7 @@ export default function PlayerPage() {
         hdr: (playInfo as unknown as { hdr?: string }).hdr || '',
       }
     : null
-  const { engine: desktopEngine, confidence: desktopConfidence } = usePlayerEngine(profileForEngine)
+  const { engine: desktopEngine } = usePlayerEngine(profileForEngine)
 
   if (loading || !media || !playInfo || !id) {
     return (
@@ -193,12 +193,13 @@ export default function PlayerPage() {
   const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed
 
   // 桌面端 libmpv 嵌入决策（C 档 Hills 化核心）：
-  // 当 Tauri 桌面 + embed 可用 + 内核决策推荐 mpv + 非预处理流时 → 走嵌入式 mpv
+  // 当 Tauri 桌面 + embed 可用 + 内核决策给出 mpv + 非预处理流时 → 走嵌入式 mpv。
+  // 注：strategy.rs 已保证 Auto 模式下桌面端默认就给 "mpv / fallback"，
+  // 所以这里不再筛 confidence —— 除非用户显式 PlayerEngine::Web 才会拿到 engine='web'。
   const useMpvEmbed =
     desktopIsDesktop &&
     desktopEmbedAvailable &&
     desktopEngine === 'mpv' &&
-    (desktopConfidence === 'strict' || desktopConfidence === 'recommend') &&
     !isPreprocessed
 
   // WebCodecs 适用性：

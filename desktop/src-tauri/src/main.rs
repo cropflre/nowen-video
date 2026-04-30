@@ -98,21 +98,19 @@ fn main() {
             // 主窗口视觉特效（Mica / Acrylic / Vibrancy）
             vibrancy::apply_main_window_effect(&handle);
 
-            // 应用菜单（Windows / Linux 挂到窗口；macOS 挂到应用）
-            match tray::build_app_menu(&handle) {
-                Ok(menu) => {
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        if let Some(main) = handle.get_webview_window("main") {
-                            let _ = main.set_menu(menu);
-                        }
-                    }
-                    #[cfg(target_os = "macos")]
-                    {
+            // 应用菜单：
+            // - Windows/Linux：采用 Hills Lite 风格自绘标题栏，不挂系统级菜单栏，
+            //   避免在 `decorations: false` 窗口上出现多余的 "文件/播放/工具/帮助"
+            //   （会顶掉 vibrancy 并破坏沉浸式 UI）。
+            // - macOS：保留应用主菜单（苹果规范），菜单出现在屏幕顶部而非窗口内。
+            #[cfg(target_os = "macos")]
+            {
+                match tray::build_app_menu(&handle) {
+                    Ok(menu) => {
                         let _ = app.set_menu(menu);
                     }
+                    Err(e) => log::warn!("构建 macOS 主菜单失败: {}", e),
                 }
-                Err(e) => log::warn!("构建菜单失败: {}", e),
             }
 
             // 系统托盘

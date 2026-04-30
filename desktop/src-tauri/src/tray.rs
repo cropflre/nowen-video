@@ -8,7 +8,12 @@ use tauri::{
     AppHandle, Emitter, Manager,
 };
 
-/// 构建应用主菜单（顶部菜单栏，Windows/Linux）
+/// 构建应用主菜单（顶部菜单栏）
+///
+/// 目前仅 macOS 使用（挂到应用顶部的系统菜单栏）。
+/// Windows / Linux 上 Hills Lite 风格自绘标题栏已接管入口，不再挂系统级菜单，
+/// 所以在非 macOS 构建里该函数暂时未被调用（保留用于未来扩展 / 诊断面板）。
+#[allow(dead_code)]
 pub fn build_app_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>> {
     // 文件菜单
     let open_file = MenuItem::with_id(app, "menu_open_file", "打开文件...", true, Some("CmdOrCtrl+O"))?;

@@ -5,12 +5,15 @@ import { useAuthStore } from '@/stores/auth'
  * 计算 API 基础地址。
  *
  * 运行环境判断：
- * - Tauri 桌面端（window.__TAURI_INTERNALS__ 注入）：protocol 为 `tauri:` / `http://tauri.localhost`，
- *   必须显式指向本地 sidecar，否则所有请求会被解析为 `tauri://localhost/api/...` 导致失败。
+ * - Tauri 桌面端（window.__TAURI_INTERNALS__ 注入）：
+ *     1) 优先使用 localStorage.nowen_server_url（用户配置的"服务器地址"）
+ *     2) 其次读取 window.__NOWEN_SERVER_URL__（Rust 首次启动时注入，可选）
+ *     3) 兜底使用内嵌 sidecar 端口 `http://127.0.0.1:<port>/api`
+ *        —— sidecar 默认端口 21114（与本机独立运行的 Go server 的 8080 互不冲突）
  * - 浏览器：继续使用相对路径 `/api`，由 Vite dev-proxy 或反代处理。
  *
  * sidecar 端口：
- * - 默认 `8080`（与 Rust 端 `default_sidecar_port` 一致）。
+ * - 默认 `21114`（与 Rust 端 `default_sidecar_port` 保持一致）。
  * - 允许通过 `localStorage.nowen_sidecar_port` 覆盖，便于诊断或多实例场景。
  */
 function resolveApiBaseURL(): string {
@@ -19,7 +22,23 @@ function resolveApiBaseURL(): string {
   const isTauri = Boolean(w.__TAURI_INTERNALS__ || w.__TAURI__)
   if (!isTauri) return '/api'
 
-  let port = 8080
+  // 1) 用户显式配置的"远程服务器"地址
+  try {
+    const custom = window.localStorage.getItem('nowen_server_url')
+    if (custom && /^https?:\/\//i.test(custom)) {
+      return custom.replace(/\/+$/, '') + '/api'
+    }
+  } catch {
+    /* localStorage 不可用时忽略 */
+  }
+
+  // 2) 启动阶段由 Rust 注入的服务器地址
+  if (typeof w.__NOWEN_SERVER_URL__ === 'string' && /^https?:\/\//i.test(w.__NOWEN_SERVER_URL__)) {
+    return String(w.__NOWEN_SERVER_URL__).replace(/\/+$/, '') + '/api'
+  }
+
+  // 3) 内嵌 sidecar 端口
+  let port = 21114
   try {
     const override = window.localStorage.getItem('nowen_sidecar_port')
     if (override && /^\d+$/.test(override)) port = parseInt(override, 10)

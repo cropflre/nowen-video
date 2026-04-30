@@ -89,6 +89,24 @@ var xiaoyaCategoryDirs = map[string]bool{
 	"每日更新夸克": true, "xiaoya": true, "小雅": true,
 }
 
+// xiaoyaNonTVCategoryDirs 在"电视剧扫描"场景下需要整体忽略的分类目录
+// 这些目录下的视频通常是 MV/演唱会/音乐/综艺/每日更新的散落短视频，
+// 直接参与剧集聚合会产生大量噪声"伪剧集"。
+// 比较时会忽略大小写与首尾空白
+var xiaoyaNonTVCategoryDirs = map[string]bool{
+	"综艺":   true,
+	"演唱会":  true,
+	"音乐":   true,
+	"mv":   true,
+	"每日更新": true,
+}
+
+// isNonTVCategoryDirName 判断目录名是否为"电视剧扫描"应忽略的非剧集分类
+func isNonTVCategoryDirName(name string) bool {
+	n := strings.TrimSpace(name)
+	return xiaoyaNonTVCategoryDirs[strings.ToLower(n)] || xiaoyaNonTVCategoryDirs[n]
+}
+
 // xiaoyaSkipDirs 完全跳过（不扫描内部）的特殊目录
 // 比较时会忽略大小写
 var xiaoyaSkipDirs = map[string]bool{
@@ -386,6 +404,7 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 	const maxDepth = 4
 	var results []string
 	seen := make(map[string]bool)
+	tvOnly := kind == "tvshow"
 
 	var walk func(path string, depth int)
 	walk = func(path string, depth int) {
@@ -397,6 +416,12 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 		base := filepath.Base(path)
 		if isXiaoyaSkipDir(base) || extrasExcludeDirs[strings.ToLower(base)] {
 			s.logger.Debugf("[xiaoya] 跳过特殊目录: %s", path)
+			return
+		}
+		// [tvshow 扫描] 直接过滤掉"综艺/演唱会/音乐/MV/每日更新"等非剧集分类
+		// depth>0 时才跳过；depth==0 即用户把库根直接指到了这种目录，维持原行为（返回自身），由上层语义决定
+		if tvOnly && depth > 0 && isNonTVCategoryDirName(base) {
+			s.logger.Infof("[xiaoya][tvshow] 跳过非剧集分类目录: %s", path)
 			return
 		}
 
@@ -455,6 +480,11 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 		expandedCount := 0
 		for _, sd := range subDirs {
 			if isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
+				continue
+			}
+			// [tvshow 扫描] 子目录层级过滤非剧集分类（综艺/演唱会/音乐/MV/每日更新）
+			if tvOnly && isNonTVCategoryDirName(sd.Name()) {
+				s.logger.Infof("[xiaoya][tvshow] 跳过非剧集分类子目录: %s/%s", path, sd.Name())
 				continue
 			}
 			childPath := vfsJoin(path, sd.Name())

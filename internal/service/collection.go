@@ -405,6 +405,7 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 			Name:        baseName,
 			PosterPath:  uniqueMovies[0].PosterPath, // 使用第一部电影的海报
 			MediaCount:  len(uniqueMovies),          // 计数以"去重后"为准，前端展示更贴合"系列里有几部电影"
+			FileCount:   len(mediaList),             // 原始文件总数（包含每个版本副本）
 			AutoMatched: true,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),

@@ -1808,6 +1808,8 @@ export interface MovieCollection {
   poster_path: string
   tmdb_coll_id: number
   media_count: number
+  /** 原始文件总数（每个版本副本各算一个）；老数据可能为 0，此时等同于 media_count */
+  file_count?: number
   auto_matched: boolean
   year_range: string
   created_at: string
