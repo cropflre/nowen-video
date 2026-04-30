@@ -66,6 +66,12 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/bin/
 
+# Tauri 桌面端 C 档资源（由 scripts/fetch-assets.ps1 按需下载，不纳入仓库）
+desktop/src-tauri/resources/mpv/
+desktop/src-tauri/resources/shaders/
+desktop/src-tauri/resources/fonts/
+desktop/src-tauri/resources/yt-dlp.exe
+
 
 # 临时下载的二进制包
 ffmpeg.zip

@@ -21,8 +21,9 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
-        "transparent": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
         "center": true,
         "url": "index.html"
       }
@@ -42,7 +43,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb", "appimage", "dmg", "updater"],
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,7 +51,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": [
+      "resources/**/*"
+    ],
     "externalBin": [
       "bin/nowen-video"
     ],
@@ -67,7 +70,7 @@
     "longDescription": "nowen-video 桌面客户端 —— 基于 Tauri 2.0 + libmpv，支持 4K / HEVC / HDR / DV / Atmos 零转码播放。",
     "windows": {
       "webviewInstallMode": {
-        "type": "embedBootstrapper"
+        "type": "downloadBootstrapper"
       },
       "nsis": {
         "installerIcon": "icons/icon.ico",
@@ -85,14 +88,14 @@
         "depends": ["mpv"]
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {
       "endpoints": [
         "https://github.com/your-org/nowen-video/releases/latest/download/latest.json"
       ],
-      "pubkey": "PLACEHOLDER_PUBLIC_KEY_REPLACE_WITH_YOURS",
+      "pubkey": "",
       "dialog": false
     },
     "deep-link": {
