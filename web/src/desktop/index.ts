@@ -30,5 +30,8 @@ export type {
 export { useDesktop, usePlayerEngine } from './useDesktop'
 export { default as DesktopPlayerBadge } from './DesktopPlayerBadge'
 export { default as MpvEmbedPlayer, mpvControl } from './MpvEmbedPlayer'
+export type { MpvEmbedHandle } from './MpvEmbedPlayer'
+export { default as Anime4KPanel } from './Anime4KPanel'
+export type { Anime4KLevel } from './Anime4KPanel'
 export { default as UpdateBanner } from './UpdateBanner'
 export { default as DesktopEventBinder } from './DesktopEventBinder'

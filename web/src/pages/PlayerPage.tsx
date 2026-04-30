@@ -9,7 +9,13 @@ import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
 import { Zap, Loader2, Cpu, ArrowLeft } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
-import { DesktopPlayerBadge, type MediaProfile } from '@/desktop'
+import {
+  DesktopPlayerBadge,
+  MpvEmbedPlayer,
+  useDesktop,
+  usePlayerEngine,
+  type MediaProfile,
+} from '@/desktop'
 
 /** 检测浏览器是否支持 HEVC 硬解（Safari / Chrome macOS 116+） */
 function canPlayHEVC(): boolean {
@@ -141,6 +147,21 @@ export default function PlayerPage() {
     setWebcodecsFailed(true)
   }, [toast])
 
+  // ===== 桌面端内核决策 Hook（必须在早返回之前调用以满足 Rules of Hooks）=====
+  const desktopCtx = useDesktop()
+  const desktopIsDesktop = desktopCtx.isDesktop
+  const desktopEmbedAvailable = desktopCtx.embedAvailable
+  const profileForEngine: MediaProfile | null = playInfo
+    ? {
+        container: (playInfo.file_ext || '').replace(/^\./, '').toLowerCase(),
+        video_codec: (playInfo.video_codec || '').toLowerCase(),
+        audio_codec: (playInfo.audio_codec || '').toLowerCase(),
+        height: (playInfo as unknown as { height?: number }).height || 0,
+        hdr: (playInfo as unknown as { hdr?: string }).hdr || '',
+      }
+    : null
+  const { engine: desktopEngine, confidence: desktopConfidence } = usePlayerEngine(profileForEngine)
+
   if (loading || !media || !playInfo || !id) {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
@@ -170,6 +191,15 @@ export default function PlayerPage() {
 
   // 决策：HEVC 源 + 浏览器支持 HEVC → 直接播放（无需转码）
   const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed
+
+  // 桌面端 libmpv 嵌入决策（C 档 Hills 化核心）：
+  // 当 Tauri 桌面 + embed 可用 + 内核决策推荐 mpv + 非预处理流时 → 走嵌入式 mpv
+  const useMpvEmbed =
+    desktopIsDesktop &&
+    desktopEmbedAvailable &&
+    desktopEngine === 'mpv' &&
+    (desktopConfidence === 'strict' || desktopConfidence === 'recommend') &&
+    !isPreprocessed
 
   // WebCodecs 适用性：
   //   - 未被标记失败
@@ -304,7 +334,19 @@ export default function PlayerPage() {
         )}
       </div>
 
-      {mode === 'webcodecs' ? (
+      {useMpvEmbed ? (
+        <MpvEmbedPlayer
+          streamUrl={src}
+          sessionId={`media-${id}`}
+          title={playerTitle}
+          playOptions={{
+            title: playerTitle,
+            start_time: switchPosition,
+          }}
+          onBack={handleBack}
+          className="h-full w-full"
+        />
+      ) : mode === 'webcodecs' ? (
         <WebCodecsPlayerShell
           src={src}
           mediaId={id}
