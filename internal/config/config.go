@@ -570,11 +570,33 @@ func Load() (*Config, error) {
 	}
 
 	// 7. 自动生成 JWT Secret（如果仍为默认值）
+	//    为避免容器/进程每次重启导致已签发 token 全部失效（用户被踢回登录页），
+	//    这里将自动生成的 secret 持久化到 data 目录，后续启动优先读取该文件。
 	if cfg.Secrets.JWTSecret == "nowen-video-secret-change-me" {
-		cfg.Secrets.JWTSecret = generateRandomSecret(32)
+		cfg.Secrets.JWTSecret = loadOrCreatePersistedSecret(cfg.App.DataDir)
 	}
 
 	return cfg, nil
+}
+
+// loadOrCreatePersistedSecret 读取/生成持久化的 JWT Secret。
+// 优先从 <dataDir>/.jwt_secret 读取；若不存在或内容为空，则生成 32 字节随机值并写盘。
+// 写盘失败时回退到仅内存持有（打印告警但不终止进程）。
+func loadOrCreatePersistedSecret(dataDir string) string {
+	secretFile := filepath.Join(dataDir, ".jwt_secret")
+	if b, err := os.ReadFile(secretFile); err == nil {
+		s := strings.TrimSpace(string(b))
+		if len(s) >= 16 {
+			return s
+		}
+	}
+	secret := generateRandomSecret(32)
+	// 确保目录存在（loadConfig 已经 MkdirAll，但这里再兜底一次）
+	_ = os.MkdirAll(dataDir, 0755)
+	if err := os.WriteFile(secretFile, []byte(secret), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  JWT Secret 持久化失败（%v），本次使用内存随机值，下次重启将重新生成并导致所有登录态失效！\n", err)
+	}
+	return secret
 }
 
 // setDefaults 设置所有默认值

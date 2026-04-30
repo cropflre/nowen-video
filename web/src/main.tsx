@@ -6,6 +6,7 @@ import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
 import { initI18n } from './i18n'
 import './index.css'
+import './styles/fluent.css'
 
 // 在渲染前初始化主题和国际化，避免闪烁
 initTheme()

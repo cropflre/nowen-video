@@ -14,8 +14,9 @@
  */
 
 import { CheckCircle2, Zap } from 'lucide-react'
+import type { Anime4KLevel } from './bridge'
 
-export type Anime4KLevel = 'off' | 'low' | 'medium' | 'high'
+export type { Anime4KLevel }
 
 interface Props {
   value: Anime4KLevel

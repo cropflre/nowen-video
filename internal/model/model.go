@@ -195,6 +195,9 @@ type Series struct {
 	Country   string `json:"country" gorm:"type:text"`
 	Language  string `json:"language" gorm:"type:text"`
 	Studio    string `json:"studio" gorm:"type:text"`
+	// 刮削状态：pending / scraped / partial / failed / manual（C 方案新增）
+	ScrapeStatus string     `json:"scrape_status" gorm:"type:text;default:pending;index"`
+	LastScrapeAt *time.Time `json:"last_scrape_at,omitempty"`
 	// 时间戳
 	CreatedAt time.Time      `json:"created_at" gorm:"index"`
 	UpdatedAt time.Time      `json:"updated_at"`

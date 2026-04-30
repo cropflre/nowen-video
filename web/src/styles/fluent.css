@@ -1,0 +1,128 @@
+/**
+ * Fluent v9 视觉对齐（M5）
+ *
+ * 负责：
+ * 1. 让 @fluentui/react-components 的 Portal 组件（Menu/Dialog/Popover/Tooltip）
+ *    跟 Mica 主窗口一样透出毛玻璃
+ * 2. 统一滚动条、focus ring、禁用态
+ * 3. 覆盖 Fluent 默认的"平板"阴影，换成 Hills 的霓虹微光
+ */
+
+/* ============ Fluent Portal 容器：沿用主窗体毛玻璃 ============ */
+.fui-FluentProvider {
+  background: transparent !important;
+}
+
+/* Menu / Popover / Dialog 面板 */
+.fui-MenuList,
+.fui-PopoverSurface,
+.fui-DialogSurface,
+.fui-Tooltip {
+  background: rgba(15, 22, 38, 0.78) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(0, 240, 255, 0.12) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 240, 255, 0.04) !important;
+  color: #fff;
+}
+
+/* 菜单项 hover 泛霓虹 */
+.fui-MenuItem:hover,
+.fui-MenuItem:focus-visible {
+  background: rgba(0, 240, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+/* Button primary 微调发光 */
+.fui-Button[appearance='primary'] {
+  background: linear-gradient(135deg, #00BAD2, #00D6F0) !important;
+  border-color: transparent !important;
+  color: #0b1120 !important;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 214, 240, 0.25);
+}
+.fui-Button[appearance='primary']:hover {
+  background: linear-gradient(135deg, #00D6F0, #2AE6FF) !important;
+  box-shadow: 0 6px 18px rgba(42, 230, 255, 0.35);
+}
+.fui-Button[appearance='primary']:active {
+  transform: translateY(0.5px);
+}
+
+/* Subtle 按钮（工具栏）去边框 */
+.fui-Button[appearance='subtle'] {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.85);
+}
+.fui-Button[appearance='subtle']:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Input / Combobox：毛玻璃 + 霓虹 focus */
+.fui-Input,
+.fui-Combobox,
+.fui-Textarea {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+.fui-Input:focus-within,
+.fui-Combobox:focus-within,
+.fui-Textarea:focus-within {
+  border-color: rgba(0, 240, 255, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.18) !important;
+}
+
+/* ============ 亮色主题覆盖 ============ */
+html[data-theme='light'] .fui-MenuList,
+html[data-theme='light'] .fui-PopoverSurface,
+html[data-theme='light'] .fui-DialogSurface {
+  background: rgba(252, 252, 255, 0.85) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  color: #0b1120;
+}
+
+html[data-theme='light'] .fui-MenuItem:hover {
+  background: rgba(0, 160, 180, 0.08) !important;
+  color: #0b1120 !important;
+}
+
+/* ============ Focus Ring 统一 ============ */
+:where(button, a, input, select, textarea, [role='button']):focus-visible {
+  outline: 2px solid rgba(0, 240, 255, 0.6);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ============ Scrollbar（WebKit + Firefox） ============ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.25) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.35);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* ============ 动画减弱（无障碍 + 省电） ============ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -99,6 +99,26 @@ export interface EmbedStartResult {
   session_id: string
 }
 
+/** libmpv 运行时视频信息（来自 set_embed_video_info 命令） */
+export interface MpvVideoInfo {
+  width: number
+  height: number
+  codec: string
+  container: string
+  duration: number
+  position: number
+  pixel_format: string
+  primaries: string
+  gamma: string
+  /** SDR / HDR10 / HLG / DoVi */
+  hdr: string
+  paused: boolean
+  volume: number
+  mute: boolean
+}
+
+export type Anime4KLevel = 'off' | 'low' | 'medium' | 'high'
+
 /** 是否运行在 Tauri 桌面环境 */
 function detectDesktop(): boolean {
   if (typeof window === 'undefined') return false
@@ -264,6 +284,20 @@ export const desktop = {
     await invoke<void>('mpv_embed_destroy')
   },
 
+  /** 应用 Anime4K 档位（off/low/medium/high） */
+  async mpvEmbedSetAnime4K(params: {
+    sessionId: string
+    level: Anime4KLevel
+  }): Promise<boolean> {
+    const r = await invoke<void>('mpv_embed_set_anime4k', params)
+    return r !== null
+  },
+
+  /** 查询嵌入 mpv 的当前视频信息（HDR/分辨率/进度/音量） */
+  async mpvEmbedVideoInfo(sessionId: string): Promise<MpvVideoInfo | null> {
+    return invoke<MpvVideoInfo>('mpv_embed_video_info', { sessionId })
+  },
+
   // ============ M5: 自动更新 ============
 
   async checkUpdate(): Promise<UpdateInfo | null> {
@@ -353,6 +387,29 @@ export const desktop = {
   /** 关闭主窗口（走 CloseRequested，可被"最小化到托盘"拦截） */
   async windowClose(): Promise<void> {
     await invoke<void>('window_close')
+  },
+
+  // ============ M6: PiP & 始终置顶 ============
+
+  /** 进入画中画：窗口缩小到右下 + 去边框 + 始终置顶 */
+  async windowPipEnter(): Promise<void> {
+    await invoke<void>('window_pip_enter')
+  },
+
+  /** 退出画中画：恢复到进入 PiP 之前的尺寸/位置/装饰 */
+  async windowPipExit(): Promise<void> {
+    await invoke<void>('window_pip_exit')
+  },
+
+  /** 查询当前是否处于 PiP */
+  async windowPipIsActive(): Promise<boolean> {
+    const r = await invoke<boolean>('window_pip_is_active')
+    return Boolean(r)
+  },
+
+  /** 设置窗口始终置顶 */
+  async windowSetAlwaysOnTop(enabled: boolean): Promise<void> {
+    await invoke<void>('window_set_always_on_top', { enabled })
   },
 
   /** 启用/禁用窗口 Mica/Acrylic 特效 */

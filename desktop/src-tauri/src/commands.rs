@@ -146,6 +146,29 @@ pub fn mpv_embed_destroy(app: AppHandle) -> Result<(), String> {
     embed_window::destroy_embed_window(&app).map_err(|e| e.to_string())
 }
 
+// ============ M4 扩展: Anime4K & 视频信息 ============
+
+#[tauri::command]
+pub fn mpv_embed_set_anime4k(
+    state: State<AppState>,
+    session_id: String,
+    level: String,
+) -> Result<(), String> {
+    let mut mpv = state.mpv.lock().map_err(|e| e.to_string())?;
+    mpv.set_embed_anime4k(&session_id, &level)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn mpv_embed_video_info(
+    state: State<AppState>,
+    session_id: String,
+) -> Result<crate::mpv::EmbedVideoInfo, String> {
+    let mpv = state.mpv.lock().map_err(|e| e.to_string())?;
+    mpv.get_embed_video_info(&session_id)
+        .map_err(|e| e.to_string())
+}
+
 // ============ M5: 自动更新 ============
 
 #[tauri::command]
@@ -323,6 +346,126 @@ pub fn window_set_effect(app: AppHandle, enabled: bool) -> Result<(), String> {
         } else {
             crate::vibrancy::clear_effect(&win);
         }
+    }
+    Ok(())
+}
+
+// ============ M6: PiP（画中画） & 始终置顶 ============
+
+/// PiP 开关前的窗口状态快照，用于退出 PiP 时恢复
+static PIP_STATE: std::sync::Mutex<Option<PipState>> = std::sync::Mutex::new(None);
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug)]
+struct PipState {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+    /// 预留：进入 PiP 前是否有窗口装饰（目前恢复时一律还原为 true）
+    decorations: bool,
+    /// 预留：进入 PiP 前是否已处于置顶（目前恢复时一律还原为 false）
+    always_on_top: bool,
+}
+
+/// 进入画中画：窗口缩小、靠右下、去装饰、置顶
+///
+/// 这是 Hills Lite 在 Windows 上的通用 PiP 实现方案 —— 因为 libmpv 已经渲染到
+/// 嵌入子窗口，不能像浏览器的 <video> 一样用系统 PictureInPictureWindow API。
+#[tauri::command]
+pub fn window_pip_enter(app: AppHandle) -> Result<(), String> {
+    use tauri::{LogicalPosition, LogicalSize};
+
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    // 保存当前状态
+    let pos = win.outer_position().map_err(|e| e.to_string())?;
+    let size = win.outer_size().map_err(|e| e.to_string())?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let maximized = win.is_maximized().map_err(|e| e.to_string())?;
+
+    let mut guard = PIP_STATE.lock().map_err(|e| e.to_string())?;
+    if guard.is_none() {
+        *guard = Some(PipState {
+            x: (pos.x as f64 / scale) as i32,
+            y: (pos.y as f64 / scale) as i32,
+            width: (size.width as f64 / scale) as u32,
+            height: (size.height as f64 / scale) as u32,
+            maximized,
+            decorations: true,
+            always_on_top: false,
+        });
+    }
+    drop(guard);
+
+    // 如果当前是最大化，先还原
+    if maximized {
+        let _ = win.unmaximize();
+    }
+
+    // 获取主屏幕尺寸
+    let monitor = win.current_monitor().map_err(|e| e.to_string())?;
+    let (screen_w, screen_h) = monitor
+        .map(|m| {
+            let s = m.size();
+            let sc = m.scale_factor();
+            ((s.width as f64 / sc) as u32, (s.height as f64 / sc) as u32)
+        })
+        .unwrap_or((1920, 1080));
+
+    // PiP 尺寸：16:9，宽 480
+    let pip_w: u32 = 480;
+    let pip_h: u32 = 270;
+    let margin: i32 = 24;
+    let new_x = screen_w as i32 - pip_w as i32 - margin;
+    let new_y = screen_h as i32 - pip_h as i32 - margin;
+
+    let _ = win.set_decorations(false);
+    let _ = win.set_always_on_top(true);
+    let _ = win.set_size(LogicalSize::new(pip_w, pip_h));
+    let _ = win.set_position(LogicalPosition::new(new_x, new_y));
+    let _ = win.set_resizable(true);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn window_pip_exit(app: AppHandle) -> Result<(), String> {
+    use tauri::{LogicalPosition, LogicalSize};
+
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+
+    let mut guard = PIP_STATE.lock().map_err(|e| e.to_string())?;
+    let state = guard.take();
+    drop(guard);
+
+    let _ = win.set_always_on_top(false);
+    let _ = win.set_decorations(true);
+
+    if let Some(s) = state {
+        let _ = win.set_size(LogicalSize::new(s.width, s.height));
+        let _ = win.set_position(LogicalPosition::new(s.x, s.y));
+        if s.maximized {
+            let _ = win.maximize();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn window_pip_is_active() -> Result<bool, String> {
+    let guard = PIP_STATE.lock().map_err(|e| e.to_string())?;
+    Ok(guard.is_some())
+}
+
+#[tauri::command]
+pub fn window_set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        win.set_always_on_top(enabled).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

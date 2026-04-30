@@ -276,6 +276,24 @@ impl MpvManager {
         m.set_property(name, value)
     }
 
+    #[cfg(feature = "embed-mpv")]
+    pub fn set_embed_anime4k(&mut self, session_id: &str, level: &str) -> Result<()> {
+        let m = self
+            .embedded
+            .get_mut(session_id)
+            .ok_or_else(|| anyhow!("嵌入会话不存在: {}", session_id))?;
+        m.set_anime4k(level)
+    }
+
+    #[cfg(feature = "embed-mpv")]
+    pub fn get_embed_video_info(&self, session_id: &str) -> Result<EmbedVideoInfo> {
+        let m = self
+            .embedded
+            .get(session_id)
+            .ok_or_else(|| anyhow!("嵌入会话不存在: {}", session_id))?;
+        Ok(m.get_video_info())
+    }
+
     // ==== 未启用 embed 特性时的占位（保证前端接口调用不会崩溃） ====
 
     #[cfg(not(feature = "embed-mpv"))]
@@ -311,6 +329,16 @@ impl MpvManager {
     ) -> Result<()> {
         Err(anyhow!("未启用 embed-mpv feature"))
     }
+
+    #[cfg(not(feature = "embed-mpv"))]
+    pub fn set_embed_anime4k(&mut self, _session_id: &str, _level: &str) -> Result<()> {
+        Err(anyhow!("未启用 embed-mpv feature"))
+    }
+
+    #[cfg(not(feature = "embed-mpv"))]
+    pub fn get_embed_video_info(&self, _session_id: &str) -> Result<EmbedVideoInfo> {
+        Err(anyhow!("未启用 embed-mpv feature"))
+    }
 }
 
 /// 播放选项
@@ -332,6 +360,29 @@ pub struct PlayOptions {
     pub http_headers: HashMap<String, String>,
     #[serde(default)]
     pub user_agent: Option<String>,
+}
+
+/// 播放器实时信息快照（对外统一类型）
+#[cfg(feature = "embed-mpv")]
+pub type EmbedVideoInfo = embed::VideoInfo;
+
+/// 未启用 embed-mpv 时的占位类型（保证 commands.rs 能编译）
+#[cfg(not(feature = "embed-mpv"))]
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct EmbedVideoInfo {
+    pub width: u32,
+    pub height: u32,
+    pub codec: String,
+    pub container: String,
+    pub duration: f64,
+    pub position: f64,
+    pub pixel_format: String,
+    pub primaries: String,
+    pub gamma: String,
+    pub hdr: String,
+    pub paused: bool,
+    pub volume: f64,
+    pub mute: bool,
 }
 
 // ================= libmpv 嵌入实现 =================
@@ -409,16 +460,12 @@ mod embed {
             mpv.set_property("sub-auto", "fuzzy").ok();
             mpv.set_property("sub-font-provider", "auto").ok();
             mpv.set_property("blend-subtitles", "yes").ok();
-            // 字体目录：resources/fonts（M2 打包）
-            if let Ok(exe) = std::env::current_exe() {
-                if let Some(dir) = exe.parent() {
-                    let fonts = dir.join("resources").join("fonts");
-                    if fonts.exists() {
-                        mpv.set_property("sub-fonts-dir", fonts.to_string_lossy().to_string())
-                            .ok();
-                        mpv.set_property("osd-fonts-dir", fonts.to_string_lossy().to_string())
-                            .ok();
-                    }
+            // 字体目录：resources/fonts
+            if let Some(fonts) = crate::resources::font_dir() {
+                if fonts.exists() {
+                    let s = fonts.to_string_lossy().to_string();
+                    mpv.set_property("sub-fonts-dir", s.clone()).ok();
+                    mpv.set_property("osd-fonts-dir", s).ok();
                 }
             }
 
@@ -471,6 +518,118 @@ mod embed {
                 format!("设置 mpv 属性 {} 失败", name),
             )
         }
+
+        // ================= M4: Anime4K & 视频信息 =================
+
+        /// 应用 Anime4K 档位预设（off/low/medium/high）
+        pub fn set_anime4k(&self, level: &str) -> Result<()> {
+            // 档位 → 官方推荐 shader 链
+            // 参考 Anime4K v4.0.1 Quality Presets:
+            //   Mode A:  Restore + Upscale (CNN)
+            //   Mode A+: Mode A + AutoDownscale + Extra Upscale
+            let list: &[&str] = match level {
+                "off" | "" => &[],
+                "low" => &[
+                    "Anime4K_Clamp_Highlights.glsl",
+                    "Anime4K_Restore_CNN_M.glsl",
+                    "Anime4K_Upscale_CNN_x2_M.glsl",
+                ],
+                "medium" => &[
+                    "Anime4K_Clamp_Highlights.glsl",
+                    "Anime4K_Restore_CNN_VL.glsl",
+                    "Anime4K_Upscale_CNN_x2_VL.glsl",
+                ],
+                "high" => &[
+                    "Anime4K_Clamp_Highlights.glsl",
+                    "Anime4K_Restore_CNN_UL.glsl",
+                    "Anime4K_Upscale_CNN_x2_UL.glsl",
+                    "Anime4K_AutoDownscalePre_x2.glsl",
+                    "Anime4K_AutoDownscalePre_x4.glsl",
+                    "Anime4K_Upscale_CNN_x2_M.glsl",
+                ],
+                other => return Err(anyhow!("未知 Anime4K 档位: {}", other)),
+            };
+
+            if list.is_empty() {
+                map_err(
+                    self.mpv.set_property("glsl-shaders", String::new()),
+                    "清空 glsl-shaders 失败",
+                )
+            } else {
+                let joined = crate::resources::join_shader_paths(list)
+                    .ok_or_else(|| anyhow!("未找到 shader 目录（resources/shaders）"))?;
+                map_err(
+                    self.mpv.set_property("glsl-shaders", joined),
+                    format!("应用 Anime4K {} 档位失败", level),
+                )
+            }
+        }
+
+        /// 获取当前视频信息（HDR、分辨率、编码、时长等）
+        pub fn get_video_info(&self) -> VideoInfo {
+            let get_str = |prop: &str| -> String {
+                self.mpv
+                    .get_property::<String>(prop)
+                    .unwrap_or_default()
+            };
+            let get_i64 = |prop: &str| -> i64 {
+                self.mpv.get_property::<i64>(prop).unwrap_or(0)
+            };
+            let get_f64 = |prop: &str| -> f64 {
+                self.mpv.get_property::<f64>(prop).unwrap_or(0.0)
+            };
+
+            let pixelformat = get_str("video-params/pixelformat");
+            let colormatrix = get_str("video-params/colormatrix");
+            let primaries = get_str("video-params/primaries");
+            let gamma = get_str("video-params/gamma");
+
+            // 简易 HDR 判定：primaries=bt.2020 且 gamma 包含 pq/hlg
+            let hdr_kind = if gamma.contains("pq") && primaries.contains("bt.2020") {
+                "HDR10"
+            } else if gamma.contains("hlg") {
+                "HLG"
+            } else if gamma.contains("dolbyvision") || colormatrix.contains("dovi") {
+                "DoVi"
+            } else {
+                "SDR"
+            };
+
+            VideoInfo {
+                width: get_i64("video-params/w") as u32,
+                height: get_i64("video-params/h") as u32,
+                codec: get_str("video-codec-name"),
+                container: get_str("file-format"),
+                duration: get_f64("duration"),
+                position: get_f64("time-pos"),
+                pixel_format: pixelformat,
+                primaries,
+                gamma,
+                hdr: hdr_kind.to_string(),
+                paused: self.mpv.get_property::<bool>("pause").unwrap_or(false),
+                volume: get_f64("volume"),
+                mute: self.mpv.get_property::<bool>("mute").unwrap_or(false),
+            }
+        }
+    }
+
+    /// 播放器实时信息快照
+    #[derive(Debug, Clone, serde::Serialize)]
+    pub struct VideoInfo {
+        pub width: u32,
+        pub height: u32,
+        pub codec: String,
+        pub container: String,
+        pub duration: f64,
+        pub position: f64,
+        pub pixel_format: String,
+        pub primaries: String,
+        pub gamma: String,
+        /// SDR / HDR10 / HLG / DoVi
+        pub hdr: String,
+        pub paused: bool,
+        pub volume: f64,
+        pub mute: bool,
     }
 
     // libmpv2::Mpv 内部为 Arc，可在线程间共享；这里显式标记以便放入 HashMap

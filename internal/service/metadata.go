@@ -1932,8 +1932,18 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 	s.logger.Infof("开始刮削剧集合集元数据: %s", series.Title)
 
+	// [C 方案] 先做一次统一清洗：去【xxx压制】、去[站点]、剥离季号、去编码噪声
+	// 这样"报春鸟【傲仔压制】"能用"报春鸟"去搜，命中率大幅提升
+	cleanedForSearch := NormalizeSeriesTitle(series.Title)
+	if cleanedForSearch == "" {
+		cleanedForSearch = series.Title
+	}
+
 	// 从标题中提取搜索关键词和年份
-	searchTitle, year := s.parseTitle(series.Title)
+	searchTitle, year := s.parseTitle(cleanedForSearch)
+	if searchTitle == "" {
+		searchTitle = cleanedForSearch
+	}
 
 	// 如果已配置 ProviderChain，使用新的多数据源调度链
 	if s.providerChain != nil {
@@ -1942,6 +1952,11 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			s.logger.Debugf("多数据源调度链剧集刮削失败: %s - %v", series.Title, err)
 			// 不直接返回错误，继续尝试保存已有数据
 		}
+
+		// [C 方案] 根据实际元数据结果记录刷削状态
+		now := time.Now()
+		series.LastScrapeAt = &now
+		series.ScrapeStatus = evaluateSeriesScrapeStatus(series, err)
 
 		// 保存合集元数据
 		if saveErr := s.seriesRepo.Update(series); saveErr != nil {
@@ -2102,6 +2117,11 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		}
 	}
 
+	// [C 方案] 根据实际元数据结果记录刷削状态
+	now := time.Now()
+	series.LastScrapeAt = &now
+	series.ScrapeStatus = evaluateSeriesScrapeStatus(series, nil)
+
 	// 保存合集元数据
 	if err := s.seriesRepo.Update(series); err != nil {
 		return fmt.Errorf("更新剧集合集失败: %w", err)
@@ -2119,6 +2139,33 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 	s.logger.Infof("剧集合集元数据刮削完成: %s", series.Title)
 	return nil
+}
+
+// evaluateSeriesScrapeStatus 根据 Series 实际放到的字段和刷削错误，判断刷削状态。
+// 返回值：scraped (完整)、partial (部分字段缺失)、failed (都没拿到)
+//
+// 判断标准：
+//   - 完整：Overview + PosterPath 都在
+//   - 部分：有其中一个，或者有 Year/Rating/Genres 中的任一个
+//   - 失败：一无所获 或 有显式 err
+func evaluateSeriesScrapeStatus(series *model.Series, scrapeErr error) string {
+	hasOverview := strings.TrimSpace(series.Overview) != ""
+	hasPoster := strings.TrimSpace(series.PosterPath) != ""
+	hasYear := series.Year > 0
+	hasRating := series.Rating > 0
+	hasGenres := strings.TrimSpace(series.Genres) != ""
+	hasAnyID := series.TMDbID > 0 || series.DoubanID != "" || series.BangumiID > 0 || series.IMDbID != ""
+
+	if hasOverview && hasPoster {
+		return "scraped"
+	}
+	if hasOverview || hasPoster || hasAnyID || hasYear || hasRating || hasGenres {
+		return "partial"
+	}
+	if scrapeErr != nil {
+		return "failed"
+	}
+	return "failed"
 }
 
 // syncSeriesToEpisodes 将合集元数据同步到各集（海报、评分、类型等）

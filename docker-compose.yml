@@ -75,8 +75,10 @@ services:
       - NOWEN_APP_WEB_DIR=/app/web/dist
       # ---- 数据库配置 ----
       - NOWEN_DATABASE_DB_PATH=/data/nowen.db
-      # ---- 密钥配置（⚠️ 请务必修改） ----
-      - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key
+      # ---- 密钥配置 ----
+      # JWT_SECRET 留空/不设置时，程序会自动生成 32 字节随机 secret 并持久化到 /data/.jwt_secret，
+      # 重启不会导致登录态失效。如需自定义，可取消注释并填入自己的强随机字符串。
+      # - NOWEN_SECRETS_JWT_SECRET=your-own-strong-random-secret
       # ---- 缓存配置 ----
       - NOWEN_CACHE_CACHE_DIR=/cache
       # ---- 日志配置 ----
@@ -92,7 +94,17 @@ services:
       # - NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_API_KEY=your-random-key
       - TZ=Asia/Shanghai
     restart: unless-stopped
+    # 健康检查：给足启动时间，避免 ARM NAS 首次扫盘慢被误判不健康
+    # 如果探测失败仍会让 restart 策略生效；但容器刚启动的 120s 内一律视为"启动中"，不计失败次数
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
     # 资源限制（NAS场景建议限制，避免拖垮系统）
+    # 注意：ARM 低内存设备（2G 以下）请按实际情况调低 limits，或完全注释掉整个 deploy 段
+    # 当前 2G 限制适合 4G+ 的 NAS；若频繁 OOM 重启会导致登录态丢失。
     deploy:
       resources:
         limits:

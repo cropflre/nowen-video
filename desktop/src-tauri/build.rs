@@ -43,7 +43,12 @@ fn generate_mpv_import_lib() {
     let lib_out = out_dir.join("mpv.lib");
     let def_out = out_dir.join("mpv.def");
 
-    // 如果 .lib 比 .dll 新，且 .def 存在 → 跳过
+    // 先确保 libmpv-2.dll 出现在 EXE 同级目录（每次 build 都检查一次；内部自带 mtime 去重）
+    //   —— 这一步必须放在缓存短路（early return）之前，否则增量编译命中缓存会导致
+    //   `target\release\libmpv-2.dll` 缺失，双击 EXE 会报 "找不到 libmpv-2.dll"。
+    copy_dll_to_profile_root(&dll_path, &out_dir);
+
+    // 如果 .lib 比 .dll 新，且 .def 存在 → 跳过重新生成导入库
     if lib_out.exists() && def_out.exists() {
         if let (Ok(lib_meta), Ok(dll_meta)) = (fs::metadata(&lib_out), fs::metadata(&dll_path)) {
             if let (Ok(lib_mtime), Ok(dll_mtime)) = (lib_meta.modified(), dll_meta.modified()) {
@@ -98,6 +103,51 @@ fn generate_mpv_import_lib() {
 
     println!("cargo:warning=生成完成: {}", lib_out.display());
     println!("cargo:rustc-link-search=native={}", out_dir.display());
+}
+
+/// 把 libmpv-2.dll 拷贝到 `target/{profile}/`（EXE 同级）。
+/// OUT_DIR 形如 `target/release/build/<crate>-<hash>/out`，往上 3 层即 profile 根。
+#[cfg(feature = "embed-mpv")]
+fn copy_dll_to_profile_root(dll_src: &Path, out_dir: &Path) {
+    let Some(profile_root) = out_dir
+        .ancestors()
+        .nth(3)
+        .map(|p| p.to_path_buf())
+    else {
+        println!("cargo:warning=无法从 OUT_DIR 推断 target/{{profile}} 根目录，跳过 DLL 拷贝");
+        return;
+    };
+
+    let dst = profile_root.join("libmpv-2.dll");
+
+    // 若目标文件已存在且哈希/时间一致则跳过，避免每次 rebuild 都重写
+    let needs_copy = match (fs::metadata(&dst), fs::metadata(dll_src)) {
+        (Ok(d), Ok(s)) => match (d.modified(), s.modified()) {
+            (Ok(dt), Ok(st)) => dt < st || d.len() != s.len(),
+            _ => true,
+        },
+        _ => true,
+    };
+
+    if !needs_copy {
+        return;
+    }
+
+    if let Err(e) = fs::copy(dll_src, &dst) {
+        println!(
+            "cargo:warning=拷贝 libmpv-2.dll 到 {} 失败: {}",
+            dst.display(),
+            e
+        );
+    } else {
+        println!("cargo:warning=已拷贝 libmpv-2.dll → {}", dst.display());
+    }
+
+    // 同时拷贝到 deps/ 以兼容 cargo test/bench 场景
+    let deps = profile_root.join("deps");
+    if deps.is_dir() {
+        let _ = fs::copy(dll_src, deps.join("libmpv-2.dll"));
+    }
 }
 
 /// 用 cc crate 机制定位 MSVC 工具链中的 lib.exe / dumpbin.exe
