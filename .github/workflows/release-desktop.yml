@@ -1,0 +1,174 @@
+# NoWen Video — 桌面端 Release 构建（M7）
+#
+# 触发方式：
+#  1. push tag v*.*.*      → 自动构建 + 发布 Release（draft）
+#  2. 手动 workflow_dispatch → 仅构建不发布，用于冒烟
+#
+# 产物：
+#  - desktop/src-tauri/target/release/bundle/nsis/*.exe       (Windows 安装包)
+#  - desktop/src-tauri/target/release/bundle/msi/*.msi        (Windows MSI)
+#  - desktop/src-tauri/target/release/bundle/dmg/*.dmg        (macOS)
+#  - desktop/src-tauri/target/release/bundle/appimage/*.AppImage (Linux)
+#
+# 前置条件：
+#  - secrets.TAURI_SIGNING_PRIVATE_KEY          (可选, 自动更新签名)
+#  - secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD (可选)
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target platform (windows/macos/linux/all)'
+        required: false
+        default: 'windows'
+
+jobs:
+  fetch-assets:
+    name: Fetch MPV Assets (shared)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache MPV + shaders
+        uses: actions/cache@v4
+        id: mpv-cache
+        with:
+          path: desktop/src-tauri/resources
+          key: mpv-v1-${{ hashFiles('scripts/fetch-assets.ps1') }}
+
+      - name: Download mpv / libmpv / Anime4K
+        if: steps.mpv-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./scripts/fetch-assets.ps1
+
+      - name: Upload resources artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-resources
+          path: desktop/src-tauri/resources
+          retention-days: 1
+
+  build-desktop:
+    needs: fetch-assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            bundles: 'nsis,msi'
+          # 如未来扩展多平台，放开下面两行：
+          # - { os: macos-latest,   platform: macos,   bundles: 'dmg,app' }
+          # - { os: ubuntu-22.04,   platform: linux,   bundles: 'appimage,deb' }
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.platform }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Setup Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Download resources artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-resources
+          path: desktop/src-tauri/resources
+
+      # ---- 构建后端 sidecar ----
+      - name: Build Go sidecar
+        shell: pwsh
+        run: |
+          $triple = (rustc -vV | Select-String host) -replace 'host: ',''
+          $triple = $triple.Trim()
+          Write-Host "Target triple: $triple"
+          $outDir = "desktop/src-tauri/bin"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          if ($env:RUNNER_OS -eq 'Windows') {
+            $env:GOOS = 'windows'
+            $env:GOARCH = 'amd64'
+            go build -ldflags "-s -w" -o "$outDir/nowen-video-server-$triple.exe" ./cmd/server
+          } else {
+            go build -ldflags "-s -w" -o "$outDir/nowen-video-server-$triple" ./cmd/server
+          }
+          Get-ChildItem $outDir
+
+      # ---- 前端构建 ----
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: Build web bundle
+        working-directory: web
+        run: npm run build
+
+      # ---- 桌面端打包 ----
+      - name: Install desktop deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Tauri build
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-${{ matrix.platform }}
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    needs: build-desktop
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' \) -exec cp {} dist/ \;
+          ls -la dist
+
+      - name: Create GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*
