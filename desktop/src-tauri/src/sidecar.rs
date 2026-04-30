@@ -138,25 +138,58 @@ pub struct SidecarStatus {
 
 /// 解析 sidecar 二进制路径
 ///
-/// 优先级：
-/// 1. 打包后：resources/bin/nowen-video(.exe)
-/// 2. dev 模式：desktop/bin/nowen-video(.exe)
-/// 3. dev 模式：项目根目录 server.exe / nowen-video.exe
+/// 优先级（打包后 & dev 模式通用）：
+/// 1. Tauri `externalBin` 约定：与主 exe 同目录（安装后最常见位置）
+/// 2. `resources/bin/nowen-video(.exe)`（若未来手动打包到 resources）
+/// 3. dev 模式：desktop/bin / 项目根 / 当前工作目录
 fn resolve_sidecar_path(app: &AppHandle) -> Result<std::path::PathBuf> {
-    // 1. 打包后的资源路径
+    let exe_name = if cfg!(target_os = "windows") {
+        "nowen-video.exe"
+    } else {
+        "nowen-video"
+    };
+
+    // externalBin 在打包时可能被 Tauri 改名为带 target-triple 后缀的形式
+    // 例：nowen-video-x86_64-pc-windows-msvc.exe
+    // 因此主 exe 同目录下要尝试多种候选名
+    #[cfg(target_os = "windows")]
+    let sibling_candidates: &[&str] = &[
+        "nowen-video.exe",
+        "nowen-video-x86_64-pc-windows-msvc.exe",
+        "nowen-video-aarch64-pc-windows-msvc.exe",
+        "server.exe",
+    ];
+    #[cfg(not(target_os = "windows"))]
+    let sibling_candidates: &[&str] = &[
+        "nowen-video",
+        "nowen-video-x86_64-unknown-linux-gnu",
+        "nowen-video-aarch64-unknown-linux-gnu",
+        "nowen-video-x86_64-apple-darwin",
+        "nowen-video-aarch64-apple-darwin",
+        "server",
+    ];
+
+    // 1. externalBin 打包后：与主 exe 同目录
+    if let Ok(main_exe) = std::env::current_exe() {
+        if let Some(dir) = main_exe.parent() {
+            for name in sibling_candidates {
+                let candidate = dir.join(name);
+                if candidate.exists() && candidate != main_exe {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+
+    // 2. resource_dir/bin（自定义打包兼容）
     if let Ok(res_dir) = app.path().resource_dir() {
-        let name = if cfg!(target_os = "windows") {
-            "nowen-video.exe"
-        } else {
-            "nowen-video"
-        };
-        let candidate = res_dir.join("bin").join(name);
+        let candidate = res_dir.join("bin").join(exe_name);
         if candidate.exists() {
             return Ok(candidate);
         }
     }
 
-    // 2. dev 模式：desktop/bin
+    // 3. dev 模式：desktop/bin / 项目根
     let cwd = std::env::current_dir().context("获取工作目录失败")?;
     let names: &[&str] = if cfg!(target_os = "windows") {
         &["nowen-video.exe", "server.exe"]
@@ -181,10 +214,6 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<std::path::PathBuf> {
         }
     }
 
-    // 3. 回退默认
-    Ok(cwd.join("bin").join(if cfg!(target_os = "windows") {
-        "nowen-video.exe"
-    } else {
-        "nowen-video"
-    }))
+    // 4. 回退默认
+    Ok(cwd.join("bin").join(exe_name))
 }

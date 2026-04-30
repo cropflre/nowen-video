@@ -6,7 +6,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Debug, Serialize, Clone)]

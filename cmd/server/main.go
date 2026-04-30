@@ -95,7 +95,16 @@ func main() {
 	r := gin.Default()
 
 	// 全局中间件
-	r.Use(middleware.CORS(cfg.App.CORSOrigins...))
+	// 默认放行 Tauri 桌面端的两种 webview origin：
+	// - Windows WebView2：http://tauri.localhost
+	// - macOS/Linux：tauri://localhost
+	// 用户配置的 CORSOrigins 会叠加生效
+	corsOrigins := append([]string{
+		"tauri://localhost",
+		"http://tauri.localhost",
+		"https://tauri.localhost",
+	}, cfg.App.CORSOrigins...)
+	r.Use(middleware.CORS(corsOrigins...))
 	r.Use(middleware.Security())
 	r.Use(middleware.RateLimitWithConfig(middleware.RateLimitConfig{
 		MaxRequests:  600, // 每分钟600次请求

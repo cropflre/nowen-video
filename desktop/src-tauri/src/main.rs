@@ -15,7 +15,7 @@ mod vibrancy;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 
 /// 全局应用状态
 pub struct AppState {
