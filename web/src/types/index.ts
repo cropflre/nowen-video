@@ -167,6 +167,7 @@ export interface Media {
   subtitle_paths: string
   // V2 扩展字段
   tmdb_id: number
+  imdb_id?: string
   douban_id: string
   bangumi_id: number
   country: string
@@ -174,6 +175,10 @@ export interface Media {
   tagline: string
   studio: string
   trailer_url: string
+  // 刮削状态追踪（新增）
+  scrape_status?: 'pending' | 'scraped' | 'partial' | 'failed' | 'manual' | ''
+  scrape_attempts?: number
+  last_scrape_at?: string | null
   // NFO 完整建模字段（方案 B）
   num: string
   sort_title: string
@@ -938,6 +943,8 @@ export interface FileManagerStats {
   movie_count: number
   episode_count: number
   scraped_count: number
+  partial_count?: number
+  failed_count?: number
   unscraped_count: number
   total_size_bytes: number
   recent_imports: number

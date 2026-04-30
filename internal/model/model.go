@@ -739,6 +739,28 @@ func (t *SubtitlePreprocessTask) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ==================== 文件管理操作日志（持久化） ====================
+
+// FileOperationLog 文件管理操作日志（持久化到数据库）
+// 记录导入/编辑/删除/刮削/重命名/重分类等操作，支持审计与跨会话查询
+type FileOperationLog struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:text"`
+	Action    string    `json:"action" gorm:"index;type:text"`   // import / edit / delete / scrape / rename / batch_scrape / batch_rename / reclassify / create_folder / rename_folder / delete_folder
+	MediaID   string    `json:"media_id" gorm:"index;type:text"` // 关联的媒体ID（如适用）
+	Detail    string    `json:"detail" gorm:"type:text"`         // 操作详情
+	OldValue  string    `json:"old_value" gorm:"type:text"`      // 旧值（用于回滚）
+	NewValue  string    `json:"new_value" gorm:"type:text"`      // 新值
+	UserID    string    `json:"user_id" gorm:"index;type:text"`  // 操作者
+	CreatedAt time.Time `json:"created_at" gorm:"index"`         // 操作时间
+}
+
+func (l *FileOperationLog) BeforeCreate(tx *gorm.DB) error {
+	if l.ID == "" {
+		l.ID = uuid.New().String()
+	}
+	return nil
+}
+
 // AutoMigrate 自动迁移所有模型
 func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
@@ -783,6 +805,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&MovieCollection{},
 		// 系统日志
 		&SystemLog{},
+		// 文件管理操作日志
+		&FileOperationLog{},
 	); err != nil {
 		return err
 	}

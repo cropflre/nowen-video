@@ -21,12 +21,13 @@ import (
 type FileManagerService struct {
 	mediaRepo  *repository.MediaRepo
 	seriesRepo *repository.SeriesRepo
+	opLogRepo  *repository.FileOpLogRepo // 操作日志持久化（替代内存切片）
 	metadata   *MetadataService
 	ai         *AIService
 	wsHub      *WSHub
 	logger     *zap.SugaredLogger
 
-	// 操作日志
+	// 内存缓存（只读快缓存，为了兼容旧 API）
 	opLogMu sync.Mutex
 	opLogs  []FileOperationLog
 }
@@ -93,17 +94,20 @@ type FileManagerStats struct {
 	TotalFiles       int64 `json:"total_files"`
 	MovieCount       int64 `json:"movie_count"`
 	EpisodeCount     int64 `json:"episode_count"`
-	ScrapedCount     int64 `json:"scraped_count"`
-	UnscrapedCount   int64 `json:"unscraped_count"`
+	ScrapedCount     int64 `json:"scraped_count"`   // scraped + partial + manual
+	PartialCount     int64 `json:"partial_count"`   // 部分成功（海报/简介缺失）
+	FailedCount      int64 `json:"failed_count"`    // 刮削失败
+	UnscrapedCount   int64 `json:"unscraped_count"` // pending 或 failed 或无状态
 	TotalSizeBytes   int64 `json:"total_size_bytes"`
 	RecentImports    int64 `json:"recent_imports"`    // 最近7天导入
-	RecentOperations int   `json:"recent_operations"` // 最近操作数
+	RecentOperations int64 `json:"recent_operations"` // 近30天操作数
 }
 
 // NewFileManagerService 创建文件管理服务
 func NewFileManagerService(
 	mediaRepo *repository.MediaRepo,
 	seriesRepo *repository.SeriesRepo,
+	opLogRepo *repository.FileOpLogRepo,
 	metadata *MetadataService,
 	ai *AIService,
 	logger *zap.SugaredLogger,
@@ -111,6 +115,7 @@ func NewFileManagerService(
 	return &FileManagerService{
 		mediaRepo:  mediaRepo,
 		seriesRepo: seriesRepo,
+		opLogRepo:  opLogRepo,
 		metadata:   metadata,
 		ai:         ai,
 		logger:     logger,
@@ -737,7 +742,19 @@ func (s *FileManagerService) executeScrapeFile(media *model.Media, source, userI
 		}
 	}
 
+	now := time.Now()
+	media.LastScrapeAt = &now
+	media.ScrapeAttempts++
+
 	if scrapeErr != nil {
+		// 刮削失败：更新状态后通知
+		media.ScrapeStatus = "failed"
+		// 仅更新状态相关字段（避免覆盖其他并发修改）
+		_ = s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{
+			"scrape_status":   "failed",
+			"scrape_attempts": media.ScrapeAttempts,
+			"last_scrape_at":  now,
+		})
 		s.broadcastEvent("file_scrape_progress", ScrapeProgress{
 			MediaID:  media.ID,
 			Title:    media.Title,
@@ -745,8 +762,23 @@ func (s *FileManagerService) executeScrapeFile(media *model.Media, source, userI
 			Progress: 0,
 			Message:  scrapeErr.Error(),
 		})
-		s.addOpLog("scrape", media.ID, fmt.Sprintf("刮削失败: %s", scrapeErr.Error()), "", "", userID)
+		// 也广播全局 scrape_completed（失败态），让前端统计卡片刷新
+		s.broadcastEvent(EventScrapeCompleted, map[string]interface{}{
+			"media_id": media.ID,
+			"title":    media.Title,
+			"status":   "failed",
+			"source":   source,
+			"message":  scrapeErr.Error(),
+		})
+		s.addOpLog("scrape", media.ID, fmt.Sprintf("刮削失败: %s", scrapeErr.Error()), string(oldJSON), "", userID)
 		return
+	}
+
+	// 根据结果精确判定 scrape_status：海报和overview都齐才算 scraped，否则 partial
+	if strings.TrimSpace(media.PosterPath) != "" && strings.TrimSpace(media.Overview) != "" {
+		media.ScrapeStatus = "scraped"
+	} else {
+		media.ScrapeStatus = "partial"
 	}
 
 	// 保存更新
@@ -756,15 +788,24 @@ func (s *FileManagerService) executeScrapeFile(media *model.Media, source, userI
 	}
 
 	newJSON, _ := json.Marshal(media)
-	s.addOpLog("scrape", media.ID, fmt.Sprintf("刮削完成: %s", media.Title), string(oldJSON), string(newJSON), userID)
+	s.addOpLog("scrape", media.ID, fmt.Sprintf("刮削完成(%s): %s", media.ScrapeStatus, media.Title), string(oldJSON), string(newJSON), userID)
 
-	// 广播完成
+	// 广播单文件进度事件（保持兼容）
 	s.broadcastEvent("file_scrape_progress", ScrapeProgress{
 		MediaID:  media.ID,
 		Title:    media.Title,
 		Status:   "done",
 		Progress: 100,
 		Message:  "刮削完成",
+	})
+	// 广播全局 scrape_completed 事件，触发前端统计卡片及列表刷新
+	s.broadcastEvent(EventScrapeCompleted, map[string]interface{}{
+		"media_id":      media.ID,
+		"title":         media.Title,
+		"status":        media.ScrapeStatus,
+		"source":        source,
+		"poster_path":   media.PosterPath,
+		"backdrop_path": media.BackdropPath,
 	})
 }
 
@@ -1028,60 +1069,88 @@ func (s *FileManagerService) GetRenameTemplates() []RenameTemplate {
 
 // ==================== 统计信息 ====================
 
-// GetStats 获取文件管理统计
-func (s *FileManagerService) GetStats() (*FileManagerStats, error) {
+// GetStats 获取文件管理统计（支持作用域：按媒体库 / 文件夹路径）
+func (s *FileManagerService) GetStats(libraryID, folderPath string) (*FileManagerStats, error) {
 	stats := &FileManagerStats{}
 
 	// 总文件数
-	_, total, err := s.mediaRepo.List(1, 1, "")
+	total, err := s.mediaRepo.CountByScope(libraryID, folderPath)
 	if err != nil {
 		return nil, err
 	}
 	stats.TotalFiles = total
 
 	// 电影数量
-	movieCount, err := s.mediaRepo.CountByMediaType("movie")
-	if err == nil {
-		stats.MovieCount = movieCount
+	if c, err := s.mediaRepo.CountByScopeAndType(libraryID, folderPath, "movie"); err == nil {
+		stats.MovieCount = c
 	}
 
 	// 剧集数量
-	episodeCount, err := s.mediaRepo.CountByMediaType("episode")
-	if err == nil {
-		stats.EpisodeCount = episodeCount
+	if c, err := s.mediaRepo.CountByScopeAndType(libraryID, folderPath, "episode"); err == nil {
+		stats.EpisodeCount = c
 	}
 
-	// 已刮削数量（有TMDb ID或Bangumi ID的）
-	scrapedCount, err := s.mediaRepo.CountScraped()
-	if err == nil {
-		stats.ScrapedCount = scrapedCount
+	// 按 scrape_status 分别计数（作用域化）
+	if m, err := s.mediaRepo.CountByScrapeStatus(libraryID, folderPath); err == nil {
+		stats.ScrapedCount = m["scraped"] + m["partial"] + m["manual"]
+		stats.PartialCount = m["partial"]
+		stats.FailedCount = m["failed"]
+		// 未刮削 = pending + failed + 空状态
+		stats.UnscrapedCount = stats.TotalFiles - stats.ScrapedCount
+		if stats.UnscrapedCount < 0 {
+			stats.UnscrapedCount = 0
+		}
 	}
-	stats.UnscrapedCount = stats.TotalFiles - stats.ScrapedCount
 
 	// 总文件大小
-	totalSize, err := s.mediaRepo.SumFileSize()
-	if err == nil {
-		stats.TotalSizeBytes = totalSize
+	if c, err := s.mediaRepo.SumFileSizeByScope(libraryID, folderPath); err == nil {
+		stats.TotalSizeBytes = c
 	}
 
 	// 最近7天导入
-	recentCount, err := s.mediaRepo.CountRecentImports(7)
-	if err == nil {
-		stats.RecentImports = recentCount
+	if c, err := s.mediaRepo.CountRecentImportsByScope(7, libraryID, folderPath); err == nil {
+		stats.RecentImports = c
 	}
 
-	// 最近操作数
-	s.opLogMu.Lock()
-	stats.RecentOperations = len(s.opLogs)
-	s.opLogMu.Unlock()
+	// 最近30天操作数（持久化日志，不再受服务重启影响）
+	if s.opLogRepo != nil {
+		if c, err := s.opLogRepo.CountSince("-30 days"); err == nil {
+			stats.RecentOperations = c
+		}
+	} else {
+		s.opLogMu.Lock()
+		stats.RecentOperations = int64(len(s.opLogs))
+		s.opLogMu.Unlock()
+	}
 
 	return stats, nil
 }
 
 // ==================== 操作日志 ====================
 
-// GetOperationLogs 获取操作日志
+// GetOperationLogs 获取操作日志（优先从数据库读取，保证跨重启可查）
 func (s *FileManagerService) GetOperationLogs(limit int) []FileOperationLog {
+	// 优先从DB读
+	if s.opLogRepo != nil {
+		if dbLogs, err := s.opLogRepo.List(limit); err == nil {
+			result := make([]FileOperationLog, 0, len(dbLogs))
+			for _, l := range dbLogs {
+				result = append(result, FileOperationLog{
+					ID:        l.ID,
+					Action:    l.Action,
+					MediaID:   l.MediaID,
+					Detail:    l.Detail,
+					OldValue:  l.OldValue,
+					NewValue:  l.NewValue,
+					UserID:    l.UserID,
+					CreatedAt: l.CreatedAt,
+				})
+			}
+			return result
+		}
+	}
+
+	// 降级：从内存读（开发/测试模式）
 	s.opLogMu.Lock()
 	defer s.opLogMu.Unlock()
 
@@ -1097,25 +1166,53 @@ func (s *FileManagerService) GetOperationLogs(limit int) []FileOperationLog {
 	return result
 }
 
-// addOpLog 添加操作日志
+// addOpLog 添加操作日志（DB 持久化 + 内存快缓存）
 func (s *FileManagerService) addOpLog(action, mediaID, detail, oldValue, newValue, userID string) {
-	s.opLogMu.Lock()
-	defer s.opLogMu.Unlock()
+	id := uuid.New().String()
+	now := time.Now()
 
 	log := FileOperationLog{
-		ID:        uuid.New().String(),
+		ID:        id,
 		Action:    action,
 		MediaID:   mediaID,
 		Detail:    detail,
 		OldValue:  oldValue,
 		NewValue:  newValue,
 		UserID:    userID,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
 	}
 
-	s.opLogs = append(s.opLogs, log)
+	// 1. 持久化到数据库
+	if s.opLogRepo != nil {
+		if err := s.opLogRepo.Create(&model.FileOperationLog{
+			ID:        id,
+			Action:    action,
+			MediaID:   mediaID,
+			Detail:    detail,
+			OldValue:  oldValue,
+			NewValue:  newValue,
+			UserID:    userID,
+			CreatedAt: now,
+		}); err != nil {
+			s.logger.Warnf("持久化操作日志失败: %v", err)
+		}
+		// 定期清理旧日志（每 100 条触发一次，保持 5000 条上限）
+		if action != "" && len(action) > 0 {
+			// 用 id 的随机性做触发器（避免每次都 count）
+			if id[0] == '0' || id[0] == '8' { // ~12.5% 触发概率
+				go func() {
+					if _, err := s.opLogRepo.Cleanup(5000); err != nil {
+						s.logger.Debugf("清理旧日志失败: %v", err)
+					}
+				}()
+			}
+		}
+	}
 
-	// 保持日志不超过500条
+	// 2. 写入内存缓存（作为快缓存，并兼容旧 API）
+	s.opLogMu.Lock()
+	defer s.opLogMu.Unlock()
+	s.opLogs = append(s.opLogs, log)
 	if len(s.opLogs) > 500 {
 		s.opLogs = s.opLogs[len(s.opLogs)-500:]
 	}

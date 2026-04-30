@@ -750,7 +750,7 @@ func (s *AIAssistantService) executeBatchTag(session *ChatSession, action *Sugge
 
 // executeAnalyze 执行文件分析
 func (s *AIAssistantService) executeAnalyze(session *ChatSession, userID string) (*ExecuteResponse, error) {
-	stats, err := s.fileManager.GetStats()
+	stats, err := s.fileManager.GetStats("", "")
 	if err != nil {
 		return &ExecuteResponse{Success: false, Message: "获取统计信息失败"}, nil
 	}

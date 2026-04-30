@@ -8,6 +8,8 @@ import {
   HardDrive,
   Download,
   FileText,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatFileSize } from './constants'
@@ -18,7 +20,8 @@ interface FileStatsBarProps {
 
 // 统计卡片组件
 export default function FileStatsBar({ stats }: FileStatsBarProps) {
-  const items = [
+  // 基础指标（始终显示）
+  const baseItems = [
     { label: '总文件', value: stats.total_files, icon: FileVideo, color: 'text-blue-400' },
     { label: '电影', value: stats.movie_count, icon: Film, color: 'text-purple-400' },
     { label: '剧集', value: stats.episode_count, icon: Tv, color: 'text-green-400' },
@@ -28,6 +31,17 @@ export default function FileStatsBar({ stats }: FileStatsBarProps) {
     { label: '近7天导入', value: stats.recent_imports, icon: Download, color: 'text-indigo-400' },
     { label: '操作记录', value: stats.recent_operations, icon: FileText, color: 'text-pink-400' },
   ]
+
+  // 动态指标：只有存在才显示（按需）
+  const extraItems = []
+  if ((stats.partial_count ?? 0) > 0) {
+    extraItems.push({ label: '部分刮削', value: stats.partial_count!, icon: AlertTriangle, color: 'text-orange-400' })
+  }
+  if ((stats.failed_count ?? 0) > 0) {
+    extraItems.push({ label: '刮削失败', value: stats.failed_count!, icon: XCircle, color: 'text-red-400' })
+  }
+
+  const items = [...baseItems, ...extraItems]
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">

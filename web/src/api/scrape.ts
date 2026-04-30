@@ -121,9 +121,9 @@ export const fileManagerApi = {
   getRenameTemplates: () =>
     api.get<{ data: import('@/types').RenameTemplate[] }>('/admin/files/rename/templates'),
 
-  // 统计信息
-  getStats: () =>
-    api.get<{ data: import('@/types').FileManagerStats }>('/admin/files/stats'),
+  // 统计信息（支持作用域：library_id / folder_path）
+  getStats: (params?: { library_id?: string; folder_path?: string }) =>
+    api.get<{ data: import('@/types').FileManagerStats }>('/admin/files/stats', { params }),
 
   // 操作日志
   getOperationLogs: (limit?: number) =>

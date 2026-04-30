@@ -409,9 +409,11 @@ func (h *FileManagerHandler) GetRenameTemplates(c *gin.Context) {
 
 // ==================== 统计与日志 ====================
 
-// GetStats 获取文件管理统计
+// GetStats 获取文件管理统计（支持按媒体库/文件夹作用域过滤）
 func (h *FileManagerHandler) GetStats(c *gin.Context) {
-	stats, err := h.fileService.GetStats()
+	libraryID := c.Query("library_id")
+	folderPath := c.Query("folder_path")
+	stats, err := h.fileService.GetStats(libraryID, folderPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取统计失败"})
 		return

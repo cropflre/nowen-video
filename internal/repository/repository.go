@@ -49,6 +49,8 @@ type Repositories struct {
 	InviteCode *InviteCodeRepo
 	// 系统日志
 	SystemLog *SystemLogRepo
+	// 文件管理操作日志（持久化）
+	FileOpLog *FileOpLogRepo
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -95,6 +97,8 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		InviteCode: &InviteCodeRepo{db: db},
 		// 系统日志
 		SystemLog: &SystemLogRepo{db: db},
+		// 文件管理操作日志
+		FileOpLog: NewFileOpLogRepo(db),
 	}
 }
 

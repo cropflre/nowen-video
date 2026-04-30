@@ -212,7 +212,42 @@ export default function FileListView({
     )
   }
 
-  const isScraped = (file: Media) => file.tmdb_id > 0 || file.bangumi_id > 0 || (file.douban_id && file.douban_id !== '')
+  const isScraped = (file: Media) => {
+    const st = file.scrape_status
+    if (st === 'scraped' || st === 'partial' || st === 'manual') return true
+    // 兼容旧数据（旧版记录无 scrape_status）：任一ID存在也视为已刮削
+    if (!st) return file.tmdb_id > 0 || file.bangumi_id > 0 || (file.douban_id && file.douban_id !== '')
+    return false
+  }
+
+  // 渲染刮削状态徽章（三态：已刮削 / 部分 / 失败 / 未刮削）
+  const renderScrapeBadge = (file: Media, size: 'sm' | 'md' = 'md') => {
+    const st = file.scrape_status
+    const cls = size === 'sm' ? 'text-[10px] px-1.5 py-0.5 rounded' : 'inline-flex items-center gap-1 text-xs'
+    if (st === 'partial') {
+      return size === 'sm'
+        ? <span className={clsx(cls, 'bg-orange-500/80 text-white')}>部分刮削</span>
+        : <span className={clsx(cls, 'text-orange-400')}><AlertCircle size={12} /> 部分刮削</span>
+    }
+    if (st === 'failed') {
+      return size === 'sm'
+        ? <span className={clsx(cls, 'bg-red-500/80 text-white')}>刮削失败</span>
+        : <span className={clsx(cls, 'text-red-400')}><AlertCircle size={12} /> 刮削失败</span>
+    }
+    if (st === 'manual') {
+      return size === 'sm'
+        ? <span className={clsx(cls, 'bg-blue-500/80 text-white')}>手动锁定</span>
+        : <span className={clsx(cls, 'text-blue-400')}><Check size={12} /> 手动锁定</span>
+    }
+    if (isScraped(file)) {
+      return size === 'sm'
+        ? <span className={clsx(cls, 'bg-green-500/80 text-white')}>已刮削</span>
+        : <span className={clsx(cls, 'text-green-400')}><Check size={12} /> 已刮削</span>
+    }
+    return size === 'sm'
+      ? <span className={clsx(cls, 'bg-amber-500/80 text-white')}>未刮削</span>
+      : <span className={clsx(cls, 'text-amber-400')}><AlertCircle size={12} /> 未刮削</span>
+  }
 
   // 子文件夹卡片区域
   const SubFolderCards = () => {
@@ -339,15 +374,7 @@ export default function FileListView({
                       {file.file_size > 0 ? formatFileSize(file.file_size) : '-'}
                     </td>
                     <td className="px-3 py-3 hidden xl:table-cell">
-                      {isScraped(file) ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-green-400">
-                          <Check size={12} /> 已刮削
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-400">
-                          <AlertCircle size={12} /> 未刮削
-                        </span>
-                      )}
+                      {renderScrapeBadge(file, 'md')}
                     </td>
                     <td className="px-3 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -397,11 +424,7 @@ export default function FileListView({
                 />
                 {/* 状态标签 */}
                 <div className="absolute top-2 right-2">
-                  {isScraped(file) ? (
-                    <span className="bg-green-500/80 text-white text-[10px] px-1.5 py-0.5 rounded">已刮削</span>
-                  ) : (
-                    <span className="bg-amber-500/80 text-white text-[10px] px-1.5 py-0.5 rounded">未刮削</span>
-                  )}
+                  {renderScrapeBadge(file, 'sm')}
                 </div>
                 {/* 悬浮操作 */}
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">

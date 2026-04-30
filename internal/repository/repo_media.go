@@ -314,9 +314,10 @@ func (r *MediaRepo) ListFilesAdvanced(page, size int, libraryID, mediaType, keyw
 	}
 	if scrapedOnly != nil {
 		if *scrapedOnly {
-			query = query.Where("(tmdb_id > 0 OR bangumi_id > 0 OR douban_id != '')")
+			// 统一口径：scrape_status 为 scraped/partial/manual 即认为已刮削
+			query = query.Where("scrape_status IN (?)", []string{"scraped", "partial", "manual"})
 		} else {
-			query = query.Where("tmdb_id = 0 AND bangumi_id = 0 AND (douban_id = '' OR douban_id IS NULL)")
+			query = query.Where("scrape_status IS NULL OR scrape_status = '' OR scrape_status IN (?)", []string{"pending", "failed"})
 		}
 	}
 
@@ -360,11 +361,121 @@ func (r *MediaRepo) CountByMediaType(mediaType string) (int64, error) {
 	return count, err
 }
 
+// CountScraped 统一以 scrape_status 为准：已刮削 = scraped / partial / manual
 func (r *MediaRepo) CountScraped() (int64, error) {
 	var count int64
 	err := r.db.Model(&model.Media{}).
-		Where("tmdb_id > 0 OR bangumi_id > 0 OR (douban_id != '' AND douban_id IS NOT NULL)").
+		Where("scrape_status IN (?)", []string{"scraped", "partial", "manual"}).
 		Count(&count).Error
+	return count, err
+}
+
+// CountByScrapeStatus 按刮削状态分别计数（传入 libraryID 和 folderPath 实现作用域化）
+// folderPath 为空时不限制目录；libraryID 为空时不限制媒体库
+func (r *MediaRepo) CountByScrapeStatus(libraryID, folderPath string) (map[string]int64, error) {
+	result := make(map[string]int64)
+	query := r.db.Model(&model.Media{})
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if folderPath != "" {
+		normalized := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalized, "/") {
+			normalized += "/"
+		}
+		query = query.Where("REPLACE(file_path, '\\', '/') LIKE ?", normalized+"%")
+	}
+
+	rows, err := query.Select("COALESCE(NULLIF(scrape_status, ''), 'pending') as st, COUNT(*) as cnt").
+		Group("st").Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st string
+		var cnt int64
+		if err := rows.Scan(&st, &cnt); err != nil {
+			continue
+		}
+		result[st] = cnt
+	}
+	return result, nil
+}
+
+// CountByScopeAndType 在指定作用域下按媒体类型计数（movie/episode 等）
+func (r *MediaRepo) CountByScopeAndType(libraryID, folderPath, mediaType string) (int64, error) {
+	var count int64
+	query := r.db.Model(&model.Media{})
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if folderPath != "" {
+		normalized := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalized, "/") {
+			normalized += "/"
+		}
+		query = query.Where("REPLACE(file_path, '\\', '/') LIKE ?", normalized+"%")
+	}
+	if mediaType != "" {
+		query = query.Where("media_type = ?", mediaType)
+	}
+	err := query.Count(&count).Error
+	return count, err
+}
+
+// CountByScope 在指定作用域下统计总数
+func (r *MediaRepo) CountByScope(libraryID, folderPath string) (int64, error) {
+	var count int64
+	query := r.db.Model(&model.Media{})
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if folderPath != "" {
+		normalized := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalized, "/") {
+			normalized += "/"
+		}
+		query = query.Where("REPLACE(file_path, '\\', '/') LIKE ?", normalized+"%")
+	}
+	err := query.Count(&count).Error
+	return count, err
+}
+
+// SumFileSizeByScope 作用域化的总文件大小
+func (r *MediaRepo) SumFileSizeByScope(libraryID, folderPath string) (int64, error) {
+	var total int64
+	query := r.db.Model(&model.Media{})
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if folderPath != "" {
+		normalized := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalized, "/") {
+			normalized += "/"
+		}
+		query = query.Where("REPLACE(file_path, '\\', '/') LIKE ?", normalized+"%")
+	}
+	err := query.Select("COALESCE(SUM(file_size), 0)").Scan(&total).Error
+	return total, err
+}
+
+// CountRecentImportsByScope 作用域化的近 N 天导入数
+func (r *MediaRepo) CountRecentImportsByScope(days int, libraryID, folderPath string) (int64, error) {
+	var count int64
+	query := r.db.Model(&model.Media{}).
+		Where("created_at >= datetime('now', ?)", fmt.Sprintf("-%d days", days))
+	if libraryID != "" {
+		query = query.Where("library_id = ?", libraryID)
+	}
+	if folderPath != "" {
+		normalized := strings.ReplaceAll(folderPath, "\\", "/")
+		if !strings.HasSuffix(normalized, "/") {
+			normalized += "/"
+		}
+		query = query.Where("REPLACE(file_path, '\\', '/') LIKE ?", normalized+"%")
+	}
+	err := query.Count(&count).Error
 	return count, err
 }
 
@@ -439,9 +550,9 @@ func (r *MediaRepo) ListByFolderPath(folderPath string, page, size int, libraryI
 	}
 	if scrapedOnly != nil {
 		if *scrapedOnly {
-			query = query.Where("(tmdb_id > 0 OR bangumi_id > 0 OR douban_id != '')")
+			query = query.Where("scrape_status IN (?)", []string{"scraped", "partial", "manual"})
 		} else {
-			query = query.Where("tmdb_id = 0 AND bangumi_id = 0 AND (douban_id = '' OR douban_id IS NULL)")
+			query = query.Where("scrape_status IS NULL OR scrape_status = '' OR scrape_status IN (?)", []string{"pending", "failed"})
 		}
 	}
 
@@ -521,22 +632,33 @@ func (r *MediaRepo) UpdateFields(id string, fields map[string]interface{}) error
 	return r.db.Model(&model.Media{}).Where("id = ?", id).Updates(fields).Error
 }
 
-// ListNeedScrape 获取需要刮削的媒体列表（P3: 排除最近 N 天内已失败的记录）
+// ListNeedScrape 获取需要刮削的媒体列表
+// 规则：
+//   - 排除 manual（用户手动锁定）
+//   - 排除 scraped（已完整刮削）
+//   - partial（部分成功，海报/overview 缺失）允许重试，但 1 小时内不重复
+//   - failed 按 skipRecentFailedDays 节流
+//   - pending 或无状态：直接需要刮削
 func (r *MediaRepo) ListNeedScrape(libraryID string, skipRecentFailedDays int) ([]model.Media, error) {
 	var media []model.Media
 	query := r.db.Model(&model.Media{}).Where(
-		"(overview = '' OR poster_path = '') AND scrape_status != 'manual'",
+		"scrape_status IS NULL OR scrape_status = '' OR scrape_status IN (?)",
+		[]string{"pending", "failed", "partial"},
 	)
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
-	// P3: 跳过最近 N 天内已尝试刮削但失败的记录（避免重复无效请求）
+	// 跳过最近 N 天内已失败的记录（避免重复无效请求）
 	if skipRecentFailedDays > 0 {
 		query = query.Where(
-			"NOT (scrape_status = 'failed' AND last_scrape_at >= datetime('now', ?))",
+			"NOT (scrape_status = 'failed' AND last_scrape_at IS NOT NULL AND last_scrape_at >= datetime('now', ?))",
 			fmt.Sprintf("-%d days", skipRecentFailedDays),
 		)
 	}
+	// partial 节流：最近 1 小时不重试（避免图片 CDN 短时抖动反复请求）
+	query = query.Where(
+		"NOT (scrape_status = 'partial' AND last_scrape_at IS NOT NULL AND last_scrape_at >= datetime('now', '-1 hours'))",
+	)
 	err := query.Order("created_at DESC").Find(&media).Error
 	return media, err
 }

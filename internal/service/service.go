@@ -188,7 +188,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 创建文件管理服务
 	fileManager := NewFileManagerService(
-		repos.Media, repos.Series,
+		repos.Media, repos.Series, repos.FileOpLog,
 		metadata, aiService, logger,
 	)
 	fileManager.SetWSHub(wsHub)

@@ -100,12 +100,31 @@ export default function Pagination({
     <div className="flex flex-wrap items-center justify-center gap-2 py-6">
       {/* 总数信息 */}
       {showTotal && total !== undefined && (
-        <span className="mr-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+        <span className="mr-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
           共 <strong style={{ color: 'var(--text-secondary)' }}>{total}</strong> 项
-          {pageSize && (
-            <> · 每页 {pageSize} 项</>
-          )}
         </span>
+      )}
+
+      {/* 每页数量选择器（放在总数旁边，避免被挤到换行后不可见） */}
+      {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
+        <div className="mr-2 flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          <span>每页</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="h-8 rounded-lg border px-2 text-sm outline-none transition-all focus:border-[var(--border-hover)] cursor-pointer"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-default)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {pageSizeOptions.map(size => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+          <span>条</span>
+        </div>
       )}
 
       {/* 首页 */}
@@ -221,28 +240,6 @@ export default function Pagination({
             placeholder={`${page}`}
           />
           <span>页</span>
-        </div>
-      )}
-
-      {/* 每页数量选择器 */}
-      {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-        <div className="ml-2 flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          <span>每页</span>
-          <select
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="h-8 rounded-lg border px-2 text-sm outline-none transition-all focus:border-[var(--border-hover)] cursor-pointer"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              color: 'var(--text-primary)',
-            }}
-          >
-            {pageSizeOptions.map(size => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </select>
-          <span>条</span>
         </div>
       )}
     </div>

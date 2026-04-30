@@ -9,6 +9,7 @@ import AdultScraperSection from '@/components/admin/AdultScraperTab'
 import AdultScraperProSection from '@/components/admin/AdultScraperPro'
 import STRMConfigSection from '@/components/admin/STRMConfigSection'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import {
   FolderOpen,
   Globe,
@@ -150,10 +151,14 @@ export default function FileManagerPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fileManagerApi.getStats()
+      // 作用域化：按当前筛选的媒体库/文件夹范围统计，和列表结果对齐
+      const res = await fileManagerApi.getStats({
+        library_id: filterLibrary || undefined,
+        folder_path: currentFolderPath || undefined,
+      })
       setStats(res.data.data)
     } catch { /* ignore */ }
-  }, [])
+  }, [filterLibrary, currentFolderPath])
 
   const fetchLibraries = useCallback(async () => {
     try {
@@ -177,18 +182,44 @@ export default function FileManagerPage() {
 
   // WebSocket 实时更新
   useEffect(() => {
+    // 基础刷新：重拉列表 + 统计
     const handleUpdate = () => { fetchFiles(); fetchStats() }
+    // 全局刷新：刷文件列表 + 统计 + 文件夹树
+    const handleGlobalUpdate = () => { fetchFiles(); fetchStats(); fetchFolderTree() }
+    // 刮削完成：刷全局海报版本（触发所有 MediaCard 重新取图）+ 重拉列表
+    const handleScrapeCompleted = () => {
+      bumpPosterVersion()
+      fetchFiles()
+      fetchStats()
+    }
+
     on('file_imported', handleUpdate)
     on('file_deleted', handleUpdate)
     on('batch_rename_complete', handleUpdate)
     on('file_scrape_progress', handleUpdate)
+    // 新增的关键事件订阅：扫描/刮削/媒体库/批量刮削
+    on('scan_completed', handleGlobalUpdate)
+    on('scan_phase', handleUpdate)
+    on('scrape_completed', handleScrapeCompleted)
+    on('library_updated', handleGlobalUpdate)
+    on('adult_batch_completed', handleGlobalUpdate)
+    on('folder_renamed', handleGlobalUpdate)
+    on('folder_deleted', handleGlobalUpdate)
+
     return () => {
       off('file_imported', handleUpdate)
       off('file_deleted', handleUpdate)
       off('batch_rename_complete', handleUpdate)
       off('file_scrape_progress', handleUpdate)
+      off('scan_completed', handleGlobalUpdate)
+      off('scan_phase', handleUpdate)
+      off('scrape_completed', handleScrapeCompleted)
+      off('library_updated', handleGlobalUpdate)
+      off('adult_batch_completed', handleGlobalUpdate)
+      off('folder_renamed', handleGlobalUpdate)
+      off('folder_deleted', handleGlobalUpdate)
     }
-  }, [on, off, fetchFiles, fetchStats])
+  }, [on, off, fetchFiles, fetchStats, fetchFolderTree])
 
   // ==================== 选择操作 ====================
 
@@ -233,6 +264,7 @@ export default function FileManagerPage() {
     try {
       await fileManagerApi.scrapeFile(id, scrapeSource || undefined)
       toast.success('刮削已启动')
+      // 乐观预热海报版本（刮削完成 WS 到达时也会再刷一次）
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '刮削失败')
     }

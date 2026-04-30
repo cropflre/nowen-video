@@ -55,6 +55,16 @@ export const WS_EVENTS = {
   SUB_EXTRACT_PROGRESS: 'sub_extract_progress',
   SUB_EXTRACT_COMPLETED: 'sub_extract_completed',
   SUB_EXTRACT_FAILED: 'sub_extract_failed',
+  // 成人批量刮削事件
+  ADULT_BATCH_STARTED: 'adult_batch_started',
+  ADULT_BATCH_PROGRESS: 'adult_batch_progress',
+  ADULT_BATCH_COMPLETED: 'adult_batch_completed',
+  ADULT_BATCH_PAUSED: 'adult_batch_paused',
+  ADULT_BATCH_RESUMED: 'adult_batch_resumed',
+  ADULT_BATCH_CANCELLED: 'adult_batch_cancelled',
+  // 文件夹操作事件
+  FOLDER_RENAMED: 'folder_renamed',
+  FOLDER_DELETED: 'folder_deleted',
 } as const
 
 export type WSEventType = (typeof WS_EVENTS)[keyof typeof WS_EVENTS]
