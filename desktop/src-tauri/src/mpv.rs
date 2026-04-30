@@ -353,15 +353,76 @@ mod embed {
             // 嵌入窗口（将 libmpv 渲染到指定原生窗口）
             mpv.set_property("wid", wid).context("设置 wid 失败")?;
 
-            // 默认参数
-            mpv.set_property("hwdec", "auto-safe").ok();
+            // ========== 通用核心参数 ==========
             mpv.set_property("keep-open", "yes").ok();
             mpv.set_property("force-window", "yes").ok();
             mpv.set_property("input-default-bindings", "yes").ok();
             mpv.set_property("input-vo-keyboard", "yes").ok();
             mpv.set_property("osc", "yes").ok();
+            // 关闭 idle 防止窗口加载失败闪退
+            mpv.set_property("idle", "yes").ok();
+            // 控制台级日志送到 stderr（可选）
+            mpv.set_property("msg-level", "all=warn").ok();
 
-            // 用户自定义
+            // ========== 视频渲染：对齐 Hills Lite 发烧级 ==========
+            // Windows 首选 gpu-next + d3d11；其他平台保留 gpu 兜底
+            #[cfg(target_os = "windows")]
+            {
+                mpv.set_property("vo", "gpu-next").ok();
+                mpv.set_property("gpu-api", "d3d11").ok();
+                mpv.set_property("gpu-context", "d3d11").ok();
+                // 零拷贝硬解：比 auto-safe 更激进，失败由 libmpv 自动回退
+                mpv.set_property("hwdec", "d3d11va-copy").ok();
+                // D3D11 显示交换链：减少延迟 & 更平滑
+                mpv.set_property("d3d11-flip", "yes").ok();
+                mpv.set_property("d3d11-sync-interval", "1").ok();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                mpv.set_property("vo", "gpu-next").ok();
+                mpv.set_property("hwdec", "auto-safe").ok();
+            }
+
+            // ========== HDR 色彩管理（Hills Lite 默认方案） ==========
+            // 告诉 vo 发送目标色彩空间信息给 OS（Win11 HDR 显示器开启）
+            mpv.set_property("target-colorspace-hint", "yes").ok();
+            // HDR→SDR tone mapping（BT.2446 Method A 为目前推荐）
+            mpv.set_property("tone-mapping", "bt.2446a").ok();
+            mpv.set_property("tone-mapping-mode", "rgb").ok();
+            mpv.set_property("hdr-compute-peak", "yes").ok();
+            // ICC 自动（用户系统色彩配置）
+            mpv.set_property("icc-profile-auto", "yes").ok();
+
+            // ========== 缓冲与流畅度 ==========
+            mpv.set_property("cache", "yes").ok();
+            mpv.set_property("demuxer-max-bytes", "400MiB").ok();
+            mpv.set_property("demuxer-max-back-bytes", "100MiB").ok();
+            // 适度提前预读，减少原盘大码率卡顿
+            mpv.set_property("cache-secs", "30").ok();
+
+            // ========== 字幕渲染（ASS / PGS 特效级） ==========
+            mpv.set_property("sub-auto", "fuzzy").ok();
+            mpv.set_property("sub-font-provider", "auto").ok();
+            mpv.set_property("blend-subtitles", "yes").ok();
+            // 字体目录：resources/fonts（M2 打包）
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(dir) = exe.parent() {
+                    let fonts = dir.join("resources").join("fonts");
+                    if fonts.exists() {
+                        mpv.set_property("sub-fonts-dir", fonts.to_string_lossy().to_string())
+                            .ok();
+                        mpv.set_property("osd-fonts-dir", fonts.to_string_lossy().to_string())
+                            .ok();
+                    }
+                }
+            }
+
+            // ========== 音频（Atmos / DTS-HD passthrough 友好） ==========
+            mpv.set_property("audio-channels", "auto-safe").ok();
+            // 默认直通 AC3/DTS/TrueHD/EAC3，若系统不支持 libmpv 自动回退解码
+            mpv.set_property("audio-spdif", "ac3,dts,eac3,truehd,dts-hd").ok();
+
+            // ========== 用户选项覆盖 ==========
             if let Some(start) = options.start_time {
                 mpv.set_property("start", format!("+{}", start)).ok();
             }

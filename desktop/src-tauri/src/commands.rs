@@ -21,9 +21,10 @@ pub fn sidecar_status(state: State<AppState>) -> Result<SidecarStatus, String> {
 
 #[tauri::command]
 pub async fn sidecar_restart(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let mut mgr = state.sidecar.lock().map_err(|e| e.to_string())?;
-    mgr.stop();
-    drop(mgr); // 释放锁
+    {
+        let mut mgr = state.sidecar.lock().map_err(|e| e.to_string())?;
+        mgr.stop();
+    } // MutexGuard 在这里释放，不跨 await
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let mut mgr = state.sidecar.lock().map_err(|e| e.to_string())?;
     mgr.start(&app).map_err(|e| e.to_string())
@@ -280,46 +281,48 @@ pub fn window_hide_to_tray(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ============ M1 (Hills 化): 自绘标题栏的窗口控制 ============
+
 #[tauri::command]
-pub fn platform_info() -> PlatformInfo {
-    PlatformInfo {
-        os: std::env::consts::OS.to_string(),
-        arch: std::env::consts::ARCH.to_string(),
-        family: std::env::consts::FAMILY.to_string(),
-        is_desktop: true,
+pub fn window_toggle_maximize(app: AppHandle) -> Result<bool, String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let is_max = win.is_maximized().map_err(|e| e.to_string())?;
+        if is_max {
+            win.unmaximize().map_err(|e| e.to_string())?;
+        } else {
+            win.maximize().map_err(|e| e.to_string())?;
+        }
+        return Ok(!is_max);
     }
-}
-
-#[derive(Serialize)]
-pub struct PlatformInfo {
-    pub os: String,
-    pub arch: String,
-    pub family: String,
-    pub is_desktop: bool,
+    Ok(false)
 }
 
 #[tauri::command]
-pub async fn pick_file(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
-    app.dialog().file().pick_file(move |path| {
-        let s = path.map(|p| p.to_string());
-        let _ = tx.send(s);
-    });
-
-    rx.await.map_err(|e| e.to_string())
+pub fn window_is_maximized(app: AppHandle) -> Result<bool, String> {
+    if let Some(win) = app.get_webview_window("main") {
+        return win.is_maximized().map_err(|e| e.to_string());
+    }
+    Ok(false)
 }
 
 #[tauri::command]
-pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
+pub fn window_close(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        // 走 CloseRequested 流程（会触发 minimize_to_tray 逻辑）
+        let _ = win.close();
+    }
+    Ok(())
+}
 
-    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
-    app.dialog().file().pick_folder(move |path| {
-        let s = path.map(|p| p.to_string());
-        let _ = tx.send(s);
-    });
-
-    rx.await.map_err(|e| e.to_string())
+/// 应用/清除窗口特效（前端在播放沉浸切换时调用）
+#[tauri::command]
+pub fn window_set_effect(app: AppHandle, enabled: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        if enabled {
+            crate::vibrancy::apply_effect(&win);
+        } else {
+            crate::vibrancy::clear_effect(&win);
+        }
+    }
+    Ok(())
 }

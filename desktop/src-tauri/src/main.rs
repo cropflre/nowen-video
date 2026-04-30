@@ -11,6 +11,7 @@ mod sidecar;
 mod strategy;
 mod tray;
 mod updater;
+mod vibrancy;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
@@ -88,6 +89,9 @@ fn main() {
     builder = builder
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // 主窗口视觉特效（Mica / Acrylic / Vibrancy）
+            vibrancy::apply_main_window_effect(&handle);
 
             // 应用菜单（Windows / Linux 挂到窗口；macOS 挂到应用）
             match tray::build_app_menu(&handle) {
@@ -230,6 +234,11 @@ fn main() {
             commands::window_minimize,
             commands::window_toggle_fullscreen,
             commands::window_hide_to_tray,
+            // 窗口管理（M1 Hills 化：自绘标题栏）
+            commands::window_toggle_maximize,
+            commands::window_is_maximized,
+            commands::window_close,
+            commands::window_set_effect,
         ]);
 
     builder

@@ -68,11 +68,46 @@ pub struct PlayerSettings {
 }
 
 fn default_mpv_args() -> Vec<String> {
-    vec![
-        "--hwdec=auto-safe".to_string(),
-        "--keep-open=yes".to_string(),
-        "--force-window=yes".to_string(),
-    ]
+    // 与嵌入模式保持一致的 Hills Lite 级默认参数
+    #[cfg(target_os = "windows")]
+    {
+        vec![
+            "--vo=gpu-next".to_string(),
+            "--gpu-api=d3d11".to_string(),
+            "--hwdec=d3d11va-copy".to_string(),
+            "--keep-open=yes".to_string(),
+            "--force-window=yes".to_string(),
+            "--target-colorspace-hint=yes".to_string(),
+            "--tone-mapping=bt.2446a".to_string(),
+            "--tone-mapping-mode=rgb".to_string(),
+            "--hdr-compute-peak=yes".to_string(),
+            "--icc-profile-auto=yes".to_string(),
+            "--cache=yes".to_string(),
+            "--demuxer-max-bytes=400MiB".to_string(),
+            "--demuxer-max-back-bytes=100MiB".to_string(),
+            "--cache-secs=30".to_string(),
+            "--blend-subtitles=yes".to_string(),
+            "--sub-auto=fuzzy".to_string(),
+        ]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![
+            "--vo=gpu-next".to_string(),
+            "--hwdec=auto-safe".to_string(),
+            "--keep-open=yes".to_string(),
+            "--force-window=yes".to_string(),
+            "--target-colorspace-hint=yes".to_string(),
+            "--tone-mapping=bt.2446a".to_string(),
+            "--hdr-compute-peak=yes".to_string(),
+            "--icc-profile-auto=yes".to_string(),
+            "--cache=yes".to_string(),
+            "--demuxer-max-bytes=400MiB".to_string(),
+            "--cache-secs=30".to_string(),
+            "--blend-subtitles=yes".to_string(),
+            "--sub-auto=fuzzy".to_string(),
+        ]
+    }
 }
 
 fn default_true() -> bool {

@@ -57,9 +57,16 @@ url = "2.5"
 # 通过 feature 开关：启用时才链接 libmpv 动态库，未启用走外部进程回退
 libmpv2 = { version = "4.1", optional = true }
 
+# 窗口视觉特效：Mica / Acrylic / Vibrancy（M1 Hills 化核心视觉）
+window-vibrancy = "0.5"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 # Tauri 的 WebviewWindow::hwnd() 返回 windows::HWND，需要该包在类型路径中可用
-windows = { version = "0.56", features = ["Win32_Foundation"] }
+windows = { version = "0.56", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
