@@ -1041,3 +1041,63 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
+
+/* ============================================================
+   Hills 化桌面壳（M1）
+   - Tauri 窗口无边框 + Mica 透明；前端壳负责纵向布局
+   - 非 Tauri 环境（浏览器）沿用原本不透明背景
+   ============================================================ */
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.nv-app-shell {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg-base);
+}
+
+.nv-app-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.nv-app-body > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 运行在 Tauri 环境（main.rs 注入 data-runtime="tauri"）时：
+   外壳背景改为半透明，让 Mica/Acrylic 透过来 */
+html[data-runtime="tauri"],
+html[data-runtime="tauri"] body {
+  background: transparent !important;
+}
+
+html[data-runtime="tauri"] .nv-app-shell {
+  background: transparent;
+  /* Mica 效果下边框更锐利一些 */
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+html[data-runtime="tauri"] #root {
+  background: transparent;
+}
+
+/* 标题栏 hover 反馈 */
+.nv-titlebar-search:focus-within {
+  border-color: var(--border-hover) !important;
+  box-shadow: 0 0 0 1px var(--focus-ring);
+}

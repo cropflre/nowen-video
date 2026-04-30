@@ -10,6 +10,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@fluentui/react-components": "^9.73.8",
+    "@fluentui/react-icons": "^2.0.325",
+    "@tanstack/react-virtual": "^3.13.24",
     "axios": "^1.7.2",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",

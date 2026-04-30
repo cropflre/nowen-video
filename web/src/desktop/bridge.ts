@@ -336,6 +336,30 @@ export const desktop = {
     await invoke<void>('window_hide_to_tray')
   },
 
+  // ============ M1 Hills 化：自绘标题栏 ============
+
+  /** 切换最大化/还原，返回当前是否最大化 */
+  async windowToggleMaximize(): Promise<boolean> {
+    const r = await invoke<boolean>('window_toggle_maximize')
+    return Boolean(r)
+  },
+
+  /** 查询当前是否最大化 */
+  async windowIsMaximized(): Promise<boolean> {
+    const r = await invoke<boolean>('window_is_maximized')
+    return Boolean(r)
+  },
+
+  /** 关闭主窗口（走 CloseRequested，可被"最小化到托盘"拦截） */
+  async windowClose(): Promise<void> {
+    await invoke<void>('window_close')
+  },
+
+  /** 启用/禁用窗口 Mica/Acrylic 特效 */
+  async windowSetEffect(enabled: boolean): Promise<void> {
+    await invoke<void>('window_set_effect', { enabled })
+  },
+
   // ============ 事件监听 ============
 
   /** 监听菜单点击事件 */

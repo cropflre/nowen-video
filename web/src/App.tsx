@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ToastProvider } from '@/components/Toast'
 import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
+import TitleBar from '@/components/TitleBar'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, UpdateBanner } from '@/desktop'
@@ -99,8 +100,12 @@ export default function App() {
         <DesktopEventBinder />
         {/* 桌面端自动更新横幅 */}
         <UpdateBanner />
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+        {/* 顶层应用壳：桌面端标题栏 + 全屏主体 */}
+        <div className="nv-app-shell">
+          <TitleBar />
+          <div className="nv-app-body">
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
             {/* 公开路由 */}
             <Route path="/login" element={<LoginPage />} />
             {/* 强制改密页面（需要登录但绕过强制改密拦截） */}
@@ -149,8 +154,10 @@ export default function App() {
 
             {/* 未匹配路由 */}
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+              </Routes>
+            </Suspense>
+          </div>
+        </div>
       </BrowserRouter>
     </ToastProvider>
   )
