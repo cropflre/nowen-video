@@ -1428,10 +1428,29 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		}
 	}
 
+	// [C 方案] 对 __ungrouped__ 做二次归类：用 ParseEpisodeFilename 再抢救一次，
+	// 能识别出系列名的文件从 __ungrouped__ 迁移到对应系列分组。
+	if stuck, ok := seriesGroups["__ungrouped__"]; ok && len(stuck) > 0 {
+		var residual []looseFile
+		for _, f := range stuck {
+			parsed := ParseEpisodeFilename(f.entry.Name())
+			if parsed.SeriesTitle != "" && len([]rune(parsed.SeriesTitle)) >= 2 {
+				seriesGroups[parsed.SeriesTitle] = append(seriesGroups[parsed.SeriesTitle], f)
+				continue
+			}
+			residual = append(residual, f)
+		}
+		if len(residual) == 0 {
+			delete(seriesGroups, "__ungrouped__")
+		} else {
+			seriesGroups["__ungrouped__"] = residual
+		}
+	}
+
 	// 处理根目录散落文件的智能归类
 	for seriesName, files := range seriesGroups {
-		if len(files) <= 1 && seriesName == "__ungrouped__" {
-			// 单个无法识别系列名的文件，作为独立媒体处理
+		if seriesName == "__ungrouped__" {
+			// 彻底无法识别系列名的文件，独立入库（保底）
 			for _, f := range files {
 				filePath := vfsJoin(f.rootPath, f.entry.Name())
 				title := s.extractTitle(f.entry.Name())
@@ -1458,31 +1477,6 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 
 		// 有多个同名系列的文件或者能识别系列名的文件，自动创建合集
 		actualSeriesName := seriesName
-		if seriesName == "__ungrouped__" {
-			// 多个无法识别系列名的文件，使用文件名作为标题独立存储
-			for _, f := range files {
-				filePath := vfsJoin(f.rootPath, f.entry.Name())
-				title := s.extractTitle(f.entry.Name())
-				media := &model.Media{
-					LibraryID: library.ID,
-					Title:     title,
-					FilePath:  filePath,
-					FileSize:  f.info.Size(),
-					MediaType: "episode",
-				}
-				s.probeMediaInfo(media)
-				s.scanExternalSubtitles(media)
-				ep := s.parseEpisodeInfo(f.entry.Name())
-				media.SeasonNum = ep.SeasonNum
-				media.EpisodeNum = ep.EpisodeNum
-				media.EpisodeTitle = ep.EpisodeTitle
-				if err := s.mediaRepo.Create(media); err != nil {
-					s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
-				}
-				totalNewEpisodes++
-			}
-			continue
-		}
 
 		// 为同系列的散落文件创建虚拟合集
 		// 使用"__loose__:系列名"作为虚拟文件夹路径来区分
@@ -2230,6 +2224,19 @@ func (s *ScannerService) parseEpisodeInfo(filename string) EpisodeInfo {
 		}
 	}
 
+	// === 阶段二（C 方案）：统一电视剧解析器兜底 ===
+	// 处理 03A / 02B / 特别篇1 / SP01 / OVA02 / 单纯数字结尾等 parseEpisodeInfo 无法识别的脏命名
+	if parsed := ParseEpisodeFilename(filename); parsed.EpisodeNum > 0 {
+		ep.EpisodeNum = parsed.EpisodeNum
+		ep.EpisodeNumEnd = parsed.EpisodeNumEnd
+		ep.SeasonNum = parsed.SeasonNum
+		if parsed.IsSpecial {
+			ep.SeasonNum = 0 // 特别篇归 Season 0
+		}
+		ep.EpisodeTitle = parsed.VersionTag // 把 "A" "B" 等版本号塞到 EpisodeTitle 作提示
+		return ep
+	}
+
 	return ep
 }
 
@@ -2396,8 +2403,16 @@ func (s *ScannerService) extractSeriesNameFromFile(filename string) string {
 	cleanName = regexp.MustCompile(`\s+\d{1,4}\s*$`).ReplaceAllString(cleanName, "")
 	cleanName = strings.TrimSpace(cleanName)
 
+	// === C 方案：统一清洗（去广告、去站点标签、去编码噪声、剥离季号） ===
+	cleanName = NormalizeSeriesTitle(cleanName)
+
 	if len(cleanName) > 0 {
 		return cleanName
+	}
+
+	// === C 方案兜底：原有逻辑都失败 → 调用新的电视剧解析器 ===
+	if parsed := ParseEpisodeFilename(filename); parsed.SeriesTitle != "" {
+		return parsed.SeriesTitle
 	}
 
 	return ""
@@ -2428,7 +2443,13 @@ func (s *ScannerService) extractSeriesTitle(folderName string) string {
 
 	// 清理多余空格
 	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, " ")
-	return strings.TrimSpace(title)
+	title = strings.TrimSpace(title)
+
+	// === C 方案：套上统一清洗（去【xxx压制】、【Q群】、[站点]、季号尾缀等） ===
+	if normalized := NormalizeSeriesTitle(title); normalized != "" {
+		return normalized
+	}
+	return title
 }
 
 // broadcastScanEvent 广播扫描事件

@@ -446,8 +446,14 @@ func (s *SeriesService) metadataScore(ser *model.Series) int {
 
 // normalizeSeriesTitleForMerge 标准化系列标题：去掉季号标识，提取纯系列名
 // 例如: "女神咖啡厅 第一季" → "女神咖啡厅", "一拳超人 S2" → "一拳超人"
+// [C 方案] 叠加 NormalizeSeriesTitle 的广告/发行组/编码噪声清洗，让"报春鸟【傲仔压制】"能和"报春鸟"合并
 func normalizeSeriesTitleForMerge(title string) string {
-	// 移除季号标识的正则模式
+	// 先跑一次统一清洗（去【xxx压制】、去[站点]、去编码、剥离末尾季号等）
+	if normalized := NormalizeSeriesTitle(title); normalized != "" {
+		title = normalized
+	}
+
+	// 移除季号标识的正则模式（再保险一次，兼容历史命名）
 	seasonPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\s*S\d{1,2}\s*$`),                          // 末尾 S1, S02
 		regexp.MustCompile(`(?i)\s*Season\s*\d{1,2}\s*$`),                  // 末尾 Season 1

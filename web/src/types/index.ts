@@ -224,6 +224,9 @@ export interface Series {
   country: string
   language: string
   studio: string
+  // C 方案：刮削状态
+  scrape_status?: 'pending' | 'scraped' | 'partial' | 'failed' | 'manual'
+  last_scrape_at?: string
   created_at: string
   episodes?: Media[]
 }

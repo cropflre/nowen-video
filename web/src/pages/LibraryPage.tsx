@@ -704,6 +704,17 @@ function ListSeriesItem({ series }: { series: Series }) {
 
 // 剧集合集卡片
 function SeriesCard({ series }: { series: Series }) {
+  // C 方案：根据刮削状态给出徽章
+  const scrapeBadge = (() => {
+    const st = series.scrape_status
+    // 已识别成功（有海报或简介）不显示额外徽章
+    if (!st || st === 'scraped' || st === 'manual') return null
+    if (st === 'failed') return { text: '未识别', className: 'bg-red-500/80 text-white' }
+    if (st === 'partial') return { text: '部分识别', className: 'bg-amber-500/80 text-white' }
+    if (st === 'pending') return { text: '待识别', className: 'bg-slate-500/70 text-white' }
+    return null
+  })()
+
   return (
     <Link
       to={`/series/${series.id}`}
@@ -726,6 +737,12 @@ function SeriesCard({ series }: { series: Series }) {
         <div className="badge-neon absolute bottom-2 right-2">
           {series.season_count} 季 · {series.episode_count} 集
         </div>
+        {/* C 方案：刮削状态徽章（左上角） */}
+        {scrapeBadge && (
+          <div className={`absolute left-2 top-2 rounded-md px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm ${scrapeBadge.className}`}>
+            {scrapeBadge.text}
+          </div>
+        )}
       </div>
       {/* 信息 */}
       <div className="p-3">
