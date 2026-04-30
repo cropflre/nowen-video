@@ -477,48 +477,6 @@ export default function DashboardTab({
             <ToggleButton checked={sysSettings.auto_transcode_on_play} onChange={() => setSysSettings((s) => ({ ...s, auto_transcode_on_play: !s.auto_transcode_on_play }))} />
           </div>
 
-          <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-          {/* ABR 多码率策略 */}
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <MonitorPlay size={16} style={{ color: '#06B6D4' }} />
-              <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>ABR 多码率策略（预处理）</h4>
-            </div>
-            <p className="mt-1 mb-3 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-              决定视频预处理时生成多少档可供自适应切换的清晰度。档位越多、磁盘占用越大、预处理越慢；弱网场景下更多档位可显著改善流畅度。
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { value: 'off', label: '关闭', desc: '仅生成源档 · 磁盘最省' },
-                { value: 'conservative', label: '保守', desc: '源档 + 下一档（2 档）' },
-                { value: 'recommended', label: '推荐 ⭐', desc: '源档 + 1080p + 720p（3 档）' },
-                { value: 'aggressive', label: '激进', desc: '源档 + 1080p + 720p + 480p（4 档）' },
-              ] as const).map((opt) => {
-                const active = sysSettings.abr_strategy === opt.value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSysSettings((s) => ({ ...s, abr_strategy: opt.value }))}
-                    className="rounded-lg px-3 py-2.5 text-left transition-all"
-                    style={{
-                      background: active ? 'var(--neon-blue-6)' : 'var(--nav-hover-bg)',
-                      border: active ? '1px solid var(--neon-blue)' : '1px solid var(--border-default)',
-                    }}
-                  >
-                    <div className="text-xs font-semibold" style={{ color: active ? 'var(--neon-blue)' : 'var(--text-primary)' }}>{opt.label}</div>
-                    <div className="mt-0.5 text-[11px] leading-tight" style={{ color: 'var(--text-muted)' }}>{opt.desc}</div>
-                  </button>
-                )
-              })}
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              ⚠️ 仅对<strong>新提交</strong>的预处理任务生效，已完成的任务不会自动重新生成。
-              播放器会在加载到多档 HLS 时自动切换到最合适的清晰度（默认 AUTO），也可在播放器控制条手动指定。
-            </p>
-          </div>
-
           {/* 保存 */}
           <div style={{ borderTop: '1px solid var(--border-default)', paddingTop: '1rem' }}>
             {sysSettingsMsg && (

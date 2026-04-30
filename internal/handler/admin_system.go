@@ -246,15 +246,6 @@ const (
 	SettingAutoPreprocess   = "auto_preprocess_on_scan" // 扫描后自动触发预处理
 	SettingAutoTranscode    = "auto_transcode_on_play"  // 播放时自动触发转码
 	SettingPreferDirectPlay = "prefer_direct_play"      // 优先直接播放（禁用自动转码）
-	SettingABRStrategy      = "abr_strategy"            // ABR 多码率策略：off / conservative / recommended / aggressive
-)
-
-// ABR 策略可选值
-const (
-	ABRStrategyOff          = "off"          // 关闭：仅生成源分辨率单档
-	ABRStrategyConservative = "conservative" // 保守：源档 + 下调 1 档
-	ABRStrategyRecommended  = "recommended"  // 推荐：源档 + 1080p + 720p
-	ABRStrategyAggressive   = "aggressive"   // 激进：源档 + 1080p + 720p + 480p
 )
 
 // GetSystemSettings 获取系统全局设置
@@ -275,7 +266,6 @@ func (h *AdminHandler) GetSystemSettings(c *gin.Context) {
 		SettingAutoPreprocess:   getBoolSetting(all, SettingAutoPreprocess, false),  // 默认关闭：扫描后不自动预处理
 		SettingAutoTranscode:    getBoolSetting(all, SettingAutoTranscode, false),   // 默认关闭：播放时不自动转码
 		SettingPreferDirectPlay: getBoolSetting(all, SettingPreferDirectPlay, true), // 默认开启：优先直接播放
-		SettingABRStrategy:      getStrSetting(all, SettingABRStrategy, ABRStrategyRecommended), // 默认推荐策略
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": settings})
@@ -291,7 +281,6 @@ type UpdateSystemSettingsRequest struct {
 	AutoPreprocess     *bool   `json:"auto_preprocess_on_scan"`
 	AutoTranscode      *bool   `json:"auto_transcode_on_play"`
 	PreferDirectPlay   *bool   `json:"prefer_direct_play"`
-	ABRStrategy       *string `json:"abr_strategy"`
 }
 
 // UpdateSystemSettings 更新系统全局设置
@@ -326,17 +315,6 @@ func (h *AdminHandler) UpdateSystemSettings(c *gin.Context) {
 	}
 	if req.PreferDirectPlay != nil {
 		kvs[SettingPreferDirectPlay] = boolToStr(*req.PreferDirectPlay)
-	}
-	if req.ABRStrategy != nil {
-		// 白名单校验，防止非法值写入
-		v := *req.ABRStrategy
-		switch v {
-		case ABRStrategyOff, ABRStrategyConservative, ABRStrategyRecommended, ABRStrategyAggressive:
-			kvs[SettingABRStrategy] = v
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "abr_strategy 取值非法"})
-			return
-		}
 	}
 
 	if len(kvs) == 0 {

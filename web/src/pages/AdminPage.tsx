@@ -231,7 +231,6 @@ export default function AdminPage() {
     auto_preprocess_on_scan: false,
     auto_transcode_on_play: false,
     prefer_direct_play: true,
-    abr_strategy: 'recommended',
   })
 
   // TMDb 配置状态

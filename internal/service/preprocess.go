@@ -1394,21 +1394,16 @@ func (s *PreprocessService) generateMasterPlaylist(task *model.PreprocessTask, v
 	return masterPath, nil
 }
 
-// determineVariants 根据源视频高度与系统 ABR 策略确定需要生成的变体
+// determineVariants 根据源视频高度确定需要生成的变体
 //
-// 策略说明（从系统设置读取 abr_strategy）：
-//   - off          : 只生成源分辨率最近档（单档）
-//   - conservative : 源档 + 向下一档（共 2 档）
-//   - recommended  : 源档 + 1080p + 720p（共 3 档，去重后可能更少）
-//   - aggressive   : 源档 + 1080p + 720p + 480p（共 4 档）
-//
-// 所有策略都不会生成高于源的档位（避免伪高清）。
-// 未配置或配置无效时默认使用 recommended。
+// 预处理策略：仅生成源分辨率最近的单档（避免伪高清），不再生成多档 ABR 阶梯。
+// 理由：
+//   - 本平台主力场景为家庭/私人 NAS 内网播放，弱网适配收益低
+//   - 多档预处理会显著放大磁盘占用和转码耗时（N 倍代价）
+//   - 如需弱网自适应，可在播放时走实时转码路径（GetMasterPlaylistFiltered）
 func (s *PreprocessService) determineVariants(sourceHeight int) []ABRProfile {
-	strategy := s.getABRStrategy()
-
-	// 1. 先找出"源档"：≤源高度里最高的那一档（避免伪高清）
-	//    例：源 1080p → 源档=1080p；源 1440p → 源档=2K；源 720p → 源档=720p
+	// 找出"源档"：≤源高度里最高的那一档（避免伪高清）
+	//   例：源 1080p → 源档=1080p；源 1440p → 源档=2K；源 720p → 源档=720p
 	var source *ABRProfile
 	for i := range abrProfiles {
 		p := abrProfiles[i]
@@ -1421,85 +1416,12 @@ func (s *PreprocessService) determineVariants(sourceHeight int) []ABRProfile {
 	if source == nil {
 		// 源比最低档还低（< 360p 的稀有情况），退回最低档
 		fallback := abrProfiles[0]
+		s.logger.Infof("ABR 变体决策: 源=%dp（过低），使用最低档=%s", sourceHeight, fallback.Name)
 		return []ABRProfile{fallback}
 	}
 
-	// 2. 根据策略拼装目标档位列表（按高度升序存入 set 去重）
-	selectedHeights := map[int]bool{source.Height: true}
-
-	switch strategy {
-	case "off":
-		// 仅源档
-
-	case "conservative":
-		// 源档 + 下调一档：找出低于源的最高档
-		for i := len(abrProfiles) - 1; i >= 0; i-- {
-			if abrProfiles[i].Height < source.Height {
-				selectedHeights[abrProfiles[i].Height] = true
-				break
-			}
-		}
-
-	case "aggressive":
-		// 激进：源档 + 1080p + 720p + 480p（不超过源高度）
-		for _, h := range []int{1080, 720, 480} {
-			if h < source.Height {
-				selectedHeights[h] = true
-			}
-		}
-
-	default:
-		// recommended（默认）：源档 + 1080p + 720p
-		for _, h := range []int{1080, 720} {
-			if h < source.Height {
-				selectedHeights[h] = true
-			}
-		}
-	}
-
-	// 3. 按照 abrProfiles 原始顺序（由低到高）筛选出被选中的档位
-	var variants []ABRProfile
-	for _, p := range abrProfiles {
-		if selectedHeights[p.Height] {
-			variants = append(variants, p)
-		}
-	}
-
-	if len(variants) == 0 {
-		// 兜底：至少保留源档
-		variants = []ABRProfile{*source}
-	}
-
-	s.logger.Infof("ABR 变体决策: 源=%dp, 策略=%s, 生成档位=%v",
-		sourceHeight, strategy, variantNames(variants))
-
-	return variants
-}
-
-// getABRStrategy 读取当前 ABR 策略配置，读不到或无效时返回 "recommended"
-func (s *PreprocessService) getABRStrategy() string {
-	if s.settingRepo == nil {
-		return "recommended"
-	}
-	v, err := s.settingRepo.Get("abr_strategy")
-	if err != nil || v == "" {
-		return "recommended"
-	}
-	switch v {
-	case "off", "conservative", "recommended", "aggressive":
-		return v
-	default:
-		return "recommended"
-	}
-}
-
-// variantNames 取变体的名称列表（用于日志）
-func variantNames(vs []ABRProfile) []string {
-	names := make([]string, len(vs))
-	for i, v := range vs {
-		names[i] = v.Name
-	}
-	return names
+	s.logger.Infof("ABR 变体决策: 源=%dp, 单档模式, 生成档位=%s", sourceHeight, source.Name)
+	return []ABRProfile{*source}
 }
 
 // ==================== 辅助方法 ====================
