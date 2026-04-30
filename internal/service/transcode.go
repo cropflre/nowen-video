@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,9 +25,9 @@ import (
 //
 // 参考 Emby：转码 FFmpeg 领先播放进度一定秒数后挂起，播放进度逼近缓冲尾部时恢复。
 // 这种策略的核心目的是：
-//  1) 节省 GPU/CPU：点播时不需要提前把整部片都编完；
-//  2) 降低带宽/内存：避免生成大量未播放的 .ts 缓存；
-//  3) 响应用户 seek：被挂起的进程可以快速 Kill，由新进程接力。
+//  1. 节省 GPU/CPU：点播时不需要提前把整部片都编完；
+//  2. 降低带宽/内存：避免生成大量未播放的 .ts 缓存；
+//  3. 响应用户 seek：被挂起的进程可以快速 Kill，由新进程接力。
 const (
 	// 缓冲领先超过此秒数则挂起 ffmpeg
 	throttleAheadHighWatermark = 60.0
@@ -160,9 +161,9 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", ts.hwAccel)
 	})
 
-	// 根据配置启动转码工作协程
-	transcodeWorkers := cfg.App.MaxTranscodeJobs
-	if transcodeWorkers <= 0 {
+	// 【最佳性能策略】转码 worker 数量固定为 NumCPU/2，保留一半核心给系统与播放。
+	transcodeWorkers := runtime.NumCPU() / 2
+	if transcodeWorkers < 1 {
 		transcodeWorkers = 1
 	}
 	for i := 0; i < transcodeWorkers; i++ {
@@ -242,29 +243,29 @@ func (s *TranscodeService) buildFFmpegArgs(media *model.Media, inputPath, output
 	}
 
 	return ffmpeg.BuildHLSArgs(ffmpeg.BuildOptions{
-		InputPath:       inputPath,
-		OutputDir:       outputDir,
-		HWAccel:         s.hwAccel,
-		Profile:         ffmpeg.Profile{Width: qc.Width, Height: qc.Height, VideoBitrate: qc.VideoBitrate, AudioBitrate: qc.AudioBitrate},
-		VAAPIDevice:     s.cfg.App.VAAPIDevice,
-		X264Preset:      s.cfg.App.TranscodePreset,
-		QSVPreset:       s.cfg.App.TranscodePreset,
-		Threads:         ffmpeg.CalcThreads(s.cfg),
-		UseCRF:          true,
-		CRF:             23,
-		SoftwareTune:    "zerolatency",
-		NvencTune:       "ll",
+		InputPath:             inputPath,
+		OutputDir:             outputDir,
+		HWAccel:               s.hwAccel,
+		Profile:               ffmpeg.Profile{Width: qc.Width, Height: qc.Height, VideoBitrate: qc.VideoBitrate, AudioBitrate: qc.AudioBitrate},
+		VAAPIDevice:           s.cfg.App.VAAPIDevice,
+		X264Preset:            "ultrafast",
+		QSVPreset:             "ultrafast",
+		Threads:               ffmpeg.CalcThreads(s.cfg),
+		UseCRF:                true,
+		CRF:                   23,
+		SoftwareTune:          "zerolatency",
+		NvencTune:             "ll",
 		QSVAttachOutputFormat: false, // 允许 QSV 解码失败时回退软件解码
-		QSVGlobalQuality: qsvGlobalQuality,
-		VideoFilter:     videoFilter,
-		HLSTime:         hlsTargetSegmentSeconds,
-		HLSFlags:        "independent_segments+append_list+program_date_time",
-		HLSPlaylistType: "event",
-		StartNumber:     startNumber,
-		ForceKeyFrames:  true,
-		StartOffsetSec:  startOffset,
-		GOPSize:         hlsTargetSegmentSeconds * 25,
-		SkipVAAPIRateLimits: true, // 保持 transcode 历史 VAAPI 行为一致
+		QSVGlobalQuality:      qsvGlobalQuality,
+		VideoFilter:           videoFilter,
+		HLSTime:               hlsTargetSegmentSeconds,
+		HLSFlags:              "independent_segments+append_list+program_date_time",
+		HLSPlaylistType:       "event",
+		StartNumber:           startNumber,
+		ForceKeyFrames:        true,
+		StartOffsetSec:        startOffset,
+		GOPSize:               hlsTargetSegmentSeconds * 25,
+		SkipVAAPIRateLimits:   true, // 保持 transcode 历史 VAAPI 行为一致
 	})
 }
 
@@ -754,13 +755,13 @@ func (s *TranscodeService) SetPlaybackPosition(mediaID string, positionSec float
 
 // MediaThrottleStatus 单个 media 的当前节流/转码快照，供前端 UI 显示
 type MediaThrottleStatus struct {
-	MediaID           string  `json:"media_id"`
-	Running           bool    `json:"running"`            // 是否仍有 FFmpeg 在运行
-	ActiveQualityList []string `json:"active_qualities"`  // 正在转码的档位
-	SuspendedCount    int     `json:"suspended_count"`    // 其中被挂起的档位数
-	PlaybackPos       float64 `json:"playback_pos"`       // 最近一次上报的播放位置（秒）
-	TranscodedPos     float64 `json:"transcoded_pos"`     // 最快档位的转码前沿（秒）
-	AheadSeconds      float64 `json:"ahead_seconds"`      // 转码前沿 - 播放位置
+	MediaID           string   `json:"media_id"`
+	Running           bool     `json:"running"`          // 是否仍有 FFmpeg 在运行
+	ActiveQualityList []string `json:"active_qualities"` // 正在转码的档位
+	SuspendedCount    int      `json:"suspended_count"`  // 其中被挂起的档位数
+	PlaybackPos       float64  `json:"playback_pos"`     // 最近一次上报的播放位置（秒）
+	TranscodedPos     float64  `json:"transcoded_pos"`   // 最快档位的转码前沿（秒）
+	AheadSeconds      float64  `json:"ahead_seconds"`    // 转码前沿 - 播放位置
 }
 
 // GetMediaThrottleStatus 返回单个 media 的节流快照（每档一条记录合并）。
@@ -906,12 +907,6 @@ func (s *TranscodeService) CancelTranscode(taskID string) error {
 	}
 
 	return nil
-}
-
-// calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
-// Deprecated: 保留兼容接口，实际委托给 ffmpeg.CalcThreads。
-func (s *TranscodeService) calcFFmpegThreads() int {
-	return ffmpeg.CalcThreads(s.cfg)
 }
 
 // buildFFmpegHDRTonemapFilter 构建 HDR→SDR 色调映射滤镜

@@ -396,6 +396,15 @@ func (s *DoubanService) downloadDoubanCover(media *model.Media, coverURL string)
 
 // parseDoubanTitle 从文件标题中提取搜索关键词（与metadata.go相同逻辑）
 func (s *DoubanService) parseDoubanTitle(title string) (string, int) {
+	// 优先使用统一增强解析器（支持《》【广告】[站点]XX届 115chrome 等脏命名）
+	probe := title
+	if filepath.Ext(probe) == "" {
+		probe = probe + ".mkv"
+	}
+	if parsed := ParseMovieFilename(probe); parsed.Title != "" {
+		return parsed.Title, parsed.Year
+	}
+
 	yearRegex := regexp.MustCompile(`[\s\.(]\s*((?:19|20)\d{2})\s*[\s\).]?`)
 	matches := yearRegex.FindStringSubmatch(title)
 

@@ -83,11 +83,6 @@ type PreprocessService struct {
 
 	// V2.1: VFS 管理器（用于 WebDAV 路径验证）
 	vfsMgr *VFSManager
-
-	// 潮汐调度：运行时覆盖的 ResourceLimit（-1 = 未覆盖）
-	// 由 IdleScheduler 动态设置，用于在有用户在线 / 播放时自动降低算力占用
-	tidalResourceLimit int32 // atomic；-1 表示不覆盖，走 cfg.App.ResourceLimit
-	tidalMode          atomic.Value // string: "idle" / "busy" / "playing"
 }
 
 // SetVFSManager 设置 VFS 管理器（V2.1）
@@ -109,19 +104,15 @@ func NewPreprocessService(
 	hwAccel string,
 	logger *zap.SugaredLogger,
 ) *PreprocessService {
-	// 根据配置设置 worker 数量
-	maxWorkers := int32(cfg.App.MaxTranscodeJobs)
-	if maxWorkers <= 0 {
+	// 【最佳性能策略】worker 数量固定为 NumCPU/2，
+	// 既能充分利用多核，又留一半核心给系统和播放使用。
+	maxWorkers := int32(runtime.NumCPU() / 2)
+	if maxWorkers < 1 {
 		maxWorkers = 1
 	}
 
-	resourceLimit := cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-
-	logger.Infof("预处理服务启动: maxWorkers=%d, resourceLimit=%d%%, hwAccel=%s",
-		maxWorkers, resourceLimit, hwAccel)
+	logger.Infof("预处理服务启动（最佳性能模式）: maxWorkers=%d, hwAccel=%s, ffmpeg_threads=0(auto)",
+		maxWorkers, hwAccel)
 
 	s := &PreprocessService{
 		cfg:        cfg,
@@ -146,9 +137,6 @@ func NewPreprocessService(
 	// 恢复未完成的任务（按优先级排序入队）
 	go s.recoverPendingTasks()
 
-	// 启动动态负载调整协程
-	go s.dynamicLoadAdjuster()
-
 	return s
 }
 
@@ -164,8 +152,13 @@ func (s *PreprocessService) SetWSHub(hub *WSHub) {
 
 // ==================== 公开 API ====================
 
-// SubmitMedia 提交单个媒体进行预处理
-func (s *PreprocessService) SubmitMedia(mediaID string, priority int) (*model.PreprocessTask, error) {
+// SubmitMedia 提交单个媒体进行预处理。
+//
+// force 语义：
+//   - false（自动调度路径使用）：如果媒体已经可以浏览器零转码直接播放
+//     （mp4/H.264+AAC 等），则直接返回错误不入队，避免无谓的 CPU/GPU 消耗。
+//   - true（用户手动点击"预处理/强制转码"按钮）：绕过上述判定，一律入队。
+func (s *PreprocessService) SubmitMedia(mediaID string, priority int, force bool) (*model.PreprocessTask, error) {
 	// 检查是否已有活跃任务
 	existing, err := s.repo.FindActiveByMediaID(mediaID)
 	if err == nil && existing != nil {
@@ -180,6 +173,13 @@ func (s *PreprocessService) SubmitMedia(mediaID string, priority int) (*model.Pr
 	// STRM 远程流不支持预处理
 	if media.StreamURL != "" {
 		return nil, fmt.Errorf("STRM 远程流不支持预处理")
+	}
+
+	// 自动场景下，若浏览器可零转码直接播放则跳过，避免无谓消耗
+	// 用户通过前端按钮手动触发（force=true）可以绕过该限制
+	if !force && canMediaPlayDirectly(media) {
+		return nil, fmt.Errorf("该媒体可在浏览器直接播放（%s / %s），无需预处理",
+			media.VideoCodec, media.AudioCodec)
 	}
 
 	// V2.1: WebDAV 路径 → HTTP URL（FFmpeg 会直接流式读取，不需要全文件下载）
@@ -237,10 +237,14 @@ func (s *PreprocessService) SubmitMedia(mediaID string, priority int) (*model.Pr
 }
 
 // BatchSubmit 批量提交预处理任务
-func (s *PreprocessService) BatchSubmit(mediaIDs []string, priority int) ([]*model.PreprocessTask, error) {
+//
+// force 语义同 SubmitMedia：
+//   - false：自动跳过可直接播放的媒体；
+//   - true：用户显式要求强制预处理所有指定媒体。
+func (s *PreprocessService) BatchSubmit(mediaIDs []string, priority int, force bool) ([]*model.PreprocessTask, error) {
 	var tasks []*model.PreprocessTask
 	for _, id := range mediaIDs {
-		task, err := s.SubmitMedia(id, priority)
+		task, err := s.SubmitMedia(id, priority, force)
 		if err != nil {
 			s.logger.Warnf("批量提交跳过 %s: %v", id, err)
 			continue
@@ -250,7 +254,12 @@ func (s *PreprocessService) BatchSubmit(mediaIDs []string, priority int) ([]*mod
 	return tasks, nil
 }
 
-// SubmitLibrary 提交整个媒体库的所有视频进行预处理
+// SubmitLibrary 提交整个媒体库的所有视频进行预处理。
+//
+// 该路径始终以 force=false 调用 SubmitMedia：
+// 已经能浏览器零转码播放的媒体（mp4/H.264+AAC/MKV+H.264+AAC 等）
+// 不会被纳入预处理队列，避免 CPU/GPU 的无谓消耗。
+// 用户如需强制预处理某个媒体，应走 MediaDetailPage 的"预处理/强制转码"按钮。
 func (s *PreprocessService) SubmitLibrary(libraryID string, priority int) (int, error) {
 	// 查找媒体库中所有视频
 	medias, err := s.mediaRepo.ListByLibraryID(libraryID)
@@ -259,6 +268,7 @@ func (s *PreprocessService) SubmitLibrary(libraryID string, priority int) (int, 
 	}
 
 	count := 0
+	skippedDirect := 0
 	for _, media := range medias {
 		// 跳过 STRM 远程流
 		if media.StreamURL != "" {
@@ -272,12 +282,20 @@ func (s *PreprocessService) SubmitLibrary(libraryID string, priority int) (int, 
 		if existing, err := s.repo.FindByMediaID(media.ID); err == nil && existing.Status == "completed" {
 			continue
 		}
+		// 跳过浏览器可零转码直接播放的媒体（由 SubmitMedia 内部判定，这里提前剪枝减少日志噪声）
+		if canMediaPlayDirectly(&media) {
+			skippedDirect++
+			continue
+		}
 
-		if _, err := s.SubmitMedia(media.ID, priority); err == nil {
+		if _, err := s.SubmitMedia(media.ID, priority, false); err == nil {
 			count++
 		}
 	}
 
+	if skippedDirect > 0 {
+		s.logger.Infof("媒体库 %s 自动预处理：跳过 %d 个可直接播放的媒体", libraryID, skippedDirect)
+	}
 	return count, nil
 }
 
@@ -418,8 +436,7 @@ func (s *PreprocessService) GetStatistics() map[string]interface{} {
 		"active_workers": atomic.LoadInt32(&s.workerCount),
 		"queue_size":     len(s.jobQueue),
 		"hw_accel":       s.hwAccel,
-		"mode":           "dynamic", // 动态资源调整模式
-		"resource_limit": s.cfg.App.ResourceLimit,
+		"mode":           "best-performance", // 最佳性能模式
 	}
 }
 
@@ -691,18 +708,11 @@ func (s *PreprocessService) processTask(taskID string) {
 	totalVariants := len(variants)
 	completedVariants := []string{}
 
-	// 根据资源限制配置动态计算并行度
-	resourceLimit := s.cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-	// 资源限制低于 30% 时串行转码，否则允许并行
-	maxParallel := 1
-	if resourceLimit >= 30 && s.hwAccel != "none" {
-		maxParallel = 2 // GPU 加速时允许更多并行
-	}
-	if maxParallel > totalVariants {
-		maxParallel = totalVariants
+	// 【方案 1 全速策略】不再限制变体并行度：
+	// 所有档位（1080p/720p/480p 等）同时编码，让 FFmpeg / GPU 自己调度。
+	maxParallel := totalVariants
+	if maxParallel < 1 {
+		maxParallel = 1
 	}
 
 	type variantResult struct {
@@ -1234,7 +1244,7 @@ func (s *PreprocessService) transcodeWithFallback(
 				BufSize:      variant.BufSize,
 			},
 			VAAPIDevice:           s.cfg.App.VAAPIDevice,
-			X264Preset:            s.cfg.App.TranscodePreset,
+			X264Preset:            "ultrafast",
 			QSVPreset:             "medium",
 			Threads:               ffmpegThreads,
 			QSVAttachOutputFormat: true, // 预处理走全 GPU 管线
@@ -1631,9 +1641,6 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 		cpuPercent = percents[0]
 	}
 
-	// 计算 FFmpeg 线程数（供前端展示）
-	ffmpegThreads := s.calcFFmpegThreads()
-
 	result := map[string]interface{}{
 		"cpu_count":      runtime.NumCPU(),
 		"cpu_percent":    cpuPercent,
@@ -1644,10 +1651,7 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 		"max_workers":    atomic.LoadInt32(&s.maxWorkers),
 		"cur_workers":    atomic.LoadInt32(&s.curWorkers),
 		"queue_size":     len(s.jobQueue),
-		"resource_limit": s.cfg.App.ResourceLimit,
-		"ffmpeg_threads": ffmpegThreads,
 		"hw_accel":       s.hwAccel,
-		"suggestions":    s.getPerformanceSuggestions(cpuPercent),
 	}
 
 	// 添加 GPU 实时指标
@@ -1657,323 +1661,4 @@ func (s *PreprocessService) GetSystemLoad() map[string]interface{} {
 	}
 
 	return result
-}
-
-// getPerformanceSuggestions 根据当前系统状态生成性能优化建议
-func (s *PreprocessService) getPerformanceSuggestions(cpuPercent float64) []string {
-	var suggestions []string
-	cpuCount := runtime.NumCPU()
-	resourceLimit := s.cfg.App.ResourceLimit
-
-	// CPU 核心数建议
-	if cpuCount >= 8 && s.cfg.App.MaxTranscodeJobs == 1 {
-		suggestions = append(suggestions, fmt.Sprintf("检测到 %d 核 CPU，建议将并行任务数提升至 2~%d 以充分利用多核性能", cpuCount, min(cpuCount/4, 4)))
-	}
-
-	// GPU 加速建议
-	if s.hwAccel == "none" {
-		suggestions = append(suggestions, "未检测到 GPU 硬件加速，建议安装 GPU 驱动以大幅提升转码速度")
-	}
-
-	// 资源限制建议
-	if resourceLimit <= 20 {
-		suggestions = append(suggestions, "当前资源限制较低（≤20%），转码速度可能较慢。如果系统负载允许，建议适当提高")
-	}
-
-	// CPU 使用率建议
-	if cpuPercent > float64(resourceLimit)*0.9 && cpuPercent > 50 {
-		suggestions = append(suggestions, "CPU 使用率接近资源限制上限，系统可能会频繁暂停转码任务")
-	}
-
-	// 转码预设建议
-	if s.cfg.App.TranscodePreset == "medium" || s.cfg.App.TranscodePreset == "slow" {
-		if cpuCount < 8 {
-			suggestions = append(suggestions, "当前转码预设较慢，低核心数 CPU 建议使用 veryfast 或 fast 预设")
-		}
-	}
-
-	if len(suggestions) == 0 {
-		suggestions = append(suggestions, "当前配置良好，系统运行正常")
-	}
-
-	return suggestions
-}
-
-// GetPerformanceConfig 获取当前性能配置
-func (s *PreprocessService) GetPerformanceConfig() map[string]interface{} {
-	result := map[string]interface{}{
-		"resource_limit":     s.cfg.App.ResourceLimit,
-		"max_transcode_jobs": s.cfg.App.MaxTranscodeJobs,
-		"transcode_preset":   s.cfg.App.TranscodePreset,
-		"hw_accel":           s.cfg.App.HWAccel,
-		"detected_hw_accel":  s.hwAccel, // 实际检测到的硬件加速模式
-		"vaapi_device":       s.cfg.App.VAAPIDevice,
-		"cpu_count":          runtime.NumCPU(),
-		"ffmpeg_threads":     s.calcFFmpegThreads(),
-		"max_workers":        atomic.LoadInt32(&s.maxWorkers),
-	}
-
-	// 添加 GPU 安全保护配置
-	result["gpu_safety_enabled"] = s.cfg.App.GPUSafetyEnabled
-	result["gpu_utilization_threshold"] = s.cfg.App.GPUUtilizationThreshold
-	result["gpu_temperature_threshold"] = s.cfg.App.GPUTemperatureThreshold
-	result["gpu_recovery_threshold"] = s.cfg.App.GPURecoveryThreshold
-	result["gpu_temperature_recovery"] = s.cfg.App.GPUTemperatureRecovery
-
-	// 添加 GPU 实时状态
-	if s.gpuMonitor != nil {
-		status := s.gpuMonitor.GetSafetyStatus()
-		result["gpu_status"] = status
-	}
-
-	return result
-}
-
-// UpdatePerformanceConfig 更新性能配置（热更新，无需重启）
-func (s *PreprocessService) UpdatePerformanceConfig(updates map[string]interface{}) error {
-	// 持久化到配置文件
-	if err := s.cfg.UpdatePerformanceConfig(updates); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
-
-	// 热更新运行时参数
-	// max_transcode_jobs 的变更需要重启服务才能完全生效（worker 协程数量固定）
-	// 但我们更新 maxWorkers 以确保前端显示一致
-	if v, ok := updates["max_transcode_jobs"]; ok {
-		if fv, ok := v.(float64); ok {
-			newMax := int32(fv)
-			if newMax >= 1 && newMax <= 16 {
-				atomic.StoreInt32(&s.maxWorkers, newMax)
-				// 同步调整当前并发数上限
-				if atomic.LoadInt32(&s.curWorkers) > newMax {
-					atomic.StoreInt32(&s.curWorkers, newMax)
-				}
-				s.logger.Infof("最大并行任务数已更新: %d（完全生效需重启服务）", newMax)
-			}
-		}
-	}
-
-	// 热更新 GPU 监控阈值（无需重启）
-	if s.gpuMonitor != nil {
-		needUpdateGPU := false
-		for key := range updates {
-			if strings.HasPrefix(key, "gpu_") {
-				needUpdateGPU = true
-				break
-			}
-		}
-		if needUpdateGPU {
-			newCfg := GPUThresholdConfig{
-				UtilizationThreshold: s.cfg.App.GPUUtilizationThreshold,
-				TemperatureThreshold: s.cfg.App.GPUTemperatureThreshold,
-				RecoveryThreshold:    s.cfg.App.GPURecoveryThreshold,
-				TemperatureRecovery:  s.cfg.App.GPUTemperatureRecovery,
-				MonitorInterval:      s.cfg.App.GPUMonitorInterval,
-				Enabled:              s.cfg.App.GPUSafetyEnabled,
-			}
-			s.gpuMonitor.UpdateConfig(newCfg)
-		}
-	}
-
-	s.logger.Infof("性能配置已更新: %v", updates)
-	return nil
-}
-
-// dynamicLoadAdjuster 动态负载调整协程
-// 根据 CPU 使用率动态调整并发 worker 数量
-// P1 优化：缩短检测周期到 15 秒，使用非阻塞 CPU 采样
-func (s *PreprocessService) dynamicLoadAdjuster() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		percents, err := cpu.Percent(0, false)
-		if err != nil || len(percents) == 0 {
-			continue
-		}
-
-		cpuUsage := percents[0]
-		current := atomic.LoadInt32(&s.curWorkers)
-		max := atomic.LoadInt32(&s.maxWorkers)
-
-		// 根据用户配置的资源限制动态调整 worker 数量
-		// 潮汐调度可能临时覆盖此值（有用户在线 / 播放时降低）
-		resourceLimit := float64(s.effectiveResourceLimit())
-		if resourceLimit <= 0 || resourceLimit > 80 {
-			resourceLimit = 80
-		}
-
-		var newWorkers int32
-		switch {
-		case cpuUsage > resourceLimit:
-			// CPU 超过资源限制，暂停所有 worker
-			newWorkers = 0
-		case cpuUsage > resourceLimit*0.8:
-			// CPU 接近限制（80%），减半 worker
-			newWorkers = max / 2
-			if newWorkers < 1 {
-				newWorkers = 1
-			}
-		case cpuUsage > resourceLimit*0.6:
-			// CPU 中等负载（60%），使用 75% worker
-			newWorkers = max * 3 / 4
-			if newWorkers < 1 {
-				newWorkers = 1
-			}
-		default:
-			// CPU 空闲，使用全部 worker
-			newWorkers = max
-		}
-
-		if newWorkers != current {
-			atomic.StoreInt32(&s.curWorkers, newWorkers)
-			s.logger.Infof("动态调整并发: CPU %.1f%% (限制 %.0f%%), workers %d -> %d",
-				cpuUsage, resourceLimit, current, newWorkers)
-		}
-	}
-}
-
-// calcFFmpegThreads 根据资源限制配置动态计算 FFmpeg 线程数
-// Deprecated: 保留兼容接口，实际委托给 ffmpeg.CalcThreads。
-func (s *PreprocessService) calcFFmpegThreads() int {
-	return ffmpeg.CalcThreads(s.cfg)
-}
-
-// ==================== 潮汐调度（Tidal Scheduling） ====================
-//
-// 潮汐调度：无人使用时全力预处理，有用户在线/播放时自动让路。
-// 通过覆盖 ResourceLimit 实现（动态负载调整器会读取 effectiveResourceLimit()）。
-
-// 潮汐模式常量
-const (
-	TidalModeIdle    = "idle"    // 空闲：无人在线，全力处理
-	TidalModeBusy    = "busy"    // 忙碌：有用户在线但未播放，限制资源
-	TidalModePlaying = "playing" // 播放：有用户在播放，暂停或极限资源
-)
-
-// effectiveResourceLimit 返回当前实际生效的 ResourceLimit
-// 如果潮汐调度器设置了覆盖值（>=0）则返回覆盖值，否则返回配置值
-func (s *PreprocessService) effectiveResourceLimit() int {
-	override := atomic.LoadInt32(&s.tidalResourceLimit)
-	if override >= 0 {
-		return int(override)
-	}
-	return s.cfg.App.ResourceLimit
-}
-
-// ApplyTidalResourceLimit 设置潮汐覆盖的 ResourceLimit
-//   - limit < 0 : 清除覆盖，恢复使用配置值
-//   - limit = 0 : 暂停所有 worker（CPU 超过 0% 即暂停）
-//   - limit > 0 : 覆盖资源上限（1-100）
-func (s *PreprocessService) ApplyTidalResourceLimit(limit int) {
-	prev := atomic.LoadInt32(&s.tidalResourceLimit)
-	var newVal int32
-	if limit < 0 {
-		newVal = -1
-	} else if limit > 100 {
-		newVal = 100
-	} else {
-		newVal = int32(limit)
-	}
-	if prev != newVal {
-		atomic.StoreInt32(&s.tidalResourceLimit, newVal)
-		s.logger.Infof("潮汐调度: ResourceLimit 覆盖值 %d -> %d", prev, newVal)
-	}
-}
-
-// SetTidalMode 设置当前潮汐模式（仅用于状态展示与日志）
-func (s *PreprocessService) SetTidalMode(mode string) {
-	prev, _ := s.tidalMode.Load().(string)
-	if prev != mode {
-		s.tidalMode.Store(mode)
-		s.logger.Infof("潮汐调度: 模式切换 %s -> %s", prev, mode)
-	} else if prev == "" {
-		s.tidalMode.Store(mode)
-	}
-}
-
-// GetTidalMode 获取当前潮汐模式
-func (s *PreprocessService) GetTidalMode() string {
-	if v, ok := s.tidalMode.Load().(string); ok && v != "" {
-		return v
-	}
-	return TidalModeIdle
-}
-
-// GetTidalStatus 获取潮汐调度当前状态（用于 API 返回）
-func (s *PreprocessService) GetTidalStatus() map[string]interface{} {
-	override := atomic.LoadInt32(&s.tidalResourceLimit)
-	var overrideVal interface{}
-	if override < 0 {
-		overrideVal = nil
-	} else {
-		overrideVal = override
-	}
-	return map[string]interface{}{
-		"mode":                    s.GetTidalMode(),
-		"config_resource_limit":   s.cfg.App.ResourceLimit,
-		"override_resource_limit": overrideVal,
-		"effective_resource_limit": s.effectiveResourceLimit(),
-		"active_workers":          atomic.LoadInt32(&s.workerCount),
-		"cur_workers":             atomic.LoadInt32(&s.curWorkers),
-		"max_workers":             atomic.LoadInt32(&s.maxWorkers),
-		"queue_size":              len(s.jobQueue),
-	}
-}
-
-// PauseAllRunningTasks 暂停所有正在运行的预处理任务（潮汐：播放时让路用）
-// 返回被暂停的任务 ID 列表
-func (s *PreprocessService) PauseAllRunningTasks() []string {
-	running, err := s.repo.ListRunning()
-	if err != nil {
-		s.logger.Warnf("潮汐调度: 查询运行中任务失败: %v", err)
-		return nil
-	}
-	var paused []string
-	for _, t := range running {
-		if err := s.PauseTask(t.ID); err == nil {
-			paused = append(paused, t.ID)
-		}
-	}
-	if len(paused) > 0 {
-		s.logger.Infof("潮汐调度: 已暂停 %d 个正在运行的预处理任务", len(paused))
-	}
-	return paused
-}
-
-// ResumePausedTasks 恢复指定的一批暂停任务（潮汐：恢复空闲后使用）
-// 仅恢复传入的 ID 列表中仍处于 paused 状态的任务
-func (s *PreprocessService) ResumePausedTasks(taskIDs []string) int {
-	resumed := 0
-	for _, id := range taskIDs {
-		task, err := s.repo.FindByID(id)
-		if err != nil || task.Status != "paused" {
-			continue
-		}
-		if err := s.ResumeTask(id); err == nil {
-			resumed++
-		}
-	}
-	if resumed > 0 {
-		s.logger.Infof("潮汐调度: 已恢复 %d 个暂停任务", resumed)
-	}
-	return resumed
-}
-
-// ResumeAllPausedTasks 恢复所有 paused 状态的任务（不论是否潮汐暂停）
-func (s *PreprocessService) ResumeAllPausedTasks() int {
-	tasks, _, err := s.repo.ListAll(1, 1000, "paused")
-	if err != nil {
-		return 0
-	}
-	resumed := 0
-	for _, t := range tasks {
-		if err := s.ResumeTask(t.ID); err == nil {
-			resumed++
-		}
-	}
-	if resumed > 0 {
-		s.logger.Infof("潮汐调度: 已恢复 %d 个暂停任务（全量）", resumed)
-	}
-	return resumed
 }

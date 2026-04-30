@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { subtitlePreprocessApi } from '@/api/subtitlePreprocess'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
 import type { SubtitlePreprocessTask, SubtitlePreprocessStatistics, ASRHealthStatus, Library } from '@/types'
 import api from '@/api/client'
 import { LANGUAGE_OPTIONS } from '@/components/file-manager/constants'
@@ -25,10 +27,6 @@ import {
   Globe,
   CheckSquare,
   Square,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   X,
   ChevronDown,
   Zap,
@@ -93,8 +91,7 @@ export default function SubtitlePreprocessPage() {
   const { on, off } = useWebSocket()
   const [tasks, setTasks] = useState<SubtitlePreprocessTask[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const { page, size: pageSize, setPage, setSize, totalPages: calcTotalPages } = usePagination({ initialSize: 20 })
   const [statusFilter, setStatusFilter] = useState('')
   const [stats, setStats] = useState<SubtitlePreprocessStatistics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -117,7 +114,7 @@ export default function SubtitlePreprocessPage() {
   const [batchLoading, setBatchLoading] = useState(false)
 
   // 计算总页数
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize])
+  const totalPages = useMemo(() => calcTotalPages(total), [calcTotalPages, total])
 
   // 全选/取消全选当前页
   const isAllSelected = tasks.length > 0 && tasks.every((t) => selectedIds.has(t.id))
@@ -1075,129 +1072,19 @@ export default function SubtitlePreprocessPage() {
         )}
       </div>
 
-      {/* 增强分页 */}
-      {total > 0 && (
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          {/* 左侧：分页信息 */}
-          <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span>
-              共 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{total}</span> 条
-            </span>
-            <span>·</span>
-            <span>
-              第 <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{page}</span> / {totalPages} 页
-            </span>
-            <span>·</span>
-            <span>
-              显示第 {Math.min((page - 1) * pageSize + 1, total)}-{Math.min(page * pageSize, total)} 条
-            </span>
-          </div>
-
-          {/* 中间：分页按钮 */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-              className="p-1.5 rounded-lg disabled:opacity-20 transition-colors hover:bg-white/5"
-              style={{ color: 'var(--text-muted)' }}
-              title="第一页"
-            >
-              <ChevronsLeft size={14} />
-            </button>
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page <= 1}
-              className="p-1.5 rounded-lg disabled:opacity-20 transition-colors hover:bg-white/5"
-              style={{ color: 'var(--text-muted)' }}
-              title="上一页"
-            >
-              <ChevronLeft size={14} />
-            </button>
-
-            {/* 页码按钮 */}
-            {(() => {
-              const pages: (number | string)[] = []
-              const maxVisible = 5
-              let start = Math.max(1, page - Math.floor(maxVisible / 2))
-              let end = Math.min(totalPages, start + maxVisible - 1)
-              if (end - start + 1 < maxVisible) {
-                start = Math.max(1, end - maxVisible + 1)
-              }
-              if (start > 1) {
-                pages.push(1)
-                if (start > 2) pages.push('...')
-              }
-              for (let i = start; i <= end; i++) pages.push(i)
-              if (end < totalPages) {
-                if (end < totalPages - 1) pages.push('...')
-                pages.push(totalPages)
-              }
-              return pages.map((p, idx) =>
-                typeof p === 'string' ? (
-                  <span key={`ellipsis-${idx}`} className="px-1 text-xs" style={{ color: 'var(--text-muted)' }}>…</span>
-                ) : (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={clsx('min-w-[28px] h-7 rounded-lg text-xs transition-colors')}
-                    style={
-                      p === page
-                        ? { background: 'var(--neon-blue-15)', border: '1px solid var(--neon-blue-30)', color: 'var(--text-primary)' }
-                        : { color: 'var(--text-muted)' }
-                    }
-                  >
-                    {p}
-                  </button>
-                )
-              )
-            })()}
-
-            <button
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-              disabled={page >= totalPages}
-              className="p-1.5 rounded-lg disabled:opacity-20 transition-colors hover:bg-white/5"
-              style={{ color: 'var(--text-muted)' }}
-              title="下一页"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <button
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-              className="p-1.5 rounded-lg disabled:opacity-20 transition-colors hover:bg-white/5"
-              style={{ color: 'var(--text-muted)' }}
-              title="最后一页"
-            >
-              <ChevronsRight size={14} />
-            </button>
-          </div>
-
-          {/* 右侧：每页数量选择 */}
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span>每页</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                const newSize = Number(e.target.value)
-                setPageSize(newSize)
-                setPage(1)
-                setSelectedIds(new Set())
-              }}
-              className="rounded-lg px-2 py-1 text-xs appearance-none cursor-pointer"
-              style={{
-                background: 'var(--glass-bg)',
-                border: '1px solid var(--neon-blue-6)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              {[10, 20, 50, 100].map((size) => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-            <span>条</span>
-          </div>
-        </div>
-      )}
+      {/* 分页 */}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        pageSizeOptions={[10, 20, 50, 100]}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setSize(newSize)
+          setSelectedIds(new Set())
+        }}
+      />
     </div>
   )
 }

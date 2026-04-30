@@ -1,10 +1,11 @@
-import { useState } from 'react'
 import { userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { usePageCache } from '@/hooks/usePageCache'
+import { usePagination } from '@/hooks/usePagination'
 import type { Favorite } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
+import Pagination from '@/components/Pagination'
 import { Heart } from 'lucide-react'
 
 interface FavoritesData {
@@ -13,8 +14,10 @@ interface FavoritesData {
 }
 
 export default function FavoritesPage() {
-  const [page, setPage] = useState(1)
-  const size = 30
+  const { page, size, setPage, setSize, totalPages } = usePagination({
+    initialSize: 30,
+    syncToUrl: true,
+  })
   const toast = useToast()
   const { t } = useTranslation()
 
@@ -35,7 +38,7 @@ export default function FavoritesPage() {
   const favorites = data?.list ?? []
   const total = data?.total ?? 0
   const media = favorites.map((f) => f.media)
-  const totalPages = Math.ceil(total / size)
+  const pages = totalPages(total)
 
   return (
     <div>
@@ -66,27 +69,15 @@ export default function FavoritesPage() {
       )}
 
       {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            {t('pagination.prev')}
-          </button>
-          <span className="font-display text-sm tracking-wide text-neon">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            {t('pagination.next')}
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={pages}
+        total={total}
+        pageSize={size}
+        pageSizeOptions={[20, 30, 50, 100]}
+        onPageChange={setPage}
+        onPageSizeChange={setSize}
+      />
     </div>
   )
 }

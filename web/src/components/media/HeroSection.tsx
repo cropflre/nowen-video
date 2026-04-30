@@ -35,6 +35,8 @@ interface HeroSectionProps {
   playlists: Playlist[]
   scraping: boolean
   isAdmin: boolean
+  /** 海报/背景图版本号：元数据更新后递增此值可强制刷新图片 */
+  posterVersion?: number
   onFavorite: () => void
   onScrape?: () => void
   onAddToPlaylist: (playlistId: string) => void
@@ -56,6 +58,7 @@ export default function HeroSection({
   playlists,
   scraping,
   isAdmin,
+  posterVersion,
   onFavorite,
   onScrape: _onScrape,
   onAddToPlaylist,
@@ -96,7 +99,7 @@ export default function HeroSection({
           <div className="absolute inset-0" style={{ background: 'var(--bg-surface)' }}>
             {media.backdrop_path ? (
               <img
-                src={streamApi.getPosterUrl(media.id)}
+                src={streamApi.getPosterUrl(media.id, posterVersion)}
                 alt=""
                 className={clsx(
                   'h-full w-full object-cover transition-all duration-1000',
@@ -106,7 +109,7 @@ export default function HeroSection({
               />
             ) : (
               <img
-                src={streamApi.getPosterUrl(media.id)}
+                src={streamApi.getPosterUrl(media.id, posterVersion)}
                 alt=""
                 className="h-full w-full object-cover opacity-15 blur-2xl scale-110"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
@@ -132,7 +135,7 @@ export default function HeroSection({
                 }}
               >
                 <img
-                  src={streamApi.getPosterUrl(media.id)}
+                  src={streamApi.getPosterUrl(media.id, posterVersion)}
                   alt={media.title}
                   className={clsx('w-full object-cover', posterFailed && 'hidden')}
                   style={{ aspectRatio: '2/3' }}

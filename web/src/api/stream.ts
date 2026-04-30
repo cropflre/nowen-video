@@ -68,17 +68,37 @@ export const streamApi = {
       }
     }>(`/stream/${mediaId}/throttle`),
 
-  getPosterUrl: (mediaId: string) =>
-    withToken(`/api/media/${mediaId}/poster`),
+  // STRM 链路健康检查：返回连通性 + 关键响应头，用于播放器诊断面板
+  checkSTRM: (mediaId: string) =>
+    api.get<{
+      data: {
+        media_id: string
+        url: string
+        status_code: number
+        ok: boolean
+        content_type?: string
+        content_length?: number
+        accept_ranges?: string
+        response_ms: number
+        error?: string
+        effective_url?: string
+        headers?: Record<string, string>
+      }
+    }>(`/stream/${mediaId}/strm-check`),
 
-  getSeriesPosterUrl: (seriesId: string) =>
-    withToken(`/api/series/${seriesId}/poster`),
+  // version 可选：用于缓存破坏（cache-busting）。
+  // 当元数据/海报被替换后，传入一个新的数字即可触发浏览器重新请求图片。
+  getPosterUrl: (mediaId: string, version?: number) =>
+    withToken(`/api/media/${mediaId}/poster${version ? `?v=${version}` : ''}`),
 
-  getSeriesBackdropUrl: (seriesId: string) =>
-    withToken(`/api/series/${seriesId}/backdrop`),
+  getSeriesPosterUrl: (seriesId: string, version?: number) =>
+    withToken(`/api/series/${seriesId}/poster${version ? `?v=${version}` : ''}`),
 
-  getCollectionPosterUrl: (collectionId: string) =>
-    withToken(`/api/collections/${collectionId}/poster`),
+  getSeriesBackdropUrl: (seriesId: string, version?: number) =>
+    withToken(`/api/series/${seriesId}/backdrop${version ? `?v=${version}` : ''}`),
+
+  getCollectionPosterUrl: (collectionId: string, version?: number) =>
+    withToken(`/api/collections/${collectionId}/poster${version ? `?v=${version}` : ''}`),
 
   // 为任意 URL 添加认证 token
   withTokenUrl: (url: string) => withToken(url),

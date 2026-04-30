@@ -3,9 +3,11 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,6 +220,65 @@ func (s *StreamService) ShouldRemuxByID(mediaID, userAgent string) (bool, error)
 		return false, ErrMediaNotFound
 	}
 	return s.ShouldRemux(media, userAgent), nil
+}
+
+// canMediaPlayDirectly 包级判定：判断该媒体是否可在浏览器端零转码播放。
+//
+// 抽成包级函数的原因：PreprocessService 需要在"自动批量提交"路径上据此跳过
+// 已经能直接播放/Remux 的媒体，但 PreprocessService 与 StreamService 之间
+// 不宜增加方法调用依赖，因此两者都走这个包级函数，语义保持一致。
+//
+// 判定等级（任一满足即返回 true）：
+//  1. 容器在 directPlayableExts（mp4/webm/m4v），视频+音频编码兼容浏览器
+//     → 浏览器原生 Direct Play
+//  2. 容器在 remuxableExts（mkv/avi/mov/flv/wmv/ts），且内部编码兼容浏览器
+//     → 可通过零转码 Remux 秒开
+//
+// 返回 false 的典型场景：
+//   - STRM 远程流（预处理不适用）
+//   - 容器是 rmvb/vob/iso/3gp 等非白名单
+//   - 编码是 MPEG-2 / WMV3 / DTS / TrueHD 等浏览器不支持的格式
+//   - 媒体元信息缺失（codec 字段为空，保守起见认为需要预处理）
+func canMediaPlayDirectly(media *model.Media) bool {
+	if media == nil {
+		return false
+	}
+	// STRM 远程流走独立通道，这里统一返回 false
+	if media.StreamURL != "" {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(media.FilePath))
+	vc := strings.ToLower(media.VideoCodec)
+	ac := strings.ToLower(media.AudioCodec)
+
+	// 编码信息缺失时保守处理：还没探测出来 → 允许预处理
+	if vc == "" {
+		return false
+	}
+	if !browserCompatibleVideoCodecs[vc] {
+		return false
+	}
+	if ac != "" && !browserCompatibleAudioCodecs[ac] {
+		return false
+	}
+
+	// 等级 1：mp4/webm/m4v 直接播
+	if directPlayableExts[ext] {
+		return true
+	}
+	// 等级 2：mkv/avi/mov 等可零转码 Remux
+	if remuxableExts[ext] {
+		return true
+	}
+	return false
+}
+
+// CanPlayDirectlyInBrowser 判断当前 media 在浏览器端是否可以"零转码播放"。
+//
+// 实现委托给包级 canMediaPlayDirectly，保证与 PreprocessService
+// 自动跳过逻辑共享同一套判定规则。
+func (s *StreamService) CanPlayDirectlyInBrowser(media *model.Media) bool {
+	return canMediaPlayDirectly(media)
 }
 
 // GetMediaPlayInfo 获取播放信息，前端根据此判断使用哪种播放方式
@@ -608,8 +669,155 @@ func (s *StreamService) estimateBandwidth(bitrate string) int {
 // ==================== STRM 远程流代理 ====================
 
 // ProxyRemoteStream 代理远程流媒体（支持 Range 请求，实现拖动进度条）
+//
+// 向下兼容：无自定义 Header 时退化为原有逻辑。
 func (s *StreamService) ProxyRemoteStream(remoteURL string, w http.ResponseWriter, r *http.Request) error {
-	// 创建请求，转发客户端的 Range 头
+	return s.proxyRemoteStreamWithHeaders(remoteURL, "", w, r, nil)
+}
+
+// ProxyRemoteStreamForMedia 基于 mediaID 的代理入口，会自动加载 media 的 UA/Referer/Cookie/Header
+// 并对 HLS 子 playlist 执行 URL 重写（分片仍走后端代理，继承鉴权）。
+func (s *StreamService) ProxyRemoteStreamForMedia(mediaID string, w http.ResponseWriter, r *http.Request) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+	if media.StreamURL == "" {
+		return fmt.Errorf("media %s 不是 STRM 流", mediaID)
+	}
+	ua, referer, cookie, extra := ResolveSTRMHeaders(s.strmCfg(), media)
+	hdr := buildSTRMRequestHeader(ua, referer, cookie, extra)
+
+	// 若客户端请求的是 HLS manifest，走文本代理并重写 URL
+	if s.cfg != nil && s.cfg.STRM.RewriteHLS && looksLikeHLSURL(media.StreamURL) {
+		return s.proxyHLSPlaylist(mediaID, media.StreamURL, hdr, w, r)
+	}
+	return s.proxyRemoteStreamWithHeaders(media.StreamURL, cookie, w, r, hdr)
+}
+
+// ProxySTRMSegment 基于 media 的任意子资源代理（HLS 分片 / key 文件 / 相邻 playlist）
+// 目标 URL 通过 query ?u=<base64url> 或 ?target=<absoluteURL> 传入。
+func (s *StreamService) ProxySTRMSegment(mediaID, target string, w http.ResponseWriter, r *http.Request) error {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return ErrMediaNotFound
+	}
+	if media.StreamURL == "" {
+		return fmt.Errorf("media %s 不是 STRM 流", mediaID)
+	}
+	if target == "" {
+		return fmt.Errorf("missing target url")
+	}
+	// 解析：支持 base64 / 绝对 / 相对
+	absURL, err := resolveSTRMSegmentURL(media.StreamURL, target)
+	if err != nil {
+		return err
+	}
+	ua, referer, cookie, extra := ResolveSTRMHeaders(s.strmCfg(), media)
+	hdr := buildSTRMRequestHeader(ua, referer, cookie, extra)
+
+	// 子 manifest 也需要递归重写
+	if looksLikeHLSURL(absURL) {
+		return s.proxyHLSPlaylist(mediaID, absURL, hdr, w, r)
+	}
+	return s.proxyRemoteStreamWithHeaders(absURL, cookie, w, r, hdr)
+}
+
+// CheckSTRMHealth 对远程流做一次 HEAD/GET 预探测，返回状态信息（供前端诊断面板使用）
+type STRMHealthResult struct {
+	MediaID       string            `json:"media_id"`
+	URL           string            `json:"url"`
+	StatusCode    int               `json:"status_code"`
+	OK            bool              `json:"ok"`
+	ContentType   string            `json:"content_type,omitempty"`
+	ContentLength int64             `json:"content_length,omitempty"`
+	AcceptRanges  string            `json:"accept_ranges,omitempty"`
+	ResponseMS    int64             `json:"response_ms"`
+	Error         string            `json:"error,omitempty"`
+	EffectiveURL  string            `json:"effective_url,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
+}
+
+func (s *StreamService) CheckSTRMHealth(mediaID string) (*STRMHealthResult, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return nil, ErrMediaNotFound
+	}
+	if media.StreamURL == "" {
+		return nil, fmt.Errorf("media %s 不是 STRM 流", mediaID)
+	}
+	ua, referer, cookie, extra := ResolveSTRMHeaders(s.strmCfg(), media)
+	hdr := buildSTRMRequestHeader(ua, referer, cookie, extra)
+
+	start := time.Now()
+	result := &STRMHealthResult{
+		MediaID: mediaID,
+		URL:     media.StreamURL,
+		Headers: map[string]string{},
+	}
+
+	client := &http.Client{
+		Timeout: time.Duration(s.strmConnectTimeoutSec()) * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("重定向次数过多")
+			}
+			return nil
+		},
+	}
+
+	// 先 HEAD；HEAD 被拒绝时回退小范围 GET
+	tryMethod := func(method string) (*http.Response, error) {
+		req, err := http.NewRequest(method, media.StreamURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		for k, vs := range hdr {
+			for _, v := range vs {
+				req.Header.Add(k, v)
+			}
+		}
+		if method == "GET" {
+			req.Header.Set("Range", "bytes=0-0")
+		}
+		return client.Do(req)
+	}
+
+	resp, err := tryMethod("HEAD")
+	if err != nil || (resp != nil && resp.StatusCode >= 400) {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		resp, err = tryMethod("GET")
+	}
+	result.ResponseMS = time.Since(start).Milliseconds()
+	if err != nil {
+		result.Error = err.Error()
+		return result, nil
+	}
+	defer resp.Body.Close()
+	result.StatusCode = resp.StatusCode
+	result.OK = resp.StatusCode >= 200 && resp.StatusCode < 400
+	result.ContentType = resp.Header.Get("Content-Type")
+	result.AcceptRanges = resp.Header.Get("Accept-Ranges")
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		var n int64
+		fmt.Sscanf(cl, "%d", &n)
+		result.ContentLength = n
+	}
+	if resp.Request != nil && resp.Request.URL != nil {
+		result.EffectiveURL = resp.Request.URL.String()
+	}
+	for k, vs := range resp.Header {
+		if len(vs) > 0 {
+			result.Headers[k] = vs[0]
+		}
+	}
+	return result, nil
+}
+
+// proxyRemoteStreamWithHeaders 实际的字节级透明代理（带自定义 Header）
+func (s *StreamService) proxyRemoteStreamWithHeaders(remoteURL, cookie string, w http.ResponseWriter, r *http.Request, extra http.Header) error {
 	req, err := http.NewRequestWithContext(r.Context(), "GET", remoteURL, nil)
 	if err != nil {
 		return fmt.Errorf("创建远程请求失败: %w", err)
@@ -620,10 +828,25 @@ func (s *StreamService) ProxyRemoteStream(remoteURL string, w http.ResponseWrite
 		req.Header.Set("Range", rangeHeader)
 	}
 
-	// 设置通用请求头
-	req.Header.Set("User-Agent", "nowen-video/1.0")
-	if referer := r.Header.Get("Referer"); referer != "" {
-		req.Header.Set("Referer", referer)
+	// 注入自定义 Header
+	if extra != nil {
+		for k, vs := range extra {
+			for _, v := range vs {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+	if cookie != "" && req.Header.Get("Cookie") == "" {
+		req.Header.Set("Cookie", cookie)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", s.defaultUA())
+	}
+	// 兜底：外部无 Referer 时尝试使用请求来源
+	if req.Header.Get("Referer") == "" {
+		if referer := r.Header.Get("Referer"); referer != "" {
+			req.Header.Set("Referer", referer)
+		}
 	}
 
 	client := &http.Client{
@@ -651,7 +874,6 @@ func (s *StreamService) ProxyRemoteStream(remoteURL string, w http.ResponseWrite
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	} else {
-		// 根据 URL 推断 Content-Type
 		w.Header().Set("Content-Type", s.guessContentType(remoteURL))
 	}
 	if cl := resp.Header.Get("Content-Length"); cl != "" {
@@ -675,12 +897,204 @@ func (s *StreamService) ProxyRemoteStream(remoteURL string, w http.ResponseWrite
 	buf := make([]byte, 128*1024) // 128KB 缓冲区
 	_, err = io.CopyBuffer(w, resp.Body, buf)
 	if err != nil {
-		// 客户端断开连接是正常情况，不记录为错误
 		s.logger.Debugf("STRM 代理流传输结束: %v", err)
 		return nil
 	}
 
 	return nil
+}
+
+// proxyHLSPlaylist 拉取远程 .m3u8 并把所有相对/绝对分片/子 playlist URL 重写为后端代理路径
+// 这样客户端请求分片时也会带上媒体对应的 UA/Referer/Cookie，解决跨域/鉴权问题。
+func (s *StreamService) proxyHLSPlaylist(mediaID, remoteURL string, hdr http.Header, w http.ResponseWriter, r *http.Request) error {
+	client := &http.Client{
+		Timeout: time.Duration(s.strmConnectTimeoutSec()) * time.Second,
+	}
+	req, err := http.NewRequestWithContext(r.Context(), "GET", remoteURL, nil)
+	if err != nil {
+		return err
+	}
+	for k, vs := range hdr {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("拉取 HLS manifest 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HLS manifest 返回错误: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	rewritten := rewriteHLSPlaylist(string(body), remoteURL, mediaID)
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Stream-Source", "strm-hls-proxy")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(rewritten))
+	return nil
+}
+
+// strmConnectTimeoutSec 读取配置中的 STRM 连接超时
+func (s *StreamService) strmConnectTimeoutSec() int {
+	if s.cfg != nil && s.cfg.STRM.ConnectTimeout > 0 {
+		return s.cfg.STRM.ConnectTimeout
+	}
+	return 30
+}
+
+// strmCfg 返回 STRM 配置指针（可能为空配置但非 nil）
+func (s *StreamService) strmCfg() *config.STRMConfig {
+	if s.cfg == nil {
+		return nil
+	}
+	return &s.cfg.STRM
+}
+
+func (s *StreamService) defaultUA() string {
+	if s.cfg != nil && s.cfg.STRM.DefaultUserAgent != "" {
+		return s.cfg.STRM.DefaultUserAgent
+	}
+	return "nowen-video/1.0"
+}
+
+// buildSTRMRequestHeader 构造统一的请求头
+func buildSTRMRequestHeader(ua, referer, cookie string, extra map[string]string) http.Header {
+	h := http.Header{}
+	if ua != "" {
+		h.Set("User-Agent", ua)
+	}
+	if referer != "" {
+		h.Set("Referer", referer)
+	}
+	if cookie != "" {
+		h.Set("Cookie", cookie)
+	}
+	for k, v := range extra {
+		if v != "" {
+			h.Set(k, v)
+		}
+	}
+	return h
+}
+
+// looksLikeHLSURL 粗略判断是否为 HLS 流
+func looksLikeHLSURL(u string) bool {
+	lower := strings.ToLower(u)
+	if idx := strings.Index(lower, "?"); idx > 0 {
+		lower = lower[:idx]
+	}
+	return strings.Contains(lower, ".m3u8")
+}
+
+// rewriteHLSPlaylist 把 playlist 中的 URI 改写为 /api/stream/:id/strm-seg?u=...
+// 处理：
+//   - 纯 URL 行（非以 # 开头）
+//   - #EXT-X-KEY:URI="..."（加密密钥）
+//   - #EXT-X-MEDIA:URI="..."（audio / subtitle）
+//   - #EXT-X-MAP:URI="..."（fMP4 init 段）
+//   - #EXT-X-STREAM-INF 紧跟的 URI 行（下一行）
+func rewriteHLSPlaylist(body, baseURL, mediaID string) string {
+	base, _ := url.Parse(baseURL)
+	var out strings.Builder
+	out.Grow(len(body) + 128)
+	lines := strings.Split(body, "\n")
+	for _, raw := range lines {
+		line := strings.TrimRight(raw, "\r")
+		trim := strings.TrimSpace(line)
+		if trim == "" {
+			out.WriteString(line)
+			out.WriteByte('\n')
+			continue
+		}
+		if strings.HasPrefix(trim, "#") {
+			// 替换形如 URI="xxx" 的部分
+			if idx := strings.Index(trim, `URI="`); idx > 0 {
+				rest := trim[idx+len(`URI="`):]
+				if end := strings.Index(rest, `"`); end >= 0 {
+					orig := rest[:end]
+					rewritten := buildSegProxyURL(mediaID, resolveURL(base, orig))
+					newLine := trim[:idx+len(`URI="`)] + rewritten + `"` + rest[end+1:]
+					out.WriteString(newLine)
+					out.WriteByte('\n')
+					continue
+				}
+			}
+			out.WriteString(line)
+			out.WriteByte('\n')
+			continue
+		}
+		// 非注释行 = 分片或子 playlist 的 URI
+		abs := resolveURL(base, trim)
+		out.WriteString(buildSegProxyURL(mediaID, abs))
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
+// resolveURL 把 ref 解析为绝对 URL
+func resolveURL(base *url.URL, ref string) string {
+	if base == nil {
+		return ref
+	}
+	u, err := url.Parse(ref)
+	if err != nil {
+		return ref
+	}
+	if u.IsAbs() {
+		return ref
+	}
+	return base.ResolveReference(u).String()
+}
+
+// buildSegProxyURL 构造后端代理的分片 URL（使用 query 参数 u 传递 base64 后的目标 URL）
+func buildSegProxyURL(mediaID, target string) string {
+	encoded := base64URLEncode(target)
+	return fmt.Sprintf("/api/stream/%s/strm-seg?u=%s", mediaID, encoded)
+}
+
+func base64URLEncode(s string) string {
+	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString([]byte(s))
+}
+
+func base64URLDecode(s string) (string, error) {
+	b, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s)
+	if err != nil {
+		// 兼容带 padding 的变体
+		if b2, err2 := base64.URLEncoding.DecodeString(s); err2 == nil {
+			return string(b2), nil
+		}
+		return "", err
+	}
+	return string(b), nil
+}
+
+// resolveSTRMSegmentURL 根据 target 参数（base64url 或裸 URL）解析出绝对 URL
+func resolveSTRMSegmentURL(baseURL, target string) (string, error) {
+	// 先按 base64 解码尝试
+	if decoded, err := base64URLDecode(target); err == nil && (strings.HasPrefix(decoded, "http://") || strings.HasPrefix(decoded, "https://")) {
+		return decoded, nil
+	}
+	// 绝对 URL 直接用
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		return target, nil
+	}
+	// 否则作为相对路径
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return "", err
+	}
+	return base.ResolveReference(u).String(), nil
 }
 
 // guessContentType 根据 URL 推断 MIME 类型

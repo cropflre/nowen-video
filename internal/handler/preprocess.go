@@ -18,17 +18,22 @@ func NewPreprocessHandler(preprocessService *service.PreprocessService) *Preproc
 }
 
 // SubmitMedia 提交单个媒体预处理
+//
+// 请求体支持 force 字段：
+//   - true：绕过"可直接播放则跳过"的判定，用于用户在前端显式点击"预处理/强制转码"按钮的场景；
+//   - false 或不传：自动路径默认行为，如果媒体可在浏览器零转码直接播放则拒绝入队。
 func (h *PreprocessHandler) SubmitMedia(c *gin.Context) {
 	var req struct {
 		MediaID  string `json:"media_id" binding:"required"`
 		Priority int    `json:"priority"`
+		Force    bool   `json:"force"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 media_id"})
 		return
 	}
 
-	task, err := h.preprocessService.SubmitMedia(req.MediaID, req.Priority)
+	task, err := h.preprocessService.SubmitMedia(req.MediaID, req.Priority, req.Force)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -41,17 +46,20 @@ func (h *PreprocessHandler) SubmitMedia(c *gin.Context) {
 }
 
 // BatchSubmit 批量提交预处理
+//
+// 请求体 force 字段语义同 SubmitMedia。
 func (h *PreprocessHandler) BatchSubmit(c *gin.Context) {
 	var req struct {
 		MediaIDs []string `json:"media_ids" binding:"required"`
 		Priority int      `json:"priority"`
+		Force    bool     `json:"force"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 media_ids"})
 		return
 	}
 
-	tasks, err := h.preprocessService.BatchSubmit(req.MediaIDs, req.Priority)
+	tasks, err := h.preprocessService.BatchSubmit(req.MediaIDs, req.Priority, req.Force)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -275,57 +283,6 @@ func (h *PreprocessHandler) GetStatistics(c *gin.Context) {
 func (h *PreprocessHandler) GetSystemLoad(c *gin.Context) {
 	load := h.preprocessService.GetSystemLoad()
 	c.JSON(http.StatusOK, gin.H{"data": load})
-}
-
-// GetPerformanceConfig 获取性能配置
-func (h *PreprocessHandler) GetPerformanceConfig(c *gin.Context) {
-	config := h.preprocessService.GetPerformanceConfig()
-	c.JSON(http.StatusOK, gin.H{"data": config})
-}
-
-// UpdatePerformanceConfig 更新性能配置
-func (h *PreprocessHandler) UpdatePerformanceConfig(c *gin.Context) {
-	var updates map[string]interface{}
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
-		return
-	}
-
-	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "未提供任何配置项"})
-		return
-	}
-
-	// 验证字段白名单
-	allowedKeys := map[string]bool{
-		"resource_limit":            true,
-		"max_transcode_jobs":        true,
-		"transcode_preset":          true,
-		"hw_accel":                  true,
-		"gpu_utilization_threshold": true,
-		"gpu_temperature_threshold": true,
-		"gpu_recovery_threshold":    true,
-		"gpu_temperature_recovery":  true,
-		"gpu_safety_enabled":        true,
-	}
-	for key := range updates {
-		if !allowedKeys[key] {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的配置项: " + key})
-			return
-		}
-	}
-
-	if err := h.preprocessService.UpdatePerformanceConfig(updates); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 返回更新后的配置
-	config := h.preprocessService.GetPerformanceConfig()
-	c.JSON(http.StatusOK, gin.H{
-		"message": "性能配置已更新（部分配置需重启服务生效）",
-		"data":    config,
-	})
 }
 
 // CleanCache 清理预处理缓存

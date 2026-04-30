@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { playlistApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
 import type { Playlist } from '@/types'
 import {
   ListVideo,
@@ -22,6 +24,9 @@ export default function PlaylistsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const toast = useToast()
   const { t } = useTranslation()
+
+  // 分页（前端分页：后端返回用户全部列表，一般数量不大）
+  const { page, size, setPage, setSize, totalPages } = usePagination({ initialSize: 10 })
 
   const fetchPlaylists = async () => {
     try {
@@ -68,6 +73,15 @@ export default function PlaylistsPage() {
       toast.error(t('playlists.removeFailed'))
     }
   }
+
+  // 当前页数据（前端分页）
+  const pagedPlaylists = useMemo(() => {
+    const start = (page - 1) * size
+    return playlists.slice(start, start + size)
+  }, [playlists, page, size])
+
+  const total = playlists.length
+  const pages = totalPages(total)
 
   return (
     <div>
@@ -130,7 +144,7 @@ export default function PlaylistsPage() {
       {/* 播放列表 */}
       {!loading && (
         <div className="space-y-4">
-          {playlists.map((playlist) => (
+          {pagedPlaylists.map((playlist) => (
             <div
               key={playlist.id}
               className="glass-panel overflow-hidden rounded-xl"
@@ -239,6 +253,17 @@ export default function PlaylistsPage() {
               </p>
             </div>
           )}
+
+          {/* 分页 */}
+          <Pagination
+            page={page}
+            totalPages={pages}
+            total={total}
+            pageSize={size}
+            pageSizeOptions={[10, 20, 50]}
+            onPageChange={setPage}
+            onPageSizeChange={setSize}
+          />
         </div>
       )}
     </div>

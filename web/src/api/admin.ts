@@ -24,8 +24,6 @@ import type {
   LoginLog,
   AuditLog,
   InviteCode,
-  TidalStatus,
-  TidalConfig,
 } from '@/types'
 
 // ==================== 管理 ====================
@@ -193,16 +191,6 @@ export const adminApi = {
 
   updateSystemSettings: (data: Partial<SystemSettings>) =>
     api.put<{ data: SystemSettings }>('/admin/settings/system', data),
-
-  // 潮汐调度器（无人时全力预处理，有人时让路）
-  getIdleSchedulerStatus: () =>
-    api.get<{ data: TidalStatus }>('/admin/idle-scheduler/status'),
-
-  getIdleSchedulerConfig: () =>
-    api.get<{ data: TidalConfig }>('/admin/idle-scheduler/config'),
-
-  updateIdleSchedulerConfig: (data: Partial<TidalConfig>) =>
-    api.put<{ message: string; data: TidalConfig }>('/admin/idle-scheduler/config', data),
 
   // 图片管理
   searchTMDbImages: (tmdbId: number, type_: string = 'movie') =>
@@ -381,9 +369,9 @@ export const adminApi = {
   markDuplicates: (libraryId: string) =>
     api.post<{ message: string; marked: number }>(`/admin/libraries/${libraryId}/mark-duplicates`),
 
-  // 手动预处理单个媒体
+  // 手动预处理单个媒体（用户显式意图，带 force=true 以绕过"可直接播放则跳过"的自动判定）
   submitPreprocess: (mediaId: string) =>
-    api.post<{ message: string }>('/admin/preprocess/submit', { media_id: mediaId }),
+    api.post<{ message: string }>('/admin/preprocess/submit', { media_id: mediaId, force: true }),
 
   // 手动转码单个媒体（通过预处理提交）
   submitTranscode: (mediaId: string) =>

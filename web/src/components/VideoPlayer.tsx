@@ -113,6 +113,8 @@ export default function VideoPlayer({
   const [embeddedSubs, setEmbeddedSubs] = useState<SubtitleTrack[]>([])
   const [externalSubs, setExternalSubs] = useState<ExternalSubtitle[]>([])
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null)
+  // 用户主动关闭字幕的标志：为 true 时不自动选中第一条字幕
+  const userDisabledSubtitleRef = useRef(false)
   const [showCastPanel, setShowCastPanel] = useState(false)
 
   // AI 字幕状态
@@ -326,14 +328,25 @@ export default function VideoPlayer({
     if (!video) return
     // 清除之前手动添加的 <track> 元素
     video.querySelectorAll('track').forEach(t => t.remove())
-    // 将所有 textTrack 设为 hidden（HLS.js 的轨道也一并隐藏，不影响）
+    // 将所有 textTrack 设为 disabled（比 hidden 更彻底，阻止渲染器解析轨道）
     for (let i = 0; i < video.textTracks.length; i++) {
-      video.textTracks[i].mode = 'hidden'
+      video.textTracks[i].mode = 'disabled'
     }
     if (type === 'off') {
+      // 用户主动关闭：设置标志避免随后 useEffect 自动选中字幕
+      userDisabledSubtitleRef.current = true
+      // 若使用 HLS.js，额外关闭其内部字幕轨道
+      try {
+        if (hlsRef.current) {
+          hlsRef.current.subtitleTrack = -1
+          hlsRef.current.subtitleDisplay = false
+        }
+      } catch { /* ignore */ }
       setActiveSubtitle(null)
       return
     }
+    // 选择了具体字幕，清除用户禁用标志
+    userDisabledSubtitleRef.current = false
     let subtitleUrl = ''
     let label = '字幕'
     if (type === 'embedded') {
@@ -383,7 +396,8 @@ export default function VideoPlayer({
           trackEl.label = label
           trackEl.srclang = 'und'
           trackEl.src = blobUrl
-          trackEl.default = true
+          // 不设置 default=true，避免浏览器在 track 重建时自动 showing，
+          // 我们在 onTrackLoad 里显式按 label 激活目标 track。
           // 监听 track load 事件，在浏览器解析完 VTT 后再释放 blob URL，避免过早 revoke 导致字幕无法显示
           const onTrackLoad = () => {
             // 激活对应 textTrack
@@ -439,6 +453,7 @@ export default function VideoPlayer({
   // 字幕列表就绪后自动选中第一个
   useEffect(() => {
     if (!mediaId || activeSubtitle) return // 已有选中字幕，不覆盖
+    if (userDisabledSubtitleRef.current) return // 用户主动关闭了字幕，不自动选中
     // 有任何可用字幕时尝试自动选中
     if (externalSubs.length > 0 || embeddedSubs.some(s => !s.bitmap) || aiSubtitleStatus?.status === 'completed' || translatedSubs.length > 0) {
       autoSelectSubtitle()

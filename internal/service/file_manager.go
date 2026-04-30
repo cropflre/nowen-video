@@ -1126,6 +1126,11 @@ func (s *FileManagerService) addOpLog(action, mediaID, detail, oldValue, newValu
 // extractTitleFromPath 从文件路径提取标题
 func (s *FileManagerService) extractTitleFromPath(filePath string) string {
 	base := filepath.Base(filePath)
+	// 优先使用统一增强解析器
+	if parsed := ParseMovieFilename(base); parsed.Title != "" {
+		return parsed.Title
+	}
+
 	ext := filepath.Ext(base)
 	name := strings.TrimSuffix(base, ext)
 

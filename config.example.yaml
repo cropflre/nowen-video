@@ -39,27 +39,18 @@ app:
   web_dir: ./web/dist
   ffmpeg_path: ffmpeg
   ffprobe_path: ffprobe
-  hw_accel: none
-  vaapi_device: /dev/dri/renderD128
-  transcode_preset: ultrafast
-  max_transcode_jobs: 1
-  resource_limit: 70    # CPU资源限制百分比（1-80），建议60-80，过低会导致预处理任务无法执行
+  vaapi_device: /dev/dri/renderD128   # Linux Intel 核显逗生门，普通用户无需修改
   cors_origins: []
 
-# ==================== 转码调度 / HLS ABR / 节流 ====================
-# 上述能力均为内建行为，当前无需独立配置：
-#   - ABR（多码率自适应）：前端请求 /api/stream/:id/master.m3u8 时，后端会并行预转码
-#     所有可用档位（默认 360p/480p/720p/1080p/2K/4K，根据原片分辨率自动裁剪）。
-#     hls.js 在客户端端根据实时带宽在档位间无缝切换。
-#   - 客户端带宽协商：hls.js 会通过 POST /api/stream/:id/bandwidth 上报 EWMA 评估带宽，
-#     前端据此在下次请求 master.m3u8 时带上 ?maxBitrate=xxx，弱网自动降档。
-#     Emby/Infuse 客户端则通过 PlaybackInfo 的 MaxStreamingBitrate 字段协商。
-#   - 节流（Throttling）：客户端通过 /api/stream/:id/playback 上报当前播放位置，
-#     服务端对比"转码前沿"与"播放前沿"：
-#       * 领先 > 60s 时挂起 FFmpeg（Linux: SIGSTOP / Windows: NtSuspendProcess）
-#       * 领先 < 15s 时唤醒 FFmpeg
-#     可通过 GET /admin/transcode/throttle 查看节流累积统计（节省的 GPU 时间）。
-#   - GPU 安全限流：gpu_safety_* 系列配置详见下方 gpu 小节（暂未独立暴露，默认启用）。
+# ==================== 转码调度 / HLS ABR / 节流 / GPU 安全 ====================
+# 【最佳性能策略】所有转码相关行为均为内建自适应，无需任何配置：
+#   - 硬件加速：启动时自动检测 NVENC / QSV / VAAPI，都不可用则回落 CPU。
+#   - 并发转码：worker 数量固定为 NumCPU/2，保留一半核心给系统和播放。
+#   - FFmpeg 线程：-threads 0（FFmpeg 自探测，用满所有 CPU 核心）。
+#   - 编码预设：固定 ultrafast（速度优先，硬件编码有其自身的自适应 tune）。
+#   - ABR：前端请求 master.m3u8 时并行预转码所有可用档位，hls.js 根据实时带宽切换。
+#   - 节流：转码前沿领先播放 > 60s 时挂起 FFmpeg，< 15s 时唤醒。
+#   - GPU 安全限流：默认启用，阈值 85%/80℃ 触发降级，60%/70℃ 恢复。
 
 # 日志配置
 logging:
@@ -100,7 +91,7 @@ emby:
   # 自定义 CSS（仅 Jellyfin Web 客户端使用）
   custom_css: ""
 
-# ==================== 旧版扁平格式（向后兼容） ====================
+# ==================== 旧版扁平格式（向后兼容）====================
 # 如果你使用旧版格式，以下 key 仍然有效：
 #
 # port: 8080
@@ -112,9 +103,5 @@ emby:
 # jwt_secret: please-change-this-secret-key
 # ffmpeg_path: ffmpeg
 # ffprobe_path: ffprobe
-# hw_accel: none
 # vaapi_device: /dev/dri/renderD128
-# transcode_preset: ultrafast
-# max_transcode_jobs: 1
-# resource_limit: 70
 # tmdb_api_key: ""

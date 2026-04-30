@@ -4,30 +4,14 @@
 package ffmpeg
 
 import (
-	"runtime"
-
 	"github.com/nowen-video/nowen-video/internal/config"
 )
 
-// CalcThreads 根据 config.App.ResourceLimit 动态计算 FFmpeg 线程数。
+// CalcThreads 返回 FFmpeg 的线程数配置。
 //
-// 规则（与历史 transcode/preprocess/abr 三处实现完全一致）：
-//   - ResourceLimit <= 0 或 > 80 时按 80% 处理；
-//   - threads = NumCPU * ResourceLimit / 100；
-//   - threads 至少为 1；
-//   - threads 不超过 CPU 核心数。
+// 【最佳性能策略】固定返回 0，让 FFmpeg 自行探测并用满所有 CPU 核心
+// （等价于 "-threads 0"）；上层 encoder 在 Threads<=0 时会直接省略该参数。
 func CalcThreads(cfg *config.Config) int {
-	resourceLimit := cfg.App.ResourceLimit
-	if resourceLimit <= 0 || resourceLimit > 80 {
-		resourceLimit = 80
-	}
-	cpuCount := runtime.NumCPU()
-	threads := cpuCount * resourceLimit / 100
-	if threads < 1 {
-		threads = 1
-	}
-	if threads > cpuCount {
-		threads = cpuCount
-	}
-	return threads
+	_ = cfg
+	return 0
 }

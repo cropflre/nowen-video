@@ -259,6 +259,12 @@ type Media struct {
 	SubtitlePaths string `json:"subtitle_paths" gorm:"type:text"` // 外挂字幕路径，| 分隔
 	// STRM 远程流支持
 	StreamURL string `json:"stream_url" gorm:"type:text"` // .strm 文件中的远程流地址（为空表示本地文件）
+	// STRM 增强字段：由 .strm 同目录 .json / KODI #KODIPROP / M3U 扩展头 携带的请求参数
+	StreamUA         string `json:"stream_ua" gorm:"type:text"`          // 自定义 User-Agent（某些云盘/HLS 源要求）
+	StreamReferer    string `json:"stream_referer" gorm:"type:text"`     // 自定义 Referer
+	StreamCookie     string `json:"stream_cookie" gorm:"type:text"`      // 自定义 Cookie（多条用分号分隔）
+	StreamHeaders    string `json:"stream_headers" gorm:"type:text"`     // 额外自定义 Header，JSON: {"X-K":"V"}
+	StreamRefreshURL string `json:"stream_refresh_url" gorm:"type:text"` // 刷新直链的上游 API（预留，留空表示不刷新）
 	// V2 扩展字段
 	TMDbID     int    `json:"tmdb_id" gorm:"index"`           // TMDb 唯一 ID
 	IMDbID     string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
@@ -270,6 +276,19 @@ type Media struct {
 	Tagline    string `json:"tagline" gorm:"type:text"`       // 标语/宣传语
 	Studio     string `json:"studio" gorm:"type:text"`        // 出品公司
 	TrailerURL string `json:"trailer_url" gorm:"type:text"`   // 预告片链接（YouTube）
+	// NFO 扩展字段（方案 B 完整建模，用于番号/成人内容等精细展示）
+	Num          string `json:"num" gorm:"index;type:text"`       // 番号（如 MIDD-835），取自 NFO <num>
+	SortTitle    string `json:"sort_title" gorm:"type:text"`      // 排序用标题，取自 NFO <sorttitle>
+	Outline      string `json:"outline" gorm:"type:text"`         // 剧情简要（短摘要），取自 NFO <outline>
+	OriginalPlot string `json:"original_plot" gorm:"type:text"`   // 原始剧情（日文/原文），取自 NFO <originalplot>
+	MPAA         string `json:"mpaa" gorm:"type:text"`            // 分级（如 JP-18+），取自 NFO <mpaa>/<customrating>
+	CountryCode  string `json:"country_code" gorm:"type:text"`    // 国家代码（JP/CN/US），取自 NFO <countrycode>
+	Maker        string `json:"maker" gorm:"index;type:text"`     // 制作商，取自 NFO <maker>
+	Publisher    string `json:"publisher" gorm:"index;type:text"` // 发行商，取自 NFO <publisher>
+	Label        string `json:"label" gorm:"index;type:text"`     // 厂牌，取自 NFO <label>
+	Tags         string `json:"tags" gorm:"type:text"`            // 用户标签（逗号分隔），取自 NFO <tag>，与 genres 并列
+	Website      string `json:"website" gorm:"type:text"`         // 官方网站，取自 NFO <website>
+	ReleaseDate  string `json:"release_date" gorm:"type:text"`    // 发行日期（可独立于首映日期），取自 NFO <releasedate>
 	// 多CD堆叠 & 多版本聚合（P2）
 	StackGroup   string `json:"stack_group" gorm:"index;type:text"`   // 堆叠组 ID（cd1/cd2 共享同一组 ID）
 	StackOrder   int    `json:"stack_order"`                          // 堆叠顺序（1=cd1, 2=cd2...）
@@ -803,6 +822,19 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "last_scrape_at", DDL: "ALTER TABLE `media` ADD COLUMN `last_scrape_at` datetime"},
 			{Column: "collection_id", DDL: "ALTER TABLE `media` ADD COLUMN `collection_id` text DEFAULT ''"},
 			{Column: "stream_url", DDL: "ALTER TABLE `media` ADD COLUMN `stream_url` text DEFAULT ''"},
+			// NFO 完整建模新增字段（方案 B）
+			{Column: "num", DDL: "ALTER TABLE `media` ADD COLUMN `num` text DEFAULT ''"},
+			{Column: "sort_title", DDL: "ALTER TABLE `media` ADD COLUMN `sort_title` text DEFAULT ''"},
+			{Column: "outline", DDL: "ALTER TABLE `media` ADD COLUMN `outline` text DEFAULT ''"},
+			{Column: "original_plot", DDL: "ALTER TABLE `media` ADD COLUMN `original_plot` text DEFAULT ''"},
+			{Column: "mpaa", DDL: "ALTER TABLE `media` ADD COLUMN `mpaa` text DEFAULT ''"},
+			{Column: "country_code", DDL: "ALTER TABLE `media` ADD COLUMN `country_code` text DEFAULT ''"},
+			{Column: "maker", DDL: "ALTER TABLE `media` ADD COLUMN `maker` text DEFAULT ''"},
+			{Column: "publisher", DDL: "ALTER TABLE `media` ADD COLUMN `publisher` text DEFAULT ''"},
+			{Column: "label", DDL: "ALTER TABLE `media` ADD COLUMN `label` text DEFAULT ''"},
+			{Column: "tags", DDL: "ALTER TABLE `media` ADD COLUMN `tags` text DEFAULT ''"},
+			{Column: "website", DDL: "ALTER TABLE `media` ADD COLUMN `website` text DEFAULT ''"},
+			{Column: "release_date", DDL: "ALTER TABLE `media` ADD COLUMN `release_date` text DEFAULT ''"},
 		},
 		"users": {
 			{Column: "nickname", DDL: "ALTER TABLE `users` ADD COLUMN `nickname` text DEFAULT ''"},

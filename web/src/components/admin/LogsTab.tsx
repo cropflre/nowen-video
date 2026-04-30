@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { adminApi } from '@/api'
 import type { SystemLog, SystemLogStats } from '@/types'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
 import {
   FileText,
   AlertTriangle,
@@ -53,7 +55,7 @@ export default function LogsTab() {
   const [logs, setLogs] = useState<SystemLog[]>([])
   const [stats, setStats] = useState<SystemLogStats | null>(null)
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const { page, size: pageSize, setPage, setSize, totalPages: calcTotalPages } = usePagination({ initialSize: 30 })
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -69,8 +71,6 @@ export default function LogsTab() {
   const [showCleanDialog, setShowCleanDialog] = useState(false)
   const [cleanDays, setCleanDays] = useState(30)
   const [cleaning, setCleaning] = useState(false)
-
-  const pageSize = 30
 
   // 加载日志
   const loadLogs = useCallback(async () => {
@@ -90,7 +90,7 @@ export default function LogsTab() {
     } finally {
       setLoading(false)
     }
-  }, [page, filterType, filterLevel, filterKeyword, filterMethod])
+  }, [page, pageSize, filterType, filterLevel, filterKeyword, filterMethod])
 
   // 加载统计
   const loadStats = useCallback(async () => {
@@ -160,7 +160,7 @@ export default function LogsTab() {
     }
   }
 
-  const totalPages = Math.ceil(total / pageSize)
+  const totalPages = calcTotalPages(total)
 
   // 格式化时间
   const formatTime = (t: string) => {
@@ -506,27 +506,17 @@ export default function LogsTab() {
         )}
 
         {/* 分页 */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: '1px solid var(--border-default)' }}>
-            <span className="text-xs text-surface-500">
-              共 {total.toLocaleString()} 条，第 {page}/{totalPages} 页
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page <= 1}
-                className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-30"
-              >
-                上一页
-              </button>
-              <button
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                disabled={page >= totalPages}
-                className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-30"
-              >
-                下一页
-              </button>
-            </div>
+        {total > 0 && (
+          <div className="px-4 py-3" style={{ borderTop: '1px solid var(--border-default)' }}>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              pageSizeOptions={[20, 30, 50, 100, 200]}
+              onPageChange={setPage}
+              onPageSizeChange={setSize}
+            />
           </div>
         )}
       </div>

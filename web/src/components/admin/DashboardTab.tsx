@@ -23,7 +23,6 @@ import {
   MonitorPlay,
 } from 'lucide-react'
 import { adminApi } from '@/api'
-import IdleSchedulerPanel from './IdleSchedulerPanel'
 
 interface DashboardTabProps {
   systemInfo: SystemInfo | null
@@ -536,9 +535,6 @@ export default function DashboardTab({
           </div>
         </div>
       </section>
-
-      {/* 潮汐调度：闲时全力预处理，有用户时让路 */}
-      <IdleSchedulerPanel />
 
       {/* 剧集合并管理 */}
       <section>

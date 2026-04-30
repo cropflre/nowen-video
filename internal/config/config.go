@@ -77,37 +77,11 @@ type AppConfig struct {
 	FFmpegPath string `mapstructure:"ffmpeg_path"`
 	// FFprobe 可执行文件路径
 	FFprobePath string `mapstructure:"ffprobe_path"`
-	// 硬件加速模式: auto / qsv / vaapi / nvenc / none
-	HWAccel string `mapstructure:"hw_accel"`
 	// VAAPI 设备路径，如 /dev/dri/renderD128
+	// 保留该字段作为 Linux Intel 核显的逃生门，不在 UI 暴露。
 	VAAPIDevice string `mapstructure:"vaapi_device"`
-	// 转码预设: ultrafast / veryfast / fast / medium
-	TranscodePreset string `mapstructure:"transcode_preset"`
-	// 最大并发转码任务数
-	MaxTranscodeJobs int `mapstructure:"max_transcode_jobs"`
-	// CPU 资源使用率上限（百分比，1~80），系统会自动保留 20% 缓冲
-	// 例如设为 80 表示 CPU 使用率超过 80% 时暂停转码任务
-	// 默认: 5（最低配置）
-	ResourceLimit int `mapstructure:"resource_limit"`
 	// 允许的跨域来源列表
 	CORSOrigins []string `mapstructure:"cors_origins"`
-
-	// ==================== GPU 安全保护配置 ====================
-	// GPU 使用率安全上限（百分比，默认 85）
-	// 超过此值将暂停新的 GPU 任务并降级为 CPU 处理
-	GPUUtilizationThreshold int `mapstructure:"gpu_utilization_threshold"`
-	// GPU 温度安全上限（摄氏度，默认 80）
-	// 超过此值将立即暂停所有 GPU 任务
-	GPUTemperatureThreshold int `mapstructure:"gpu_temperature_threshold"`
-	// GPU 冷却恢复阈值（使用率百分比，默认 60）
-	// GPU 使用率降至此值以下时恢复 GPU 加速
-	GPURecoveryThreshold int `mapstructure:"gpu_recovery_threshold"`
-	// GPU 温度冷却恢复阈值（摄氏度，默认 70）
-	GPUTemperatureRecovery int `mapstructure:"gpu_temperature_recovery"`
-	// GPU 监控采样间隔（秒，默认 5）
-	GPUMonitorInterval int `mapstructure:"gpu_monitor_interval"`
-	// 是否启用 GPU 安全保护（默认 true）
-	GPUSafetyEnabled bool `mapstructure:"gpu_safety_enabled"`
 }
 
 // LoggingConfig 日志记录设置
@@ -366,13 +340,13 @@ type AdultScraperConfig struct {
 	// 格式：浏览器复制的完整 Cookie 字符串，如 "locale=zh; _jdb_session=abc..."
 	//
 	// 获取方法：登录网站 → F12 → Network → 任一请求 → 复制 Cookie 头
-	CookieJavBus     string `mapstructure:"cookie_javbus"`
-	CookieJavDB      string `mapstructure:"cookie_javdb"`
-	CookieFreejavbt  string `mapstructure:"cookie_freejavbt"`
-	CookieJav321     string `mapstructure:"cookie_jav321"`
-	CookieFanza      string `mapstructure:"cookie_fanza"`
-	CookieMGStage    string `mapstructure:"cookie_mgstage"`
-	CookieFC2Hub     string `mapstructure:"cookie_fc2hub"`
+	CookieJavBus    string `mapstructure:"cookie_javbus"`
+	CookieJavDB     string `mapstructure:"cookie_javdb"`
+	CookieFreejavbt string `mapstructure:"cookie_freejavbt"`
+	CookieJav321    string `mapstructure:"cookie_jav321"`
+	CookieFanza     string `mapstructure:"cookie_fanza"`
+	CookieMGStage   string `mapstructure:"cookie_mgstage"`
+	CookieFC2Hub    string `mapstructure:"cookie_fc2hub"`
 }
 
 // StorageConfig 存储配置（支持本地、WebDAV、网盘等多种存储后端）
@@ -485,6 +459,26 @@ type WebDAVConfig struct {
 	ReadBlockCount int `mapstructure:"read_block_count"`
 }
 
+// STRMConfig .strm 远程流全局配置
+type STRMConfig struct {
+	// 默认 User-Agent（Media 自身无 UA 时使用），留空则使用内置值
+	DefaultUserAgent string `mapstructure:"default_user_agent"`
+	// 默认 Referer（留空=不发送）
+	DefaultReferer string `mapstructure:"default_referer"`
+	// 代理远程流时的连接超时（秒，默认 30，仅影响首包握手；读取阶段不超时）
+	ConnectTimeout int `mapstructure:"connect_timeout"`
+	// 对 HLS (.m3u8) 子清单做 URL 重写，让分片继续走后端代理（解决跨域/鉴权透传）
+	RewriteHLS bool `mapstructure:"rewrite_hls"`
+	// 扫描时是否对直链 mp4/mkv 启动远程 FFprobe 拉元数据（慢但能得到真实时长/分辨率）
+	RemoteProbe bool `mapstructure:"remote_probe"`
+	// 远程 FFprobe 超时秒数（默认 8）
+	RemoteProbeTimeout int `mapstructure:"remote_probe_timeout"`
+	// 按域名白名单追加 UA，例如：{"115.com":"Mozilla/5.0 ..."}
+	DomainUserAgents map[string]string `mapstructure:"domain_user_agents"`
+	// 按域名白名单追加 Referer，例如：{"115.com":"https://115.com/"}
+	DomainReferers map[string]string `mapstructure:"domain_referers"`
+}
+
 // Config 应用主配置（聚合所有子模块）
 type Config struct {
 	mu sync.RWMutex `mapstructure:"-"`
@@ -500,6 +494,7 @@ type Config struct {
 	Storage      StorageConfig      `mapstructure:"storage"`
 	Emby         EmbyConfig         `mapstructure:"emby"`
 	AdultScraper AdultScraperConfig `mapstructure:"adult_scraper"`
+	STRM         STRMConfig         `mapstructure:"strm"`
 
 	// ==================== 兼容性字段（向后兼容旧的扁平配置） ====================
 	// 以下字段用于兼容旧版 config.yaml 中的扁平 key，
@@ -511,19 +506,15 @@ type Config struct {
 	JWTSecret  string `mapstructure:"jwt_secret"`
 	TMDbAPIKey string `mapstructure:"tmdb_api_key"`
 	// 旧版兼容 - 应用
-	Port             int      `mapstructure:"port"`
-	Debug            bool     `mapstructure:"debug"`
-	DataDir          string   `mapstructure:"data_dir"`
-	WebDir           string   `mapstructure:"web_dir"`
-	CacheDir         string   `mapstructure:"cache_dir"`
-	FFmpegPath       string   `mapstructure:"ffmpeg_path"`
-	FFprobePath      string   `mapstructure:"ffprobe_path"`
-	HWAccel          string   `mapstructure:"hw_accel"`
-	VAAPIDevice      string   `mapstructure:"vaapi_device"`
-	TranscodePreset  string   `mapstructure:"transcode_preset"`
-	MaxTranscodeJobs int      `mapstructure:"max_transcode_jobs"`
-	ResourceLimit    int      `mapstructure:"resource_limit"`
-	CORSOrigins      []string `mapstructure:"cors_origins"`
+	Port        int      `mapstructure:"port"`
+	Debug       bool     `mapstructure:"debug"`
+	DataDir     string   `mapstructure:"data_dir"`
+	WebDir      string   `mapstructure:"web_dir"`
+	CacheDir    string   `mapstructure:"cache_dir"`
+	FFmpegPath  string   `mapstructure:"ffmpeg_path"`
+	FFprobePath string   `mapstructure:"ffprobe_path"`
+	VAAPIDevice string   `mapstructure:"vaapi_device"`
+	CORSOrigins []string `mapstructure:"cors_origins"`
 }
 
 // ==================== 加载逻辑 ====================
@@ -614,18 +605,8 @@ func setDefaults() {
 	viper.SetDefault("app.web_dir", "./web/dist")
 	viper.SetDefault("app.ffmpeg_path", "ffmpeg")
 	viper.SetDefault("app.ffprobe_path", "ffprobe")
-	viper.SetDefault("app.hw_accel", "none")
 	viper.SetDefault("app.vaapi_device", "/dev/dri/renderD128")
-	viper.SetDefault("app.transcode_preset", "ultrafast")
-	viper.SetDefault("app.max_transcode_jobs", 1)
-	viper.SetDefault("app.resource_limit", 5)
 	viper.SetDefault("app.cors_origins", []string{})
-	viper.SetDefault("app.gpu_utilization_threshold", 85)
-	viper.SetDefault("app.gpu_temperature_threshold", 80)
-	viper.SetDefault("app.gpu_recovery_threshold", 60)
-	viper.SetDefault("app.gpu_temperature_recovery", 70)
-	viper.SetDefault("app.gpu_monitor_interval", 5)
-	viper.SetDefault("app.gpu_safety_enabled", true)
 
 	// ---- 日志 ----
 	viper.SetDefault("logging.level", "info")
@@ -737,6 +718,14 @@ func setDefaults() {
 	viper.SetDefault("storage.s3.read_block_size_mb", 8)
 	viper.SetDefault("storage.s3.read_block_count", 4)
 
+	// ---- STRM 远程流 ----
+	viper.SetDefault("strm.default_user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	viper.SetDefault("strm.default_referer", "")
+	viper.SetDefault("strm.connect_timeout", 30)
+	viper.SetDefault("strm.rewrite_hls", true)
+	viper.SetDefault("strm.remote_probe", true)
+	viper.SetDefault("strm.remote_probe_timeout", 8)
+
 	// ---- 番号刮削 ----
 	viper.SetDefault("adult_scraper.enabled", false)
 	viper.SetDefault("adult_scraper.enable_javbus", true)
@@ -761,11 +750,7 @@ func setDefaults() {
 	viper.SetDefault("jwt_secret", "nowen-video-secret-change-me")
 	viper.SetDefault("ffmpeg_path", "ffmpeg")
 	viper.SetDefault("ffprobe_path", "ffprobe")
-	viper.SetDefault("hw_accel", "none")
 	viper.SetDefault("vaapi_device", "/dev/dri/renderD128")
-	viper.SetDefault("transcode_preset", "ultrafast")
-	viper.SetDefault("max_transcode_jobs", 1)
-	viper.SetDefault("resource_limit", 5)
 	viper.SetDefault("tmdb_api_key", "")
 }
 
@@ -902,48 +887,12 @@ func (c *Config) migrateFromFlatConfig() {
 			c.App.FFprobePath = "ffprobe"
 		}
 	}
-	if c.App.HWAccel == "" {
-		if c.HWAccel != "" {
-			c.App.HWAccel = c.HWAccel
-		} else {
-			c.App.HWAccel = "auto"
-		}
-	}
 	if c.App.VAAPIDevice == "" {
 		if c.VAAPIDevice != "" {
 			c.App.VAAPIDevice = c.VAAPIDevice
 		} else {
 			c.App.VAAPIDevice = "/dev/dri/renderD128"
 		}
-	}
-	if c.App.TranscodePreset == "" {
-		if c.TranscodePreset != "" && c.TranscodePreset != "veryfast" {
-			c.App.TranscodePreset = c.TranscodePreset
-		} else {
-			c.App.TranscodePreset = "veryfast"
-		}
-	}
-	if c.App.MaxTranscodeJobs == 0 {
-		if c.MaxTranscodeJobs != 0 {
-			c.App.MaxTranscodeJobs = c.MaxTranscodeJobs
-		} else {
-			c.App.MaxTranscodeJobs = 1
-		}
-	}
-	// 资源限制：允许用户配置 20~80，系统自动保留 20% 缓冲
-	// 默认值 70%，适合大多数 NAS 和家用服务器场景
-	if c.App.ResourceLimit <= 0 {
-		if c.ResourceLimit > 0 {
-			c.App.ResourceLimit = c.ResourceLimit
-		} else {
-			c.App.ResourceLimit = 70
-		}
-	}
-	if c.App.ResourceLimit < 20 {
-		c.App.ResourceLimit = 20 // 下限 20%，过低会导致预处理任务无法执行
-	}
-	if c.App.ResourceLimit > 80 {
-		c.App.ResourceLimit = 80 // 上限 80%，保留 20% 缓冲
 	}
 
 	// 缓存
@@ -1049,144 +998,6 @@ func (c *Config) ClearDoubanCookie() error {
 	return c.SetDoubanCookie("")
 }
 
-// UpdatePerformanceConfig 更新性能配置并持久化
-// 支持动态修改 resource_limit、max_transcode_jobs、transcode_preset、hw_accel
-func (c *Config) UpdatePerformanceConfig(updates map[string]interface{}) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for key, val := range updates {
-		switch key {
-		case "resource_limit":
-			if v, ok := val.(float64); ok {
-				limit := int(v)
-				if limit < 1 {
-					limit = 1
-				}
-				if limit > 80 {
-					limit = 80
-				}
-				c.App.ResourceLimit = limit
-				c.ResourceLimit = limit // 同步更新扁平兼容字段
-				viper.Set("app.resource_limit", limit)
-				viper.Set("resource_limit", limit) // 同步扁平 key
-			}
-		case "max_transcode_jobs":
-			if v, ok := val.(float64); ok {
-				jobs := int(v)
-				if jobs < 1 {
-					jobs = 1
-				}
-				if jobs > 16 {
-					jobs = 16
-				}
-				c.App.MaxTranscodeJobs = jobs
-				c.MaxTranscodeJobs = jobs // 同步更新扁平兼容字段
-				viper.Set("app.max_transcode_jobs", jobs)
-				viper.Set("max_transcode_jobs", jobs) // 同步扁平 key
-			}
-		case "transcode_preset":
-			if v, ok := val.(string); ok {
-				validPresets := map[string]bool{
-					"ultrafast": true, "superfast": true, "veryfast": true,
-					"faster": true, "fast": true, "medium": true,
-					"slow": true, "slower": true, "veryslow": true,
-				}
-				if validPresets[v] {
-					c.App.TranscodePreset = v
-					c.TranscodePreset = v // 同步更新扁平兼容字段
-					viper.Set("app.transcode_preset", v)
-					viper.Set("transcode_preset", v) // 同步扁平 key
-				}
-			}
-		case "hw_accel":
-			if v, ok := val.(string); ok {
-				validAccels := map[string]bool{
-					"auto": true, "nvenc": true, "qsv": true,
-					"vaapi": true, "none": true,
-				}
-				if validAccels[v] {
-					c.App.HWAccel = v
-					c.HWAccel = v // 同步更新扁平兼容字段
-					viper.Set("app.hw_accel", v)
-					viper.Set("hw_accel", v) // 同步扁平 key
-				}
-			}
-		case "gpu_utilization_threshold":
-			if v, ok := val.(float64); ok {
-				threshold := int(v)
-				if threshold < 50 {
-					threshold = 50
-				}
-				if threshold > 99 {
-					threshold = 99
-				}
-				c.App.GPUUtilizationThreshold = threshold
-				viper.Set("app.gpu_utilization_threshold", threshold)
-			}
-		case "gpu_temperature_threshold":
-			if v, ok := val.(float64); ok {
-				threshold := int(v)
-				if threshold < 60 {
-					threshold = 60
-				}
-				if threshold > 95 {
-					threshold = 95
-				}
-				c.App.GPUTemperatureThreshold = threshold
-				viper.Set("app.gpu_temperature_threshold", threshold)
-			}
-		case "gpu_recovery_threshold":
-			if v, ok := val.(float64); ok {
-				threshold := int(v)
-				if threshold < 30 {
-					threshold = 30
-				}
-				if threshold > 80 {
-					threshold = 80
-				}
-				c.App.GPURecoveryThreshold = threshold
-				viper.Set("app.gpu_recovery_threshold", threshold)
-			}
-		case "gpu_temperature_recovery":
-			if v, ok := val.(float64); ok {
-				threshold := int(v)
-				if threshold < 50 {
-					threshold = 50
-				}
-				if threshold > 85 {
-					threshold = 85
-				}
-				c.App.GPUTemperatureRecovery = threshold
-				viper.Set("app.gpu_temperature_recovery", threshold)
-			}
-		case "gpu_safety_enabled":
-			if v, ok := val.(bool); ok {
-				c.App.GPUSafetyEnabled = v
-				viper.Set("app.gpu_safety_enabled", v)
-			}
-		}
-	}
-
-	// 同时更新分片配置文件
-	c.updateAppConfigFile(updates)
-
-	return c.saveConfig()
-}
-
-// GetPerformanceConfig 获取当前性能配置
-func (c *Config) GetPerformanceConfig() map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return map[string]interface{}{
-		"resource_limit":     c.App.ResourceLimit,
-		"max_transcode_jobs": c.App.MaxTranscodeJobs,
-		"transcode_preset":   c.App.TranscodePreset,
-		"hw_accel":           c.App.HWAccel,
-		"vaapi_device":       c.App.VAAPIDevice,
-	}
-}
-
 // SaveAdultScraperConfig 将当前 AdultScraper 配置持久化到配置文件
 // 调用前应先在内存中更新 c.AdultScraper 字段，本方法只负责同步到 viper 并写盘
 func (c *Config) SaveAdultScraperConfig() error {
@@ -1220,6 +1031,23 @@ func (c *Config) SaveAdultScraperConfig() error {
 	return c.saveConfig()
 }
 
+// SaveSTRMConfig 将当前 STRM 配置持久化到配置文件
+func (c *Config) SaveSTRMConfig() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	sc := c.STRM
+	viper.Set("strm.default_user_agent", sc.DefaultUserAgent)
+	viper.Set("strm.default_referer", sc.DefaultReferer)
+	viper.Set("strm.connect_timeout", sc.ConnectTimeout)
+	viper.Set("strm.rewrite_hls", sc.RewriteHLS)
+	viper.Set("strm.remote_probe", sc.RemoteProbe)
+	viper.Set("strm.remote_probe_timeout", sc.RemoteProbeTimeout)
+	viper.Set("strm.domain_user_agents", sc.DomainUserAgents)
+	viper.Set("strm.domain_referers", sc.DomainReferers)
+	return c.saveConfig()
+}
+
 // saveConfig 将当前配置写入配置文件
 func (c *Config) saveConfig() error {
 	configFile := viper.ConfigFileUsed()
@@ -1227,27 +1055,6 @@ func (c *Config) saveConfig() error {
 		configFile = "config.yaml"
 	}
 	return viper.WriteConfigAs(configFile)
-}
-
-// updateAppConfigFile 更新 config/app.yaml 分片文件中的性能配置字段
-func (c *Config) updateAppConfigFile(updates map[string]interface{}) {
-	appDirs := []string{"./config", "./data/config", "/etc/nowen-video/config"}
-	for _, dir := range appDirs {
-		filePath := filepath.Join(dir, "app.yaml")
-		if _, err := os.Stat(filePath); err != nil {
-			continue
-		}
-		subViper := viper.New()
-		subViper.SetConfigFile(filePath)
-		if err := subViper.ReadInConfig(); err != nil {
-			continue
-		}
-		for key, val := range updates {
-			subViper.Set(key, val)
-		}
-		_ = subViper.WriteConfigAs(filePath)
-		return
-	}
 }
 
 // updateSecretsFile 更新 config/secrets.yaml 分片文件中的指定字段

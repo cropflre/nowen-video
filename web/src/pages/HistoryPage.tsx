@@ -1,11 +1,12 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
+import { usePagination } from '@/hooks/usePagination'
 import { formatProgress, formatTime } from '@/utils/format'
 import type { WatchHistory } from '@/types'
+import Pagination from '@/components/Pagination'
 import { Clock, Play, Trash2, X } from 'lucide-react'
 
 interface HistoryData {
@@ -14,8 +15,10 @@ interface HistoryData {
 }
 
 export default function HistoryPage() {
-  const [page, setPage] = useState(1)
-  const size = 20
+  const { page, size, setPage, setSize, totalPages } = usePagination({
+    initialSize: 20,
+    syncToUrl: true,
+  })
   const toast = useToast()
   const { t } = useTranslation()
 
@@ -72,7 +75,7 @@ export default function HistoryPage() {
     return date.toLocaleDateString('zh-CN')
   }
 
-  const totalPages = Math.ceil(total / size)
+  const pages = totalPages(total)
 
   return (
     <div>
@@ -212,27 +215,15 @@ export default function HistoryPage() {
       )}
 
       {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            {t('pagination.prev')}
-          </button>
-          <span className="font-display text-sm tracking-wide text-neon">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="btn-ghost rounded-xl border border-neon-blue/10 px-4 py-2 text-sm disabled:opacity-30"
-          >
-            {t('pagination.next')}
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={pages}
+        total={total}
+        pageSize={size}
+        pageSizeOptions={[10, 20, 50, 100]}
+        onPageChange={setPage}
+        onPageSizeChange={setSize}
+      />
     </div>
   )
 }

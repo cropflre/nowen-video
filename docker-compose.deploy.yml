@@ -89,11 +89,6 @@ services:
       - PUID=0
       - PGID=0
       - UMASK=000
-      # 硬件加速：ARM SBC 建议先用 auto，不稳就改 none 走 CPU
-      - NOWEN_APP_HW_ACCEL=auto
-      - NOWEN_APP_TRANSCODE_PRESET=veryfast
-      # ARM 盒子 CPU 弱，并发转码建议 1；只有软解就别调高
-      - NOWEN_APP_MAX_TRANSCODE_JOBS=1
       - NOWEN_DATABASE_DB_PATH=/data/nowen.db
       # ⚠️ 必改：换成你自己的随机字符串（至少 32 位）
       - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key

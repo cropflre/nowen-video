@@ -3,6 +3,8 @@ import type { ScrapeTask, ScrapeStatistics, ScrapeHistory } from '@/types'
 import { scrapeApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
 import {
   Globe,
   Plus,
@@ -75,7 +77,7 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
   // 数据状态
   const [tasks, setTasks] = useState<ScrapeTask[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const { page, size: pageSize, setPage, setSize, totalPages } = usePagination({ initialSize: 20 })
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<ScrapeStatistics | null>(null)
 
@@ -111,7 +113,7 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     try {
       const res = await scrapeApi.listTasks({
         page,
-        size: 20,
+        size: pageSize,
         status: filterStatus || undefined,
         source: filterSource || undefined,
       })
@@ -122,7 +124,7 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     } finally {
       setLoading(false)
     }
-  }, [page, filterStatus, filterSource])
+  }, [page, pageSize, filterStatus, filterSource])
 
   // 加载统计
   const fetchStats = useCallback(async () => {
@@ -705,27 +707,15 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
       )}
 
       {/* ==================== 分页 ==================== */}
-      {total > 20 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-30"
-          >
-            上一页
-          </button>
-          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            第 {page} / {Math.ceil(total / 20)} 页
-          </span>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={page >= Math.ceil(total / 20)}
-            className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-30"
-          >
-            下一页
-          </button>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages(total)}
+        total={total}
+        pageSize={pageSize}
+        pageSizeOptions={[10, 20, 50, 100]}
+        onPageChange={setPage}
+        onPageSizeChange={setSize}
+      />
 
       {/* ==================== 翻译对话框 ==================== */}
       {showTranslateDialog && (

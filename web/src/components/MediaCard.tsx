@@ -5,6 +5,7 @@ import type { Media, Series } from '@/types'
 import { useRef, useCallback } from 'react'
 import { motion, useMotionValue, useTransform, useSpring, useMotionTemplate } from 'framer-motion'
 import { springDefault } from '@/lib/motion'
+import { usePosterVersion } from '@/stores/mediaRefresh'
 
 interface MediaCardProps {
   media?: Media
@@ -79,17 +80,22 @@ export default function MediaCard({ media, series }: MediaCardProps) {
   const title = series ? series.title : media!.title
   const year = series ? series.year : media!.year
   const rating = series ? series.rating : media!.rating
+  // 订阅全局海报版本戳：刮削完成/元数据替换后自动刷新图片缓存
+  const posterVersion = usePosterVersion()
   const posterUrl = series
-    ? streamApi.getSeriesPosterUrl(series.id)
+    ? streamApi.getSeriesPosterUrl(series.id, posterVersion)
     : media!.series_id
-      ? streamApi.getSeriesPosterUrl(media!.series_id)
-      : streamApi.getPosterUrl(media!.id)
+      ? streamApi.getSeriesPosterUrl(media!.series_id, posterVersion)
+      : streamApi.getPosterUrl(media!.id, posterVersion)
 
   // 检查是否有真实海报（poster_path 非空）
+  // 对于 episode 或未加载 series 关联的场景，我们也允许尝试加载：
+  //   - 后端 Poster handler 会自动 fallback 到 series 海报或 sidecar 文件
+  //   - 仅在 media.poster_path 与 series.poster_path 都为空且不是剧集时，才直接显示占位
   const hasPoster = series
     ? !!series.poster_path
     : media!.series_id
-      ? !!(media!.series?.poster_path)
+      ? !!(media!.series?.poster_path) || !!media!.poster_path
       : !!media!.poster_path
 
   // 点击播放按钮 — 阻止冒泡，导航到播放页

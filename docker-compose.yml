@@ -73,9 +73,6 @@ services:
       - UMASK=000   # 生成文件默认 777，便于多端共享
       - NOWEN_APP_DATA_DIR=/data
       - NOWEN_APP_WEB_DIR=/app/web/dist
-      - NOWEN_APP_HW_ACCEL=auto  # 自动检测硬件加速（可选: auto/qsv/vaapi/nvenc/none）
-      - NOWEN_APP_TRANSCODE_PRESET=veryfast
-      - NOWEN_APP_MAX_TRANSCODE_JOBS=2
       # ---- 数据库配置 ----
       - NOWEN_DATABASE_DB_PATH=/data/nowen.db
       # ---- 密钥配置（⚠️ 请务必修改） ----

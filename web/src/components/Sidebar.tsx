@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
+import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Library } from '@/types'
 import LanguageSwitcher from './LanguageSwitcher'
 import { useTranslation } from '@/i18n'
@@ -71,14 +72,23 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
       refreshTimerRef.current = setTimeout(() => fetchLibraries(), 500)
     }
 
+    // 全局海报版本 bump：刮削/扫描完成后让所有 MediaCard 的图片 URL 更新，破除浏览器缓存
+    const bumpOnMediaChange = () => {
+      bumpPosterVersion()
+    }
+
     on(WS_EVENTS.LIBRARY_DELETED, debouncedRefresh)
     on(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
     on(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
+    on(WS_EVENTS.SCAN_COMPLETED, bumpOnMediaChange)
+    on(WS_EVENTS.SCRAPE_COMPLETED, bumpOnMediaChange)
 
     return () => {
       off(WS_EVENTS.LIBRARY_DELETED, debouncedRefresh)
       off(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
       off(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
+      off(WS_EVENTS.SCAN_COMPLETED, bumpOnMediaChange)
+      off(WS_EVENTS.SCRAPE_COMPLETED, bumpOnMediaChange)
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
   }, [on, off, fetchLibraries])

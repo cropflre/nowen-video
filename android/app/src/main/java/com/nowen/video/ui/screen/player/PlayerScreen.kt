@@ -268,11 +268,11 @@ fun PlayerScreen(
             val mimeType = getMimeTypeForSubtitleFormat(track.format)
             Log.d(TAG, "字幕源: path=$path, format=${track.format}, mimeType=$mimeType")
 
+            // 不设置 SELECTION_FLAG_DEFAULT，避免 ExoPlayer 自动选中导致"关闭字幕"失效
             val subtitleMediaItem = MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(subtitleUrl))
                 .setMimeType(mimeType)
                 .setLanguage(track.language.ifBlank { "und" })
                 .setLabel(track.title.ifBlank { track.language.ifBlank { track.filename } })
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
 
             SingleSampleMediaSource.Factory(dataSourceFactory)
@@ -287,11 +287,11 @@ fun PlayerScreen(
         exoPlayer.prepare()
         if (pos > 0) exoPlayer.seekTo(pos)
 
-        // 确保 ExoPlayer 启用文本轨道渲染
+        // 根据当前选择状态决定是否启用字幕渲染：未选中字幕时保持禁用状态
         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, uiState.activeSubtitle == null)
             .build()
-        Log.d(TAG, "外挂字幕 MergingMediaSource 已设置")
+        Log.d(TAG, "外挂字幕 MergingMediaSource 已设置, activeSubtitle=${uiState.activeSubtitle}")
     }
 
     // 监听播放错误和字幕轨道变化
@@ -1444,15 +1444,20 @@ fun PlayerScreen(
                             // --- 关闭字幕 ---
                             item {
                                 SubtitleTrackItem(
-                                    title = "关闭字幕",
+                                title = "关闭字幕",
                                     subtitle = null,
                                     isSelected = uiState.activeSubtitle == null,
                                     icon = Icons.Default.SubtitlesOff,
                                     onClick = {
                                         viewModel.setActiveSubtitle(null)
-                                        // 关闭字幕：直接禁用文本轨道（不需要重新加载视频）
+                                        // 关闭字幕：彻底禁用文本轨道
+                                        // 1) 清空所有已覆盖的文本轨道选择；
+                                        // 2) 清空 preferredTextLanguages，避免自动匹配；
+                                        // 3) 禁用 TRACK_TYPE_TEXT 渲染器；
                                         Log.d(TAG, "关闭字幕")
                                         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                            .setPreferredTextLanguages()
                                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                                             .build()
                                     }
@@ -1492,7 +1497,6 @@ fun PlayerScreen(
                                                     .setMimeType(MimeTypes.TEXT_VTT)
                                                     .setLanguage(track.language.ifBlank { "und" })
                                                     .setLabel(track.title.ifBlank { track.language })
-                                                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                                                     .build()
                                                 val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
                                                     .createMediaSource(subtitleConfig, C.TIME_UNSET)
@@ -1539,7 +1543,6 @@ fun PlayerScreen(
                                                 .setMimeType(mimeType)
                                                 .setLanguage(track.language.ifBlank { "und" })
                                                 .setLabel(track.language.ifBlank { track.filename })
-                                                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                                                 .build()
                                             val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
                                                 .createMediaSource(subtitleConfig, C.TIME_UNSET)

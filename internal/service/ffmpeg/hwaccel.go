@@ -21,18 +21,13 @@ const (
 
 // DetectHWAccel 检测可用的硬件加速方式。
 //
-// 逻辑（与 transcode.go 历史实现一致）：
-//  1. 如果 cfg.App.HWAccel 显式指定为 nvenc/qsv/vaapi/none，直接返回；
-//  2. 否则尝试 NVIDIA NVENC（通过 nvidia-smi + ffmpeg -encoders 双重验证）；
-//  3. Linux 下检查 /dev/dri/renderD128，再分别验证 QSV / VAAPI；
-//  4. 都不可用则返回 "none"（纯软件编码）。
+// 【最佳性能策略】永远自动检测，不再读取配置中的手动指定：
+//  1. 尝试 NVIDIA NVENC（通过 nvidia-smi + ffmpeg -encoders 双重验证）；
+//  2. Linux 下检查 /dev/dri/renderD128，再分别验证 QSV / VAAPI；
+//  3. 都不可用则返回 "none"（纯软件编码）。
 //
 // ffmpegPath 为 ffmpeg 二进制路径（通常来自 cfg.App.FFmpegPath）。
 func DetectHWAccel(cfg *config.Config, logger *zap.SugaredLogger) string {
-	if cfg.App.HWAccel != "auto" && cfg.App.HWAccel != "" {
-		return cfg.App.HWAccel
-	}
-
 	ffmpegPath := cfg.App.FFmpegPath
 
 	// 1) NVIDIA NVENC

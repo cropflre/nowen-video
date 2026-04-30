@@ -51,6 +51,10 @@ export { batchMoveApi } from './v4'
 export { adultScraperApi } from './adultScraper'
 export type { AdultScraperConfig, AdultScraperSource, AdultMetadata, ParseCodeResult, PythonServiceHealth } from './adultScraper'
 
+// STRM 远程流管理
+export { strmApi } from './strm'
+export type { STRMGlobalConfig, MediaSTRMInfo, UpdateMediaSTRMPayload } from './strm'
+
 // V2.1: WebDAV 存储管理
 export { storageApi } from './storage'
 export type { WebDAVConfig, WebDAVStatus, StorageStatus, TestWebDAVRequest } from './storage'

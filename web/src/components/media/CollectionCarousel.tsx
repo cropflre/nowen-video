@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import { collectionApi } from '@/api'
 import type { CollectionWithMedia, CollectionMediaItem } from '@/types'
-import { Film, Play, ChevronLeft, ChevronRight, Layers, Star, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { groupByMovie, versionLabel } from '@/utils/collectionGroup'
+import { Film, Play, ChevronLeft, ChevronRight, Layers, Star, Clock, ChevronDown, ChevronUp, Copy } from 'lucide-react'
 
 interface CollectionCarouselProps {
   mediaId: string
@@ -41,12 +42,20 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
     el.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' })
   }
 
-  // 不显示：加载中、无数据、或只有1部电影
-  if (loading || !data || data.media.length <= 1) return null
+  // 不显示：加载中、无数据、或折叠后只有 1 部电影
+  // ★ 方案 C 核心：先折叠同片多版本
+  const groupedMovies = useMemo(() => {
+    if (!data?.media) return []
+    return groupByMovie(data.media)
+  }, [data?.media])
+
+  if (loading || !data || groupedMovies.length <= 1) return null
 
   const { collection, media } = data
-  // 当前电影在系列中的位置
-  const currentIndex = media.findIndex(m => m.is_current)
+  // 当前电影在系列中的位置（基于折叠后的分组）
+  const currentIndex = groupedMovies.findIndex((g) => g.versions.some((v) => v.is_current))
+  const movieCount = groupedMovies.length
+  const fileCount = media.length
 
   return (
     <section className="mt-6">
@@ -66,7 +75,10 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
               }}
               title="查看合集详情"
             >
-              {collection.name} · {media.length}部
+              {collection.name} · {movieCount}部
+              {fileCount > movieCount && (
+                <span className="opacity-70">/{fileCount}个文件</span>
+              )}
               <ChevronRight size={10} />
             </Link>
           </h3>
@@ -88,7 +100,7 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
             {/* 系列进度指示器 */}
             {currentIndex >= 0 && (
               <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                第 {currentIndex + 1}/{media.length} 部
+                第 {currentIndex + 1}/{movieCount} 部
               </span>
             )}
             <div className="flex gap-1">
@@ -122,32 +134,40 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
           role="list"
           aria-label="系列合集电影列表"
         >
-          {media.map((item) => (
-            <CollectionCard
-              key={item.id}
-              item={item}
-              isCurrent={item.is_current}
-              onClick={() => {
-                if (!item.is_current) {
-                  navigate(`/media/${item.id}`)
-                }
-              }}
-            />
-          ))}
+          {groupedMovies.map((group) => {
+            const item = group.primary
+            const isCurrent = group.versions.some((v) => v.is_current)
+            return (
+              <CollectionCard
+                key={item.id}
+                item={item}
+                versionCount={group.versions.length}
+                isCurrent={isCurrent}
+                onClick={() => {
+                  if (!isCurrent) {
+                    navigate(`/media/${item.id}`)
+                  }
+                }}
+              />
+            )
+          })}
         </div>
       )}
 
       {/* 展开的列表模式 */}
       {expanded && (
         <div className="space-y-2" role="list" aria-label="系列合集电影列表">
-          {media.map((item, index) => (
-            <CollectionListItem
-              key={item.id}
-              item={item}
-              index={index + 1}
-              isCurrent={item.is_current}
-            />
-          ))}
+          {groupedMovies.map((group, index) => {
+            const isCurrent = group.versions.some((v) => v.is_current)
+            return (
+              <CollectionListItem
+                key={group.primary.id}
+                group={group}
+                index={index + 1}
+                isCurrent={isCurrent}
+              />
+            )
+          })}
         </div>
       )}
     </section>
@@ -155,11 +175,13 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
 }
 
 /** 横向滚动卡片 */
-function CollectionCard({ item, isCurrent, onClick }: {
+function CollectionCard({ item, versionCount, isCurrent, onClick }: {
   item: CollectionMediaItem
+  versionCount: number
   isCurrent: boolean
   onClick: () => void
 }) {
+  const hasMultipleVersions = versionCount > 1
   return (
     <div
       onClick={onClick}
@@ -190,6 +212,23 @@ function CollectionCard({ item, isCurrent, onClick }: {
                 boxShadow: '0 0 8px var(--neon-blue-40)',
               }}
             >当前</span>
+          </div>
+        )}
+
+        {/* 多版本角标 */}
+        {hasMultipleVersions && (
+          <div className="absolute right-1.5 top-1.5">
+            <span
+              className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[9px] font-bold backdrop-blur-md"
+              style={{
+                background: 'rgba(0,0,0,0.7)',
+                color: '#fff',
+              }}
+              title={`共有 ${versionCount} 个版本`}
+            >
+              <Copy size={8} />
+              {versionCount}版
+            </span>
           </div>
         )}
 
@@ -229,26 +268,27 @@ function CollectionCard({ item, isCurrent, onClick }: {
   )
 }
 
-/** 展开列表项 */
-function CollectionListItem({ item, index, isCurrent }: {
-  item: CollectionMediaItem
+/** 展开列表项（支持同片多版本切换） */
+function CollectionListItem({ group, index, isCurrent }: {
+  group: import('@/utils/collectionGroup').GroupedMovieItem
   index: number
   isCurrent: boolean
 }) {
+  const item = group.primary
+  const hasMultipleVersions = group.versions.length > 1
+  const [showVersions, setShowVersions] = useState(false)
+
   return (
-    <Link
-      to={isCurrent ? '#' : `/media/${item.id}`}
-      className={`flex items-center gap-4 rounded-xl p-3 transition-all duration-200 ${
-        isCurrent
-          ? 'ring-1 ring-neon/30'
-          : 'hover:bg-neon-blue/5'
-      }`}
-      style={{
-        background: isCurrent ? 'var(--neon-blue-5)' : 'var(--bg-surface)',
-      }}
-      onClick={(e) => { if (isCurrent) e.preventDefault() }}
+    <div
+      className={`rounded-xl transition-all duration-200 ${isCurrent ? 'ring-1 ring-neon/30' : ''}`}
+      style={{ background: isCurrent ? 'var(--neon-blue-5)' : 'var(--bg-surface)' }}
       role="listitem"
     >
+      <Link
+        to={isCurrent ? '#' : `/media/${item.id}`}
+        className={`flex items-center gap-4 p-3 ${isCurrent ? '' : 'hover:bg-neon-blue/5'}`}
+        onClick={(e) => { if (isCurrent) e.preventDefault() }}
+      >
       {/* 序号 */}
       <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold"
         style={{
@@ -289,6 +329,19 @@ function CollectionListItem({ item, index, isCurrent }: {
               }}
             >当前</span>
           )}
+          {hasMultipleVersions && (
+            <span className="ml-2 inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold"
+              style={{
+                background: 'var(--neon-blue-10)',
+                color: 'var(--neon-blue)',
+                border: '1px solid var(--neon-blue-20)',
+              }}
+              title={`共有 ${group.versions.length} 个版本`}
+            >
+              <Copy size={8} />
+              {group.versions.length}版
+            </span>
+          )}
         </h4>
         <div className="mt-1 flex items-center gap-3 text-xs" style={{ color: 'var(--text-muted)' }}>
           {item.year > 0 && <span>{item.year}</span>}
@@ -312,6 +365,26 @@ function CollectionListItem({ item, index, isCurrent }: {
         )}
       </div>
 
+      {/* 展开版本按钮 */}
+      {hasMultipleVersions && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setShowVersions((v) => !v)
+          }}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition-colors"
+          style={{
+            background: showVersions ? 'var(--neon-blue-10)' : 'var(--bg-elevated)',
+            color: showVersions ? 'var(--neon-blue)' : 'var(--text-muted)',
+          }}
+          title={showVersions ? '收起版本' : '展开版本'}
+        >
+          <ChevronDown size={12} className={showVersions ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        </button>
+      )}
+
       {/* 播放按钮 */}
       {!isCurrent && (
         <div className="flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
@@ -325,6 +398,40 @@ function CollectionListItem({ item, index, isCurrent }: {
           </div>
         </div>
       )}
-    </Link>
+      </Link>
+
+      {/* 版本下拉列表 */}
+      {hasMultipleVersions && showVersions && (
+        <div className="px-3 pb-3" style={{ borderTop: '1px dashed var(--border-default)' }}>
+          <div className="mt-2 space-y-1">
+            {group.versions.map((v) => {
+              const label = versionLabel(v) || '默认版本'
+              const vIsCurrent = v.is_current
+              return (
+                <Link
+                  key={v.id}
+                  to={vIsCurrent ? '#' : `/media/${v.id}`}
+                  onClick={(e) => { if (vIsCurrent) e.preventDefault() }}
+                  className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs transition-colors"
+                  style={{
+                    background: vIsCurrent ? 'var(--neon-blue-10)' : 'var(--bg-elevated)',
+                    color: vIsCurrent ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                  }}
+                >
+                  <span className="truncate">{label}</span>
+                  {vIsCurrent && (
+                    <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold"
+                      style={{
+                        background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                        color: '#fff',
+                      }}>当前</span>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

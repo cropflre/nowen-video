@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
 import { usePageCache } from '@/hooks/usePageCache'
-import type { CollectionWithMedia, CollectionMediaItem } from '@/types'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
+import type { CollectionWithMedia } from '@/types'
+import { groupByMovie, versionLabel, type GroupedMovieItem } from '@/utils/collectionGroup'
 import {
   Layers,
   Film,
@@ -16,6 +19,8 @@ import {
   Grid3X3,
   LayoutList,
   ArrowUpDown,
+  Copy,
+  ChevronDown,
 } from 'lucide-react'
 
 type SortOption = 'premiered_asc' | 'premiered_desc' | 'title_asc' | 'rating_desc'
@@ -46,9 +51,12 @@ export default function CollectionDetailPage() {
 
   const sortedMedia = useMemo(() => {
     if (!data?.media) return []
-    const sorted = [...data.media]
-    // 按首映日期排序：有首映日期的排前面；两者都有则按字符串比较；否则回退到年份；最后按标题打平
-    const byPremiered = (dir: 'asc' | 'desc') => (a: CollectionMediaItem, b: CollectionMediaItem) => {
+    // ★ 方案 C 核心：先按"同一部电影"折叠多版本（以主版本来做后续排序/展示）
+    const grouped: GroupedMovieItem[] = groupByMovie(data.media)
+    // 排序时使用代表版本（primary）的字段
+    const sorted = [...grouped]
+    const byPremiered = (dir: 'asc' | 'desc') => (ga: GroupedMovieItem, gb: GroupedMovieItem) => {
+      const a = ga.primary, b = gb.primary
       const da = a.premiered || '', db = b.premiered || ''
       if (da && db) {
         const cmp = dir === 'asc' ? da.localeCompare(db) : db.localeCompare(da)
@@ -69,14 +77,29 @@ export default function CollectionDetailPage() {
         sorted.sort(byPremiered('desc'))
         break
       case 'title_asc':
-        sorted.sort((a, b) => a.title.localeCompare(b.title))
+        sorted.sort((a, b) => a.primary.title.localeCompare(b.primary.title))
         break
       case 'rating_desc':
-        sorted.sort((a, b) => b.rating - a.rating || a.title.localeCompare(b.title))
+        sorted.sort((a, b) => b.primary.rating - a.primary.rating || a.primary.title.localeCompare(b.primary.title))
         break
     }
     return sorted
   }, [data?.media, sortOption])
+
+  // 分页（前端分页，合集规模一般不大）
+  const { page, size, setPage, setSize, totalPages } = usePagination({
+    initialSize: 24,
+    syncToUrl: true,
+  })
+
+  const pagedMedia = useMemo(() => {
+    const start = (page - 1) * size
+    return sortedMedia.slice(start, start + size)
+  }, [sortedMedia, page, size])
+
+  // 统计折叠后的电影总数 & 原始文件总数，用于展示标签
+  const movieCount = sortedMedia.length
+  const fileCount = data?.media?.length || 0
 
   // 只在"首次加载且无任何数据"时才显示全屏 loader，避免返回时闪屏
   if (loading && !data) {
@@ -193,7 +216,10 @@ export default function CollectionDetailPage() {
                     color: 'var(--neon-blue)',
                     border: '1px solid var(--neon-blue-20)',
                   }}>
-                  {media.length} 部电影
+                  {movieCount} 部电影
+                  {fileCount > movieCount && (
+                    <span className="ml-1 opacity-70">· {fileCount} 个文件</span>
+                  )}
                 </span>
                 {media.length > 0 && (
                   <>
@@ -326,119 +352,224 @@ export default function CollectionDetailPage() {
 
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {sortedMedia.map((item, index) => (
-              <CollectionMovieCard key={item.id} item={item} index={index + 1} />
-            ))}
+            {pagedMedia.map((group, idx) => {
+              const globalIndex = (page - 1) * size + idx + 1
+              return <CollectionMovieCard key={group.primary.id} group={group} index={globalIndex} />
+            })}
           </div>
         ) : (
           <div className="space-y-2">
-            {sortedMedia.map((item, index) => (
-              <CollectionMovieListItem key={item.id} item={item} index={index + 1} />
-            ))}
+            {pagedMedia.map((group, idx) => {
+              const globalIndex = (page - 1) * size + idx + 1
+              return <CollectionMovieListItem key={group.primary.id} group={group} index={globalIndex} />
+            })}
           </div>
         )}
+
+        {/* 分页 */}
+        <Pagination
+          page={page}
+          totalPages={totalPages(sortedMedia.length)}
+          total={sortedMedia.length}
+          pageSize={size}
+          pageSizeOptions={[12, 24, 36, 48]}
+          onPageChange={setPage}
+          onPageSizeChange={setSize}
+        />
       </div>
     </div>
   )
 }
 
-/** 合集中的电影卡片 */
-function CollectionMovieCard({ item, index }: { item: CollectionMediaItem; index: number }) {
+/** 合集中的电影卡片（支持同片多版本折叠展示） */
+function CollectionMovieCard({ group, index }: { group: GroupedMovieItem; index: number }) {
+  const item = group.primary
+  const versionCount = group.versions.length
+  const hasMultipleVersions = versionCount > 1
+  const [showVersions, setShowVersions] = useState(false)
+
   return (
-    <Link
-      to={`/media/${item.id}`}
-      className="media-card group cursor-pointer transition-all duration-300 hover:scale-[1.02]"
-    >
-      {/* 海报 */}
-      <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
-        <img
-          src={streamApi.getPosterUrl(item.id)}
-          alt={item.title}
-          className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
-          loading="lazy"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
-        <div className="absolute inset-0 -z-10 flex items-center justify-center" style={{ color: 'var(--text-muted)' }}>
-          <Film size={32} />
-        </div>
-
-        {/* 序号标签 */}
-        <div className="absolute left-2 top-2">
-          <span className="block rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight backdrop-blur-md"
-            style={{
-              background: 'rgba(0,0,0,0.7)',
-              color: 'var(--text-primary)',
-            }}
-          >#{index}</span>
-        </div>
-
-        {/* 评分标签 */}
-        {item.rating > 0 && (
-          <div className="absolute left-2 bottom-2">
-            <span className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold backdrop-blur-md"
-              style={{ background: 'rgba(0,0,0,0.7)' }}>
-              <Star size={9} className="text-yellow-400" fill="currentColor" />
-              <span className="text-yellow-400">{item.rating.toFixed(1)}</span>
-            </span>
+    <div className="relative">
+      <Link
+        to={`/media/${item.id}`}
+        className="media-card group cursor-pointer transition-all duration-300 hover:scale-[1.02] block"
+      >
+        {/* 海报 */}
+        <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
+          <img
+            src={streamApi.getPosterUrl(item.id)}
+            alt={item.title}
+            className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
+            loading="lazy"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
+          <div className="absolute inset-0 -z-10 flex items-center justify-center" style={{ color: 'var(--text-muted)' }}>
+            <Film size={32} />
           </div>
-        )}
 
-        {/* 悬停播放图标 */}
-        <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <div className="absolute bottom-2 right-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full"
+          {/* 序号标签 */}
+          <div className="absolute left-2 top-2">
+            <span className="block rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight backdrop-blur-md"
               style={{
-                background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                boxShadow: '0 0 12px var(--neon-blue-40)',
+                background: 'rgba(0,0,0,0.7)',
+                color: 'var(--text-primary)',
               }}
-            >
-              <Play size={14} className="ml-0.5 text-white" fill="white" />
+            >#{index}</span>
+          </div>
+
+          {/* 多版本角标 */}
+          {hasMultipleVersions && (
+            <div className="absolute right-2 top-2">
+              <span
+                className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold backdrop-blur-md"
+                style={{
+                  background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                  color: '#fff',
+                  boxShadow: '0 0 8px var(--neon-blue-40)',
+                }}
+                title={`共有 ${versionCount} 个版本`}
+              >
+                <Copy size={9} />
+                {versionCount}版
+              </span>
+            </div>
+          )}
+
+          {/* 评分标签 */}
+          {item.rating > 0 && (
+            <div className="absolute left-2 bottom-2">
+              <span className="flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold backdrop-blur-md"
+                style={{ background: 'rgba(0,0,0,0.7)' }}>
+                <Star size={9} className="text-yellow-400" fill="currentColor" />
+                <span className="text-yellow-400">{item.rating.toFixed(1)}</span>
+              </span>
+            </div>
+          )}
+
+          {/* 悬停播放图标 */}
+          <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+            <div className="absolute bottom-2 right-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{
+                  background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                  boxShadow: '0 0 12px var(--neon-blue-40)',
+                }}
+              >
+                <Play size={14} className="ml-0.5 text-white" fill="white" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* 信息 */}
-      <div className="p-3">
-        <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
-          style={{ color: 'var(--text-primary)' }} title={item.title}>
-          {item.title}
-        </h4>
-        <div className="mt-1 flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {item.year > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Calendar size={10} /> {item.year}
-            </span>
-          )}
-          {item.runtime > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Clock size={10} /> {item.runtime}分钟
-            </span>
+        {/* 信息 */}
+        <div className="p-3">
+          <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
+            style={{ color: 'var(--text-primary)' }} title={item.title}>
+            {item.title}
+          </h4>
+          <div className="mt-1 flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            {item.year > 0 && (
+              <span className="flex items-center gap-0.5">
+                <Calendar size={10} /> {item.year}
+              </span>
+            )}
+            {item.runtime > 0 && (
+              <span className="flex items-center gap-0.5">
+                <Clock size={10} /> {item.runtime}分钟
+              </span>
+            )}
+          </div>
+          {item.genres && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {item.genres.split(',').map((g) => {
+                const t = g.trim()
+                if (!t) return null
+                return (
+                  <span key={t}
+                    className="rounded px-1 py-0.5 text-[10px]"
+                    style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
+                  >
+                    {t}
+                  </span>
+                )
+              })}
+            </div>
           )}
         </div>
-        {item.genres && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {item.genres.split(',').map((g) => {
-              const t = g.trim()
-              if (!t) return null
-              return (
-                <span key={t}
-                  className="rounded px-1 py-0.5 text-[10px]"
-                  style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
-                >
-                  {t}
-                </span>
-              )
-            })}
+      </Link>
+
+      {/* 多版本切换按钮（只在 hover 时显示，避免与卡片悬停效果冲突） */}
+      {hasMultipleVersions && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setShowVersions((v) => !v)
+          }}
+          className="absolute bottom-16 right-2 rounded-full p-1 text-[10px] transition-all"
+          style={{
+            background: showVersions ? 'var(--neon-blue)' : 'rgba(0,0,0,0.6)',
+            color: '#fff',
+          }}
+          title="查看所有版本"
+        >
+          <ChevronDown size={12} className={showVersions ? 'rotate-180' : ''} />
+        </button>
+      )}
+
+      {/* 版本下拉列表 */}
+      {hasMultipleVersions && showVersions && (
+        <div
+          className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg p-2 shadow-2xl"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+          }}
+        >
+          <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: 'var(--text-muted)' }}>
+            {versionCount} 个版本
           </div>
-        )}
-      </div>
-    </Link>
+          {group.versions.map((v) => {
+            const label = versionLabel(v) || v.title
+            return (
+              <Link
+                key={v.id}
+                to={`/media/${v.id}`}
+                className="block rounded px-2 py-1.5 text-[11px] transition-colors"
+                style={{
+                  color: v.id === item.id ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                  background: v.id === item.id ? 'var(--neon-blue-10)' : 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (v.id !== item.id) e.currentTarget.style.background = 'var(--bg-surface)'
+                }}
+                onMouseLeave={(e) => {
+                  if (v.id !== item.id) e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate">{label}</span>
+                  {v.id === item.id && (
+                    <span className="flex-shrink-0 text-[9px] font-bold">当前</span>
+                  )}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
-/** 合集中的电影列表项 */
-function CollectionMovieListItem({ item, index }: { item: CollectionMediaItem; index: number }) {
+/** 合集中的电影列表项（支持同片多版本展示） */
+function CollectionMovieListItem({ group, index }: { group: GroupedMovieItem; index: number }) {
+  const item = group.primary
+  const versionCount = group.versions.length
+  const hasMultipleVersions = versionCount > 1
+  const [showVersions, setShowVersions] = useState(false)
   const genreList = item.genres ? item.genres.split(',').map(g => g.trim()).filter(Boolean) : []
 
   const formatDuration = (seconds: number) => {
@@ -450,77 +581,147 @@ function CollectionMovieListItem({ item, index }: { item: CollectionMediaItem; i
   }
 
   return (
-    <Link
-      to={`/media/${item.id}`}
-      className="group flex items-center gap-4 rounded-xl p-3 transition-all duration-300"
+    <div
+      className="rounded-xl"
       style={{ border: '1px solid var(--border-default)' }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover-bg)'; e.currentTarget.style.borderColor = 'var(--border-hover)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
     >
-      {/* 序号 */}
-      <span className="w-6 text-center text-xs font-bold flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-        {index}
-      </span>
+      <Link
+        to={`/media/${item.id}`}
+        className="group flex items-center gap-4 p-3 transition-all duration-300"
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover-bg)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+      >
+        {/* 序号 */}
+        <span className="w-6 text-center text-xs font-bold flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+          {index}
+        </span>
 
-      {/* 缩略图 */}
-      <div className="h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
-        <img
-          src={streamApi.getPosterUrl(item.id)}
-          alt={item.title}
-          className="h-full w-full object-cover"
-          loading="lazy"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
-      </div>
-
-      {/* 信息 */}
-      <div className="min-w-0 flex-1">
-        <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
-          style={{ color: 'var(--text-primary)' }} title={item.title}>
-          {item.title}
-        </h4>
-        <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          {item.year > 0 && <span>{item.year}</span>}
-          {item.runtime > 0 && (
-            <>
-              <span style={{ color: 'var(--text-muted)' }}>·</span>
-              <span>{formatDuration(item.runtime)}</span>
-            </>
-          )}
+        {/* 缩略图 */}
+        <div className="h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+          <img
+            src={streamApi.getPosterUrl(item.id)}
+            alt={item.title}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
         </div>
-        {genreList.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {genreList.slice(0, 3).map(g => (
-              <span key={g} className="rounded px-1 py-0.5 text-[10px]"
-                style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}>
-                {g}
+
+        {/* 信息 */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="truncate text-sm font-medium transition-colors group-hover:text-neon"
+              style={{ color: 'var(--text-primary)' }} title={item.title}>
+              {item.title}
+            </h4>
+            {hasMultipleVersions && (
+              <span
+                className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                style={{
+                  background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                  color: '#fff',
+                }}
+                title={`共有 ${versionCount} 个版本`}
+              >
+                <Copy size={9} />
+                {versionCount}个版本
               </span>
-            ))}
-            {genreList.length > 3 && (
-              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+{genreList.length - 3}</span>
             )}
           </div>
-        )}
-      </div>
+          <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            {item.year > 0 && <span>{item.year}</span>}
+            {item.runtime > 0 && (
+              <>
+                <span style={{ color: 'var(--text-muted)' }}>·</span>
+                <span>{formatDuration(item.runtime)}</span>
+              </>
+            )}
+          </div>
+          {genreList.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {genreList.slice(0, 3).map(g => (
+                <span key={g} className="rounded px-1 py-0.5 text-[10px]"
+                  style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}>
+                  {g}
+                </span>
+              ))}
+              {genreList.length > 3 && (
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+{genreList.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
 
-      {/* 评分 */}
-      {item.rating > 0 && (
-        <div className="flex items-center gap-1 text-sm flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
-          <Star size={14} className="text-yellow-400" fill="currentColor" />
-          <span className="font-semibold">{item.rating.toFixed(1)}</span>
+        {/* 评分 */}
+        {item.rating > 0 && (
+          <div className="flex items-center gap-1 text-sm flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
+            <Star size={14} className="text-yellow-400" fill="currentColor" />
+            <span className="font-semibold">{item.rating.toFixed(1)}</span>
+          </div>
+        )}
+
+        {/* 展开版本按钮 */}
+        {hasMultipleVersions && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setShowVersions((v) => !v)
+            }}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition-colors"
+            style={{
+              background: showVersions ? 'var(--neon-blue-10)' : 'var(--bg-elevated)',
+              color: showVersions ? 'var(--neon-blue)' : 'var(--text-muted)',
+            }}
+            title={showVersions ? '收起版本' : '展开版本'}
+          >
+            <ChevronDown size={14} className={showVersions ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </button>
+        )}
+
+        {/* 播放按钮 */}
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full"
+            style={{
+              background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+              boxShadow: '0 0 8px var(--neon-blue-40)',
+            }}>
+            <Play size={12} className="ml-0.5 text-white" fill="white" />
+          </div>
+        </div>
+      </Link>
+
+      {/* 展开的版本列表 */}
+      {hasMultipleVersions && showVersions && (
+        <div className="px-3 pb-3" style={{ borderTop: '1px dashed var(--border-default)' }}>
+          <div className="mt-2 space-y-1">
+            {group.versions.map((v) => {
+              const label = versionLabel(v) || '默认版本'
+              return (
+                <Link
+                  key={v.id}
+                  to={`/media/${v.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs transition-colors"
+                  style={{
+                    background: v.id === item.id ? 'var(--neon-blue-10)' : 'var(--bg-surface)',
+                    color: v.id === item.id ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                  }}
+                >
+                  <span className="truncate">{label}</span>
+                  {v.id === item.id && (
+                    <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold"
+                      style={{
+                        background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
+                        color: '#fff',
+                      }}>当前</span>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
         </div>
       )}
-
-      {/* 播放按钮 */}
-      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full"
-          style={{
-            background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-            boxShadow: '0 0 8px var(--neon-blue-40)',
-          }}>
-          <Play size={12} className="ml-0.5 text-white" fill="white" />
-        </div>
-      </div>
-    </Link>
+    </div>
   )
 }

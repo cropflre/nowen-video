@@ -32,6 +32,8 @@ Single binary + SQLite, one-click Docker startup, zero configuration required.
 
 > **问题反馈 QQ 群 / Support QQ Group：`1093473044`**
 
+> 🖥️ **PC 桌面客户端** 已上线！支持 **MKV / HEVC / HDR / 杜比视界 / DTS / Atmos 零转码播放** → 详见 [desktop/README.md](./desktop/README.md)
+
 
 ## 📸 功能截图 | Screenshots
 
@@ -517,12 +519,11 @@ make docker-stop   # 停止
 | `app.web_dir` | `NOWEN_APP_WEB_DIR` | `./web/dist` | 前端静态文件目录 |
 | `app.ffmpeg_path` | `NOWEN_APP_FFMPEG_PATH` | `ffmpeg` | FFmpeg 路径 |
 | `app.ffprobe_path` | `NOWEN_APP_FFPROBE_PATH` | `ffprobe` | FFprobe 路径 |
-| `app.hw_accel` | `NOWEN_APP_HW_ACCEL` | `auto` | 硬件加速模式（auto/qsv/vaapi/nvenc/none） |
-| `app.vaapi_device` | `NOWEN_APP_VAAPI_DEVICE` | `/dev/dri/renderD128` | VAAPI 设备路径 |
-| `app.transcode_preset` | `NOWEN_APP_TRANSCODE_PRESET` | `veryfast` | 转码预设（ultrafast/veryfast/fast/medium） |
-| `app.max_transcode_jobs` | `NOWEN_APP_MAX_TRANSCODE_JOBS` | `2` | 最大并发转码数 |
-| `app.resource_limit` | `NOWEN_APP_RESOURCE_LIMIT` | `70` | CPU 资源限制百分比（1-80） |
+| `app.vaapi_device` | `NOWEN_APP_VAAPI_DEVICE` | `/dev/dri/renderD128` | VAAPI 设备路径（仅 Linux Intel 核显有效，一般无需修改） |
 | `app.cors_origins` | `NOWEN_APP_CORS_ORIGINS` | `[]` | CORS 允许源列表 |
+
+> 【最佳性能策略】从本版本开始，硬件加速 / 并发数 / 转码预设 / CPU 资源限制 / GPU 安全阈值
+> 均由系统自动设为最佳配置，不再暴露为配置项。具体策略见 `config.example.yaml` 头部说明。
 
 ### 数据库配置 (`database`)
 
@@ -756,7 +757,7 @@ nowen-video/
 | `nvenc` | NVIDIA 独显 | `h264_nvenc` | 有 NVIDIA 显卡的服务器 |
 | `none` | 纯软件编码 | `libx264` | 无硬件加速设备（兜底） |
 
-设置方式：配置 `app.hw_accel: auto` 自动检测，或手动指定具体模式。
+设置方式：【最佳性能策略】硬件加速模式完全由系统启动时自动检测，不再暴露为配置项。
 
 Docker 部署时需在 `docker-compose.yml` 中添加设备映射：
 

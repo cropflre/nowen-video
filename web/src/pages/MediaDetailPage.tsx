@@ -8,6 +8,7 @@ import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, 
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
+import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -45,6 +46,8 @@ export default function MediaDetailPage() {
   // UI 状态
   const [scraping, setScraping] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
+  // 海报/背景图版本号：手动匹配/刷新元数据/编辑保存成功后递增，用于绕过浏览器图片缓存
+  const [posterVersion, setPosterVersion] = useState<number>(() => Date.now())
 
   // 管理功能状态
   const [showMatchModal, setShowMatchModal] = useState(false)
@@ -268,6 +271,12 @@ export default function MediaDetailPage() {
         return
       }
       await refreshMediaDetail(id)
+      // 海报/背景 URL 不变但服务端图片已替换，递增版本号触发浏览器重新加载
+                                              setPosterVersion(Date.now())
+                bumpPosterVersion()
+                bumpPosterVersion()
+                bumpPosterVersion()
+                bumpPosterVersion()
       setShowMatchModal(false)
       setMatchSelectedId(null)
       toast.success(t('mediaDetail.matchSuccess', { source: sourceNameMap[matchSource] }))
@@ -284,6 +293,7 @@ export default function MediaDetailPage() {
       await adminApi.unmatchMetadata(id)
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
+      setPosterVersion(Date.now())
       setShowUnmatchConfirm(false)
       toast.success(t('mediaDetail.unmatchSuccess'))
     } catch {
@@ -298,6 +308,7 @@ export default function MediaDetailPage() {
       await mediaApi.scrape(id)
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
+      setPosterVersion(Date.now())
       toast.success(t('mediaDetail.refreshSuccess'))
     } catch (err) {
       toast.error(formatErrMsg(err, t('mediaDetail.refreshFailed')))
@@ -329,6 +340,7 @@ export default function MediaDetailPage() {
       await adminApi.updateMediaMetadata(id, editForm)
       const res = await mediaApi.detail(id)
       setMedia(res.data.data)
+      setPosterVersion(Date.now())
       setShowEditModal(false)
       toast.success(t('mediaDetail.editSuccess'))
     } catch {
@@ -413,6 +425,7 @@ export default function MediaDetailPage() {
         playlists={playlists}
         scraping={scraping}
         isAdmin={user?.role === 'admin'}
+        posterVersion={posterVersion}
         onFavorite={handleFavorite}
         onScrape={handleScrape}
         onAddToPlaylist={handleAddToPlaylist}
@@ -738,7 +751,7 @@ export default function MediaDetailPage() {
           mediaType={media.media_type === 'episode' ? 'tv' : 'movie'}
           editForm={editForm}
           setEditForm={setEditForm}
-          currentPoster={streamApi.getPosterUrl(media.id)}
+          currentPoster={streamApi.getPosterUrl(media.id, posterVersion)}
           hasPoster={!!media.poster_path}
           hasBackdrop={!!media.backdrop_path}
           onSave={handleEditSave}

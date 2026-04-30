@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -36,6 +37,114 @@ type UpdateMediaMetadataRequest struct {
 	Language  *string  `json:"language"`
 	Tagline   *string  `json:"tagline"`
 	Studio    *string  `json:"studio"`
+}
+
+// ==================== STRM 单条覆写 ====================
+
+// UpdateMediaSTRMRequest 单条 media 的 STRM 请求头覆写请求
+// 所有字段均为指针：为 nil 表示不改；为 "" 表示清空
+type UpdateMediaSTRMRequest struct {
+	StreamURL    *string            `json:"stream_url"`    // 可选：替换远程 URL（token 过期后手工刷新等）
+	UserAgent    *string            `json:"user_agent"`    // 单条覆盖 UA
+	Referer      *string            `json:"referer"`       // 单条覆盖 Referer
+	Cookie       *string            `json:"cookie"`        // 单条覆盖 Cookie
+	Headers      *map[string]string `json:"headers"`       // 额外 Header（整体替换）
+	RefreshURL   *string            `json:"refresh_url"`   // 刷新直链的上游 API（预留）
+	ClearHeaders bool               `json:"clear_headers"` // 兼容字段：显式清空 headers
+}
+
+// UpdateMediaSTRM 更新单条 media 的 STRM 请求头覆写
+// PUT /api/admin/media/:mediaId/strm
+//
+// 典型场景：某个视频拉不动时，直接在管理页面粘贴浏览器 F12 复制的 UA/Referer/Cookie，
+// 立即生效（不需要重新扫描媒体库）。
+func (h *AdminHandler) UpdateMediaSTRM(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+	var req UpdateMediaSTRMRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效: " + err.Error()})
+		return
+	}
+
+	media, err := h.libraryService.GetMediaByID(mediaID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "影片不存在"})
+		return
+	}
+	if media.StreamURL == "" && (req.StreamURL == nil || *req.StreamURL == "") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该影片不是 STRM 远程流，无法覆写"})
+		return
+	}
+
+	if req.StreamURL != nil {
+		media.StreamURL = strings.TrimSpace(*req.StreamURL)
+	}
+	if req.UserAgent != nil {
+		media.StreamUA = *req.UserAgent
+	}
+	if req.Referer != nil {
+		media.StreamReferer = *req.Referer
+	}
+	if req.Cookie != nil {
+		media.StreamCookie = *req.Cookie
+	}
+	if req.RefreshURL != nil {
+		media.StreamRefreshURL = *req.RefreshURL
+	}
+	if req.ClearHeaders {
+		media.StreamHeaders = ""
+	} else if req.Headers != nil {
+		if len(*req.Headers) == 0 {
+			media.StreamHeaders = ""
+		} else {
+			if b, err := json.Marshal(*req.Headers); err == nil {
+				media.StreamHeaders = string(b)
+			}
+		}
+	}
+
+	if err := h.libraryService.UpdateMedia(media); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败: " + err.Error()})
+		return
+	}
+	h.auditFromContext(c, "media.update_strm", "media", mediaID, "")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "STRM 请求头已更新",
+		"data": gin.H{
+			"id":             media.ID,
+			"stream_url":     media.StreamURL,
+			"stream_ua":      media.StreamUA,
+			"stream_referer": media.StreamReferer,
+			"stream_cookie":  media.StreamCookie,
+			"stream_headers": media.StreamHeaders,
+		},
+	})
+}
+
+// GetMediaSTRM 获取单条 media 的当前 STRM 覆写状态（用于管理页面回显）
+// GET /api/admin/media/:mediaId/strm
+func (h *AdminHandler) GetMediaSTRM(c *gin.Context) {
+	mediaID := c.Param("mediaId")
+	media, err := h.libraryService.GetMediaByID(mediaID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "影片不存在"})
+		return
+	}
+	var hdrMap map[string]string
+	if media.StreamHeaders != "" {
+		_ = json.Unmarshal([]byte(media.StreamHeaders), &hdrMap)
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id":                 media.ID,
+		"title":              media.Title,
+		"is_strm":            media.StreamURL != "",
+		"stream_url":         media.StreamURL,
+		"stream_ua":          media.StreamUA,
+		"stream_referer":     media.StreamReferer,
+		"stream_cookie":      media.StreamCookie,
+		"stream_headers":     hdrMap,
+		"stream_refresh_url": media.StreamRefreshURL,
+	}})
 }
 
 // UpdateMediaMetadata 编辑媒体元数据

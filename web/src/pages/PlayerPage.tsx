@@ -4,10 +4,12 @@ import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import VideoPlayer from '@/components/VideoPlayer'
 import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
+import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
 import { Zap, Loader2, Cpu, ArrowLeft } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
+import { DesktopPlayerBadge, type MediaProfile } from '@/desktop'
 
 /** 检测浏览器是否支持 HEVC 硬解（Safari / Chrome macOS 116+） */
 function canPlayHEVC(): boolean {
@@ -48,6 +50,10 @@ export default function PlayerPage() {
 
   // 记录当前播放位置，用于预处理完成后无缝切换时恢复进度
   const currentTimeRef = useRef(0)
+
+  // 记录挂载时的历史栈长度，用于判断是否存在来路（>1 说明从站内进入）
+  // 可靠地区分“从列表/详情页进来” vs “外链直接打开播放器”两种场景
+  const hasHistoryOnMountRef = useRef<boolean>(window.history.length > 1)
   const { currentTime } = usePlayerStore()
   useEffect(() => {
     currentTimeRef.current = currentTime
@@ -216,9 +222,15 @@ export default function PlayerPage() {
     ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined
 
-  // 返回逻辑：剧集回到系列页，其它回到详情页
-  // 使用 replace:true 避免往历史栈追加新记录（否则从详情页再返回会回到播放器）
+  // 返回逻辑：优先回退上一页，保留列表页的分页/筛选/滚动位置
+  // 即 列表?page=2 → 详情 → 播放器 → 返回 → 回到详情 → 再返回 → 回到列表?page=2
+  // 只有当没有来路时（外链/刷新直接打开播放器）才 fallback 到详情页/系列页
   const handleBack = () => {
+    if (hasHistoryOnMountRef.current) {
+      navigate(-1)
+      return
+    }
+    // 无来路：直接跳到详情/系列页
     if (media.media_type === 'episode' && media.series_id) {
       navigate(`/series/${media.series_id}`, { replace: true })
     } else {
@@ -239,38 +251,58 @@ export default function PlayerPage() {
         <ArrowLeft size={18} />
       </button>
 
-      {/* 预处理状态提示 */}
-      {(playInfo.preprocess_status && playInfo.preprocess_status !== 'none') || canDirectHEVC || mode === 'webcodecs' ? (
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs backdrop-blur-md"
-          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid var(--neon-blue-15)' }}>
-          {mode === 'webcodecs' ? (
-            <>
-              <Cpu size={12} className="text-cyan-400" />
-              <span className="text-cyan-400">WebCodecs 硬解播放</span>
-            </>
-          ) : canDirectHEVC ? (
-            <>
-              <Zap size={12} className="text-purple-400" />
-              <span className="text-purple-400">HEVC 直接播放</span>
-            </>
-          ) : isPreprocessed ? (
-            <>
-              <Zap size={12} className="text-emerald-400" />
-              <span className="text-emerald-400">秒开播放</span>
-            </>
-          ) : playInfo.preprocess_status === 'running' ? (
-            <>
-              <Loader2 size={12} className="text-neon-blue animate-spin" />
-              <span className="text-surface-400">正在预处理中...</span>
-            </>
-          ) : playInfo.preprocess_status === 'pending' || playInfo.preprocess_status === 'queued' ? (
-            <>
-              <Loader2 size={12} className="text-yellow-400" />
-              <span className="text-surface-400">等待预处理</span>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+      {/* 预处理状态提示 + 桌面端播放内核提示 */}
+      <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
+        {playInfo.is_strm && (
+          <STRMDiagnostics mediaId={id} compact />
+        )}
+        {/* 桌面端 —— 播放内核决策徽章（仅 Tauri 环境显示） */}
+        <DesktopPlayerBadge
+          profile={{
+            container: (playInfo.file_ext || '').replace(/^\./, '').toLowerCase(),
+            video_codec: (playInfo.video_codec || '').toLowerCase(),
+            audio_codec: (playInfo.audio_codec || '').toLowerCase(),
+            height: (playInfo as any).height || 0,
+            hdr: (playInfo as any).hdr || '',
+          } as MediaProfile}
+          streamUrl={streamApi.getDirectUrl(id)}
+          playOptions={{ title: playerTitle }}
+        />
+        {(mode === 'webcodecs' || canDirectHEVC || isPreprocessed ||
+          playInfo.preprocess_status === 'running' ||
+          playInfo.preprocess_status === 'pending' ||
+          playInfo.preprocess_status === 'queued') && (
+          <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs backdrop-blur-md"
+            style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid var(--neon-blue-15)' }}>
+            {mode === 'webcodecs' ? (
+              <>
+                <Cpu size={12} className="text-cyan-400" />
+                <span className="text-cyan-400">WebCodecs 硬解播放</span>
+              </>
+            ) : canDirectHEVC ? (
+              <>
+                <Zap size={12} className="text-purple-400" />
+                <span className="text-purple-400">HEVC 直接播放</span>
+              </>
+            ) : isPreprocessed ? (
+              <>
+                <Zap size={12} className="text-emerald-400" />
+                <span className="text-emerald-400">秒开播放</span>
+              </>
+            ) : playInfo.preprocess_status === 'running' ? (
+              <>
+                <Loader2 size={12} className="text-neon-blue animate-spin" />
+                <span className="text-surface-400">正在预处理中...</span>
+              </>
+            ) : playInfo.preprocess_status === 'pending' || playInfo.preprocess_status === 'queued' ? (
+              <>
+                <Loader2 size={12} className="text-yellow-400" />
+                <span className="text-surface-400">等待预处理</span>
+              </>
+            ) : null}
+          </div>
+        )}
+      </div>
 
       {mode === 'webcodecs' ? (
         <WebCodecsPlayerShell

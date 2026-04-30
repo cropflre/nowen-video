@@ -3,9 +3,11 @@ package service
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -18,6 +20,8 @@ type LibraryService struct {
 	seriesRepo        *repository.SeriesRepo
 	favRepo           *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
 	historyRepo       *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
+	mediaPersonRepo   *repository.MediaPersonRepo  // 演职人员关联仓储（用于级联清理刮削数据）
+	cfg               *config.Config               // 用于访问 CacheDir 以清理磁盘上的刮削缓存
 	scanner           *ScannerService
 	metadata          *MetadataService
 	seriesService     *SeriesService     // 剧集合集服务（用于扫描后自动合并）
@@ -34,19 +38,23 @@ func NewLibraryService(
 	seriesRepo *repository.SeriesRepo,
 	favRepo *repository.FavoriteRepo,
 	historyRepo *repository.WatchHistoryRepo,
+	mediaPersonRepo *repository.MediaPersonRepo,
+	cfg *config.Config,
 	scanner *ScannerService,
 	metadata *MetadataService,
 	logger *zap.SugaredLogger,
 ) *LibraryService {
 	return &LibraryService{
-		repo:        repo,
-		mediaRepo:   mediaRepo,
-		seriesRepo:  seriesRepo,
-		favRepo:     favRepo,
-		historyRepo: historyRepo,
-		scanner:     scanner,
-		metadata:    metadata,
-		logger:      logger,
+		repo:            repo,
+		mediaRepo:       mediaRepo,
+		seriesRepo:      seriesRepo,
+		favRepo:         favRepo,
+		historyRepo:     historyRepo,
+		mediaPersonRepo: mediaPersonRepo,
+		cfg:             cfg,
+		scanner:         scanner,
+		metadata:        metadata,
+		logger:          logger,
 	}
 }
 
@@ -368,6 +376,20 @@ func (s *LibraryService) Delete(id string) error {
 		}
 	}
 
+	// 先收集该媒体库下所有 media_id 和 series_id，用于后续删除磁盘上的刮削缓存（图片、缩略图、转码等）
+	var mediaIDs []string
+	var seriesIDs []string
+	if mediaList, err := s.mediaRepo.ListByLibraryID(id); err == nil {
+		for _, m := range mediaList {
+			mediaIDs = append(mediaIDs, m.ID)
+		}
+	}
+	if seriesList, err := s.seriesRepo.ListByLibraryID(id); err == nil {
+		for _, se := range seriesList {
+			seriesIDs = append(seriesIDs, se.ID)
+		}
+	}
+
 	// 级联删除关联数据（先清理收藏和观看历史，再删除媒体和合集）
 	if s.favRepo != nil {
 		if err := s.favRepo.DeleteByLibraryMediaIDs(id); err != nil {
@@ -377,6 +399,15 @@ func (s *LibraryService) Delete(id string) error {
 	if s.historyRepo != nil {
 		if err := s.historyRepo.DeleteByLibraryMediaIDs(id); err != nil {
 			s.logger.Errorf("删除媒体库 %s 的观看历史数据失败: %v", libName, err)
+		}
+	}
+	// 清理演职人员关联（刮削产生的元数据）
+	if s.mediaPersonRepo != nil {
+		if err := s.mediaPersonRepo.DeleteByLibraryMediaIDs(id); err != nil {
+			s.logger.Errorf("删除媒体库 %s 的演职人员关联(media)失败: %v", libName, err)
+		}
+		if err := s.mediaPersonRepo.DeleteByLibrarySeriesIDs(id); err != nil {
+			s.logger.Errorf("删除媒体库 %s 的演职人员关联(series)失败: %v", libName, err)
 		}
 	}
 	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
@@ -391,7 +422,10 @@ func (s *LibraryService) Delete(id string) error {
 		return err
 	}
 
-	s.logger.Infof("媒体库 %s 已删除（关联数据已清理）", libName)
+	// 清理磁盘上的刮削缓存（海报/背景、缩略图、转码、预处理）
+	s.cleanScrapedCacheFiles(mediaIDs, seriesIDs, libName)
+
+	s.logger.Infof("媒体库 %s 已删除（关联数据及刮削缓存已清理）", libName)
 
 	// 广播媒体库删除事件，通知前端刷新
 	if s.wsHub != nil {
@@ -640,4 +674,49 @@ func (s *LibraryService) DetectDuplicates(libraryID string) ([]DuplicateGroup, e
 // MarkDuplicates 标记重复媒体
 func (s *LibraryService) MarkDuplicates(libraryID string) (int, error) {
 	return s.scanner.MarkDuplicates(libraryID)
+}
+
+// cleanScrapedCacheFiles 清理指定媒体/合集在磁盘上的刮削缓存文件
+// 包括：海报/背景图、缩略图、转码分片、预处理产物
+func (s *LibraryService) cleanScrapedCacheFiles(mediaIDs, seriesIDs []string, libName string) {
+	if s.cfg == nil || s.cfg.Cache.CacheDir == "" {
+		return
+	}
+	cacheDir := s.cfg.Cache.CacheDir
+
+	removeDir := func(p string) {
+		if p == "" {
+			return
+		}
+		if _, err := os.Stat(p); err != nil {
+			return
+		}
+		if err := os.RemoveAll(p); err != nil {
+			s.logger.Debugf("清理刮削缓存目录失败 %s: %v", p, err)
+		}
+	}
+
+	// 媒体级缓存：images/{media_id}、thumbnails/{media_id}、transcode/{media_id}、preprocess/{media_id}、covers/{media_id}
+	for _, mid := range mediaIDs {
+		if mid == "" {
+			continue
+		}
+		removeDir(filepath.Join(cacheDir, "images", mid))
+		removeDir(filepath.Join(cacheDir, "thumbnails", mid))
+		removeDir(filepath.Join(cacheDir, "transcode", mid))
+		removeDir(filepath.Join(cacheDir, "preprocess", mid))
+		removeDir(filepath.Join(cacheDir, "covers", mid))
+	}
+
+	// 合集级缓存：images/series/{series_id}
+	for _, sid := range seriesIDs {
+		if sid == "" {
+			continue
+		}
+		removeDir(filepath.Join(cacheDir, "images", "series", sid))
+	}
+
+	if len(mediaIDs) > 0 || len(seriesIDs) > 0 {
+		s.logger.Infof("媒体库 %s 刮削缓存已清理（media: %d, series: %d）", libName, len(mediaIDs), len(seriesIDs))
+	}
 }

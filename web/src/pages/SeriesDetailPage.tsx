@@ -1,10 +1,12 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { seriesApi, userApi, streamApi, playlistApi, adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import { CastGrid } from '@/components/media'
+import Pagination from '@/components/Pagination'
+import { usePagination } from '@/hooks/usePagination'
 import { formatErrMsg } from '@/utils/error'
 import type { Series, SeasonInfo, Media, Playlist, WatchHistory, MediaPerson } from '@/types'
 import {
@@ -114,6 +116,24 @@ export default function SeriesDetailPage() {
   }, [id, navigate])
 
   const activeSeasonData = seasons.find((s) => s.season_num === activeSeason)
+
+  // 当单季集数超过 50 时启用分页，避免一次渲染过多 EpisodeCard 卡顿
+  const EPISODE_PAGE_THRESHOLD = 50
+  const episodePagination = usePagination({ initialSize: 50 })
+  const needEpisodePagination = (activeSeasonData?.episodes?.length ?? 0) > EPISODE_PAGE_THRESHOLD
+
+  // 切换季时重置分页
+  useEffect(() => {
+    episodePagination.setPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSeason])
+
+  const pagedEpisodes = useMemo(() => {
+    if (!activeSeasonData?.episodes) return []
+    if (!needEpisodePagination) return activeSeasonData.episodes
+    const start = (episodePagination.page - 1) * episodePagination.size
+    return activeSeasonData.episodes.slice(start, start + episodePagination.size)
+  }, [activeSeasonData?.episodes, needEpisodePagination, episodePagination.page, episodePagination.size])
 
 // 获取第一集用于播放
   const firstEpisode = seasons.length > 0 && seasons[0].episodes?.length > 0
@@ -816,7 +836,7 @@ export default function SeriesDetailPage() {
                     className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide"
                     style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
                   >
-                    {activeSeasonData?.episodes.map((ep) => (
+                    {pagedEpisodes.map((ep) => (
                       <EpisodeSlideCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
                     ))}
                   </div>
@@ -843,10 +863,23 @@ export default function SeriesDetailPage() {
               {/* 列表模式 */}
               {seasonDisplayMode === 'list' && (
                 <div className="space-y-2">
-                  {activeSeasonData?.episodes.map((ep) => (
+                  {pagedEpisodes.map((ep) => (
                     <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
                   ))}
                 </div>
+              )}
+
+              {/* 单季剧集分页（仅当超过阈值时显示） */}
+              {needEpisodePagination && activeSeasonData && (
+                <Pagination
+                  page={episodePagination.page}
+                  totalPages={episodePagination.totalPages(activeSeasonData.episodes.length)}
+                  total={activeSeasonData.episodes.length}
+                  pageSize={episodePagination.size}
+                  pageSizeOptions={[20, 50, 100, 200]}
+                  onPageChange={episodePagination.setPage}
+                  onPageSizeChange={episodePagination.setSize}
+                />
               )}
             </div>
           )}

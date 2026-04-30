@@ -67,8 +67,6 @@ type Services struct {
 	GPUMonitor         *GPUMonitor
 	// 电影系列合集
 	Collection *CollectionService
-	// 潮汐调度器（利用空闲/忙碌态动态分配预处理资源）
-	IdleScheduler *IdleScheduler
 	// 番号刮削服务（混合架构：Go 原生爬虫 + Python 微服务）
 	AdultScraper *AdultScraperService
 	// P3：番号批量刮削 + 进度推送
@@ -100,7 +98,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetWSHub(wsHub)
 
 	// 创建Library服务
-	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, repos.Favorite, repos.WatchHistory, scanner, metadata, logger)
+	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, repos.Favorite, repos.WatchHistory, repos.MediaPerson, cfg, scanner, metadata, logger)
 	libService.SetWSHub(wsHub)
 
 	// 创建调度器服务
@@ -237,31 +235,9 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	abrService.SetWSHub(wsHub)
 
 	// 创建 GPU 安全监控服务
-	gpuThresholdCfg := GPUThresholdConfig{
-		UtilizationThreshold: cfg.App.GPUUtilizationThreshold,
-		TemperatureThreshold: cfg.App.GPUTemperatureThreshold,
-		RecoveryThreshold:    cfg.App.GPURecoveryThreshold,
-		TemperatureRecovery:  cfg.App.GPUTemperatureRecovery,
-		MonitorInterval:      cfg.App.GPUMonitorInterval,
-		Enabled:              cfg.App.GPUSafetyEnabled,
-	}
-	// 使用默认值填充未配置的字段
-	defaultGPUCfg := DefaultGPUThresholdConfig()
-	if gpuThresholdCfg.UtilizationThreshold <= 0 {
-		gpuThresholdCfg.UtilizationThreshold = defaultGPUCfg.UtilizationThreshold
-	}
-	if gpuThresholdCfg.TemperatureThreshold <= 0 {
-		gpuThresholdCfg.TemperatureThreshold = defaultGPUCfg.TemperatureThreshold
-	}
-	if gpuThresholdCfg.RecoveryThreshold <= 0 {
-		gpuThresholdCfg.RecoveryThreshold = defaultGPUCfg.RecoveryThreshold
-	}
-	if gpuThresholdCfg.TemperatureRecovery <= 0 {
-		gpuThresholdCfg.TemperatureRecovery = defaultGPUCfg.TemperatureRecovery
-	}
-	if gpuThresholdCfg.MonitorInterval <= 0 {
-		gpuThresholdCfg.MonitorInterval = defaultGPUCfg.MonitorInterval
-	}
+	// 【最佳性能策略】GPU 安全阈值直接使用内置默认值（85% / 80℃ / 60% / 70℃），
+	// 不再暴露给用户手动调节，保证硬件不过载的同时无需心智负担。
+	gpuThresholdCfg := DefaultGPUThresholdConfig()
 	gpuMonitor := NewGPUMonitor(detectedHWAccel, gpuThresholdCfg, logger)
 	gpuMonitor.SetWSHub(wsHub)
 	gpuMonitor.Start()
@@ -379,13 +355,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 启动调度器（后台循环，默认未启用，需配置开启）
 	adultScheduler.Start()
 
-	// 创建并启动潮汐调度器（控制预处理在空闲/忙碌态下的资源占用）
-	idleScheduler := NewIdleScheduler(preprocessService, wsHub, transcoder, repos.SystemSetting, logger)
-	idleScheduler.Start()
-	svcs.IdleScheduler = idleScheduler
-
-	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职人员关联）
-	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
+	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职员关联）	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
 
 	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
 	svcs.Library.SetSeriesService(svcs.Series)

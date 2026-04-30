@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"sort"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/matcher"
@@ -37,17 +39,23 @@ type CollectionWithMedia struct {
 
 // CollectionMediaItem 合集中的电影项
 type CollectionMediaItem struct {
-	ID         string  `json:"id"`
-	Title      string  `json:"title"`
-	OrigTitle  string  `json:"orig_title"`
-	Year       int     `json:"year"`
-	Premiered  string  `json:"premiered"`
-	Rating     float64 `json:"rating"`
-	PosterPath string  `json:"poster_path"`
-	Runtime    int     `json:"runtime"`
-	Overview   string  `json:"overview"`
-	Genres     string  `json:"genres"`
-	IsCurrent  bool    `json:"is_current"` // 是否为当前正在查看的电影
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	OrigTitle    string  `json:"orig_title"`
+	Year         int     `json:"year"`
+	Premiered    string  `json:"premiered"`
+	Rating       float64 `json:"rating"`
+	PosterPath   string  `json:"poster_path"`
+	Runtime      int     `json:"runtime"`
+	Overview     string  `json:"overview"`
+	Genres       string  `json:"genres"`
+	IsCurrent    bool    `json:"is_current"`    // 是否为当前正在查看的电影
+	TMDbID       int     `json:"tmdb_id"`       // TMDB ID（用于前端折叠同片多版本）
+	VersionGroup string  `json:"version_group"` // 同一部电影的不同版本共享此 ID
+	VersionTag   string  `json:"version_tag"`   // 版本标识（"4K"/"Director's Cut" 等）
+	FileSize     int64   `json:"file_size"`     // 文件大小（字节），用于版本选择
+	Resolution   string  `json:"resolution"`    // 分辨率（"1080p"/"2160p" 等）
+	VideoCodec   string  `json:"video_codec"`   // 视频编码
 }
 
 // GetCollectionByMediaID 根据媒体 ID 获取其所属的合集信息
@@ -64,17 +72,23 @@ func (s *CollectionService) GetCollectionByMediaID(mediaID string) (*CollectionW
 
 	for _, m := range coll.Media {
 		result.Media = append(result.Media, CollectionMediaItem{
-			ID:         m.ID,
-			Title:      m.Title,
-			OrigTitle:  m.OrigTitle,
-			Year:       m.Year,
-			Premiered:  m.Premiered,
-			Rating:     m.Rating,
-			PosterPath: m.PosterPath,
-			Runtime:    m.Runtime,
-			Overview:   m.Overview,
-			Genres:     m.Genres,
-			IsCurrent:  m.ID == mediaID,
+			ID:           m.ID,
+			Title:        m.Title,
+			OrigTitle:    m.OrigTitle,
+			Year:         m.Year,
+			Premiered:    m.Premiered,
+			Rating:       m.Rating,
+			PosterPath:   m.PosterPath,
+			Runtime:      m.Runtime,
+			Overview:     m.Overview,
+			Genres:       m.Genres,
+			IsCurrent:    m.ID == mediaID,
+			TMDbID:       m.TMDbID,
+			VersionGroup: m.VersionGroup,
+			VersionTag:   m.VersionTag,
+			FileSize:     m.FileSize,
+			Resolution:   m.Resolution,
+			VideoCodec:   m.VideoCodec,
 		})
 	}
 
@@ -98,16 +112,22 @@ func (s *CollectionService) GetCollectionDetail(collectionID string) (*Collectio
 
 	for _, m := range coll.Media {
 		result.Media = append(result.Media, CollectionMediaItem{
-			ID:         m.ID,
-			Title:      m.Title,
-			OrigTitle:  m.OrigTitle,
-			Year:       m.Year,
-			Premiered:  m.Premiered,
-			Rating:     m.Rating,
-			PosterPath: m.PosterPath,
-			Runtime:    m.Runtime,
-			Overview:   m.Overview,
-			Genres:     m.Genres,
+			ID:           m.ID,
+			Title:        m.Title,
+			OrigTitle:    m.OrigTitle,
+			Year:         m.Year,
+			Premiered:    m.Premiered,
+			Rating:       m.Rating,
+			PosterPath:   m.PosterPath,
+			Runtime:      m.Runtime,
+			Overview:     m.Overview,
+			Genres:       m.Genres,
+			TMDbID:       m.TMDbID,
+			VersionGroup: m.VersionGroup,
+			VersionTag:   m.VersionTag,
+			FileSize:     m.FileSize,
+			Resolution:   m.Resolution,
+			VideoCodec:   m.VideoCodec,
 		})
 	}
 
@@ -336,15 +356,31 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 
 	created := 0
 	for baseName, mediaList := range groups {
+		// ★ 方案 A 核心：同片多版本去重
+		// 在"建合集/追加合集"之前，先把"同一部电影的不同版本"折叠成一个逻辑项。
+		// 判定优先级：
+		//   1) 相同 TMDB ID（最可靠）
+		//   2) 归一化标题 + 相同年份（兜底）
+		// 被折叠的版本会被打上同一个 version_group 标记，方便前端展示版本切换。
+		uniqueMovies, versionMap := s.deduplicateVersions(mediaList)
+		if len(uniqueMovies) != len(mediaList) {
+			s.logger.Infof("[去重] 分组 '%s' 合并了 %d 个版本副本（%d → %d 部电影）",
+				baseName, len(mediaList)-len(uniqueMovies), len(mediaList), len(uniqueMovies))
+			// 同步把 version_group 写入数据库（幂等）
+			s.persistVersionGroups(versionMap)
+		}
+
 		// 修复点2：先检查数据库中是否已经存在同名合集（模糊匹配，去除空格/标点/全半角差异）
 		existing, err := s.collRepo.FindByNameFuzzy(baseName)
 
-		// 修复点3：只有当合集"不存在"且"待关联电影少于2部"时，才跳过（不创建新合集）
-		if (err != nil || existing == nil) && len(mediaList) < 2 {
+		// 修复点3：只有当合集"不存在"且"待关联电影少于2部（去重后）"时，才跳过（不创建新合集）
+		if (err != nil || existing == nil) && len(uniqueMovies) < 2 {
 			continue
 		}
 
 		// 修复点4：如果合集已存在，即使本次只匹配到 1 部电影，也追加进去
+		// 注意：这里用原始 mediaList（包含所有版本副本），它们都应该加入同一个合集，
+		// 避免"只有主版本进合集、副版本游离在外"的数据不一致。
 		if err == nil && existing != nil {
 			added := false
 			for _, m := range mediaList {
@@ -358,16 +394,17 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 			// 如果有新电影被加入，则更新该合集的媒体总数
 			if added {
 				s.collRepo.UpdateMediaCount(existing.ID)
-				s.logger.Infof("向已有合集 '%s' 自动追加了 %d 部电影", baseName, len(mediaList))
+				s.logger.Infof("向已有合集 '%s' 自动追加了 %d 部电影（去重后 %d 部）",
+					baseName, len(mediaList), len(uniqueMovies))
 			}
 			continue
 		}
 
-		// 创建新合集（只有待关联电影 >= 2 部才会走到这里）
+		// 创建新合集（只有去重后电影 >= 2 部才会走到这里）
 		coll := &model.MovieCollection{
 			Name:        baseName,
-			PosterPath:  mediaList[0].PosterPath, // 使用第一部电影的海报
-			MediaCount:  len(mediaList),
+			PosterPath:  uniqueMovies[0].PosterPath, // 使用第一部电影的海报
+			MediaCount:  len(uniqueMovies),          // 计数以"去重后"为准，前端展示更贴合"系列里有几部电影"
 			AutoMatched: true,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -378,14 +415,16 @@ func (s *CollectionService) AutoMatchCollections() (int, error) {
 			continue
 		}
 
-		// 关联电影
+		// 关联电影：原始 mediaList 全部都要关联（包括版本副本），
+		// 前端展示时再根据 version_group 折叠成单张卡片。
 		for _, m := range mediaList {
 			s.mediaRepo.UpdateFields(m.ID, map[string]interface{}{
 				"collection_id": coll.ID,
 			})
 		}
 
-		s.logger.Infof("自动创建合集 '%s'，包含 %d 部电影", baseName, len(mediaList))
+		s.logger.Infof("自动创建合集 '%s'，包含 %d 部电影（总文件 %d 个）",
+			baseName, len(uniqueMovies), len(mediaList))
 		created++
 	}
 
@@ -591,6 +630,134 @@ func (s *CollectionService) ReMatchCollections() (int, error) {
 	return created, nil
 }
 
+// ==================== 同片多版本去重 ====================
+
+// deduplicateVersions 对一个合集候选分组内的电影做"同片多版本"折叠。
+//
+// 判定"是否为同一部电影"的优先级：
+//  1. 两部都有 TMDB ID 且相等 → 同一部
+//  2. 归一化标题相同 且 年份相同（且年份非 0）→ 同一部
+//  3. 归一化标题相同 且 一方年份为 0 → 同一部（兜底，避免年份缺失导致漏合）
+//
+// 返回：
+//   - uniqueMovies：每"部"电影只保留 1 条代表（选择有 TMDB ID / 有海报 / 文件更大的版本）
+//   - versionMap：  被折叠的副本 → 主版本 ID 的映射（用于写入 version_group 字段）
+//
+// 注意：本函数不会修改数据库，只做内存计算。
+func (s *CollectionService) deduplicateVersions(mediaList []model.Media) ([]model.Media, map[string]string) {
+	if len(mediaList) <= 1 {
+		return mediaList, nil
+	}
+
+	// 为了让"代表版本"的选择稳定，先按质量排序：
+	//   - 有 TMDB ID 的优先
+	//   - 有海报的优先
+	//   - 文件体积大的优先（通常质量更高）
+	//   - 最后按 ID 字典序兜底
+	sorted := make([]model.Media, len(mediaList))
+	copy(sorted, mediaList)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		a, b := sorted[i], sorted[j]
+		if (a.TMDbID > 0) != (b.TMDbID > 0) {
+			return a.TMDbID > 0
+		}
+		if (a.PosterPath != "") != (b.PosterPath != "") {
+			return a.PosterPath != ""
+		}
+		if a.FileSize != b.FileSize {
+			return a.FileSize > b.FileSize
+		}
+		return a.ID < b.ID
+	})
+
+	// 两级 key：
+	//   - tmdbKey：   "tmdb:<id>"
+	//   - titleKey： "title:<归一化标题>|<year>"
+	tmdbPrimary := make(map[string]string)  // tmdbKey  -> 主版本 ID
+	titlePrimary := make(map[string]string) // titleKey -> 主版本 ID
+
+	var uniqueMovies []model.Media
+	versionMap := make(map[string]string) // 副本 media ID -> 主版本 media ID
+
+	for _, m := range sorted {
+		var primaryID string
+
+		// 1) TMDB 强匹配
+		if m.TMDbID > 0 {
+			key := fmt.Sprintf("tmdb:%d", m.TMDbID)
+			if pid, ok := tmdbPrimary[key]; ok {
+				primaryID = pid
+			} else {
+				tmdbPrimary[key] = m.ID
+			}
+		}
+
+		// 2) 标题 + 年份兜底
+		if primaryID == "" {
+			norm := matcher.NormalizeForCompare(m.Title)
+			if norm != "" {
+				// 先用精确年份 key
+				if m.Year > 0 {
+					key := fmt.Sprintf("title:%s|%d", norm, m.Year)
+					if pid, ok := titlePrimary[key]; ok {
+						primaryID = pid
+					} else {
+						titlePrimary[key] = m.ID
+					}
+				}
+				// 再尝试"无年份" key（兜底，供年份缺失的副本匹配）
+				if primaryID == "" {
+					key := fmt.Sprintf("title:%s|0", norm)
+					if pid, ok := titlePrimary[key]; ok {
+						primaryID = pid
+					} else {
+						titlePrimary[key] = m.ID
+					}
+				}
+			}
+		}
+
+		if primaryID != "" && primaryID != m.ID {
+			// 被识别为已有主版本的副本
+			versionMap[m.ID] = primaryID
+		} else {
+			// 自己就是主版本
+			uniqueMovies = append(uniqueMovies, m)
+		}
+	}
+
+	return uniqueMovies, versionMap
+}
+
+// persistVersionGroups 把 deduplicateVersions 识别出的"主-副版本关系"
+// 写回到 media.version_group 字段（同一部电影的所有版本共享同一个 group ID）。
+// group ID 直接使用主版本的 media.ID，无需额外生成 UUID。
+func (s *CollectionService) persistVersionGroups(versionMap map[string]string) {
+	if len(versionMap) == 0 {
+		return
+	}
+	// 按主版本 ID 聚合所有成员
+	groupMembers := make(map[string][]string)
+	for copyID, primaryID := range versionMap {
+		groupMembers[primaryID] = append(groupMembers[primaryID], copyID)
+	}
+	for primaryID, copies := range groupMembers {
+		// 主版本自己也要写入同样的 group ID
+		if err := s.mediaRepo.UpdateFields(primaryID, map[string]interface{}{
+			"version_group": primaryID,
+		}); err != nil {
+			s.logger.Warnf("写入主版本 version_group 失败 id=%s: %v", primaryID, err)
+		}
+		for _, cid := range copies {
+			if err := s.mediaRepo.UpdateFields(cid, map[string]interface{}{
+				"version_group": primaryID,
+			}); err != nil {
+				s.logger.Warnf("写入副版本 version_group 失败 id=%s: %v", cid, err)
+			}
+		}
+	}
+}
+
 // ==================== 标题匹配算法（薄包装） ====================
 // 核心算法已抽取到 internal/matcher 包，供本服务和诊断脚本共同使用。
 // 这里保留包级别的包装函数名称，以最小化对现有调用点的影响。
@@ -609,4 +776,3 @@ func extractPrefixByDelimiter(title string) string {
 func extractBaseNameBySpaceSplit(title string) string {
 	return matcher.ExtractBaseNameBySpaceSplit(title)
 }
-

@@ -159,6 +159,17 @@ func main() {
 		auth.POST("/register", middleware.RateLimit(10), handlers.Auth.Register) // 注册接口额外限制：每分钟10次
 	}
 
+	// 桌面端健康检查（公开，供 Tauri 壳健康探测）
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"version": "0.1.0",
+			"go":      runtime.Version(),
+			"os":      runtime.GOOS,
+			"arch":    runtime.GOARCH,
+		})
+	})
+
 	// 需要认证的auth路由
 	authProtected := r.Group("/api/auth")
 	authProtected.Use(jwtMiddleware)
@@ -226,6 +237,10 @@ func main() {
 		api.POST("/stream/:id/bandwidth", guardByMediaID, handlers.Stream.Bandwidth)
 		// 节流/转码状态快照（供前端播放器 Settings 菜单可视化）
 		api.GET("/stream/:id/throttle", guardByMediaID, handlers.Stream.ThrottleStatus)
+
+		// STRM 远程流专用端点
+		api.GET("/stream/:id/strm-seg", guardByMediaID, handlers.Stream.STRMSegment) // HLS 分片/子 playlist/key 代理
+		api.GET("/stream/:id/strm-check", guardByMediaID, handlers.Stream.STRMCheck) // 链路健康检查
 
 		// 多音轨 HLS 路由（独立于 /stream/:id/:quality/... 避免参数冲突）
 		// /api/audio-track/:id/:trackIdx.m3u8       按需音轨 playlist
@@ -443,10 +458,9 @@ func main() {
 		admin.GET("/settings/system", handlers.Admin.GetSystemSettings)
 		admin.PUT("/settings/system", handlers.Admin.UpdateSystemSettings)
 
-		// 潮汐调度（Idle Scheduler）：无人在线时预处理全力跑，有人时让路
-		admin.GET("/idle-scheduler/status", handlers.Admin.GetIdleSchedulerStatus)
-		admin.GET("/idle-scheduler/config", handlers.Admin.GetIdleSchedulerConfig)
-		admin.PUT("/idle-scheduler/config", handlers.Admin.UpdateIdleSchedulerConfig)
+		// STRM 远程流全局配置
+		admin.GET("/strm/config", handlers.Admin.GetSTRMConfig)
+		admin.PUT("/strm/config", handlers.Admin.UpdateSTRMConfig)
 
 		// 系统日志
 		admin.GET("/system-logs", handlers.SystemLog.ListSystemLogs)
@@ -479,6 +493,10 @@ func main() {
 		admin.POST("/media/:mediaId/unmatch", handlers.Admin.UnmatchMetadata)
 		admin.PUT("/media/:mediaId/metadata", handlers.Admin.UpdateMediaMetadata)
 		admin.DELETE("/media/:mediaId", handlers.Admin.DeleteMedia)
+
+		// STRM 单条覆写（UA/Referer/Cookie/Headers，应急修复鉴权）
+		admin.GET("/media/:mediaId/strm", handlers.Admin.GetMediaSTRM)
+		admin.PUT("/media/:mediaId/strm", handlers.Admin.UpdateMediaSTRM)
 
 		// 剧集合集管理
 		admin.POST("/series/:seriesId/match", handlers.Admin.MatchSeriesMetadata)
@@ -765,8 +783,6 @@ func main() {
 		admin.DELETE("/preprocess/tasks/:id", handlers.Preprocess.DeleteTask)
 		admin.GET("/preprocess/statistics", handlers.Preprocess.GetStatistics)
 		admin.GET("/preprocess/system-load", handlers.Preprocess.GetSystemLoad)
-		admin.GET("/preprocess/performance-config", handlers.Preprocess.GetPerformanceConfig)
-		admin.PUT("/preprocess/performance-config", handlers.Preprocess.UpdatePerformanceConfig)
 		admin.POST("/preprocess/tasks/batch-delete", handlers.Preprocess.BatchDeleteTasks)
 		admin.POST("/preprocess/tasks/batch-cancel", handlers.Preprocess.BatchCancelTasks)
 		admin.POST("/preprocess/tasks/batch-retry", handlers.Preprocess.BatchRetryTasks)

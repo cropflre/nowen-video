@@ -174,6 +174,20 @@ export interface Media {
   tagline: string
   studio: string
   trailer_url: string
+  // NFO 完整建模字段（方案 B）
+  num: string
+  sort_title: string
+  outline: string
+  original_plot: string
+  mpaa: string
+  country_code: string
+  maker: string
+  publisher: string
+  label: string
+  tags: string
+  website: string
+  release_date: string
+  premiered: string
   // 剧集字段
   series_id: string
   season_num: number
@@ -838,41 +852,6 @@ export interface DoubanImportTokenStatus {
 }
 
 // ==================== 潮汐调度 ====================
-// 潮汐模式：空闲 / 在线 / 播放
-export type TidalMode = 'idle' | 'busy' | 'playing'
-
-// 潮汐调度配置
-export interface TidalConfig {
-  enabled: boolean
-  idle_cpu_percent: number
-  busy_cpu_percent: number
-  playing_cpu_percent: number
-  playing_action: 'pause' | 'throttle'
-  debounce_sec: number
-}
-
-// 潮汐调度状态
-export interface TidalStatus {
-  running: boolean
-  current_mode: TidalMode
-  pending_mode: TidalMode | ''
-  pending_for_ms: number
-  paused_task_cnt: number
-  online_users: number
-  playing_jobs: number
-  config: TidalConfig
-  preprocess?: {
-    mode: TidalMode
-    config_resource_limit: number
-    override_resource_limit: number | null
-    effective_resource_limit: number
-    active_workers: number
-    cur_workers: number
-    max_workers: number
-    queue_size: number
-  }
-}
-
 // ==================== 刮削数据管理 ====================
 export interface ScrapeTask {
   id: string
@@ -1673,7 +1652,6 @@ export interface PreprocessStatistics {
   queue_size: number
   hw_accel: string
   mode: string
-  resource_limit: number
 }
 
 export interface SystemLoadInfo {
@@ -1686,32 +1664,8 @@ export interface SystemLoadInfo {
   max_workers: number
   cur_workers: number // 动态调整后的当前并发数
   queue_size: number
-  resource_limit: number // CPU 资源使用率上限
-  ffmpeg_threads: number // FFmpeg 线程数
   hw_accel: string // 硬件加速模式
-  suggestions: string[] // 性能优化建议
   gpu_status?: GPUSafetyStatus // GPU 安全状态
-}
-
-// 性能配置
-export interface PerformanceConfig {
-  resource_limit: number
-  max_transcode_jobs: number
-  transcode_preset: string
-  hw_accel: string
-  detected_hw_accel: string // 实际检测到的硬件加速模式
-  vaapi_device: string
-  cpu_count: number
-  ffmpeg_threads: number
-  max_workers: number
-  // GPU 安全保护配置
-  gpu_safety_enabled: boolean
-  gpu_utilization_threshold: number
-  gpu_temperature_threshold: number
-  gpu_recovery_threshold: number
-  gpu_temperature_recovery: number
-  // GPU 实时状态
-  gpu_status?: GPUSafetyStatus
 }
 
 // GPU 安全状态
@@ -1867,6 +1821,18 @@ export interface CollectionMediaItem {
   overview: string
   genres: string
   is_current: boolean
+  /** TMDB ID（用于前端折叠同片多版本） */
+  tmdb_id?: number
+  /** 同一部电影的不同版本共享此 ID */
+  version_group?: string
+  /** 版本标识："4K"/"Director's Cut" 等 */
+  version_tag?: string
+  /** 文件大小（字节） */
+  file_size?: number
+  /** 分辨率："1080p"/"2160p" 等 */
+  resolution?: string
+  /** 视频编码 */
+  video_codec?: string
 }
 
 /** 合集及其包含的电影 */

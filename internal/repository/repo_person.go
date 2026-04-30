@@ -93,6 +93,18 @@ func (r *MediaPersonRepo) DeleteBySeriesID(seriesID string) error {
 	return r.db.Where("series_id = ?", seriesID).Delete(&model.MediaPerson{}).Error
 }
 
+// DeleteByLibraryMediaIDs 删除指定媒体库下所有媒体关联的演职人员记录
+func (r *MediaPersonRepo) DeleteByLibraryMediaIDs(libraryID string) error {
+	return r.db.Where("media_id IN (SELECT id FROM media WHERE library_id = ?)", libraryID).
+		Delete(&model.MediaPerson{}).Error
+}
+
+// DeleteByLibrarySeriesIDs 删除指定媒体库下所有剧集合集关联的演职人员记录
+func (r *MediaPersonRepo) DeleteByLibrarySeriesIDs(libraryID string) error {
+	return r.db.Where("series_id IN (SELECT id FROM series WHERE library_id = ?)", libraryID).
+		Delete(&model.MediaPerson{}).Error
+}
+
 // DeduplicateBySeriesID 清理同一 series_id 下重复的演职人员记录
 // 相同 person_id + role 只保留 sort_order 最小的那条
 func (r *MediaPersonRepo) DeduplicateBySeriesID(seriesID string) (int64, error) {

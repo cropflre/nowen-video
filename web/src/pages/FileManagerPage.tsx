@@ -7,6 +7,7 @@ import AIAssistant, { AIAssistantButton, AIAssistantPanel } from '@/components/A
 import ScrapeManagerPage from '@/pages/ScrapeManagerPage'
 import AdultScraperSection from '@/components/admin/AdultScraperTab'
 import AdultScraperProSection from '@/components/admin/AdultScraperPro'
+import STRMConfigSection from '@/components/admin/STRMConfigSection'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import {
   FolderOpen,
@@ -437,7 +438,11 @@ export default function FileManagerPage() {
 
       {/* ==================== 刮削任务 Tab ==================== */}
       {activeTab === 'scrape' && (
-        <ScrapeManagerPage embedded />
+        <div className="space-y-5">
+          {/* STRM 远程流全局配置（.strm 云盘/CDN 流的默认 UA/Referer、HLS 重写、远程探测、域名白名单）*/}
+          <STRMConfigSection />
+          <ScrapeManagerPage embedded />
+        </div>
       )}
 
       {/* ==================== 成人刮削 Tab ==================== */}

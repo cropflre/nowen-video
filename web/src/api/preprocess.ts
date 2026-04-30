@@ -1,20 +1,23 @@
 import api from './client'
-import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo, PerformanceConfig } from '@/types'
+import type { PreprocessTask, PreprocessStatistics, SystemLoadInfo } from '@/types'
 
 // ==================== 视频预处理 ====================
 export const preprocessApi = {
   // 提交单个媒体预处理
-  submit: (mediaId: string, priority?: number) =>
+  // force=true 可绕过"可直接播放则跳过"的自动判定（用户强制预处理场景）
+  submit: (mediaId: string, priority?: number, force?: boolean) =>
     api.post<{ message: string; data: PreprocessTask }>('/admin/preprocess/submit', {
       media_id: mediaId,
       priority: priority || 0,
+      force: force === true,
     }),
 
   // 批量提交预处理
-  batchSubmit: (mediaIds: string[], priority?: number) =>
+  // force=true 可绕过"可直接播放则跳过"的自动判定
+  batchSubmit: (mediaIds: string[], priority?: number, force?: boolean) =>
     api.post<{ message: string; data: { submitted: number; tasks: PreprocessTask[] } }>(
       '/admin/preprocess/batch',
-      { media_ids: mediaIds, priority: priority || 0 }
+      { media_ids: mediaIds, priority: priority || 0, force: force === true }
     ),
 
   // 提交整个媒体库预处理
@@ -82,12 +85,4 @@ export const preprocessApi = {
   // 清理预处理缓存
   cleanCache: (mediaId: string) =>
     api.delete(`/admin/preprocess/cache/${mediaId}`),
-
-  // 获取性能配置
-  getPerformanceConfig: () =>
-    api.get<{ data: PerformanceConfig }>('/admin/preprocess/performance-config'),
-
-  // 更新性能配置
-  updatePerformanceConfig: (updates: Partial<PerformanceConfig>) =>
-    api.put<{ message: string; data: PerformanceConfig }>('/admin/preprocess/performance-config', updates),
 }

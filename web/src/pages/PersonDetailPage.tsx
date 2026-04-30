@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { personApi, streamApi } from '@/api'
 import type { Person, Media, Series } from '@/types'
@@ -6,6 +6,8 @@ import { User, Film, Tv, Star, ExternalLink, ArrowLeft, Calendar } from 'lucide-
 import { useTranslation } from '@/i18n'
 import { motion, AnimatePresence } from 'framer-motion'
 import { easeSmooth, durations } from '@/lib/motion'
+import { usePagination } from '@/hooks/usePagination'
+import Pagination from '@/components/Pagination'
 
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +20,28 @@ export default function PersonDetailPage() {
   const [loading, setLoading] = useState(true)
   const [worksLoading, setWorksLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
+
+  // 电影分页（URL key：mp / ms）
+  const moviePagination = usePagination({ initialSize: 18, syncToUrl: true, pageKey: 'mp', sizeKey: 'mps' })
+  // 剧集分页
+  const seriesPagination = usePagination({ initialSize: 18, syncToUrl: true, pageKey: 'sp', sizeKey: 'sps' })
+
+  // 作品切换时重置分页
+  useEffect(() => {
+    moviePagination.setPage(1)
+    seriesPagination.setPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const pagedMovies = useMemo(() => {
+    const start = (moviePagination.page - 1) * moviePagination.size
+    return mediaList.slice(start, start + moviePagination.size)
+  }, [mediaList, moviePagination.page, moviePagination.size])
+
+  const pagedSeries = useMemo(() => {
+    const start = (seriesPagination.page - 1) * seriesPagination.size
+    return seriesList.slice(start, start + seriesPagination.size)
+  }, [seriesList, seriesPagination.page, seriesPagination.size])
 
   // 加载演员详情
   useEffect(() => {
@@ -319,7 +343,7 @@ export default function PersonDetailPage() {
                   </span>
                 </h2>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {mediaList.map((media) => (
+                  {pagedMovies.map((media) => (
                     <WorkCard
                       key={media.id}
                       id={media.id}
@@ -334,6 +358,15 @@ export default function PersonDetailPage() {
                     />
                   ))}
                 </div>
+                <Pagination
+                  page={moviePagination.page}
+                  totalPages={moviePagination.totalPages(mediaList.length)}
+                  total={mediaList.length}
+                  pageSize={moviePagination.size}
+                  pageSizeOptions={[12, 18, 24, 48]}
+                  onPageChange={moviePagination.setPage}
+                  onPageSizeChange={moviePagination.setSize}
+                />
               </section>
             )}
 
@@ -351,7 +384,7 @@ export default function PersonDetailPage() {
                   </span>
                 </h2>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {seriesList.map((s) => (
+                  {pagedSeries.map((s) => (
                     <WorkCard
                       key={s.id}
                       id={s.id}
@@ -366,6 +399,15 @@ export default function PersonDetailPage() {
                     />
                   ))}
                 </div>
+                <Pagination
+                  page={seriesPagination.page}
+                  totalPages={seriesPagination.totalPages(seriesList.length)}
+                  total={seriesList.length}
+                  pageSize={seriesPagination.size}
+                  pageSizeOptions={[12, 18, 24, 48]}
+                  onPageChange={seriesPagination.setPage}
+                  onPageSizeChange={seriesPagination.setSize}
+                />
               </section>
             )}
           </>

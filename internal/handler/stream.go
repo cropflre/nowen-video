@@ -31,11 +31,10 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 		return
 	}
 
-	// STRM 远程流：通过后端代理转发
+	// STRM 远程流：通过后端代理转发（支持自定义 UA/Referer/Cookie/HLS 重写）
 	if filePath == "__strm__" {
-		remoteURL := contentType // GetDirectStreamInfo 对 STRM 返回的第二个值是远程 URL
-		h.logger.Debugf("STRM 代理播放: %s -> %s", id, remoteURL)
-		if err := h.streamService.ProxyRemoteStream(remoteURL, c.Writer, c.Request); err != nil {
+		h.logger.Debugf("STRM 代理播放: %s", id)
+		if err := h.streamService.ProxyRemoteStreamForMedia(id, c.Writer, c.Request); err != nil {
 			h.logger.Warnf("STRM 代理播放失败: %s, 错误: %v", id, err)
 			// 如果还没写入响应头，返回错误
 			c.JSON(http.StatusBadGateway, gin.H{"error": "远程流播放失败: " + err.Error()})
@@ -400,4 +399,38 @@ func (h *StreamHandler) ThrottleStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": h.transcodeService.GetMediaThrottleStatus(id)})
+}
+
+// STRMSegment 代理 STRM 的子资源（HLS 分片、子 playlist、加密密钥、init 段等）
+//
+// GET /api/stream/:id/strm-seg?u=<base64url-encoded-absolute-url>
+//
+// 播放 HLS 类型的 STRM 时，主 manifest 会被 rewriteHLSPlaylist 改写，
+// 所有子 URI 都指向此端点，由后端统一携带该 media 的 UA/Referer/Cookie 拉取并透传。
+func (h *StreamHandler) STRMSegment(c *gin.Context) {
+	id := c.Param("id")
+	target := c.Query("u")
+	if target == "" {
+		target = c.Query("target")
+	}
+	if target == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing target url"})
+		return
+	}
+	if err := h.streamService.ProxySTRMSegment(id, target, c.Writer, c.Request); err != nil {
+		h.logger.Warnf("STRM 子资源代理失败: %s, 错误: %v", id, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "远程子资源拉取失败: " + err.Error()})
+	}
+}
+
+// STRMCheck 远程 STRM 链路健康检查（供前端诊断面板使用）
+// GET /api/stream/:id/strm-check
+func (h *StreamHandler) STRMCheck(c *gin.Context) {
+	id := c.Param("id")
+	result, err := h.streamService.CheckSTRMHealth(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }

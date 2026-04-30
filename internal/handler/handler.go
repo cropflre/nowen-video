@@ -82,7 +82,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			loginLogRepo:      repos.LoginLog,
 			auditLogRepo:      repos.AuditLog,
 			inviteRepo:        repos.InviteCode,
-			idleScheduler:     services.IdleScheduler,
 			cfg:               cfg,
 			logger:            logger,
 			db:                repos.DB(),
