@@ -21,6 +21,7 @@ import (
 // 参数：
 //   - mediaFilePath: 媒体文件绝对路径（如 /media/SSIS-001.mp4）
 //   - media: Media 模型数据
+//
 // 返回：生成的 .nfo 文件路径
 func (s *NFOService) WriteMovieNFO(mediaFilePath string, media *model.Media) (string, error) {
 	if media == nil {
@@ -128,20 +129,46 @@ func buildMovieNFOXML(media *model.Media) string {
 
 	writeXMLField(&sb, "title", media.Title)
 	writeXMLField(&sb, "originaltitle", media.OrigTitle)
-	writeXMLField(&sb, "sorttitle", media.Title)
+	// 排序标题：优先使用 SortTitle，否则回退到 Title
+	sortTitle := media.SortTitle
+	if sortTitle == "" {
+		sortTitle = media.Title
+	}
+	writeXMLField(&sb, "sorttitle", sortTitle)
+
+	// 番号（Emby 扩展字段）
+	writeXMLField(&sb, "num", media.Num)
 
 	if media.Year > 0 {
 		writeXMLField(&sb, "year", fmt.Sprintf("%d", media.Year))
 	}
 	if media.Premiered != "" {
 		writeXMLField(&sb, "premiered", media.Premiered)
-		writeXMLField(&sb, "releasedate", media.Premiered)
+	}
+	// 发行日期：优先 ReleaseDate，否则 Premiered
+	releaseDate := media.ReleaseDate
+	if releaseDate == "" {
+		releaseDate = media.Premiered
+	}
+	if releaseDate != "" {
+		writeXMLField(&sb, "releasedate", releaseDate)
+		writeXMLField(&sb, "release", releaseDate)
 	}
 
 	if media.Overview != "" {
 		// Plot 使用 CDATA 封装，避免 HTML 标签被转义
 		sb.WriteString("  <plot><![CDATA[" + media.Overview + "]]></plot>\n")
-		sb.WriteString("  <outline><![CDATA[" + media.Overview + "]]></outline>\n")
+	}
+	// outline：优先用独立的 Outline，否则回退到 Overview
+	outline := media.Outline
+	if outline == "" {
+		outline = media.Overview
+	}
+	if outline != "" {
+		sb.WriteString("  <outline><![CDATA[" + outline + "]]></outline>\n")
+	}
+	if media.OriginalPlot != "" {
+		sb.WriteString("  <originalplot><![CDATA[" + media.OriginalPlot + "]]></originalplot>\n")
 	}
 
 	if media.Tagline != "" {
@@ -153,8 +180,25 @@ func buildMovieNFOXML(media *model.Media) string {
 	if media.Runtime > 0 {
 		writeXMLField(&sb, "runtime", fmt.Sprintf("%d", media.Runtime))
 	}
+	// 分级：mpaa 与 customrating 同步写入
+	if media.MPAA != "" {
+		writeXMLField(&sb, "mpaa", media.MPAA)
+		writeXMLField(&sb, "customrating", media.MPAA)
+	}
+	if media.CountryCode != "" {
+		writeXMLField(&sb, "countrycode", media.CountryCode)
+	}
 	if media.Studio != "" {
 		writeXMLField(&sb, "studio", media.Studio)
+	}
+	if media.Maker != "" {
+		writeXMLField(&sb, "maker", media.Maker)
+	}
+	if media.Publisher != "" {
+		writeXMLField(&sb, "publisher", media.Publisher)
+	}
+	if media.Label != "" {
+		writeXMLField(&sb, "label", media.Label)
 	}
 	if media.Country != "" {
 		writeXMLField(&sb, "country", media.Country)
@@ -178,9 +222,27 @@ func buildMovieNFOXML(media *model.Media) string {
 			g = strings.TrimSpace(g)
 			if g != "" {
 				writeXMLField(&sb, "genre", g)
-				writeXMLField(&sb, "tag", g)
 			}
 		}
+	}
+
+	// 标签（与 genres 分开）：优先使用独立的 Tags 字段，若为空则回退到 Genres
+	tagSource := media.Tags
+	if tagSource == "" {
+		tagSource = media.Genres
+	}
+	if tagSource != "" {
+		for _, tg := range strings.Split(tagSource, ",") {
+			tg = strings.TrimSpace(tg)
+			if tg != "" {
+				writeXMLField(&sb, "tag", tg)
+			}
+		}
+	}
+
+	// 官方网站
+	if media.Website != "" {
+		writeXMLField(&sb, "website", media.Website)
 	}
 
 	// 外部 ID

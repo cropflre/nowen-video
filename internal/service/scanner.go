@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2353,25 +2355,16 @@ func (s *ScannerService) ProbeMediaInfo(media *model.Media) {
 // parseSTRMFile 解析 .strm 文件，提取远程流 URL
 // .strm 文件格式：纯文本文件，第一行为可播放的远程 URL
 func (s *ScannerService) parseSTRMFile(filePath string) (string, error) {
-	data, err := os.ReadFile(filePath)
+	meta, err := ParseSTRMFileEnhanced(filePath)
 	if err != nil {
-		return "", fmt.Errorf("读取 .strm 文件失败: %w", err)
+		return "", err
 	}
+	return meta.URL, nil
+}
 
-	// 逐行读取，取第一个非空、非注释行作为 URL
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		// 验证是否为有效的 URL
-		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
-			return line, nil
-		}
-	}
-
-	return "", fmt.Errorf(".strm 文件中未找到有效的 URL: %s", filePath)
+// parseSTRMFileMeta 返回 .strm 的完整元数据（URL + 自定义 Header 等）
+func (s *ScannerService) parseSTRMFileMeta(filePath string) (*STRMMeta, error) {
+	return ParseSTRMFileEnhanced(filePath)
 }
 
 // isSTRMFile 判断是否为 .strm 文件
@@ -2402,12 +2395,40 @@ func (s *ScannerService) probeSTRMMedia(media *model.Media, streamURL string) {
 func (s *ScannerService) probeMediaInfo(media *model.Media) {
 	// .strm 文件：解析远程 URL，不使用 FFprobe
 	if isSTRMFile(media.FilePath) {
-		streamURL, err := s.parseSTRMFile(media.FilePath)
+		meta, err := s.parseSTRMFileMeta(media.FilePath)
 		if err != nil {
 			s.logger.Warnf("解析 STRM 文件失败: %s, 错误: %v", media.FilePath, err)
 			return
 		}
-		s.probeSTRMMedia(media, streamURL)
+		ApplySTRMMetaToMedia(media, meta)
+		s.probeSTRMMedia(media, meta.URL)
+
+		// 可选：对直链型 STRM 进行远程 FFprobe 探测（慢但能拿到真实时长/编码/分辨率）
+		// 仅对 http(s) + 明显的视频直链启用（排除 HLS/磁力/rtmp 等）
+		if s.cfg != nil && s.cfg.STRM.RemoteProbe && isDirectVideoLink(meta.URL) {
+			// 构造请求头（FFprobe 需要透传 UA / Referer / Cookie）
+			ua, referer, cookie, extra := ResolveSTRMHeaders(&s.cfg.STRM, media)
+			hdr := http.Header{}
+			if ua != "" {
+				hdr.Set("User-Agent", ua)
+			}
+			if referer != "" {
+				hdr.Set("Referer", referer)
+			}
+			if cookie != "" {
+				hdr.Set("Cookie", cookie)
+			}
+			for k, v := range extra {
+				hdr.Set(k, v)
+			}
+			timeout := s.cfg.STRM.RemoteProbeTimeout
+			if timeout <= 0 {
+				timeout = 8
+			}
+			if ok := RemoteProbeSTRM(context.Background(), s.cfg.App.FFprobePath, media, hdr, timeout); ok {
+				s.logger.Debugf("STRM 远程 probe 成功: %s", media.FilePath)
+			}
+		}
 		return
 	}
 
@@ -2620,7 +2641,19 @@ func (s *ScannerService) extractTitle(filename string) string {
 
 // extractTitleEnhanced 从文件名增强提取标题、年份和 TMDb ID
 // 支持 Emby 标准命名格式：Title (Year) [tmdbid=xxx]
+// 以及国内资源站的脏命名：
+//   - "01届.《翼》-《Wings》-1927-1929。【十万度Q裙 319940383】.mkv"
+//   - "[yyh3d.com]采花和尚.Satyr Monks.1994.LD_D9.x264.AAC.480P.YYH3D.xt.mkv"
 func (s *ScannerService) extractTitleEnhanced(filename string) (title string, year int, tmdbID int) {
+	// 优先走统一增强解析器：它能处理《》、【广告】、[站点]、XX届、115chrome 等脏命名
+	if parsed := ParseMovieFilename(filename); parsed.Title != "" {
+		title = parsed.Title
+		year = parsed.Year
+		tmdbID = parsed.TMDbID
+		return
+	}
+
+	// —— 兜底：保留原本的简单清洗逻辑，避免极端边界下丢名 ——
 	// 去掉扩展名
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 

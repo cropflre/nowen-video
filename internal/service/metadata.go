@@ -441,12 +441,17 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			idErr = s.scrapeTVByTMDbID(media, media.TMDbID)
 		}
 		if idErr == nil {
-			media.ScrapeStatus = "scraped" // P3: 标记刮削成功
+			// P3+: 仅当海报也成功下载时才标记 scraped；否则标记 partial 以便下次重试
+			if media.PosterPath == "" {
+				media.ScrapeStatus = "partial"
+			} else {
+				media.ScrapeStatus = "scraped"
+			}
 			if saveErr := s.mediaRepo.Update(media); saveErr != nil {
 				s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
 				return saveErr
 			}
-			s.logger.Infof("TMDb ID 直连刮削成功: %s", media.Title)
+			s.logger.Infof("TMDb ID 直连刮削成功 (status=%s): %s", media.ScrapeStatus, media.Title)
 			randomDelay(1500, 3000)
 			return nil
 		}
@@ -472,9 +477,14 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 			s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
 			return saveErr
 		}
-		media.ScrapeStatus = "scraped" // P3: 标记刮削成功
-		s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{"scrape_status": "scraped"})
-		s.logger.Infof("元数据刮削完成 (多数据源): %s", media.Title)
+		// P3+: 仅当海报也成功下载时才标记 scraped；否则标记 partial 以便下次重试补海报
+		finalStatus := "scraped"
+		if media.PosterPath == "" {
+			finalStatus = "partial"
+		}
+		media.ScrapeStatus = finalStatus
+		s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{"scrape_status": finalStatus})
+		s.logger.Infof("元数据刮削完成 (多数据源, status=%s): %s", finalStatus, media.Title)
 		randomDelay(1500, 3000) // 单次刮削完成后等待 1.5-3 秒，防止限流
 		return nil
 	}
@@ -559,9 +569,18 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		}
 	}
 
-	// P3: 旧版路径刮削成功，标记状态
+	// P3+: 旧版路径刮削完成，根据海报是否下载成功标记状态
+	// 重新获取最新 media 以获取可能在 fallback 中更新的 PosterPath
+	finalStatus := "scraped"
+	if latest, ferr := s.mediaRepo.FindByID(media.ID); ferr == nil {
+		if latest.PosterPath == "" {
+			finalStatus = "partial"
+		}
+	} else if media.PosterPath == "" {
+		finalStatus = "partial"
+	}
 	s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{
-		"scrape_status": "scraped",
+		"scrape_status": finalStatus,
 	})
 
 	// 等待一下避免限流（随机 1.5-3 秒）
@@ -577,23 +596,32 @@ func (s *MetadataService) ScrapeLibrary(libraryID string, mediaList []model.Medi
 		return 0, 0
 	}
 
-	// P3: 使用增强的过滤逻辑（排除最近 7 天内已失败的记录）
+	// P3+: 使用增强的过滤逻辑
+	// - 跳过已完全刮削（scraped）和手动标记（manual）的记录
+	// - 跳过最近 7 天内失败的记录
+	// - 对 partial 状态（信息部分补全但海报缺失）保留重试
 	var needScrape []model.Media
 	for _, media := range mediaList {
 		// 跳过已成功刮削的记录（避免重复刮削已有元数据的电影）
 		if media.ScrapeStatus == "scraped" {
 			continue
 		}
+		// 跳过手动标记为不需要刮削的记录
+		if media.ScrapeStatus == "manual" {
+			continue
+		}
 		if media.Overview == "" || media.PosterPath == "" {
-			// P3: 跳过最近 7 天内已尝试刮削但失败的记录
+			// 跳过最近 7 天内已尝试刮削但失败的记录
 			if media.ScrapeStatus == "failed" && media.LastScrapeAt != nil {
 				if time.Since(*media.LastScrapeAt) < 7*24*time.Hour {
 					continue
 				}
 			}
-			// P3: 跳过手动标记为不需要刮削的记录
-			if media.ScrapeStatus == "manual" {
-				continue
+			// partial 状态（缺海报）：间隔 1 小时以上才重试，避免连续刮削打爆 API
+			if media.ScrapeStatus == "partial" && media.LastScrapeAt != nil {
+				if time.Since(*media.LastScrapeAt) < 1*time.Hour {
+					continue
+				}
 			}
 			needScrape = append(needScrape, media)
 		}
@@ -695,23 +723,16 @@ func (s *MetadataService) broadcastScrapeEvent(eventType string, data *ScrapePro
 
 // scrapeMovie 刮削电影元数据
 func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, year int) error {
-	// 搜索电影
-	results, err := s.searchTMDb("movie", searchTitle, year)
+	// 为了兼容 TMDb 未收录中文名但收录了英文名的情况，
+	// 这里再解析一次拿到英文别名（alt），并按"中文→无年份→英文"的三段式搜索。
+	_, alt, _ := s.parseTitleWithAlt(media.Title)
+	results, err := s.searchTMDbWithAlt("movie", searchTitle, alt, year)
 	if err != nil {
 		return err
 	}
 
 	if len(results) == 0 {
-		// 无年份重试
-		if year > 0 {
-			results, err = s.searchTMDb("movie", searchTitle, 0)
-			if err != nil {
-				return err
-			}
-		}
-		if len(results) == 0 {
-			return fmt.Errorf("未找到匹配结果: %s", searchTitle)
-		}
+		return fmt.Errorf("未找到匹配结果: %s", searchTitle)
 	}
 
 	// P1: 使用置信度排序选择最佳匹配结果
@@ -760,21 +781,14 @@ func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, ye
 
 // scrapeTV 刮削剧集元数据
 func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year int) error {
-	results, err := s.searchTMDb("tv", searchTitle, year)
+	_, alt, _ := s.parseTitleWithAlt(media.Title)
+	results, err := s.searchTMDbWithAlt("tv", searchTitle, alt, year)
 	if err != nil {
 		return err
 	}
 
 	if len(results) == 0 {
-		if year > 0 {
-			results, err = s.searchTMDb("tv", searchTitle, 0)
-			if err != nil {
-				return err
-			}
-		}
-		if len(results) == 0 {
-			return fmt.Errorf("未找到匹配结果: %s", searchTitle)
-		}
+		return fmt.Errorf("未找到匹配结果: %s", searchTitle)
 	}
 
 	// P1: 使用置信度排序选择最佳匹配结果
@@ -1541,7 +1555,17 @@ func (s *MetadataService) downloadImage(media *model.Media, tmdbPath, imageType,
 // ==================== 辅助方法 ====================
 
 // parseTitle 从文件标题中提取搜索关键词和年份
+// 新版本：先走统一的 ParseMovieFilename 对脏命名做清洗，再做原来的通用清理作为兜底。
 func (s *MetadataService) parseTitle(title string) (string, int) {
+	// 优先使用增强解析器。这里主动伪造一个 .mkv 扩展名，避免 ParseMovieFilename 误截断真实标题中带点号的内容。
+	probe := title
+	if !strings.ContainsAny(probe, ".") || filepath.Ext(probe) == "" {
+		probe = probe + ".mkv"
+	}
+	if parsed := ParseMovieFilename(probe); parsed.Title != "" {
+		return parsed.Title, parsed.Year
+	}
+
 	// 尝试提取年份，如 "The Matrix 1999" 或 "黑客帝国 (1999)"
 	yearRegex := regexp.MustCompile(`[\s\.(]\s*((?:19|20)\d{2})\s*[\s\).]?`)
 	matches := yearRegex.FindStringSubmatch(title)
@@ -1577,12 +1601,73 @@ func (s *MetadataService) parseTitle(title string) (string, int) {
 	return cleanTitle, year
 }
 
+// parseTitleWithAlt 与 parseTitle 行为一致，但额外返回英文别名（可能为空）。
+// 典型场景：文件名为"《翼》-《Wings》-1927" 时 → title="翼", alt="Wings", year=1927。
+// 当 TMDb 按中文搜索不到时，上层可回退用 alt 再搜一次。
+func (s *MetadataService) parseTitleWithAlt(title string) (cleanTitle string, alt string, year int) {
+	probe := title
+	if filepath.Ext(probe) == "" {
+		probe = probe + ".mkv"
+	}
+	parsed := ParseMovieFilename(probe)
+	if parsed.Title != "" {
+		return parsed.Title, parsed.TitleAlt, parsed.Year
+	}
+	// 兜底：走旧的 parseTitle
+	t, y := s.parseTitle(title)
+	return t, "", y
+}
+
 // SearchTMDb 公开的TMDb搜索方法（用于手动元数据匹配）
 func (s *MetadataService) SearchTMDb(mediaType, query string, year int) ([]TMDbMovie, error) {
 	if s.cfg.Secrets.TMDbAPIKey == "" {
 		return nil, fmt.Errorf("TMDb API Key未配置")
 	}
 	return s.searchTMDb(mediaType, query, year)
+}
+
+// searchTMDbWithAlt 带英文别名与无年份兜底的三段式搜索：
+//  1. 用中文主标题 + year 搜
+//  2. 0 命中且 year>0 时，去掉 year 再搜一次
+//  3. 仍 0 命中且有英文别名时，用英文别名 + year / 无 year 再搜
+//
+// 适合文件名如"《翼》-《Wings》-1927" 这类中英并列但中文未收录 TMDb 的情况。
+func (s *MetadataService) searchTMDbWithAlt(mediaType, title, alt string, year int) ([]TMDbMovie, error) {
+	tryOnce := func(q string, y int) []TMDbMovie {
+		if strings.TrimSpace(q) == "" {
+			return nil
+		}
+		r, err := s.searchTMDb(mediaType, q, y)
+		if err != nil {
+			s.logger.Debugf("TMDb 搜索失败 (%s, %d): %v", q, y, err)
+			return nil
+		}
+		return r
+	}
+	// 1) 主标题 + 年份
+	if r := tryOnce(title, year); len(r) > 0 {
+		return r, nil
+	}
+	// 2) 主标题无年份
+	if year > 0 {
+		if r := tryOnce(title, 0); len(r) > 0 {
+			return r, nil
+		}
+	}
+	// 3) 英文别名备搜
+	if alt != "" && !strings.EqualFold(strings.TrimSpace(alt), strings.TrimSpace(title)) {
+		if r := tryOnce(alt, year); len(r) > 0 {
+			s.logger.Debugf("TMDb 通过英文别名命中: alt=%q year=%d", alt, year)
+			return r, nil
+		}
+		if year > 0 {
+			if r := tryOnce(alt, 0); len(r) > 0 {
+				s.logger.Debugf("TMDb 通过英文别名命中(无年份): alt=%q", alt)
+				return r, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 // TMDbImage TMDb 图片信息
@@ -2113,12 +2198,71 @@ func (s *MetadataService) ScrapeAllSeries(libraryID string) (int, int) {
 			failed++
 		} else {
 			success++
+			// 方案 B: 剧集刮削成功后，把 series.PosterPath 同步到所有海报为空的 episode
+			s.propagateSeriesPosterToEpisodes(series.ID)
 		}
 		// 限速保护（剧集间隔 3-6 秒随机化）
 		randomDelay(3000, 6000)
 	}
 
 	return success, failed
+}
+
+// propagateSeriesPosterToEpisodes 方案 B: 将 series 的海报/背景图/评分等字段同步到尚未填充的 episode
+// 前端 MediaCard 判断 hasPoster 时会检查 media.poster_path；对于剧集 episode 直接用 series.poster_path 做备选
+// 但列表 API 返回的 media.poster_path 字段本身仍可能为空 → 这里显式把它填上，确保列表也能展示封面
+func (s *MetadataService) propagateSeriesPosterToEpisodes(seriesID string) {
+	if s.seriesRepo == nil || s.mediaRepo == nil {
+		return
+	}
+	series, err := s.seriesRepo.FindByID(seriesID)
+	if err != nil || series == nil {
+		return
+	}
+	if series.PosterPath == "" && series.BackdropPath == "" && series.Rating == 0 && series.Year == 0 {
+		return // series 刮削后仍无任何信息，无需同步
+	}
+	episodes, err := s.mediaRepo.ListBySeriesID(seriesID)
+	if err != nil || len(episodes) == 0 {
+		return
+	}
+	updated := 0
+	for i := range episodes {
+		ep := &episodes[i]
+		changed := false
+		if ep.PosterPath == "" && series.PosterPath != "" {
+			ep.PosterPath = series.PosterPath
+			changed = true
+		}
+		if ep.BackdropPath == "" && series.BackdropPath != "" {
+			ep.BackdropPath = series.BackdropPath
+			changed = true
+		}
+		if ep.Rating == 0 && series.Rating > 0 {
+			ep.Rating = series.Rating
+			changed = true
+		}
+		if ep.Year == 0 && series.Year > 0 {
+			ep.Year = series.Year
+			changed = true
+		}
+		if ep.Genres == "" && series.Genres != "" {
+			ep.Genres = series.Genres
+			changed = true
+		}
+		if ep.Overview == "" && series.Overview != "" {
+			ep.Overview = series.Overview
+			changed = true
+		}
+		if changed {
+			if uerr := s.mediaRepo.Update(ep); uerr == nil {
+				updated++
+			}
+		}
+	}
+	if updated > 0 {
+		s.logger.Infof("剧集封面/评分已同步到 %d 集 (series_id=%s)", updated, seriesID)
+	}
 }
 
 // downloadToFile 下载文件到指定路径（带重试）

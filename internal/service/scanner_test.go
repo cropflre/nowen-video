@@ -255,9 +255,9 @@ func TestExtractTitleEnhanced(t *testing.T) {
 		},
 		{
 			filename:  "The.Matrix.1999.BluRay.1080p.x264.mkv",
-			wantTitle: "The Matrix 1999",
-			wantYear:  0, // 年份需在括号内才提取
-			desc:      "点分隔带编码标记的文件名（年份未在括号内）",
+			wantTitle: "The Matrix",
+			wantYear:  1999, // 增强后：支持从点分隔中提取年份
+			desc:      "点分隔带编码标记的文件名（增强后能提取年份）",
 		},
 		{
 			filename:  "黑客帝国 (1999).mkv",
@@ -267,8 +267,8 @@ func TestExtractTitleEnhanced(t *testing.T) {
 		},
 		{
 			filename:  "Inception.2010.REMUX.2160p.mkv",
-			wantTitle: "Inception 2010",
-			wantYear:  0, // 未在括号内
+			wantTitle: "Inception",
+			wantYear:  2010, // 增强后：支持从点分隔中提取年份
 			desc:      "REMUX/2160p 标记应被清理",
 		},
 		{
@@ -307,11 +307,11 @@ func TestMultiEpisodeDetection(t *testing.T) {
 	s := &ScannerService{}
 
 	tests := []struct {
-		filename       string
-		wantEpStart    int
-		wantEpEnd      int
-		wantSeasonNum  int
-		desc           string
+		filename      string
+		wantEpStart   int
+		wantEpEnd     int
+		wantSeasonNum int
+		desc          string
 	}{
 		{
 			filename:      "Glee.S01E01-E02.720p.mkv",

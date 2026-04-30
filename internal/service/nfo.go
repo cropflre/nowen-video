@@ -94,22 +94,36 @@ func (s *NFOService) dirOf(p string) string {
 
 // NFOMovie 电影 NFO XML 根元素
 type NFOMovie struct {
-	XMLName   xml.Name   `xml:"movie"`
-	Title     string     `xml:"title"`
-	OrigTitle string     `xml:"originaltitle"`
-	Year      int        `xml:"year"`
-	Premiered string     `xml:"premiered"`
-	Plot      string     `xml:"plot"`
-	Tagline   string     `xml:"tagline"`
-	Rating    float64    `xml:"rating"`
-	Runtime   int        `xml:"runtime"`
-	Studio    string     `xml:"studio"`
-	Country   string     `xml:"country"`
-	TMDbID    int        `xml:"tmdbid"`
-	DoubanID  string     `xml:"doubanid"`
-	Genres    []string   `xml:"genre"`
-	Directors []string   `xml:"director"`
-	Actors    []NFOActor `xml:"actor"`
+	XMLName      xml.Name   `xml:"movie"`
+	Title        string     `xml:"title"`
+	OrigTitle    string     `xml:"originaltitle"`
+	SortTitle    string     `xml:"sorttitle"`
+	Year         int        `xml:"year"`
+	Premiered    string     `xml:"premiered"`
+	ReleaseDate  string     `xml:"releasedate"`
+	Release      string     `xml:"release"`
+	Plot         string     `xml:"plot"`
+	Outline      string     `xml:"outline"`
+	OriginalPlot string     `xml:"originalplot"`
+	Tagline      string     `xml:"tagline"`
+	Rating       float64    `xml:"rating"`
+	Runtime      int        `xml:"runtime"`
+	Num          string     `xml:"num"`
+	MPAA         string     `xml:"mpaa"`
+	CustomRating string     `xml:"customrating"`
+	CountryCode  string     `xml:"countrycode"`
+	Studio       string     `xml:"studio"`
+	Maker        string     `xml:"maker"`
+	Publisher    string     `xml:"publisher"`
+	Label        string     `xml:"label"`
+	Website      string     `xml:"website"`
+	Country      string     `xml:"country"`
+	TMDbID       int        `xml:"tmdbid"`
+	DoubanID     string     `xml:"doubanid"`
+	Genres       []string   `xml:"genre"`
+	Tags         []string   `xml:"tag"`
+	Directors    []string   `xml:"director"`
+	Actors       []NFOActor `xml:"actor"`
 }
 
 // NFOTVShow 剧集 NFO XML 根元素
@@ -413,14 +427,31 @@ func (s *NFOService) applyMovieNFOToMedia(media *model.Media, nfo *NFOMovie) {
 	if nfo.OrigTitle != "" {
 		media.OrigTitle = nfo.OrigTitle
 	}
+	if nfo.SortTitle != "" {
+		media.SortTitle = nfo.SortTitle
+	}
 	if nfo.Year > 0 {
 		media.Year = nfo.Year
 	}
 	if nfo.Premiered != "" {
 		media.Premiered = nfo.Premiered
 	}
+	// 发行日期优先级：releasedate > release > premiered
+	if nfo.ReleaseDate != "" {
+		media.ReleaseDate = nfo.ReleaseDate
+	} else if nfo.Release != "" {
+		media.ReleaseDate = nfo.Release
+	} else if nfo.Premiered != "" {
+		media.ReleaseDate = nfo.Premiered
+	}
 	if nfo.Plot != "" {
 		media.Overview = nfo.Plot
+	}
+	if nfo.Outline != "" {
+		media.Outline = nfo.Outline
+	}
+	if nfo.OriginalPlot != "" {
+		media.OriginalPlot = nfo.OriginalPlot
 	}
 	if nfo.Rating > 0 {
 		media.Rating = nfo.Rating
@@ -431,11 +462,38 @@ func (s *NFOService) applyMovieNFOToMedia(media *model.Media, nfo *NFOMovie) {
 	if len(nfo.Genres) > 0 {
 		media.Genres = strings.Join(nfo.Genres, ",")
 	}
+	if len(nfo.Tags) > 0 {
+		media.Tags = strings.Join(nfo.Tags, ",")
+	}
 	if nfo.Tagline != "" {
 		media.Tagline = nfo.Tagline
 	}
 	if nfo.Studio != "" {
 		media.Studio = nfo.Studio
+	}
+	if nfo.Maker != "" {
+		media.Maker = nfo.Maker
+	}
+	if nfo.Publisher != "" {
+		media.Publisher = nfo.Publisher
+	}
+	if nfo.Label != "" {
+		media.Label = nfo.Label
+	}
+	if nfo.Num != "" {
+		media.Num = nfo.Num
+	}
+	// MPAA 优先级：mpaa > customrating
+	if nfo.MPAA != "" {
+		media.MPAA = nfo.MPAA
+	} else if nfo.CustomRating != "" {
+		media.MPAA = nfo.CustomRating
+	}
+	if nfo.CountryCode != "" {
+		media.CountryCode = nfo.CountryCode
+	}
+	if nfo.Website != "" {
+		media.Website = nfo.Website
 	}
 	if nfo.Country != "" {
 		media.Country = nfo.Country
