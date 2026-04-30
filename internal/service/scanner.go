@@ -576,6 +576,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 
 	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
 	var pendingList []pendingMedia
+	// 【火力全开 A】收集"已存在但需要更新"的文件，后续统一走 parallelProbe 并行探测
+	// 避免 walkFn 内同步调用 FFprobe 拖慢整个遍历过程。
+	var updateList []pendingMedia
+	// 【火力全开 B】细粒度锁：walkFn 原先整体加锁串行，现在仅对共享容器写入加锁，
+	// 把磁盘 IO（readdir）和 CPU 操作（标题解析/正则匹配）放在锁外并行。
+	var collectMu sync.Mutex
+	// existingPaths 并发读写也需要保护（来自多路径并行遍历场景）
+	var existingMu sync.Mutex
 
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -589,12 +597,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			}
 			return nil
 		}
-		totalFiles++
+		// 计数类字段放到最后统一用细粒度锁保护，中间先做无锁过滤
 		ext := strings.ToLower(filepath.Ext(path))
 		if !supportedExts[ext] {
+			collectMu.Lock()
+			totalFiles++
+			collectMu.Unlock()
 			return nil
 		}
-		videoFiles++
 
 		// P0: 文件大小过滤（启用 MinFileSize 配置）
 		// 注意：.strm 是纯文本的远程流索引文件（通常仅几百字节），
@@ -604,6 +614,9 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			if info.Size() < minBytes {
 				s.logger.Debugf("跳过过小文件(%dMB < %dMB): %s",
 					info.Size()/(1024*1024), library.MinFileSize, path)
+				collectMu.Lock()
+				totalFiles++
+				collectMu.Unlock()
 				return nil
 			}
 		}
@@ -611,45 +624,69 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		// P0: 排除 extras 路径和 Emby 特典后缀文件
 		if isExtrasPath(path) || isExtrasFile(filepath.Base(path)) {
 			s.logger.Debugf("跳过非正片内容: %s", path)
+			collectMu.Lock()
+			totalFiles++
+			collectMu.Unlock()
 			return nil
 		}
 
 		// P2: 内存查重（替代逐个 DB 查询）
+		// 【火力全开 A】已存在文件的 probe 不再在 walkFn 里同步执行，
+		// 而是收集到 updateList，待 walk 结束后与 pendingList 合并走 parallelProbe。
 		if existingPaths != nil {
-			if existingPaths[path] {
-				// 标记此路径已在本次扫描中被磁盘命中（收尾清理时据此判断哪些 DB 记录已失效）
+			existingMu.Lock()
+			hit := existingPaths[path]
+			if hit {
 				delete(existingPaths, path)
+			}
+			existingMu.Unlock()
+			if hit {
 				// 文件已存在：增量扫描模式下，如果文件未修改则跳过
 				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
 					skippedExist++
+					collectMu.Unlock()
 					return nil
 				}
-				// 文件已变更，更新文件大小和媒体信息
-				skippedUpdated++
+				// 文件已变更 → 先查 DB 记录，但不在这里 probe
 				existing, findErr := s.mediaRepo.FindByFilePath(path)
-				if findErr == nil {
+				if findErr == nil && existing != nil {
 					existing.FileSize = info.Size()
-					s.probeMediaInfo(existing)
-					s.scanExternalSubtitles(existing)
-					s.mediaRepo.Update(existing)
-					s.logger.Debugf("更新已有媒体: %s", path)
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
+					skippedUpdated++
+					updateList = append(updateList, pendingMedia{media: existing, path: path, info: info})
+					collectMu.Unlock()
+				} else {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
+					collectMu.Unlock()
 				}
 				return nil
 			}
 		} else {
 			// 回退：逐个查询
 			existing, findErr := s.mediaRepo.FindByFilePath(path)
-			if findErr == nil {
+			if findErr == nil && existing != nil {
 				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
 					skippedExist++
+					collectMu.Unlock()
 					return nil
 				}
-				skippedUpdated++
 				existing.FileSize = info.Size()
-				s.probeMediaInfo(existing)
-				s.scanExternalSubtitles(existing)
-				s.mediaRepo.Update(existing)
-				s.logger.Debugf("更新已有媒体: %s", path)
+				collectMu.Lock()
+				totalFiles++
+				videoFiles++
+				skippedUpdated++
+				updateList = append(updateList, pendingMedia{media: existing, path: path, info: info})
+				collectMu.Unlock()
 				return nil
 			}
 		}
@@ -692,7 +729,11 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 
 		// 收集到待处理列表（FFprobe 后续并行处理）
+		collectMu.Lock()
+		totalFiles++
+		videoFiles++
 		pendingList = append(pendingList, pendingMedia{media: media, path: path, info: info})
+		collectMu.Unlock()
 		return nil
 	}
 
@@ -710,28 +751,23 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	} else {
 		var (
 			walkWg   sync.WaitGroup
-			walkMu   sync.Mutex // 保护 pendingList 与 err 写入
+			errMu    sync.Mutex // 仅保护 firstErr 写入（walkFn 自身已线程安全）
 			firstErr error
 		)
-		// 原 walkFn 直接 append pendingList，存在并发写冲突，
-		// 用锁包一层保证并发安全。
-		concurrentWalkFn := func(path string, info os.FileInfo, e error) error {
-			walkMu.Lock()
-			defer walkMu.Unlock()
-			return walkFn(path, info, e)
-		}
+		// 【火力全开 B】walkFn 内部已使用细粒度锁（collectMu / existingMu）保护共享变量，
+		// 这里不再用大锁包裹整个回调，磁盘 readdir 与文件处理在不同根路径间完全并行。
 		for _, root := range allPaths {
 			root := root
 			walkWg.Add(1)
 			go func() {
 				defer walkWg.Done()
-				if walkErr := s.walkLibraryPath(root, concurrentWalkFn); walkErr != nil {
+				if walkErr := s.walkLibraryPath(root, walkFn); walkErr != nil {
 					s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
-					walkMu.Lock()
+					errMu.Lock()
 					if firstErr == nil {
 						firstErr = walkErr
 					}
-					walkMu.Unlock()
+					errMu.Unlock()
 				}
 			}()
 		}
@@ -742,10 +778,30 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	}
 
 	// P2: 并行 FFprobe 探测 + 批量入库
-	if len(pendingList) > 0 {
-		s.logger.Infof("开始并行 FFprobe 探测 %d 个新文件", len(pendingList))
-		s.parallelProbe(pendingList)
+	// 【火力全开 A】已存在但需更新的文件(updateList) 也一并走并行 probe，
+	// 与 pendingList 合并后只跑一次 Worker Pool，把 CPU 全部吃满。
+	if len(pendingList) > 0 || len(updateList) > 0 {
+		combined := make([]pendingMedia, 0, len(pendingList)+len(updateList))
+		combined = append(combined, pendingList...)
+		combined = append(combined, updateList...)
+		s.logger.Infof("开始并行 FFprobe 探测 %d 个文件 (新增: %d, 更新: %d)",
+			len(combined), len(pendingList), len(updateList))
+		s.parallelProbe(combined)
+	}
 
+	// 【火力全开 A】处理已更新文件：probe 已在上面并行完成，这里只做字幕扫描 + DB 更新
+	if len(updateList) > 0 {
+		for _, pm := range updateList {
+			s.scanExternalSubtitles(pm.media)
+			if err := s.mediaRepo.Update(pm.media); err != nil {
+				s.logger.Warnf("更新媒体失败: %s, 错误: %v", pm.path, err)
+				continue
+			}
+			s.logger.Debugf("更新已有媒体: %s", pm.path)
+		}
+	}
+
+	if len(pendingList) > 0 {
 		// P2: 堆叠分组 — 为同一 StackGroup 的文件分配相同的 VersionGroup
 		stackGroups := make(map[string][]*pendingMedia)
 		for i := range pendingList {
