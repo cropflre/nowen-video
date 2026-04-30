@@ -71,6 +71,10 @@ desktop/src-tauri/resources/mpv/
 desktop/src-tauri/resources/shaders/
 desktop/src-tauri/resources/fonts/
 desktop/src-tauri/resources/yt-dlp.exe
+# 但保留占位 .gitkeep（tauri-build 要求 glob 至少命中 1 个文件）
+!desktop/src-tauri/resources/fonts/.gitkeep
+!desktop/src-tauri/resources/mpv/.gitkeep
+!desktop/src-tauri/resources/shaders/.gitkeep
 
 
 # 临时下载的二进制包
