@@ -389,6 +389,29 @@ export const desktop = {
     await invoke<void>('window_close')
   },
 
+  // ============ M6: PiP & 始终置顶 ============
+
+  /** 进入画中画：窗口缩小到右下 + 去边框 + 始终置顶 */
+  async windowPipEnter(): Promise<void> {
+    await invoke<void>('window_pip_enter')
+  },
+
+  /** 退出画中画：恢复到进入 PiP 之前的尺寸/位置/装饰 */
+  async windowPipExit(): Promise<void> {
+    await invoke<void>('window_pip_exit')
+  },
+
+  /** 查询当前是否处于 PiP */
+  async windowPipIsActive(): Promise<boolean> {
+    const r = await invoke<boolean>('window_pip_is_active')
+    return Boolean(r)
+  },
+
+  /** 设置窗口始终置顶 */
+  async windowSetAlwaysOnTop(enabled: boolean): Promise<void> {
+    await invoke<void>('window_set_always_on_top', { enabled })
+  },
+
   /** 启用/禁用窗口 Mica/Acrylic 特效 */
   async windowSetEffect(enabled: boolean): Promise<void> {
     await invoke<void>('window_set_effect', { enabled })

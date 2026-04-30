@@ -13,7 +13,7 @@
  */
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Pause, Play, Volume2, VolumeX, Maximize, Subtitles, Sparkles, Loader2 } from 'lucide-react'
+import { Pause, Play, Volume2, VolumeX, Maximize, Subtitles, Sparkles, Loader2, PictureInPicture2, Pin } from 'lucide-react'
 import { desktop, PlayOptions, MpvVideoInfo } from './bridge'
 import Anime4KPanel, { Anime4KLevel } from './Anime4KPanel'
 
@@ -85,6 +85,9 @@ function MpvEmbedPlayerInner(
   const [videoInfo, setVideoInfo] = useState<MpvVideoInfo | null>(null)
   const [seeking, setSeeking] = useState(false)
   const [seekPreview, setSeekPreview] = useState<number | null>(null)
+  // M6: PiP & 置顶
+  const [pipActive, setPipActive] = useState(false)
+  const [pinned, setPinned] = useState(false)
 
   // ========== 基础命令封装 ==========
   const cmd = useCallback(
@@ -331,6 +334,34 @@ function MpvEmbedPlayerInner(
     [cmd, resetHideTimer],
   )
 
+  // M6: 画中画切换
+  const togglePip = useCallback(async () => {
+    try {
+      if (pipActive) {
+        await desktop.windowPipExit()
+        setPipActive(false)
+      } else {
+        await desktop.windowPipEnter()
+        setPipActive(true)
+      }
+    } catch (e) {
+      console.warn('[mpv] PiP 切换失败:', e)
+    }
+    resetHideTimer()
+  }, [pipActive, resetHideTimer])
+
+  // M6: 始终置顶切换
+  const togglePin = useCallback(async () => {
+    try {
+      const next = !pinned
+      await desktop.windowSetAlwaysOnTop(next)
+      setPinned(next)
+    } catch (e) {
+      console.warn('[mpv] 始终置顶切换失败:', e)
+    }
+    resetHideTimer()
+  }, [pinned, resetHideTimer])
+
   // ========== 渲染降级 ==========
   if (!desktop.isDesktop) {
     return (
@@ -548,6 +579,32 @@ function MpvEmbedPlayerInner(
             >
               <Sparkles className="w-4 h-4" />
               {anime4kLevel === 'off' ? 'Anime4K' : `Anime4K · ${anime4kLevel.toUpperCase()}`}
+            </button>
+
+            {/* 始终置顶（PiP 姐妹态） */}
+            <button
+              onClick={togglePin}
+              className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
+                pinned
+                  ? 'bg-[color:var(--neon-blue,_#00F0FF)]/25 text-[color:var(--neon-blue,_#00F0FF)]'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title={pinned ? '取消置顶' : '始终置顶'}
+            >
+              <Pin className="w-4 h-4" />
+            </button>
+
+            {/* 画中画 */}
+            <button
+              onClick={togglePip}
+              className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
+                pipActive
+                  ? 'bg-[color:var(--neon-blue,_#00F0FF)]/25 text-[color:var(--neon-blue,_#00F0FF)]'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title={pipActive ? '退出画中画' : '画中画'}
+            >
+              <PictureInPicture2 className="w-4 h-4" />
             </button>
 
             {/* 全屏 */}

@@ -246,6 +246,11 @@ fn main() {
             commands::window_is_maximized,
             commands::window_close,
             commands::window_set_effect,
+            // M6: PiP & 始终置顶
+            commands::window_pip_enter,
+            commands::window_pip_exit,
+            commands::window_pip_is_active,
+            commands::window_set_always_on_top,
         ]);
 
     builder
