@@ -129,14 +129,17 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
       genres: s.genres,
       media_type: 'episode',
       series_id: s.id,
-      // 以下字段轮播不使用，填默认�?
+      // 以下字段轮播不使用，填默认值
       runtime: 0, file_path: '', file_size: 0, video_codec: '', audio_codec: '',
       resolution: '', duration: 0, subtitle_paths: '',
       tmdb_id: s.tmdb_id || 0, douban_id: s.douban_id || '', bangumi_id: s.bangumi_id || 0,
       country: s.country || '', language: s.language || '', tagline: '',
       studio: s.studio || '', trailer_url: '',
-      season_num: 0, episode_num: 0, episode_title: '', created_at: s.created_at || '',
-    }
+      // NFO 完整建模字段
+      num: '', sort_title: '', outline: '', original_plot: '',
+      mpaa: '', country_code: '', maker: '', publisher: '', label: '',
+      tags: '', website: '', release_date: '', premiered: '',
+      season_num: 0, episode_num: 0, episode_title: '', created_at: s.created_at || '',    }
     return { media: pseudoMedia, score: 0, reason: fallbackReason }
   }
   return null

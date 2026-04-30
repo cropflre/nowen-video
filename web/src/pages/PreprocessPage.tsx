@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { pageVariants, staggerContainerVariants, staggerItemVariants, modalOverlayVariants, modalContentVariants, easeSmooth, durations } from '@/lib/motion'
+import { pageVariants, staggerContainerVariants, staggerItemVariants, easeSmooth, durations } from '@/lib/motion'
 
 // ==================== P3: 数值变化动画 Hook ====================
 function useAnimatedCounter(value: number, duration = 600): number {
@@ -75,7 +75,6 @@ import {
   Pause,
   RotateCcw,
   Trash2,
-  X,
   XCircle,
   Cpu,
   HardDrive,
