@@ -61,3 +61,12 @@ android/.cxx/
 # 第三方参考源码（不纳入本仓库）
 mdcx-master/
 
+# Tauri 桌面端构建产物
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/bin/
+
+
+# 临时下载的二进制包
+ffmpeg.zip
+*.zip
