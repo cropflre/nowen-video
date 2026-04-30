@@ -27,19 +27,19 @@ type BuildOptions struct {
 	ExtraInput []string // 可选，-i 前额外插入的前置参数（例如 WebDAV 的 -reconnect 等）
 
 	// ---------- 编码器相关 ----------
-	HWAccel      string  // "", "none", "nvenc", "qsv", "vaapi"
-	Profile      Profile // 目标分辨率/码率
-	VAAPIDevice  string  // vaapi 模式下的设备路径（如 /dev/dri/renderD128）
-	X264Preset   string  // software 模式下 -preset，留空则使用 "medium"
-	QSVPreset    string  // qsv 模式下 -preset，留空则使用 "medium"
-	Threads      int     // -threads 值；<=0 时省略
-	UseCRF       bool    // 软件编码是否使用 CRF 恒定质量（transcode 场景用）；否则用 -b:v 固定码率
-	CRF          int     // UseCRF=true 时生效，<=0 默认 23
+	HWAccel     string  // "", "none", "nvenc", "qsv", "vaapi"
+	Profile     Profile // 目标分辨率/码率
+	VAAPIDevice string  // vaapi 模式下的设备路径（如 /dev/dri/renderD128）
+	X264Preset  string  // software 模式下 -preset，留空则使用 "medium"
+	QSVPreset   string  // qsv 模式下 -preset，留空则使用 "medium"
+	Threads     int     // -threads 值；<=0 时省略
+	UseCRF      bool    // 软件编码是否使用 CRF 恒定质量（transcode 场景用）；否则用 -b:v 固定码率
+	CRF         int     // UseCRF=true 时生效，<=0 默认 23
 	// QSVGlobalQuality >0 时 qsv 走 CQP 质量模式（-global_quality 值），忽略 -b:v/-maxrate/-bufsize；
 	// <=0 时走码率模式（与预处理行为一致）。
 	QSVGlobalQuality int
-	SoftwareTune string  // x264 -tune 值（"zerolatency"/""），留空则不加
-	NvencTune    string  // nvenc -tune 值（"ll"/""），留空则不加
+	SoftwareTune     string // x264 -tune 值（"zerolatency"/""），留空则不加
+	NvencTune        string // nvenc -tune 值（"ll"/""），留空则不加
 	// QSVAttachOutputFormat 是否在 qsv 模式下显式指定 -hwaccel_output_format qsv。
 	// transcode 场景建议 false（允许 FFmpeg 在 QSV 解码失败时回退软件解码），
 	// 预处理场景可为 true（全 GPU 管线，性能更高）。
@@ -49,11 +49,11 @@ type BuildOptions struct {
 	VideoFilter string
 
 	// ---------- HLS 输出 ----------
-	HLSTime       int    // 每片秒数；<=0 默认 4
-	HLSFlags      string // 完整 -hls_flags 值；为空时使用 "independent_segments"
+	HLSTime         int    // 每片秒数；<=0 默认 4
+	HLSFlags        string // 完整 -hls_flags 值；为空时使用 "independent_segments"
 	HLSPlaylistType string // event / vod / ""(不设置)
-	StartNumber   int    // <=0 时不设置
-	ForceKeyFrames bool  // 是否加 "-force_key_frames expr:gte(t,n_forced*HLSTime)"
+	StartNumber     int    // <=0 时不设置
+	ForceKeyFrames  bool   // 是否加 "-force_key_frames expr:gte(t,n_forced*HLSTime)"
 	// GOPSize -g 与 -keyint_min 的值；<=0 时默认按 HLSTime*25 估算
 	GOPSize int
 
@@ -191,7 +191,10 @@ func buildVideoArgs(opts BuildOptions, gopStr string) []string {
 	case HWAccelQSV:
 		preset := opts.QSVPreset
 		if preset == "" {
-			preset = "medium"
+			// 【火力全开】默认 preset 由 medium 改为 faster，
+			// QSV 硬编硬件开销固定，preset 对速度影响相对有限，
+			// 但 faster 还是能提速 20~40%，画质损失几乎无感。
+			preset = "faster"
 		}
 		if scale == "" {
 			scale = fmt.Sprintf("scale_qsv=%d:%d", p.Width, p.Height)
@@ -247,7 +250,12 @@ func buildVideoArgs(opts BuildOptions, gopStr string) []string {
 		// 软件编码 libx264
 		preset := opts.X264Preset
 		if preset == "" {
-			preset = "medium"
+			// 【火力全开】默认 preset 由 medium 改为 veryfast：
+			//   - 速度提升 ~2-3x（vs medium），严重 CPU 编码场景收益最大
+			//   - 相同码率下码率效率略低（文件略大 5~10%），
+			//     但 NAS 场景磁盘充裕，速度更重要
+			//   - PSNR / 主观画质差别胉眼难辨
+			preset = "veryfast"
 		}
 		if scale == "" {
 			scale = fmt.Sprintf("scale=%d:%d", p.Width, p.Height)

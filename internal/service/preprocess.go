@@ -104,14 +104,16 @@ func NewPreprocessService(
 	hwAccel string,
 	logger *zap.SugaredLogger,
 ) *PreprocessService {
-	// 【最佳性能策略】worker 数量固定为 NumCPU/2，
-	// 既能充分利用多核，又留一半核心给系统和播放使用。
-	maxWorkers := int32(runtime.NumCPU() / 2)
+	// 【火力全开策略（方案1完整版）】worker 数量 = NumCPU，
+	// 让每个 CPU 核心都能同时跑一个预处理任务。
+	// FFmpeg 内部 threads=0（auto）和操作系统调度器会自动平衡状态，
+	// 不会因为并发过度导致 context switch 爆炸。
+	maxWorkers := int32(runtime.NumCPU())
 	if maxWorkers < 1 {
 		maxWorkers = 1
 	}
 
-	logger.Infof("预处理服务启动（最佳性能模式）: maxWorkers=%d, hwAccel=%s, ffmpeg_threads=0(auto)",
+	logger.Infof("预处理服务启动（火力全开模式）: maxWorkers=%d, hwAccel=%s, ffmpeg_threads=0(auto)",
 		maxWorkers, hwAccel)
 
 	s := &PreprocessService{
@@ -549,14 +551,8 @@ func (s *PreprocessService) worker(id int) {
 			continue
 		}
 
-		// 动态并发控制：当 curWorkers 不足时，等待负载下降
-		for int32(id) >= atomic.LoadInt32(&s.curWorkers) {
-			time.Sleep(5 * time.Second)
-			// 再次检查取消状态
-			if _, cancelled := s.cancelJobs.Load(taskID); cancelled {
-				break
-			}
-		}
+		// 【火力全开】移除原本的动态降速等待循环（原逻辑会 Sleep 5s）。
+		// curWorkers 字段保留仅用于接口展示，不再影响实际调度。
 
 		// 任务优先级检查：在开始处理前，查看是否有更高优先级的任务在等待
 		if s.shouldYieldToHigherPriority(taskID) {

@@ -696,12 +696,48 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		return nil
 	}
 
-	// 遍历所有媒体路径（支持多文件夹）
-	for _, root := range allPaths {
-		if walkErr := s.walkLibraryPath(root, walkFn); walkErr != nil {
-			s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
-			err = walkErr
-			// 继续扫描其他路径，不立即返回
+	// 【火力全开】多路径并行遍历：
+	// 之前串行 for 导致多媒体库 / 多根目录只能一个个扫，
+	// 遇到慢盘（网络挂载、WebDAV、外置 USB）会拖死整体进度。
+	// 改为每条根路径一个 goroutine，IO 并行打满。
+	if len(allPaths) <= 1 {
+		for _, root := range allPaths {
+			if walkErr := s.walkLibraryPath(root, walkFn); walkErr != nil {
+				s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
+				err = walkErr
+			}
+		}
+	} else {
+		var (
+			walkWg   sync.WaitGroup
+			walkMu   sync.Mutex // 保护 pendingList 与 err 写入
+			firstErr error
+		)
+		// 原 walkFn 直接 append pendingList，存在并发写冲突，
+		// 用锁包一层保证并发安全。
+		concurrentWalkFn := func(path string, info os.FileInfo, e error) error {
+			walkMu.Lock()
+			defer walkMu.Unlock()
+			return walkFn(path, info, e)
+		}
+		for _, root := range allPaths {
+			root := root
+			walkWg.Add(1)
+			go func() {
+				defer walkWg.Done()
+				if walkErr := s.walkLibraryPath(root, concurrentWalkFn); walkErr != nil {
+					s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
+					walkMu.Lock()
+					if firstErr == nil {
+						firstErr = walkErr
+					}
+					walkMu.Unlock()
+				}
+			}()
+		}
+		walkWg.Wait()
+		if firstErr != nil {
+			err = firstErr
 		}
 	}
 
@@ -801,11 +837,10 @@ type pendingMedia struct {
 
 // parallelProbe 使用 Worker Pool 并行执行 FFprobe 探测
 func (s *ScannerService) parallelProbe(items []pendingMedia) {
-	// 并发数 = min(CPU核数, 4)，避免 FFprobe 进程过多导致系统负载过高
+	// 【火力全开】并发数 = NumCPU，让 FFprobe 用满所有 CPU 核心。
+	// FFprobe 主要瓶颈是磁盘 IO 与容器解析，单实例占用很低，
+	// 多开不会压爆 CPU，反而能把 NVMe/SSD 的 IO 并发打满。
 	workers := runtime.NumCPU()
-	if workers > 4 {
-		workers = 4
-	}
 	if workers < 1 {
 		workers = 1
 	}

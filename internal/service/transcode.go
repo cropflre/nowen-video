@@ -161,8 +161,8 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", ts.hwAccel)
 	})
 
-	// 【最佳性能策略】转码 worker 数量固定为 NumCPU/2，保留一半核心给系统与播放。
-	transcodeWorkers := runtime.NumCPU() / 2
+	// 【火力全开策略】转码 worker 数量 = NumCPU，把所有核心都用上。
+	transcodeWorkers := runtime.NumCPU()
 	if transcodeWorkers < 1 {
 		transcodeWorkers = 1
 	}
