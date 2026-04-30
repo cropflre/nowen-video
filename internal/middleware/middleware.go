@@ -128,6 +128,76 @@ func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.Han
 	}
 }
 
+// JWTAuthAllowExpired 专用于 refresh 场景的 JWT 中间件：
+// 允许签名合法但 exp 已过期的 token 通过，其它所有校验（TokenVersion、用户禁用）保持严格。
+// 目的：用户打开应用时若 token 刚好过期，前端可借助此接口续签一次，避免被强制踢回登录页；
+// 而密码变更/管理员封号场景下 token_version 会递增或 disabled=true，旧 token 依旧无法续签。
+func JWTAuthAllowExpired(secret string, validator TokenVersionProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var tokenStr string
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenStr == authHeader {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌格式错误"})
+				c.Abort()
+				return
+			}
+		} else {
+			tokenStr = c.Query("token")
+		}
+		if tokenStr == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少认证令牌"})
+			c.Abort()
+			return
+		}
+
+		claims := &Claims{}
+		// 注意：使用 ParseUnverified 仍不安全；这里用带签名校验的 Parse，再单独容忍 exp 过期
+		_, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(secret), nil
+		})
+		if err != nil {
+			// 仅放行 "token 过期"这一种错误；签名错误/格式错误等仍然拒绝
+			if !strings.Contains(err.Error(), "token is expired") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效"})
+				c.Abort()
+				return
+			}
+		}
+		if claims.UserID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效"})
+			c.Abort()
+			return
+		}
+
+		// 依旧做服务端校验：禁用 + TokenVersion
+		if validator != nil {
+			curVersion, disabled, verr := validator(claims.UserID)
+			if verr != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在或已被删除"})
+				c.Abort()
+				return
+			}
+			if disabled {
+				c.JSON(http.StatusForbidden, gin.H{"error": "账号已被禁用，请联系管理员"})
+				c.Abort()
+				return
+			}
+			if claims.TokenVersion < curVersion {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "登录凭证已失效，请重新登录"})
+				c.Abort()
+				return
+			}
+		}
+
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
+		c.Next()
+	}
+}
+
 // AdminOnly 管理员权限中间件
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {

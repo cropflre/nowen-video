@@ -120,11 +120,19 @@ func main() {
 		sugar.Fatal("JWT Secret 未配置或自动生成失败，无法启动")
 	}
 	if cfg.IsDefaultJWTSecret() {
-		sugar.Warn("⚠️  正在使用自动生成的 JWT Secret，建议在配置文件中设置固定值以避免重启后令牌失效")
+		sugar.Infof("ℹ️  使用自动生成的 JWT Secret，已持久化到 %s/.jwt_secret（重启不会导致登录失效）。如需自定义请在配置文件中设置 secrets.jwt_secret。", cfg.App.DataDir)
 	}
 
 	// 带服务端校验的 JWT 中间件：支持 TokenVersion 吸销 + 封禁账号拦截
 	jwtMiddleware := middleware.JWTAuthWithValidator(
+		cfg.Secrets.JWTSecret,
+		services.Auth.ValidateTokenVersion,
+	)
+
+	// Refresh 专用中间件：允许"签名合法但已过期"的 token 进行一次续签，
+	// 避免用户打开应用时正好 token 过期而被直接踢回登录页。
+	// 仍会校验 TokenVersion / 禁用状态，因此密码变更/封号后旧 token 仍无法续签。
+	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(
 		cfg.Secrets.JWTSecret,
 		services.Auth.ValidateTokenVersion,
 	)
@@ -181,10 +189,11 @@ func main() {
 
 	// 需要认证的auth路由
 	authProtected := r.Group("/api/auth")
-	authProtected.Use(jwtMiddleware)
 	{
-		authProtected.POST("/refresh", handlers.Auth.RefreshToken)
-		authProtected.PUT("/password", handlers.Auth.ChangePassword)
+		// refresh 用宽松中间件：允许过期 token 续签
+		authProtected.POST("/refresh", jwtRefreshMiddleware, handlers.Auth.RefreshToken)
+		// 改密要求严格校验
+		authProtected.PUT("/password", jwtMiddleware, handlers.Auth.ChangePassword)
 	}
 
 	// PWA 资源文件（公开访问）
