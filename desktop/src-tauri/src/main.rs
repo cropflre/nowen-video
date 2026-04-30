@@ -6,6 +6,7 @@ mod commands;
 mod embed_window;
 mod file_assoc;
 mod mpv;
+mod resources;
 mod settings;
 mod sidecar;
 mod strategy;
@@ -223,6 +224,8 @@ fn main() {
             commands::mpv_embed_command,
             commands::mpv_embed_set_property,
             commands::mpv_embed_destroy,
+            commands::mpv_embed_set_anime4k,
+            commands::mpv_embed_video_info,
             // 自动更新（M5）
             commands::check_update,
             commands::install_update,

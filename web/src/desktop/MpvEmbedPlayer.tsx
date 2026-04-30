@@ -14,7 +14,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Pause, Play, Volume2, VolumeX, Maximize, Subtitles, Sparkles, Loader2 } from 'lucide-react'
-import { desktop, PlayOptions } from './bridge'
+import { desktop, PlayOptions, MpvVideoInfo } from './bridge'
 import Anime4KPanel, { Anime4KLevel } from './Anime4KPanel'
 
 interface Props {
@@ -81,6 +81,11 @@ function MpvEmbedPlayerInner(
   const [showAnime4KPanel, setShowAnime4KPanel] = useState(false)
   const hideTimer = useRef<number | null>(null)
 
+  // 实时视频信息（2s 轮询 libmpv）
+  const [videoInfo, setVideoInfo] = useState<MpvVideoInfo | null>(null)
+  const [seeking, setSeeking] = useState(false)
+  const [seekPreview, setSeekPreview] = useState<number | null>(null)
+
   // ========== 基础命令封装 ==========
   const cmd = useCallback(
     (command: string, args?: string[]) =>
@@ -136,49 +141,17 @@ function MpvEmbedPlayerInner(
     [cmd, setProp],
   )
 
-  // ========== Anime4K 切换 ==========
+  // ========== Anime4K 切换（直接走 Rust 侧命令，避免前端拼路径） ==========
   const applyAnime4K = useCallback(
     async (level: Anime4KLevel) => {
-      // 三档预设（对应 resources/shaders 里的官方 shader 组合）
-      const presets: Record<Anime4KLevel, string[]> = {
-        off: [],
-        // A 组：面向 Anime4K_Restore + Upscale，最省性能（适合 1080p->2K）
-        low: [
-          'Anime4K_Clamp_Highlights.glsl',
-          'Anime4K_Restore_CNN_M.glsl',
-          'Anime4K_Upscale_CNN_x2_M.glsl',
-        ],
-        // B 组：A + 额外 deblur/denoise（中等开销，适合 720p->1080p 老番）
-        medium: [
-          'Anime4K_Clamp_Highlights.glsl',
-          'Anime4K_Restore_CNN_VL.glsl',
-          'Anime4K_Upscale_CNN_x2_VL.glsl',
-        ],
-        // C 组：最强质量 VL + AutoDownscale（高 GPU 占用，适合 RTX 3060 以上）
-        high: [
-          'Anime4K_Clamp_Highlights.glsl',
-          'Anime4K_Restore_CNN_UL.glsl',
-          'Anime4K_Upscale_CNN_x2_UL.glsl',
-          'Anime4K_AutoDownscalePre_x2.glsl',
-          'Anime4K_AutoDownscalePre_x4.glsl',
-          'Anime4K_Upscale_CNN_x2_M.glsl',
-        ],
-      }
-
-      const list = presets[level]
-      if (list.length === 0) {
-        // 清空 shader 链
-        await setProp('glsl-shaders', '')
+      const ok = await desktop.mpvEmbedSetAnime4K({ sessionId, level })
+      if (ok) {
+        setAnime4kLevel(level)
       } else {
-        // mpv 的 glsl-shaders 是 path 列表，分隔符 Windows 用 ; 其它 :
-        // resources/shaders 会在运行时被 Tauri bundle 到 exe 同级
-        const sep = ';' // Windows，若跨平台需探测
-        const joined = list.map((f) => `resources/shaders/${f}`).join(sep)
-        await setProp('glsl-shaders', joined)
+        console.warn('[mpv] 切换 Anime4K 档位失败:', level)
       }
-      setAnime4kLevel(level)
     },
-    [setProp],
+    [sessionId],
   )
 
   // ========== 启动嵌入播放 ==========
@@ -267,6 +240,35 @@ function MpvEmbedPlayerInner(
     }
   }, [ready])
 
+  // ========== 视频信息轮询（进度条 + HDR 徽章） ==========
+  useEffect(() => {
+    if (!ready || !desktop.isDesktop) return
+    let canceled = false
+
+    const tick = async () => {
+      if (canceled) return
+      try {
+        const info = await desktop.mpvEmbedVideoInfo(sessionId)
+        if (info && !canceled) {
+          setVideoInfo(info)
+          // 同步 paused/muted/volume 状态（外部快捷键等改了属性也能同步回 UI）
+          if (info.paused !== paused) setPaused(info.paused)
+          if (info.mute !== muted) setMuted(info.mute)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => {
+      canceled = true
+      window.clearInterval(id)
+    }
+    // 仅依赖 ready + sessionId，paused/muted 仅用作入参比较
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, sessionId])
+
   // ========== 控制条自动隐藏 ==========
   const resetHideTimer = useCallback(() => {
     setControlsVisible(true)
@@ -319,6 +321,15 @@ function MpvEmbedPlayerInner(
     await desktop.windowToggleFullscreen()
     resetHideTimer()
   }, [resetHideTimer])
+
+  // 绝对位置 seek（给进度条拖拽用）
+  const seekAbsolute = useCallback(
+    async (seconds: number) => {
+      await cmd('seek', [String(seconds), 'absolute'])
+      resetHideTimer()
+    },
+    [cmd, resetHideTimer],
+  )
 
   // ========== 渲染降级 ==========
   if (!desktop.isDesktop) {
@@ -393,6 +404,32 @@ function MpvEmbedPlayerInner(
             <Sparkles className="w-3.5 h-3.5 text-violet-300" />
             libmpv · gpu-next
           </div>
+
+          {/* 视频信息徽章（HDR / 分辨率） */}
+          {videoInfo && videoInfo.width > 0 && (
+            <>
+              {videoInfo.hdr !== 'SDR' && videoInfo.hdr !== '' && (
+                <div
+                  className="text-xs px-2 py-1 rounded-md bg-gradient-to-r from-amber-500/30 to-orange-500/30 backdrop-blur border border-amber-400/40 text-amber-100 font-semibold tracking-wider"
+                  title={`色域 ${videoInfo.primaries} · Gamma ${videoInfo.gamma}`}
+                >
+                  {videoInfo.hdr}
+                </div>
+              )}
+              <div
+                className="text-white/70 text-xs px-2 py-1 rounded-md bg-white/10 backdrop-blur font-mono"
+                title={videoInfo.codec}
+              >
+                {videoInfo.height >= 2160
+                  ? '4K'
+                  : videoInfo.height >= 1440
+                    ? '2K'
+                    : videoInfo.height >= 1080
+                      ? '1080p'
+                      : `${videoInfo.height}p`}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -409,6 +446,51 @@ function MpvEmbedPlayerInner(
           {showAnime4KPanel && (
             <div className="mb-3 flex justify-end">
               <Anime4KPanel value={anime4kLevel} onChange={applyAnime4K} />
+            </div>
+          )}
+
+          {/* 进度条 */}
+          {videoInfo && videoInfo.duration > 0 && (
+            <div className="mb-3 flex items-center gap-3 text-white/80 text-xs font-mono select-none">
+              <span className="w-14 text-right tabular-nums">
+                {formatTime(seeking && seekPreview !== null ? seekPreview : videoInfo.position)}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(1, videoInfo.duration)}
+                step={0.1}
+                value={seeking && seekPreview !== null ? seekPreview : videoInfo.position}
+                onChange={(e) => {
+                  setSeeking(true)
+                  setSeekPreview(Number(e.target.value))
+                }}
+                onMouseUp={async (e) => {
+                  const v = Number((e.target as HTMLInputElement).value)
+                  await seekAbsolute(v)
+                  setSeeking(false)
+                  setSeekPreview(null)
+                }}
+                onTouchEnd={async (e) => {
+                  const v = Number((e.target as HTMLInputElement).value)
+                  await seekAbsolute(v)
+                  setSeeking(false)
+                  setSeekPreview(null)
+                }}
+                className="flex-1 h-1.5 accent-violet-400 cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right,
+                    rgba(167, 139, 250, 0.9) 0%,
+                    rgba(167, 139, 250, 0.9) ${((seeking && seekPreview !== null ? seekPreview : videoInfo.position) / videoInfo.duration) * 100}%,
+                    rgba(255,255,255,0.15) ${((seeking && seekPreview !== null ? seekPreview : videoInfo.position) / videoInfo.duration) * 100}%,
+                    rgba(255,255,255,0.15) 100%)`,
+                  borderRadius: 999,
+                  appearance: 'none',
+                }}
+              />
+              <span className="w-14 tabular-nums text-white/60">
+                {formatTime(videoInfo.duration)}
+              </span>
             </div>
           )}
 
@@ -487,6 +569,16 @@ const MpvEmbedPlayer = forwardRef<MpvEmbedHandle, Props>(MpvEmbedPlayerInner)
 MpvEmbedPlayer.displayName = 'MpvEmbedPlayer'
 
 export default MpvEmbedPlayer
+
+/** 格式化秒数 → mm:ss / hh:mm:ss */
+function formatTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '00:00'
+  const s = Math.floor(sec % 60)
+  const m = Math.floor((sec / 60) % 60)
+  const h = Math.floor(sec / 3600)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+}
 
 /** 便捷的无 ref 控制（通过 sessionId） */
 export const mpvControl = {

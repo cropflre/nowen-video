@@ -146,6 +146,29 @@ pub fn mpv_embed_destroy(app: AppHandle) -> Result<(), String> {
     embed_window::destroy_embed_window(&app).map_err(|e| e.to_string())
 }
 
+// ============ M4 扩展: Anime4K & 视频信息 ============
+
+#[tauri::command]
+pub fn mpv_embed_set_anime4k(
+    state: State<AppState>,
+    session_id: String,
+    level: String,
+) -> Result<(), String> {
+    let mut mpv = state.mpv.lock().map_err(|e| e.to_string())?;
+    mpv.set_embed_anime4k(&session_id, &level)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn mpv_embed_video_info(
+    state: State<AppState>,
+    session_id: String,
+) -> Result<crate::mpv::EmbedVideoInfo, String> {
+    let mpv = state.mpv.lock().map_err(|e| e.to_string())?;
+    mpv.get_embed_video_info(&session_id)
+        .map_err(|e| e.to_string())
+}
+
 // ============ M5: 自动更新 ============
 
 #[tauri::command]
