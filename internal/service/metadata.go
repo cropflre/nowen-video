@@ -1276,11 +1276,8 @@ func (s *MetadataService) saveCreditsForMedia(mediaID string, credits *TMDbCredi
 		if err != nil {
 			continue
 		}
-		// 更新头像
-		if crew.ProfilePath != "" && person.ProfileURL == "" {
-			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
-			s.personRepo.Update(person)
-		}
+		// 下载头像到本地
+		s.downloadPersonProfile(person, crew.ProfilePath)
 		mp := &model.MediaPerson{
 			MediaID:   mediaID,
 			PersonID:  person.ID,
@@ -1301,10 +1298,7 @@ func (s *MetadataService) saveCreditsForMedia(mediaID string, credits *TMDbCredi
 		if err != nil {
 			continue
 		}
-		if crew.ProfilePath != "" && person.ProfileURL == "" {
-			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
-			s.personRepo.Update(person)
-		}
+		s.downloadPersonProfile(person, crew.ProfilePath)
 		mp := &model.MediaPerson{
 			MediaID:   mediaID,
 			PersonID:  person.ID,
@@ -1326,10 +1320,7 @@ func (s *MetadataService) saveCreditsForMedia(mediaID string, credits *TMDbCredi
 		if err != nil {
 			continue
 		}
-		if cast.ProfilePath != "" && person.ProfileURL == "" {
-			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), cast.ProfilePath)
-			s.personRepo.Update(person)
-		}
+		s.downloadPersonProfile(person, cast.ProfilePath)
 		mp := &model.MediaPerson{
 			MediaID:   mediaID,
 			PersonID:  person.ID,
@@ -1371,10 +1362,7 @@ func (s *MetadataService) saveCreditsForSeries(seriesID string, credits *TMDbCre
 		if err != nil {
 			continue
 		}
-		if crew.ProfilePath != "" && person.ProfileURL == "" {
-			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), crew.ProfilePath)
-			s.personRepo.Update(person)
-		}
+		s.downloadPersonProfile(person, crew.ProfilePath)
 		mp := &model.MediaPerson{
 			SeriesID:  seriesID,
 			PersonID:  person.ID,
@@ -1396,10 +1384,7 @@ func (s *MetadataService) saveCreditsForSeries(seriesID string, credits *TMDbCre
 		if err != nil {
 			continue
 		}
-		if cast.ProfilePath != "" && person.ProfileURL == "" {
-			person.ProfileURL = fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), cast.ProfilePath)
-			s.personRepo.Update(person)
-		}
+		s.downloadPersonProfile(person, cast.ProfilePath)
 		mp := &model.MediaPerson{
 			SeriesID:  seriesID,
 			PersonID:  person.ID,
@@ -2328,6 +2313,21 @@ func (s *MetadataService) downloadToFile(url, filePath string) error {
 
 	_, err = io.Copy(file, resp.Body)
 	return err
+}
+
+// downloadPersonProfile 下载演员头像到本地缓存，并更新 ProfileURL 为本地路径。
+// 仅在 person.ProfileURL 为空（首次刮削）且有 TMDb profile_path 时执行。
+func (s *MetadataService) downloadPersonProfile(person *model.Person, tmdbProfilePath string) {
+	if person.ProfileURL != "" || tmdbProfilePath == "" {
+		return
+	}
+	imageURL := fmt.Sprintf("%s/t/p/w185%s", s.getTMDbImageBase(), tmdbProfilePath)
+	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "persons", person.ID)
+	localPath := filepath.Join(cacheDir, "profile.jpg")
+	if err := mkdirAndDownload(s, imageURL, cacheDir, localPath); err == nil {
+		person.ProfileURL = localPath
+		s.personRepo.Update(person)
+	}
 }
 
 // UnmatchMedia 解除媒体的元数据匹配，清除刮削获取的所有信息

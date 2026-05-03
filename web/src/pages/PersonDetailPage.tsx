@@ -185,9 +185,9 @@ export default function PersonDetailPage() {
                 border: '2px solid var(--border-default)',
               }}
             >
-              {person.profile_url && !imgError ? (
+              {id && !imgError ? (
                 <img
-                  src={person.profile_url}
+                  src={streamApi.getPersonProfileUrl(id)}
                   alt={person.name}
                   className="h-full w-full object-cover"
                   onError={() => setImgError(true)}

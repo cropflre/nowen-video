@@ -140,12 +140,12 @@ func (s *CollectionService) GetCollectionDetail(collectionID string) (*Collectio
 // ListCollections 分页获取合集列表
 // 同时确保每个合集都有封面海报（使用第一部电影的海报）
 func (s *CollectionService) ListCollections(page, size int) ([]model.MovieCollection, int64, error) {
-	return s.ListCollectionsWithOptions(page, size, "created_desc", "")
+	return s.ListCollectionsWithOptions(page, size, "created_desc", "", "")
 }
 
 // ListCollectionsWithOptions 支持排序和来源筛选的分页查询
-func (s *CollectionService) ListCollectionsWithOptions(page, size int, sort, autoFilter string) ([]model.MovieCollection, int64, error) {
-	colls, total, err := s.collRepo.ListWithOptions(page, size, sort, autoFilter)
+func (s *CollectionService) ListCollectionsWithOptions(page, size int, sort, autoFilter, libraryID string) ([]model.MovieCollection, int64, error) {
+	colls, total, err := s.collRepo.ListWithOptions(page, size, sort, autoFilter, libraryID)
 	if err != nil {
 		return colls, total, err
 	}

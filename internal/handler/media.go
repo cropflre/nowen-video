@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -134,17 +138,19 @@ func (h *MediaHandler) ListMixed(c *gin.Context) {
 		size = 20
 	}
 
-	items, total, err := h.mediaService.ListMixed(page, size, libraryID)
+	result, err := h.mediaService.ListMixed(page, size, libraryID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取混合列表失败"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data":  items,
-		"total": total,
-		"page":  page,
-		"size":  size,
+		"data":         result.Items,
+		"total":        result.Total,
+		"movie_count":  result.MovieCount,
+		"series_count": result.SeriesCount,
+		"page":         page,
+		"size":         size,
 	})
 }
 
@@ -305,4 +311,58 @@ func (h *MediaHandler) GetPersonMedia(c *gin.Context) {
 		"media":  media,
 		"series": series,
 	})
+}
+
+// PersonProfile 获取演员头像图片
+// GET /api/persons/:id/profile
+func (h *MediaHandler) PersonProfile(c *gin.Context) {
+	personID := c.Param("id")
+	person, err := h.personRepo.FindByID(personID)
+	if err != nil || person.ProfileURL == "" {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	// 本地路径
+	if _, statErr := os.Stat(person.ProfileURL); statErr != nil {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	fileInfo, statErr := os.Stat(person.ProfileURL)
+	if statErr != nil {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(person.ProfileURL))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+	c.File(person.ProfileURL)
+}
+
+// servePersonProfilePlaceholder 返回演员头像占位 SVG
+func servePersonProfilePlaceholder(c *gin.Context) {
+	c.Header("Content-Type", "image/svg+xml")
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="185" height="185" viewBox="0 0 185 185"><rect fill="#1e1e2e" width="185" height="185" rx="16"/><circle cx="92.5" cy="70" r="30" fill="#334155"/><ellipse cx="92.5" cy="155" rx="50" ry="40" fill="#334155"/></svg>`)
 }

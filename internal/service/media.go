@@ -109,22 +109,33 @@ type MixedItem struct {
 	Series *model.Series `json:"series,omitempty"`
 }
 
+// MixedListResult 混合列表查询结果
+type MixedListResult struct {
+	Items       []MixedItem `json:"items"`
+	Total       int64       `json:"total"`
+	MovieCount  int         `json:"movie_count"`
+	SeriesCount int         `json:"series_count"`
+}
+
 // ListMixed 获取电影与合集的混合列表（Emby风格：电影+合集混合展示，按时间排序）
-func (s *MediaService) ListMixed(page, size int, libraryID string) ([]MixedItem, int64, error) {
+func (s *MediaService) ListMixed(page, size int, libraryID string) (*MixedListResult, error) {
 	// 1. 获取所有独立电影（非剧集）
 	movies, err := s.mediaRepo.RecentNonEpisodeAll(libraryID)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// 2. 获取所有合集
 	seriesList, err := s.seriesRepo.ListAll(libraryID)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	// 2.5 对同名 Series 去重：标准化标题相同的多个 Series 只展示元数据最丰富的那个
 	seriesList = deduplicateSeriesByTitle(seriesList)
+
+	movieCount := len(movies)
+	seriesCount := len(seriesList)
 
 	// 3. 合并为混合列表，按 created_at 降序排列
 	var allItems []MixedItem
@@ -148,14 +159,14 @@ func (s *MediaService) ListMixed(page, size int, libraryID string) ([]MixedItem,
 	total := int64(len(allItems))
 	start := (page - 1) * size
 	if start >= int(total) {
-		return []MixedItem{}, total, nil
+		return &MixedListResult{Items: []MixedItem{}, Total: total, MovieCount: movieCount, SeriesCount: seriesCount}, nil
 	}
 	end := start + size
 	if end > int(total) {
 		end = int(total)
 	}
 
-	return allItems[start:end], total, nil
+	return &MixedListResult{Items: allItems[start:end], Total: total, MovieCount: movieCount, SeriesCount: seriesCount}, nil
 }
 
 // deduplicateSeriesByTitle 对同名 Series 去重

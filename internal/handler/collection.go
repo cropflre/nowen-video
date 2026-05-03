@@ -64,6 +64,7 @@ func (h *CollectionHandler) ListCollections(c *gin.Context) {
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	sort := c.DefaultQuery("sort", "created_desc")
 	autoFilter := c.Query("auto") // "" | "true" | "false"
+	libraryID := c.Query("library_id")
 
 	if page < 1 {
 		page = 1
@@ -76,7 +77,7 @@ func (h *CollectionHandler) ListCollections(c *gin.Context) {
 		autoFilter = ""
 	}
 
-	colls, total, err := h.collectionService.ListCollectionsWithOptions(page, size, sort, autoFilter)
+	colls, total, err := h.collectionService.ListCollectionsWithOptions(page, size, sort, autoFilter, libraryID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取合集列表失败"})
 		return

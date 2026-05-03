@@ -37,7 +37,7 @@ export const mediaApi = {
     api.get<ListResponse<MixedItem>>('/media/recent/mixed', { params: { limit } }),
 
   listMixed: (params: { page?: number; size?: number; library_id?: string }) =>
-    api.get<PaginatedResponse<MixedItem>>('/media/mixed', { params }),
+    api.get<PaginatedResponse<MixedItem> & { movie_count: number; series_count: number }>('/media/mixed', { params }),
 
   continueWatching: (limit = 10) =>
     api.get<ListResponse<WatchHistory>>('/media/continue', { params: { limit } }),
@@ -95,7 +95,7 @@ export const collectionApi = {
     api.get<{ data: import('@/types').CollectionWithMedia }>(`/collections/${collectionId}`),
 
   /** 获取合集列表（支持排序和来源筛选） */
-  list: (params?: { page?: number; size?: number; sort?: string; auto?: string }) =>
+  list: (params?: { page?: number; size?: number; sort?: string; auto?: string; library_id?: string }) =>
     api.get<{ data: import('@/types').MovieCollection[]; total: number }>('/collections', { params }),
 
   /** 搜索合集 */

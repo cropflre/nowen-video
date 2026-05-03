@@ -157,6 +157,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 注入 NFO 服务，使番号刮削成功后自动生成 .nfo 文件
 	// 这样 Emby/Jellyfin/Infuse 等客户端能正确识别番号元数据
 	adultScraper.SetNFOService(nfoService)
+	// 注入演员仓储，使 AV 演员也能写入 Person 表并关联 MediaPerson
+	adultScraper.SetPersonRepos(repos.Person, repos.MediaPerson)
 
 	// 创建多数据源调度链（第三阶段：统一 Provider 接口）
 	providerChain := NewProviderChain(logger)

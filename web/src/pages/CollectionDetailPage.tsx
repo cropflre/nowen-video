@@ -21,6 +21,7 @@ import {
   ArrowUpDown,
   Copy,
   ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 type SortOption = 'premiered_asc' | 'premiered_desc' | 'title_asc' | 'rating_desc'
@@ -38,6 +39,7 @@ export default function CollectionDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const viewMode = (searchParams.get('view') || 'grid') as 'grid' | 'list'
   const sortOption = (searchParams.get('sort') || 'premiered_asc') as SortOption
+  const [headerGenresExpanded, setHeaderGenresExpanded] = useState(false)
 
   // 按 id 分键缓存：跨页面返回时命中缓存，零 loading
   const { data, loading, error } = usePageCache<CollectionWithMedia>(
@@ -259,16 +261,68 @@ export default function CollectionDetailPage() {
                 })
                 const genres = Array.from(genreSet).sort()
                 if (genres.length === 0) return null
+                const COLLAPSED_COUNT = 8
+                const needCollapse = genres.length > COLLAPSED_COUNT
+                const visibleGenres = headerGenresExpanded ? genres : genres.slice(0, COLLAPSED_COUNT)
                 return (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {genres.map(g => (
-                      <span key={g}
-                        className="rounded-lg px-2 py-0.5 text-xs font-medium"
-                        style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)', color: 'var(--text-secondary)' }}
+                  <div className="mt-3">
+                    <div
+                      className={`relative flex flex-wrap gap-1.5 ${!headerGenresExpanded && needCollapse ? 'max-h-[4.5rem] overflow-hidden' : ''}`}
+                      style={!headerGenresExpanded && needCollapse ? {
+                        WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+                        maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+                      } : undefined}
+                    >
+                      {visibleGenres.map(g => (
+                        <Link key={g} to={`/search?q=${encodeURIComponent(g)}`}
+                          className="rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-200"
+                          style={{
+                            background: 'var(--neon-blue-6)',
+                            border: '1px solid var(--neon-blue-10)',
+                            color: 'var(--text-secondary)',
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'var(--neon-blue-15)'
+                            e.currentTarget.style.borderColor = 'var(--neon-blue-25)'
+                            e.currentTarget.style.color = 'var(--neon-blue)'
+                            e.currentTarget.style.boxShadow = '0 0 8px var(--neon-blue-15)'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'var(--neon-blue-6)'
+                            e.currentTarget.style.borderColor = 'var(--neon-blue-10)'
+                            e.currentTarget.style.color = 'var(--text-secondary)'
+                            e.currentTarget.style.boxShadow = 'none'
+                          }}
+                        >
+                          {g}
+                        </Link>
+                      ))}
+                    </div>
+                    {needCollapse && (
+                      <button
+                        onClick={() => setHeaderGenresExpanded(!headerGenresExpanded)}
+                        className="mt-1.5 flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-200"
+                        style={{
+                          background: 'linear-gradient(135deg, var(--neon-blue-6), var(--neon-purple-8))',
+                          border: '1px solid var(--neon-blue-10)',
+                          color: 'var(--neon-blue)',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.borderColor = 'var(--neon-blue-25)'
+                          e.currentTarget.style.boxShadow = '0 0 10px var(--neon-blue-15)'
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.borderColor = 'var(--neon-blue-10)'
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
                       >
-                        {g}
-                      </span>
-                    ))}
+                        {headerGenresExpanded ? (
+                          <><ChevronUp size={12} /> 收起</>
+                        ) : (
+                          <><ChevronDown size={12} /> 更多 {genres.length - COLLAPSED_COUNT} 个</>
+                        )}
+                      </button>
+                    )}
                   </div>
                 )
               })()}
@@ -387,6 +441,11 @@ function CollectionMovieCard({ group, index }: { group: GroupedMovieItem; index:
   const versionCount = group.versions.length
   const hasMultipleVersions = versionCount > 1
   const [showVersions, setShowVersions] = useState(false)
+  const [genresExpanded, setGenresExpanded] = useState(false)
+  const genreList = item.genres ? item.genres.split(',').map(g => g.trim()).filter(Boolean) : []
+  const MAX_VISIBLE = 4
+  const needCollapse = genreList.length > MAX_VISIBLE
+  const visibleGenres = genresExpanded ? genreList : genreList.slice(0, MAX_VISIBLE)
 
   return (
     <div className="relative">
@@ -479,20 +538,38 @@ function CollectionMovieCard({ group, index }: { group: GroupedMovieItem; index:
               </span>
             )}
           </div>
-          {item.genres && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {item.genres.split(',').map((g) => {
-                const t = g.trim()
-                if (!t) return null
-                return (
-                  <span key={t}
-                    className="rounded px-1 py-0.5 text-[10px]"
-                    style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}
-                  >
-                    {t}
-                  </span>
-                )
-              })}
+          {genreList.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {visibleGenres.map(g => (
+                <Link key={g} to={`/search?q=${encodeURIComponent(g)}`}
+                  onClick={e => { e.preventDefault(); e.stopPropagation() }}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] transition-all duration-200"
+                  style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)', color: 'var(--text-muted)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'var(--neon-blue-15)'
+                    e.currentTarget.style.borderColor = 'var(--neon-blue-25)'
+                    e.currentTarget.style.color = 'var(--neon-blue)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'var(--neon-blue-6)'
+                    e.currentTarget.style.borderColor = 'var(--neon-blue-10)'
+                    e.currentTarget.style.color = 'var(--text-muted)'
+                  }}
+                >
+                  {g}
+                </Link>
+              ))}
+              {needCollapse && (
+                <button
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); setGenresExpanded(!genresExpanded) }}
+                  className="rounded-full p-0.5 text-[10px] transition-all duration-200"
+                  style={{ color: 'var(--neon-blue)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--neon-blue-10)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  {genresExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -570,7 +647,11 @@ function CollectionMovieListItem({ group, index }: { group: GroupedMovieItem; in
   const versionCount = group.versions.length
   const hasMultipleVersions = versionCount > 1
   const [showVersions, setShowVersions] = useState(false)
+  const [genresExpanded, setGenresExpanded] = useState(false)
   const genreList = item.genres ? item.genres.split(',').map(g => g.trim()).filter(Boolean) : []
+  const LIST_MAX_VISIBLE = 3
+  const listNeedCollapse = genreList.length > LIST_MAX_VISIBLE
+  const listVisibleGenres = genresExpanded ? genreList : genreList.slice(0, LIST_MAX_VISIBLE)
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return ''
@@ -638,15 +719,36 @@ function CollectionMovieListItem({ group, index }: { group: GroupedMovieItem; in
             )}
           </div>
           {genreList.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {genreList.slice(0, 3).map(g => (
-                <span key={g} className="rounded px-1 py-0.5 text-[10px]"
-                  style={{ background: 'var(--neon-blue-6)', color: 'var(--text-muted)' }}>
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {listVisibleGenres.map(g => (
+                <Link key={g} to={`/search?q=${encodeURIComponent(g)}`}
+                  onClick={e => { e.preventDefault(); e.stopPropagation() }}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] transition-all duration-200"
+                  style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)', color: 'var(--text-muted)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'var(--neon-blue-15)'
+                    e.currentTarget.style.borderColor = 'var(--neon-blue-25)'
+                    e.currentTarget.style.color = 'var(--neon-blue)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'var(--neon-blue-6)'
+                    e.currentTarget.style.borderColor = 'var(--neon-blue-10)'
+                    e.currentTarget.style.color = 'var(--text-muted)'
+                  }}
+                >
                   {g}
-                </span>
+                </Link>
               ))}
-              {genreList.length > 3 && (
-                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+{genreList.length - 3}</span>
+              {listNeedCollapse && (
+                <button
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); setGenresExpanded(!genresExpanded) }}
+                  className="rounded-full px-1.5 py-0.5 text-[10px] transition-all duration-200"
+                  style={{ color: 'var(--neon-blue)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--neon-blue-10)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  {genresExpanded ? '收起' : `+${genreList.length - LIST_MAX_VISIBLE}`}
+                </button>
               )}
             </div>
           )}

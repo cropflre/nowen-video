@@ -166,13 +166,14 @@ func (r *MovieCollectionRepo) FindByTMDbCollID(tmdbCollID int) (*model.MovieColl
 
 // List 分页获取合集列表（排除空壳合集）
 func (r *MovieCollectionRepo) List(page, size int) ([]model.MovieCollection, int64, error) {
-	return r.ListWithOptions(page, size, "created_desc", "")
+	return r.ListWithOptions(page, size, "created_desc", "", "")
 }
 
 // ListWithOptions 支持排序和来源筛选的分页查询
 // sort: created_desc | created_asc | updated_desc | updated_asc | name_asc | name_desc | count_desc | count_asc
 // autoFilter: "" 全部 | "true" 自动匹配 | "false" 手动创建
-func (r *MovieCollectionRepo) ListWithOptions(page, size int, sort, autoFilter string) ([]model.MovieCollection, int64, error) {
+// libraryID: "" 全部 | 指定媒体库 ID（通过子查询关联 media 表筛选）
+func (r *MovieCollectionRepo) ListWithOptions(page, size int, sort, autoFilter, libraryID string) ([]model.MovieCollection, int64, error) {
 	var colls []model.MovieCollection
 	var total int64
 
@@ -181,6 +182,9 @@ func (r *MovieCollectionRepo) ListWithOptions(page, size int, sort, autoFilter s
 		query = query.Where("auto_matched = ?", true)
 	} else if autoFilter == "false" {
 		query = query.Where("auto_matched = ?", false)
+	}
+	if libraryID != "" {
+		query = query.Where("id IN (SELECT DISTINCT collection_id FROM media WHERE library_id = ? AND collection_id != '' AND collection_id IS NOT NULL)", libraryID)
 	}
 
 	if err := query.Count(&total).Error; err != nil {

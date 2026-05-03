@@ -279,6 +279,7 @@ func main() {
 		// 演员作品
 		api.GET("/persons/:id", handlers.Media.GetPersonDetail)
 		api.GET("/persons/:id/media", handlers.Media.GetPersonMedia)
+		api.GET("/persons/:id/profile", handlers.Media.PersonProfile)
 
 		// 字幕
 		api.GET("/subtitle/:id/tracks", handlers.Subtitle.ListTracks)

@@ -68,6 +68,10 @@ type AdultScraperService struct {
 	// NFO 写入服务（可选）：刮削成功后自动生成 .nfo 文件
 	// 使 Emby/Jellyfin/Infuse 等客户端能正确识别番号元数据
 	nfoService *NFOService
+
+	// 演员信息仓储（延迟注入，用于将 AV 演员写入 Person 表并关联 MediaPerson）
+	personRepo      *repository.PersonRepo
+	mediaPersonRepo *repository.MediaPersonRepo
 }
 
 // NewAdultScraperService 创建番号刮削服务
@@ -90,6 +94,12 @@ func NewAdultScraperService(cfg *config.Config, mediaRepo *repository.MediaRepo,
 // SetNFOService 注入 NFO 写入服务（用于刮削成功后生成 .nfo 文件）
 func (s *AdultScraperService) SetNFOService(nfo *NFOService) {
 	s.nfoService = nfo
+}
+
+// SetPersonRepos 注入演员信息仓储（用于将 AV 演员写入 Person 表并关联 MediaPerson）
+func (s *AdultScraperService) SetPersonRepos(personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo) {
+	s.personRepo = personRepo
+	s.mediaPersonRepo = mediaPersonRepo
 }
 
 // IsEnabled 检查服务是否可用
@@ -774,7 +784,7 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 				media.Rating = meta.Rating
 			}
 		}
-		// 演员信息存入 Tagline 字段（临时方案，后续可扩展到 Person 表）
+		// 演员信息存入 Tagline 字段（兼容旧客户端/NFO）
 		if len(meta.Actresses) > 0 {
 			media.Tagline = "演员: " + strings.Join(meta.Actresses, ", ")
 		}
@@ -834,6 +844,51 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 	if media.FilePath != "" && !IsWebDAVPath(media.FilePath) {
 		s.DownloadExtraFanart(media, meta)
 		s.DownloadActorPhotos(media, meta)
+	}
+
+	// ==================== 演员写入 Person 表 + MediaPerson 关联 ====================
+	if s.personRepo != nil && s.mediaPersonRepo != nil && len(meta.Actresses) > 0 && media.ID != "" {
+		// 先清除旧的演员关联（避免重复）
+		s.mediaPersonRepo.DeleteByMediaID(media.ID)
+
+		saved := 0
+		for i, name := range meta.Actresses {
+			person, err := s.personRepo.FindOrCreate(name, 0)
+			if err != nil {
+				continue
+			}
+			// 如果 ActorPhotos 有该演员的头像且 Person 尚无头像，下载到本地缓存
+			if photoURL, ok := meta.ActorPhotos[name]; ok && photoURL != "" && person.ProfileURL == "" {
+				if !strings.HasPrefix(photoURL, "http") {
+					if strings.HasPrefix(photoURL, "//") {
+						photoURL = "https:" + photoURL
+					} else {
+						photoURL = "https://" + photoURL
+					}
+				}
+				cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "images", "persons", person.ID)
+				localPath := filepath.Join(cacheDir, "profile.jpg")
+				os.MkdirAll(cacheDir, 0755)
+				referer := inferRefererFromSource(meta.Source)
+				if err := s.downloadFileForAdult(photoURL, localPath, referer); err == nil {
+					person.ProfileURL = localPath
+					s.personRepo.Update(person)
+				}
+			}
+			mp := &model.MediaPerson{
+				MediaID:   media.ID,
+				PersonID:  person.ID,
+				Role:      "actor",
+				SortOrder: saved,
+			}
+			if err := s.mediaPersonRepo.Create(mp); err == nil {
+				saved++
+			}
+			_ = i
+		}
+		if saved > 0 {
+			s.logger.Debugf("AV 演员已写入 Person 表: %s -> %d 人", meta.Code, saved)
+		}
 	}
 
 	// ==================== P2：封面自动裁剪成竖版 poster（Emby 媒体墙更美观）====================

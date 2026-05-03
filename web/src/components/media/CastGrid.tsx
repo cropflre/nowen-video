@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
 import { User, Film } from 'lucide-react'
 import { useTranslation } from '@/i18n'
@@ -107,7 +108,8 @@ function CastCard({
   const getRoleLabel = useRoleLabel()
   const [imgError, setImgError] = useState(false)
   const person = mediaPerson.person
-  const profileUrl = person?.profile_url
+  // 优先使用本地 API 代理头像（解决国内无法直连 TMDb 的问题）
+  const profileSrc = person?.person_id ? streamApi.getPersonProfileUrl(person.person_id) : null
 
   return (
     <button
@@ -123,9 +125,9 @@ function CastCard({
         className="relative aspect-square w-full overflow-hidden rounded-lg"
         style={{ background: 'var(--bg-surface)' }}
       >
-        {profileUrl && !imgError ? (
+        {profileSrc && !imgError ? (
           <img
-            src={profileUrl}
+            src={profileSrc}
             alt={person?.name || ''}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"

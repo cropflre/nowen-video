@@ -100,6 +100,9 @@ export const streamApi = {
   getCollectionPosterUrl: (collectionId: string, version?: number) =>
     withToken(`/api/collections/${collectionId}/poster${version ? `?v=${version}` : ''}`),
 
+  getPersonProfileUrl: (personId: string, version?: number) =>
+    withToken(`/api/persons/${personId}/profile${version ? `?v=${version}` : ''}`),
+
   // 为任意 URL 添加认证 token
   withTokenUrl: (url: string) => withToken(url),
 }

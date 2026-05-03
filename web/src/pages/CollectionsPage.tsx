@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { collectionApi } from '@/api'
 import { streamApi } from '@/api'
+import { libraryApi } from '@/api'
 import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
-import type { MovieCollection } from '@/types'
+import type { MovieCollection, Library } from '@/types'
 import Pagination from '@/components/Pagination'
-import { Library, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw, Grid3X3, LayoutList, ArrowUpDown, ChevronDown, Filter } from 'lucide-react'
+import { Library as LibraryIcon, Search, Film, Loader2, X, Play, Merge, Trash2, RefreshCw, Grid3X3, LayoutList, ArrowUpDown, ChevronDown, Filter } from 'lucide-react'
 import clsx from 'clsx'
 
 type ViewMode = 'grid' | 'list'
@@ -37,13 +38,22 @@ export default function CollectionsPage() {
   const viewMode = (searchParams.get('view') as ViewMode) || 'grid'
   const sortValue = (searchParams.get('sort') as SortValue) || 'created_desc'
   const filterAuto = searchParams.get('auto') || '' // '' | 'true' | 'false'
+  const filterLibrary = searchParams.get('library_id') || ''
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<MovieCollection[] | null>(null)
   const [operating, setOperating] = useState(false)
   const [operationMsg, setOperationMsg] = useState('')
   const [showSortDropdown, setShowSortDropdown] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [libraries, setLibraries] = useState<Library[]>([])
   const pageSizeOptions = [12, 24, 36, 48]
+
+  // 加载媒体库列表
+  useEffect(() => {
+    libraryApi.list().then(res => {
+      setLibraries(res.data.data || [])
+    }).catch(() => {})
+  }, [])
 
   // 点击外部关闭排序下拉
   useEffect(() => {
@@ -59,13 +69,14 @@ export default function CollectionsPage() {
   // 加载合集列表（排序和筛选全部下沉到后端，保证分页和总数一致）
   // 使用 usePageCache：按"分页/排序/筛选"组合的 key 分桶缓存，跨导航命中时零 loading
   const { data, loading, refetch } = usePageCache<CollectionsData>(
-    `collections:list:page=${page}:size=${pageSize}:sort=${sortValue}:auto=${filterAuto}`,
+    `collections:list:page=${page}:size=${pageSize}:sort=${sortValue}:auto=${filterAuto}:lib=${filterLibrary}`,
     async () => {
       const res = await collectionApi.list({
         page,
         size: pageSize,
         sort: sortValue,
         auto: filterAuto || undefined,
+        library_id: filterLibrary || undefined,
       })
       return { list: res.data.data || [], total: res.data.total || 0 }
     },
@@ -158,7 +169,8 @@ export default function CollectionsPage() {
     ? Math.ceil(total / pageSize)
     : Math.ceil(displayList.length / pageSize)
   const currentSortLabel = SORT_OPTIONS.find(o => o.value === sortValue)?.label || '排序'
-  const hasActiveFilter = filterAuto !== ''
+  const hasActiveFilter = filterAuto !== '' || filterLibrary !== ''
+  const activeFilterCount = (filterAuto !== '' ? 1 : 0) + (filterLibrary !== '' ? 1 : 0)
 
   // 切换分页时同步 URL
   const handlePageChange = useCallback((p: number) => {
@@ -203,12 +215,21 @@ export default function CollectionsPage() {
     })
   }, [setSearchParams])
 
+  // 切换媒体库筛选
+  const handleFilterLibrary = useCallback((value: string) => {
+    setSearchParams(prev => {
+      if (value === '') prev.delete('library_id'); else prev.set('library_id', value)
+      prev.delete('page')
+      return prev
+    })
+  }, [setSearchParams])
+
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Library size={24} className="text-neon" />
+          <LibraryIcon size={24} className="text-neon" />
           <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
             影视合集
           </h1>
@@ -263,7 +284,7 @@ export default function CollectionsPage() {
                 color: 'var(--text-on-neon)',
               }}
             >
-              1
+              {activeFilterCount}
             </span>
           )}
         </button>
@@ -394,13 +415,35 @@ export default function CollectionsPage() {
           ))}
           {hasActiveFilter && (
             <button
-              onClick={() => handleFilterAuto('')}
+              onClick={() => { handleFilterAuto(''); handleFilterLibrary('') }}
               className="ml-2 flex items-center gap-1 text-xs"
               style={{ color: 'var(--text-tertiary)' }}
             >
               <X size={12} />
               清除
             </button>
+          )}
+          {libraries.length > 0 && (
+            <>
+              <span className="text-xs font-medium ml-3 mr-1" style={{ color: 'var(--text-tertiary)' }}>媒体库</span>
+              {[
+                { value: '', label: '全部' },
+                ...libraries.map(lib => ({ value: lib.id, label: lib.name })),
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleFilterLibrary(opt.value)}
+                  className={clsx('rounded-lg px-3 py-1.5 text-xs font-medium transition-all')}
+                  style={{
+                    background: filterLibrary === opt.value ? 'var(--nav-active-bg)' : 'transparent',
+                    border: `1px solid ${filterLibrary === opt.value ? 'var(--border-hover)' : 'var(--border-default)'}`,
+                    color: filterLibrary === opt.value ? 'var(--neon-blue)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </>
           )}
         </div>
       )}
@@ -423,7 +466,7 @@ export default function CollectionsPage() {
         </div>
       ) : displayList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Library size={48} className="mb-4 text-surface-600" />
+          <LibraryIcon size={48} className="mb-4 text-surface-600" />
           <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
             {searchResults !== null ? '未找到匹配的合集' : hasActiveFilter ? '没有符合条件的合集' : '暂无影视合集'}
           </p>

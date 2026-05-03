@@ -164,6 +164,8 @@ export default function BrowsePage() {
     mixedItems: MixedItem[]
     seriesList: Series[]
     totalCount: number
+    movieCount: number
+    seriesCount: number
     serverPaginated: boolean
   }
 
@@ -172,9 +174,11 @@ export default function BrowsePage() {
     `browse:lib=${selectedLibrary || 'all'}:page=${page}:size=${size}`,
     async () => {
       const libId = selectedLibrary || undefined
-      // 先用一次小请求探测总量
+      // 先用一次小请求探测总量和分类计数
       const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: libId })
       const total = probe.data.total || 0
+      const movieCount = probe.data.movie_count || 0
+      const seriesCount = probe.data.series_count || 0
 
       if (total <= MAX_CLIENT_ITEMS) {
         // 小型影视库：一次性拉取全量数据，启用前端筛选/排序/分页
@@ -186,6 +190,8 @@ export default function BrowsePage() {
           mixedItems: mixedRes.data.data || [],
           seriesList: seriesRes.data.data || [],
           totalCount: total,
+          movieCount,
+          seriesCount,
           serverPaginated: false,
         }
       } else {
@@ -198,6 +204,8 @@ export default function BrowsePage() {
           mixedItems: mixedRes.data.data || [],
           seriesList: seriesRes.data.data || [],
           totalCount: total,
+          movieCount,
+          seriesCount,
           serverPaginated: true,
         }
       }
@@ -208,6 +216,8 @@ export default function BrowsePage() {
   const mixedItems = browseData?.mixedItems ?? []
   const seriesList = browseData?.seriesList ?? []
   const totalCount = browseData?.totalCount ?? 0
+  const serverMovieCount = browseData?.movieCount ?? 0
+  const serverSeriesCount = browseData?.seriesCount ?? 0
   const serverPaginated = browseData?.serverPaginated ?? false
 
   // 接口失败时的错误提示
@@ -374,6 +384,10 @@ export default function BrowsePage() {
 
   // ===== 统计信息 =====
   const stats = useMemo(() => {
+    // 服务端分页模式下 mixedItems 只是当前页，使用后端返回的分类计数
+    if (serverPaginated) {
+      return { movieCount: serverMovieCount, seriesCount: serverSeriesCount, total: totalCount }
+    }
     let movieCount = 0
     let seriesCount = 0
     mixedItems.forEach((item) => {
@@ -381,7 +395,7 @@ export default function BrowsePage() {
       else if (item.type === 'series') seriesCount++
     })
     return { movieCount, seriesCount, total: mixedItems.length }
-  }, [mixedItems])
+  }, [mixedItems, serverPaginated, totalCount, serverMovieCount, serverSeriesCount])
 
   // ==================== 渲染 ====================
   return (
@@ -406,7 +420,7 @@ export default function BrowsePage() {
 
       {/* ===== 统计卡片 ===== */}
       <motion.div
-        className="grid grid-cols-4 gap-3"
+        className="flex gap-2"
         variants={staggerContainerVariants}
         initial="hidden"
         animate="visible"
@@ -419,32 +433,30 @@ export default function BrowsePage() {
           <motion.div
             key={card.key}
             variants={staggerItemVariants}
-            className="relative overflow-hidden rounded-xl p-4 cursor-pointer transition-all duration-300 hover:shadow-card-hover"
+            className="relative flex items-center gap-2 rounded-lg px-3 py-1.5 cursor-pointer transition-all duration-300"
             style={{
               background: 'var(--glass-bg)',
               border: `1px solid ${mediaType === card.key ? 'var(--neon-blue-30)' : 'var(--neon-blue-6)'}`,
             }}
             onClick={() => updateUrl({ type: mediaType === card.key ? null : card.key })}
           >
-            <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: `linear-gradient(90deg, transparent, ${card.gradientColor}, transparent)` }} />
-            <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-              <card.icon size={14} className={card.iconClass} />
-              {card.label}
-            </div>
-            <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{card.value}</div>
+            <card.icon size={13} className={card.iconClass} />
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{card.label}</span>
+            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+              {card.value}
+            </span>
           </motion.div>
         ))}
         <motion.div
           variants={staggerItemVariants}
-          className="relative overflow-hidden rounded-xl p-4 transition-all duration-300 hover:shadow-card-hover"
+          className="relative flex items-center gap-2 rounded-lg px-3 py-1.5 transition-all duration-300"
           style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}
         >
-          <div className="absolute top-0 left-0 right-0 h-[1px] opacity-60" style={{ background: 'linear-gradient(90deg, transparent, var(--neon-purple), transparent)' }} />
-          <div className="flex items-center gap-2 text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-            <Tag size={14} className="text-yellow-400" />
-            类型标签
-          </div>
-          <div className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{allGenres.length}</div>
+          <Tag size={13} className="text-yellow-400" />
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>类型</span>
+          <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+            {serverPaginated ? '—' : allGenres.length}
+          </span>
         </motion.div>
       </motion.div>
 
