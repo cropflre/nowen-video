@@ -24,6 +24,7 @@ import {
   MapPin,
   Calendar,
   FileSignature,
+  Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -89,6 +90,7 @@ export default function ClassificationTab() {
 
   const [stats, setStats] = useState<ClassificationStats | null>(null)
   const [reprocessing, setReprocessing] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -156,6 +158,24 @@ export default function ClassificationTab() {
   }, [keywordInput])
 
   // ---------- 操作 ----------
+  const handleClear = async () => {
+    const label = libraryID ? '当前筛选的媒体库' : '全部'
+    if (!confirm(`确定清空 ${label} 的分类记录吗？此操作不可恢复。`)) return
+    setClearing(true)
+    setMessage(null)
+    try {
+      const res = await scanClassifyApi.clear(libraryID || undefined)
+      const deleted = res.data.data.deleted
+      setMessage({ type: 'ok', text: `已清空 ${deleted} 条分类记录` })
+      loadList()
+      loadStats()
+    } catch (e: any) {
+      setMessage({ type: 'err', text: e?.response?.data?.error || '清空失败' })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const handleReprocess = async (mode: 'library' | 'all') => {
     if (mode === 'library' && !libraryID) {
       setMessage({ type: 'err', text: '请先选择媒体库' })
@@ -194,7 +214,7 @@ export default function ClassificationTab() {
   return (
     <div className="space-y-6">
       {/* 顶部说明 + 安全提示 */}
-      <div className="rounded-2xl border border-surface-700/60 bg-surface-800/60 p-5">
+      <div className="glass-panel-subtle rounded-xl p-5">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-emerald-500/10 p-2">
             <ShieldCheck className="h-5 w-5 text-emerald-400" />
@@ -240,7 +260,7 @@ export default function ClassificationTab() {
       )}
 
       {/* 过滤栏 + 操作 */}
-      <div className="rounded-2xl border border-surface-700/60 bg-surface-800/60 p-4">
+      <div className="glass-panel-subtle rounded-xl p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
           <Select
             value={libraryID}
@@ -284,7 +304,7 @@ export default function ClassificationTab() {
                 value={keywordInput}
                 onChange={(e) => setKeywordInput(e.target.value)}
                 placeholder="搜索：识别标题 / 建议命名"
-                className="w-full rounded-lg border border-surface-700 bg-surface-900 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none"
+                className="w-full rounded-lg border border-surface-700 bg-[var(--bg-input)] py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none"
               />
             </div>
             <button
@@ -300,7 +320,7 @@ export default function ClassificationTab() {
           </div>
         </div>
 
-        {/* 重跑按钮 */}
+        {/* 重跑按钮 + 清空按钮 */}
         <div className="mt-3 flex items-center gap-3 border-t border-surface-700/60 pt-3">
           <button
             onClick={() => handleReprocess('library')}
@@ -318,6 +338,23 @@ export default function ClassificationTab() {
               <Sparkles className="h-4 w-4" />
             )}
             {libraryID ? `重跑该媒体库（异步）` : '请先选择媒体库'}
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={clearing}
+            className={clsx(
+              'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition',
+              clearing
+                ? 'cursor-not-allowed bg-surface-700 text-surface-500'
+                : 'bg-red-500/10 text-red-300 hover:bg-red-500/20',
+            )}
+          >
+            {clearing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            清空记录
           </button>
           <span className="text-xs text-surface-500">
             异步入队执行，规则置信度低于 0.7 时会调用 AI Fallback 兜底识别。
@@ -340,7 +377,7 @@ export default function ClassificationTab() {
       </div>
 
       {/* 列表 */}
-      <div className="overflow-hidden rounded-2xl border border-surface-700/60 bg-surface-800/60">
+      <div className="glass-panel-subtle overflow-hidden rounded-xl">
         <div className="border-b border-surface-700/60 px-4 py-3 text-sm text-surface-400">
           共 <span className="font-semibold text-surface-100">{total}</span> 条记录
         </div>
@@ -417,7 +454,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-surface-700 bg-surface-900 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+      className="rounded-lg border border-surface-700 bg-[var(--bg-input)] px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -440,12 +477,12 @@ function StatCard({
   tint: string
 }) {
   return (
-    <div className="rounded-2xl border border-surface-700/60 bg-surface-800/60 p-4">
+    <div className="glass-panel rounded-xl p-4">
       <div className="flex items-center gap-3">
         <div className={clsx('rounded-lg p-2', tint)}>{icon}</div>
         <div>
           <p className="text-xs text-surface-400">{title}</p>
-          <p className="text-2xl font-semibold">{value.toLocaleString()}</p>
+          <p className="text-2xl font-semibold text-theme-primary">{value.toLocaleString()}</p>
         </div>
       </div>
     </div>
@@ -465,7 +502,7 @@ function BucketCard({
 }) {
   const top = buckets.slice(0, 4)
   return (
-    <div className="rounded-2xl border border-surface-700/60 bg-surface-800/60 p-4">
+    <div className="glass-panel rounded-xl p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium text-surface-200">
         {icon}
         {title}
@@ -498,7 +535,7 @@ function Row({
   onToggle: () => void
 }) {
   return (
-    <div className="px-4 py-3 hover:bg-surface-900/40">
+    <div className="px-4 py-3 transition-colors hover:bg-[var(--nav-hover-bg)]">
       <div className="flex items-center gap-3">
         {/* 标题 + 副信息 */}
         <div className="min-w-0 flex-1">
@@ -511,7 +548,7 @@ function Row({
               {item.parsed_title || '<未识别>'}
             </button>
             {item.parsed_year > 0 && (
-              <span className="rounded bg-surface-700/50 px-1.5 py-0.5 text-xs text-surface-300">
+              <span className="rounded bg-[var(--nav-hover-bg)] px-1.5 py-0.5 text-xs text-surface-300">
                 {item.parsed_year}
               </span>
             )}
@@ -531,7 +568,7 @@ function Row({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-surface-400">
             {item.virtual_path && (
-              <span className="rounded bg-surface-700/40 px-2 py-0.5">
+              <span className="rounded bg-[var(--nav-hover-bg)] px-2 py-0.5">
                 {item.virtual_path}
               </span>
             )}
@@ -557,7 +594,7 @@ function Row({
 
       {/* 展开详情 */}
       {expanded && (
-        <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-surface-900/40 p-3 text-xs md:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-[var(--nav-hover-bg)] p-3 text-xs md:grid-cols-2">
           <KV label="原文件路径" value={item.media_id} mono />
           <KV
             label="类别 / 地区 / 年代"

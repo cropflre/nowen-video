@@ -207,10 +207,12 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 	}
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
-		return fmt.Errorf("Media 查询失败: %w", err)
+		// Media 已被删除（如重建索引/删除媒体库等竞态情况），清理关联的分类记录
+		_ = s.repo.DeleteByMediaID(mediaID)
+		return nil // 静默跳过，不记 WARN 日志
 	}
 	if media == nil || media.ID == "" {
-		return errors.New("Media 不存在")
+		return nil // 同理静默跳过
 	}
 
 	// 占位记录（确保前端在 running 期也能看到状态）

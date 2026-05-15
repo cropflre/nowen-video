@@ -131,6 +131,27 @@ func (h *ScanPostProcessHandler) Reprocess(c *gin.Context) {
 	}})
 }
 
+// Clear DELETE /api/admin/scan-classify
+//
+// 清空分类记录。可选 query 参数 library_id 指定只清理某个媒体库的记录；
+// 不传则清空全部。
+func (h *ScanPostProcessHandler) Clear(c *gin.Context) {
+	libraryID := c.Query("library_id")
+	var count int64
+	var err error
+	if libraryID != "" {
+		count, err = h.repo.DeleteByLibraryID(libraryID)
+	} else {
+		count, err = h.repo.DeleteAll()
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	h.logger.Infof("扫描归类记录已清空 library_id=%s count=%d", libraryID, count)
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"deleted": count}})
+}
+
 // Stats GET /api/admin/scan-classify/stats
 func (h *ScanPostProcessHandler) Stats(c *gin.Context) {
 	libraryID := c.Query("library_id")

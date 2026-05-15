@@ -1,13 +1,15 @@
 api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
 api_key: sk-a28008fc61e44d1cba01d4ea59df19ab
+auto_pilot: true
 auto_subtitle_preprocess: false
+block_local_ai: true
 cache_ttl_hours: 168
 enable_metadata_enhance: true
 enable_recommend_reason: true
 enable_smart_search: true
 enabled: true
 max_concurrent: 3
-model: qwen3.6-flash
+model: qwen3.6-plus
 monthly_budget: 0
 ocr_dpi: 150
 ocr_enabled: false
@@ -17,7 +19,7 @@ profiles:
     qwen:
         api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
         api_key: sk-a28008fc61e44d1cba01d4ea59df19ab
-        model: qwen3.6-flash
+        model: qwen3.6-plus
 provider: qwen
 request_interval_ms: 200
 sub_clean_backup: true

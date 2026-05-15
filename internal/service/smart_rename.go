@@ -397,47 +397,81 @@ func (s *SmartRenameService) buildItem(
 		if mediaInfo.IMDbID != "" {
 			parsed.IMDbID = mediaInfo.IMDbID
 		}
-		// DB 已识别 -> 置信度直接拉高
-		conf = 0.99
+		// DB 已有准确的 TMDb 识别 -> 置信度拉满
+		if mediaInfo.TMDbID > 0 {
+			conf = 0.99
+		} // 否则保持规则评分，让 AI 有机会纠正文件名不含真实标题的情况
 		item.MediaType = mediaInfo.MediaType
 		item.SeasonNum = mediaInfo.SeasonNum
 		item.EpisodeNum = mediaInfo.EpisodeNum
 	}
 
 	// === P1: AI Fallback ===
+	// 规则置信度不足且 AI 可用时触发。当 AI 返回结果的置信度高于规则时，
+	// AI 结果完全覆盖规则结果（解决文件名不含真实标题、标题在目录名中的场景）。
 	if enableAI && conf < aiThreshold && s.ai != nil && s.ai.IsEnabled() {
-		aiRes, aiRaw, aiErr := s.callAIFallback(srcName, parsed)
+		// 把父目录名也传给 AI，增加识别上下文（如文件名不含标题但目录名包含剧名）
+		parentDir := filepath.Base(filepath.Dir(src))
+		aiRes, aiRaw, aiErr := s.callAIFallback(srcName, parentDir, parsed)
 		item.AIInvoked = true
 		item.AIRawResponse = aiRaw
 		if aiErr == nil && aiRes != nil {
-			// 合并：仅在原字段为空 / AI 置信度更高时覆盖
-			if parsed.Title == "" && aiRes.Title != "" {
-				parsed.Title = aiRes.Title
-			}
-			if parsed.TitleAlt == "" && aiRes.TitleAlt != "" {
-				parsed.TitleAlt = aiRes.TitleAlt
-			}
-			if parsed.Year == 0 && aiRes.Year > 0 {
-				parsed.Year = aiRes.Year
-			}
-			if parsed.TMDbID == 0 && aiRes.TMDbID > 0 {
-				parsed.TMDbID = aiRes.TMDbID
-			}
-			if parsed.IMDbID == "" && aiRes.IMDbID != "" {
-				parsed.IMDbID = aiRes.IMDbID
-			}
-			if item.MediaType == "" && aiRes.MediaType != "" {
-				item.MediaType = aiRes.MediaType
-			}
-			if item.SeasonNum == 0 && aiRes.Season > 0 {
-				item.SeasonNum = aiRes.Season
-			}
-			if item.EpisodeNum == 0 && aiRes.Episode > 0 {
-				item.EpisodeNum = aiRes.Episode
-			}
-			// 取 max(规则评分, AI 置信度) 作为最终置信度
-			if aiRes.Confidence > conf {
+			// AI 置信度高于规则时，完全采纳 AI 结果
+			if aiRes.Confidence >= conf {
+				if aiRes.Title != "" {
+					parsed.Title = aiRes.Title
+				}
+				if aiRes.TitleAlt != "" {
+					parsed.TitleAlt = aiRes.TitleAlt
+				}
+				if aiRes.Year > 0 {
+					parsed.Year = aiRes.Year
+				}
+				if aiRes.TMDbID > 0 {
+					parsed.TMDbID = aiRes.TMDbID
+				}
+				if aiRes.IMDbID != "" {
+					parsed.IMDbID = aiRes.IMDbID
+				}
+				if aiRes.MediaType != "" {
+					item.MediaType = aiRes.MediaType
+				}
+				if aiRes.Season > 0 {
+					item.SeasonNum = aiRes.Season
+				}
+				if aiRes.Episode > 0 {
+					item.EpisodeNum = aiRes.Episode
+				}
 				conf = aiRes.Confidence
+			} else {
+				// AI 置信度低于规则：仅在原字段为空时补充
+				if parsed.Title == "" && aiRes.Title != "" {
+					parsed.Title = aiRes.Title
+				}
+				if parsed.TitleAlt == "" && aiRes.TitleAlt != "" {
+					parsed.TitleAlt = aiRes.TitleAlt
+				}
+				if parsed.Year == 0 && aiRes.Year > 0 {
+					parsed.Year = aiRes.Year
+				}
+				if parsed.TMDbID == 0 && aiRes.TMDbID > 0 {
+					parsed.TMDbID = aiRes.TMDbID
+				}
+				if parsed.IMDbID == "" && aiRes.IMDbID != "" {
+					parsed.IMDbID = aiRes.IMDbID
+				}
+				if item.MediaType == "" && aiRes.MediaType != "" {
+					item.MediaType = aiRes.MediaType
+				}
+				if item.SeasonNum == 0 && aiRes.Season > 0 {
+					item.SeasonNum = aiRes.Season
+				}
+				if item.EpisodeNum == 0 && aiRes.Episode > 0 {
+					item.EpisodeNum = aiRes.Episode
+				}
+				if aiRes.Confidence > conf {
+					conf = aiRes.Confidence
+				}
 			}
 		} else if aiErr != nil {
 			s.logger.Warnf("[SmartRename] AI Fallback 失败 file=%s: %v", srcName, aiErr)
@@ -574,7 +608,7 @@ func extractSxxExx(s string) (int, int) {
 // ================================ P1: AI Fallback ============================
 
 // callAIFallback 调用 LLM 还原元数据
-func (s *SmartRenameService) callAIFallback(srcName string, hint ParsedFilename) (*SmartRenameAIResult, string, error) {
+func (s *SmartRenameService) callAIFallback(srcName, parentDir string, hint ParsedFilename) (*SmartRenameAIResult, string, error) {
 	if s.ai == nil || !s.ai.IsEnabled() {
 		return nil, "", errors.New("AI 服务未启用")
 	}
@@ -600,9 +634,10 @@ func (s *SmartRenameService) callAIFallback(srcName string, hint ParsedFilename)
 - 不要输出文件名中明显的 PT 发布组、编码标签等噪声。`
 
 	userPrompt := fmt.Sprintf(`文件名：%s
+所在目录：%s
 当前规则解析（可能不准）：title=%q title_alt=%q year=%d tmdb=%d imdb=%q
 请按 JSON Schema 返回最终识别结果。`,
-		srcName, hint.Title, hint.TitleAlt, hint.Year, hint.TMDbID, hint.IMDbID)
+		srcName, parentDir, hint.Title, hint.TitleAlt, hint.Year, hint.TMDbID, hint.IMDbID)
 
 	raw, err := s.ai.ChatCompletion(sysPrompt, userPrompt, 0.2, 512)
 	if err != nil {

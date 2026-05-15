@@ -15,21 +15,22 @@ import (
 
 // LibraryService 媒体库服务
 type LibraryService struct {
-	repo              *repository.LibraryRepo
-	mediaRepo         *repository.MediaRepo
-	seriesRepo        *repository.SeriesRepo
-	favRepo           *repository.FavoriteRepo     // 收藏仓储（用于级联清理）
-	historyRepo       *repository.WatchHistoryRepo // 观看历史仓储（用于级联清理）
-	mediaPersonRepo   *repository.MediaPersonRepo  // 演职人员关联仓储（用于级联清理刮削数据）
-	cfg               *config.Config               // 用于访问 CacheDir 以清理磁盘上的刮削缓存
-	scanner           *ScannerService
-	metadata          *MetadataService
-	seriesService     *SeriesService     // 剧集合集服务（用于扫描后自动合并）
-	collectionService *CollectionService // 电影系列合集服务（用于扫描后自动匹配）
-	logger            *zap.SugaredLogger
-	scanning          sync.Map            // 记录正在扫描的媒体库ID
-	wsHub             *WSHub              // WebSocket事件广播
-	fileWatcher       *FileWatcherService // 文件监听服务
+	repo                *repository.LibraryRepo
+	mediaRepo           *repository.MediaRepo
+	seriesRepo          *repository.SeriesRepo
+	favRepo             *repository.FavoriteRepo               // 收藏仓储（用于级联清理）
+	historyRepo         *repository.WatchHistoryRepo           // 观看历史仓储（用于级联清理）
+	mediaPersonRepo     *repository.MediaPersonRepo            // 演职人员关联仓储（用于级联清理刮削数据）
+	scanClassificationRepo *repository.ScanClassificationRepo  // 扫描归类仓储（用于级联清理分类记录）
+	cfg                 *config.Config                         // 用于访问 CacheDir 以清理磁盘上的刮削缓存
+	scanner             *ScannerService
+	metadata            *MetadataService
+	seriesService       *SeriesService     // 剧集合集服务（用于扫描后自动合并）
+	collectionService   *CollectionService // 电影系列合集服务（用于扫描后自动匹配）
+	logger              *zap.SugaredLogger
+	scanning            sync.Map            // 记录正在扫描的媒体库ID
+	wsHub               *WSHub              // WebSocket事件广播
+	fileWatcher         *FileWatcherService // 文件监听服务
 }
 
 func NewLibraryService(
@@ -39,22 +40,24 @@ func NewLibraryService(
 	favRepo *repository.FavoriteRepo,
 	historyRepo *repository.WatchHistoryRepo,
 	mediaPersonRepo *repository.MediaPersonRepo,
+	scanClassificationRepo *repository.ScanClassificationRepo,
 	cfg *config.Config,
 	scanner *ScannerService,
 	metadata *MetadataService,
 	logger *zap.SugaredLogger,
 ) *LibraryService {
 	return &LibraryService{
-		repo:            repo,
-		mediaRepo:       mediaRepo,
-		seriesRepo:      seriesRepo,
-		favRepo:         favRepo,
-		historyRepo:     historyRepo,
-		mediaPersonRepo: mediaPersonRepo,
-		cfg:             cfg,
-		scanner:         scanner,
-		metadata:        metadata,
-		logger:          logger,
+		repo:                    repo,
+		mediaRepo:               mediaRepo,
+		seriesRepo:              seriesRepo,
+		favRepo:                 favRepo,
+		historyRepo:             historyRepo,
+		mediaPersonRepo:         mediaPersonRepo,
+		scanClassificationRepo:  scanClassificationRepo,
+		cfg:                     cfg,
+		scanner:                 scanner,
+		metadata:                metadata,
+		logger:                  logger,
 	}
 }
 
@@ -195,42 +198,6 @@ func (s *LibraryService) Scan(id string) error {
 		return ErrLibraryNotFound
 	}
 
-	// 同步检查每个媒体库路径是否存在且可访问
-	allPaths := lib.AllPaths()
-	if len(allPaths) == 0 {
-		return fmt.Errorf("媒体库未配置任何路径")
-	}
-	totalEntries := 0
-	for _, p := range allPaths {
-		info, err := os.Stat(p)
-		if err != nil {
-			if os.IsNotExist(err) {
-				s.logger.Errorf("媒体库路径不存在: %s (媒体库: %s)", p, lib.Name)
-				return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", p)
-			}
-			if os.IsPermission(err) {
-				s.logger.Errorf("无权限访问媒体库路径: %s (媒体库: %s)", p, lib.Name)
-				return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", p)
-			}
-			s.logger.Errorf("访问媒体库路径失败: %s, 错误: %v", p, err)
-			return fmt.Errorf("访问媒体库路径失败: %v", err)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("媒体库路径不是目录: %s", p)
-		}
-		entries, err := os.ReadDir(p)
-		if err != nil {
-			s.logger.Errorf("读取媒体库目录失败: %s, 错误: %v", p, err)
-			return fmt.Errorf("读取媒体库目录失败: %v", err)
-		}
-		totalEntries += len(entries)
-	}
-	// 所有路径均为空时才提示
-	if totalEntries == 0 {
-		s.logger.Warnf("媒体库所有路径均为空 (媒体库: %s)", lib.Name)
-		return fmt.Errorf("媒体库目录为空，请确认路径下有影视文件")
-	}
-
 	// 防止重复扫描
 	if _, scanning := s.scanning.LoadOrStore(id, true); scanning {
 		return ErrScanInProgress
@@ -238,6 +205,30 @@ func (s *LibraryService) Scan(id string) error {
 
 	go func() {
 		defer s.scanning.Delete(id)
+
+		// 异步检查路径（网络驱动器可能较慢，不阻塞 HTTP 响应）
+		allPaths := lib.AllPaths()
+		if len(allPaths) == 0 {
+			s.logger.Errorf("媒体库未配置任何路径 (媒体库: %s)", lib.Name)
+			return
+		}
+		totalEntries := 0
+		for _, p := range allPaths {
+			info, err := os.Stat(p)
+			if err != nil {
+				s.logger.Errorf("媒体库路径不可访问: %s (媒体库: %s) err=%v", p, lib.Name, err)
+				return
+			}
+			if !info.IsDir() {
+				s.logger.Errorf("媒体库路径不是目录: %s (媒体库: %s)", p, lib.Name)
+				return
+			}
+			entries, _ := os.ReadDir(p)
+			totalEntries += len(entries)
+		}
+		if totalEntries == 0 {
+			s.logger.Warnf("媒体库所有路径均为空 (媒体库: %s)", lib.Name)
+		}
 
 		// 计算总步骤数（根据媒体库类型和设置动态确定）
 		stepTotal := 1 // 基础：扫描
@@ -410,6 +401,14 @@ func (s *LibraryService) Delete(id string) error {
 			s.logger.Errorf("删除媒体库 %s 的演职人员关联(series)失败: %v", libName, err)
 		}
 	}
+	// 清理扫描归类记录（虚拟归类与命名映射）
+	if s.scanClassificationRepo != nil {
+		if deleted, err := s.scanClassificationRepo.DeleteByLibraryID(id); err != nil {
+			s.logger.Errorf("删除媒体库 %s 的扫描归类记录失败: %v", libName, err)
+		} else if deleted > 0 {
+			s.logger.Debugf("已清理 %d 条扫描归类记录（媒体库 %s）", deleted, libName)
+		}
+	}
 	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
 		s.logger.Errorf("删除媒体库 %s 的媒体数据失败: %v", libName, err)
 	}
@@ -511,23 +510,6 @@ func (s *LibraryService) Reindex(id string) error {
 		return ErrLibraryNotFound
 	}
 
-	// 同步检查每个媒体库路径是否存在且可访问
-	for _, p := range lib.AllPaths() {
-		info, err := os.Stat(p)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return fmt.Errorf("媒体库路径不存在: %s，请检查路径是否正确以及Docker卷映射是否配置", p)
-			}
-			if os.IsPermission(err) {
-				return fmt.Errorf("无权限访问媒体库路径: %s，请检查文件权限", p)
-			}
-			return fmt.Errorf("访问媒体库路径失败: %v", err)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("媒体库路径不是目录: %s", p)
-		}
-	}
-
 	// 防止重复操作
 	if _, scanning := s.scanning.LoadOrStore(id, true); scanning {
 		return ErrScanInProgress
@@ -535,6 +517,19 @@ func (s *LibraryService) Reindex(id string) error {
 
 	go func() {
 		defer s.scanning.Delete(id)
+
+		// 异步检查路径（网络驱动器可能较慢，不阻塞 HTTP 响应）
+		for _, p := range lib.AllPaths() {
+			info, err := os.Stat(p)
+			if err != nil {
+				s.logger.Errorf("媒体库路径不可访问: %s (媒体库: %s) err=%v", p, lib.Name, err)
+				return
+			}
+			if !info.IsDir() {
+				s.logger.Errorf("媒体库路径不是目录: %s (媒体库: %s)", p, lib.Name)
+				return
+			}
+		}
 
 		// 计算总步骤数（清理 + 扫描 + 可选刮削 + 可选合并 + 可选匹配）
 		stepTotal := 2 // 基础：清理 + 扫描

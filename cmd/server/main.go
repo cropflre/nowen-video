@@ -620,6 +620,7 @@ func main() {
 		admin.GET("/scan-classify/stats", handlers.ScanPostProcess.Stats)
 		admin.GET("/scan-classify/:mediaId", handlers.ScanPostProcess.Get)
 		admin.POST("/scan-classify/reprocess", handlers.ScanPostProcess.Reprocess)
+		admin.DELETE("/scan-classify", handlers.ScanPostProcess.Clear)
 
 		// ==================== 番号刮削管理 ====================
 		admin.GET("/adult-scraper/config", handlers.AdultScraper.GetConfig)

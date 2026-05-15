@@ -211,3 +211,9 @@ func (r *ScanClassificationRepo) DeleteByLibraryID(libraryID string) (int64, err
 	res := r.db.Unscoped().Where("library_id = ?", libraryID).Delete(&model.MediaClassification{})
 	return res.RowsAffected, res.Error
 }
+
+// DeleteAll 清空所有分类记录（危险操作，调用方应确认）
+func (r *ScanClassificationRepo) DeleteAll() (int64, error) {
+	res := r.db.Unscoped().Where("1 = 1").Delete(&model.MediaClassification{})
+	return res.RowsAffected, res.Error
+}

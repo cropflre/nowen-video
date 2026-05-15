@@ -126,6 +126,11 @@ export const scanClassifyApi = {
       '/admin/scan-classify/reprocess',
       req,
     ),
+
+  clear: (libraryId?: string) =>
+    api.delete<{ data: { deleted: number } }>('/admin/scan-classify', {
+      params: libraryId ? { library_id: libraryId } : {},
+    }),
 }
 
 // 显示名映射
