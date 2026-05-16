@@ -16,6 +16,19 @@ import (
 
 // ==================== NFO 写入器 ====================
 
+// NFOExistingPolicy 控制目标 NFO 已存在时的处理方式。
+type NFOExistingPolicy string
+
+const (
+	NFOExistingSkip      NFOExistingPolicy = "skip"
+	NFOExistingOverwrite NFOExistingPolicy = "overwrite"
+)
+
+// NFOWriteOptions NFO 写入选项。
+type NFOWriteOptions struct {
+	ExistingPolicy NFOExistingPolicy
+}
+
 // WriteMovieNFO 为媒体文件生成 .nfo 文件（电影格式）
 // 符合 Emby/Jellyfin/Kodi 的 <movie> 规范
 // 参数：
@@ -24,32 +37,43 @@ import (
 //
 // 返回：生成的 .nfo 文件路径
 func (s *NFOService) WriteMovieNFO(mediaFilePath string, media *model.Media) (string, error) {
+	return s.WriteMediaNFO(mediaFilePath, media, nil, NFOWriteOptions{ExistingPolicy: NFOExistingOverwrite})
+}
+
+// WriteMediaNFO 为普通媒体生成同名 .nfo 文件。
+// 自动刮削路径默认选择 skip，避免覆盖用户已有的手写 NFO。
+func (s *NFOService) WriteMediaNFO(mediaFilePath string, media *model.Media, people []model.MediaPerson, opts NFOWriteOptions) (string, error) {
 	if media == nil {
 		return "", fmt.Errorf("media 对象为空")
 	}
+	if mediaFilePath == "" {
+		return "", fmt.Errorf("媒体文件路径为空")
+	}
 
-	// NFO 文件路径：媒体文件同名 + .nfo
-	ext := filepath.Ext(mediaFilePath)
-	nfoPath := strings.TrimSuffix(mediaFilePath, ext) + ".nfo"
-
-	// 构造 XML 内容
-	content := buildMovieNFOXML(media)
+	nfoPath := mediaNFOPath(mediaFilePath)
 
 	// 写入文件（不支持 webdav:// 写入，仅本地）
 	if IsWebDAVPath(nfoPath) {
 		return "", fmt.Errorf("不支持向 webdav:// 路径写入 NFO 文件")
 	}
 
-	// 确保目录存在
-	dir := filepath.Dir(nfoPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("创建 NFO 目录失败: %w", err)
+	policy := opts.ExistingPolicy
+	if policy == "" {
+		policy = NFOExistingSkip
+	}
+	if policy == NFOExistingSkip {
+		if _, err := os.Stat(nfoPath); err == nil {
+			s.logger.Debugf("NFO 已存在，按策略跳过: %s", nfoPath)
+			return nfoPath, nil
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("检查 NFO 文件失败: %w", err)
+		}
 	}
 
-	if err := os.WriteFile(nfoPath, []byte(content), 0o644); err != nil {
-		return "", fmt.Errorf("写入 NFO 文件失败: %w", err)
+	content := buildMediaNFOXML(media, people)
+	if err := writeUTF8NFOFile(nfoPath, content); err != nil {
+		return "", err
 	}
-
 	s.logger.Debugf("NFO 写入成功: %s", nfoPath)
 	return nfoPath, nil
 }
@@ -111,6 +135,22 @@ func (s *NFOService) WriteTVShowNFO(dir string, series *model.Series) (string, e
 
 // ==================== XML 构造函数 ====================
 
+func mediaNFOPath(mediaFilePath string) string {
+	ext := filepath.Ext(mediaFilePath)
+	return strings.TrimSuffix(mediaFilePath, ext) + ".nfo"
+}
+
+func writeUTF8NFOFile(nfoPath, content string) error {
+	dir := filepath.Dir(nfoPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("创建 NFO 目录失败: %w", err)
+	}
+	if err := os.WriteFile(nfoPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("写入 NFO 文件失败: %w", err)
+	}
+	return nil
+}
+
 // escapeXML 转义 XML 特殊字符
 func escapeXML(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
@@ -121,8 +161,23 @@ func escapeXML(s string) string {
 	return s
 }
 
+func cdataXML(s string) string {
+	return strings.ReplaceAll(s, "]]>", "]]]]><![CDATA[>")
+}
+
+func buildMediaNFOXML(media *model.Media, people []model.MediaPerson) string {
+	if media.MediaType == "episode" {
+		return buildEpisodeNFOXML(media, people)
+	}
+	return buildMovieNFOXMLWithPeople(media, people)
+}
+
 // buildMovieNFOXML 构造标准电影 NFO XML
 func buildMovieNFOXML(media *model.Media) string {
+	return buildMovieNFOXMLWithPeople(media, nil)
+}
+
+func buildMovieNFOXMLWithPeople(media *model.Media, people []model.MediaPerson) string {
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
 	sb.WriteString("<movie>\n")
@@ -157,7 +212,7 @@ func buildMovieNFOXML(media *model.Media) string {
 
 	if media.Overview != "" {
 		// Plot 使用 CDATA 封装，避免 HTML 标签被转义
-		sb.WriteString("  <plot><![CDATA[" + media.Overview + "]]></plot>\n")
+		sb.WriteString("  <plot><![CDATA[" + cdataXML(media.Overview) + "]]></plot>\n")
 	}
 	// outline：优先用独立的 Outline，否则回退到 Overview
 	outline := media.Outline
@@ -165,10 +220,10 @@ func buildMovieNFOXML(media *model.Media) string {
 		outline = media.Overview
 	}
 	if outline != "" {
-		sb.WriteString("  <outline><![CDATA[" + outline + "]]></outline>\n")
+		sb.WriteString("  <outline><![CDATA[" + cdataXML(outline) + "]]></outline>\n")
 	}
 	if media.OriginalPlot != "" {
-		sb.WriteString("  <originalplot><![CDATA[" + media.OriginalPlot + "]]></originalplot>\n")
+		sb.WriteString("  <originalplot><![CDATA[" + cdataXML(media.OriginalPlot) + "]]></originalplot>\n")
 	}
 
 	if media.Tagline != "" {
@@ -244,6 +299,9 @@ func buildMovieNFOXML(media *model.Media) string {
 	if media.Website != "" {
 		writeXMLField(&sb, "website", media.Website)
 	}
+	if media.TrailerURL != "" {
+		writeXMLField(&sb, "trailer", media.TrailerURL)
+	}
 
 	// 外部 ID
 	if media.TMDbID > 0 {
@@ -259,11 +317,135 @@ func buildMovieNFOXML(media *model.Media) string {
 		writeXMLField(&sb, "imdbid", media.IMDbID)
 	}
 
+	writePeopleXML(&sb, people)
+
 	// 生成时间戳
 	sb.WriteString(fmt.Sprintf("  <dateadded>%s</dateadded>\n", time.Now().Format("2006-01-02 15:04:05")))
 
 	sb.WriteString("</movie>\n")
 	return sb.String()
+}
+
+func buildEpisodeNFOXML(media *model.Media, people []model.MediaPerson) string {
+	var sb strings.Builder
+	sb.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
+	sb.WriteString("<episodedetails>\n")
+
+	title := media.EpisodeTitle
+	if title == "" {
+		title = media.DisplayTitle()
+	}
+	writeXMLField(&sb, "title", title)
+	writeXMLField(&sb, "originaltitle", media.OrigTitle)
+	if media.Series != nil {
+		writeXMLField(&sb, "showtitle", media.Series.Title)
+	} else if media.Title != "" {
+		writeXMLField(&sb, "showtitle", media.Title)
+	}
+	if media.SeasonNum > 0 {
+		writeXMLField(&sb, "season", fmt.Sprintf("%d", media.SeasonNum))
+	}
+	if media.EpisodeNum > 0 {
+		writeXMLField(&sb, "episode", fmt.Sprintf("%d", media.EpisodeNum))
+	}
+	if media.Year > 0 {
+		writeXMLField(&sb, "year", fmt.Sprintf("%d", media.Year))
+	}
+
+	aired := media.Premiered
+	if aired == "" {
+		aired = media.ReleaseDate
+	}
+	writeXMLField(&sb, "aired", aired)
+	writeXMLField(&sb, "premiered", aired)
+
+	if media.Overview != "" {
+		sb.WriteString("  <plot><![CDATA[" + cdataXML(media.Overview) + "]]></plot>\n")
+		sb.WriteString("  <outline><![CDATA[" + cdataXML(media.Overview) + "]]></outline>\n")
+	}
+	if media.Rating > 0 {
+		writeXMLField(&sb, "rating", fmt.Sprintf("%.1f", media.Rating))
+	}
+	if media.Runtime > 0 {
+		writeXMLField(&sb, "runtime", fmt.Sprintf("%d", media.Runtime))
+	}
+	if media.PosterPath != "" {
+		writeXMLField(&sb, "thumb", media.PosterPath)
+	}
+	if media.BackdropPath != "" {
+		sb.WriteString("  <fanart>\n")
+		sb.WriteString(fmt.Sprintf("    <thumb>%s</thumb>\n", escapeXML(media.BackdropPath)))
+		sb.WriteString("  </fanart>\n")
+	}
+	if media.Genres != "" {
+		for _, g := range strings.Split(media.Genres, ",") {
+			if g = strings.TrimSpace(g); g != "" {
+				writeXMLField(&sb, "genre", g)
+			}
+		}
+	}
+	if media.TMDbID > 0 {
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"tmdb\" default=\"true\">%d</uniqueid>\n", media.TMDbID))
+		writeXMLField(&sb, "tmdbid", fmt.Sprintf("%d", media.TMDbID))
+	}
+	if media.IMDbID != "" {
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"imdb\">%s</uniqueid>\n", escapeXML(media.IMDbID)))
+		writeXMLField(&sb, "imdbid", media.IMDbID)
+	}
+	if media.DoubanID != "" {
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"douban\">%s</uniqueid>\n", escapeXML(media.DoubanID)))
+		writeXMLField(&sb, "doubanid", media.DoubanID)
+	}
+
+	writePeopleXML(&sb, people)
+	sb.WriteString(fmt.Sprintf("  <dateadded>%s</dateadded>\n", time.Now().Format("2006-01-02 15:04:05")))
+	sb.WriteString("</episodedetails>\n")
+	return sb.String()
+}
+
+func writePeopleXML(sb *strings.Builder, people []model.MediaPerson) {
+	seenDirectors := make(map[string]bool)
+	seenWriters := make(map[string]bool)
+
+	for _, mp := range people {
+		name := strings.TrimSpace(mp.Person.Name)
+		if name == "" {
+			continue
+		}
+		switch mp.Role {
+		case "director":
+			if !seenDirectors[name] {
+				writeXMLField(sb, "director", name)
+				seenDirectors[name] = true
+			}
+		case "writer":
+			if !seenWriters[name] {
+				writeXMLField(sb, "credits", name)
+				writeXMLField(sb, "writer", name)
+				seenWriters[name] = true
+			}
+		}
+	}
+
+	for _, mp := range people {
+		if mp.Role != "actor" {
+			continue
+		}
+		name := strings.TrimSpace(mp.Person.Name)
+		if name == "" {
+			continue
+		}
+		sb.WriteString("  <actor>\n")
+		sb.WriteString(fmt.Sprintf("    <name>%s</name>\n", escapeXML(name)))
+		if mp.Character != "" {
+			sb.WriteString(fmt.Sprintf("    <role>%s</role>\n", escapeXML(mp.Character)))
+		}
+		if mp.Person.ProfileURL != "" {
+			sb.WriteString(fmt.Sprintf("    <thumb>%s</thumb>\n", escapeXML(mp.Person.ProfileURL)))
+		}
+		sb.WriteString(fmt.Sprintf("    <sortorder>%d</sortorder>\n", mp.SortOrder))
+		sb.WriteString("  </actor>\n")
+	}
 }
 
 // buildAdultNFOXML 构造番号专用 NFO XML（包含番号、演员、片商等完整字段）

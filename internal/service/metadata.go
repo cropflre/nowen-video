@@ -38,6 +38,7 @@ type MetadataService struct {
 	ai              *AIService      // AI 元数据增强（第四层 Fallback）
 	providerChain   *ProviderChain  // 多数据源调度链（第三阶段）
 	thetvdb         *TheTVDBService // TheTVDB 剧集增强源
+	nfoService      *NFOService     // 刮削成功后自动生成同名 NFO
 }
 
 func NewMetadataService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, personRepo *repository.PersonRepo, mediaPersonRepo *repository.MediaPersonRepo, cfg *config.Config, logger *zap.SugaredLogger) *MetadataService {
@@ -234,6 +235,11 @@ func (s *MetadataService) SetProviderChain(chain *ProviderChain) {
 // SetTheTVDBService 设置 TheTVDB 服务（延迟注入）
 func (s *MetadataService) SetTheTVDBService(thetvdb *TheTVDBService) {
 	s.thetvdb = thetvdb
+}
+
+// SetNFOService 设置 NFO 写入服务（延迟注入）。
+func (s *MetadataService) SetNFOService(nfo *NFOService) {
+	s.nfoService = nfo
 }
 
 // ==================== TMDb API 数据结构 ====================
@@ -451,6 +457,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 				s.logger.Errorf("保存元数据失败: %s - %v", media.Title, saveErr)
 				return saveErr
 			}
+			s.writeNFOAfterScrape(media.ID, media.ScrapeStatus)
 			s.logger.Infof("TMDb ID 直连刮削成功 (status=%s): %s", media.ScrapeStatus, media.Title)
 			randomDelay(1500, 3000)
 			return nil
@@ -484,6 +491,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		}
 		media.ScrapeStatus = finalStatus
 		s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{"scrape_status": finalStatus})
+		s.writeNFOAfterScrape(media.ID, finalStatus)
 		s.logger.Infof("元数据刮削完成 (多数据源, status=%s): %s", finalStatus, media.Title)
 		randomDelay(1500, 3000) // 单次刮削完成后等待 1.5-3 秒，防止限流
 		return nil
@@ -556,6 +564,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 							s.logger.Infof("AI 元数据增强成功: %s", media.Title)
 							updated.ScrapeStatus = "scraped" // P3: AI 增强成功
 							s.mediaRepo.Update(updated)
+							s.writeNFOAfterScrape(updated.ID, updated.ScrapeStatus)
 							return nil
 						}
 					}
@@ -582,6 +591,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	s.mediaRepo.UpdateFields(media.ID, map[string]interface{}{
 		"scrape_status": finalStatus,
 	})
+	s.writeNFOAfterScrape(media.ID, finalStatus)
 
 	// 等待一下避免限流（随机 1.5-3 秒）
 	randomDelay(1500, 3000)
@@ -719,6 +729,57 @@ func (s *MetadataService) broadcastScrapeEvent(eventType string, data *ScrapePro
 	if s.wsHub != nil {
 		s.wsHub.BroadcastEvent(eventType, data)
 	}
+}
+
+func (s *MetadataService) writeNFOAfterScrape(mediaID, status string) {
+	if s.nfoService == nil || status == "failed" {
+		return
+	}
+
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		s.logger.Debugf("NFO 生成前获取媒体失败: %s - %v", mediaID, err)
+		return
+	}
+	if !hasNFOReadyMetadata(media) {
+		s.logger.Debugf("媒体元数据不足，跳过 NFO 生成: %s", media.Title)
+		return
+	}
+	if media.FilePath == "" || IsWebDAVPath(media.FilePath) {
+		s.logger.Debugf("媒体路径不支持写入 NFO，跳过: %s", media.FilePath)
+		return
+	}
+
+	var people []model.MediaPerson
+	if s.mediaPersonRepo != nil {
+		if list, listErr := s.mediaPersonRepo.ListByMediaID(media.ID); listErr == nil {
+			people = list
+		} else {
+			s.logger.Debugf("读取演职人员失败，继续生成基础 NFO: %s - %v", media.Title, listErr)
+		}
+	}
+
+	nfoPath, err := s.nfoService.WriteMediaNFO(media.FilePath, media, people, NFOWriteOptions{ExistingPolicy: NFOExistingSkip})
+	if err != nil {
+		s.logger.Debugf("NFO 自动生成失败（不影响刮削结果）: %s - %v", media.Title, err)
+		return
+	}
+	s.logger.Debugf("NFO 自动生成完成: %s", nfoPath)
+}
+
+func hasNFOReadyMetadata(media *model.Media) bool {
+	if media == nil {
+		return false
+	}
+	return media.Overview != "" ||
+		media.Rating > 0 ||
+		media.Genres != "" ||
+		media.PosterPath != "" ||
+		media.BackdropPath != "" ||
+		media.TMDbID > 0 ||
+		media.DoubanID != "" ||
+		media.BangumiID > 0 ||
+		media.IMDbID != ""
 }
 
 // scrapeMovie 刮削电影元数据

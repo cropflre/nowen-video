@@ -124,6 +124,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 创建新服务
 	nfoService := NewNFOService(logger)
+	metadata.SetNFOService(nfoService)
 	statsService := NewStatsService(repos.PlaybackStats, repos.Media, logger)
 	webhookService := NewWebhookService(logger)
 	vfsManager := NewVFSManager(logger)
