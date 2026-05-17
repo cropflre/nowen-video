@@ -31,6 +31,8 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /app
+# 使用国内 Go 模块代理（proxy.golang.org 国内不可达）
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .

@@ -109,7 +109,7 @@ function CastCard({
   const [imgError, setImgError] = useState(false)
   const person = mediaPerson.person
   // 优先使用本地 API 代理头像（解决国内无法直连 TMDb 的问题）
-  const profileSrc = person?.person_id ? streamApi.getPersonProfileUrl(person.person_id) : null
+  const profileSrc = person?.id ? streamApi.getPersonProfileUrl(person.id) : null
 
   return (
     <button
