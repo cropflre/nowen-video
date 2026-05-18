@@ -5,10 +5,13 @@ import {
   parseIngestStats,
   parseLibraryIds,
   statusLabel,
+  formatBytes,
   type IngestJob,
+  type ExistingIngestRef,
+  type RollbackResult,
 } from '../api/ingest'
 import { useWebSocket, WS_EVENTS } from '../hooks/useWebSocket'
-import { Sparkles, FolderInput, X, Loader2, CheckCircle2, AlertTriangle, History } from 'lucide-react'
+import { Sparkles, FolderInput, X, Loader2, CheckCircle2, AlertTriangle, History, Undo2, ShieldAlert } from 'lucide-react'
 import IngestHistoryModal from './IngestHistoryModal'
 
 // LazyIngestModal · 一键入库（懒人模式）
@@ -33,10 +36,17 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
   const [sourcePath, setSourcePath] = useState('')
   const [targetRoot, setTargetRoot] = useState('') // 空 = 让后端取默认（source/_organized）
   const [namingStyle, setNamingStyle] = useState<'jellyfin' | 'plex'>('jellyfin')
+  const [mode, setMode] = useState<'hardlink' | 'move'>('hardlink')
+  const [moveConfirmed, setMoveConfirmed] = useState(false) // 二次确认复选
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [job, setJob] = useState<IngestJob | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // 409 重复入库对话框状态
+  const [dupConflict, setDupConflict] = useState<ExistingIngestRef[] | null>(null)
+  // 回滚状态
+  const [rollingBack, setRollingBack] = useState(false)
+  const [rollbackResult, setRollbackResult] = useState<RollbackResult | null>(null)
 
   const stats = useMemo(() => parseIngestStats(job), [job])
   const libIds = useMemo(() => parseLibraryIds(job), [job])
@@ -106,10 +116,15 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
 
   if (!isOpen) return null
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (force = false) => {
     setErrorMsg('')
+    setDupConflict(null)
     if (!sourcePath.trim()) {
       setErrorMsg('请填写源目录')
+      return
+    }
+    if (mode === 'move' && !moveConfirmed) {
+      setErrorMsg('专家模式（move）会真实移动源文件，请勾选「我理解」后再提交')
       return
     }
     setSubmitting(true)
@@ -118,12 +133,35 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
         source_path: sourcePath.trim(),
         target_root: targetRoot.trim() || undefined,
         naming_style: namingStyle,
+        mode,
+        force,
       })
       setJob(resp.data?.data || null)
     } catch (e: any) {
-      setErrorMsg(e?.response?.data?.error || e?.message || '创建任务失败')
+      // 409 重复入库
+      if (e?.response?.status === 409 && Array.isArray(e?.response?.data?.existing_jobs)) {
+        setDupConflict(e.response.data.existing_jobs as ExistingIngestRef[])
+      } else {
+        setErrorMsg(e?.response?.data?.error || e?.message || '创建任务失败')
+      }
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleRollback = async () => {
+    if (!job) return
+    if (!confirm('确认要回滚本次任务吗？\n\n系统将按 journal 倒序把文件还原到原始位置。\n这个操作安全，但如果你手动动过文件可能会冲突。')) return
+    setRollingBack(true)
+    try {
+      const resp = await ingestApi.rollback(job.id)
+      setRollbackResult(resp.data?.data || null)
+      const next = await ingestApi.getJob(job.id)
+      setJob(next.data?.data || null)
+    } catch (e: any) {
+      setErrorMsg(e?.response?.data?.error || e?.message || '回滚失败')
+    } finally {
+      setRollingBack(false)
     }
   }
 
@@ -250,6 +288,69 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
               </div>
             </div>
 
+            {/* 落盘模式 */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                落盘模式
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setMode('hardlink'); setMoveConfirmed(false) }}
+                  className="flex-1 rounded-lg px-3 py-2 text-left transition-all"
+                  style={{
+                    background: mode === 'hardlink' ? 'var(--neon-tint)' : 'transparent',
+                    border: `1px solid ${mode === 'hardlink' ? 'var(--neon)' : 'var(--border-default)'}`,
+                  }}
+                >
+                  <div className="text-xs font-medium" style={{ color: mode === 'hardlink' ? 'var(--neon)' : 'var(--text-primary)' }}>
+                    🛡️ 硬链接 · 零风险（推荐）
+                  </div>
+                  <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                    源文件不变 · 不占额外空间 · 同卷瞬间完成
+                  </div>
+                </button>
+                <button
+                  onClick={() => setMode('move')}
+                  className="flex-1 rounded-lg px-3 py-2 text-left transition-all"
+                  style={{
+                    background: mode === 'move' ? 'rgba(244,63,94,0.10)' : 'transparent',
+                    border: `1px solid ${mode === 'move' ? '#f43f5e' : 'var(--border-default)'}`,
+                  }}
+                >
+                  <div className="text-xs font-medium" style={{ color: mode === 'move' ? '#fca5a5' : 'var(--text-primary)' }}>
+                    ⚡ 专家模式 · 原地移动
+                  </div>
+                  <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                    释放源目录空间 · 可一键回滚 · 需二次确认
+                  </div>
+                </button>
+              </div>
+              {mode === 'move' && (
+                <div className="mt-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: 'rgba(244,63,94,0.10)', color: '#fecaca' }}>
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert size={14} className="mt-0.5 flex-shrink-0" style={{ color: '#f43f5e' }} />
+                    <div>
+                      <div className="mb-1 font-medium" style={{ color: '#fca5a5' }}>⚠ 专家模式：该操作会真实移动源文件</div>
+                      <ul className="ml-3 list-disc space-y-0.5" style={{ color: '#fecaca' }}>
+                        <li>源目录中的文件位置会被重组，顶替原始结构</li>
+                        <li>系统会记录 journal，完成后 30 天内可一键回滚</li>
+                        <li>跨卷会被拒绝（与硬链接一致）</li>
+                      </ul>
+                      <label className="mt-2 flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={moveConfirmed}
+                          onChange={(e) => setMoveConfirmed(e.target.checked)}
+                          className="h-3.5 w-3.5 cursor-pointer accent-rose-500"
+                        />
+                        <span style={{ color: '#fca5a5' }}>我已了解：这会真实移动源文件</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {errorMsg && (
               <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(244,63,94,0.1)', color: '#fca5a5' }}>
                 <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
@@ -262,8 +363,8 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
                 取消
               </button>
               <button
-                onClick={handleSubmit}
-                disabled={submitting || !sourcePath.trim()}
+                onClick={() => handleSubmit(false)}
+                disabled={submitting || !sourcePath.trim() || (mode === 'move' && !moveConfirmed)}
                 className="btn-primary gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
               >
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <FolderInput size={14} />}
@@ -308,6 +409,41 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
               <StatCell label="待人工" value={stats.unsorted} accent={stats.unsorted > 0 ? 'amber' : undefined} />
             </div>
 
+            {/* 体积统计：视觉 vs 真实 */}
+            {(stats.bytes_logical || 0) > 0 && (
+              <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-base)' }}>
+                <div>
+                  <span style={{ color: 'var(--text-tertiary)' }}>视觉占用 </span>
+                  <span className="font-mono" style={{ color: 'var(--text-primary)' }}>{formatBytes(stats.bytes_logical)}</span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-tertiary)' }}>真实占用 </span>
+                  <span className="font-mono" style={{ color: '#34d399' }}>{formatBytes(stats.bytes_physical)}</span>
+                  <span
+                    className="ml-1.5 cursor-help"
+                    style={{ color: 'var(--text-tertiary)' }}
+                    title={job.mode === 'move' ? 'Move 模式：同卷 rename不占额外空间，且释放了源' : 'Hardlink 模式：两个路径指向同一份磁盘数据，零额外空间'}
+                  >ⓘ</span>
+                </div>
+              </div>
+            )}
+
+            {/* 回滚结果 */}
+            {rollbackResult && (
+              <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(251,191,36,0.10)', color: '#fde68a' }}>
+                <div className="flex items-center gap-1.5">
+                  <Undo2 size={12} />
+                  <span>已回滚：还原 {rollbackResult.restored_mv} · 跳过 {rollbackResult.skipped_mv} · 清理空目录 {rollbackResult.removed_dir}</span>
+                </div>
+                {rollbackResult.errors.length > 0 && (
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5 text-[11px]">
+                    {rollbackResult.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
+                    {rollbackResult.errors.length > 5 && <li>… 另 {rollbackResult.errors.length - 5} 条</li>}
+                  </ul>
+                )}
+              </div>
+            )}
+
             {/* 路径概要 */}
             <div className="space-y-1 rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-base)' }}>
               <div className="flex gap-2">
@@ -344,7 +480,20 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
                 </button>
               ) : (
                 <>
-                  <button onClick={() => setJob(null)} className="btn-ghost px-4 py-2 text-sm">
+                  {/* 仅 move 模式且完成/失败状态显示回滚按钮 */}
+                  {job.mode === 'move' && (job.status === 'completed' || job.status === 'failed') && !rollbackResult && (
+                    <button
+                      onClick={handleRollback}
+                      disabled={rollingBack}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50"
+                      style={{ background: 'rgba(251,191,36,0.10)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.4)' }}
+                      title="按 journal 倒序还原文件位置"
+                    >
+                      {rollingBack ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+                      回滚本次操作
+                    </button>
+                  )}
+                  <button onClick={() => { setJob(null); setRollbackResult(null) }} className="btn-ghost px-4 py-2 text-sm">
                     再来一次
                   </button>
                   <button onClick={onClose} className="btn-primary px-4 py-2 text-sm">
@@ -359,6 +508,47 @@ export default function LazyIngestModal({ isOpen, onClose, onCompleted }: Props)
 
       {/* 历史详情弹窗（叠在上层） */}
       <IngestHistoryModal isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
+
+      {/* 409：该源目录已被入库过 */}
+      {dupConflict && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div
+            className="w-full max-w-md rounded-2xl p-5 shadow-2xl"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <ShieldAlert size={18} style={{ color: '#fbbf24' }} />
+              <h3 className="font-display text-base font-semibold">该源目录已入库过</h3>
+            </div>
+            <p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+              检测到 <span className="font-mono break-all" style={{ color: 'var(--text-primary)' }}>{sourcePath}</span> 在历史任务中已被处理（共 {dupConflict.length} 条记录）。重复执行会再次产出 _organized 副本，可能造成混乱。
+            </p>
+            <div className="mb-3 max-h-40 space-y-1 overflow-y-auto rounded-lg p-2 text-[11px]" style={{ background: 'var(--bg-base)' }}>
+              {dupConflict.slice(0, 5).map((j) => (
+                <div key={j.job_id} className="flex justify-between gap-2">
+                  <span className="break-all" style={{ color: 'var(--text-secondary)' }}>{j.target_root}</span>
+                  <span className="flex-shrink-0 font-mono" style={{ color: 'var(--text-tertiary)' }}>{j.mode}</span>
+                </div>
+              ))}
+              {dupConflict.length > 5 && (
+                <div style={{ color: 'var(--text-tertiary)' }}>… 另 {dupConflict.length - 5} 条</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDupConflict(null)} className="btn-ghost px-3 py-1.5 text-xs">
+                取消
+              </button>
+              <button
+                onClick={() => { setDupConflict(null); handleSubmit(true) }}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                style={{ background: 'rgba(244,63,94,0.15)', color: '#fca5a5', border: '1px solid rgba(244,63,94,0.4)' }}
+              >
+                强制重新入库
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

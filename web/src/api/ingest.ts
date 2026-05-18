@@ -30,6 +30,10 @@ export interface IngestStats {
   skipped: number
   failed: number
   unsorted: number
+  /** 视觉占用字节数（含 hardlink） */
+  bytes_logical?: number
+  /** 真实占用字节数（hardlink 为 0） */
+  bytes_physical?: number
 }
 
 export interface IngestJob {
@@ -38,6 +42,10 @@ export interface IngestJob {
   target_root: string
   keep_original: boolean
   naming_style: NamingStyle | string
+  /** 落盘模式 hardlink / move */
+  mode?: 'hardlink' | 'move' | string
+  /** Move 模式下的 journal 文件路径 */
+  journal_path?: string
   status: IngestJobStatus
   phase: string
   progress: number
@@ -55,12 +63,40 @@ export interface IngestJob {
   completed_at: string | null
 }
 
+export interface ExistingIngestRef {
+  job_id: string
+  target_root: string
+  mode: string
+  completed_at: string
+}
+
+/** 409 重复入库响应体 */
+export interface AlreadyIngestedError {
+  error: string
+  code: 'already_ingested'
+  existing_jobs: ExistingIngestRef[]
+}
+
+export interface RollbackResult {
+  total: number
+  restored_mv: number
+  skipped_mv: number
+  removed_dir: number
+  kept_dir: number
+  errors: string[]
+  corrupted: number
+}
+
 export interface SubmitRequest {
   source_path: string
   /** 可选：默认 = source_path/_organized */
   target_root?: string
   /** 可选：默认 jellyfin */
   naming_style?: NamingStyle
+  /** 可选：落盘模式 hardlink（默认，零风险）/ move（专家模式，原地移动） */
+  mode?: 'hardlink' | 'move'
+  /** 可选：强制重新入库（跳过同源检测） */
+  force?: boolean
 }
 
 export const ingestApi = {
@@ -79,6 +115,10 @@ export const ingestApi = {
   /** 取该 Job 关联的所有文件级明细（来自 RenamePlanItem） */
   getJobItems: (id: string) =>
     api.get<{ data: IngestJobItem[]; total: number }>(`/admin/ingest/jobs/${id}/items`),
+
+  /** 回滚 Move 模式任务：倒序还原文件位置 */
+  rollback: (id: string) =>
+    api.post<{ data: RollbackResult }>(`/admin/ingest/jobs/${id}/rollback`),
 }
 
 /**
@@ -154,6 +194,8 @@ export function parseIngestStats(job: IngestJob | null | undefined): IngestStats
     skipped: 0,
     failed: 0,
     unsorted: 0,
+    bytes_logical: 0,
+    bytes_physical: 0,
   }
   if (!job?.stats) return empty
   try {
@@ -162,6 +204,19 @@ export function parseIngestStats(job: IngestJob | null | undefined): IngestStats
   } catch {
     return empty
   }
+}
+
+/** 人类可读的字节数格式 */
+export function formatBytes(n: number | undefined | null): string {
+  if (!n || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0
+  let v = n
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`
 }
 
 // 解析 library_ids JSON 字符串

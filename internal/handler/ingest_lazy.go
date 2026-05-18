@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -29,6 +30,10 @@ type lazyIngestSubmitRequest struct {
 	SourcePath  string `json:"source_path" binding:"required"`
 	TargetRoot  string `json:"target_root"`
 	NamingStyle string `json:"naming_style"`
+	// hardlink（默认）/ move（专家模式：原地移动 + journal 回滚）
+	Mode string `json:"mode"`
+	// 强制重新入库：即使同源已被处理过也继续
+	Force bool `json:"force"`
 }
 
 // ===== 路由实现 =====
@@ -49,9 +54,21 @@ func (h *LazyIngestHandler) Submit(c *gin.Context) {
 		SourcePath:  req.SourcePath,
 		TargetRoot:  req.TargetRoot,
 		NamingStyle: req.NamingStyle,
+		Mode:        req.Mode,
+		Force:       req.Force,
 		CreatedBy:   createdBy,
 	})
 	if err != nil {
+		// 重复入库检测命中 -> 409，前端据此弹「已入库过，是否强制重新入库」
+		var dup *service.ErrAlreadyIngested
+		if errors.As(err, &dup) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":         dup.Error(),
+				"code":          "already_ingested",
+				"existing_jobs": dup.ExistingJobs,
+			})
+			return
+		}
 		h.logger.Warnf("[LazyIngest] 创建任务失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -109,4 +126,17 @@ func (h *LazyIngestHandler) GetJobItems(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": items, "total": len(items)})
+}
+
+// RollbackJob POST /api/admin/ingest/jobs/:id/rollback
+//
+// 仅适用于 mode=move 的 Job。按 journal 倒序还原文件位置。
+func (h *LazyIngestHandler) RollbackJob(c *gin.Context) {
+	id := c.Param("id")
+	res, err := h.svc.RollbackJob(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": res})
 }

@@ -33,6 +33,16 @@ const (
 	IngestJobStatusCanceled    IngestJobStatus = "canceled"    // 用户取消
 )
 
+// IngestJobMode 落盘策略
+//   - hardlink: 默认，仅创建硬链接，源文件 0 风险，零额外空间（懒人模式）
+//   - move    : 专家模式，os.Rename 原地移动；同卷瞬间完成、释放源；提供 journal 回滚
+type IngestJobMode string
+
+const (
+	IngestJobModeHardlink IngestJobMode = "hardlink"
+	IngestJobModeMove     IngestJobMode = "move"
+)
+
 // IngestJob 懒人入库任务
 //
 // 字段尽量小而精，只保留"一键入库"必要的编排字段；明细放在 RenamePlan / RenamePlanItem。
@@ -48,6 +58,11 @@ type IngestJob struct {
 	// 执行策略（懒人模式默认值即可，全部硬编码到服务里，模型仅记录）
 	KeepOriginal bool   `json:"keep_original" gorm:"default:true"` // 默认不删源
 	NamingStyle  string `json:"naming_style" gorm:"type:text;default:jellyfin"`
+
+	// 落盘模式：hardlink（默认，懒人）/ move（专家，原地移动 + journal 回滚）
+	Mode string `json:"mode" gorm:"type:text;default:hardlink;index"`
+	// Move 模式下的 journal 文件绝对路径（每行一条 JSON 操作记录，用于回滚）
+	JournalPath string `json:"journal_path" gorm:"type:text"`
 
 	// 状态机
 	Status IngestJobStatus `json:"status" gorm:"type:text;default:pending;index"`

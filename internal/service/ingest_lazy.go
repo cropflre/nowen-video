@@ -132,6 +132,10 @@ type LazyIngestStats struct {
 	Skipped    int `json:"skipped"`    // 跳过（目标已存在等）
 	Failed     int `json:"failed"`     // 失败
 	Unsorted   int `json:"unsorted"`   // 进入 _unsorted 的条目
+
+	// 体积统计（用于前端展示「视觉占用 vs 真实占用」）
+	BytesLogical  int64 `json:"bytes_logical"`  // 视觉占用：所有落盘文件大小累加（hardlink 也计入）
+	BytesPhysical int64 `json:"bytes_physical"` // 真实占用：仅 move/copy 模式累加；hardlink 模式恒为 0
 }
 
 // ==================== 服务 ====================
@@ -196,8 +200,34 @@ type LazyIngestInput struct {
 	TargetRoot string `json:"target_root"`
 	// 可选：用户希望的命名风格（默认 jellyfin）
 	NamingStyle string `json:"naming_style"`
+	// 可选：落盘模式 hardlink（默认）/ move（专家模式：原地移动 + journal 回滚）
+	Mode string `json:"mode"`
+	// 强制重新入库：即便 SourcePath 已被历史 Job 处理过也允许提交
+	Force bool `json:"force"`
 	// 创建者（审计）
 	CreatedBy string `json:"-"`
+}
+
+// ErrAlreadyIngested 重复提交检测：当 SourcePath 已被一个已完成 Job 处理过时返回。
+// handler 层据此返回 HTTP 409，前端弹「已入库到 X，是否强制重新入库 / 删除旧目标 / 取消」。
+type ErrAlreadyIngested struct {
+	ExistingJobs []ExistingIngestRef `json:"existing_jobs"`
+}
+
+// ExistingIngestRef 已存在的入库引用（用于前端 409 响应）
+type ExistingIngestRef struct {
+	JobID       string    `json:"job_id"`
+	TargetRoot  string    `json:"target_root"`
+	Mode        string    `json:"mode"`
+	CompletedAt time.Time `json:"completed_at"`
+}
+
+// Error 实现 error
+func (e *ErrAlreadyIngested) Error() string {
+	if len(e.ExistingJobs) == 0 {
+		return "该源目录已被入库过"
+	}
+	return fmt.Sprintf("该源目录已入库到 %s（共 %d 次历史记录）", e.ExistingJobs[0].TargetRoot, len(e.ExistingJobs))
 }
 
 // ==================== 主入口：Submit ====================
@@ -243,13 +273,27 @@ func (s *LazyIngestService) Submit(in LazyIngestInput) (*model.IngestJob, error)
 		style = NamingStyleJellyfin
 	}
 
+	// 落盘模式（默认 hardlink；move 是专家模式，会真实移动源文件）
+	mode := strings.ToLower(strings.TrimSpace(in.Mode))
+	if mode != string(model.IngestJobModeMove) {
+		mode = string(model.IngestJobModeHardlink)
+	}
+
+	// === 重复入库检测（除非 Force） ===
+	if !in.Force {
+		if refs, _ := s.findCompletedJobsBySource(absSrc); len(refs) > 0 {
+			return nil, &ErrAlreadyIngested{ExistingJobs: refs}
+		}
+	}
+
 	// === 持久化 Job（pending） ===
 	job := &model.IngestJob{
 		ID:           uuid.New().String(),
 		SourcePath:   absSrc,
 		TargetRoot:   tgtRoot,
-		KeepOriginal: true,
+		KeepOriginal: mode != string(model.IngestJobModeMove),
 		NamingStyle:  style,
+		Mode:         mode,
 		Status:       model.IngestJobStatusPending,
 		Phase:        "等待执行",
 		Progress:     0,
@@ -260,7 +304,16 @@ func (s *LazyIngestService) Submit(in LazyIngestInput) (*model.IngestJob, error)
 		return nil, fmt.Errorf("创建任务失败: %w", err)
 	}
 
-	// === Phase 0: 跨卷预检（仅 hardlink 策略下的关键校验）===
+	// Move 模式预先分配 journal 路径（写在 target_root/.nowen/journal-<jobID>.log）
+	if mode == string(model.IngestJobModeMove) {
+		jp := filepath.Join(tgtRoot, ".nowen", "journal-"+job.ID+".log")
+		job.JournalPath = jp
+		_ = s.updateFields(job.ID, map[string]interface{}{"journal_path": jp})
+	}
+
+	// === Phase 0: 跨卷预检（hardlink/move 都强制要求同卷）===
+	// hardlink: 跨卷直接失败
+	// move    : 跨卷会触发 EXDEV，os.Rename 会失败 -> 同样要求同卷
 	// 在异步任务启动前同步探测，让用户立刻拿到可执行错误（而不是任务跑完才发现 0 文件落盘）
 	if err := preflightSameVolume(absSrc, tgtRoot); err != nil {
 		// 探测失败时把 Job 直接置为 failed，便于前端列表展示
@@ -362,6 +415,19 @@ func (s *LazyIngestService) run(jobID string) {
 		return
 	}
 
+	// Move 模式：创建 journal writer，全过程复用
+	var journal *ingestJournalWriter
+	if job.Mode == string(model.IngestJobModeMove) && job.JournalPath != "" {
+		if jw, jerr := newIngestJournalWriter(job.JournalPath); jerr == nil {
+			journal = jw
+			defer journal.Close()
+		} else {
+			s.logger.Warnf("[LazyIngest] journal 创建失败 job=%s err=%v", jobID, jerr)
+			_ = s.markFailed(jobID, fmt.Sprintf("journal 创建失败：%v", jerr))
+			return
+		}
+	}
+
 	now := time.Now()
 	_ = s.updateFields(jobID, map[string]interface{}{
 		"status":     model.IngestJobStatusScanning,
@@ -452,6 +518,8 @@ func (s *LazyIngestService) run(jobID string) {
 	})
 
 	executor := newLazyIngestExecutor(s.logger)
+	executor.mode = job.Mode
+	executor.journal = journal
 
 	// === 并发落盘（仅 hardlink） ===
 	// hardlink 是微秒级的元数据操作，不读写文件内容。多 goroutine 主要是并行
@@ -469,6 +537,7 @@ func (s *LazyIngestService) run(jobID string) {
 		idx     int
 		skipped bool
 		failed  bool
+		bytes   int64
 		err     error
 	}
 
@@ -491,6 +560,7 @@ func (s *LazyIngestService) run(jobID string) {
 				continue
 			}
 			res.skipped = executor.lastSkipped
+			res.bytes = executor.lastBytes
 
 			// 关联资源（字幕、海报、nfo）跟随主视频
 			var related []SmartRenameRelatedFile
@@ -540,6 +610,12 @@ func (s *LazyIngestService) run(jobID string) {
 			stats.Skipped++
 		} else {
 			stats.Executed++
+			stats.BytesLogical += r.bytes
+			// move 模式会真实占用目标卷空间（同卷 rename 只动元数据不占额外空间，但释放了源）
+			// hardlink 模式不占任何额外空间。为了让 UI 展示「真实占用」有意义：
+			//   - hardlink: BytesPhysical = 0（不加）
+			//   - move    : BytesPhysical = 0（同卷也不多占，但源被释放，总体中性）
+			// 仅未来如果出现 copy 降级才会记。
 		}
 		done++
 
@@ -852,6 +928,95 @@ func (s *LazyIngestService) CancelJob(id string) error {
 	}
 }
 
+// findCompletedJobsBySource 查询同一 SourcePath 已完成（或失败）的历史 Job
+//
+// 用于重复入库检测：同源已被处理过 → handler 返回 409 让用户确认
+func (s *LazyIngestService) findCompletedJobsBySource(absSrc string) ([]ExistingIngestRef, error) {
+	var jobs []model.IngestJob
+	err := s.db.
+		Where("source_path = ? AND status IN ?", absSrc,
+			[]model.IngestJobStatus{model.IngestJobStatusCompleted, model.IngestJobStatusFailed}).
+		Order("created_at desc").
+		Limit(10).
+		Find(&jobs).Error
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]ExistingIngestRef, 0, len(jobs))
+	for _, j := range jobs {
+		// 只关心成功完成的（failed 但产生过部分文件也算"已动过"，保守也纳入）
+		var ts time.Time
+		if j.CompletedAt != nil {
+			ts = *j.CompletedAt
+		}
+		refs = append(refs, ExistingIngestRef{
+			JobID:       j.ID,
+			TargetRoot:  j.TargetRoot,
+			Mode:        j.Mode,
+			CompletedAt: ts,
+		})
+	}
+	return refs, nil
+}
+
+// RollbackJob 回滚一个 Move 模式的 Job：按 journal 倒序还原文件位置
+//
+// 行为：
+//   - 仅 mode=move 且 journal 存在的 Job 可回滚
+//   - 仅 status=completed/failed 的 Job 可回滚（运行中拒绝）
+//   - 回滚后把 status 改为 "canceled"，phase 标注"已回滚"
+//   - 30 天前的 Job 拒绝回滚（防误操作；由 caller 检查 CompletedAt）
+//
+// 返回回滚统计明细，供 UI 展示。
+func (s *LazyIngestService) RollbackJob(jobID string) (*IngestRollbackResult, error) {
+	job, err := s.loadJob(jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job.Mode != string(model.IngestJobModeMove) {
+		return nil, errors.New("仅 move 模式的任务支持回滚")
+	}
+	if job.JournalPath == "" {
+		return nil, errors.New("该任务未记录 journal，无法回滚")
+	}
+	switch job.Status {
+	case model.IngestJobStatusCompleted, model.IngestJobStatusFailed:
+		// ok
+	default:
+		return nil, fmt.Errorf("当前状态 %s 不可回滚（仅已完成/失败可回滚）", job.Status)
+	}
+	// 30 天保护
+	if job.CompletedAt != nil && time.Since(*job.CompletedAt) > 30*24*time.Hour {
+		return nil, errors.New("距任务完成已超过 30 天，禁止回滚以防误操作")
+	}
+	// 文件存在校验
+	if _, err := os.Stat(job.JournalPath); err != nil {
+		return nil, fmt.Errorf("journal 文件丢失或不可访问: %w", err)
+	}
+
+	res, err := RollbackIngestJournal(job.JournalPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 更新 Job 状态
+	now := time.Now()
+	errMsg := ""
+	if len(res.Errors) > 0 {
+		errMsg = fmt.Sprintf("回滚部分失败：%d 处冲突", len(res.Errors))
+	}
+	_ = s.updateFields(jobID, map[string]interface{}{
+		"status":        model.IngestJobStatusCanceled,
+		"phase":         fmt.Sprintf("已回滚（还原 %d / 跳过 %d）", res.RestoredMv, res.SkippedMv),
+		"error_message": errMsg,
+		"completed_at":  &now,
+	})
+	s.broadcast(s.mustLoadJob(jobID))
+	s.logger.Infof("[LazyIngest] 回滚完成 job=%s 还原=%d 跳过=%d 移除目录=%d",
+		jobID, res.RestoredMv, res.SkippedMv, res.RemovedDir)
+	return res, nil
+}
+
 // ==================== 进度推送 ====================
 
 func (s *LazyIngestService) broadcast(job *model.IngestJob) {
@@ -863,34 +1028,40 @@ func (s *LazyIngestService) broadcast(job *model.IngestJob) {
 
 // ==================== 落盘执行器 ====================
 
-// lazyIngestExecutor 仅负责"把一个文件放到目标位置"，仅使用 hardlink。
+// lazyIngestExecutor 仅负责“把一个文件放到目标位置”。根据 mode 选择 hardlink 或 move。
 //
 // 与 smart_rename_executor 的区别：
-//   - 不删除源（KeepOriginal=true，源文件 0 风险）
-//   - 仅 hardlink，不 copy（跨卷由上层 Phase 0 预检拦截）
+//   - hardlink: 不删除源（KeepOriginal=true，源文件 0 风险）、仅硬链、不 copy
+//   - move    : 专家模式，os.Rename 原地移动、同卷瞬间完成、源文件被释放；journal 记录每次操作以供回滚
 //   - 失败 / 目标已存在 时安全跳过，不抛回滚（懒人模式：宁少做不破坏）。
 type lazyIngestExecutor struct {
 	logger      *zap.SugaredLogger
-	lastSkipped bool // 给上层统计跳过条目用
+	mode        string               // hardlink / move；为空默认 hardlink
+	journal     *ingestJournalWriter // 仅 move 模式使用
+	lastSkipped bool                 // 给上层统计跳过条目用
+	lastBytes   int64                // 本次落盘文件大小（成功且未跳过时为文件实际字节数）
 }
 
 func newLazyIngestExecutor(logger *zap.SugaredLogger) *lazyIngestExecutor {
 	return &lazyIngestExecutor{logger: logger}
 }
 
-// placeFile 把 src 放到 dst：仅使用硬链接。
+// placeFile 把 src 放到 dst：按 e.mode 选择 hardlink 或 move。
 //
 // 行为：
 //   - src/dst 为空                              -> 错误
 //   - dst 与 src 完全相同（pathEqual）          -> noop, skipped=true
 //   - dst 已存在（无论 size 是否一致）           -> skipped=true（不覆盖）
-//   - 父目录不存在                              -> MkdirAll
-//   - hardlink 失败：跨卷                        -> ErrCrossVolumeNoLink（理论上不会到这里，Phase 0 已拦）
+//   - 父目录不存在                              -> MkdirAll（move 模式下会 journal.AppendMkdir）
+//   - hardlink 失败：跨卷                        -> ErrCrossVolumeNoLink
 //   - hardlink 失败：其他                        -> 包装错误返回
+//   - move 失败：跨卷                            -> ErrCrossVolumeNoLink（与 hardlink 一致语义）
+//   - move 失败：其他                            -> 包装错误返回
 //
-// 注意：本函数不再尝试 copy 退路。源文件永远只读、永不复制。
+// 注意：move 模式下，源文件会被真实移动；UI 必须二次确认后才允许启用。
 func (e *lazyIngestExecutor) placeFile(src, dst string) error {
 	e.lastSkipped = false
+	e.lastBytes = 0
 	if src == "" || dst == "" {
 		return errors.New("src/dst 不能为空")
 	}
@@ -900,22 +1071,54 @@ func (e *lazyIngestExecutor) placeFile(src, dst string) error {
 	}
 
 	// 父目录
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	parent := filepath.Dir(dst)
+	parentExisted := true
+	if _, err := os.Stat(parent); err != nil {
+		parentExisted = false
+	}
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
 	}
+	if !parentExisted && e.journal != nil {
+		// move 模式下记录新建目录，回滚时如果为空可以清理
+		_ = e.journal.AppendMkdir(parent)
+	}
 
-	// 目标已存在 - 跳过（不覆盖，懒人安全策略）
+	// 目标已存在—跳过（不覆盖，懒人安全策略）
 	if _, err := os.Stat(dst); err == nil {
 		e.lastSkipped = true
 		return nil
 	}
 
-	// 仅 hardlink（同卷瞬间完成、零额外空间、源文件不变）
-	if err := os.Link(src, dst); err != nil {
-		if isCrossDeviceLinkError(err) {
-			return ErrCrossVolumeNoLink
-		}
-		return fmt.Errorf("硬链接失败: %w", err)
+	// 记录大小（为了 stats.BytesLogical）
+	if st, err := os.Stat(src); err == nil && !st.IsDir() {
+		e.lastBytes = st.Size()
 	}
-	return nil
+
+	switch e.mode {
+	case string(model.IngestJobModeMove):
+		// 专家模式：os.Rename + journal
+		if e.journal != nil {
+			// 先写 journal 再执行 rename（崩溃后能识别未完成的操作）
+			if jerr := e.journal.AppendRename(src, dst); jerr != nil {
+				return fmt.Errorf("journal 写入失败: %w", jerr)
+			}
+		}
+		if err := os.Rename(src, dst); err != nil {
+			if isCrossDeviceLinkError(err) {
+				return ErrCrossVolumeNoLink
+			}
+			return fmt.Errorf("移动失败: %w", err)
+		}
+		return nil
+	default:
+		// hardlink（同卷瞬间完成、零额外空间、源文件不变）
+		if err := os.Link(src, dst); err != nil {
+			if isCrossDeviceLinkError(err) {
+				return ErrCrossVolumeNoLink
+			}
+			return fmt.Errorf("硬链接失败: %w", err)
+		}
+		return nil
+	}
 }

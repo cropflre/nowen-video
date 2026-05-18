@@ -604,6 +604,15 @@ func main() {
 		admin.GET("/ai/cost/estimate", handlers.AICost.Estimate)
 		admin.GET("/ai/cost/summary", handlers.AICost.Summary)
 
+		// V7：AI 智能调度器 / 用量监控 / 故障转移
+		admin.GET("/ai/presets", handlers.AI.ListProviderPresets)
+		admin.POST("/ai/quick-config/qwen", handlers.AI.QuickConfigQwen)
+		admin.GET("/ai/router", handlers.AI.GetRouterSnapshot)
+		admin.POST("/ai/router/switch", handlers.AI.ForceSwitchProvider)
+		admin.POST("/ai/router/restore", handlers.AI.RestoreProvider)
+		admin.GET("/ai/router/logs", handlers.AI.ListFailoverLogs)
+		admin.GET("/ai/usage", handlers.AI.GetUsageBuckets)
+
 		// 用户观影统计（管理员）
 		admin.GET("/stats/:userId", handlers.Stats.GetUserStatsAdmin)
 
@@ -636,6 +645,7 @@ func main() {
 		admin.GET("/ingest/jobs/:id", handlers.LazyIngest.GetJob)
 		admin.GET("/ingest/jobs/:id/items", handlers.LazyIngest.GetJobItems)
 		admin.POST("/ingest/jobs/:id/cancel", handlers.LazyIngest.CancelJob)
+		admin.POST("/ingest/jobs/:id/rollback", handlers.LazyIngest.RollbackJob)
 
 		// ==================== 番号刮削管理 ====================
 		admin.GET("/adult-scraper/config", handlers.AdultScraper.GetConfig)
