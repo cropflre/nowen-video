@@ -37,6 +37,17 @@ type reprocessRequest struct {
 	Async     bool     `json:"async"` // 异步入队（默认 true，整库场景更稳）
 }
 
+// correctRequest 单条人工修正参数
+type correctRequest struct {
+	MediaID  string `json:"media_id" binding:"required"`
+	Title    string `json:"title"`
+	Year     int    `json:"year"`
+	TMDbID   int    `json:"tmdb_id"`
+	IMDbID   string `json:"imdb_id"`
+	Category string `json:"category"`
+	Region   string `json:"region"`
+}
+
 // ===== 路由实现 =====
 
 // List GET /api/admin/scan-classify
@@ -88,14 +99,11 @@ func (h *ScanPostProcessHandler) Get(c *gin.Context) {
 // 三种用法：
 //  1. 仅 library_id：整库重跑（默认异步入队）
 //  2. 提供 media_ids：指定条目同步重跑（library_id 即使存在也会被忽略）
+//  3. 都不提供：「全部媒体库」一键重跑（异步入队，傻瓜化用法）
 func (h *ScanPostProcessHandler) Reprocess(c *gin.Context) {
 	var req reprocessRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if req.LibraryID == "" && len(req.MediaIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "library_id 或 media_ids 至少要给一个"})
 		return
 	}
 
@@ -113,7 +121,7 @@ func (h *ScanPostProcessHandler) Reprocess(c *gin.Context) {
 		return
 	}
 
-	// 整库
+	// 整库 / 全部媒体库（library_id 为空时进入「全部」模式）
 	async := true
 	if !req.Async {
 		// 显式传 async=false 才同步执行
@@ -124,11 +132,40 @@ func (h *ScanPostProcessHandler) Reprocess(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	mode := "library"
+	if req.LibraryID == "" {
+		mode = "all"
+	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
-		"mode":  "library",
+		"mode":  mode,
 		"async": async,
 		"count": count,
 	}})
+}
+
+// Correct POST /api/admin/scan-classify/correct
+//
+// 单条人工修正：用户在前端修改识别结果后保存。仅写库不动磁盘。
+func (h *ScanPostProcessHandler) Correct(c *gin.Context) {
+	var req correctRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	out, err := h.svc.ManualCorrect(service.ManualCorrectInput{
+		MediaID:  req.MediaID,
+		Title:    req.Title,
+		Year:     req.Year,
+		TMDbID:   req.TMDbID,
+		IMDbID:   req.IMDbID,
+		Category: req.Category,
+		Region:   req.Region,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": out})
 }
 
 // Clear DELETE /api/admin/scan-classify

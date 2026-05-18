@@ -625,6 +625,7 @@ func main() {
 		admin.GET("/scan-classify/stats", handlers.ScanPostProcess.Stats)
 		admin.GET("/scan-classify/:mediaId", handlers.ScanPostProcess.Get)
 		admin.POST("/scan-classify/reprocess", handlers.ScanPostProcess.Reprocess)
+		admin.POST("/scan-classify/correct", handlers.ScanPostProcess.Correct)
 		admin.DELETE("/scan-classify", handlers.ScanPostProcess.Clear)
 
 		// ==================== 懒人入库（一键入库） ====================

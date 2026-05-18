@@ -275,10 +275,35 @@ func (s *ScanPostProcessService) ProcessBatch(mediaIDs []string) (int, error) {
 }
 
 // ReprocessLibrary 整库重跑：清理旧记录并重新入队
+//
+// libraryID 为空时进入「全部媒体库」模式：枚举所有 Library 并逐个重跑，
+// 满足傻瓜化「一键重新识别全部」的需求。
 func (s *ScanPostProcessService) ReprocessLibrary(libraryID string, async bool) (int, error) {
+	// ---------- 模式 A：全部媒体库（傻瓜化一键重跑） ----------
 	if libraryID == "" {
-		return 0, errors.New("libraryID 为空")
+		if s.libraryRepo == nil {
+			return 0, errors.New("libraryRepo 未注入，无法执行全库重跑")
+		}
+		libs, err := s.libraryRepo.List()
+		if err != nil {
+			return 0, err
+		}
+		total := 0
+		for _, lib := range libs {
+			n, err := s.ReprocessLibrary(lib.ID, async)
+			if err != nil {
+				s.logger.Warnf("[ScanPostProcess] 重跑媒体库失败 library_id=%s name=%s err=%v",
+					lib.ID, lib.Name, err)
+				continue
+			}
+			total += n
+		}
+		s.logger.Infof("[ScanPostProcess] 全部媒体库重跑完成 libraries=%d total_media=%d async=%v",
+			len(libs), total, async)
+		return total, nil
 	}
+
+	// ---------- 模式 B：指定单个媒体库 ----------
 	if _, err := s.repo.DeleteByLibraryID(libraryID); err != nil {
 		s.logger.Warnf("[ScanPostProcess] 清理旧记录失败 library_id=%s err=%v", libraryID, err)
 	}
@@ -294,6 +319,63 @@ func (s *ScanPostProcessService) ReprocessLibrary(libraryID string, async bool) 
 		ids = append(ids, m.ID)
 	}
 	return s.ProcessBatch(ids)
+}
+
+// ManualCorrect 单条人工修正：用户在前端修改识别结果（标题/年份/TMDb/类别）后保存。
+//
+// 安全约束：
+//   - 仅写入 media_classifications 表，不会触发任何磁盘文件改动；
+//   - 状态会被强制置为 processed，并打上 manual_corrected 标记（记录在 error_msg 字段头部）；
+//   - 用户传入字段为空时保留旧值（避免误清空）。
+type ManualCorrectInput struct {
+	MediaID  string
+	Title    string // 可选
+	Year     int    // 可选；0 表示不更新
+	TMDbID   int    // 可选；0 表示不更新
+	IMDbID   string // 可选
+	Category string // 可选 movie / tvshow / anime / ...
+	Region   string // 可选
+}
+
+// ManualCorrect 执行单条人工修正
+func (s *ScanPostProcessService) ManualCorrect(in ManualCorrectInput) (*model.MediaClassification, error) {
+	if in.MediaID == "" {
+		return nil, errors.New("media_id 不能为空")
+	}
+	existing, err := s.repo.FindByMediaID(in.MediaID)
+	if err != nil {
+		return nil, fmt.Errorf("分类记录不存在: %w", err)
+	}
+	if in.Title != "" {
+		existing.ParsedTitle = strings.TrimSpace(in.Title)
+	}
+	if in.Year > 0 {
+		existing.ParsedYear = in.Year
+	}
+	if in.TMDbID > 0 {
+		existing.ParsedTMDbID = in.TMDbID
+	}
+	if in.IMDbID != "" {
+		existing.ParsedIMDbID = strings.TrimSpace(in.IMDbID)
+	}
+	if in.Category != "" {
+		existing.Category = strings.TrimSpace(in.Category)
+	}
+	if in.Region != "" {
+		existing.Region = strings.TrimSpace(in.Region)
+	}
+	// 人工确认 → 置信度直接拉满，状态置为已处理
+	existing.Confidence = 1.0
+	existing.Status = model.ClassificationStatusProcessed
+	existing.ErrorMsg = "[manual_corrected] " + time.Now().Format(time.RFC3339)
+	now := time.Now()
+	existing.ProcessedAt = &now
+	if err := s.repo.Upsert(existing); err != nil {
+		return nil, err
+	}
+	s.logger.Infof("[ScanPostProcess] 人工修正完成 media_id=%s title=%q tmdb_id=%d",
+		in.MediaID, existing.ParsedTitle, existing.ParsedTMDbID)
+	return existing, nil
 }
 
 // ============================ Stage 1: 识别 ============================

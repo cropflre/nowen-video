@@ -107,6 +107,16 @@ export interface ReprocessRequest {
   async?: boolean
 }
 
+export interface CorrectRequest {
+  media_id: string
+  title?: string
+  year?: number
+  tmdb_id?: number
+  imdb_id?: string
+  category?: string
+  region?: string
+}
+
 // ---------- API ----------
 
 export const scanClassifyApi = {
@@ -126,6 +136,9 @@ export const scanClassifyApi = {
       '/admin/scan-classify/reprocess',
       req,
     ),
+
+  correct: (req: CorrectRequest) =>
+    api.post<{ data: MediaClassification }>('/admin/scan-classify/correct', req),
 
   clear: (libraryId?: string) =>
     api.delete<{ data: { deleted: number } }>('/admin/scan-classify', {
