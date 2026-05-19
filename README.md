@@ -177,6 +177,16 @@ ai: { provider: ollama,   api_base: http://localhost:11434/v1,                  
 - **QQ 群**：`1093473044`
 - **Issues**：欢迎在 GitHub 上提交问题与建议
 
+## ☕ 赞赏支持
+
+如果这个项目对你有帮助，欢迎请作者喝杯咖啡 / 买个键盘 / 修个 Bug 🙏
+
+<p align="center">
+  <img src="./weixin.jpg" alt="微信赞赏码" width="260">
+  <br>
+  <i>Drug 的赞赏码 — "支持作者买键盘 / 修 Bug"</i>
+</p>
+
 ## 📜 开源协议
 
 本项目采用 [GNU General Public License v3.0](./LICENSE)（GPL-3.0）开源协议发布。

@@ -175,6 +175,16 @@ ai: { provider: ollama,   api_base: http://localhost:11434/v1,                  
 - **QQ group**: `1093473044`
 - **Issues**: please open a GitHub issue
 
+## ☕ Sponsor
+
+If this project helps you, consider buying the author a coffee / keyboard / bug-fix 🙏
+
+<p align="center">
+  <img src="./weixin.jpg" alt="WeChat Sponsor QR" width="260">
+  <br>
+  <i>Drug's WeChat sponsor QR — "Buy the author a keyboard / fix a bug"</i>
+</p>
+
 ## 📜 License
 
 Released under the [GNU General Public License v3.0](./LICENSE).
