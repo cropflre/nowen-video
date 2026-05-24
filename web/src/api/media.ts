@@ -8,6 +8,7 @@ import type {
   AggregatedRecentResponse,
   MixedItem,
   MediaDetailEnhanced,
+  DanmakuComment,
 } from '@/types'
 
 // ==================== 媒体 ====================
@@ -71,6 +72,9 @@ export const mediaApi = {
 
   scrape: (id: string) =>
     api.post(`/media/${id}/scrape`),
+
+  danmaku: (id: string, limit = 200) =>
+    api.get<{ data: DanmakuComment[]; total: number }>(`/media/${id}/danmaku`, { params: { limit } }),
 }
 
 // ==================== 演员 ====================

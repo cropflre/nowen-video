@@ -12,6 +12,7 @@ import (
 // AdultScraperHandler 番号刮削管理处理器
 type AdultScraperHandler struct {
 	scraperService *service.AdultScraperService
+	danmakuService *service.DanmakuService
 	cfg            *config.Config
 	logger         *zap.SugaredLogger
 
@@ -291,9 +292,9 @@ func (h *AdultScraperHandler) ParseCode(c *gin.Context) {
 			// 增强字段
 			"letters":      info.Letters,
 			"short_number": info.ShortNumber,
-			"mosaic":       info.Mosaic,      // 有码/无码/国产/欧美
-			"cd_part":      info.CDPart,      // CD1/PART2 等
-			"has_chn_sub":  info.HasChnSub,   // 中文字幕版
+			"mosaic":       info.Mosaic,    // 有码/无码/国产/欧美
+			"cd_part":      info.CDPart,    // CD1/PART2 等
+			"has_chn_sub":  info.HasChnSub, // 中文字幕版
 		},
 	})
 }

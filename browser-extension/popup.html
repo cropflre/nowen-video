@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nowen Scraper</title>
+    <link rel="stylesheet" href="src/popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Nowen Scraper</h1>
+        <span id="siteBadge">未读取</span>
+      </header>
+
+      <label>
+        服务地址
+        <input id="serverUrl" type="url" placeholder="http://127.0.0.1:8080" />
+      </label>
+
+      <section class="login-grid">
+        <label>
+          用户名
+          <input id="username" autocomplete="username" />
+        </label>
+        <label>
+          密码
+          <input id="password" type="password" autocomplete="current-password" />
+        </label>
+        <button id="loginBtn" type="button">登录</button>
+      </section>
+
+      <label>
+        视频文件路径
+        <input id="videoPath" placeholder="D:\\Media\\SSIS-001.mp4" />
+      </label>
+      <section id="mediaStatus" class="media-status idle">未检查刮削状态。</section>
+
+      <div class="actions">
+        <button id="extractBtn" type="button">读取当前页</button>
+        <button id="importBtn" type="button">写入 NFO/图片</button>
+      </div>
+
+      <section id="summary" class="summary empty">还没有读取页面。</section>
+      <pre id="status"></pre>
+    </main>
+    <script src="src/popup.js"></script>
+  </body>
+</html>

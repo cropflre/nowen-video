@@ -569,6 +569,42 @@ func (c *Comment) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// DanmakuComment 本地弹幕。JavDB 短评等外部评论会以弹幕源形式导入。
+type DanmakuComment struct {
+	ID         string    `json:"id" gorm:"primaryKey;type:text"`
+	MediaID    string    `json:"media_id" gorm:"index;type:text;not null"`
+	Source     string    `json:"source" gorm:"uniqueIndex:idx_danmaku_source_item;type:text;not null"`    // javdb / local
+	SourceID   string    `json:"source_id" gorm:"uniqueIndex:idx_danmaku_source_item;type:text;not null"` // 外部评论稳定 ID 或内容哈希
+	Author     string    `json:"author" gorm:"type:text"`
+	Content    string    `json:"content" gorm:"type:text;not null"`
+	Rating     float64   `json:"rating"`
+	Likes      int       `json:"likes"`
+	Position   float64   `json:"position"`               // 出现时间（秒）
+	Color      string    `json:"color" gorm:"type:text"` // CSS 色值
+	Mode       string    `json:"mode" gorm:"type:text;default:scroll"`
+	ImportedAt time.Time `json:"imported_at" gorm:"index"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+
+	Media Media `json:"-" gorm:"foreignKey:MediaID"`
+}
+
+func (d *DanmakuComment) BeforeCreate(tx *gorm.DB) error {
+	if d.ID == "" {
+		d.ID = uuid.New().String()
+	}
+	if d.ImportedAt.IsZero() {
+		d.ImportedAt = time.Now()
+	}
+	if d.Mode == "" {
+		d.Mode = "scroll"
+	}
+	if d.Color == "" {
+		d.Color = "#ffffff"
+	}
+	return nil
+}
+
 // ScheduledTask 已下线（原为定时任务调度器的持久化记录）
 // 表 scheduled_tasks 在老数据库中可能仍存在，不会影响运行。如需彻底清理，手动 DROP TABLE scheduled_tasks 即可。
 
@@ -794,6 +830,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&PlaylistItem{},
 		&Bookmark{},
 		&Comment{},
+		&DanmakuComment{},
 		&ContentRating{},
 		&UserPermission{},
 		&PlaybackStats{},

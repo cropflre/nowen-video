@@ -19,6 +19,7 @@ type Repositories struct {
 	Playlist       *PlaylistRepo
 	Bookmark       *BookmarkRepo
 	Comment        *CommentRepo
+	Danmaku        *DanmakuRepo
 	ContentRating  *ContentRatingRepo
 	UserPermission *UserPermissionRepo
 	SystemSetting  *SystemSettingRepo
@@ -74,6 +75,7 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		Playlist:       &PlaylistRepo{db: db},
 		Bookmark:       &BookmarkRepo{db: db},
 		Comment:        &CommentRepo{db: db},
+		Danmaku:        NewDanmakuRepo(db),
 		ContentRating:  &ContentRatingRepo{db: db},
 		UserPermission: &UserPermissionRepo{db: db},
 		SystemSetting:  &SystemSettingRepo{db: db},

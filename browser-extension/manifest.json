@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Nowen Adult Scraper Bridge",
+  "version": "0.1.0",
+  "description": "Extract JavDB/JavBus metadata from the current Chrome page and write NFO/images through Nowen Video.",
+  "permissions": ["activeTab", "storage", "tabs"],
+  "host_permissions": [
+    "https://javdb.com/*",
+    "https://*.javdb.com/*",
+    "https://www.javbus.com/*",
+    "https://*.javbus.com/*",
+    "http://127.0.0.1:*/*",
+    "http://localhost:*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://javdb.com/*",
+        "https://*.javdb.com/*",
+        "https://www.javbus.com/*",
+        "https://*.javbus.com/*"
+      ],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Nowen Scraper",
+    "default_popup": "popup.html"
+  }
+}

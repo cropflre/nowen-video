@@ -1342,3 +1342,16 @@ html[data-runtime="tauri"] #root {
 [data-theme="light"] .text-surface-300 { color: #475569 !important; }
 [data-theme="light"] .text-surface-400 { color: #475569 !important; }
 [data-theme="light"] .text-surface-500 { color: #64748b !important; }
+
+@keyframes danmaku-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100vw - 100%));
+  }
+}
+
+.danmaku-item {
+  animation: danmaku-scroll 8s linear forwards;
+}

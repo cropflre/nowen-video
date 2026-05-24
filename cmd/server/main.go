@@ -404,6 +404,7 @@ func main() {
 		api.GET("/media/:id/comments", handlers.Comment.ListByMedia)
 		api.POST("/media/:id/comments", handlers.Comment.Create)
 		api.DELETE("/comments/:id", handlers.Comment.Delete)
+		api.GET("/media/:id/danmaku", handlers.Danmaku.ListByMedia)
 
 		// 播放统计
 		api.POST("/stats/playback", handlers.Stats.RecordPlayback)
@@ -682,6 +683,8 @@ func main() {
 		admin.GET("/adult-scraper/config", handlers.AdultScraper.GetConfig)
 		admin.PUT("/adult-scraper/config", handlers.AdultScraper.UpdateConfig)
 		admin.POST("/adult-scraper/scrape", handlers.AdultScraper.ScrapeByCode)
+		admin.GET("/adult-scraper/browser/status", handlers.AdultScraper.BrowserMediaStatus)
+		admin.POST("/adult-scraper/browser/import", handlers.AdultScraper.ImportBrowserMetadata)
 		admin.GET("/adult-scraper/parse", handlers.AdultScraper.ParseCode)
 		admin.GET("/adult-scraper/python-health", handlers.AdultScraper.PythonServiceHealth)
 

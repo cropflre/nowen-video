@@ -1,0 +1,164 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 380px;
+  color: #1f2933;
+  background: #f7f8fa;
+  font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+main {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+#siteBadge {
+  border: 1px solid #c8d0d9;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #52606d;
+  background: #fff;
+  font-size: 12px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: #3e4c59;
+  font-weight: 600;
+}
+
+input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #c8d0d9;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #1f2933;
+  background: #fff;
+  font: inherit;
+}
+
+input:focus {
+  border-color: #3a7afe;
+  outline: 2px solid rgba(58, 122, 254, 0.16);
+}
+
+.login-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.media-status {
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #52606d;
+  font-weight: 650;
+}
+
+.media-status.ok {
+  border-color: #8eedb3;
+  color: #0b6b3a;
+  background: #effcf6;
+}
+
+.media-status.warn {
+  border-color: #f7c948;
+  color: #8a5a00;
+  background: #fffbea;
+}
+
+.media-status.error {
+  border-color: #ffb4b4;
+  color: #a61b1b;
+  background: #fff1f1;
+}
+
+button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #fff;
+  background: #2264d1;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d55b3;
+}
+
+button:disabled {
+  background: #9aa5b1;
+  cursor: default;
+}
+
+.summary {
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.summary.empty {
+  color: #7b8794;
+}
+
+.summary strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.summary dl {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 4px 8px;
+  margin: 0;
+}
+
+.summary dt {
+  color: #616e7c;
+}
+
+.summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#status {
+  min-height: 22px;
+  max-height: 150px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #334e68;
+}

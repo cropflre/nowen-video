@@ -7,7 +7,9 @@ dist/
 
 # 数据文件
 /data/
+/cmd/server/data/
 /cache/
+/cmd/server/cache/
 
 # Go
 *.exe

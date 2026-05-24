@@ -2,10 +2,10 @@
 import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
-import { userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
+import { mediaApi, userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
 import { streamApi } from '@/api/stream'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle, SubtitlePreprocessTask } from '@/types'
+import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle, SubtitlePreprocessTask, DanmakuComment } from '@/types'
 import {
   Play,
   Pause,
@@ -25,6 +25,7 @@ import {
   Loader2,
   Languages,
   Search,
+  MessageCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
@@ -134,6 +135,10 @@ export default function VideoPlayer({
   const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
   const [showContentSearch, setShowContentSearch] = useState(false)
 
+  // JavDB 短评弹幕
+  const [danmakuItems, setDanmakuItems] = useState<DanmakuComment[]>([])
+  const [danmakuEnabled, setDanmakuEnabled] = useState(true)
+
   // 倍速播放
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
@@ -147,6 +152,9 @@ export default function VideoPlayer({
   // 自动下一集倒计时
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
   const nextCountdownTimerRef = useRef<number>(0)
+  const activeDanmaku = danmakuEnabled
+    ? danmakuItems.filter((item) => currentTime >= item.position && currentTime < item.position + 8).slice(0, 10)
+    : []
 
   // 快进/快退提示
   const [seekHint, setSeekHint] = useState<{ text: string; visible: boolean }>({ text: '', visible: false })
@@ -320,6 +328,17 @@ export default function VideoPlayer({
         setSubtitlePreprocessStatus(res.data.data)
       }
     }).catch(() => {})
+  }, [mediaId])
+
+  // 加载本地弹幕（JavDB 短评导入后会在这里展示）
+  useEffect(() => {
+    if (!mediaId) return
+    mediaApi.danmaku(mediaId, 200)
+      .then((res) => {
+        const items = res.data.data || []
+        setDanmakuItems(items.filter((item) => item.content))
+      })
+      .catch(() => setDanmakuItems([]))
   }, [mediaId])
 
   // 加载字幕到video元素
@@ -1121,6 +1140,27 @@ export default function VideoPlayer({
         crossOrigin="anonymous"
       />
 
+      {/* JavDB 短评弹幕 */}
+      {activeDanmaku.length > 0 && (
+        <div className="pointer-events-none absolute left-0 right-0 top-12 z-10 h-[42%] overflow-hidden">
+          {activeDanmaku.map((item, index) => (
+            <div
+              key={item.id}
+              className="danmaku-item absolute left-full whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold shadow-lg"
+              style={{
+                top: `${(index % 7) * 14}%`,
+                color: item.color || '#ffffff',
+                background: 'rgba(0, 0, 0, 0.34)',
+                textShadow: '0 1px 2px rgba(0,0,0,0.9)',
+                animationDelay: `${(index % 3) * 0.35}s`,
+              }}
+            >
+              {item.content}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 加载错误提示 */}
       {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
@@ -1463,6 +1503,20 @@ export default function VideoPlayer({
               </div>
             )}
           </div>
+
+          {/* JavDB 短评弹幕开关 */}
+          {danmakuItems.length > 0 && (
+            <button
+              onClick={() => setDanmakuEnabled(!danmakuEnabled)}
+              className={clsx(
+                'rounded-lg p-2 transition-all hover:bg-white/5',
+                danmakuEnabled ? 'text-neon-blue' : 'text-white/70 hover:text-white'
+              )}
+              title={danmakuEnabled ? '关闭短评弹幕' : '开启短评弹幕'}
+            >
+              <MessageCircle size={18} />
+            </button>
+          )}
 
           {/* 字幕选择（始终显示，支持 AI 生成） */}
           {!isStrm && (

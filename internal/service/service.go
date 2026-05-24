@@ -26,6 +26,7 @@ type Services struct {
 	Cast           *CastService
 	Bookmark       *BookmarkService
 	Comment        *CommentService
+	Danmaku        *DanmakuService
 	Permission     *PermissionService
 	FileWatcher    *FileWatcherService
 	NFO            *NFOService
@@ -296,6 +297,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Cast:           NewCastService(repos.Media, cfg, logger),
 		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
 		Comment:        NewCommentService(repos.Comment, repos.Media, logger),
+		Danmaku:        NewDanmakuService(repos.Danmaku, repos.Media, logger),
 		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
 		FileWatcher:    fileWatcher,
 		NFO:            nfoService,

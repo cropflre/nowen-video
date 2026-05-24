@@ -648,6 +648,23 @@ export interface CommentListResponse {
   rating_count: number
 }
 
+// ==================== 弹幕 ====================
+export interface DanmakuComment {
+  id: string
+  media_id: string
+  source: string
+  source_id: string
+  author: string
+  content: string
+  rating: number
+  likes: number
+  position: number
+  color: string
+  mode: string
+  imported_at: string
+  created_at: string
+}
+
 // ==================== 定时任务（已下线） ====================
 // ScheduledTask / CreateScheduledTaskRequest 已移除，面向用户的定时任务调度不再提供。
 // 扫描 / 刮削 / 缓存清理请使用各业务页面的手动入口。

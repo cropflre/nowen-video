@@ -24,6 +24,7 @@ type Handlers struct {
 	WS             *WSHandler
 	Bookmark       *BookmarkHandler
 	Comment        *CommentHandler
+	Danmaku        *DanmakuHandler
 	Stats          *StatsHandler
 	AI             *AIHandler
 	ScrapeManager  *ScrapeManagerHandler
@@ -102,6 +103,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		WS:        &WSHandler{hub: services.WSHub, logger: logger},
 		Bookmark:  &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
 		Comment:   &CommentHandler{commentService: services.Comment, logger: logger},
+		Danmaku:   &DanmakuHandler{danmakuService: services.Danmaku, logger: logger},
 		Stats:     &StatsHandler{statsService: services.Stats, logger: logger},
 		AI: &AIHandler{
 			aiService:   services.AI,
@@ -142,7 +144,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		// 系统日志
 		SystemLog: &SystemLogHandler{logRepo: repos.SystemLog, logger: logger},
 		// 番号刮削管理
-		AdultScraper: &AdultScraperHandler{scraperService: services.AdultScraper, cfg: cfg, logger: logger},
+		AdultScraper: &AdultScraperHandler{scraperService: services.AdultScraper, danmakuService: services.Danmaku, cfg: cfg, logger: logger},
 		// 智能扫描重命名
 		SmartRename: NewSmartRenameHandler(services.SmartRename, logger),
 		// 扫描后处理：虚拟归类与命名映射（仅 DB 层）
