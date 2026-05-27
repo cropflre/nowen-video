@@ -236,6 +236,7 @@ func main() {
 	{
 		// 媒体库
 		api.GET("/libraries", handlers.Library.List)
+		api.GET("/libraries/scan-status", middleware.AdminOnly(), handlers.Library.ScanStatus)
 		api.POST("/libraries", middleware.AdminOnly(), handlers.Library.Create)
 		api.PUT("/libraries/:id", middleware.AdminOnly(), handlers.Library.Update)
 		api.POST("/libraries/:id/scan", middleware.AdminOnly(), handlers.Library.Scan)

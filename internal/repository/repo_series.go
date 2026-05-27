@@ -113,6 +113,28 @@ func (r *SeriesRepo) CleanEmptySeries() (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+func (r *SeriesRepo) RecalculateCounts(seriesID string) error {
+	if seriesID == "" {
+		return nil
+	}
+	var episodeCount int64
+	if err := r.db.Model(&model.Media{}).
+		Where("series_id = ? AND media_type = ?", seriesID, "episode").
+		Count(&episodeCount).Error; err != nil {
+		return err
+	}
+	var seasonCount int64
+	if err := r.db.Model(&model.Media{}).
+		Where("series_id = ? AND media_type = ?", seriesID, "episode").
+		Distinct("season_num").
+		Count(&seasonCount).Error; err != nil {
+		return err
+	}
+	return r.db.Model(&model.Series{}).
+		Where("id = ?", seriesID).
+		Updates(map[string]any{"episode_count": int(episodeCount), "season_count": int(seasonCount)}).Error
+}
+
 func (r *SeriesRepo) GetSeasonNumbers(seriesID string) ([]int, error) {
 	var seasons []int
 	err := r.db.Model(&model.Media{}).

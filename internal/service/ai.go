@@ -27,10 +27,16 @@ type ChatMessage struct {
 
 // ChatCompletionRequest OpenAI 聊天补全请求
 type ChatCompletionRequest struct {
-	Model       string        `json:"model"`
-	Messages    []ChatMessage `json:"messages"`
-	Temperature float64       `json:"temperature,omitempty"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
+	Model          string                        `json:"model"`
+	Messages       []ChatMessage                 `json:"messages"`
+	Temperature    float64                       `json:"temperature,omitempty"`
+	TopP           float64                       `json:"top_p,omitempty"`
+	MaxTokens      int                           `json:"max_tokens,omitempty"`
+	ResponseFormat *ChatCompletionResponseFormat `json:"response_format,omitempty"`
+}
+
+type ChatCompletionResponseFormat struct {
+	Type string `json:"type"`
 }
 
 // ChatCompletionResponse OpenAI 聊天补全响应
@@ -273,6 +279,15 @@ func (s *AIService) snapshotCfg() config.AIConfig {
 //   - 优先读取响应头中的 `Retry-After`（秒）作为退避时长
 //   - 4xx（除 429 外）直接返回，不重试，避免无效请求消耗配额
 //   - 整体最长等待 ≈ 15s，超过后返回最后一次错误
+func supportsJSONResponseFormat(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "openai", "deepseek", "qwen", "zhipu":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *AIService) ChatCompletion(systemPrompt, userPrompt string, temperature float64, maxTokens int) (string, error) {
 	if !s.IsEnabled() {
 		return "", fmt.Errorf("AI 服务未启用")
@@ -311,6 +326,13 @@ func (s *AIService) ChatCompletion(systemPrompt, userPrompt string, temperature 
 		},
 		Temperature: temperature,
 		MaxTokens:   maxTokens,
+	}
+	// 低温 JSON/短文本任务进一步收窄 top_p，降低 deepseek-v4-flash 冗长/发散输出概率。
+	if temperature <= 0.1 && maxTokens > 0 && maxTokens <= 1024 {
+		reqBody.TopP = 0.1
+		if maxTokens >= 128 && supportsJSONResponseFormat(cfg.Provider) {
+			reqBody.ResponseFormat = &ChatCompletionResponseFormat{Type: "json_object"}
+		}
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

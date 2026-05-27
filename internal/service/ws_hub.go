@@ -61,9 +61,11 @@ type ScanProgressData struct {
 type ScanPhaseData struct {
 	LibraryID   string `json:"library_id"`
 	LibraryName string `json:"library_name"`
-	Phase       string `json:"phase"`        // scanning / scraping / merging / matching / completed
+	Phase       string `json:"phase"`        // scanning / ai_organizing / scraping / merging / matching / completed
 	StepCurrent int    `json:"step_current"` // 当前步骤序号（从1开始）
 	StepTotal   int    `json:"step_total"`   // 总步骤数
+	Current     int    `json:"current"`      // 当前阶段进度（可选）
+	Total       int    `json:"total"`        // 当前阶段总量（可选）
 	Message     string `json:"message"`      // 阶段描述信息
 }
 

@@ -16,6 +16,7 @@ import {
   Search,
   Plus,
   Trash2,
+  Sparkles,
 } from 'lucide-react'
 import FileBrowser from './FileBrowser'
 
@@ -80,6 +81,8 @@ const DEFAULT_ADVANCED: LibraryAdvancedSettings = {
   allow_adult_content: false,
   auto_download_sub: false,
   auto_scrape_metadata: true,
+  auto_organize_mode: 'ai_assisted',
+  organize_output_dir: '',
   enable_file_watch: false,
 }
 
@@ -676,7 +679,161 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                   {/* 分割线 */}
                   <div style={{ borderTop: '1px solid var(--border-default)' }} />
 
-                  {/* ———— 7. 实时文件监控 ———— */}
+                  {/* ———— 7. AI 自动整理（扫描后处理：识别 / 归类 / 命名映射） ———— */}
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Sparkles size={16} style={{ color: 'var(--neon-purple)', marginTop: 2 }} />
+                      <div className="flex-1">
+                        <h4
+                          className="text-sm font-semibold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          AI 自动整理
+                        </h4>
+                        <p
+                          className="mt-1 text-xs leading-relaxed"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
+                          扫描入库后自动执行：智能识别 → 虚拟归类 → Jellyfin/Emby 风格命名建议。
+                          <span className="font-medium" style={{ color: 'var(--neon-green)' }}>
+                            所有结果仅写入数据库
+                          </span>
+                          ，绝不修改任何磁盘文件。可选配置输出目录以自动创建硬链接。
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 三选一卡片 */}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {(
+                        [
+                          {
+                            value: 'ai_assisted' as const,
+                            title: 'AI 辅助',
+                            tag: '推荐',
+                            desc: '规则识别 + 低置信度时调用 AI 兜底',
+                            color: 'var(--neon-purple)',
+                          },
+                          {
+                            value: 'rule_only' as const,
+                            title: '仅规则',
+                            tag: '半自动',
+                            desc: '只做规则识别与命名建议，不调用 AI',
+                            color: '#06B6D4',
+                          },
+                          {
+                            value: 'off' as const,
+                            title: '关闭',
+                            tag: '手动',
+                            desc: '扫描后不做任何自动整理',
+                            color: 'var(--text-tertiary)',
+                          },
+                        ]
+                      ).map((opt) => {
+                        const active = advanced.auto_organize_mode === opt.value
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => updateAdvanced('auto_organize_mode', opt.value)}
+                            className="group rounded-lg border p-3 text-left transition-all"
+                            style={{
+                              borderColor: active ? opt.color : 'var(--border-default)',
+                              background: active ? `${opt.color}14` : 'transparent',
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className="text-sm font-semibold"
+                                style={{ color: active ? opt.color : 'var(--text-primary)' }}
+                              >
+                                {opt.title}
+                              </span>
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[10px]"
+                                style={{
+                                  background: active ? `${opt.color}33` : 'var(--bg-secondary)',
+                                  color: active ? opt.color : 'var(--text-tertiary)',
+                                }}
+                              >
+                                {opt.tag}
+                              </span>
+                            </div>
+                            <p
+                              className="mt-1 text-xs leading-relaxed"
+                              style={{ color: 'var(--text-tertiary)' }}
+                            >
+                              {opt.desc}
+                            </p>
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* 下文提示根据选择自适应 */}
+                    {advanced.auto_organize_mode === 'off' && (
+                      <p
+                        className="rounded-md px-2.5 py-1.5 text-[11px]"
+                        style={{
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-tertiary)',
+                        }}
+                      >
+                        关闭后扫描和重建索引都不会触发 AI 整理。后续如需启用，可在媒体库 → 编辑中重新打开，然后重新扫描或重建索引。
+                      </p>
+                    )}
+                    {advanced.auto_organize_mode === 'rule_only' && (
+                      <p
+                        className="rounded-md px-2.5 py-1.5 text-[11px]"
+                        style={{
+                          background: 'var(--bg-secondary)',
+                          color: 'var(--text-tertiary)',
+                        }}
+                      >
+                        将仅使用规则解析（基于文件名 + DB 字段）做识别与命名建议，不会产生任何 AI 调用费用。
+                      </p>
+                    )}
+
+                    {/* 硬链接输出目录（仅在非 off 时显示） */}
+                    {advanced.auto_organize_mode !== 'off' && (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <FolderPlus size={14} style={{ color: 'var(--neon-green)' }} />
+                          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                            虚拟化目录（硬链接输出）
+                          </span>
+                        </div>
+                        <p
+                          className="text-[11px] leading-relaxed"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
+                          配置后将按分类结果在此目录下创建硬链接目录树（如：电影/华语/2020s/科幻/片名.mkv）。
+                          源文件不变，零额外空间占用。留空则不创建硬链接。
+                        </p>
+                        <input
+                          type="text"
+                          value={advanced.organize_output_dir}
+                          onChange={(e) => updateAdvanced('organize_output_dir', e.target.value)}
+                          className="input w-full text-sm"
+                          placeholder="如: /media/organized 或 D:\Media\Organized（留空=仅写数据库）"
+                        />
+                        {advanced.organize_output_dir && (
+                          <p
+                            className="rounded-md px-2.5 py-1.5 text-[11px] flex items-center gap-1.5"
+                            style={{ background: 'rgba(16, 185, 129, 0.08)', color: 'var(--neon-green)' }}
+                          >
+                            <span>✓</span>
+                            AI 整理完成后将在该目录下自动创建硬链接，文件按虚拟分类路径组织。
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 分割线 */}
+                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
+
+                  {/* ———— 8. 实时文件监控 ———— */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">

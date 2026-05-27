@@ -35,6 +35,16 @@ func (r *MediaRepo) FindByFilePath(filePath string) (*model.Media, error) {
 	return &media, err
 }
 
+func (r *MediaRepo) ListByLibraryAndFileSize(libraryID string, fileSize int64) ([]model.Media, error) {
+	var media []model.Media
+	q := r.db.Where("library_id = ? AND file_size = ?", libraryID, fileSize)
+	if fileSize <= 0 {
+		q = r.db.Where("library_id = ?", libraryID)
+	}
+	err := q.Find(&media).Error
+	return media, err
+}
+
 // ListByFilePaths 批量按 file_path IN (...) 加载。
 //
 // 用途：SmartRename / LazyIngest 等场景需要一次性把"路径→Media"映射拉齐，
@@ -221,6 +231,17 @@ func (r *MediaRepo) Update(media *model.Media) error {
 	return r.db.Save(media).Error
 }
 
+func (r *MediaRepo) UpdateFilePath(id string, filePath string) error {
+	return r.db.Model(&model.Media{}).Where("id = ?", id).Update("file_path", filePath).Error
+}
+
+func (r *MediaRepo) UpdateOrganizedFields(id string, fields map[string]any) error {
+	if id == "" || len(fields) == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Media{}).Where("id = ?", id).Updates(fields).Error
+}
+
 func (r *MediaRepo) FindByIDs(ids []string) ([]model.Media, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -329,7 +350,7 @@ func (r *MediaRepo) ListBySeriesAndSeason(seriesID string, seasonNum int) ([]mod
 
 func (r *MediaRepo) RecentNonEpisode(limit int) ([]model.Media, error) {
 	var media []model.Media
-	query := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
+	query := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != '' AND (media_type IS NULL OR media_type = '' OR media_type != 'episode')")
 	query = r.excludeDuplicates(query)
 	err := query.Order("created_at DESC").Limit(limit).Find(&media).Error
 	return media, err
@@ -337,7 +358,7 @@ func (r *MediaRepo) RecentNonEpisode(limit int) ([]model.Media, error) {
 
 func (r *MediaRepo) RecentNonEpisodeAll(libraryID string) ([]model.Media, error) {
 	var media []model.Media
-	query := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
+	query := r.db.Where("(series_id = '' OR series_id IS NULL) AND library_id != '' AND (media_type IS NULL OR media_type = '' OR media_type != 'episode')")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}
@@ -379,7 +400,7 @@ func (r *MediaRepo) CountNonEpisodeByLibrary(libraryID string) (int64, error) {
 
 func (r *MediaRepo) CountNonEpisode(libraryID string) (int64, error) {
 	var count int64
-	query := r.db.Model(&model.Media{}).Where("(series_id = '' OR series_id IS NULL) AND library_id != ''")
+	query := r.db.Model(&model.Media{}).Where("(series_id = '' OR series_id IS NULL) AND library_id != '' AND (media_type IS NULL OR media_type = '' OR media_type != 'episode')")
 	if libraryID != "" {
 		query = query.Where("library_id = ?", libraryID)
 	}

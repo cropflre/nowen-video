@@ -1908,6 +1908,7 @@ func (s *MetadataService) DownloadTMDbImageForSeries(seriesID string, tmdbPath s
 	if err := s.seriesRepo.Update(series); err != nil {
 		return "", fmt.Errorf("更新剧集数据失败: %w", err)
 	}
+	s.clearDuplicatedSeriesArtworkFromEpisodes(seriesID, series)
 
 	return localPath, nil
 }
@@ -1971,6 +1972,7 @@ func (s *MetadataService) SaveUploadedImageForSeries(seriesID string, imageData 
 	if err := s.seriesRepo.Update(series); err != nil {
 		return "", fmt.Errorf("更新剧集数据失败: %w", err)
 	}
+	s.clearDuplicatedSeriesArtworkFromEpisodes(seriesID, series)
 
 	return localPath, nil
 }
@@ -2301,25 +2303,80 @@ func evaluateSeriesScrapeStatus(series *model.Series, scrapeErr error) string {
 	return "failed"
 }
 
-// syncSeriesToEpisodes 将合集元数据同步到各集（海报、评分、类型等）
-// 先尝试 TMDb 逐集刮削获取每集独立简介/标题，然后用合集元数据补充仍然为空的字段
+func sameArtworkPath(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	if strings.Contains(a, "://") || strings.Contains(b, "://") {
+		return strings.EqualFold(a, b)
+	}
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
+func isSeriesCacheArtworkPath(p, seriesID string) bool {
+	p = strings.TrimSpace(p)
+	seriesID = strings.TrimSpace(seriesID)
+	if p == "" || seriesID == "" {
+		return false
+	}
+	normalized := strings.ToLower(filepath.ToSlash(filepath.Clean(p)))
+	needle := "/images/series/" + strings.ToLower(seriesID) + "/"
+	return strings.Contains(normalized, needle)
+}
+
+func (s *MetadataService) clearDuplicatedSeriesArtworkFromEpisodes(seriesID string, series *model.Series) {
+	if s.mediaRepo == nil || series == nil {
+		return
+	}
+	episodes, err := s.mediaRepo.ListBySeriesID(seriesID)
+	if err != nil || len(episodes) == 0 {
+		return
+	}
+
+	cleared := 0
+	for i := range episodes {
+		ep := &episodes[i]
+		fields := make(map[string]any)
+		if sameArtworkPath(ep.PosterPath, series.PosterPath) || isSeriesCacheArtworkPath(ep.PosterPath, seriesID) {
+			fields["poster_path"] = ""
+			ep.PosterPath = ""
+		}
+		if sameArtworkPath(ep.BackdropPath, series.BackdropPath) || isSeriesCacheArtworkPath(ep.BackdropPath, seriesID) {
+			fields["backdrop_path"] = ""
+			ep.BackdropPath = ""
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		if err := s.mediaRepo.UpdateFields(ep.ID, fields); err == nil {
+			cleared++
+		}
+	}
+	if cleared > 0 {
+		s.logger.Infof("已清理 %d 集误同步的合集图片 (series_id=%s)", cleared, seriesID)
+	}
+}
+
+// syncSeriesToEpisodes 将合集元数据同步到各集（评分、类型等）
+// 先清理误写入单集的合集图片，再尝试 TMDb 逐集刮削获取每集独立简介/标题/截图。
 func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Series) {
-	// 第一步：尝试 TMDb 逐集刮削（获取每集独立的简介和标题）
+	// 第一步：清理历史误同步的合集海报/背景图，避免每一集显示同一张合集图片，且避免阻塞逐集 still 下载。
+	s.clearDuplicatedSeriesArtworkFromEpisodes(seriesID, series)
+
+	// 第二步：尝试 TMDb 逐集刮削（获取每集独立的简介、标题和 still 截图）
 	if series.TMDbID > 0 {
 		s.scrapeSeriesEpisodes(seriesID, series.TMDbID)
 	}
 
-	// 第二步：用合集元数据补充仍然为空的字段（作为 fallback）
+	// 第三步：用合集元数据补充仍然为空的非图片字段（图片必须保持单集独立，不再回填合集海报）
 	episodes, _ := s.mediaRepo.ListBySeriesID(seriesID)
 	for _, ep := range episodes {
 		updated := false
 		// 仅当逐集刮削未获取到简介时，才用合集简介补充
 		if ep.Overview == "" && series.Overview != "" {
 			ep.Overview = series.Overview
-			updated = true
-		}
-		if ep.PosterPath == "" && series.PosterPath != "" {
-			ep.PosterPath = series.PosterPath
 			updated = true
 		}
 		if ep.Rating == 0 && series.Rating > 0 {
@@ -2343,7 +2400,7 @@ func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Se
 		}
 	}
 
-	// 第三步：评估并回写每个 episode 的 scrape_status / last_scrape_at
+	// 第四步：评估并回写每个 episode 的 scrape_status / last_scrape_at
 	// 统一口径（与 evaluateSeriesScrapeStatus / executeScrapeFile 保持一致）：
 	//   - Overview 与 PosterPath 都齐 → scraped
 	//   - 至少有一项核心信号（Overview/PosterPath/Year/Rating/Genres/任一外部 ID）→ partial
@@ -2362,7 +2419,7 @@ func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Se
 				continue
 			}
 			// 状态没变化时也刷一下 last_scrape_at，方便统计
-			fields := map[string]interface{}{
+			fields := map[string]any{
 				"scrape_status":  newStatus,
 				"last_scrape_at": now,
 			}
@@ -2433,97 +2490,13 @@ func (s *MetadataService) ScrapeAllSeries(libraryID string) (int, int) {
 			failed++
 		} else {
 			success++
-			// 方案 B: 剧集刮削成功后，把 series.PosterPath 同步到所有海报为空的 episode
-			s.propagateSeriesPosterToEpisodes(series.ID)
 		}
+
 		// 限速保护（剧集间隔 3-6 秒随机化）
 		randomDelay(3000, 6000)
 	}
 
 	return success, failed
-}
-
-// propagateSeriesPosterToEpisodes 方案 B: 将 series 的海报/背景图/评分等字段同步到尚未填充的 episode
-// 前端 MediaCard 判断 hasPoster 时会检查 media.poster_path；对于剧集 episode 直接用 series.poster_path 做备选
-// 但列表 API 返回的 media.poster_path 字段本身仍可能为空 → 这里显式把它填上，确保列表也能展示封面
-func (s *MetadataService) propagateSeriesPosterToEpisodes(seriesID string) {
-	if s.seriesRepo == nil || s.mediaRepo == nil {
-		return
-	}
-	series, err := s.seriesRepo.FindByID(seriesID)
-	if err != nil || series == nil {
-		return
-	}
-	if series.PosterPath == "" && series.BackdropPath == "" && series.Rating == 0 && series.Year == 0 {
-		return // series 刮削后仍无任何信息，无需同步
-	}
-	episodes, err := s.mediaRepo.ListBySeriesID(seriesID)
-	if err != nil || len(episodes) == 0 {
-		return
-	}
-	updated := 0
-	for i := range episodes {
-		ep := &episodes[i]
-		changed := false
-		if ep.PosterPath == "" && series.PosterPath != "" {
-			ep.PosterPath = series.PosterPath
-			changed = true
-		}
-		if ep.BackdropPath == "" && series.BackdropPath != "" {
-			ep.BackdropPath = series.BackdropPath
-			changed = true
-		}
-		if ep.Rating == 0 && series.Rating > 0 {
-			ep.Rating = series.Rating
-			changed = true
-		}
-		if ep.Year == 0 && series.Year > 0 {
-			ep.Year = series.Year
-			changed = true
-		}
-		if ep.Genres == "" && series.Genres != "" {
-			ep.Genres = series.Genres
-			changed = true
-		}
-		if ep.Overview == "" && series.Overview != "" {
-			ep.Overview = series.Overview
-			changed = true
-		}
-		if changed {
-			if uerr := s.mediaRepo.Update(ep); uerr == nil {
-				updated++
-			}
-		}
-	}
-	if updated > 0 {
-		s.logger.Infof("剧集封面/评分已同步到 %d 集 (series_id=%s)", updated, seriesID)
-	}
-
-	// 同步刮削状态：与 syncSeriesToEpisodes 同口径，避免 episode 长期处于 pending
-	if refreshed, ferr := s.mediaRepo.ListBySeriesID(seriesID); ferr == nil {
-		now := time.Now()
-		statusUpdated := 0
-		for i := range refreshed {
-			ep := &refreshed[i]
-			if ep.ScrapeStatus == "manual" {
-				continue
-			}
-			newStatus := evaluateMediaScrapeStatus(ep)
-			if newStatus == "" {
-				continue
-			}
-			fields := map[string]interface{}{
-				"scrape_status":  newStatus,
-				"last_scrape_at": now,
-			}
-			if err := s.mediaRepo.UpdateFields(ep.ID, fields); err == nil {
-				statusUpdated++
-			}
-		}
-		if statusUpdated > 0 {
-			s.logger.Infof("剧集刮削状态已回写 %d 集 (series_id=%s)", statusUpdated, seriesID)
-		}
-	}
 }
 
 // downloadToFile 下载文件到指定路径（带重试）
@@ -2956,5 +2929,9 @@ func (s *MetadataService) MatchSeriesWithBangumi(seriesID string, bangumiID int)
 	if err != nil {
 		return fmt.Errorf("剧集合集不存在")
 	}
-	return s.bangumi.MatchSeriesWithBangumi(series, bangumiID)
+	if err := s.bangumi.MatchSeriesWithBangumi(series, bangumiID); err != nil {
+		return err
+	}
+	s.clearDuplicatedSeriesArtworkFromEpisodes(seriesID, series)
+	return nil
 }

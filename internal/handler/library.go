@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
@@ -58,6 +59,10 @@ type CreateLibraryRequest struct {
 	AutoDownloadSub   *bool   `json:"auto_download_sub"`
 	// 扫描行为设置
 	AutoScrapeMetadata *bool `json:"auto_scrape_metadata"`
+	// AI 自动整理：off / rule_only / ai_assisted
+	AutoOrganizeMode *string `json:"auto_organize_mode"`
+	// 硬链接整理输出目录（为空=不落盘）
+	OrganizeOutputDir *string `json:"organize_output_dir"`
 	// 媒体库级别设置
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
@@ -78,6 +83,10 @@ type UpdateLibraryRequest struct {
 	AutoDownloadSub   *bool   `json:"auto_download_sub"`
 	// 扫描行为设置
 	AutoScrapeMetadata *bool `json:"auto_scrape_metadata"`
+	// AI 自动整理：off / rule_only / ai_assisted
+	AutoOrganizeMode *string `json:"auto_organize_mode"`
+	// 硬链接整理输出目录（为空=不落盘）
+	OrganizeOutputDir *string `json:"organize_output_dir"`
 	// 媒体库级别设置
 	EnableFileWatch *bool `json:"enable_file_watch"`
 }
@@ -162,6 +171,16 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	if req.AutoScrapeMetadata != nil {
 		lib.AutoScrapeMetadata = *req.AutoScrapeMetadata
 	}
+	if req.AutoOrganizeMode != nil {
+		if !model.IsValidAutoOrganizeMode(*req.AutoOrganizeMode) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "auto_organize_mode 取值非法（应为 off / rule_only / ai_assisted）"})
+			return
+		}
+		lib.AutoOrganizeMode = *req.AutoOrganizeMode
+	}
+	if req.OrganizeOutputDir != nil {
+		lib.OrganizeOutputDir = strings.TrimSpace(*req.OrganizeOutputDir)
+	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch
 	}
@@ -169,7 +188,7 @@ func (h *LibraryHandler) Create(c *gin.Context) {
 	// 如果有高级设置需要更新，则再次保存
 	needUpdate := req.PreferLocalNFO != nil || req.EnableFileFilter != nil || req.MinFileSize != nil ||
 		req.MetadataLang != nil || req.AllowAdultContent != nil || req.AutoDownloadSub != nil ||
-		req.AutoScrapeMetadata != nil || req.EnableFileWatch != nil
+		req.AutoScrapeMetadata != nil || req.AutoOrganizeMode != nil || req.OrganizeOutputDir != nil || req.EnableFileWatch != nil
 	if needUpdate {
 		h.libService.Update(lib)
 	}
@@ -182,13 +201,21 @@ func (h *LibraryHandler) Scan(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.libService.Scan(id); err != nil {
 		if err == service.ErrScanInProgress {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			c.JSON(http.StatusAccepted, gin.H{
+				"message": "扫描已在进行中",
+				"data":    h.libService.ActiveScanPhases(),
+			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "扫描已启动"})
+}
+
+// ScanStatus 获取当前仍在运行的扫描进度
+func (h *LibraryHandler) ScanStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"data": h.libService.ActiveScanPhases()})
 }
 
 // Delete 删除媒体库
@@ -206,7 +233,10 @@ func (h *LibraryHandler) Reindex(c *gin.Context) {
 	id := c.Param("id")
 	if err := h.libService.Reindex(id); err != nil {
 		if err == service.ErrScanInProgress {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			c.JSON(http.StatusAccepted, gin.H{
+				"message": "扫描已在进行中",
+				"data":    h.libService.ActiveScanPhases(),
+			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -303,6 +333,25 @@ func (h *LibraryHandler) Update(c *gin.Context) {
 	}
 	if req.AutoScrapeMetadata != nil {
 		lib.AutoScrapeMetadata = *req.AutoScrapeMetadata
+	}
+	if req.AutoOrganizeMode != nil {
+		if !model.IsValidAutoOrganizeMode(*req.AutoOrganizeMode) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "auto_organize_mode 取值非法（应为 off / rule_only / ai_assisted）"})
+			return
+		}
+		lib.AutoOrganizeMode = *req.AutoOrganizeMode
+	}
+	if req.OrganizeOutputDir != nil {
+		organizeOutputDir := strings.TrimSpace(*req.OrganizeOutputDir)
+		lib.OrganizeOutputDir = organizeOutputDir
+		// 虚拟化目录只是硬链接输出目录，不能替换媒体文件夹。
+		// 媒体文件夹必须保留源目录，用于扫描和实时文件监控。
+		if lib.AutoOrganizeMode == model.AutoOrganizeAIAssisted && organizeOutputDir != "" {
+			if err := os.MkdirAll(organizeOutputDir, 0o755); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("创建 AI 整理输出目录失败: %s: %v", organizeOutputDir, err)})
+				return
+			}
+		}
 	}
 	if req.EnableFileWatch != nil {
 		lib.EnableFileWatch = *req.EnableFileWatch

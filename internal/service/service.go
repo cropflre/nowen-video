@@ -378,6 +378,11 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		repos.ScanClassification, repos.Media, repos.Library,
 		aiService, scanPostCfg, logger,
 	)
+	// 创建并注入硬链接整理服务（AI 自动整理完成后，按虚拟路径创建硬链接）
+	organizeHardlink := NewOrganizeHardlinkService(repos.ScanClassification, repos.Media, repos.Library, logger)
+	svcs.ScanPostProcess.SetOrganizeHardlinkService(organizeHardlink)
+	svcs.ScanPostProcess.SetSeriesRepo(repos.Series)
+	svcs.ScanPostProcess.SetWSHub(wsHub)
 	svcs.ScanPostProcess.Start()
 
 	// 懒人入库服务（依赖 SmartRename + Library + ScanPostProcess + DB）
@@ -406,6 +411,10 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 延迟注入：LibraryService 需要 CollectionService（用于扫描+刮削后自动匹配电影系列合集）
 	svcs.Library.SetCollectionService(svcs.Collection)
+
+	// 延迟注入：LibraryService / FileWatcher 需要 ScanPostProcessService（用于扫描后同步执行 AI 自动整理）
+	svcs.Library.SetScanPostProcessService(svcs.ScanPostProcess)
+	fileWatcher.SetScanPostProcessService(svcs.ScanPostProcess)
 
 	// 延迟注入：StreamService 需要 PreprocessService（用于自动选择预处理内容）
 	svcs.Stream.SetPreprocessService(preprocessService)
@@ -460,15 +469,10 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 			}
 		}
 
-		// 扫描后处理：虚拟归类与命名映射（仅写 DB，不动磁盘）
-		// 默认始终启用，开销极低（规则识别 + 仅低置信度时调 AI）
-		if svcs.ScanPostProcess != nil {
-			if n, err := svcs.ScanPostProcess.EnqueueLibrary(libraryID); err != nil {
-				logger.Warnf("扫描后处理入队失败: %v", err)
-			} else if n > 0 {
-				logger.Infof("扫描后处理已入队 %d 条媒体（虚拟归类与命名映射，仅 DB）", n)
-			}
-		}
+		// 扫描后处理不再在 onScanComplete 中异步入队。
+		// 原因：LibraryService.Scan / Reindex / FileWatcher 增量扫描已经在主链路中同步执行 AI 整理，
+		// 若这里再次 EnqueueLibrary，会导致同一批媒体重复 AI 识别、重复硬链接同步和额外耗时。
+		logger.Infof("扫描完成回调：跳过异步 AI 整理入队 library_id=%s（主扫描链路已同步处理）", libraryID)
 		// 注意：电影系列合集匹配已移至 library.go 中刮削完成后执行，确保标题已更新
 	})
 

@@ -31,9 +31,8 @@ import {
   Copy as CopyIcon,
   ClipboardPaste,
   Bookmark,
-  RefreshCw,
-  FileText,
-  Layers,
+    RefreshCw,
+    FileText,
 } from 'lucide-react'
 import clsx from 'clsx'
 import LibraryManager from '@/components/LibraryManager'
@@ -42,7 +41,6 @@ import DashboardTab from '@/components/admin/DashboardTab'
 import UsersTab from '@/components/admin/UsersTab'
 import AITab from '@/components/admin/AITab'
 import StorageTab from '@/components/admin/StorageTab'
-import ClassificationTab from '@/components/admin/ClassificationTab'
 
 
 import { useTranslation } from '@/i18n'
@@ -55,7 +53,6 @@ const TABS = [
   { id: 'users', labelKey: 'admin.tabUsers', icon: Users, shortLabelKey: 'admin.shortUsers' },
   { id: 'logs', labelKey: 'admin.tabLogs', icon: FileText, shortLabelKey: 'admin.shortLogs' },
   { id: 'ai', labelKey: 'admin.tabAI', icon: Sparkles, shortLabelKey: 'admin.shortAI' },
-  { id: 'classify', labelKey: 'admin.tabClassify', icon: Layers, shortLabelKey: 'admin.shortClassify' },
   { id: 'storage', labelKey: 'admin.tabStorage', icon: HardDrive, shortLabelKey: 'admin.shortStorage' },
 ] as const
 
@@ -201,8 +198,43 @@ function TabScrollNav({
   )
 }
 
+const SCAN_PROGRESS_STORAGE_KEY = 'nowen:scan-progress:v2'
+
+type PersistedScanState = {
+  scanningIds: string[]
+  scanProgress: Record<string, ScanProgressData>
+  scrapeProgress: Record<string, ScrapeProgressData>
+  scanPhase: Record<string, ScanPhaseData>
+  updatedAt: number
+}
+
+function loadPersistedScanState(): PersistedScanState {
+  if (typeof window === 'undefined') {
+    return { scanningIds: [], scanProgress: {}, scrapeProgress: {}, scanPhase: {}, updatedAt: 0 }
+  }
+  try {
+    const raw = window.localStorage.getItem(SCAN_PROGRESS_STORAGE_KEY)
+    if (!raw) return { scanningIds: [], scanProgress: {}, scrapeProgress: {}, scanPhase: {}, updatedAt: 0 }
+    const parsed = JSON.parse(raw) as PersistedScanState
+    if (!parsed || Date.now() - (parsed.updatedAt || 0) > 24 * 60 * 60 * 1000) {
+      window.localStorage.removeItem(SCAN_PROGRESS_STORAGE_KEY)
+      return { scanningIds: [], scanProgress: {}, scrapeProgress: {}, scanPhase: {}, updatedAt: 0 }
+    }
+    return {
+      scanningIds: Array.isArray(parsed.scanningIds) ? parsed.scanningIds : [],
+      scanProgress: parsed.scanProgress || {},
+      scrapeProgress: parsed.scrapeProgress || {},
+      scanPhase: parsed.scanPhase || {},
+      updatedAt: parsed.updatedAt || 0,
+    }
+  } catch {
+    return { scanningIds: [], scanProgress: {}, scrapeProgress: {}, scanPhase: {}, updatedAt: 0 }
+  }
+}
+
 export default function AdminPage() {
   const dialog = useDialog()
+  const persistedScanStateRef = useRef<PersistedScanState>(loadPersistedScanState())
   // 从 URL hash 读取初始标签
   const getInitialTab = (): TabId => {
     const hash = window.location.hash.replace('#', '')
@@ -217,7 +249,7 @@ export default function AdminPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
   const [users, setUsers] = useState<User[]>([])
-  const [scanning, setScanning] = useState<Set<string>>(new Set())
+  const [scanning, setScanning] = useState<Set<string>>(() => new Set(persistedScanStateRef.current.scanningIds))
 
   // 系统全局设置
   const [sysSettings, setSysSettings] = useState<SystemSettings>({
@@ -269,10 +301,10 @@ export default function AdminPage() {
 
   // WebSocket 实时进度
   const { connected, on, off } = useWebSocket()
-  const [scanProgress, setScanProgress] = useState<Record<string, ScanProgressData>>({})
-  const [scrapeProgress, setScrapeProgress] = useState<Record<string, ScrapeProgressData>>({})
+  const [scanProgress, setScanProgress] = useState<Record<string, ScanProgressData>>(() => persistedScanStateRef.current.scanProgress)
+  const [scrapeProgress, setScrapeProgress] = useState<Record<string, ScrapeProgressData>>(() => persistedScanStateRef.current.scrapeProgress)
   const [transcodeProgress, setTranscodeProgress] = useState<Record<string, TranscodeProgressData>>({})
-  const [scanPhase, setScanPhase] = useState<Record<string, ScanPhaseData>>({})
+  const [scanPhase, setScanPhase] = useState<Record<string, ScanPhaseData>>(() => persistedScanStateRef.current.scanPhase)
   const [realtimeMessages, setRealtimeMessages] = useState<string[]>([])
 
   // 标签页切换 — 同步到 URL hash
@@ -288,6 +320,22 @@ export default function AdminPage() {
     setRealtimeMessages((prev) => [`[${time}] ${msg}`, ...prev].slice(0, 20))
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (scanning.size === 0 && Object.keys(scanProgress).length === 0 && Object.keys(scrapeProgress).length === 0 && Object.keys(scanPhase).length === 0) {
+      window.localStorage.removeItem(SCAN_PROGRESS_STORAGE_KEY)
+      return
+    }
+    const payload: PersistedScanState = {
+      scanningIds: Array.from(scanning),
+      scanProgress,
+      scrapeProgress,
+      scanPhase,
+      updatedAt: Date.now(),
+    }
+    window.localStorage.setItem(SCAN_PROGRESS_STORAGE_KEY, JSON.stringify(payload))
+  }, [scanning, scanProgress, scrapeProgress, scanPhase])
+
   // ==================== WebSocket 事件监听 ====================
   useEffect(() => {
     const handleScanStarted = (data: ScanProgressData) => {
@@ -299,7 +347,22 @@ export default function AdminPage() {
       setScanProgress((prev) => ({ ...prev, [data.library_id]: data }))
     }
     const handleScanCompleted = (data: ScanProgressData) => {
+      setScanning((s) => {
+        const ns = new Set(s)
+        ns.delete(data.library_id)
+        return ns
+      })
       setScanProgress((prev) => {
+        const next = { ...prev }
+        delete next[data.library_id]
+        return next
+      })
+      setScrapeProgress((prev) => {
+        const next = { ...prev }
+        delete next[data.library_id]
+        return next
+      })
+      setScanPhase((prev) => {
         const next = { ...prev }
         delete next[data.library_id]
         return next
@@ -318,6 +381,16 @@ export default function AdminPage() {
         delete next[data.library_id]
         return next
       })
+      setScrapeProgress((prev) => {
+        const next = { ...prev }
+        delete next[data.library_id]
+        return next
+      })
+      setScanPhase((prev) => {
+        const next = { ...prev }
+        delete next[data.library_id]
+        return next
+      })
       addMessage(`❌ ${data.message}`)
     }
 
@@ -329,16 +402,7 @@ export default function AdminPage() {
       setScrapeProgress((prev) => ({ ...prev, [data.library_id || 'default']: data }))
     }
     const handleScrapeCompleted = (data: ScrapeProgressData) => {
-      setScrapeProgress((prev) => {
-        const next = { ...prev }
-        delete next[data.library_id || 'default']
-        return next
-      })
-      setScanning((s) => {
-        const ns = new Set(s)
-        if (data.library_id) ns.delete(data.library_id)
-        return ns
-      })
+      setScrapeProgress((prev) => ({ ...prev, [data.library_id || 'default']: data }))
       addMessage(`✨ ${data.message}`)
     }
 
@@ -419,16 +483,30 @@ export default function AdminPage() {
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [sysRes, libRes, userRes, tmdbRes, doubanRes, settingsRes] = await Promise.all([
+        const [sysRes, libRes, userRes, tmdbRes, doubanRes, settingsRes, scanStatusRes] = await Promise.all([
           adminApi.systemInfo(),
           libraryApi.list(),
           adminApi.listUsers(),
           adminApi.getTMDbConfig(),
           adminApi.getDoubanConfig(),
           adminApi.getSystemSettings(),
+          libraryApi.scanStatus(),
         ])
         setSystemInfo(sysRes.data.data)
         setLibraries(libRes.data.data || [])
+        const activeScanPhases = scanStatusRes.data.data || []
+        if (activeScanPhases.length > 0) {
+          const activeIds = new Set(activeScanPhases.map((p) => p.library_id))
+          setScanning(activeIds)
+          setScanPhase(Object.fromEntries(activeScanPhases.map((p) => [p.library_id, p])))
+          setScanProgress((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => activeIds.has(id))))
+          setScrapeProgress((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => activeIds.has(id))))
+        } else {
+          setScanning(new Set())
+          setScanPhase({})
+          setScanProgress({})
+          setScrapeProgress({})
+        }
         setUsers(userRes.data.data || [])
         setTmdbConfig(tmdbRes.data.data)
         setTmdbApiProxy(tmdbRes.data.data?.api_proxy || '')
@@ -1421,10 +1499,6 @@ export default function AdminPage() {
           <StorageTab />
         )}
 
-        {/* ===== 扫描归类标签页 ===== */}
-        {activeTab === 'classify' && (
-          <ClassificationTab />
-        )}
 
       </div>
 

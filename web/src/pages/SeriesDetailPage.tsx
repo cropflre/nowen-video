@@ -10,6 +10,7 @@ import { usePagination } from '@/hooks/usePagination'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
+import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Series, SeasonInfo, Media, Playlist, WatchHistory, MediaPerson } from '@/types'
 import {
   Play,
@@ -54,6 +55,7 @@ export default function SeriesDetailPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [overviewExpanded, setOverviewExpanded] = useState(false)
   const [imgLoaded, setImgLoaded] = useState(false)
+  const [posterVersion, setPosterVersion] = useState<number>(() => Date.now())
   // 观看历史：在父组件一次性获取，避免每个 EpisodeCard 重复请求
   const [historyMap, setHistoryMap] = useState<Record<string, WatchHistory>>({})
   // 演职人员
@@ -159,6 +161,28 @@ export default function SeriesDetailPage() {
 
   const isLongOverview = (series?.overview?.length || 0) > 200
 
+  const refreshSeriesDetail = async (seriesId: string, refreshImages = false) => {
+    const [seriesRes, seasonsRes, personsRes] = await Promise.all([
+      seriesApi.detail(seriesId),
+      seriesApi.seasons(seriesId),
+      seriesApi.getPersons(seriesId).catch(() => null),
+    ])
+    setSeries(seriesRes.data.data)
+    const seasonData = seasonsRes.data.data || []
+    setSeasons(seasonData)
+    if (seasonData.length > 0) {
+      setActiveSeason(seasonData[0].season_num)
+    }
+    if (personsRes) setPersons(personsRes.data.data || [])
+    if (refreshImages) {
+      setImgLoaded(false)
+      const v = Date.now()
+      setPosterVersion(v)
+      bumpPosterVersion()
+    }
+    invalidateMediaListCaches()
+  }
+
   // ==================== 管理功能事件处理 ====================
   const handleManualMatch = () => {
     if (!series) return
@@ -182,8 +206,8 @@ export default function SeriesDetailPage() {
       toast.success(`已识别 ${sourceLabel} ID：${direct.id}，正在绑定…`)
       // 直接走 select 流程完成绑定（剧集页是点击即绑，没有"应用"中间态）
       const idForApply: number | string = direct.source === 'douban' ? direct.id : Number(direct.id)
-      // 用 microtask 延迟到下一帧执行，避免 setMatchSource 与 select 在同一渲染中抢状态
-      setTimeout(() => { handleMatchSelect(idForApply) }, 0)
+      // 用 microtask 延迟到下一帧执行，并显式传入来源，避免 setMatchSource 尚未完成导致走错匹配接口。
+      setTimeout(() => { handleMatchSelect(idForApply, direct.source) }, 0)
       return
     }
     setMatchSearching(true)
@@ -228,35 +252,24 @@ export default function SeriesDetailPage() {
     }
   }
 
-  const handleMatchSelect = async (resultId: number | string) => {
+  const handleMatchSelect = async (resultId: number | string, source = matchSource) => {
     if (!id) return
     setMatchSelecting(true)
     try {
       const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
-      if (matchSource === 'tmdb') {
+      if (source === 'tmdb') {
         await adminApi.matchSeriesMetadata(id, resultId as number)
-      } else if (matchSource === 'douban') {
+      } else if (source === 'douban') {
         await adminApi.matchSeriesDouban(id, resultId as string)
-      } else if (matchSource === 'thetvdb') {
+      } else if (source === 'thetvdb') {
         await adminApi.matchSeriesTheTVDB(id, resultId as number)
       } else {
         await adminApi.matchSeriesBangumi(id, resultId as number)
       }
-      // 重新获取剧集详情和季信息以刷新页面
-      const [seriesRes, seasonsRes] = await Promise.all([
-        seriesApi.detail(id),
-        seriesApi.seasons(id),
-      ])
-      setSeries(seriesRes.data.data)
-      const seasonData = seasonsRes.data.data || []
-      setSeasons(seasonData)
-      if (seasonData.length > 0) {
-        setActiveSeason(seasonData[0].season_num)
-      }
-      // 失效所有列表页缓存（首页/浏览/合集/收藏/历史）→ 返回桌面时自动拉取最新数据
-      invalidateMediaListCaches()
+      // 重新获取剧集详情、季信息、演职人员，并强制刷新海报/背景图缓存
+      await refreshSeriesDetail(id, true)
       setShowMatchModal(false)
-      toast.success(`剧集匹配成功（来源：${sourceNameMap[matchSource]}）`)
+      toast.success(`剧集匹配成功（来源：${sourceNameMap[source]}）`)
     } catch {
       toast.error('匹配失败')
     } finally {
@@ -268,9 +281,7 @@ export default function SeriesDetailPage() {
     if (!id) return
     try {
       await adminApi.unmatchSeriesMetadata(id)
-      const res = await seriesApi.detail(id)
-      setSeries(res.data.data)
-      invalidateMediaListCaches()
+      await refreshSeriesDetail(id, true)
       setShowUnmatchConfirm(false)
       toast.success('已解除匹配')
     } catch {
@@ -283,9 +294,7 @@ export default function SeriesDetailPage() {
     setScraping(true)
     try {
       await adminApi.scrapeSeriesMetadata(id)
-      const res = await seriesApi.detail(id)
-      setSeries(res.data.data)
-      invalidateMediaListCaches()
+      await refreshSeriesDetail(id, true)
       toast.success('元数据刷新成功')
     } catch (err) {
       toast.error(formatErrMsg(err, '元数据刷新失败'))
@@ -314,9 +323,7 @@ export default function SeriesDetailPage() {
     if (!id) return
     try {
       await adminApi.updateSeriesMetadata(id, editForm)
-      const res = await seriesApi.detail(id)
-      setSeries(res.data.data)
-      invalidateMediaListCaches()
+      await refreshSeriesDetail(id, true)
       setShowEditModal(false)
       toast.success('元数据已更新')
     } catch {
@@ -381,7 +388,8 @@ export default function SeriesDetailPage() {
           <div className="absolute inset-0" style={{ background: 'var(--bg-surface)' }}>
             {series.backdrop_path ? (
               <img
-                src={streamApi.getSeriesBackdropUrl(series.id)}
+                key={`backdrop-${series.id}-${posterVersion}`}
+                src={streamApi.getSeriesBackdropUrl(series.id, posterVersion)}
                 alt=""
                 className={clsx(
                   'h-full w-full object-cover transition-all duration-1000',
@@ -391,7 +399,8 @@ export default function SeriesDetailPage() {
               />
             ) : series.poster_path ? (
               <img
-                src={streamApi.getSeriesPosterUrl(series.id)}
+                key={`poster-bg-${series.id}-${posterVersion}`}
+                src={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
                 alt=""
                 className="h-full w-full object-cover opacity-15 blur-2xl scale-110"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
@@ -418,7 +427,8 @@ export default function SeriesDetailPage() {
               >
                 {series.poster_path ? (
                   <img
-                    src={streamApi.getSeriesPosterUrl(series.id)}
+                    key={`poster-${series.id}-${posterVersion}`}
+                    src={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
                     alt={series.title}
                     className="w-full object-cover"
                     style={{ aspectRatio: '2/3' }}
@@ -861,7 +871,7 @@ export default function SeriesDetailPage() {
                     style={{ scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
                   >
                     {pagedEpisodes.map((ep) => (
-                      <EpisodeSlideCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
+                      <EpisodeSlideCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} posterVersion={posterVersion} />
                     ))}
                   </div>
 
@@ -888,7 +898,7 @@ export default function SeriesDetailPage() {
               {seasonDisplayMode === 'list' && (
                 <div className="space-y-2">
                   {pagedEpisodes.map((ep) => (
-                    <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
+                    <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} posterVersion={posterVersion} />
                   ))}
                 </div>
               )}
@@ -921,7 +931,7 @@ export default function SeriesDetailPage() {
                   </h4>
                   <div className="space-y-2">
                     {season.episodes.map((ep) => (
-                      <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} />
+                      <EpisodeCard key={ep.id} episode={ep} seriesTitle={series.title} historyRecord={historyMap[ep.id]} posterVersion={posterVersion} />
                     ))}
                   </div>
                 </div>
@@ -1165,7 +1175,7 @@ export default function SeriesDetailPage() {
           mediaType="tv"
           editForm={editForm}
           setEditForm={setEditForm}
-          currentPoster={streamApi.getSeriesPosterUrl(series.id)}
+          currentPoster={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
           hasPoster={!!series.poster_path}
           hasBackdrop={!!series.backdrop_path}
           onSave={handleEditSave}
@@ -1207,7 +1217,7 @@ export default function SeriesDetailPage() {
 }
 
 // 剧集卡片组件
-function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Media; seriesTitle: string; historyRecord?: WatchHistory }) {
+function EpisodeCard({ episode: ep, seriesTitle, historyRecord, posterVersion }: { episode: Media; seriesTitle: string; historyRecord?: WatchHistory; posterVersion?: number }) {
   const watchStatus = (() => {
     if (!historyRecord) return { watched: false, progress: 0 }
     return {
@@ -1231,7 +1241,7 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
       <div className="relative h-16 w-28 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}>
         {ep.poster_path ? (
           <img
-            src={streamApi.getPosterUrl(ep.id)}
+            src={streamApi.getPosterUrl(ep.id, posterVersion)}
             alt={ep.title}
             className="h-full w-full object-cover"
           />
@@ -1317,7 +1327,7 @@ function EpisodeCard({ episode: ep, seriesTitle, historyRecord }: { episode: Med
 }
 
 // 幻灯片模式的剧集卡片组件
-function EpisodeSlideCard({ episode: ep, seriesTitle, historyRecord }: { episode: Media; seriesTitle: string; historyRecord?: WatchHistory }) {
+function EpisodeSlideCard({ episode: ep, seriesTitle, historyRecord, posterVersion }: { episode: Media; seriesTitle: string; historyRecord?: WatchHistory; posterVersion?: number }) {
   const watchStatus = (() => {
     if (!historyRecord) return { watched: false, progress: 0 }
     return {
@@ -1342,7 +1352,7 @@ function EpisodeSlideCard({ episode: ep, seriesTitle, historyRecord }: { episode
       <div className="relative aspect-video w-full overflow-hidden" style={{ background: 'var(--bg-surface)' }}>
         {ep.poster_path ? (
           <img
-            src={streamApi.getPosterUrl(ep.id)}
+            src={streamApi.getPosterUrl(ep.id, posterVersion)}
             alt={ep.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           />

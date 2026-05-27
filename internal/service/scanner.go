@@ -649,8 +649,27 @@ func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
 	s.onScanComplete = fn
 }
 
+type ScanLibraryOptions struct {
+	// SuppressCompletedEvent 用于多阶段扫描链路，避免文件扫描完成时提前通知前端“全部完成”。
+	SuppressCompletedEvent bool
+	// SuppressCompletionCallback 用于把 onScanComplete 延后到多阶段流程真正结束后执行。
+	SuppressCompletionCallback bool
+}
+
 // ScanLibrary 扫描媒体库目录
 func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
+	return s.ScanLibraryWithOptions(library, ScanLibraryOptions{})
+}
+
+// NotifyScanComplete 触发扫描完成回调。多阶段流程可在真正完成后手动调用。
+func (s *ScannerService) NotifyScanComplete(libraryID string) {
+	if s.onScanComplete != nil {
+		go s.onScanComplete(libraryID)
+	}
+}
+
+// ScanLibraryWithOptions 扫描媒体库目录，可由多阶段调用方控制是否广播最终扫描完成事件。
+func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, opts ScanLibraryOptions) (int, error) {
 	s.logger.Infof("开始扫描媒体库: %s (路径数: %d)", library.Name, len(library.AllPaths()))
 
 	// 发送扫描开始事件
@@ -682,7 +701,7 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 			NewFound:    count,
 			Message:     fmt.Sprintf("扫描出错: %v", err),
 		})
-	} else {
+	} else if !opts.SuppressCompletedEvent {
 		s.broadcastScanEvent(EventScanCompleted, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,
@@ -695,8 +714,8 @@ func (s *ScannerService) ScanLibrary(library *model.Library) (int, error) {
 	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体", library.Name, count)
 
 	// 触发预处理回调（如果已配置）
-	if s.onScanComplete != nil {
-		go s.onScanComplete(library.ID)
+	if !opts.SuppressCompletionCallback {
+		s.NotifyScanComplete(library.ID)
 	}
 
 	return count, err
@@ -807,6 +826,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 				// 文件已变更 → 先查 DB 记录，但不在这里 probe
 				existing, findErr := s.mediaRepo.FindByFilePath(path)
 				if findErr == nil && existing != nil {
+					if s.deleteSourceDuplicateIfOrganized(library, existing, path, info) {
+						collectMu.Lock()
+						totalFiles++
+						videoFiles++
+						skippedExist++
+						collectMu.Unlock()
+						return nil
+					}
 					existing.FileSize = info.Size()
 					collectMu.Lock()
 					totalFiles++
@@ -826,6 +853,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			// 回退：逐个查询
 			existing, findErr := s.mediaRepo.FindByFilePath(path)
 			if findErr == nil && existing != nil {
+				if s.deleteSourceDuplicateIfOrganized(library, existing, path, info) {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
+					skippedExist++
+					collectMu.Unlock()
+					return nil
+				}
 				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
 					collectMu.Lock()
 					totalFiles++
@@ -843,6 +878,15 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 				collectMu.Unlock()
 				return nil
 			}
+		}
+
+		if _, represented := s.findOrganizedHardlinkRecord(library, path, info); represented {
+			collectMu.Lock()
+			totalFiles++
+			videoFiles++
+			skippedExist++
+			collectMu.Unlock()
+			return nil
 		}
 
 		// P0: 增强的标题提取（含年份 + ID 标签解析）
@@ -1014,11 +1058,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 	}
 
-	// 清理失效记录：walk 正常完成后，existingPaths 里剩余的路径即为"DB 有但磁盘已不存在"的记录
-	// （如用户把文件拖拽到其他位置/删除后的残留）。walk 出错时保守不删，避免误清理。
+	// 清理失效记录：walk 正常完成后，existingPaths 里剩余的路径可能是磁盘已不存在的记录，
+	// 也可能是 AI 整理后指向虚拟化/硬链接输出目录的记录。因此必须先 stat，不能直接删除。
 	staleRemoved := 0
 	if err == nil && existingPaths != nil && len(existingPaths) > 0 {
 		for stalePath := range existingPaths {
+			if _, statErr := s.statLibraryPath(stalePath); !os.IsNotExist(statErr) {
+				continue
+			}
 			if m, findErr := s.mediaRepo.FindByFilePath(stalePath); findErr == nil && m != nil {
 				if delErr := s.mediaRepo.DeleteByID(m.ID); delErr != nil {
 					s.logger.Warnf("删除失效媒体记录失败: %s, 错误: %v", stalePath, delErr)
@@ -1043,6 +1090,61 @@ type pendingMedia struct {
 	media *model.Media
 	path  string
 	info  os.FileInfo
+}
+
+// findOrganizedHardlinkRecord 判断当前源路径是否已经被 AI 整理后的硬链接记录代表。
+// 当 Media.FilePath 已同步为 OrganizeOutputDir 下的路径时，后续扫描源目录不能再把源文件当新媒体入库。
+func (s *ScannerService) deleteSourceDuplicateIfOrganized(library *model.Library, sourceMedia *model.Media, sourcePath string, sourceInfo os.FileInfo) bool {
+	if sourceMedia == nil || sourceMedia.ID == "" {
+		return false
+	}
+	represented, ok := s.findOrganizedHardlinkRecord(library, sourcePath, sourceInfo)
+	if !ok || represented == nil || represented.ID == "" || represented.ID == sourceMedia.ID {
+		return false
+	}
+	if err := s.mediaRepo.DeleteByID(sourceMedia.ID); err != nil {
+		s.logger.Warnf("删除源目录重复媒体记录失败: %s, 错误: %v", sourcePath, err)
+		return false
+	}
+	s.logger.Infof("源目录重复记录已由 AI 整理硬链接记录代表，已删除源记录: %s -> %s", sourcePath, represented.FilePath)
+	return true
+}
+
+func (s *ScannerService) findOrganizedHardlinkRecord(library *model.Library, sourcePath string, sourceInfo os.FileInfo) (*model.Media, bool) {
+	if library == nil || library.ID == "" || sourcePath == "" || sourceInfo == nil || sourceInfo.IsDir() || s.mediaRepo == nil {
+		return nil, false
+	}
+	outputDir := strings.TrimSpace(library.OrganizeOutputDir)
+	if outputDir == "" || IsWebDAVPath(sourcePath) || IsWebDAVPath(outputDir) {
+		return nil, false
+	}
+	cleanSource := filepath.Clean(sourcePath)
+	cleanOutput := filepath.Clean(outputDir)
+	if isPathUnderRoot(cleanSource, cleanOutput) {
+		return nil, false
+	}
+
+	candidates, err := s.mediaRepo.ListByLibraryAndFileSize(library.ID, sourceInfo.Size())
+	if err != nil || len(candidates) == 0 {
+		return nil, false
+	}
+	for i := range candidates {
+		candidate := &candidates[i]
+		candidatePath := strings.TrimSpace(candidate.FilePath)
+		cleanCandidate := filepath.Clean(candidatePath)
+		if candidatePath == "" || strings.EqualFold(cleanCandidate, cleanSource) || !isPathUnderRoot(cleanCandidate, cleanOutput) {
+			continue
+		}
+		candidateInfo, statErr := os.Stat(candidatePath)
+		if statErr != nil || candidateInfo.IsDir() {
+			continue
+		}
+		if os.SameFile(sourceInfo, candidateInfo) {
+			s.logger.Debugf("跳过源文件重复入库，已由 AI 整理硬链接记录代表: %s -> %s", sourcePath, candidatePath)
+			return candidate, true
+		}
+	}
+	return nil, false
 }
 
 // parallelProbe 使用 Worker Pool 并行执行 FFprobe 探测
@@ -1173,7 +1275,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			rootIsSeriesFolder = true
 		}
 
-		if rootIsSeriesFolder {
+		if rootIsSeriesFolder || s.isTVShowFolder(root) {
 			rootBase := filepath.Base(root)
 			normalizedName := s.normalizeSeriesName(rootBase)
 			if normalizedName == "" {
@@ -1181,7 +1283,11 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 				normalizedName = "__series_" + rootBase
 			}
 			seasonNum := s.extractSeasonFromDirName(rootBase)
-			s.logger.Infof("[mixed] 媒体根 %s 自身识别为剧集目录（%d 个季子目录），序列名=%s", root, seasonChildCount, normalizedName)
+			if rootIsSeriesFolder {
+				s.logger.Infof("[mixed] 媒体根 %s 自身识别为剧集目录（%d 个季子目录），序列名=%s", root, seasonChildCount, normalizedName)
+			} else {
+				s.logger.Infof("[mixed] 媒体根 %s 自身识别为剧集目录（视频文件命中剧集命名），序列名=%s", root, normalizedName)
+			}
 			seriesDirGroups[normalizedName] = append(seriesDirGroups[normalizedName], seriesFolder{
 				path:      root,
 				dirName:   rootBase,
@@ -1270,8 +1376,12 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			if !supportedExts[ext] {
 				return nil
 			}
-			if _, err := s.mediaRepo.FindByFilePath(path); err == nil {
+			if existing, err := s.mediaRepo.FindByFilePath(path); err == nil {
+				s.deleteSourceDuplicateIfOrganized(library, existing, path, info)
 				return nil // 已存在
+			}
+			if _, represented := s.findOrganizedHardlinkRecord(library, path, info); represented {
+				return nil
 			}
 			title := s.extractTitle(filepath.Base(path))
 			media := &model.Media{
@@ -1306,11 +1416,15 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	// === 阶段四：处理根目录散落的视频文件（作为电影） ===
 	for _, entry := range looseVideoFiles {
 		filePath := filepath.Join(entry.rootPath, entry.entry.Name())
-		if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
-			continue // 已存在
-		}
 		info, err := entry.entry.Info()
 		if err != nil {
+			continue
+		}
+		if existing, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+			s.deleteSourceDuplicateIfOrganized(library, existing, filePath, info)
+			continue // 已存在
+		}
+		if _, represented := s.findOrganizedHardlinkRecord(library, filePath, info); represented {
 			continue
 		}
 		title := s.extractTitle(entry.entry.Name())
@@ -1433,11 +1547,8 @@ func (s *ScannerService) isTVShowFolder(folderPath string) bool {
 		return true
 	}
 
-	// 规则4: 有3个及以上视频文件（即使无法解析集号，多文件目录更可能是剧集）
-	if len(videoFiles) >= 3 {
-		return true
-	}
-
+	// 不再仅凭“3 个及以上视频文件”判定为剧集。
+	// 电影合集/系列电影目录也经常包含多个视频，必须有明确剧集命名证据才归为电视剧。
 	return false
 }
 
@@ -1572,11 +1683,15 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 				ext := strings.ToLower(filepath.Ext(entry.Name()))
 				if supportedExts[ext] {
 					filePath := vfsJoin(root, entry.Name())
-					if _, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
-						continue // 已存在
-					}
 					info, _ := entry.Info()
 					if info == nil {
+						continue
+					}
+					if existing, err := s.mediaRepo.FindByFilePath(filePath); err == nil {
+						s.deleteSourceDuplicateIfOrganized(library, existing, filePath, info)
+						continue // 已存在
+					}
+					if _, represented := s.findOrganizedHardlinkRecord(library, filePath, info); represented {
 						continue
 					}
 					// 从文件名提取系列名称用于智能归类
@@ -2055,6 +2170,10 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 
 			// 检查是否已存在，如果存在则修正可能的脏数据（如 episode_title、season_num、episode_num）
 			if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
+				if s.deleteSourceDuplicateIfOrganized(library, existing, ep.FilePath, ep.FileInfo) {
+					seasonSet[seasonNum] = true
+					continue
+				}
 				seasonSet[seasonNum] = true
 				needUpdate := false
 				if existing.EpisodeTitle != ep.EpisodeTitle {
@@ -2072,6 +2191,10 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 				if needUpdate {
 					s.mediaRepo.Update(existing)
 				}
+				continue
+			}
+			if _, represented := s.findOrganizedHardlinkRecord(library, ep.FilePath, ep.FileInfo); represented {
+				seasonSet[seasonNum] = true
 				continue
 			}
 
@@ -2192,6 +2315,10 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 	for _, ep := range episodes {
 		// 检查是否已存在，如果存在则修正可能的脏数据
 		if existing, err := s.mediaRepo.FindByFilePath(ep.FilePath); err == nil {
+			if s.deleteSourceDuplicateIfOrganized(library, existing, ep.FilePath, ep.FileInfo) {
+				seasonSet[ep.SeasonNum] = true
+				continue
+			}
 			seasonSet[ep.SeasonNum] = true
 			needUpdate := false
 			if existing.EpisodeTitle != ep.EpisodeTitle {
@@ -2209,6 +2336,10 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 			if needUpdate {
 				s.mediaRepo.Update(existing)
 			}
+			continue
+		}
+		if _, represented := s.findOrganizedHardlinkRecord(library, ep.FilePath, ep.FileInfo); represented {
+			seasonSet[ep.SeasonNum] = true
 			continue
 		}
 

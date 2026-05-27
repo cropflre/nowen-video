@@ -55,11 +55,20 @@ func (s *SeriesService) GetSeasons(seriesID string) ([]SeasonInfo, error) {
 		return nil, err
 	}
 
+	series, _ := s.seriesRepo.FindByIDOnly(seriesID)
 	var result []SeasonInfo
 	for _, num := range seasons {
 		episodes, err := s.mediaRepo.ListBySeriesAndSeason(seriesID, num)
 		if err != nil {
 			continue
+		}
+		for i := range episodes {
+			if series != nil && (sameArtworkPath(episodes[i].PosterPath, series.PosterPath) || isSeriesCacheArtworkPath(episodes[i].PosterPath, seriesID)) {
+				episodes[i].PosterPath = ""
+			}
+			if series != nil && (sameArtworkPath(episodes[i].BackdropPath, series.BackdropPath) || isSeriesCacheArtworkPath(episodes[i].BackdropPath, seriesID)) {
+				episodes[i].BackdropPath = ""
+			}
 		}
 		result = append(result, SeasonInfo{
 			SeasonNum:    num,

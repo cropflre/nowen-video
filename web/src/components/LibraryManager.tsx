@@ -7,7 +7,6 @@ import { useToast } from './Toast'
 import { useDialog } from './Dialog'
 import CreateLibraryModal from './CreateLibraryModal'
 import EditLibraryModal from './EditLibraryModal'
-import LazyIngestModal from './LazyIngestModal'
 import {
   FolderPlus,
   RefreshCw,
@@ -25,7 +24,6 @@ import {
   ChevronRight,
   RotateCcw,
   Pencil,
-  Sparkles,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -47,7 +45,20 @@ interface LibraryManagerProps {
   scanPhase: Record<string, ScanPhaseData>
 }
 
-export default function LibraryManager({
+type MainScanStage = 'scanning' | 'ai_organizing' | 'scraping'
+
+const MAIN_SCAN_STAGES: { id: MainScanStage; label: string; short: string }[] = [
+  { id: 'scanning', label: '入库进度', short: '入库' },
+  { id: 'ai_organizing', label: 'AI整理进度', short: 'AI整理' },
+  { id: 'scraping', label: '元数据刮削进度', short: '刮削' },
+]
+
+function clampPercent(n: number) {
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(100, n))
+}
+
+function LibraryManager({
   libraries,
   setLibraries,
   scanning,
@@ -59,7 +70,6 @@ export default function LibraryManager({
   const toast = useToast()
   const dialog = useDialog()
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showLazyIngestModal, setShowLazyIngestModal] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'type'>('created')
   const [sortAsc, setSortAsc] = useState(false)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
@@ -183,21 +193,6 @@ export default function LibraryManager({
         </h2>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* 一键入库（AI 全自动）— 极简入口 */}
-          <button
-            onClick={() => setShowLazyIngestModal(true)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all"
-            style={{
-              border: '1px solid var(--neon)',
-              color: 'var(--neon)',
-              background: 'var(--neon-tint, rgba(0,255,200,0.08))',
-            }}
-            title="只给一个目录，AI 自动整理 + 建库 + 扫描"
-          >
-            <Sparkles size={14} />
-            一键入库
-          </button>
-
           {/* 新增媒体库按钮 — 主要操作 */}
           <button
             onClick={() => setShowCreateModal(true)}
@@ -302,15 +297,33 @@ export default function LibraryManager({
             const scrape = scrapeProgress[lib.id]
             const phase = scanPhase[lib.id]
 
-            // 计算阶段显示文本
-            const phaseLabel = phase ? {
-              scanning: '扫描文件',
-              scraping: '识别信息',
-              merging: '合并剧集',
-              matching: '匹配合集',
-              cleaning: '清理数据',
-              completed: '处理完成',
-            }[phase.phase] || phase.phase : null
+            const activeStage: MainScanStage =
+              phase?.phase === 'ai_organizing'
+                ? 'ai_organizing'
+                : phase?.phase === 'scraping' || (!phase && scrape)
+                  ? 'scraping'
+                  : 'scanning'
+            const activeStageIndex = MAIN_SCAN_STAGES.findIndex((s) => s.id === activeStage)
+            const stageLabel = MAIN_SCAN_STAGES[activeStageIndex]?.label || '入库进度'
+            const phaseCurrent = phase?.current || 0
+            const phaseTotal = phase?.total || 0
+            const stageProgress = activeStage === 'scraping'
+              ? scrape
+                ? { current: scrape.current, total: scrape.total }
+                : { current: phaseCurrent, total: phaseTotal }
+              : activeStage === 'ai_organizing'
+                ? { current: phaseCurrent, total: phaseTotal }
+                : { current: progress?.current || progress?.new_found || phaseCurrent, total: progress?.total || phaseTotal }
+            const stagePercent = stageProgress.total > 0
+              ? clampPercent((stageProgress.current / stageProgress.total) * 100)
+              : activeStageIndex > 0
+                ? 100
+                : 35
+            const stageMessage = activeStage === 'scraping' && scrape
+              ? `元数据刮削 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
+              : activeStage === 'ai_organizing' && phase?.total
+                ? `AI整理 [${phase.current || 0}/${phase.total}]`
+                : progress?.message || phase?.message || '正在入库...'
 
             return (
               <div key={lib.id} className="group relative">
@@ -344,13 +357,7 @@ export default function LibraryManager({
                       </h3>
                     {isScanning && (
                         <p className="mt-0.5 text-xs text-neon animate-pulse">
-                          {scrape
-                            ? `识别中 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
-                            : progress?.message
-                              ? progress.message
-                              : phase
-                                ? `${phaseLabel} (${phase.step_current}/${phase.step_total})`
-                                : '扫描中...'}
+                          {stageLabel}：{stageMessage}
                         </p>
                       )}
                     </div>
@@ -482,62 +489,72 @@ export default function LibraryManager({
                   </div>
                 </div>
 
-                {/* 扫描进度条（扫描中显示） */}
+                {/* 扫描进度条（扫描中显示）：固定展示 入库 → 元数据刮削 → AI整理 */}
                 {isScanning && (progress || scrape || phase) && (
                   <div className="px-5 pb-3">
-                    {/* 阶段指示器 */}
-                    {phase && phase.phase !== 'completed' && (
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: phase.step_total }, (_, i) => (
-                            <div
-                              key={i}
-                              className="h-1.5 rounded-full transition-all duration-500"
-                              style={{
-                                width: i < phase.step_current ? '20px' : '8px',
-                                background: i < phase.step_current
-                                  ? 'var(--neon-blue)'
-                                  : 'var(--neon-blue-10)',
-                                opacity: i < phase.step_current ? 1 : 0.4,
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-[11px] font-medium" style={{ color: 'var(--neon-blue)' }}>
-                          {phaseLabel} ({phase.step_current}/{phase.step_total})
-                        </span>
-                      </div>
-                    )}
-                    {/* 进度条 */}
-                    <div
-                      className="h-1.5 overflow-hidden rounded-full"
-                      style={{ background: 'var(--neon-blue-6)' }}
-                    >
+                    <div className="mb-2 grid grid-cols-3 gap-2">
+                      {MAIN_SCAN_STAGES.map((stage, index) => {
+                        const done = index < activeStageIndex
+                        const active = index === activeStageIndex
+                        return (
+                          <div
+                            key={stage.id}
+                            className="rounded-lg px-2.5 py-2 transition-all"
+                            style={{
+                              border: active ? '1px solid var(--neon-blue)' : '1px solid var(--border-default)',
+                              background: done
+                                ? 'rgba(16, 185, 129, 0.10)'
+                                : active
+                                  ? 'var(--neon-blue-8)'
+                                  : 'var(--bg-secondary)',
+                            }}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="truncate text-[11px] font-semibold" style={{ color: active ? 'var(--neon-blue)' : done ? '#10B981' : 'var(--text-tertiary)' }}>
+                                {index + 1}. {stage.short}
+                              </span>
+                              <span className="text-[10px]" style={{ color: active ? 'var(--neon-blue)' : done ? '#10B981' : 'var(--text-muted)' }}>
+                                {done ? '完成' : active ? '进行中' : '等待'}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-medium" style={{ color: 'var(--neon-blue)' }}>
+                        {stageLabel}
+                      </span>
+                      <span className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                        {stageProgress.total > 0 ? `${stageProgress.current}/${stageProgress.total}` : `已发现 ${progress?.new_found || 0}`}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--neon-blue-6)' }}>
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
-                          background: scrape
+                          background: activeStage === 'scraping'
                             ? 'linear-gradient(90deg, var(--neon-purple), var(--neon-pink))'
-                            : 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                          width: scrape
-                            ? `${scrape.total > 0 ? (scrape.current / scrape.total) * 100 : 0}%`
-                            : '100%',
-                          animation: !scrape ? 'shimmer 2s linear infinite' : undefined,
-                          backgroundSize: !scrape ? '200% 100%' : undefined,
+                            : activeStage === 'ai_organizing'
+                              ? 'linear-gradient(90deg, #10B981, var(--neon-blue))'
+                              : 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
+                          width: `${stagePercent}%`,
+                          animation: stageProgress.total <= 0 ? 'shimmer 2s linear infinite' : undefined,
+                          backgroundSize: stageProgress.total <= 0 ? '200% 100%' : undefined,
                         }}
                       />
                     </div>
-                    {/* 刮削详细信息 */}
-                    {scrape && scrape.total > 0 && (
-                      <div className="flex items-center justify-between mt-1.5">
-                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {scrape.media_title || '处理中...'}
+                    <div className="mt-1.5 flex items-center justify-between gap-3">
+                      <span className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        {stageMessage}
+                      </span>
+                      {activeStage === 'scraping' && scrape && scrape.total > 0 && (
+                        <span className="shrink-0 text-[11px] font-mono" style={{ color: 'var(--neon-purple)' }}>
+                          成功:{scrape.success} 失败:{scrape.failed}
                         </span>
-                        <span className="text-[11px] font-mono" style={{ color: 'var(--neon-purple)' }}>
-                          {scrape.current}/{scrape.total} (成功:{scrape.success} 失败:{scrape.failed})
-                        </span>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -602,20 +619,10 @@ export default function LibraryManager({
         }}
       />
 
-      {/* ===== 智能重命名已收敛到「扫描归类 · 专家模式」（方案 B） ===== */}
 
-      {/* ===== 一键入库（懒人模式） ===== */}
-      <LazyIngestModal
-        isOpen={showLazyIngestModal}
-        onClose={() => setShowLazyIngestModal(false)}
-        onCompleted={() => {
-          // 任务完成 → 刷新媒体库列表
-          libraryApi
-            .list()
-            .then((res) => setLibraries(res.data.data || []))
-            .catch(() => {})
-        }}
-      />
     </section>
   )
 }
+
+export default LibraryManager
+

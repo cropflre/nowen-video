@@ -20,10 +20,13 @@ import (
 //   阶段 1 · 识别（identify）   - filename_parser 规则解析；置信度 < 阈值 时调用 AI Fallback
 //   阶段 2 · 归类（classify）   - 类别 / 地区 / 年代 / 类型标签 / 质量档 / 虚拟路径
 //   阶段 3 · 命名（naming）     - 仅 DB 记录的 Jellyfin/Emby 风格建议命名
+//   阶段 4 · 硬链接（hardlink） - 可选：按虚拟路径+建议命名在输出目录中创建硬链接
 //
 // 安全约束（强保证）：
-//   - 该服务**不导入 os 包**，不会调用任何 os.Rename/Create/Remove/MkdirAll 等磁盘写入 API；
-//   - 所有结果仅写入 media_classifications 表；
+//   - 阶段 1~3 不导入 os 包，不会调用任何 os.Rename/Create/Remove/MkdirAll 等磁盘写入 API；
+//   - 阶段 4 仅在 Library.OrganizeOutputDir 非空时触发，通过 OrganizeHardlinkService 执行；
+//   - 硬链接不修改/移动源文件，仅创建指向源文件的硬链接；
+//   - 所有分类结果写入 media_classifications 表；
 //   - 与 SmartRenameService 完全独立，不会触发其 Execute 流程。
 //
 // 触发：
@@ -81,9 +84,18 @@ type ScanPostProcessService struct {
 	repo        *repository.ScanClassificationRepo
 	mediaRepo   *repository.MediaRepo
 	libraryRepo *repository.LibraryRepo
+	seriesRepo  *repository.SeriesRepo
 	ai          *AIService
 	cfg         ScanPostProcessConfig
 	logger      *zap.SugaredLogger
+	wsHub       *WSHub
+
+	// 硬链接整理（可选，注入后自动在分类完成后创建硬链接）
+	organizeHardlink *OrganizeHardlinkService
+
+	// 目录级 AI 识别缓存：仅对 AI 已确认的剧集根目录复用，避免电影合集目录被误复用成同一标题。
+	aiIdentifyCache   map[string]*SmartRenameAIResult
+	aiIdentifyCacheMu sync.Mutex
 
 	// 异步队列
 	queue   chan string // 仅传 mediaID
@@ -115,15 +127,31 @@ func NewScanPostProcessService(
 		cfg.QueueSize = scanPostProcessDefaultQueueSize
 	}
 	return &ScanPostProcessService{
-		repo:        repo,
-		mediaRepo:   mediaRepo,
-		libraryRepo: libraryRepo,
-		ai:          ai,
-		cfg:         cfg,
-		logger:      logger,
-		queue:       make(chan string, cfg.QueueSize),
-		stopCh:      make(chan struct{}),
+		repo:            repo,
+		mediaRepo:       mediaRepo,
+		libraryRepo:     libraryRepo,
+		ai:              ai,
+		cfg:             cfg,
+		logger:          logger,
+		aiIdentifyCache: make(map[string]*SmartRenameAIResult),
+		queue:           make(chan string, cfg.QueueSize),
+		stopCh:          make(chan struct{}),
 	}
+}
+
+// SetOrganizeHardlinkService 注入硬链接整理服务（延迟注入，可选）
+func (s *ScanPostProcessService) SetOrganizeHardlinkService(ohl *OrganizeHardlinkService) {
+	s.organizeHardlink = ohl
+}
+
+// SetSeriesRepo 注入剧集仓储，用于媒体类型纠正后重算合集统计。
+func (s *ScanPostProcessService) SetSeriesRepo(seriesRepo *repository.SeriesRepo) {
+	s.seriesRepo = seriesRepo
+}
+
+// SetWSHub 注入 WebSocket Hub，用于整理完成后通知前端刷新。
+func (s *ScanPostProcessService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 // Start 启动后台 worker（幂等）。
@@ -198,18 +226,34 @@ func (s *ScanPostProcessService) EnqueueMedia(mediaID string) {
 // EnqueueLibrary 把整库 Media 入队（异步执行，不阻塞调用方）
 // 该方法用于 ScannerService.SetOnScanComplete 回调。
 func (s *ScanPostProcessService) EnqueueLibrary(libraryID string) (int, error) {
-	if s.mediaRepo == nil {
-		return 0, errors.New("mediaRepo 未注入")
-	}
-	medias, err := s.mediaRepo.ListByLibraryID(libraryID)
+	ids, err := s.ListUnprocessedMediaIDs(libraryID)
 	if err != nil {
 		return 0, err
 	}
-	for _, m := range medias {
-		s.EnqueueMedia(m.ID)
+	for _, id := range ids {
+		s.EnqueueMedia(id)
 	}
-	s.logger.Infof("[ScanPostProcess] 入队整库 library_id=%s count=%d", libraryID, len(medias))
-	return len(medias), nil
+	s.logger.Infof("[ScanPostProcess] 入队媒体库待整理项 library_id=%s count=%d", libraryID, len(ids))
+	return len(ids), nil
+}
+
+// ListUnprocessedMediaIDs 返回尚未完成 AI 整理的媒体 ID。
+// 普通扫描只调用该方法处理新增项；显式重跑会先删除旧分类记录，因此仍会全量处理。
+func (s *ScanPostProcessService) ListUnprocessedMediaIDs(libraryID string) ([]string, error) {
+	if s.repo == nil {
+		return nil, errors.New("scanClassificationRepo 未注入")
+	}
+	return s.repo.ListUnprocessedMediaIDsByLibrary(libraryID)
+}
+
+// ProcessUnprocessedLibraryWithProgress 只处理指定媒体库尚未整理过的媒体。
+func (s *ScanPostProcessService) ProcessUnprocessedLibraryWithProgress(libraryID string, onProgress func(current, total, okCount int)) (int, int, error) {
+	ids, err := s.ListUnprocessedMediaIDs(libraryID)
+	if err != nil {
+		return 0, 0, err
+	}
+	ok, err := s.ProcessBatchWithProgress(ids, onProgress)
+	return ok, len(ids), err
 }
 
 // ============================ 单条处理（核心） ============================
@@ -230,6 +274,32 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 		return nil // 同理静默跳过
 	}
 
+	// 读取所属媒体库的"AI 自动整理"模式（off / rule_only / ai_assisted）。
+	// 该字段在用户创建/编辑媒体库时勾选，是判定是否调用 AI 的最高优先级开关。
+	mode := model.AutoOrganizeAIAssisted
+	if media.LibraryID != "" && s.libraryRepo != nil {
+		if lib, errLib := s.libraryRepo.FindByID(media.LibraryID); errLib == nil && lib != nil && lib.AutoOrganizeMode != "" {
+			if model.IsValidAutoOrganizeMode(lib.AutoOrganizeMode) {
+				mode = lib.AutoOrganizeMode
+			}
+		}
+	}
+
+	// mode=off：用户在该库关闭了自动整理。写一条 skipped 占位便于审计/前端展示。
+	if mode == model.AutoOrganizeOff {
+		now := time.Now()
+		return s.repo.Upsert(&model.MediaClassification{
+			MediaID:     media.ID,
+			LibraryID:   media.LibraryID,
+			NamingStyle: s.cfg.NamingStyle,
+			Status:      model.ClassificationStatusSkipped,
+			ErrorMsg:    "媒体库已关闭 AI 自动整理（auto_organize_mode=off）",
+			ProcessedAt: &now,
+		})
+	}
+	// rule_only：仅规则识别 + 归类 + 命名建议，禁止任何 AI 调用。
+	allowAI := mode == model.AutoOrganizeAIAssisted
+
 	// 占位记录（确保前端在 running 期也能看到状态）
 	_ = s.repo.Upsert(&model.MediaClassification{
 		MediaID:   media.ID,
@@ -244,7 +314,7 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 	}
 
 	// =============== 阶段 1：识别 ===============
-	parsed := s.identify(media, classification)
+	parsed := s.identify(media, classification, allowAI)
 
 	// =============== 阶段 2：归类 ===============
 	s.classify(media, parsed, classification)
@@ -252,24 +322,63 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 	// =============== 阶段 3：命名映射 ===============
 	s.naming(media, parsed, classification)
 
+	// 将可信识别结果同步回 Media 主表，避免媒体墙/TMDb 刮削继续使用扫描阶段的脏文件名。
+	s.syncParsedToMedia(media, parsed, classification)
+
 	// =============== 状态收尾 ===============
 	now := time.Now()
 	classification.ProcessedAt = &now
 	if classification.Status == "" {
 		classification.Status = model.ClassificationStatusProcessed
 	}
-	return s.repo.Upsert(classification)
+	if err := s.repo.Upsert(classification); err != nil {
+		return err
+	}
+
+	// =============== 阶段 4：硬链接落盘（可选） ===============
+	// 直接复用当前 media/classification，避免每集再额外查 media + classification 两次 DB。
+	if s.organizeHardlink != nil && media.LibraryID != "" && s.libraryRepo != nil &&
+		classification.Status == model.ClassificationStatusProcessed {
+		if lib, errLib := s.libraryRepo.FindByID(media.LibraryID); errLib == nil && lib != nil {
+			outputDir := strings.TrimSpace(lib.OrganizeOutputDir)
+			if outputDir != "" {
+				if r, errHL := s.organizeHardlink.ProcessResolvedMediaHardlink(media, classification, outputDir); errHL != nil {
+					s.logger.Warnf("[ScanPostProcess] 硬链接失败 media_id=%s err=%v", media.ID, errHL)
+				} else if r != nil && r.ErrorMsg != "" {
+					s.logger.Warnf("[ScanPostProcess] 硬链接警告 media_id=%s msg=%s", media.ID, r.ErrorMsg)
+				} else if r != nil && s.wsHub != nil {
+					s.wsHub.BroadcastEvent(EventLibraryUpdated, &LibraryChangedData{
+						LibraryID:   media.LibraryID,
+						LibraryName: lib.Name,
+						Action:      "ai_organized",
+						Message:     "AI 整理数据已同步",
+					})
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // ProcessBatch 批量处理；返回成功数量
 func (s *ScanPostProcessService) ProcessBatch(mediaIDs []string) (int, error) {
+	return s.ProcessBatchWithProgress(mediaIDs, nil)
+}
+
+// ProcessBatchWithProgress 批量处理并回调当前阶段进度。
+func (s *ScanPostProcessService) ProcessBatchWithProgress(mediaIDs []string, onProgress func(current, total, okCount int)) (int, error) {
 	ok := 0
-	for _, id := range mediaIDs {
+	total := len(mediaIDs)
+	for i, id := range mediaIDs {
 		if err := s.ProcessMedia(id); err != nil {
 			s.logger.Warnf("[ScanPostProcess] 批量处理失败 media_id=%s err=%v", id, err)
-			continue
+		} else {
+			ok++
 		}
-		ok++
+		if onProgress != nil {
+			onProgress(i+1, total, ok)
+		}
 	}
 	return ok, nil
 }
@@ -431,11 +540,16 @@ func (s *ScanPostProcessService) ManualCorrect(in ManualCorrectInput) (*model.Me
 
 // identify 综合规则解析 + 数据库已有字段 + 必要时 AI Fallback。
 // 返回融合后的结果（最终采用），并把过程结果写入 classification。
-func (s *ScanPostProcessService) identify(media *model.Media, c *model.MediaClassification) scanPostParsed {
-	// 优先级：DB 中已有字段 > 规则解析 > AI Fallback
+func (s *ScanPostProcessService) identify(media *model.Media, c *model.MediaClassification, allowAI bool) scanPostParsed {
+	srcName := filepath.Base(media.FilePath)
+	ruleParsed := ParsedFilename{}
+	if srcName != "" {
+		ruleParsed = ParseMovieFilename(srcName)
+	}
+
+	// 优先级：可信 DB 字段 > 规则解析 > AI Fallback。
+	// 扫描初始写入的 Media.Title 可能是 DBD-Raws 这类发布组脏标题，不能无条件压过规则/AI。
 	parsed := scanPostParsed{
-		Title:     media.Title,
-		TitleAlt:  media.OrigTitle,
 		Year:      media.Year,
 		TMDbID:    media.TMDbID,
 		IMDbID:    media.IMDbID,
@@ -443,11 +557,19 @@ func (s *ScanPostProcessService) identify(media *model.Media, c *model.MediaClas
 		Season:    media.SeasonNum,
 		Episode:   media.EpisodeNum,
 	}
+	if isTrustedMediaTitle(media.Title, media) {
+		parsed.Title = media.Title
+		parsed.TitleAlt = media.OrigTitle
+	} else {
+		parsed.Title = ruleParsed.Title
+		parsed.TitleAlt = ruleParsed.TitleAlt
+		if media.Title != "" && media.OrigTitle == "" {
+			parsed.TitleAlt = media.Title
+		}
+	}
 
 	// 规则解析（基于文件路径补全）
-	srcName := filepath.Base(media.FilePath)
 	if srcName != "" {
-		ruleParsed := ParseMovieFilename(srcName)
 		if parsed.Title == "" {
 			parsed.Title = ruleParsed.Title
 		}
@@ -465,56 +587,68 @@ func (s *ScanPostProcessService) identify(media *model.Media, c *model.MediaClas
 		}
 	}
 
+	// 剧集优先使用源根目录稳定剧名（如 D:\\test\\拔作岛 或 [2.5次元的诱惑]），避免每集 AI 输出不同标题。
+	episodeLike := parsed.MediaType == "episode" || parsed.Season > 0 || parsed.Episode > 0
+	stableLocked := false
+	if episodeLike {
+		if s.organizeHardlink != nil {
+			if stableTitle := s.organizeHardlink.stableEpisodeTitle(media, nil); stableTitle != "" {
+				parsed.Title = stableTitle
+				// 同一源根目录下的剧集/NCOP/NCED 等特殊篇统一锁定父目录；
+				// 缺集号的特殊文件后续会落到 _unsorted，不再为每个文件反复调用 AI。
+				stableLocked = true
+			}
+		} else if stableTitle := stableEpisodeTitleFromPath(media.FilePath); stableTitle != "" {
+			parsed.Title = stableTitle
+			stableLocked = true
+		}
+	}
+
 	// 计算规则置信度
 	confidence := scoreClassificationConfidence(parsed, media)
+	if stableLocked && confidence < 0.85 {
+		confidence = 0.85
+	}
 	c.Confidence = confidence
 
-	// AI Fallback：
-	//   - 默认模式：规则置信度 < AIConfidenceThreshold 才走 AI
-	//   - 全自动托管 (AutoPilot)：强制每条都调 AI，不依赖阈值
-	forceAI := s.cfg.ForceAIIdentify || (s.ai != nil && s.ai.IsAutoPilotEnabled())
-	shouldRunAI := s.cfg.EnableAIFallback &&
-		(forceAI || confidence < s.cfg.AIConfidenceThreshold) &&
+	// AI 识别：
+	//   - ai_assisted 模式下不再按规则置信度跳过 AI，所有媒体都进入 AI 识别路径；
+	//   - 仅“AI 已确认是剧集”的同一源根目录允许复用目录级缓存；
+	//   - rule_only / off 仍按媒体库设置禁用 AI。
+	shouldRunAI := allowAI &&
+		s.cfg.EnableAIFallback &&
 		s.ai != nil && s.ai.IsEnabled() &&
 		srcName != ""
 
+	cacheKey := ""
 	if shouldRunAI {
-		if aiOut, raw, err := s.callAIIdentify(srcName, parsed); err == nil && aiOut != nil {
+		cacheKey = s.aiIdentifyCacheKey(media, parsed)
+		if cacheKey != "" {
+			if cached := s.getAIIdentifyCache(cacheKey); cached != nil && cached.MediaType == "episode" {
+				s.applyAIIdentifyResult(&parsed, cached, false)
+				if cached.Confidence > c.Confidence {
+					c.Confidence = cached.Confidence
+				}
+				shouldRunAI = false
+			}
+		}
+	}
+
+	if shouldRunAI {
+		parentDir := filepath.Base(filepath.Dir(media.FilePath))
+		if aiOut, raw, err := s.callAIIdentify(srcName, parentDir, parsed); err == nil && aiOut != nil {
 			c.AIInvoked = true
 			c.AIRawResponse = raw
 			// 记录使用的 AI 服务商与模型（来自 AI 配置中心当前生效项）
 			c.AIProvider = s.ai.Provider()
 			c.AIModel = s.ai.Model()
-			// AutoPilot 下以 AI 为准，默认模式仅在 AI 自评高于规则时采纳
-			accept := forceAI || aiOut.Confidence > confidence
-			if accept {
-				if aiOut.Title != "" {
-					parsed.Title = aiOut.Title
-				}
-				if aiOut.TitleAlt != "" {
-					parsed.TitleAlt = aiOut.TitleAlt
-				}
-				if aiOut.Year > 0 {
-					parsed.Year = aiOut.Year
-				}
-				if aiOut.TMDbID > 0 {
-					parsed.TMDbID = aiOut.TMDbID
-				}
-				if aiOut.IMDbID != "" {
-					parsed.IMDbID = aiOut.IMDbID
-				}
-				if aiOut.MediaType != "" && aiOut.MediaType != "unknown" {
-					parsed.MediaType = aiOut.MediaType
-				}
-				if aiOut.Season > 0 {
-					parsed.Season = aiOut.Season
-				}
-				if aiOut.Episode > 0 {
-					parsed.Episode = aiOut.Episode
-				}
-				if aiOut.Confidence > 0 {
-					c.Confidence = aiOut.Confidence
-				}
+			// AI 辅助模式下以 AI 识别为准，不再要求 AI 置信度高于规则置信度。
+			s.applyAIIdentifyResult(&parsed, aiOut, true)
+			if aiOut.Confidence > 0 {
+				c.Confidence = aiOut.Confidence
+			}
+			if cacheKey != "" && aiOut.MediaType == "episode" {
+				s.setAIIdentifyCache(cacheKey, aiOut)
 			}
 		} else if err != nil {
 			// AI 失败 → 不影响整体流程；
@@ -526,6 +660,17 @@ func (s *ScanPostProcessService) identify(media *model.Media, c *model.MediaClas
 			if !ruleHasCoreFields {
 				c.Status = model.ClassificationStatusPartial
 			}
+		}
+	}
+
+	// AI 可能对同一番剧不同集输出中/英/别名不同；最终仍以源根目录稳定剧名为准。
+	if parsed.MediaType == "episode" || parsed.Season > 0 || parsed.Episode > 0 {
+		if s.organizeHardlink != nil {
+			if stableTitle := s.organizeHardlink.stableEpisodeTitle(media, nil); stableTitle != "" {
+				parsed.Title = stableTitle
+			}
+		} else if stableTitle := stableEpisodeTitleFromPath(media.FilePath); stableTitle != "" {
+			parsed.Title = stableTitle
 		}
 	}
 
@@ -570,6 +715,31 @@ func scoreClassificationConfidence(p scanPostParsed, media *model.Media) float64
 	return score
 }
 
+func isTrustedMediaTitle(title string, media *model.Media) bool {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return false
+	}
+	if media != nil && (media.ScrapeStatus == "scraped" || media.ScrapeStatus == "manual") {
+		return true
+	}
+	if media != nil && (media.TMDbID > 0 || media.IMDbID != "") {
+		return true
+	}
+	lower := strings.ToLower(t)
+	noiseTokens := []string{"dbd-raws", "bdrip", "webrip", "web-dl", "hevc", "x264", "x265", "flac", "1080p", "720p", "2160p", "全集", "简繁", "外挂"}
+	for _, token := range noiseTokens {
+		if strings.Contains(lower, token) {
+			return false
+		}
+	}
+	// 标题里出现多段方括号通常是发布组文件名，不是作品名。
+	if strings.Count(t, "[")+strings.Count(t, "【") >= 2 {
+		return false
+	}
+	return true
+}
+
 // containsCJK 是否包含中日韩字符（粗略判断中文标题）
 func containsCJK(s string) bool {
 	for _, r := range s {
@@ -583,9 +753,9 @@ func containsCJK(s string) bool {
 	return false
 }
 
-// callAIIdentify 调 AI 做兜底识别。复用 SmartRename 的 prompt 逻辑（保持一致）。
+// callAIIdentify 调 AI 做兜底识别。使用紧凑 JSON 提示词，降低 deepseek-v4-flash 输出 token。
 // AI 服务商/模型完全跟随 AI 配置中心当前生效项（管理员在 AI 配置 Tab 切换后立即生效）。
-func (s *ScanPostProcessService) callAIIdentify(srcName string, hint scanPostParsed) (*SmartRenameAIResult, string, error) {
+func (s *ScanPostProcessService) callAIIdentify(srcName string, parentDir string, hint scanPostParsed) (*SmartRenameAIResult, string, error) {
 	if s.ai == nil || !s.ai.IsEnabled() {
 		return nil, "", errors.New("AI 服务未启用")
 	}
@@ -593,53 +763,274 @@ func (s *ScanPostProcessService) callAIIdentify(srcName string, hint scanPostPar
 		s.logger.Debugf("扫描后处理 AI 识别启动: provider=%s model=%s file=%s",
 			s.ai.Provider(), s.ai.Model(), srcName)
 	}
-	sysPrompt := `你是影视命名识别专家。根据用户给出的文件名，识别影视作品的元数据。
+	sysPrompt := `影视文件名识别器。只输出单行JSON。禁止解释/Markdown/<think>/多候选。必须区分电影和剧集：电影/电影合集/系列电影返回movie；只有电视剧/番剧的单集返回episode。未知填空或0，不编造ID。`
 
-严格按以下 JSON Schema 返回，不要任何额外解释、不要 Markdown 代码块：
-{
-  "title": "中文主标题（无则填英文/原始）",
-  "title_alt": "英文别名（可空）",
-  "year": 1999,
-  "tmdb_id": 0,
-  "imdb_id": "tt1234567（可空）",
-  "media_type": "movie|episode|unknown",
-  "season": 0,
-  "episode": 0,
-  "confidence": 0.85
-}
+	userPrompt := fmt.Sprintf(`file=%q
+dir=%q
+hint={"t":%q,"alt":%q,"y":%d,"mt":%q,"s":%d,"e":%d}
+media_type规则: standalone film/movie collection/sequel=movie; TV/anime episode=episode; unsure=unknown
+return {"title":"","title_alt":"","year":0,"tmdb_id":0,"imdb_id":"","media_type":"movie|episode|unknown","season":0,"episode":0,"confidence":0.0}`,
+		srcName, parentDir, hint.Title, hint.TitleAlt, hint.Year, hint.MediaType, hint.Season, hint.Episode)
 
-约束：
-- 仅识别已知影视作品，不要编造；不确定的字段留空 / 0 / unknown。
-- confidence 取 0.0~1.0；若文件名信息严重不足，给 < 0.5。
-- 不要输出文件名中明显的 PT 发布组、编码标签等噪声。`
-
-	userPrompt := fmt.Sprintf(`文件名：%s
-当前规则解析（可能不准）：title=%q title_alt=%q year=%d tmdb=%d imdb=%q
-请按 JSON Schema 返回最终识别结果。`,
-		srcName, hint.Title, hint.TitleAlt, hint.Year, hint.TMDbID, hint.IMDbID)
-
-	// max_tokens 调大到 1024：R1 / Distill 系列模型有 <think> 推理段，
-	// 512 经常被推理段吃完导致 JSON 输出截断（unexpected end of JSON input）。
-	raw, err := s.ai.ChatCompletion(sysPrompt, userPrompt, 0.2, 1024)
+	// JSON 模式：提示词保持短，但 token 预算给足，避免 deepseek-v4-flash 在文件名较长时截断。
+	raw, err := s.ai.ChatCompletion(sysPrompt, userPrompt, 0.0, 768)
 	if err != nil {
 		return nil, "", err
 	}
+	out, parseErr := parseSmartRenameAIResult(raw)
+	if parseErr != nil {
+		// 解析失败时再用更强约束重试一次，使用更高 max_tokens 防止 JSON 半截被截断。
+		retryPrompt := fmt.Sprintf(`只输出一个JSON对象，不要Markdown，不要解释，不要<think>。
+file=%q
+dir=%q
+media_type规则: standalone film/movie collection/sequel=movie; TV/anime episode=episode; unsure=unknown
+schema={"title":"","title_alt":"","year":0,"tmdb_id":0,"imdb_id":"","media_type":"movie|episode|unknown","season":0,"episode":0,"confidence":0.0}`, srcName, parentDir)
+		if retryRaw, retryErr := s.ai.ChatCompletion("只输出合法JSON对象。", retryPrompt, 0.0, 1024); retryErr == nil {
+			if retryOut, retryParseErr := parseSmartRenameAIResult(retryRaw); retryParseErr == nil {
+				return retryOut, retryRaw, nil
+			}
+		}
+		return nil, raw, fmt.Errorf("AI 返回 JSON 解析失败: %w", parseErr)
+	}
+	return out, raw, nil
+}
+
+func parseSmartRenameAIResult(raw string) (*SmartRenameAIResult, error) {
 	cleaned := stripJSONFence(raw) // 复用 smart_rename.go 中的同包函数
 	var out SmartRenameAIResult
 	if err := json.Unmarshal([]byte(cleaned), &out); err != nil {
-		return nil, raw, fmt.Errorf("AI 返回 JSON 解析失败: %w", err)
+		return nil, err
+	}
+	out.MediaType = normalizeAIMediaType(out.MediaType)
+	if out.MediaType == "movie" {
+		out.Season = 0
+		out.Episode = 0
 	}
 	if out.Confidence <= 0 || out.Confidence > 1 {
 		out.Confidence = 0.5
 	}
-	return &out, raw, nil
+	return &out, nil
+}
+
+func normalizeAIMediaType(mediaType string) string {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "movie", "film", "movies", "feature":
+		return "movie"
+	case "episode", "tv", "tvshow", "tv_show", "series", "show", "anime":
+		return "episode"
+	default:
+		return "unknown"
+	}
+}
+
+func (s *ScanPostProcessService) aiIdentifyCacheKey(media *model.Media, parsed scanPostParsed) string {
+	if media == nil || media.FilePath == "" {
+		return ""
+	}
+	if parsed.MediaType != "episode" && parsed.Season <= 0 && parsed.Episode <= 0 {
+		return ""
+	}
+	root := filepath.Dir(media.FilePath)
+	if media.LibraryID != "" && s.libraryRepo != nil {
+		if lib, err := s.libraryRepo.FindByID(media.LibraryID); err == nil && lib != nil {
+			cleanPath := filepath.Clean(media.FilePath)
+			for _, libRoot := range lib.AllPaths() {
+				libRoot = filepath.Clean(strings.TrimSpace(libRoot))
+				if libRoot == "" || !isPathUnderRoot(cleanPath, libRoot) {
+					continue
+				}
+				if rel, err := filepath.Rel(libRoot, cleanPath); err == nil {
+					parts := strings.Split(filepath.Clean(rel), string(filepath.Separator))
+					if len(parts) >= 2 {
+						root = filepath.Join(libRoot, parts[0])
+					}
+				}
+				break
+			}
+		}
+	}
+	return "scanpost:episode:" + pathKey(root)
+}
+
+func (s *ScanPostProcessService) getAIIdentifyCache(key string) *SmartRenameAIResult {
+	if key == "" {
+		return nil
+	}
+	s.aiIdentifyCacheMu.Lock()
+	defer s.aiIdentifyCacheMu.Unlock()
+	return s.aiIdentifyCache[key]
+}
+
+func (s *ScanPostProcessService) setAIIdentifyCache(key string, in *SmartRenameAIResult) {
+	if key == "" || in == nil || in.MediaType != "episode" {
+		return
+	}
+	cp := *in
+	cp.Episode = 0 // 目录级缓存不缓存具体集号，避免 E01 复用到所有集
+	s.aiIdentifyCacheMu.Lock()
+	s.aiIdentifyCache[key] = &cp
+	s.aiIdentifyCacheMu.Unlock()
+}
+
+func (s *ScanPostProcessService) applyAIIdentifyResult(parsed *scanPostParsed, aiOut *SmartRenameAIResult, includeEpisode bool) {
+	if parsed == nil || aiOut == nil {
+		return
+	}
+	if aiOut.Title != "" {
+		parsed.Title = aiOut.Title
+	}
+	if aiOut.TitleAlt != "" {
+		parsed.TitleAlt = aiOut.TitleAlt
+	}
+	if aiOut.Year > 0 {
+		parsed.Year = aiOut.Year
+	}
+	if aiOut.TMDbID > 0 {
+		parsed.TMDbID = aiOut.TMDbID
+	}
+	if aiOut.IMDbID != "" {
+		parsed.IMDbID = aiOut.IMDbID
+	}
+	if aiOut.MediaType != "" && aiOut.MediaType != "unknown" {
+		parsed.MediaType = aiOut.MediaType
+		if aiOut.MediaType == "movie" {
+			parsed.Season = 0
+			parsed.Episode = 0
+		}
+	}
+	if parsed.MediaType != "movie" && aiOut.Season > 0 {
+		parsed.Season = aiOut.Season
+	}
+	if parsed.MediaType != "movie" && includeEpisode && aiOut.Episode > 0 {
+		parsed.Episode = aiOut.Episode
+	}
+}
+
+func (s *ScanPostProcessService) syncParsedToMedia(media *model.Media, parsed scanPostParsed, c *model.MediaClassification) {
+	if media == nil || media.ID == "" || c == nil {
+		return
+	}
+	fields := map[string]any{}
+	if title := strings.TrimSpace(parsed.Title); title != "" && title != media.Title {
+		fields["title"] = title
+		if strings.TrimSpace(media.OrigTitle) == "" && strings.TrimSpace(media.Title) != "" {
+			fields["orig_title"] = media.Title
+		}
+	}
+	if parsed.Year > 0 && parsed.Year != media.Year {
+		fields["year"] = parsed.Year
+	}
+	if parsed.MediaType != "" && parsed.MediaType != "unknown" && parsed.MediaType != media.MediaType {
+		fields["media_type"] = parsed.MediaType
+	}
+	if parsed.MediaType == "movie" {
+		if media.SeriesID != "" {
+			fields["series_id"] = ""
+		}
+		if media.SeasonNum != 0 {
+			fields["season_num"] = 0
+		}
+		if media.EpisodeNum != 0 {
+			fields["episode_num"] = 0
+		}
+		if media.EpisodeTitle != "" {
+			fields["episode_title"] = ""
+		}
+	} else {
+		if parsed.Season > 0 && parsed.Season != media.SeasonNum {
+			fields["season_num"] = parsed.Season
+		}
+		if parsed.Episode > 0 && parsed.Episode != media.EpisodeNum {
+			fields["episode_num"] = parsed.Episode
+		}
+	}
+	// 电影 ID 稳定性较高；剧集单集 AI ID 易抖动，不在这里回写。
+	if parsed.MediaType != "episode" {
+		if parsed.TMDbID > 0 && parsed.TMDbID != media.TMDbID {
+			fields["tmdb_id"] = parsed.TMDbID
+		}
+		if parsed.IMDbID != "" && parsed.IMDbID != media.IMDbID {
+			fields["imdb_id"] = parsed.IMDbID
+		}
+	}
+	if len(fields) == 0 {
+		return
+	}
+	oldSeriesID := media.SeriesID
+	if err := s.mediaRepo.UpdateOrganizedFields(media.ID, fields); err != nil {
+		s.logger.Warnf("[ScanPostProcess] 同步识别结果到 Media 失败 media_id=%s err=%v", media.ID, err)
+		return
+	}
+	applyScanPostFields(media, fields)
+	if oldSeriesID != "" && oldSeriesID != media.SeriesID {
+		s.recalculateSeriesAfterMediaMove(oldSeriesID)
+	}
+}
+
+func (s *ScanPostProcessService) recalculateSeriesAfterMediaMove(seriesID string) {
+	if s.seriesRepo == nil || seriesID == "" {
+		return
+	}
+	if err := s.seriesRepo.RecalculateCounts(seriesID); err != nil {
+		s.logger.Warnf("[ScanPostProcess] 重算剧集合集统计失败 series_id=%s err=%v", seriesID, err)
+		return
+	}
+	if removed, err := s.seriesRepo.CleanEmptySeries(); err != nil {
+		s.logger.Warnf("[ScanPostProcess] 清理空剧集合集失败 err=%v", err)
+	} else if removed > 0 {
+		s.logger.Infof("[ScanPostProcess] 已清理 %d 个空剧集合集", removed)
+	}
+}
+
+func applyScanPostFields(media *model.Media, fields map[string]any) {
+	if v, ok := fields["title"].(string); ok {
+		media.Title = v
+	}
+	if v, ok := fields["orig_title"].(string); ok {
+		media.OrigTitle = v
+	}
+	if v, ok := fields["year"].(int); ok {
+		media.Year = v
+	}
+	if v, ok := fields["media_type"].(string); ok {
+		media.MediaType = v
+	}
+	if v, ok := fields["series_id"].(string); ok {
+		media.SeriesID = v
+	}
+	if v, ok := fields["season_num"].(int); ok {
+		media.SeasonNum = v
+	}
+	if v, ok := fields["episode_num"].(int); ok {
+		media.EpisodeNum = v
+	}
+	if v, ok := fields["episode_title"].(string); ok {
+		media.EpisodeTitle = v
+	}
+	if v, ok := fields["tmdb_id"].(int); ok {
+		media.TMDbID = v
+	}
+	if v, ok := fields["imdb_id"].(string); ok {
+		media.IMDbID = v
+	}
 }
 
 // ============================ Stage 2: 归类 ============================
 
 // classify 推导 Category / Region / Decade / GenreTags / LanguageTag / QualityTier / VirtualPath
 func (s *ScanPostProcessService) classify(media *model.Media, parsed scanPostParsed, c *model.MediaClassification) {
-	c.Category = inferCategory(media)
+	switch parsed.MediaType {
+	case "episode":
+		c.Category = "tvshow"
+	case "movie":
+		if strings.TrimSpace(media.Num) != "" {
+			c.Category = "adult"
+		} else {
+			c.Category = "movie"
+		}
+	default:
+		c.Category = inferCategory(media)
+	}
 	c.Region = inferRegion(media)
 	c.Decade = inferDecade(parsed.Year)
 	c.GenreTags = normalizeGenres(media.Genres, media.Tags)
@@ -955,10 +1346,13 @@ func (s *ScanPostProcessService) naming(media *model.Media, parsed scanPostParse
 
 // isEpisode 判定是否按剧集格式输出
 func isEpisode(media *model.Media, p scanPostParsed) bool {
-	if media.MediaType == "episode" && media.SeasonNum > 0 && media.EpisodeNum > 0 {
-		return true
+	if p.MediaType == "movie" {
+		return false
 	}
-	if p.MediaType == "episode" && p.Season > 0 && p.Episode > 0 {
+	if p.MediaType == "episode" {
+		return (p.Season > 0 && p.Episode > 0) || (media.MediaType == "episode" && media.SeasonNum > 0 && media.EpisodeNum > 0)
+	}
+	if media.MediaType == "episode" && media.SeasonNum > 0 && media.EpisodeNum > 0 {
 		return true
 	}
 	return false

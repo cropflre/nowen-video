@@ -16,6 +16,9 @@ export const libraryApi = {
   update: (id: string, data: Partial<CreateLibraryRequest>) =>
     api.put<{ data: Library }>(`/libraries/${id}`, data),
 
+  scanStatus: () =>
+    api.get<{ data: import('@/hooks/useWebSocket').ScanPhaseData[] }>('/libraries/scan-status'),
+
   scan: (id: string) =>
     api.post(`/libraries/${id}/scan`),
 

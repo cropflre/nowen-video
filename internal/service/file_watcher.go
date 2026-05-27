@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,14 +18,15 @@ import (
 // FileWatcherService 文件系统实时监听服务
 // 监听媒体库目录下的文件变更（新增/删除/重命名），自动触发增量扫描
 type FileWatcherService struct {
-	cfg        *config.Config
-	logger     *zap.SugaredLogger
-	libRepo    *repository.LibraryRepo
-	mediaRepo  *repository.MediaRepo
-	seriesRepo *repository.SeriesRepo
-	scanner    *ScannerService
-	metadata   *MetadataService
-	wsHub      *WSHub
+	cfg             *config.Config
+	logger          *zap.SugaredLogger
+	libRepo         *repository.LibraryRepo
+	mediaRepo       *repository.MediaRepo
+	seriesRepo      *repository.SeriesRepo
+	scanner         *ScannerService
+	metadata        *MetadataService
+	scanPostProcess *ScanPostProcessService
+	wsHub           *WSHub
 
 	watcher  *fsnotify.Watcher
 	mu       sync.Mutex
@@ -60,6 +62,11 @@ func NewFileWatcherService(
 // SetWSHub 设置 WebSocket Hub
 func (fw *FileWatcherService) SetWSHub(hub *WSHub) {
 	fw.wsHub = hub
+}
+
+// SetScanPostProcessService 设置扫描后处理服务，用于增量扫描后同步执行 AI 整理。
+func (fw *FileWatcherService) SetScanPostProcessService(spp *ScanPostProcessService) {
+	fw.scanPostProcess = spp
 }
 
 // Start 启动文件监听服务
@@ -324,8 +331,8 @@ func (fw *FileWatcherService) triggerIncrementalScan(libraryID string) {
 		})
 	}
 
-	// 执行扫描（复用已有的扫描逻辑）
-	count, err := fw.scanner.ScanLibrary(lib)
+	// 执行扫描（复用已有的扫描逻辑）。增量链路会在 AI 整理/刮削结束后再通知刷新。
+	count, err := fw.scanner.ScanLibraryWithOptions(lib, ScanLibraryOptions{SuppressCompletedEvent: true, SuppressCompletionCallback: true})
 	if err != nil {
 		fw.logger.Errorf("增量扫描失败: %s - %v", lib.Name, err)
 		return
@@ -337,6 +344,17 @@ func (fw *FileWatcherService) triggerIncrementalScan(libraryID string) {
 	fw.libRepo.Update(lib)
 
 	fw.logger.Infof("增量扫描完成: %s, 新增 %d 个媒体", lib.Name, count)
+
+	// 增量扫描后只处理新增且未整理过的媒体，修正标题并创建硬链接，再进入刮削。
+	if count > 0 && fw.scanPostProcess != nil && lib.AutoOrganizeMode != model.AutoOrganizeOff {
+		if okCount, totalAI, err := fw.scanPostProcess.ProcessUnprocessedLibraryWithProgress(libraryID, nil); err != nil {
+			fw.logger.Warnf("增量 AI 整理失败: %s - %v", lib.Name, err)
+		} else if totalAI == 0 {
+			fw.logger.Infof("增量扫描无新增待 AI 整理媒体: %s", lib.Name)
+		} else {
+			fw.logger.Infof("增量 AI 整理完成: %s, 成功 %d / 待整理 %d", lib.Name, okCount, totalAI)
+		}
+	}
 
 	// 如果有新增媒体，自动触发刮削
 	if count > 0 {
@@ -364,8 +382,27 @@ func (fw *FileWatcherService) triggerIncrementalScan(libraryID string) {
 					Action:      "updated",
 					Message:     "增量扫描与刮削已完成",
 				})
+				fw.wsHub.BroadcastEvent(EventScanCompleted, &ScanProgressData{
+					LibraryID:   libraryID,
+					LibraryName: lib.Name,
+					Phase:       "scanning",
+					NewFound:    count,
+					Message:     fmt.Sprintf("增量扫描完成: %s, 新增 %d 个媒体", lib.Name, count),
+				})
 			}
+			fw.scanner.NotifyScanComplete(libraryID)
 		}()
+	} else {
+		if fw.wsHub != nil {
+			fw.wsHub.BroadcastEvent(EventScanCompleted, &ScanProgressData{
+				LibraryID:   libraryID,
+				LibraryName: lib.Name,
+				Phase:       "scanning",
+				NewFound:    count,
+				Message:     fmt.Sprintf("增量扫描完成: %s, 新增 %d 个媒体", lib.Name, count),
+			})
+		}
+		fw.scanner.NotifyScanComplete(libraryID)
 	}
 
 	// 清理防抖定时器

@@ -86,9 +86,11 @@ export interface ScanProgressData {
 export interface ScanPhaseData {
   library_id: string
   library_name: string
-  phase: 'scanning' | 'scraping' | 'merging' | 'matching' | 'cleaning' | 'completed'
+  phase: 'scanning' | 'scraping' | 'ai_organizing' | 'merging' | 'matching' | 'cleaning' | 'completed'
   step_current: number
   step_total: number
+  current?: number
+  total?: number
   message: string
 }
 
@@ -122,7 +124,7 @@ export interface LibraryChangedData {
 
 export interface WSMessage {
   type: WSEventType
-  data: ScanProgressData | ScrapeProgressData | TranscodeProgressData
+  data: ScanProgressData | ScanPhaseData | ScrapeProgressData | TranscodeProgressData
   timestamp: number
 }
 

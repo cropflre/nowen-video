@@ -1,5 +1,5 @@
-api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
-api_key: ENC:36FhybZBHsStukPKi4IfSi3DwG10vyRRv43s5OegwC/Gdotvx0yomxR9OrWpPr7jaujuzNlV9kEyCi/igpsg
+api_base: https://api.deepseek.com/v1
+api_key: ENC:OcQmtgxl9hM4R5xdT51dhq13AnKjYptP/UiHj+HQRvprUN42DzlaQzjqFgZAQxngNlejZ2DX0xPVz7jP3wb0
 auto_pilot: true
 auto_subtitle_preprocess: false
 block_local_ai: true
@@ -16,7 +16,7 @@ failover:
     enabled: false
     last_switched_at: 0
 max_concurrent: 1
-model: deepseek-v3.1
+model: deepseek-v4-flash
 monthly_budget: 0
 monthly_token_budget: 0
 ocr_dpi: 150
@@ -24,12 +24,17 @@ ocr_enabled: false
 prefer_existing_subtitle: true
 prefer_local_whisper: false
 profiles:
+    deepseek:
+        api_base: https://api.deepseek.com/v1
+        api_key: ENC:87yzha16/Thal6RQymtpFu/Yn0zXPXUsks9qE9tS8n8iZLb39nV8hH1THxSw4Y81tysIcJ99VJJIqTQyFUmL
+        enabled: true
+        model: deepseek-v4-flash
     qwen:
         api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
-        api_key: ENC:QGHlm1rlX4kADtsihowvMY3ohnzd98U5OjQmKmpI54zHznYLMs94WPwVteV8cACqbpn9iNaBNiGk0hPvO0A0
+        api_key: ENC:fZ4FItOMsXl6viZHErGZ7aYVhBQTnyhoQX/xI7MszR1/WRYDaewhtMoDN64cUnl0XeUQ3eEJkX4IuQHI+EKN
         enabled: true
         model: deepseek-v3.1
-provider: qwen
+provider: deepseek
 request_interval_ms: 1100
 sub_clean_backup: true
 sub_clean_enabled: false

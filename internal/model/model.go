@@ -91,6 +91,25 @@ func (i *InviteCode) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AutoOrganizeMode 枚举值（Library.AutoOrganizeMode）
+const (
+	// AutoOrganizeOff 关闭：扫描后不做任何后处理（原文件不动，DB 也不写整理记录）
+	AutoOrganizeOff = "off"
+	// AutoOrganizeRuleOnly 仅规则：跑识别+归类+命名建议，但禁止调用 AI（适合介意调用费用/隐私的用户）
+	AutoOrganizeRuleOnly = "rule_only"
+	// AutoOrganizeAIAssisted AI 辅助（默认）：规则 + 低置信度时 AI 兜底
+	AutoOrganizeAIAssisted = "ai_assisted"
+)
+
+// IsValidAutoOrganizeMode 校验整理模式合法性
+func IsValidAutoOrganizeMode(m string) bool {
+	switch m {
+	case AutoOrganizeOff, AutoOrganizeRuleOnly, AutoOrganizeAIAssisted:
+		return true
+	}
+	return false
+}
+
 // Library 媒体库
 type Library struct {
 	ID   string `json:"id" gorm:"primaryKey;type:text"`
@@ -111,6 +130,15 @@ type Library struct {
 	AutoDownloadSub   bool   `json:"auto_download_sub" gorm:"default:false"`       // 自动下载字幕
 	// 扫描行为设置
 	AutoScrapeMetadata bool `json:"auto_scrape_metadata" gorm:"default:true"` // 扫描后自动刮削元数据
+	// AI 自动整理（扫描后处理：识别 + 虚拟归类 + 命名映射，仅写 DB）
+	//   off          - 关闭，不做任何后处理
+	//   rule_only    - 仅规则识别+归类+命名（禁止调 AI）
+	//   ai_assisted  - 规则 + 低置信度时 AI 兜底（默认）
+	AutoOrganizeMode string `json:"auto_organize_mode" gorm:"type:text;default:ai_assisted"`
+	// 硬链接整理输出目录（AI 自动整理时，按虚拟路径+建议名称创建硬链接到此目录下）
+	// 为空则不进行硬链接操作（仅写 DB）；非空时按 VirtualPath/SuggestedName 建立硬链接目录树
+	// 默认值为空字符串（禁用硬链接输出），用户可自定义设置为具体目录路径
+	OrganizeOutputDir string `json:"organize_output_dir" gorm:"type:text;default:''"`
 	// 实时文件监控（媒体库级别设置）
 	EnableFileWatch bool `json:"enable_file_watch" gorm:"default:false"` // 启用实时文件监控
 	// 时间戳

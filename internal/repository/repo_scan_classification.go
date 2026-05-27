@@ -109,6 +109,26 @@ func (r *ScanClassificationRepo) FindByMediaID(mediaID string) (*model.MediaClas
 	return &c, nil
 }
 
+// ListUnprocessedMediaIDsByLibrary 返回指定媒体库中尚未完成 AI 整理的媒体 ID。
+// 已 processed/partial/failed/skipped 的记录都视为已经尝试整理过，普通扫描不再重复调用 AI；
+// pending/running/空状态通常来自中断或历史脏状态，允许下次扫描继续收尾。
+func (r *ScanClassificationRepo) ListUnprocessedMediaIDsByLibrary(libraryID string) ([]string, error) {
+	var ids []string
+	q := r.db.Model(&model.Media{}).
+		Select("media.id").
+		Joins("LEFT JOIN media_classifications mc ON mc.media_id = media.id AND mc.deleted_at IS NULL")
+	if libraryID != "" {
+		q = q.Where("media.library_id = ?", libraryID)
+	}
+	q = q.Where("media.deleted_at IS NULL").
+		Where("mc.media_id IS NULL OR mc.status IS NULL OR mc.status = '' OR mc.status IN ?", []string{
+			model.ClassificationStatusPending,
+			model.ClassificationStatusRunning,
+		})
+	err := q.Order("media.created_at ASC").Pluck("media.id", &ids).Error
+	return ids, err
+}
+
 // ListFilter 列表查询过滤参数
 type ClassificationListFilter struct {
 	LibraryID string  // 可选

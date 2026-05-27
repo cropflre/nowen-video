@@ -302,11 +302,8 @@ export default function MediaDetailPage() {
       }
       await refreshMediaDetail(id)
       // 海报/背景 URL 不变但服务端图片已替换，递增版本号触发浏览器重新加载
-                                              setPosterVersion(Date.now())
-                bumpPosterVersion()
-                bumpPosterVersion()
-                bumpPosterVersion()
-                bumpPosterVersion()
+      setPosterVersion(Date.now())
+      bumpPosterVersion()
       // 失效所有列表页缓存（首页/浏览/合集/收藏/历史）→ 用户返回时自动拉取最新数据，无需刷新
       invalidateMediaListCaches()
       setShowMatchModal(false)

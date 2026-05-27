@@ -89,8 +89,23 @@ export interface Library {
   allow_adult_content: boolean
   auto_download_sub: boolean
   auto_scrape_metadata: boolean
+  /**
+   * AI 自动整理模式（随扫描/重建索引执行：识别 + 归类 + 命名 + 可选硬链接）
+   *   - off          关闭：扫描后不做任何后处理
+   *   - rule_only    仅规则：跑识别+归类+命名建议，禁用 AI
+   *   - ai_assisted  AI 辅助（默认）：每条媒体调用 AI 识别
+   */
+  auto_organize_mode: AutoOrganizeMode
+  /**
+   * 硬链接整理输出目录（AI 自动整理后按虚拟路径创建硬链接到此目录）
+   * 为空表示不创建硬链接（仅写 DB）；配置路径后自动按分类目录树创建硬链接
+   */
+  organize_output_dir: string
   enable_file_watch: boolean
 }
+
+/** AI 自动整理模式枚举 */
+export type AutoOrganizeMode = 'off' | 'rule_only' | 'ai_assisted'
 
 /** 从 Library 中解析出完整的媒体文件夹列表（主路径 + extra_paths） */
 export function getLibraryPaths(lib: Pick<Library, 'path' | 'extra_paths'>): string[] {
@@ -123,6 +138,10 @@ export interface LibraryAdvancedSettings {
   allow_adult_content: boolean
   auto_download_sub: boolean
   auto_scrape_metadata: boolean
+  /** AI 自动整理模式（默认 ai_assisted） */
+  auto_organize_mode: AutoOrganizeMode
+  /** 硬链接输出目录（为空=不创建硬链接） */
+  organize_output_dir: string
   enable_file_watch: boolean
 }
 
@@ -141,6 +160,10 @@ export interface CreateLibraryRequest {
   allow_adult_content?: boolean
   auto_download_sub?: boolean
   auto_scrape_metadata?: boolean
+  /** AI 自动整理模式（默认由后端取 ai_assisted） */
+  auto_organize_mode?: AutoOrganizeMode
+  /** 硬链接输出目录（为空=不创建硬链接） */
+  organize_output_dir?: string
   enable_file_watch?: boolean
 }
 
