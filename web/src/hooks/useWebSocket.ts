@@ -59,9 +59,16 @@ export const WS_EVENTS = {
   ADULT_BATCH_STARTED: 'adult_batch_started',
   ADULT_BATCH_PROGRESS: 'adult_batch_progress',
   ADULT_BATCH_COMPLETED: 'adult_batch_completed',
+  ADULT_BATCH_FAILED: 'adult_batch_failed',
   ADULT_BATCH_PAUSED: 'adult_batch_paused',
   ADULT_BATCH_RESUMED: 'adult_batch_resumed',
   ADULT_BATCH_CANCELLED: 'adult_batch_cancelled',
+  // 成人文件夹懒人刮削事件
+  ADULT_FOLDER_BATCH_STARTED: 'adult_folder_batch_started',
+  ADULT_FOLDER_BATCH_PROGRESS: 'adult_folder_batch_progress',
+  ADULT_FOLDER_BATCH_COMPLETED: 'adult_folder_batch_completed',
+  ADULT_FOLDER_BATCH_FAILED: 'adult_folder_batch_failed',
+  ADULT_FOLDER_BATCH_CANCELLED: 'adult_folder_batch_cancelled',
   // 文件夹操作事件
   FOLDER_RENAMED: 'folder_renamed',
   FOLDER_DELETED: 'folder_deleted',

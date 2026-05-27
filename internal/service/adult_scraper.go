@@ -34,26 +34,26 @@ var (
 
 // AdultMetadata 番号刮削结果
 type AdultMetadata struct {
-	Code        string   `json:"code"`         // 番号（如 SSIS-001）
-	Title       string   `json:"title"`        // 标题
-	OriginalTitle string `json:"original_title"` // 原始标题（日文）— P1 新增
-	Plot        string   `json:"plot"`         // 剧情简介 — P1 新增
-	OriginalPlot string  `json:"original_plot"` // 原始剧情简介 — P1 新增
-	Cover       string   `json:"cover"`        // 封面图 URL（大图/poster）
-	Thumb       string   `json:"thumb"`        // 缩略图（小图/fanart 背景） — P1 新增
-	Actresses   []string `json:"actresses"`    // 演员列表
-	ActorPhotos map[string]string `json:"actor_photos"` // 演员头像 URL（演员名 -> URL）— P1 新增
-	Studio      string   `json:"studio"`       // 片商/制作商
-	Label       string   `json:"label"`        // 发行商
-	Series      string   `json:"series"`       // 系列名
-	Genres      []string `json:"genres"`       // 类型标签
-	ReleaseDate string   `json:"release_date"` // 发行日期
-	Duration    int      `json:"duration"`     // 时长（分钟）
-	Rating      float64  `json:"rating"`       // 评分
-	Trailer     string   `json:"trailer"`      // 预告片 URL — P1 新增
-	ExtraFanart []string `json:"extra_fanart"` // 额外剧照 URL 列表 — P1 新增
-	Director    string   `json:"director"`     // 导演 — P1 新增
-	Source      string   `json:"source"`       // 数据来源（javbus/javdb/fc2/freejavbt/jav321/python）
+	Code          string            `json:"code"`           // 番号（如 SSIS-001）
+	Title         string            `json:"title"`          // 标题
+	OriginalTitle string            `json:"original_title"` // 原始标题（日文）— P1 新增
+	Plot          string            `json:"plot"`           // 剧情简介 — P1 新增
+	OriginalPlot  string            `json:"original_plot"`  // 原始剧情简介 — P1 新增
+	Cover         string            `json:"cover"`          // 封面图 URL（大图/poster）
+	Thumb         string            `json:"thumb"`          // 缩略图（小图/fanart 背景） — P1 新增
+	Actresses     []string          `json:"actresses"`      // 演员列表
+	ActorPhotos   map[string]string `json:"actor_photos"`   // 演员头像 URL（演员名 -> URL）— P1 新增
+	Studio        string            `json:"studio"`         // 片商/制作商
+	Label         string            `json:"label"`          // 发行商
+	Series        string            `json:"series"`         // 系列名
+	Genres        []string          `json:"genres"`         // 类型标签
+	ReleaseDate   string            `json:"release_date"`   // 发行日期
+	Duration      int               `json:"duration"`       // 时长（分钟）
+	Rating        float64           `json:"rating"`         // 评分
+	Trailer       string            `json:"trailer"`        // 预告片 URL — P1 新增
+	ExtraFanart   []string          `json:"extra_fanart"`   // 额外剧照 URL 列表 — P1 新增
+	Director      string            `json:"director"`       // 导演 — P1 新增
+	Source        string            `json:"source"`         // 数据来源（javbus/javdb/fc2/freejavbt/jav321/python）
 }
 
 // ==================== 成人内容刮削服务 ====================
@@ -562,9 +562,10 @@ func (s *AdultScraperService) parseJavDBHTML(html, code string) (*AdultMetadata,
 
 // scrapePythonService 调用 Python 微服务刮削（Cloudflare 等强反爬场景的 fallback）
 // Python 微服务需要独立部署，提供 REST API：
-//   POST /api/scrape
-//   Body: {"code": "SSIS-001", "sources": ["javdb", "javbus", "fanza"]}
-//   Response: AdultMetadata JSON
+//
+//	POST /api/scrape
+//	Body: {"code": "SSIS-001", "sources": ["javdb", "javbus", "fanza"]}
+//	Response: AdultMetadata JSON
 func (s *AdultScraperService) scrapePythonService(code string) (*AdultMetadata, error) {
 	serviceURL := s.cfg.AdultScraper.PythonServiceURL
 	if serviceURL == "" {
@@ -634,10 +635,13 @@ func (s *AdultScraperService) ScrapeByCode(code string) (*AdultMetadata, error) 
 		return nil, fmt.Errorf("番号不能为空")
 	}
 
-	// P2：聚合模式（并发+合并）
+	// P2：聚合模式（并发+合并）。聚合失败时自动降级串行多源刮削，避免某一轮聚合 0 命中就直接失败。
 	if s.cfg.AdultScraper.EnableAggregatedMode {
 		merged, _, err := s.ScrapeByCodeAggregated(code)
-		return merged, err
+		if err == nil && merged != nil {
+			return merged, nil
+		}
+		s.logger.Warnf("聚合刮削失败，降级串行多源刮削: %s - %v", code, err)
 	}
 
 	s.logger.Infof("开始番号刮削: %s", code)
@@ -747,6 +751,16 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 		return fmt.Errorf("元数据为空")
 	}
 
+	if strings.TrimSpace(meta.Code) != "" {
+		media.Num = strings.ToUpper(strings.TrimSpace(meta.Code))
+		if info := ParseCodeEnhanced(media.Num); info.Mosaic != "" && media.MPAA == "" {
+			media.MPAA = info.Mosaic
+		}
+	}
+	if media.CountryCode == "" {
+		media.CountryCode = "JP"
+	}
+
 	if mode == "primary" {
 		// 主数据源模式：覆盖写入
 		if meta.Title != "" {
@@ -788,8 +802,11 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 		if len(meta.Actresses) > 0 {
 			media.Tagline = "演员: " + strings.Join(meta.Actresses, ", ")
 		}
-		// 原始标题保存番号
-		media.OrigTitle = meta.Code
+		if meta.OriginalTitle != "" {
+			media.OrigTitle = meta.OriginalTitle
+		} else if media.OrigTitle == "" {
+			media.OrigTitle = meta.Code
+		}
 	} else {
 		// 补充模式：仅填充缺失字段
 		if media.Title == "" && meta.Title != "" {
@@ -823,9 +840,21 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 				media.Rating = meta.Rating
 			}
 		}
-		if media.OrigTitle == "" {
+		if meta.OriginalTitle != "" && (media.OrigTitle == "" || media.OrigTitle == meta.Code) {
+			media.OrigTitle = meta.OriginalTitle
+		} else if media.OrigTitle == "" {
 			media.OrigTitle = meta.Code
 		}
+	}
+
+	if meta.Director != "" && media.Maker == "" {
+		media.Maker = meta.Director
+	}
+	if meta.Label != "" && media.Label == "" {
+		media.Label = meta.Label
+	}
+	if meta.Series != "" && media.SortTitle == "" {
+		media.SortTitle = meta.Series
 	}
 
 	// ==================== P1：额外字段填充（剧情/原始标题/导演）====================

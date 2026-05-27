@@ -3,9 +3,9 @@
 // 思路：不同数据源各有优劣，通过并发调用 + 字段优先级合并，获取最完整元数据
 //
 // 策略：
-//   1. 按各字段优先级从不同数据源取值（如封面优先 Fanza，简介优先 JAV321）
-//   2. 支持并发调用（大幅降低总耗时）
-//   3. 失败源自动跳过，不影响其他源
+//  1. 按各字段优先级从不同数据源取值（如封面优先 Fanza，简介优先 JAV321）
+//  2. 支持并发调用（大幅降低总耗时）
+//  3. 失败源自动跳过，不影响其他源
 package service
 
 import (
@@ -18,26 +18,58 @@ import (
 
 // ==================== 字段优先级配置 ====================
 
-// fieldPriority 各字段的数据源优先级配置
-// 借鉴自 mdcx 的 config.ini field_priority 设计
-var fieldPriority = map[string][]string{
-	"title":         {"fanza", "javdb", "javbus", "jav321", "freejavbt", "mgstage", "fc2hub"},
-	"original_title":{"fanza", "javdb", "javbus", "mgstage"},
-	"plot":          {"jav321", "fanza", "javdb", "javbus", "freejavbt", "mgstage", "fc2hub"},
-	"cover":         {"fanza", "javbus", "mgstage", "freejavbt", "javdb", "jav321", "fc2hub"},
-	"thumb":         {"fanza", "freejavbt", "javbus", "javdb"},
-	"trailer":       {"fanza", "mgstage", "javdb", "freejavbt", "javbus", "jav321"},
-	"release_date":  {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
-	"duration":      {"fanza", "javbus", "mgstage", "javdb", "freejavbt", "jav321"},
-	"studio":        {"fanza", "javbus", "mgstage", "freejavbt", "javdb", "jav321"},
-	"label":         {"fanza", "mgstage", "javbus", "freejavbt"},
-	"series":        {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
-	"director":      {"fanza", "mgstage", "freejavbt", "javbus", "javdb"},
-	"rating":        {"javdb", "fanza", "jav321", "freejavbt"},
-	"actresses":     {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
-	"actor_photos":  {"javbus", "javdb", "freejavbt"},
-	"genres":        {"javbus", "fanza", "javdb", "freejavbt", "jav321", "mgstage"},
-	"extra_fanart":  {"fanza", "javbus", "javdb", "freejavbt", "jav321", "mgstage"},
+// defaultAdultFieldPriority 各字段的数据源优先级配置。
+// 借鉴 mdcx 的 field_priority 设计；用户可通过 adult_scraper.field_priority 覆盖部分字段。
+var defaultAdultFieldPriority = map[string][]string{
+	"title":          {"fanza", "javdb", "javbus", "jav321", "freejavbt", "mgstage", "fc2hub"},
+	"original_title": {"fanza", "javdb", "javbus", "mgstage"},
+	"plot":           {"jav321", "fanza", "javdb", "javbus", "freejavbt", "mgstage", "fc2hub"},
+	"cover":          {"fanza", "javbus", "mgstage", "freejavbt", "javdb", "jav321", "fc2hub"},
+	"thumb":          {"fanza", "freejavbt", "javbus", "javdb"},
+	"trailer":        {"fanza", "mgstage", "javdb", "freejavbt", "javbus", "jav321"},
+	"release_date":   {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
+	"duration":       {"fanza", "javbus", "mgstage", "javdb", "freejavbt", "jav321"},
+	"studio":         {"fanza", "javbus", "mgstage", "freejavbt", "javdb", "jav321"},
+	"label":          {"fanza", "mgstage", "javbus", "freejavbt"},
+	"series":         {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
+	"director":       {"fanza", "mgstage", "freejavbt", "javbus", "javdb"},
+	"rating":         {"javdb", "fanza", "jav321", "freejavbt"},
+	"actresses":      {"fanza", "javbus", "javdb", "mgstage", "freejavbt", "jav321"},
+	"actor_photos":   {"javbus", "javdb", "freejavbt"},
+	"genres":         {"javbus", "fanza", "javdb", "freejavbt", "jav321", "mgstage"},
+	"extra_fanart":   {"fanza", "javbus", "javdb", "freejavbt", "jav321", "mgstage"},
+}
+
+func DefaultAdultFieldPriority() map[string][]string {
+	out := make(map[string][]string, len(defaultAdultFieldPriority))
+	for k, v := range defaultAdultFieldPriority {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+func adultFieldPriorityWithOverrides(overrides map[string][]string) map[string][]string {
+	out := DefaultAdultFieldPriority()
+	for field, sources := range overrides {
+		field = strings.ToLower(strings.TrimSpace(field))
+		if field == "" || len(sources) == 0 {
+			continue
+		}
+		cleaned := make([]string, 0, len(sources))
+		seen := make(map[string]bool)
+		for _, source := range sources {
+			source = strings.ToLower(strings.TrimSpace(source))
+			if source == "" || seen[source] {
+				continue
+			}
+			seen[source] = true
+			cleaned = append(cleaned, source)
+		}
+		if len(cleaned) > 0 {
+			out[field] = cleaned
+		}
+	}
+	return out
 }
 
 // ==================== 聚合刮削 ====================
@@ -118,10 +150,10 @@ func (s *AdultScraperService) ScrapeByCodeAggregated(code string) (*AdultMetadat
 					mu.Unlock()
 					s.logger.Debugf("聚合刮削 %s 成功: %s", name, code)
 				} else if err != nil {
-					s.logger.Debugf("聚合刮削 %s 失败: %s - %v", name, code, err)
+					s.logger.Warnf("聚合刮削 %s 失败: %s - %v", name, code, err)
 				}
 			case <-time.After(20 * time.Second):
-				s.logger.Debugf("聚合刮削 %s 超时: %s", name, code)
+				s.logger.Warnf("聚合刮削 %s 超时: %s", name, code)
 			}
 		}()
 	}
@@ -134,8 +166,8 @@ func (s *AdultScraperService) ScrapeByCodeAggregated(code string) (*AdultMetadat
 		return nil, nil, fmtErrf("所有数据源均未找到番号 %s", code)
 	}
 
-	// 按字段优先级合并
-	merged := mergeAdultMetadata(code, results)
+	// 按字段优先级合并（支持配置覆盖）
+	merged := mergeAdultMetadata(code, results, adultFieldPriorityWithOverrides(s.cfg.AdultScraper.FieldPriority))
 
 	// 统一执行规范化和翻译
 	NormalizeMetadata(merged)
@@ -145,7 +177,7 @@ func (s *AdultScraperService) ScrapeByCodeAggregated(code string) (*AdultMetadat
 }
 
 // mergeAdultMetadata 按字段优先级合并多个数据源的结果
-func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMetadata {
+func mergeAdultMetadata(code string, results map[string]*AdultMetadata, priority map[string][]string) *AdultMetadata {
 	merged := &AdultMetadata{
 		Code:        code,
 		Genres:      []string{},
@@ -157,7 +189,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// 单值字段按优先级填充
 	pickString := func(field string, getter func(*AdultMetadata) string, setter func(string)) {
-		prio := fieldPriority[field]
+		prio := priority[field]
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil {
 				if v := strings.TrimSpace(getter(meta)); v != "" {
@@ -188,7 +220,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// Duration：取非零最大
 	{
-		prio := fieldPriority["duration"]
+		prio := priority["duration"]
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil && meta.Duration > 0 {
 				merged.Duration = meta.Duration
@@ -198,7 +230,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 	}
 	// Rating：按优先级取第一个非零值
 	{
-		prio := fieldPriority["rating"]
+		prio := priority["rating"]
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil && meta.Rating > 0 {
 				merged.Rating = meta.Rating
@@ -209,7 +241,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// 演员：合并去重（按顺序：fanza > javbus > ...）
 	{
-		prio := fieldPriority["actresses"]
+		prio := priority["actresses"]
 		seen := make(map[string]struct{})
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil {
@@ -229,7 +261,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// 演员头像：合并（按优先级覆盖）
 	{
-		prio := fieldPriority["actor_photos"]
+		prio := priority["actor_photos"]
 		// 倒序遍历：低优先级先写入，高优先级覆盖
 		for i := len(prio) - 1; i >= 0; i-- {
 			src := prio[i]
@@ -245,7 +277,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// 类型标签：合并去重
 	{
-		prio := fieldPriority["genres"]
+		prio := priority["genres"]
 		seen := make(map[string]struct{})
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil {
@@ -265,7 +297,7 @@ func mergeAdultMetadata(code string, results map[string]*AdultMetadata) *AdultMe
 
 	// 剧照：合并去重（最多保留 30 张）
 	{
-		prio := fieldPriority["extra_fanart"]
+		prio := priority["extra_fanart"]
 		seen := make(map[string]struct{})
 		for _, src := range prio {
 			if meta, ok := results[src]; ok && meta != nil {

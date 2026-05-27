@@ -1,785 +1,756 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { adultScraperApi } from '@/api'
-import type { AdultScraperConfig, AdultMetadata, ParseCodeResult, PythonServiceHealth } from '@/api/adultScraper'
-import {
-  Shield,
-  Zap,
-  Globe,
-  Search,
-  Check,
-  X,
-  Loader2,
-  RefreshCw,
-  Save,
-  Eye,
-  EyeOff,
-  ArrowDown,
-  Clock,
-  Film,
-  Users,
-  Tag,
-  Star,
-  Calendar,
-  Building2,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Wifi,
-  WifiOff,
-  TestTube,
-  Image,
-  ChevronDown,
-} from 'lucide-react'
-import clsx from 'clsx'
+import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
+import type {
+  AdultBatchItemResult,
+  AdultBatchTask,
+  AdultCacheStats,
+  AdultLazyResultView,
+  AdultLazyStatus,
+  AdultLazyTaskView,
+  AdultSchedulerStatus,
+  AdultScrapeReport,
+  AdultScraperConfig,
+  FolderBatchTask,
+  FolderScanResult,
+} from '@/api/adultScraper'
 
-// ==================== 番号刮削配置 Section ====================
-// 嵌入到影视文件管理（library）Tab 中，与 TMDb / 豆瓣配置并列
+
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Database,
+  FolderOpen,
+  Loader2,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Settings,
+  Shield,
+  Square,
+  Trash2,
+  XCircle,
+  Zap,
+} from 'lucide-react'
+
+import clsx from 'clsx'
+import FileBrowser from '@/components/FileBrowser'
+
+type Notice = { type: 'success' | 'error' | 'info'; text: string }
+
+
+
+
+const LAZY_DEFAULTS = {
+  minRequestInterval: 1500,
+  maxRequestInterval: 3000,
+  concurrency: 2,
+  aggregated: true,
+}
+
+const taskStatusLabel: Record<string, string> = {
+  running: '正在懒人刮削',
+  paused: '已暂停',
+  cancelled: '已停止',
+  completed: '已完成',
+  failed: '失败',
+}
+
+function formatTime(value?: string) {
+  if (!value) return '--'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleString()
+}
+
+function progressOf(task?: AdultLazyTaskView | null) {
+  if (!task || task.total <= 0) return 0
+  return Math.min(100, Math.round((task.current / task.total) * 100))
+}
+
+
+
+
+function isScraperUsable(config: AdultScraperConfig | null) {
+  if (!config?.enabled) return false
+  return (config.sources || []).some((source) => source.enabled)
+}
 
 export default function AdultScraperSection() {
   const [config, setConfig] = useState<AdultScraperConfig | null>(null)
+  const [folderPath, setFolderPath] = useState('')
+  const [folderScan, setFolderScan] = useState<FolderScanResult | null>(null)
+  const [tasks, setTasks] = useState<FolderBatchTask[]>([])
+  const [mediaTasks, setMediaTasks] = useState<AdultBatchTask[]>([])
+  const [failedItems, setFailedItems] = useState<AdultBatchItemResult[]>([])
+  const [report, setReport] = useState<AdultScrapeReport | null>(null)
+  const [schedulerInfo, setSchedulerInfo] = useState<AdultSchedulerStatus | null>(null)
+  const [cacheStats, setCacheStats] = useState<AdultCacheStats | null>(null)
+  const [currentTaskView, setCurrentTaskView] = useState<AdultLazyTaskView | null>(null)
+  const [recentResultViews, setRecentResultViews] = useState<AdultLazyResultView[]>([])
+  const [folderFailedCount, setFolderFailedCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
-
-  // 配置编辑状态
-  const [editEnabled, setEditEnabled] = useState(false)
-  const [editJavBus, setEditJavBus] = useState(true)
-  const [editJavDB, setEditJavDB] = useState(true)
-  const [editJavBusURL, setEditJavBusURL] = useState('')
-  const [editJavDBURL, setEditJavDBURL] = useState('')
-  const [editPythonURL, setEditPythonURL] = useState('http://localhost:5000')
-  const [editPythonKey, setEditPythonKey] = useState('')
-  const [editMinInterval, setEditMinInterval] = useState(1500)
-  const [editMaxInterval, setEditMaxInterval] = useState(3000)
-  const [showPythonKey, setShowPythonKey] = useState(false)
-
-  // Python 微服务健康状态
-  const [pythonHealth, setPythonHealth] = useState<PythonServiceHealth | null>(null)
-  const [checkingHealth, setCheckingHealth] = useState(false)
-
-  // 手动刮削测试
-  const [testCode, setTestCode] = useState('')
-  const [testResult, setTestResult] = useState<AdultMetadata | null>(null)
-  const [testLoading, setTestLoading] = useState(false)
-  const [testError, setTestError] = useState('')
-
-  // 番号识别测试
-  const [parseInput, setParseInput] = useState('')
-  const [parseResult, setParseResult] = useState<ParseCodeResult | null>(null)
-  const [parseLoading, setParseLoading] = useState(false)
-
-  // 折叠面板状态
-  const [showArchitecture, setShowArchitecture] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [opsLoading, setOpsLoading] = useState(false)
+  const [retryingFailed, setRetryingFailed] = useState(false)
+  const [triggeringSchedule, setTriggeringSchedule] = useState(false)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [showTest, setShowTest] = useState(false)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const { on, off } = useWebSocket()
 
-  // 加载配置
-  const loadConfig = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await adultScraperApi.getConfig()
-      const cfg = res.data.data
-      setConfig(cfg)
-      setEditEnabled(cfg.enabled)
-      setEditMinInterval(cfg.min_request_interval)
-      setEditMaxInterval(cfg.max_request_interval)
-      cfg.sources.forEach(s => {
-        if (s.id === 'javbus') {
-          setEditJavBus(s.enabled)
-          setEditJavBusURL(s.url === 'https://www.javbus.com' ? '' : s.url)
-        }
-        if (s.id === 'javdb') {
-          setEditJavDB(s.enabled)
-          setEditJavDBURL(s.url === 'https://javdb.com' ? '' : s.url)
-        }
-        if (s.id === 'python') {
-          // 若后端未配置，默认填充本地地址，方便用户直接启用
-          setEditPythonURL(s.url || 'http://localhost:5000')
-        }
-      })
-    } catch {
-      showMessage('error', '加载配置失败')
-    } finally {
-      setLoading(false)
-    }
+  const showNotice = useCallback((type: Notice['type'], text: string) => {
+    setNotice({ type, text })
+    window.setTimeout(() => setNotice(null), 4500)
   }, [])
 
-  useEffect(() => { loadConfig() }, [loadConfig])
+  const loadConfig = useCallback(async () => {
+    try {
+      const res = await adultScraperApi.getConfig()
+      setConfig(res.data.data)
+    } catch {
+      showNotice('error', '加载刮削配置失败')
+    }
+  }, [showNotice])
 
-  const showMessage = (type: 'success' | 'error' | 'info', text: string) => {
-    setMessage({ type, text })
-    setTimeout(() => setMessage(null), 4000)
+  const applyLazyStatus = useCallback((data: AdultLazyStatus) => {
+    setTasks([...(data.folder_tasks?.active || []), ...(data.folder_tasks?.history || [])])
+    setMediaTasks([...(data.media_tasks?.active || []), ...(data.media_tasks?.history || [])])
+    setReport(data.report || null)
+    setFailedItems(data.failed_items || [])
+    setSchedulerInfo(data.scheduler || null)
+    setCacheStats(data.cache?.stats || null)
+    setCurrentTaskView(data.current_task || null)
+    setRecentResultViews(data.recent_results || [])
+    setFolderFailedCount(data.folder_failed_count || 0)
+  }, [])
+
+  const loadTasks = useCallback(async () => {
+    try {
+      const res = await adultScraperApi.getLazyStatus(7)
+      applyLazyStatus(res.data.data)
+    } catch {
+      // 轮询失败不打扰用户
+    }
+  }, [applyLazyStatus])
+
+  const loadOperations = useCallback(async () => {
+    setOpsLoading(true)
+    try {
+      const res = await adultScraperApi.getLazyStatus(7)
+      applyLazyStatus(res.data.data)
+    } finally {
+      setOpsLoading(false)
+    }
+  }, [applyLazyStatus])
+
+
+
+  useEffect(() => {
+    let mounted = true
+    const init = async () => {
+      setLoading(true)
+      await Promise.all([loadConfig(), loadTasks()])
+      if (mounted) setLoading(false)
+    }
+    init()
+    return () => { mounted = false }
+  }, [loadConfig, loadTasks])
+
+  useEffect(() => {
+    const timer = window.setInterval(loadTasks, 10000)
+    return () => window.clearInterval(timer)
+  }, [loadTasks])
+
+  useEffect(() => {
+    let refreshTimer: number | null = null
+    const refresh = () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        loadTasks()
+      }, 250)
+    }
+    const events = [
+      WS_EVENTS.ADULT_BATCH_STARTED,
+      WS_EVENTS.ADULT_BATCH_PROGRESS,
+      WS_EVENTS.ADULT_BATCH_COMPLETED,
+      WS_EVENTS.ADULT_BATCH_FAILED,
+      WS_EVENTS.ADULT_BATCH_CANCELLED,
+      WS_EVENTS.ADULT_FOLDER_BATCH_STARTED,
+      WS_EVENTS.ADULT_FOLDER_BATCH_PROGRESS,
+      WS_EVENTS.ADULT_FOLDER_BATCH_COMPLETED,
+      WS_EVENTS.ADULT_FOLDER_BATCH_FAILED,
+      WS_EVENTS.ADULT_FOLDER_BATCH_CANCELLED,
+    ]
+    events.forEach((event) => on(event, refresh))
+    return () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+      events.forEach((event) => off(event, refresh))
+    }
+  }, [loadTasks, off, on])
+
+  useEffect(() => {
+    if (showAdvanced) loadOperations()
+  }, [loadOperations, showAdvanced])
+
+  const unifiedTasks = useMemo<AdultLazyTaskView[]>(() => {
+    const folder = tasks.map((task) => ({
+      id: task.id,
+      kind: 'folder' as const,
+      status: task.status,
+      total: task.total,
+      current: task.current,
+      success: task.success,
+      failed: task.failed,
+      skipped: task.skipped,
+      started_at: task.started_at,
+      finished_at: task.finished_at,
+      aggregated: task.aggregated,
+      concurrency: task.concurrency,
+    }))
+    const media = mediaTasks.map((task) => ({
+      id: task.id,
+      kind: 'library' as const,
+      status: task.status,
+      total: task.total,
+      current: task.current,
+      success: task.success,
+      failed: task.failed,
+      skipped: task.skipped,
+      started_at: task.started_at,
+      finished_at: task.finished_at,
+      aggregated: task.aggregated,
+      concurrency: task.concurrency,
+    }))
+    return [...folder, ...media].sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+  }, [mediaTasks, tasks])
+  const runningTask = currentTaskView?.status === 'running' ? currentTaskView : unifiedTasks.find((task) => task.status === 'running') || null
+  const currentTask = currentTaskView || runningTask || unifiedTasks[0] || null
+  const results = recentResultViews
+
+  const successCount = results.filter((item) => item.status === 'success').length
+  const failedCount = results.filter((item) => item.status === 'failed').length
+  const skippedCount = results.filter((item) => item.status === 'skipped').length
+  const taskProgress = progressOf(currentTask)
+  const usable = isScraperUsable(config)
+
+
+
+
+  const scanCurrentFolder = async (silent = false) => {
+    const path = folderPath.trim()
+    if (!path) {
+      if (!silent) showNotice('error', '请先选择或输入要刮削的目录')
+      return null
+    }
+    setScanning(true)
+    try {
+      const res = await adultScraperApi.scanFolder(path, true, 0)
+      setFolderScan(res.data.data)
+      if (!silent) {
+        showNotice('success', `扫描完成：识别到 ${res.data.data.with_code} / ${res.data.data.total} 个可处理视频`)
+      }
+      return res.data.data
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '目录扫描失败')
+      return null
+    } finally {
+      setScanning(false)
+    }
   }
 
-  // 保存配置
-  const handleSave = async () => {
-    setSaving(true)
+  const startLazyScrape = async () => {
+    const path = folderPath.trim()
+    if (!path) {
+      showNotice('error', '请先选择或输入要刮削的目录')
+      return
+    }
+    if (runningTask) {
+      showNotice('info', '已有刮削任务正在运行')
+      return
+    }
+
+    setStarting(true)
+    try {
+      const res = await adultScraperApi.startLazy({
+        path,
+        recursive: true,
+        max_depth: 0,
+        aggregated: LAZY_DEFAULTS.aggregated,
+        concurrency: LAZY_DEFAULTS.concurrency,
+      })
+      setFolderScan(res.data.data.scan)
+      if (res.data.data.queued === 0) {
+        showNotice('info', '没有发现需要刮削的新视频，已有 NFO 的文件会自动跳过')
+      } else {
+        showNotice('success', `已启动懒人刮削：${res.data.data.queued} 个视频，后台自动处理`)
+      }
+      await Promise.all([loadConfig(), loadTasks()])
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '启动懒人刮削失败')
+    } finally {
+      setStarting(false)
+    }
+  }
+
+
+  const stopRunningTask = async () => {
+    if (!runningTask) return
+    setStopping(true)
+    try {
+      if (runningTask.kind === 'folder') {
+        await adultScraperApi.cancelFolderBatch(runningTask.id)
+      } else {
+        await adultScraperApi.cancelBatch(runningTask.id)
+      }
+      showNotice('info', '已请求停止当前刮削任务')
+      await loadTasks()
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '停止任务失败')
+    } finally {
+      setStopping(false)
+    }
+  }
+
+  const retryFailedItems = async () => {
+    setRetryingFailed(true)
+    try {
+      const res = await adultScraperApi.retryLazyFailed({ days: 7, concurrency: LAZY_DEFAULTS.concurrency, aggregated: LAZY_DEFAULTS.aggregated })
+      const data = res.data.data
+      if (data.retry_count === 0) {
+        showNotice('info', '没有可重试的失败项')
+      } else {
+        showNotice('success', `已提交失败重试：${data.retry_count} 个条目（目录 ${data.folder_retry_count} / 媒体库 ${data.media_retry_count}）`)
+      }
+      await Promise.all([loadTasks(), loadOperations()])
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '提交失败重试失败')
+    } finally {
+      setRetryingFailed(false)
+    }
+  }
+
+
+  const triggerSchedulerNow = async () => {
+    setTriggeringSchedule(true)
+    try {
+      await adultScraperApi.triggerScheduler()
+      showNotice('success', '已触发一次运营调度任务')
+      await Promise.all([loadTasks(), loadOperations()])
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '触发调度失败')
+    } finally {
+      setTriggeringSchedule(false)
+    }
+  }
+
+  const clearMetadataCache = async () => {
+    setClearingCache(true)
+    try {
+      await adultScraperApi.clearCache()
+      showNotice('success', '刮削缓存已清空')
+      await loadOperations()
+    } catch (err: any) {
+      showNotice('error', err?.response?.data?.error || '清空缓存失败')
+    } finally {
+      setClearingCache(false)
+    }
+  }
+
+  const resetLazyDefaults = async () => {
+
     try {
       await adultScraperApi.updateConfig({
-        enabled: editEnabled,
-        enable_javbus: editJavBus,
-        javbus_url: editJavBusURL || undefined,
-        enable_javdb: editJavDB,
-        javdb_url: editJavDBURL || undefined,
-        python_service_url: editPythonURL,
-        python_service_api_key: editPythonKey,
-        min_request_interval: editMinInterval,
-        max_request_interval: editMaxInterval,
+        enabled: true,
+        enable_javbus: true,
+        enable_javdb: true,
+        min_request_interval: LAZY_DEFAULTS.minRequestInterval,
+        max_request_interval: LAZY_DEFAULTS.maxRequestInterval,
       })
-      showMessage('success', '配置已保存')
-      loadConfig()
+      await loadConfig()
+      showNotice('success', '已恢复懒人模式默认配置')
     } catch {
-      showMessage('error', '保存失败')
-    } finally {
-      setSaving(false)
+      showNotice('error', '恢复默认配置失败')
     }
   }
 
-  // 检查 Python 微服务健康
-  const checkPythonHealth = async () => {
-    setCheckingHealth(true)
-    try {
-      const res = await adultScraperApi.pythonServiceHealth()
-      setPythonHealth(res.data.data)
-    } catch {
-      setPythonHealth({ configured: false, status: 'error', message: '检查失败' })
-    } finally {
-      setCheckingHealth(false)
-    }
-  }
-
-  // 手动刮削测试
-  const handleTestScrape = async () => {
-    if (!testCode.trim()) return
-    setTestLoading(true)
-    setTestResult(null)
-    setTestError('')
-    try {
-      const res = await adultScraperApi.scrapeByCode(testCode.trim())
-      setTestResult(res.data.data)
-    } catch (err: any) {
-      setTestError(err?.response?.data?.error || '刮削失败')
-    } finally {
-      setTestLoading(false)
-    }
-  }
-
-  // 番号识别测试
-  const handleParseCode = async () => {
-    if (!parseInput.trim()) return
-    setParseLoading(true)
-    setParseResult(null)
-    try {
-      const res = await adultScraperApi.parseCode(parseInput.trim())
-      setParseResult(res.data.data)
-    } catch {
-      setParseResult(null)
-    } finally {
-      setParseLoading(false)
-    }
+  if (loading) {
+    return (
+      <section className="glass-panel rounded-xl p-8">
+        <div className="flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <Loader2 size={18} className="animate-spin text-neon" />
+          加载懒人刮削模块中...
+        </div>
+      </section>
+    )
   }
 
   return (
-    <section>
-      <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        <Shield size={20} className="text-neon/60" />
-        番号刮削配置
-      </h2>
-      <div className="glass-panel rounded-xl p-5">
-        {/* 说明信息 */}
-        <div className="mb-5 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            配置 <span className="font-medium text-neon">番号刮削引擎</span> 后，媒体库扫描时将自动识别成人内容番号（如 SSIS-001、FC2-PPV-1234567 等），
-            并通过 <span className="font-medium text-teal-400">Go 原生爬虫</span> 和 <span className="font-medium text-yellow-400">Python 微服务</span> 混合调度获取元数据。
-          </p>
+    <>
+      <section className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
+              <Shield size={20} className="text-neon/70" />
+              懒人刮削
+            </h2>
+            <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              只需要选择目录并点击开始。系统会自动识别番号、跳过已完成文件，并在后台写入 NFO / 图片 / 元数据。
+            </p>
+          </div>
+          <div className={clsx(
+            'rounded-full px-3 py-1 text-xs font-medium',
+            usable ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400',
+          )}>
+            {usable ? '开箱即用已就绪' : '首次开始时自动初始化'}
+          </div>
         </div>
 
-        {/* 加载状态 */}
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-neon" />
-            <span className="ml-2 text-sm text-surface-400">加载配置中...</span>
+        {notice && (
+          <div className={clsx(
+            'flex items-center gap-2 rounded-lg px-4 py-3 text-sm animate-slide-up',
+            notice.type === 'success' && 'bg-green-500/10 text-green-400',
+            notice.type === 'error' && 'bg-red-500/10 text-red-400',
+            notice.type === 'info' && 'bg-blue-500/10 text-blue-400',
+          )}>
+            {notice.type === 'success' ? <CheckCircle2 size={16} /> : notice.type === 'error' ? <XCircle size={16} /> : <AlertTriangle size={16} />}
+            {notice.text}
           </div>
-        ) : (
-          <div className="space-y-5">
-            {/* 提示消息 */}
-            {message && (
-              <div className={clsx(
-                'flex items-center gap-2 rounded-lg px-4 py-3 text-sm animate-slide-up',
-                message.type === 'success' && 'bg-green-500/10 text-green-400',
-                message.type === 'error' && 'bg-red-500/10 text-red-400',
-                message.type === 'info' && 'bg-blue-500/10 text-blue-400'
-              )}>
-                {message.type === 'success' ? <Check size={16} /> : message.type === 'error' ? <X size={16} /> : <Loader2 size={16} className="animate-spin" />}
-                {message.text}
-              </div>
-            )}
+        )}
 
-            {/* ===== 总开关 + 数据源状态概览 ===== */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={clsx(
-                  'flex h-10 w-10 items-center justify-center rounded-lg',
-                  editEnabled ? 'bg-green-500/10' : ''
-                )}
-                  style={!editEnabled ? { background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' } : undefined}
-                >
-                  <Shield size={18} className={editEnabled ? 'text-green-400' : 'text-surface-500'} />
+        <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: 'var(--shadow-elevated)' }}>
+          <div className="border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
+            <div className="flex flex-col gap-3 lg:flex-row">
+              <div className="relative flex-1">
+                <FolderOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500" />
+                <input
+                  value={folderPath}
+                  onChange={(e) => {
+                    setFolderPath(e.target.value)
+                    setFolderScan(null)
+                  }}
+                  className="input pl-9 text-sm"
+                  placeholder="选择或输入待刮削目录，例如 D:\\video"
+                />
+              </div>
+              <button onClick={() => setShowFolderBrowser(true)} className="btn-ghost gap-2 px-4 py-2 text-sm">
+                <FolderOpen size={16} />
+                选择目录
+              </button>
+              <button onClick={() => scanCurrentFolder(false)} disabled={scanning || !folderPath.trim()} className="btn-ghost gap-2 px-4 py-2 text-sm">
+                {scanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                预扫描
+              </button>
+              <button onClick={startLazyScrape} disabled={starting || scanning || Boolean(runningTask)} className="btn-primary gap-2 px-6 py-2 text-sm">
+                {starting ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                一键开始
+              </button>
+              {runningTask && (
+                <button onClick={stopRunningTask} disabled={stopping} className="btn-ghost gap-2 px-4 py-2 text-sm text-red-400">
+                  {stopping ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                  停止
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-4">
+                <StatCard label="视频总数" value={folderScan?.total ?? currentTask?.total ?? 0} accent="text-neon" />
+                <StatCard label="识别番号" value={folderScan?.with_code ?? 0} accent="text-green-400" />
+                <StatCard label="已跳过" value={currentTask?.skipped ?? skippedCount} accent="text-yellow-400" />
+                <StatCard label="失败" value={currentTask?.failed ?? failedCount} accent="text-red-400" />
+              </div>
+
+              <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className={clsx(
+                      'flex h-9 w-9 items-center justify-center rounded-full',
+                      runningTask ? 'bg-green-500/10 text-green-400' : 'bg-surface-700 text-surface-400',
+                    )}>
+                      {runningTask ? <Loader2 size={18} className="animate-spin" /> : <Database size={17} />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {currentTask ? taskStatusLabel[currentTask.status] || currentTask.status : '等待开始'}
+                      </p>
+                      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                        {currentTask ? `开始时间：${formatTime(currentTask.started_at)}` : '选择目录后一键开始，后续自动后台运行'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-neon/10 px-2.5 py-1 text-xs font-medium text-neon">{taskProgress}%</span>
                 </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {editEnabled ? '番号刮削已启用' : '番号刮削未启用'}
-                  </p>
-                  <p className="text-xs text-surface-500 mt-0.5">
-                    {editEnabled
-                      ? `${[editJavBus && 'JavBus', editJavDB && 'JavDB', editPythonURL && 'Python 微服务'].filter(Boolean).join(' / ')} 已激活`
-                      : '开启后将自动识别番号内容并刮削元数据'}
-                  </p>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all" style={{ width: `${taskProgress}%` }} />
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <span>成功 <b className="font-mono text-green-400">{currentTask?.success ?? successCount}</b></span>
+                  <span>失败 <b className="font-mono text-red-400">{currentTask?.failed ?? failedCount}</b></span>
+                  <span>跳过 <b className="font-mono text-yellow-400">{currentTask?.skipped ?? skippedCount}</b></span>
                 </div>
               </div>
-              <button
-                onClick={() => setEditEnabled(!editEnabled)}
-                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0"
-                style={{
-                  background: editEnabled ? 'var(--neon-blue)' : 'var(--border-default)',
-                  border: '1px solid var(--border-default)',
-                  boxShadow: editEnabled ? '0 0 0 2px var(--neon-blue-15)' : 'none',
-                }}
-                aria-label={editEnabled ? '关闭番号刮削' : '开启番号刮削'}
-              >
-                <span
-                  className={clsx(
-                    'inline-block h-4 w-4 transform rounded-full transition-transform',
-                    editEnabled ? 'translate-x-6' : 'translate-x-1'
-                  )}
-                  style={{
-                    background: '#ffffff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                  }}
-                />
-              </button>
+
+              <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <Zap size={15} className="text-neon" />
+                  默认自动化策略
+                </div>
+                <div className="grid gap-2 text-xs md:grid-cols-2" style={{ color: 'var(--text-secondary)' }}>
+                  <LazyRule text="自动启用通用数据源，无需手动配置镜像" />
+                  <LazyRule text="递归扫描目录，自动识别番号文件" />
+                  <LazyRule text="已有 NFO 的视频自动跳过，避免重复刮削" />
+                  <LazyRule text="聚合优先，失败自动降级串行多源" />
+                  <LazyRule text="默认并发 2，自动控制请求间隔" />
+                  <LazyRule text="刮削完成后自动写入 NFO、封面与背景图" />
+                </div>
+              </div>
             </div>
 
-            {/* ===== 数据源状态卡片（始终可见） ===== */}
-            {config && (
-              <div className="grid grid-cols-3 gap-3">
-                {config.sources.map((source, idx) => (
+            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  <Clock size={15} />
+                  最近结果
+                </div>
+                <button onClick={loadTasks} className="text-xs text-neon hover:underline">
+                  刷新
+                </button>
+              </div>
+              <div className="max-h-[520px] space-y-1 overflow-auto pr-1 text-xs">
+                {results.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center" style={{ borderColor: 'var(--border-default)', color: 'var(--text-tertiary)' }}>
+                    暂无刮削记录
+                  </div>
+                ) : results.slice(0, 100).map((item, index) => (
                   <div
-                    key={source.id}
-                    className={clsx(
-                      'rounded-lg p-3 text-center transition-all',
-                      source.enabled
-                        ? source.type === 'python_service'
-                          ? 'bg-yellow-500/10 border border-yellow-500/30'
-                          : 'bg-teal-500/10 border border-teal-500/30'
-                        : 'opacity-50'
-                    )}
-                    style={!source.enabled ? { background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' } : undefined}
+                    key={`${item.code}-${item.path}-${index}`}
+                    className="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-white/5"
+                    title={item.message || item.path}
                   >
-                    <div className="flex items-center justify-center gap-1.5 mb-1">
-                      {source.type === 'go_native' ? (
-                        <Zap size={14} className="text-teal-400" />
-                      ) : (
-                        <Globe size={14} className="text-yellow-400" />
-                      )}
-                      <span className={clsx(
-                        'text-xs font-medium',
-                        source.type === 'python_service' ? 'text-yellow-300' : 'text-teal-300'
-                      )}>
-                        {source.name}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-surface-500">
-                      第 {idx + 1} 层{idx === 2 ? ' (Fallback)' : ''}
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-center gap-1">
-                      {source.enabled ? (
-                        <span className="flex items-center gap-1 text-[10px] text-green-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                          启用
+                    <span className={clsx(
+                      'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                      item.status === 'success' ? 'bg-green-400' : item.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400',
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-mono" style={{ color: item.status === 'success' ? '#4ade80' : item.status === 'failed' ? '#f87171' : '#facc15' }}>
+                          {item.code || 'UNKNOWN'}
                         </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[10px] text-surface-500">
-                          <span className="h-1.5 w-1.5 rounded-full bg-surface-600" />
-                          禁用
-                        </span>
-                      )}
+                        {item.source && <span className="rounded bg-surface-700 px-1.5 py-0.5 text-[10px] text-surface-400">{item.source}</span>}
+                      </div>
+                      <div className="truncate" style={{ color: 'var(--text-tertiary)' }}>
+                        {item.status === 'failed' ? (item.message || item.title || item.path) : (item.title || item.message || item.path)}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-
-            {/* ===== 可折叠：架构总览 ===== */}
-            <div style={{ borderTop: '1px solid var(--border-default)' }} className="pt-4">
-              <button
-                onClick={() => setShowArchitecture(!showArchitecture)}
-                className="flex items-center gap-2 text-sm font-medium w-full text-left group"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <ChevronDown size={14} className={clsx('transition-transform text-surface-500', showArchitecture && 'rotate-180')} />
-                混合调度引擎架构
-                <span className="text-[10px] text-surface-500 font-normal">（点击展开）</span>
-              </button>
-              {showArchitecture && (
-                <div className="mt-4 flex flex-col items-center gap-4">
-                  {/* 入口：媒体文件 */}
-                  <div className="flex items-center gap-3 rounded-lg px-4 py-2.5" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <Film size={18} className="text-neon" />
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>媒体文件</span>
-                  </div>
-                  <ArrowDown size={16} className="text-surface-500" />
-                  {/* 番号识别引擎 */}
-                  <div className="flex items-center gap-3 rounded-lg px-4 py-2.5 bg-purple-500/10 border border-purple-500/30">
-                    <Search size={18} className="text-purple-400" />
-                    <span className="text-sm font-medium text-purple-300">番号识别引擎 (ParseCode)</span>
-                  </div>
-                  <div className="flex items-center gap-8">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="flex items-center gap-1.5 text-xs text-green-400">
-                        <CheckCircle2 size={12} />
-                        <span>识别到番号</span>
-                      </div>
-                      <ArrowDown size={14} className="text-green-400/60" />
-                      <div className="rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/30 text-center">
-                        <span className="text-xs font-medium text-red-300">AdultProvider</span>
-                        <span className="block text-[10px] text-red-400/60">优先级 5</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="flex items-center gap-1.5 text-xs text-surface-400">
-                        <XCircle size={12} />
-                        <span>非番号内容</span>
-                      </div>
-                      <ArrowDown size={14} className="text-surface-500/60" />
-                      <div className="rounded-lg px-3 py-2 text-center" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>TMDb Provider</span>
-                        <span className="block text-[10px] text-surface-500">优先级 10</span>
-                      </div>
-                    </div>
-                  </div>
-                  <ArrowDown size={16} className="text-surface-500" />
-                  {/* 三层混合调度 */}
-                  <div className="w-full max-w-lg">
-                    <div className="mb-3 text-center text-xs font-medium text-surface-400">混合调度引擎 (ScrapeByCode)</div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {config?.sources.map((source, idx) => (
-                        <div
-                          key={source.id}
-                          className={clsx(
-                            'rounded-lg p-3 text-center transition-all',
-                            source.enabled
-                              ? source.type === 'python_service'
-                                ? 'bg-yellow-500/10 border border-yellow-500/30'
-                                : 'bg-teal-500/10 border border-teal-500/30'
-                              : 'opacity-40'
-                          )}
-                          style={!source.enabled ? { background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' } : undefined}
-                        >
-                          <div className="flex items-center justify-center gap-1.5 mb-1">
-                            {source.type === 'go_native' ? (
-                              <Zap size={14} className="text-teal-400" />
-                            ) : (
-                              <Globe size={14} className="text-yellow-400" />
-                            )}
-                            <span className={clsx(
-                              'text-xs font-medium',
-                              source.type === 'python_service' ? 'text-yellow-300' : 'text-teal-300'
-                            )}>
-                              {source.name}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-surface-500">
-                            第 {idx + 1} 层{idx === 2 ? ' (Fallback)' : ''}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {/* 支持的番号格式 */}
-                  <div className="w-full mt-2">
-                    <div className="mb-2 text-xs font-medium text-surface-400">支持的番号格式</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {config?.supported_formats.map((fmt) => (
-                        <div
-                          key={fmt.type}
-                          className="rounded-lg p-2.5 flex items-center gap-2.5"
-                          style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}
-                        >
-                          <Tag size={12} className="text-neon flex-shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-medium font-mono" style={{ color: 'var(--text-primary)' }}>{fmt.pattern}</p>
-                            <p className="text-[10px] text-surface-500 truncate">{fmt.example}</p>
-                          </div>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-neon/10 text-neon whitespace-nowrap">{fmt.type}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ===== 可折叠：高级配置（数据源详细配置） ===== */}
-            <div style={{ borderTop: '1px solid var(--border-default)' }} className="pt-4">
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-sm font-medium w-full text-left group"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <ChevronDown size={14} className={clsx('transition-transform text-surface-500', showAdvanced && 'rotate-180')} />
-                数据源详细配置
-                <span className="text-[10px] text-surface-500 font-normal">（镜像地址、Python 微服务、请求间隔）</span>
-              </button>
-              {showAdvanced && (
-                <div className="mt-4 space-y-4">
-                  {/* JavBus */}
-                  <div className="rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Zap size={14} className="text-teal-400" />
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>JavBus（Go 原生爬虫）</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400">第 1 层</span>
-                      </div>
-                      <button
-                        onClick={() => setEditJavBus(!editJavBus)}
-                        className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0"
-                        style={{
-                          background: editJavBus ? '#14b8a6' : 'var(--border-default)',
-                          border: '1px solid var(--border-default)',
-                        }}
-                        aria-label={editJavBus ? '关闭 JavBus' : '开启 JavBus'}
-                      >
-                        <span className="inline-block h-3.5 w-3.5 transform rounded-full transition-transform" style={{ background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)', transform: editJavBus ? 'translateX(18px)' : 'translateX(2px)' }} />
-                      </button>
-                    </div>
-                    <div>
-                      <label className="text-xs text-surface-500 mb-1 block">镜像地址（留空使用默认）</label>
-                      <input
-                        type="text"
-                        value={editJavBusURL}
-                        onChange={(e) => setEditJavBusURL(e.target.value)}
-                        className="input text-sm"
-                        placeholder="https://www.javbus.com"
-                      />
-                    </div>
-                  </div>
-
-                  {/* JavDB */}
-                  <div className="rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Zap size={14} className="text-teal-400" />
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>JavDB（Go 原生爬虫）</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400">第 2 层</span>
-                      </div>
-                      <button
-                        onClick={() => setEditJavDB(!editJavDB)}
-                        className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0"
-                        style={{
-                          background: editJavDB ? '#14b8a6' : 'var(--border-default)',
-                          border: '1px solid var(--border-default)',
-                        }}
-                        aria-label={editJavDB ? '关闭 JavDB' : '开启 JavDB'}
-                      >
-                        <span className="inline-block h-3.5 w-3.5 transform rounded-full transition-transform" style={{ background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)', transform: editJavDB ? 'translateX(18px)' : 'translateX(2px)' }} />
-                      </button>
-                    </div>
-                    <div>
-                      <label className="text-xs text-surface-500 mb-1 block">镜像地址（留空使用默认）</label>
-                      <input
-                        type="text"
-                        value={editJavDBURL}
-                        onChange={(e) => setEditJavDBURL(e.target.value)}
-                        className="input text-sm"
-                        placeholder="https://javdb.com"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Python 微服务 */}
-                  <div className="rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Globe size={14} className="text-yellow-400" />
-                        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Python 微服务（Fallback）</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">第 3 层</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {pythonHealth && (
-                          <span className={clsx(
-                            'flex items-center gap-1 text-[10px]',
-                            pythonHealth.status === 'online' ? 'text-green-400' : pythonHealth.status === 'offline' ? 'text-red-400' : 'text-surface-500'
-                          )}>
-                            {pythonHealth.status === 'online' ? <Wifi size={10} /> : pythonHealth.status === 'offline' ? <WifiOff size={10} /> : null}
-                            {pythonHealth.status === 'online' ? '在线' : pythonHealth.status === 'offline' ? '离线' : pythonHealth.status === 'not_configured' ? '未配置' : '异常'}
-                          </span>
-                        )}
-                        <button
-                          onClick={checkPythonHealth}
-                          disabled={checkingHealth}
-                          className="btn-ghost gap-1 px-2 py-1 text-[10px]"
-                        >
-                          {checkingHealth ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                          检测
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-surface-500 mb-1 block">微服务地址</label>
-                        <input
-                          type="text"
-                          value={editPythonURL}
-                          onChange={(e) => setEditPythonURL(e.target.value)}
-                          className="input text-sm"
-                          placeholder="http://localhost:5000（留空则不使用）"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-surface-500 mb-1 block">API Key（可选）</label>
-                        <div className="relative">
-                          <input
-                            type={showPythonKey ? 'text' : 'password'}
-                            value={editPythonKey}
-                            onChange={(e) => setEditPythonKey(e.target.value)}
-                            className="input text-sm pr-10"
-                            placeholder="留空则不认证"
-                          />
-                          <button
-                            onClick={() => setShowPythonKey(!showPythonKey)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
-                          >
-                            {showPythonKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 请求间隔 */}
-                  <div className="space-y-3">
-                    <p className="text-xs font-medium text-surface-400">请求间隔（防止被封 IP）</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-surface-500 mb-1 block">最小间隔（ms）</label>
-                        <input
-                          type="number"
-                          value={editMinInterval}
-                          onChange={(e) => setEditMinInterval(Number(e.target.value))}
-                          className="input text-sm"
-                          min={500}
-                          max={10000}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-surface-500 mb-1 block">最大间隔（ms）</label>
-                        <input
-                          type="number"
-                          value={editMaxInterval}
-                          onChange={(e) => setEditMaxInterval(Number(e.target.value))}
-                          className="input text-sm"
-                          min={1000}
-                          max={30000}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ===== 可折叠：刮削测试 ===== */}
-            <div style={{ borderTop: '1px solid var(--border-default)' }} className="pt-4">
-              <button
-                onClick={() => setShowTest(!showTest)}
-                className="flex items-center gap-2 text-sm font-medium w-full text-left group"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <ChevronDown size={14} className={clsx('transition-transform text-surface-500', showTest && 'rotate-180')} />
-                刮削测试工具
-                <span className="text-[10px] text-surface-500 font-normal">（番号识别 & 手动刮削）</span>
-              </button>
-              {showTest && (
-                <div className="mt-4 space-y-5">
-                  {/* 番号识别测试 */}
-                  <div>
-                    <p className="text-xs font-medium text-surface-400 mb-2 flex items-center gap-1.5">
-                      <Search size={12} />
-                      番号识别测试
-                    </p>
-                    <p className="text-[10px] text-surface-500 mb-2">输入文件名或标题，测试番号识别引擎是否能正确提取番号</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={parseInput}
-                        onChange={(e) => setParseInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleParseCode()}
-                        className="input text-sm flex-1"
-                        placeholder="例如：[FHD] SSIS-001 三上悠亚.mp4"
-                      />
-                      <button
-                        onClick={handleParseCode}
-                        disabled={parseLoading || !parseInput.trim()}
-                        className="btn-primary gap-1.5 px-3 py-2 text-xs whitespace-nowrap"
-                      >
-                        {parseLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                        识别
-                      </button>
-                    </div>
-                    {parseResult && (
-                      <div className="mt-2 rounded-lg p-3" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                        <div className="flex items-center gap-3">
-                          {parseResult.is_adult ? (
-                            <CheckCircle2 size={16} className="text-green-400" />
-                          ) : (
-                            <XCircle size={16} className="text-surface-500" />
-                          )}
-                          <div>
-                            {parseResult.is_adult ? (
-                              <>
-                                <p className="text-sm font-medium text-green-400">
-                                  识别到番号：<span className="font-mono">{parseResult.code}</span>
-                                </p>
-                                <p className="text-[10px] text-surface-500">类型：{parseResult.code_type}</p>
-                              </>
-                            ) : (
-                              <p className="text-sm text-surface-400">未识别到番号</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 手动刮削测试 */}
-                  <div>
-                    <p className="text-xs font-medium text-surface-400 mb-2 flex items-center gap-1.5">
-                      <TestTube size={12} />
-                      手动刮削测试
-                    </p>
-                    <p className="text-[10px] text-surface-500 mb-2">输入番号，测试混合调度引擎的刮削效果</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={testCode}
-                        onChange={(e) => setTestCode(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleTestScrape()}
-                        className="input text-sm flex-1 font-mono"
-                        placeholder="例如：SSIS-001"
-                      />
-                      <button
-                        onClick={handleTestScrape}
-                        disabled={testLoading || !testCode.trim() || !editEnabled}
-                        className="btn-primary gap-1.5 px-3 py-2 text-xs whitespace-nowrap"
-                      >
-                        {testLoading ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                        刮削
-                      </button>
-                    </div>
-
-                    {!editEnabled && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-yellow-400">
-                        <AlertTriangle size={12} />
-                        请先启用番号刮削功能
-                      </div>
-                    )}
-
-                    {testError && (
-                      <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/30 p-3">
-                        <div className="flex items-center gap-2 text-sm text-red-400">
-                          <XCircle size={14} />
-                          {testError}
-                        </div>
-                      </div>
-                    )}
-
-                    {testResult && (
-                      <div className="mt-3 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                        <div className="flex gap-4">
-                          {testResult.cover && (
-                            <div className="flex-shrink-0">
-                              <div className="w-20 h-28 rounded-lg overflow-hidden bg-surface-800 flex items-center justify-center">
-                                <Image size={20} className="text-surface-600" />
-                              </div>
-                              <p className="text-[10px] text-surface-500 mt-1 text-center">封面已获取</p>
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-neon/10 text-neon">{testResult.code}</span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-700 text-surface-400">来源: {testResult.source}</span>
-                            </div>
-                            <h3 className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{testResult.title}</h3>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                              {testResult.actresses?.length > 0 && (
-                                <div className="flex items-center gap-1.5 col-span-2">
-                                  <Users size={12} className="text-surface-500 flex-shrink-0" />
-                                  <span className="text-surface-400 truncate">{testResult.actresses.join(', ')}</span>
-                                </div>
-                              )}
-                              {testResult.studio && (
-                                <div className="flex items-center gap-1.5">
-                                  <Building2 size={12} className="text-surface-500 flex-shrink-0" />
-                                  <span className="text-surface-400 truncate">{testResult.studio}</span>
-                                </div>
-                              )}
-                              {testResult.release_date && (
-                                <div className="flex items-center gap-1.5">
-                                  <Calendar size={12} className="text-surface-500 flex-shrink-0" />
-                                  <span className="text-surface-400">{testResult.release_date}</span>
-                                </div>
-                              )}
-                              {testResult.duration > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <Clock size={12} className="text-surface-500 flex-shrink-0" />
-                                  <span className="text-surface-400">{testResult.duration} 分钟</span>
-                                </div>
-                              )}
-                              {testResult.rating > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                  <Star size={12} className="text-yellow-400 flex-shrink-0" />
-                                  <span className="text-surface-400">{testResult.rating.toFixed(1)}</span>
-                                </div>
-                              )}
-                            </div>
-                            {testResult.genres?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 pt-1">
-                                {testResult.genres.map((g, i) => (
-                                  <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-700 text-surface-400">{g}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ===== 保存按钮 ===== */}
-            <div className="flex items-center gap-3 pt-3" style={{ borderTop: '1px solid var(--border-default)' }}>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="btn-primary gap-1.5 px-4 py-2 text-sm"
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                {saving ? '保存中...' : '保存配置'}
-              </button>
-              <button
-                onClick={loadConfig}
-                className="btn-ghost gap-1.5 px-4 py-2 text-sm"
-              >
-                <RefreshCw size={14} />
-                重新加载
-              </button>
             </div>
           </div>
-        )}
+        </div>
+
+        <CollapsibleSection
+          open={showAdvanced}
+          onToggle={() => setShowAdvanced((v) => !v)}
+          icon={<Settings size={15} />}
+          title="进阶运营中心"
+          hint="默认隐藏；用于失败重试、报表、调度、缓存和诊断"
+        >
+          {opsLoading && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-blue-400 bg-blue-500/10">
+              <Loader2 size={13} className="animate-spin" />
+              正在加载运营数据...
+            </div>
+          )}
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <OperationCard icon={<BarChart3 size={15} />} title="7 天报表">
+              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <p>处理：<b className="font-mono text-neon">{report?.total_processed ?? 0}</b></p>
+                <p>成功：<b className="font-mono text-green-400">{report?.total_success ?? 0}</b></p>
+                <p>失败：<b className="font-mono text-red-400">{report?.total_failed ?? 0}</b></p>
+                <p>成功率：<b className="font-mono text-surface-100">{Math.round((report?.overall_rate || 0) * 100)}%</b></p>
+              </div>
+            </OperationCard>
+
+            <OperationCard icon={<RotateCcw size={15} />} title="失败重试">
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                最近 7 天失败项：<b className="font-mono text-red-400">{failedItems.length + folderFailedCount}</b>
+                <span className="ml-1 text-[10px]">目录 {folderFailedCount} / 媒体库 {failedItems.length}</span>
+              </p>
+              <button onClick={retryFailedItems} disabled={retryingFailed || failedItems.length + folderFailedCount === 0} className="btn-primary mt-3 gap-2 px-3 py-1.5 text-xs">
+                {retryingFailed ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                一键重试失败
+              </button>
+            </OperationCard>
+
+            <OperationCard icon={<Clock size={15} />} title="定时调度">
+              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <p>状态：<b className={schedulerInfo?.config?.Enabled ? 'text-green-400' : 'text-surface-400'}>{schedulerInfo?.config?.Enabled ? '启用' : '关闭'}</b></p>
+                <p>上次运行：{formatTime(schedulerInfo?.last_run_at)}</p>
+              </div>
+              <button onClick={triggerSchedulerNow} disabled={triggeringSchedule} className="btn-ghost mt-3 gap-2 px-3 py-1.5 text-xs">
+                {triggeringSchedule ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                立即运行一次
+              </button>
+            </OperationCard>
+
+            <OperationCard icon={<Database size={15} />} title="缓存">
+              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <p>条目：<b className="font-mono text-neon">{cacheStats?.size ?? 0}</b> / {cacheStats?.max_size ?? 0}</p>
+                <p>命中：<b className="font-mono text-green-400">{cacheStats?.total_hit ?? 0}</b></p>
+              </div>
+              <button onClick={clearMetadataCache} disabled={clearingCache} className="btn-ghost mt-3 gap-2 px-3 py-1.5 text-xs text-red-400">
+                {clearingCache ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                清空缓存
+              </button>
+            </OperationCard>
+          </div>
+
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>历史任务</p>
+                <button onClick={() => Promise.all([loadTasks(), loadOperations()])} className="text-xs text-neon hover:underline">刷新</button>
+              </div>
+              <div className="max-h-56 space-y-2 overflow-auto text-xs">
+                {unifiedTasks.length === 0 ? (
+                  <p style={{ color: 'var(--text-tertiary)' }}>暂无历史任务</p>
+                ) : unifiedTasks.slice(0, 12).map((task) => (
+                  <div key={`${task.kind}-${task.id}`} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-primary)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{task.kind === 'folder' ? '目录刮削' : '媒体库批量'}</span>
+                      <span className={task.status === 'completed' ? 'text-green-400' : task.status === 'failed' ? 'text-red-400' : 'text-yellow-400'}>{taskStatusLabel[task.status] || task.status}</span>
+                    </div>
+                    <div className="mt-1 flex gap-3 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                      <span>{task.current}/{task.total}</span>
+                      <span>成功 {task.success}</span>
+                      <span>失败 {task.failed}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>配置与数据源诊断</p>
+                <button onClick={() => setShowDiagnostics((v) => !v)} className="text-xs text-neon hover:underline">
+                  {showDiagnostics ? '收起' : '展开'}
+                </button>
+              </div>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                普通用户无需配置；遇到连接失败、数据源失效时再展开查看。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button onClick={resetLazyDefaults} className="btn-primary gap-2 px-3 py-1.5 text-xs">
+                  <RefreshCw size={12} />
+                  恢复懒人默认
+                </button>
+                <button onClick={() => Promise.all([loadConfig(), loadOperations()])} className="btn-ghost gap-2 px-3 py-1.5 text-xs">
+                  <RefreshCw size={12} />
+                  重新加载
+                </button>
+              </div>
+              {showDiagnostics && (
+                <div className="mt-3 space-y-2">
+                  {(config?.sources || []).map((source) => (
+                    <div key={source.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-primary)' }}>
+                      <div className="min-w-0">
+                        <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>{source.name}</p>
+                        <p className="truncate" style={{ color: 'var(--text-tertiary)' }}>{source.url || '未配置'}</p>
+                      </div>
+                      <span className={source.enabled ? 'text-green-400' : 'text-surface-500'}>{source.enabled ? '启用' : '关闭'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </CollapsibleSection>
+
+      </section>
+
+      <FileBrowser
+        open={showFolderBrowser}
+        onClose={() => setShowFolderBrowser(false)}
+        onSelect={(selectedPath) => {
+          setFolderPath(selectedPath)
+          setFolderScan(null)
+          setShowFolderBrowser(false)
+        }}
+        initialPath={folderPath || undefined}
+      />
+    </>
+  )
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+      <p className={clsx('mt-1 font-mono text-2xl font-semibold', accent)}>{value}</p>
+    </div>
+  )
+}
+
+function LazyRule({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--bg-primary)' }}>
+      <CheckCircle2 size={13} className="shrink-0 text-green-400" />
+      <span>{text}</span>
+    </div>
+  )
+}
+
+function OperationCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+        {icon}
+        {title}
       </div>
-    </section>
+      {children}
+    </div>
+  )
+}
+
+function CollapsibleSection({
+  open,
+  onToggle,
+  icon,
+  title,
+  hint,
+  children,
+}: {
+  open: boolean
+  onToggle: () => void
+  icon: React.ReactNode
+  title: string
+  hint: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
+      <button onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left">
+        <span className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {icon}
+          {title}
+          <span className="text-[10px] font-normal" style={{ color: 'var(--text-tertiary)' }}>{hint}</span>
+        </span>
+        <ChevronDown size={15} className={clsx('transition-transform text-surface-500', open && 'rotate-180')} />
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </div>
   )
 }

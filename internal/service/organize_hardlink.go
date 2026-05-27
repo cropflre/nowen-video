@@ -467,6 +467,7 @@ func (s *OrganizeHardlinkService) buildHardlinkPath(outputDir string, c *model.M
 	const (
 		moviesDir         = "Movies"
 		tvShowsDir        = "TV Shows"
+		adultDir          = "Adult"
 		unsortedDir       = "_unsorted"
 		unsortedThreshold = 0.5
 	)
@@ -481,6 +482,31 @@ func (s *OrganizeHardlinkService) buildHardlinkPath(outputDir string, c *model.M
 	mediaType := strings.ToLower(strings.TrimSpace(media.MediaType))
 	if mediaType == "" && c.Category == "tvshow" {
 		mediaType = "episode"
+	}
+
+	if c.Category == "adult" || strings.TrimSpace(media.Num) != "" {
+		code := firstNonEmpty(media.Num, c.ParsedTitle)
+		if code == "" {
+			if info := ParseCodeEnhanced(media.FilePath); info.Number != "" {
+				code = info.Number
+			}
+		}
+		fileStem := sanitizeFilename(code)
+		if fileStem == "" {
+			fileStem = sanitizeFilename(strings.TrimSuffix(srcName, filepath.Ext(srcName)))
+		}
+		if info := ParseCodeEnhanced(media.FilePath); info.CDPart != "" && !strings.Contains(strings.ToUpper(fileStem), info.CDPart) {
+			fileStem += "-" + info.CDPart
+		}
+		title := firstNonEmpty(c.ParsedTitle, media.Title, code)
+		dirName := sanitizeFilename(code)
+		if title != "" && !strings.EqualFold(title, code) {
+			dirName = sanitizeFilename(code + " - " + title)
+		}
+		if dirName == "" {
+			dirName = fileStem
+		}
+		return filepath.Join(outputDir, adultDir, dirName, fileStem+strings.ToLower(filepath.Ext(srcName)))
 	}
 
 	// 2) 剧集：强制使用稳定剧名目录，不使用每集 SuggestedDir 中可能随机变化的 tmdbid/year。

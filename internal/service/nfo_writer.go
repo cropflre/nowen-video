@@ -472,8 +472,13 @@ func buildAdultNFOXML(media *model.Media, meta *AdultMetadata) string {
 	writeXMLField(&sb, "originaltitle", originalTitle)
 	writeXMLField(&sb, "sorttitle", meta.Code) // 排序用番号
 
-	// 番号单独字段（Emby 扩展）
-	writeXMLField(&sb, "num", meta.Code)
+	// 番号单独字段（Emby/Jellyfin/Infuse 兼容扩展）
+	code := strings.TrimSpace(meta.Code)
+	if code == "" && media != nil {
+		code = strings.TrimSpace(media.Num)
+	}
+	writeXMLField(&sb, "num", code)
+	writeXMLField(&sb, "id", code)
 
 	if media.Year > 0 {
 		writeXMLField(&sb, "year", fmt.Sprintf("%d", media.Year))
@@ -596,8 +601,12 @@ func buildAdultNFOXML(media *model.Media, meta *AdultMetadata) string {
 		writeXMLField(&sb, "trailer", meta.Trailer)
 	}
 
-	// 唯一 ID（使用番号）
-	sb.WriteString(fmt.Sprintf("  <uniqueid type=\"num\" default=\"true\">%s</uniqueid>\n", escapeXML(meta.Code)))
+	// 唯一 ID（使用番号），同时写入多种 type，兼容不同客户端/插件读取。
+	if code != "" {
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"num\" default=\"true\">%s</uniqueid>\n", escapeXML(code)))
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"adult\">%s</uniqueid>\n", escapeXML(code)))
+		sb.WriteString(fmt.Sprintf("  <uniqueid type=\"jav\">%s</uniqueid>\n", escapeXML(code)))
+	}
 
 	// 数据来源
 	if meta.Source != "" {

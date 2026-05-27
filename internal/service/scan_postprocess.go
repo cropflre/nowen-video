@@ -93,6 +93,9 @@ type ScanPostProcessService struct {
 	// 硬链接整理（可选，注入后自动在分类完成后创建硬链接）
 	organizeHardlink *OrganizeHardlinkService
 
+	// 成人内容专项刮削（可选）：作为 AI 自动整理中的确定性分支，优先于通用 AI 识别。
+	adultScraper *AdultScraperService
+
 	// 目录级 AI 识别缓存：仅对 AI 已确认的剧集根目录复用，避免电影合集目录被误复用成同一标题。
 	aiIdentifyCache   map[string]*SmartRenameAIResult
 	aiIdentifyCacheMu sync.Mutex
@@ -142,6 +145,11 @@ func NewScanPostProcessService(
 // SetOrganizeHardlinkService 注入硬链接整理服务（延迟注入，可选）
 func (s *ScanPostProcessService) SetOrganizeHardlinkService(ohl *OrganizeHardlinkService) {
 	s.organizeHardlink = ohl
+}
+
+// SetAdultScraperService 注入成人内容专项刮削服务。
+func (s *ScanPostProcessService) SetAdultScraperService(adult *AdultScraperService) {
+	s.adultScraper = adult
 }
 
 // SetSeriesRepo 注入剧集仓储，用于媒体类型纠正后重算合集统计。
@@ -277,10 +285,12 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 	// 读取所属媒体库的"AI 自动整理"模式（off / rule_only / ai_assisted）。
 	// 该字段在用户创建/编辑媒体库时勾选，是判定是否调用 AI 的最高优先级开关。
 	mode := model.AutoOrganizeAIAssisted
+	var lib *model.Library
 	if media.LibraryID != "" && s.libraryRepo != nil {
-		if lib, errLib := s.libraryRepo.FindByID(media.LibraryID); errLib == nil && lib != nil && lib.AutoOrganizeMode != "" {
-			if model.IsValidAutoOrganizeMode(lib.AutoOrganizeMode) {
-				mode = lib.AutoOrganizeMode
+		if loaded, errLib := s.libraryRepo.FindByID(media.LibraryID); errLib == nil && loaded != nil {
+			lib = loaded
+			if loaded.AutoOrganizeMode != "" && model.IsValidAutoOrganizeMode(loaded.AutoOrganizeMode) {
+				mode = loaded.AutoOrganizeMode
 			}
 		}
 	}
@@ -311,6 +321,11 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 		MediaID:     media.ID,
 		LibraryID:   media.LibraryID,
 		NamingStyle: s.cfg.NamingStyle,
+	}
+
+	// 成人内容专项整理：番号识别是确定性规则，优先于通用 AI，避免把敏感文件名发给 AI。
+	if handled, err := s.processAdultMedia(media, lib, classification); handled {
+		return err
 	}
 
 	// =============== 阶段 1：识别 ===============
@@ -359,6 +374,152 @@ func (s *ScanPostProcessService) ProcessMedia(mediaID string) error {
 	}
 
 	return nil
+}
+
+func (s *ScanPostProcessService) processAdultMedia(media *model.Media, lib *model.Library, c *model.MediaClassification) (bool, error) {
+	if media == nil || c == nil || lib == nil || !lib.AllowAdultContent {
+		return false, nil
+	}
+	if s.adultScraper == nil || !s.adultScraper.IsEnabled() {
+		return false, nil
+	}
+
+	codeInfo := ParseCodeEnhanced(media.FilePath)
+	code := strings.TrimSpace(codeInfo.Number)
+	if code == "" {
+		codeInfo = ParseCodeEnhanced(media.Title)
+		code = strings.TrimSpace(codeInfo.Number)
+	}
+	if code == "" {
+		if parsedCode, _ := ParseCode(media.FilePath); parsedCode != "" {
+			code = parsedCode
+		} else if parsedCode, _ := ParseCode(media.Title); parsedCode != "" {
+			code = parsedCode
+		}
+	}
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return false, nil
+	}
+
+	now := time.Now()
+	c.ParsedTitle = code
+	c.ParsedTitleAlt = strings.TrimSpace(media.Title)
+	c.Confidence = 1.0
+	c.AIInvoked = false
+	c.Category = "adult"
+	c.Region = adultRegionFromNumber(codeInfo)
+	if c.Region == "" {
+		c.Region = inferRegion(media)
+	}
+	c.Decade = inferDecade(media.Year)
+	c.GenreTags = normalizeGenres(media.Genres, media.Tags)
+	c.LanguageTag = inferLanguage(media)
+	c.QualityTier = inferQualityTier(media)
+	c.VirtualPath = buildVirtualPath(c.Category, c.Region, c.Decade, c.GenreTags)
+	c.ProcessedAt = &now
+
+	meta, err := s.adultScraper.ScrapeByCode(code)
+	if err != nil || meta == nil {
+		c.Status = model.ClassificationStatusPartial
+		c.ErrorMsg = fmt.Sprintf("成人专项刮削失败: %v", err)
+		if media.Num == "" {
+			media.Num = code
+			media.MediaType = "movie"
+			media.ScrapeStatus = "partial"
+			media.LastScrapeAt = &now
+			_ = s.mediaRepo.Update(media)
+		}
+		s.naming(media, scanPostParsed{Title: code, MediaType: "movie"}, c)
+		return true, s.repo.Upsert(c)
+	}
+	if strings.TrimSpace(meta.Code) == "" {
+		meta.Code = code
+	}
+
+	if err := s.adultScraper.ApplyToMedia(media, meta, "primary"); err != nil {
+		c.Status = model.ClassificationStatusPartial
+		c.ErrorMsg = "成人专项元数据应用失败: " + err.Error()
+		return true, s.repo.Upsert(c)
+	}
+
+	media.Num = code
+	media.MediaType = "movie"
+	media.SeriesID = ""
+	media.SeasonNum = 0
+	media.EpisodeNum = 0
+	media.EpisodeTitle = ""
+	media.ScrapeStatus = "scraped"
+	media.LastScrapeAt = &now
+	media.ScrapeAttempts++
+	if codeInfo.Mosaic != "" && media.MPAA == "" {
+		media.MPAA = codeInfo.Mosaic
+	}
+	if media.CountryCode == "" && c.Region != "" {
+		media.CountryCode = c.Region
+	}
+	if err := s.mediaRepo.Update(media); err != nil {
+		c.Status = model.ClassificationStatusPartial
+		c.ErrorMsg = "成人专项元数据保存失败: " + err.Error()
+		return true, s.repo.Upsert(c)
+	}
+
+	parsed := scanPostParsed{
+		Title:     firstNonEmpty(meta.Title, code),
+		TitleAlt:  firstNonEmpty(meta.OriginalTitle, media.OrigTitle),
+		Year:      media.Year,
+		MediaType: "movie",
+	}
+	c.ParsedTitle = parsed.Title
+	c.ParsedTitleAlt = parsed.TitleAlt
+	c.ParsedYear = parsed.Year
+	c.Region = inferRegion(media)
+	if c.Region == "" {
+		c.Region = adultRegionFromNumber(codeInfo)
+	}
+	c.Decade = inferDecade(parsed.Year)
+	c.GenreTags = normalizeGenres(media.Genres, media.Tags)
+	c.LanguageTag = inferLanguage(media)
+	c.VirtualPath = buildVirtualPath(c.Category, c.Region, c.Decade, c.GenreTags)
+	c.Status = model.ClassificationStatusProcessed
+	s.naming(media, parsed, c)
+	if err := s.repo.Upsert(c); err != nil {
+		return true, err
+	}
+
+	if s.organizeHardlink != nil && strings.TrimSpace(lib.OrganizeOutputDir) != "" {
+		if r, errHL := s.organizeHardlink.ProcessResolvedMediaHardlink(media, c, strings.TrimSpace(lib.OrganizeOutputDir)); errHL != nil {
+			s.logger.Warnf("[ScanPostProcess] 成人硬链接失败 media_id=%s err=%v", media.ID, errHL)
+		} else if r != nil && r.ErrorMsg != "" {
+			s.logger.Warnf("[ScanPostProcess] 成人硬链接警告 media_id=%s msg=%s", media.ID, r.ErrorMsg)
+		}
+	}
+
+	s.logger.Infof("[ScanPostProcess] 成人内容已并入 AI 自动整理: media_id=%s code=%s source=%s", media.ID, code, meta.Source)
+	return true, nil
+}
+
+func adultRegionFromNumber(info *NumberInfo) string {
+	if info == nil || !info.IsAdult {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(info.Mosaic)) {
+	case "国产":
+		return "CN"
+	case "欧美":
+		return "US"
+	default:
+		return "JP"
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // ProcessBatch 批量处理；返回成功数量
@@ -1281,6 +1442,42 @@ func (s *ScanPostProcessService) naming(media *model.Media, parsed scanPostParse
 		style = s.cfg.NamingStyle
 	}
 	c.NamingStyle = style
+
+	if c.Category == "adult" || strings.TrimSpace(media.Num) != "" {
+		code := firstNonEmpty(media.Num, c.ParsedTitle)
+		if code == "" {
+			if info := ParseCodeEnhanced(media.FilePath); info.Number != "" {
+				code = info.Number
+			}
+		}
+		title := firstNonEmpty(c.ParsedTitle, media.Title, code)
+		ext := strings.ToLower(filepath.Ext(media.FilePath))
+		if ext == "" {
+			ext = filepath.Ext(filepath.Base(media.FilePath))
+		}
+		fileStem := sanitizeFilename(code)
+		if fileStem == "" {
+			fileStem = sanitizeFilename(strings.TrimSuffix(filepath.Base(media.FilePath), filepath.Ext(media.FilePath)))
+		}
+		if info := ParseCodeEnhanced(media.FilePath); info.CDPart != "" && !strings.Contains(strings.ToUpper(fileStem), info.CDPart) {
+			fileStem += "-" + info.CDPart
+		}
+		dirName := sanitizeFilename(code)
+		if title != "" && !strings.EqualFold(title, code) {
+			dirName = sanitizeFilename(code + " - " + title)
+		}
+		c.SuggestedName = fileStem + ext
+		c.SuggestedDir = filepath.ToSlash(filepath.Join("Adult", dirName))
+		if s.libraryRepo != nil && media.LibraryID != "" {
+			if lib, err := s.libraryRepo.FindByID(media.LibraryID); err == nil && lib != nil && lib.Path != "" {
+				c.SuggestedFullPath = filepath.ToSlash(filepath.Join(lib.Path, c.SuggestedDir, c.SuggestedName))
+			}
+		}
+		if c.SuggestedFullPath == "" {
+			c.SuggestedFullPath = filepath.ToSlash(filepath.Join(filepath.Dir(media.FilePath), c.SuggestedDir, c.SuggestedName))
+		}
+		return
+	}
 
 	// 路径 ID 兜底：源路径目录上有 [tmdbid-X] 时回收
 	tmdbID := parsed.TMDbID

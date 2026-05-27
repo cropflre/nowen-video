@@ -1,11 +1,11 @@
 // Package service - 文件夹扫描 & 自定义文件夹刮削（参考 mdcx 项目设计）
 //
 // 功能概览：
-//   1. ScanFolder：递归扫描指定文件夹，识别视频文件并解析番号
-//   2. StartFolderBatch：针对扫出的视频列表启动批量刮削任务
-//      - 封面图落地到视频旁边（xxx-fanart.jpg + xxx-poster.jpg），符合 Emby/Jellyfin/Infuse 约定
-//      - NFO 文件同样落在视频旁，供媒体中心识别
-//      - 整个流程不依赖数据库 Media 记录，适合用户自选目录刮削
+//  1. ScanFolder：递归扫描指定文件夹，识别视频文件并解析番号
+//  2. StartFolderBatch：针对扫出的视频列表启动批量刮削任务
+//     - 封面图落地到视频旁边（xxx-fanart.jpg + xxx-poster.jpg），符合 Emby/Jellyfin/Infuse 约定
+//     - NFO 文件同样落在视频旁，供媒体中心识别
+//     - 整个流程不依赖数据库 Media 记录，适合用户自选目录刮削
 package service
 
 import (
@@ -46,13 +46,13 @@ type FolderScanEntry struct {
 
 // FolderScanResult 扫描结果
 type FolderScanResult struct {
-	Root         string            `json:"root"`           // 扫描根路径
-	Total        int               `json:"total"`          // 扫到的视频总数
-	WithCode     int               `json:"with_code"`      // 识别到番号的数量
-	WithoutCode  int               `json:"without_code"`   // 未识别番号的数量
-	AlreadyDone  int               `json:"already_done"`   // 旁边已有 NFO 的数量
-	Entries      []FolderScanEntry `json:"entries"`        // 条目列表
-	ScannedAt    time.Time         `json:"scanned_at"`     // 扫描完成时间
+	Root        string            `json:"root"`         // 扫描根路径
+	Total       int               `json:"total"`        // 扫到的视频总数
+	WithCode    int               `json:"with_code"`    // 识别到番号的数量
+	WithoutCode int               `json:"without_code"` // 未识别番号的数量
+	AlreadyDone int               `json:"already_done"` // 旁边已有 NFO 的数量
+	Entries     []FolderScanEntry `json:"entries"`      // 条目列表
+	ScannedAt   time.Time         `json:"scanned_at"`   // 扫描完成时间
 }
 
 // ScanFolder 递归扫描指定目录下所有视频文件并解析番号
@@ -168,13 +168,21 @@ func (s *AdultScraperService) ScanFolder(root string, recursive bool, maxDepth i
 
 // ==================== 文件夹批量刮削 ====================
 
+const (
+	EventAdultFolderBatchStarted   = "adult_folder_batch_started"
+	EventAdultFolderBatchProgress  = "adult_folder_batch_progress"
+	EventAdultFolderBatchCompleted = "adult_folder_batch_completed"
+	EventAdultFolderBatchFailed    = "adult_folder_batch_failed"
+	EventAdultFolderBatchCancelled = "adult_folder_batch_cancelled"
+)
+
 // FolderBatchOptions 文件夹批量刮削选项
 type FolderBatchOptions struct {
-	Paths          []string // 待刮削的视频文件路径列表
-	Aggregated     bool     // 是否使用聚合模式（更完整但更慢）
-	Concurrency    int      // 并发数（默认 2）
-	SkipIfHasNFO   bool     // 已有 NFO 的文件自动跳过
-	OverrideCode   string   // 若所有文件共用同一番号可指定（一般不用）
+	Paths        []string // 待刮削的视频文件路径列表
+	Aggregated   bool     // 是否使用聚合模式（更完整但更慢）
+	Concurrency  int      // 并发数（默认 2）
+	SkipIfHasNFO bool     // 已有 NFO 的文件自动跳过
+	OverrideCode string   // 若所有文件共用同一番号可指定（一般不用）
 }
 
 // FolderBatchItemResult 单个条目结果
@@ -189,18 +197,18 @@ type FolderBatchItemResult struct {
 
 // FolderBatchTask 文件夹批量刮削任务
 type FolderBatchTask struct {
-	ID         string                  `json:"id"`
-	Status     string                  `json:"status"` // running / paused / cancelled / completed / failed
-	Total      int                     `json:"total"`
-	Current    int32                   `json:"current"`
-	Success    int32                   `json:"success"`
-	Failed     int32                   `json:"failed"`
-	Skipped    int32                   `json:"skipped"`
-	StartedAt  time.Time               `json:"started_at"`
-	FinishedAt *time.Time              `json:"finished_at,omitempty"`
-	Results    []FolderBatchItemResult `json:"results"`
-	Aggregated bool                    `json:"aggregated"`
-	Concurrency int                    `json:"concurrency"`
+	ID          string                  `json:"id"`
+	Status      string                  `json:"status"` // running / paused / cancelled / completed / failed
+	Total       int                     `json:"total"`
+	Current     int32                   `json:"current"`
+	Success     int32                   `json:"success"`
+	Failed      int32                   `json:"failed"`
+	Skipped     int32                   `json:"skipped"`
+	StartedAt   time.Time               `json:"started_at"`
+	FinishedAt  *time.Time              `json:"finished_at,omitempty"`
+	Results     []FolderBatchItemResult `json:"results"`
+	Aggregated  bool                    `json:"aggregated"`
+	Concurrency int                     `json:"concurrency"`
 
 	cancelCtx context.Context
 	cancelFn  context.CancelFunc
@@ -210,6 +218,8 @@ type FolderBatchTask struct {
 // AdultFolderBatchService 自定义文件夹批量刮削服务
 type AdultFolderBatchService struct {
 	scraper *AdultScraperService
+	wsHub   *WSHub
+	store   *AdultFolderTaskStore
 
 	mu      sync.Mutex
 	tasks   map[string]*FolderBatchTask
@@ -217,11 +227,25 @@ type AdultFolderBatchService struct {
 }
 
 // NewAdultFolderBatchService 构造服务
-func NewAdultFolderBatchService(scraper *AdultScraperService) *AdultFolderBatchService {
+func NewAdultFolderBatchService(scraper *AdultScraperService, wsHub *WSHub) *AdultFolderBatchService {
 	return &AdultFolderBatchService{
 		scraper: scraper,
+		wsHub:   wsHub,
 		tasks:   make(map[string]*FolderBatchTask),
 		history: make([]*FolderBatchTask, 0, 50),
+	}
+}
+
+func (fs *AdultFolderBatchService) SetTaskStore(store *AdultFolderTaskStore) {
+	fs.store = store
+	if store == nil {
+		return
+	}
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.history = store.List()
+	if len(fs.history) > 50 {
+		fs.history = fs.history[:50]
 	}
 }
 
@@ -257,6 +281,7 @@ func (fs *AdultFolderBatchService) Start(opts FolderBatchOptions) (string, error
 	fs.mu.Lock()
 	fs.tasks[task.ID] = task
 	fs.mu.Unlock()
+	fs.broadcastTaskEvent(EventAdultFolderBatchStarted, task, nil)
 
 	go fs.run(task, opts)
 	return task.ID, nil
@@ -274,6 +299,7 @@ func (fs *AdultFolderBatchService) Cancel(id string) error {
 	t.mu.Lock()
 	t.Status = "cancelled"
 	t.mu.Unlock()
+	fs.broadcastTaskEvent(EventAdultFolderBatchCancelled, t, nil)
 	return nil
 }
 
@@ -306,6 +332,7 @@ func (fs *AdultFolderBatchService) run(task *FolderBatchTask, opts FolderBatchOp
 			task.mu.Lock()
 			task.Status = "failed"
 			task.mu.Unlock()
+			fs.broadcastTaskEvent(EventAdultFolderBatchFailed, task, map[string]any{"error": fmt.Sprint(r)})
 		}
 		finished := time.Now()
 		task.mu.Lock()
@@ -313,8 +340,16 @@ func (fs *AdultFolderBatchService) run(task *FolderBatchTask, opts FolderBatchOp
 		if task.Status == "running" {
 			task.Status = "completed"
 		}
+		status := task.Status
 		task.mu.Unlock()
 		fs.archive(task)
+		if status == "completed" {
+			fs.broadcastTaskEvent(EventAdultFolderBatchCompleted, task, nil)
+		} else if status == "failed" {
+			fs.broadcastTaskEvent(EventAdultFolderBatchFailed, task, nil)
+		} else if status == "cancelled" {
+			fs.broadcastTaskEvent(EventAdultFolderBatchCancelled, task, nil)
+		}
 	}()
 
 	sem := make(chan struct{}, task.Concurrency)
@@ -339,13 +374,59 @@ func (fs *AdultFolderBatchService) run(task *FolderBatchTask, opts FolderBatchOp
 }
 
 // processOne 处理单个视频文件
+func (fs *AdultFolderBatchService) broadcastTaskEvent(eventType string, task *FolderBatchTask, extra map[string]any) {
+	if fs == nil || fs.wsHub == nil || task == nil {
+		return
+	}
+	data := map[string]any{
+		"task_id":     task.ID,
+		"status":      task.Status,
+		"total":       task.Total,
+		"current":     atomic.LoadInt32(&task.Current),
+		"success":     atomic.LoadInt32(&task.Success),
+		"failed":      atomic.LoadInt32(&task.Failed),
+		"skipped":     atomic.LoadInt32(&task.Skipped),
+		"aggregated":  task.Aggregated,
+		"concurrency": task.Concurrency,
+		"started_at":  task.StartedAt,
+		"finished_at": task.FinishedAt,
+	}
+	for k, v := range extra {
+		data[k] = v
+	}
+	fs.wsHub.BroadcastEvent(eventType, data)
+}
+
+func (fs *AdultFolderBatchService) broadcastProgress(task *FolderBatchTask, result FolderBatchItemResult, current int) {
+	if fs == nil || fs.wsHub == nil || task == nil {
+		return
+	}
+	fs.wsHub.BroadcastEvent(EventAdultFolderBatchProgress, map[string]any{
+		"task_id":    task.ID,
+		"total":      task.Total,
+		"current":    current,
+		"success":    atomic.LoadInt32(&task.Success),
+		"failed":     atomic.LoadInt32(&task.Failed),
+		"skipped":    atomic.LoadInt32(&task.Skipped),
+		"path":       result.Path,
+		"code":       result.Code,
+		"status":     result.Status,
+		"message":    result.Message,
+		"source":     result.Source,
+		"at":         result.At,
+		"elapsed_ms": time.Since(task.StartedAt).Milliseconds(),
+	})
+}
+
+// processOne 处理单个视频文件
 func (fs *AdultFolderBatchService) processOne(task *FolderBatchTask, videoPath string, opts FolderBatchOptions) {
 	result := FolderBatchItemResult{Path: videoPath, At: time.Now()}
 	defer func() {
-		atomic.AddInt32(&task.Current, 1)
+		current := atomic.AddInt32(&task.Current, 1)
 		task.mu.Lock()
 		task.Results = append(task.Results, result)
 		task.mu.Unlock()
+		fs.broadcastProgress(task, result, int(current))
 	}()
 
 	// 1. 跳过已有 NFO 的文件
@@ -380,17 +461,28 @@ func (fs *AdultFolderBatchService) processOne(task *FolderBatchTask, videoPath s
 	// 3. 刮削元数据
 	var meta *AdultMetadata
 	var err error
+	var aggregateErr error
 	if opts.Aggregated {
 		meta, _, err = fs.scraper.ScrapeByCodeAggregated(code)
+		if err != nil || meta == nil {
+			aggregateErr = err
+			fs.scraper.logger.Warnf("目录聚合刮削失败，降级串行多源刮削: %s - %v", code, err)
+			meta, err = fs.scraper.ScrapeByCode(code)
+		}
 	} else {
 		meta, err = fs.scraper.ScrapeByCode(code)
 	}
 	if err != nil || meta == nil {
 		result.Status = "failed"
-		result.Message = fmt.Sprintf("刮削失败: %v", err)
+		if aggregateErr != nil && err != nil {
+			result.Message = fmt.Sprintf("聚合失败: %v；降级串行仍失败: %v", aggregateErr, err)
+		} else {
+			result.Message = fmt.Sprintf("刮削失败: %v", err)
+		}
 		atomic.AddInt32(&task.Failed, 1)
 		return
 	}
+
 	result.Source = meta.Source
 
 	// 4. 构造临时 Media 对象（只需要 FilePath + ID）
@@ -516,6 +608,9 @@ func (fs *AdultFolderBatchService) archive(task *FolderBatchTask) {
 	fs.history = append([]*FolderBatchTask{task}, fs.history...)
 	if len(fs.history) > 50 {
 		fs.history = fs.history[:50]
+	}
+	if fs.store != nil {
+		fs.store.Record(task)
 	}
 }
 

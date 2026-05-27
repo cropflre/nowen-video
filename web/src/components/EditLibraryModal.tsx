@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Library, LibraryAdvancedSettings } from '@/types'
 import { getLibraryPaths } from '@/types'
-import { libraryApi } from '@/api'
+import { libraryApi, adminApi, adultScraperApi } from '@/api'
 import {
   X,
   Film,
@@ -20,8 +20,10 @@ import {
   Plus,
   Trash2,
   Sparkles,
+  Info,
 } from 'lucide-react'
 import FileBrowser from './FileBrowser'
+
 
 // 内容类型配置
 const LIBRARY_TYPES = [
@@ -74,6 +76,30 @@ const METADATA_LANG_OPTIONS = [
   { value: 'de', label: 'Deutsch' },
   { value: 'es', label: 'Español' },
 ]
+
+const DEFAULT_METADATA_SOURCE_TOOLTIP = [
+  '当前元数据来源链接：',
+  '• TMDb API：https://api.themoviedb.org',
+  '• TMDb 图片：https://image.tmdb.org',
+  '• 成人番号数据源：以「系统设置 → 番号刮削配置」中启用的链接为准',
+  '说明：此开关只决定搜索/下载元数据时是否允许成人结果。',
+].join('\n')
+
+function buildMetadataSourceTooltip(tmdbApiURL: string, tmdbImageURL: string, adultSourceLines: string[], adultEnabled: boolean) {
+  const lines = [
+    '当前元数据来源链接：',
+    `• TMDb API：${tmdbApiURL}`,
+    `• TMDb 图片：${tmdbImageURL}`,
+  ]
+  if (adultEnabled && adultSourceLines.length > 0) {
+    lines.push('• 成人番号数据源：')
+    adultSourceLines.forEach((line) => lines.push(`  - ${line}`))
+  } else {
+    lines.push('• 成人番号数据源：未启用或未配置')
+  }
+  lines.push('说明：此开关只决定搜索/下载元数据时是否允许成人结果。')
+  return lines.join('\n')
+}
 
 interface EditLibraryModalProps {
   open: boolean
@@ -140,6 +166,7 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [browsingIndex, setBrowsingIndex] = useState<number | null>(null)
+  const [metadataSourceTooltip, setMetadataSourceTooltip] = useState(DEFAULT_METADATA_SOURCE_TOOLTIP)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -168,6 +195,40 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
       setTimeout(() => nameInputRef.current?.focus(), 100)
     }
   }, [open, library])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+
+    const loadMetadataSourceTooltip = async () => {
+      const [tmdbResult, adultResult] = await Promise.allSettled([
+        adminApi.getTMDbConfig(),
+        adultScraperApi.getConfig(),
+      ])
+      if (cancelled) return
+
+      const tmdb = tmdbResult.status === 'fulfilled' ? tmdbResult.value.data.data : null
+      const adult = adultResult.status === 'fulfilled' ? adultResult.value.data.data : null
+      const adultSourceLines = adult?.enabled
+        ? [...(adult.sources || [])]
+            .filter((source) => source.enabled && source.url)
+            .sort((a, b) => a.priority - b.priority)
+            .map((source) => `${source.name || source.id}：${source.url}`)
+        : []
+
+      setMetadataSourceTooltip(buildMetadataSourceTooltip(
+        tmdb?.api_proxy || 'https://api.themoviedb.org',
+        tmdb?.image_proxy || 'https://image.tmdb.org',
+        adultSourceLines,
+        Boolean(adult?.enabled),
+      ))
+    }
+
+    loadMetadataSourceTooltip().catch(() => {
+      if (!cancelled) setMetadataSourceTooltip(DEFAULT_METADATA_SOURCE_TOOLTIP)
+    })
+    return () => { cancelled = true }
+  }, [open])
 
   // 点击遮罩关闭
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -582,11 +643,22 @@ export default function EditLibraryModal({ open, library, onClose, onUpdate }: E
                   {/* ———— 4. 允许成人内容 ———— */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        媒体元数据允许成人内容
-                      </h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          媒体元数据允许成人内容
+                        </h4>
+                        <button
+                          type="button"
+                          title={metadataSourceTooltip}
+                          aria-label="查看元数据来源链接"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-[var(--nav-hover-bg)]"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
+                          <Info size={13} />
+                        </button>
+                      </div>
                       <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-                        从第三方公开数据库搜索、下载元数据时，允许成人内容。
+                        从第三方公开数据库搜索、下载元数据时，允许成人内容。悬停信息图标可查看当前使用的元数据链接。
                       </p>
                     </div>
                     <ToggleSwitch

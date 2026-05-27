@@ -698,6 +698,9 @@ func main() {
 		admin.PUT("/adult-scraper/config-ext", handlers.AdultScraper.UpdateConfigExtended)
 
 		// P3~P5：批量刮削 / 镜像管理 / 缓存 / 调度 / 报表
+		admin.GET("/adult-scraper/lazy/status", handlers.AdultScraper.GetLazyStatus)
+		admin.POST("/adult-scraper/lazy/start", handlers.AdultScraper.StartLazyScrape)
+		admin.POST("/adult-scraper/lazy/retry-failed", handlers.AdultScraper.RetryLazyFailed)
 		admin.POST("/adult-scraper/batch/start", handlers.AdultScraper.StartBatch)
 		admin.POST("/adult-scraper/batch/:id/pause", handlers.AdultScraper.PauseBatch)
 		admin.POST("/adult-scraper/batch/:id/resume", handlers.AdultScraper.ResumeBatch)

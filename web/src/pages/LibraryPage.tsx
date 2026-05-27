@@ -31,6 +31,14 @@ const SORT_OPTIONS = [
   { value: 'rating_desc', label: '评分最高' },
 ]
 
+type LibraryViewMode = 'grid' | 'list'
+
+const LIBRARY_VIEW_MODE_STORAGE_KEY = 'nowen:library-view-mode'
+
+function parseLibraryViewMode(value: string | null): LibraryViewMode | null {
+  return value === 'grid' || value === 'list' ? value : null
+}
+
 export default function LibraryPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -48,10 +56,34 @@ export default function LibraryPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortValue, setSortValue] = useState('created_desc')
   const [showSortDropdown, setShowSortDropdown] = useState(false)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<LibraryViewMode>(() => {
+    const urlMode = parseLibraryViewMode(searchParams.get('view'))
+    if (urlMode) return urlMode
+    if (typeof window === 'undefined') return 'grid'
+    return parseLibraryViewMode(window.localStorage.getItem(LIBRARY_VIEW_MODE_STORAGE_KEY)) || 'grid'
+  })
   const [filterGenre, setFilterGenre] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const toast = useToast()
+
+  const handleViewModeChange = useCallback((mode: LibraryViewMode) => {
+    setViewMode(mode)
+    window.localStorage.setItem(LIBRARY_VIEW_MODE_STORAGE_KEY, mode)
+    const params = new URLSearchParams(searchParams)
+    if (mode === 'grid') {
+      params.delete('view')
+    } else {
+      params.set('view', mode)
+    }
+    setSearchParams(params, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
+    const urlMode = parseLibraryViewMode(searchParams.get('view'))
+    if (!urlMode || urlMode === viewMode) return
+    setViewMode(urlMode)
+    window.localStorage.setItem(LIBRARY_VIEW_MODE_STORAGE_KEY, urlMode)
+  }, [searchParams, viewMode])
 
   // 分页变化时同步到 URL
   const setPage = useCallback((newPage: number) => {
@@ -403,7 +435,7 @@ export default function LibraryPage() {
             style={{ border: '1px solid var(--border-default)' }}
           >
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => handleViewModeChange('grid')}
               className="p-2 transition-all"
               style={{
                 background: viewMode === 'grid' ? 'var(--nav-active-bg)' : 'transparent',
@@ -413,7 +445,7 @@ export default function LibraryPage() {
               <Grid3X3 size={16} />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => handleViewModeChange('list')}
               className="p-2 transition-all"
               style={{
                 background: viewMode === 'list' ? 'var(--nav-active-bg)' : 'transparent',

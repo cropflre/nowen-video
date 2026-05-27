@@ -226,9 +226,10 @@ func (h *AdultScraperHandler) UpdateConfigExtended(c *gin.Context) {
 		EnableFC2Hub  *bool  `json:"enable_fc2hub"`
 		FC2HubURL     string `json:"fc2hub_url"`
 
-		// P2 其他
-		EnableAggregatedMode *bool `json:"enable_aggregated_mode"`
-		EnablePosterCrop     *bool `json:"enable_poster_crop"`
+		// P2/P3 其他
+		EnableAggregatedMode *bool               `json:"enable_aggregated_mode"`
+		EnablePosterCrop     *bool               `json:"enable_poster_crop"`
+		FieldPriority        map[string][]string `json:"field_priority"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
@@ -336,6 +337,13 @@ func (h *AdultScraperHandler) UpdateConfigExtended(c *gin.Context) {
 	}
 	if req.EnablePosterCrop != nil {
 		cfg.EnablePosterCrop = *req.EnablePosterCrop
+	}
+	if req.FieldPriority != nil {
+		cfg.FieldPriority = req.FieldPriority
+	}
+
+	if err := h.cfg.SaveAdultScraperConfig(); err != nil {
+		h.logger.Warnf("持久化番号刮削扩展配置失败: %v", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "扩展配置已更新"})

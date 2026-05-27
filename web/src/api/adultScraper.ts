@@ -27,6 +27,9 @@ export interface AdultScraperConfig {
   min_request_interval: number
   max_request_interval: number
   supported_formats: SupportedFormat[]
+  /** 聚合刮削字段优先级（key=字段名，value=数据源顺序） */
+  field_priority?: Record<string, string[]>
+  default_field_priority?: Record<string, string[]>
   /** 各站点 Cookie（参考 mdcx，每个站点一个完整 Cookie 字符串） */
   cookies?: {
     javbus?: string
@@ -207,6 +210,20 @@ export interface AdultSchedulerConfig {
   Aggregated: boolean
 }
 
+export interface AdultCacheStats {
+  size: number
+  max_size: number
+  total_hit: number
+  ttl: string
+}
+
+export interface AdultSchedulerStatus {
+  config?: AdultSchedulerConfig
+  last_run_at?: string
+  last_task_id?: string
+  enabled?: boolean
+}
+
 /** 刮削报表 */
 export interface AdultScrapeReport {
   period: string
@@ -231,6 +248,62 @@ export interface AdultScrapeReport {
   top_failures: string[]
   best_hours: number[]
   generated_at: string
+}
+
+export interface AdultLazyTaskView {
+  id: string
+  kind: 'folder' | 'library'
+  status: string
+  total: number
+  current: number
+  success: number
+  failed: number
+  skipped: number
+  started_at: string
+  finished_at?: string
+  aggregated: boolean
+  concurrency: number
+}
+
+export interface AdultLazyResultView {
+  kind: 'folder' | 'library'
+  code: string
+  title: string
+  path: string
+  status: 'success' | 'failed' | 'skipped'
+  message?: string
+  source?: string
+  at: string
+}
+
+export interface AdultLazyStatus {
+  config_ready: boolean
+  current_task?: AdultLazyTaskView | null
+  recent_results?: AdultLazyResultView[]
+  folder_tasks: { active: FolderBatchTask[]; history: FolderBatchTask[] }
+  media_tasks: { active: AdultBatchTask[]; history: AdultBatchTask[] }
+  report: AdultScrapeReport
+  failed_items: AdultBatchItemResult[]
+  failed_count: number
+  folder_failed_count?: number
+  scheduler: AdultSchedulerStatus
+  cache: { enabled: boolean; stats?: AdultCacheStats }
+  days: number
+}
+
+
+export interface AdultLazyStartResult {
+  task_id: string
+  queued: number
+  scan: FolderScanResult
+}
+
+export interface AdultLazyRetryResult {
+  folder_task_id: string
+  media_task_id: string
+  folder_retry_count: number
+  media_retry_count: number
+  retry_count: number
 }
 
 export const adultScraperApi = {
@@ -300,6 +373,18 @@ export const adultScraperApi = {
     api.get<{ data: PythonServiceHealth }>('/admin/adult-scraper/python-health'),
 
   // ==================== P3~P5：批量/镜像/缓存/调度/报表 ====================
+
+  /** 懒人刮削聚合状态：任务、报表、失败项、调度、缓存 */
+  getLazyStatus: (days = 7) =>
+    api.get<{ data: AdultLazyStatus }>('/admin/adult-scraper/lazy/status', { params: { days } }),
+
+  /** 一键懒人刮削：后端自动初始化配置、扫描目录并启动任务 */
+  startLazy: (data: { path: string; recursive?: boolean; max_depth?: number; concurrency?: number; aggregated?: boolean }) =>
+    api.post<{ message: string; data: AdultLazyStartResult }>('/admin/adult-scraper/lazy/start', data),
+
+  /** 一键重试懒人失败项：同时覆盖目录刮削失败与媒体库批量失败 */
+  retryLazyFailed: (data: { days?: number; concurrency?: number; aggregated?: boolean }) =>
+    api.post<{ data: AdultLazyRetryResult }>('/admin/adult-scraper/lazy/retry-failed', data),
 
   /** 启动批量刮削任务 */
   startBatch: (data: {

@@ -372,6 +372,8 @@ type AdultScraperConfig struct {
 	EnableAggregatedMode bool `mapstructure:"enable_aggregated_mode"`
 	// 封面裁剪：把横版大图裁剪成 2:3 竖版 poster（Emby 媒体墙更美观）
 	EnablePosterCrop bool `mapstructure:"enable_poster_crop"`
+	// 聚合刮削字段优先级（key=字段名, value=数据源顺序）。为空时使用内置默认值。
+	FieldPriority map[string][]string `mapstructure:"field_priority"`
 
 	// ==================== P1 扩展：多媒体资源下载 ====================
 	// 是否下载剧照（ExtraFanart，供 Emby/Jellyfin 显示多张剧照）
@@ -875,6 +877,7 @@ func setDefaults() {
 	viper.SetDefault("adult_scraper.python_service_dir", "scripts/adult-scraper")
 	viper.SetDefault("adult_scraper.min_request_interval", 1500)
 	viper.SetDefault("adult_scraper.max_request_interval", 3000)
+	viper.SetDefault("adult_scraper.field_priority", map[string][]string{})
 
 	// ---- 旧版兼容默认值（当使用扁平 key 时） ----
 	viper.SetDefault("port", 8080)
@@ -1192,6 +1195,29 @@ func (c *Config) SaveAdultScraperConfig() error {
 	viper.Set("adult_scraper.python_service_dir", ac.PythonServiceDir)
 	viper.Set("adult_scraper.min_request_interval", ac.MinRequestInterval)
 	viper.Set("adult_scraper.max_request_interval", ac.MaxRequestInterval)
+	viper.Set("adult_scraper.enable_freejavbt", ac.EnableFreejavbt)
+	viper.Set("adult_scraper.freejavbt_url", ac.FreejavbtURL)
+	viper.Set("adult_scraper.enable_jav321", ac.EnableJav321)
+	viper.Set("adult_scraper.jav321_url", ac.Jav321URL)
+	viper.Set("adult_scraper.enable_fanza", ac.EnableFanza)
+	viper.Set("adult_scraper.fanza_url", ac.FanzaURL)
+	viper.Set("adult_scraper.enable_mgstage", ac.EnableMGStage)
+	viper.Set("adult_scraper.mgstage_url", ac.MGStageURL)
+	viper.Set("adult_scraper.enable_fc2hub", ac.EnableFC2Hub)
+	viper.Set("adult_scraper.fc2hub_url", ac.FC2HubURL)
+	viper.Set("adult_scraper.enable_aggregated_mode", ac.EnableAggregatedMode)
+	viper.Set("adult_scraper.enable_poster_crop", ac.EnablePosterCrop)
+	viper.Set("adult_scraper.download_extra_fanart", ac.DownloadExtraFanart)
+	viper.Set("adult_scraper.max_extra_fanart", ac.MaxExtraFanart)
+	viper.Set("adult_scraper.download_actor_photo", ac.DownloadActorPhoto)
+	viper.Set("adult_scraper.fetch_trailer", ac.FetchTrailer)
+	viper.Set("adult_scraper.enable_translate", ac.EnableTranslate)
+	viper.Set("adult_scraper.translate_provider", ac.TranslateProvider)
+	viper.Set("adult_scraper.translate_endpoint", ac.TranslateEndpoint)
+	viper.Set("adult_scraper.translate_api_key", ac.TranslateAPIKey)
+	viper.Set("adult_scraper.translate_api_secret", ac.TranslateAPISecret)
+	viper.Set("adult_scraper.translate_target_lang", ac.TranslateTargetLang)
+	viper.Set("adult_scraper.field_priority", ac.FieldPriority)
 
 	// Cookie 登录（参考 mdcx 的设计，每个站点一个完整 Cookie 字符串）
 	viper.Set("adult_scraper.cookie_javbus", ac.CookieJavBus)

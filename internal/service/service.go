@@ -75,6 +75,8 @@ type Services struct {
 	AdultProxy *AdultProxyManager
 	// P3：任务持久化存储
 	AdultTaskStore *AdultTaskStore
+	// 文件夹懒人刮削任务持久化存储
+	AdultFolderTaskStore *AdultFolderTaskStore
 	// P5：定时调度器（每日自动补刮）
 	AdultScheduler *AdultScheduler
 	// P5：元数据缓存（LRU+TTL，避免重复抓取）
@@ -166,13 +168,13 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 创建多数据源调度链（第三阶段：统一 Provider 接口）
 	providerChain := NewProviderChain(logger)
-	providerChain.Register(NewAdultProvider(adultScraper))       // 优先级 5：番号内容（最高优先级，仅匹配成人内容）
-	providerChain.Register(NewTMDbProvider(metadata))            // 优先级 10：主数据源
-	providerChain.Register(NewDoubanProvider(metadata.douban))   // 优先级 20：豆瓣补充
-	providerChain.Register(NewTheTVDBProvider(thetvdbService))   // 优先级 25：剧集增强
-	providerChain.Register(NewBangumiProvider(metadata.bangumi)) // 优先级 30：动画专项
-	providerChain.Register(NewFanartProvider(fanartService))     // 优先级 50：图片增强
-	providerChain.Register(NewAIProvider(aiService))             // 优先级 100：AI 兜底
+	providerChain.Register(NewAdultProvider(adultScraper, repos.Library)) // 优先级 5：番号内容（最高优先级，仅匹配成人内容）
+	providerChain.Register(NewTMDbProvider(metadata))                     // 优先级 10：主数据源
+	providerChain.Register(NewDoubanProvider(metadata.douban))            // 优先级 20：豆瓣补充
+	providerChain.Register(NewTheTVDBProvider(thetvdbService))            // 优先级 25：剧集增强
+	providerChain.Register(NewBangumiProvider(metadata.bangumi))          // 优先级 30：动画专项
+	providerChain.Register(NewFanartProvider(fanartService))              // 优先级 50：图片增强
+	providerChain.Register(NewAIProvider(aiService))                      // 优先级 100：AI 兜底
 
 	// 注入 ProviderChain 到元数据服务
 	metadata.SetProviderChain(providerChain)
@@ -346,14 +348,17 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	adultProxy := NewAdultProxyManager()
 	adultCache := NewAdultMetadataCache(cfg.App.DataDir)
 	adultTaskStore := NewAdultTaskStore(cfg.App.DataDir)
+	adultFolderTaskStore := NewAdultFolderTaskStore(cfg.App.DataDir)
 	adultBatch := NewAdultBatchService(adultScraper, wsHub)
 	adultBatch.SetTaskStore(adultTaskStore)
 	adultScheduler := NewAdultScheduler(adultBatch, adultProxy, adultScraper)
-	adultFolderBatch := NewAdultFolderBatchService(adultScraper)
+	adultFolderBatch := NewAdultFolderBatchService(adultScraper, wsHub)
+	adultFolderBatch.SetTaskStore(adultFolderTaskStore)
 
 	svcs.AdultProxy = adultProxy
 	svcs.AdultCache = adultCache
 	svcs.AdultTaskStore = adultTaskStore
+	svcs.AdultFolderTaskStore = adultFolderTaskStore
 	svcs.AdultBatch = adultBatch
 	svcs.AdultScheduler = adultScheduler
 	svcs.AdultFolderBatch = adultFolderBatch
@@ -381,6 +386,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 创建并注入硬链接整理服务（AI 自动整理完成后，按虚拟路径创建硬链接）
 	organizeHardlink := NewOrganizeHardlinkService(repos.ScanClassification, repos.Media, repos.Library, logger)
 	svcs.ScanPostProcess.SetOrganizeHardlinkService(organizeHardlink)
+	svcs.ScanPostProcess.SetAdultScraperService(adultScraper)
 	svcs.ScanPostProcess.SetSeriesRepo(repos.Series)
 	svcs.ScanPostProcess.SetWSHub(wsHub)
 	svcs.ScanPostProcess.Start()

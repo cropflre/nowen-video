@@ -119,6 +119,8 @@ func (h *AdultScraperHandler) GetConfig(c *gin.Context) {
 				{"type": "uncensored", "pattern": "123456-789", "example": "1pondo/caribbeancom 格式"},
 				{"type": "heyzo", "pattern": "HEYZO-1234", "example": "HEYZO-1234"},
 			},
+			"field_priority":         cfg.FieldPriority,
+			"default_field_priority": service.DefaultAdultFieldPriority(),
 			// Cookie 登录配置（参考 mdcx：每个站点一个完整 Cookie 字符串）
 			// 出于安全考虑，返回原始 cookie 完整内容仅在 admin 场景下进行（本接口仅 admin 可访问）
 			"cookies": gin.H{

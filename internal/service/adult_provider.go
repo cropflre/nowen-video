@@ -1,7 +1,10 @@
 package service
 
 import (
+	"fmt"
+
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
 )
 
@@ -11,15 +14,17 @@ import (
 
 // AdultProvider 成人内容元数据数据源适配器
 type AdultProvider struct {
-	scraper *AdultScraperService
-	logger  *zap.SugaredLogger
+	scraper     *AdultScraperService
+	libraryRepo *repository.LibraryRepo
+	logger      *zap.SugaredLogger
 }
 
 // NewAdultProvider 创建成人内容 Provider
-func NewAdultProvider(scraper *AdultScraperService) *AdultProvider {
+func NewAdultProvider(scraper *AdultScraperService, libraryRepo *repository.LibraryRepo) *AdultProvider {
 	return &AdultProvider{
-		scraper: scraper,
-		logger:  scraper.logger,
+		scraper:     scraper,
+		libraryRepo: libraryRepo,
+		logger:      scraper.logger,
 	}
 }
 
@@ -41,19 +46,32 @@ func (p *AdultProvider) SupportedTypes() []string { return []string{"adult"} }
 
 // ScrapeMedia 为单个媒体刮削元数据
 func (p *AdultProvider) ScrapeMedia(media *model.Media, searchTitle string, year int, mode string) error {
-	// 仅处理成人内容
+	// 仅处理成人内容；返回 error 表示“不适用”，避免 ProviderChain 把跳过误判为主数据源成功。
 	if !IsAdultContent(media) {
-		return nil // 非成人内容，静默跳过
+		return fmt.Errorf("非成人内容，跳过 AdultProvider")
+	}
+	if p.libraryRepo != nil && media.LibraryID != "" {
+		if lib, err := p.libraryRepo.FindByID(media.LibraryID); err == nil && lib != nil && !lib.AllowAdultContent {
+			return fmt.Errorf("媒体库未启用成人内容，跳过 AdultProvider")
+		}
 	}
 
 	// 从文件名中提取番号
-	code, codeType := ParseCode(media.FilePath)
+	info := ParseCodeEnhanced(media.FilePath)
+	code, codeType := info.Number, info.CodeType
+	if code == "" {
+		code, codeType = ParseCode(media.FilePath)
+	}
 	if code == "" {
 		// 尝试从标题中提取
+		info = ParseCodeEnhanced(media.Title)
+		code, codeType = info.Number, info.CodeType
+	}
+	if code == "" {
 		code, codeType = ParseCode(media.Title)
 	}
 	if code == "" {
-		return nil // 无法识别番号，跳过
+		return fmt.Errorf("未识别到番号，跳过 AdultProvider")
 	}
 
 	p.logger.Infof("识别到番号 [%s] (类型: %s)，开始刮削: %s", code, codeType, media.FilePath)
