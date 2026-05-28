@@ -68,10 +68,12 @@ var browserCompatibleVideoCodecs = map[string]bool{
 	"av1": true,
 }
 
-// 浏览器可解码的音频编码
+// 浏览器可稳定解码的音频编码。
+// AC3/EAC3/TrueHD/DTS 等在浏览器端兼容性不稳定或不可用，必须走 HLS 转 AAC，
+// 否则会出现有画面但无声音，且无法使用 HLS 多音轨菜单切换备用音轨。
 var browserCompatibleAudioCodecs = map[string]bool{
 	"aac": true, "mp3": true, "opus": true,
-	"vorbis": true, "flac": true, "ac3": true, "eac3": true,
+	"vorbis": true, "flac": true,
 }
 
 // 文件扩展名 -> MIME类型映射
@@ -309,7 +311,7 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 	}
 
 	ext := strings.ToLower(filepath.Ext(media.FilePath))
-	canDirect := directPlayableExts[ext]
+	canDirect := directPlayableExts[ext] && canMediaPlayDirectly(media)
 
 	info := &MediaPlayInfo{
 		MediaID:       mediaID,

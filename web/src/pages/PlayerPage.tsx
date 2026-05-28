@@ -32,16 +32,6 @@ function canPlayHEVC(): boolean {
   }
 }
 
-/** 检测浏览器是否支持 H.264 直接播放 */
-function canPlayH264(): boolean {
-  try {
-    const video = document.createElement('video')
-    return video.canPlayType('video/mp4; codecs="avc1.42E01E"') !== ''
-  } catch {
-    return false
-  }
-}
-
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -183,14 +173,12 @@ export default function PlayerPage() {
   //   5. Remux（零转码转封装，走 <video> 原生播放）
   //   6. HLS 实时转码（兜底）
   const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
-  const preferDirect = playInfo.prefer_direct_play !== false // 默认 true
   const videoCodecLower = (playInfo.video_codec || '').toLowerCase()
   const isHEVCSource = videoCodecLower.includes('hevc') || videoCodecLower.includes('h265') || videoCodecLower === 'h265'
   const browserSupportsHEVC = canPlayHEVC()
-  const browserSupportsH264 = canPlayH264()
 
-  // 决策：HEVC 源 + 浏览器支持 HEVC → 直接播放（无需转码）
-  const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed
+  // 决策：HEVC 源 + 浏览器支持 HEVC + 后端确认容器/音频均可直放 → 直接播放（无需转码）
+  const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed && playInfo.can_direct_play
 
   // 桌面端 libmpv 嵌入决策（C 档 Hills 化核心）：
   // 当 Tauri 桌面 + embed 可用 + 内核决策给出 mpv + 非预处理流时 → 走嵌入式 mpv。
@@ -228,9 +216,7 @@ export default function PlayerPage() {
           ? 'webcodecs'
           : (playInfo.can_remux && !remuxFailed)
             ? 'remux'
-            : preferDirect && !remuxFailed && browserSupportsH264
-              ? 'direct'  // 用户强制直接播放（可能不兼容，但尊重用户选择）
-              : 'hls'
+            : 'hls'
 
   // src 选择：WebCodecs 模式使用 remux URL（拿到 fMP4 流）或 direct URL（MP4 源）
   const src = isPreprocessed

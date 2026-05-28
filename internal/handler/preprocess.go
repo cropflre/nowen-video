@@ -512,15 +512,15 @@ func (h *PreprocessHandler) ListCandidateMedia(c *gin.Context) {
 func (h *PreprocessHandler) ServePreprocessedMaster(c *gin.Context) {
 	mediaID := c.Param("id")
 
-	masterPath, err := h.preprocessService.GetPreprocessedMasterPath(mediaID)
+	playlist, err := h.preprocessService.GetPreprocessedMasterPlaylist(mediaID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "public, max-age=3600")
-	c.File(masterPath)
+	c.Header("Cache-Control", "no-cache")
+	c.String(http.StatusOK, playlist)
 }
 
 // ServePreprocessedSegment 提供预处理后的 HLS 分片

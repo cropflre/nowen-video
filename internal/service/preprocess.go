@@ -305,13 +305,13 @@ func (s *PreprocessService) SubmitLibrary(libraryID string, priority int) (int, 
 
 // PreprocessFilter 预处理筛选条件（多个条件之间是 AND 关系；同一条件内的多值是 IN 关系）
 type PreprocessFilter struct {
-	LibraryIDs   []string `json:"library_ids"`   // 限定媒体库（空 = 全部）
-	MediaTypes   []string `json:"media_types"`   // movie / episode（空 = 全部）
-	VideoCodecs  []string `json:"video_codecs"`  // h264 / hevc / av1 / vp9 ...（空 = 全部，大小写敏感按 DB 中存的来）
-	AudioCodecs  []string `json:"audio_codecs"`  // aac / ac3 / dts / flac ...
-	Containers   []string `json:"containers"`    // 容器格式：mp4 / mkv / avi / mov / ts / flv / webm（按文件扩展名匹配，不带点）
-	Resolutions  []string `json:"resolutions"`   // 1080p / 720p / 4K / 480p ...
-	Keyword      string   `json:"keyword"`       // 标题/番号模糊匹配
+	LibraryIDs   []string `json:"library_ids"`    // 限定媒体库（空 = 全部）
+	MediaTypes   []string `json:"media_types"`    // movie / episode（空 = 全部）
+	VideoCodecs  []string `json:"video_codecs"`   // h264 / hevc / av1 / vp9 ...（空 = 全部，大小写敏感按 DB 中存的来）
+	AudioCodecs  []string `json:"audio_codecs"`   // aac / ac3 / dts / flac ...
+	Containers   []string `json:"containers"`     // 容器格式：mp4 / mkv / avi / mov / ts / flv / webm（按文件扩展名匹配，不带点）
+	Resolutions  []string `json:"resolutions"`    // 1080p / 720p / 4K / 480p ...
+	Keyword      string   `json:"keyword"`        // 标题/番号模糊匹配
 	MinSizeBytes int64    `json:"min_size_bytes"` // 文件大小下限（字节，0 = 不限）
 	MaxSizeBytes int64    `json:"max_size_bytes"` // 文件大小上限（字节，0 = 不限）
 	MinYear      int      `json:"min_year"`       // 年份下限（0 = 不限）
@@ -327,15 +327,15 @@ type PreprocessFilter struct {
 
 // PreprocessFilterPreview 筛选预览结果
 type PreprocessFilterPreview struct {
-	MatchedCount     int                `json:"matched_count"`      // 命中数量（应用排除策略后）
-	RawCount         int                `json:"raw_count"`          // 仅按筛选条件命中的数量（未应用排除）
-	ExcludedAlready  int                `json:"excluded_already"`   // 因"已存在 task"而排除的数量
-	ExcludedPlayable int                `json:"excluded_playable"`  // 因"可直接播放"而排除的数量
-	ExcludedStrm     int                `json:"excluded_strm"`      // 因 STRM 而排除的数量
-	TotalSize        int64              `json:"total_size"`         // 命中媒体的总文件大小（源文件，非预处理产物）
-	Sample           []PreprocessSample `json:"sample"`             // 抽样列表（最多 50 条，按更新时间倒序）
-	CodecHistogram   map[string]int     `json:"codec_histogram"`    // 命中媒体按 video_codec 分布
-	ResolutionHist   map[string]int     `json:"resolution_hist"`    // 命中媒体按分辨率分布
+	MatchedCount     int                `json:"matched_count"`     // 命中数量（应用排除策略后）
+	RawCount         int                `json:"raw_count"`         // 仅按筛选条件命中的数量（未应用排除）
+	ExcludedAlready  int                `json:"excluded_already"`  // 因"已存在 task"而排除的数量
+	ExcludedPlayable int                `json:"excluded_playable"` // 因"可直接播放"而排除的数量
+	ExcludedStrm     int                `json:"excluded_strm"`     // 因 STRM 而排除的数量
+	TotalSize        int64              `json:"total_size"`        // 命中媒体的总文件大小（源文件，非预处理产物）
+	Sample           []PreprocessSample `json:"sample"`            // 抽样列表（最多 50 条，按更新时间倒序）
+	CodecHistogram   map[string]int     `json:"codec_histogram"`   // 命中媒体按 video_codec 分布
+	ResolutionHist   map[string]int     `json:"resolution_hist"`   // 命中媒体按分辨率分布
 }
 
 // PreprocessSample 预览中的一条媒体样例
@@ -551,15 +551,15 @@ func (s *PreprocessService) SubmitByFilter(f *PreprocessFilter, priority int, fo
 
 // PreprocessCandidateParams 候选列表查询参数
 type PreprocessCandidateParams struct {
-	Page              int    // 从 1 起
-	Size              int    // 每页条数（默认 20，最大 200）
-	Keyword           string // 标题/番号模糊匹配
-	LibraryID         string // 媒体库 ID（空 = 全部）
-	MediaType         string // movie / episode（空 = 全部）
-	VideoCodec        string // 视频编码过滤（空 = 全部）
-	OnlyNeedPreprocess bool  // 仅显示"需要预处理"的（排除已完成 + 排除可直接播放 + 排除 STRM）
-	SortBy            string // updated_at(默认) / file_size / duration / year
-	SortOrder         string // desc(默认) / asc
+	Page               int    // 从 1 起
+	Size               int    // 每页条数（默认 20，最大 200）
+	Keyword            string // 标题/番号模糊匹配
+	LibraryID          string // 媒体库 ID（空 = 全部）
+	MediaType          string // movie / episode（空 = 全部）
+	VideoCodec         string // 视频编码过滤（空 = 全部）
+	OnlyNeedPreprocess bool   // 仅显示"需要预处理"的（排除已完成 + 排除可直接播放 + 排除 STRM）
+	SortBy             string // updated_at(默认) / file_size / duration / year
+	SortOrder          string // desc(默认) / asc
 }
 
 // PreprocessCandidate 候选条目（供前端勾选）
@@ -577,10 +577,10 @@ type PreprocessCandidate struct {
 	FileSize         int64   `json:"file_size"`
 	FilePath         string  `json:"file_path"`
 	PosterPath       string  `json:"poster_path"`
-	IsStrm           bool    `json:"is_strm"`            // STRM 远程流（不可预处理）
-	CanPlayDirectly  bool    `json:"can_play_directly"`  // 浏览器零转码可直接播放
-	PreprocessStatus string  `json:"preprocess_status"`  // none / pending / queued / running / paused / completed / failed / cancelled
-	TaskID           string  `json:"task_id,omitempty"`  // 对应预处理任务 ID（若存在）
+	IsStrm           bool    `json:"is_strm"`           // STRM 远程流（不可预处理）
+	CanPlayDirectly  bool    `json:"can_play_directly"` // 浏览器零转码可直接播放
+	PreprocessStatus string  `json:"preprocess_status"` // none / pending / queued / running / paused / completed / failed / cancelled
+	TaskID           string  `json:"task_id,omitempty"` // 对应预处理任务 ID（若存在）
 	// 剧集专属（仅 media_type=episode 时有意义）
 	SeasonNum    int    `json:"season_num,omitempty"`
 	EpisodeNum   int    `json:"episode_num,omitempty"`
@@ -986,7 +986,62 @@ func (s *PreprocessService) GetPreprocessedMasterPath(mediaID string) (string, e
 	return task.HLSMasterPath, nil
 }
 
-// CleanPreprocessCache 清理指定媒体的预处理缓存
+// GetPreprocessedMasterPlaylist 获取预处理后的 HLS 主播放列表内容。
+// 对旧缓存动态注入多音轨 EXT-X-MEDIA，避免需要清理并重新生成预处理产物。
+func (s *PreprocessService) GetPreprocessedMasterPlaylist(mediaID string) (string, error) {
+	masterPath, err := s.GetPreprocessedMasterPath(mediaID)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(masterPath)
+	if err != nil {
+		return "", fmt.Errorf("读取预处理主播放列表失败: %w", err)
+	}
+	playlist := string(data)
+	if strings.Contains(playlist, "#EXT-X-MEDIA:TYPE=AUDIO") && strings.Contains(playlist, `AUDIO="audio"`) {
+		return playlist, nil
+	}
+
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return playlist, nil
+	}
+	tracks := probeAudioTracks(media, s.cfg.App.FFprobePath, s.logger)
+	if len(tracks) < 2 {
+		return playlist, nil
+	}
+	return injectAudioGroupIntoMasterPlaylist(mediaID, playlist, tracks), nil
+}
+
+func injectAudioGroupIntoMasterPlaylist(mediaID, playlist string, tracks []AudioTrackInfo) string {
+	audioEntries := strings.TrimRight(buildAudioMediaEntries(mediaID, tracks), "\n")
+	if audioEntries == "" {
+		return playlist
+	}
+
+	lines := strings.Split(playlist, "\n")
+	var out strings.Builder
+	injected := false
+	for _, raw := range lines {
+		line := strings.TrimRight(raw, "\r")
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") && !strings.Contains(line, "AUDIO=") {
+			line += `,AUDIO="audio"`
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+		if !injected && strings.HasPrefix(line, "#EXT-X-VERSION:") {
+			out.WriteString(audioEntries)
+			out.WriteByte('\n')
+			injected = true
+		}
+	}
+	if !injected {
+		return "#EXTM3U\n" + audioEntries + "\n" + strings.TrimPrefix(playlist, "#EXTM3U\n")
+	}
+	return out.String()
+}
+
+// GetMediaTask 获取媒体的预处理任务
 func (s *PreprocessService) CleanPreprocessCache(mediaID string) error {
 	cacheDir := filepath.Join(s.cfg.Cache.CacheDir, "preprocess", mediaID)
 	if err := os.RemoveAll(cacheDir); err != nil {
@@ -1013,31 +1068,31 @@ func (s *PreprocessService) CleanPreprocessCache(mediaID string) error {
 type PreprocessStorageItem struct {
 	MediaID    string `json:"media_id"`
 	MediaTitle string `json:"media_title"`
-	TaskID     string `json:"task_id,omitempty"`     // 关联的 task ID（孤儿目录为空）
-	Status     string `json:"status,omitempty"`      // 关联 task 的状态（孤儿目录为 "orphan"）
-	OutputDir  string `json:"output_dir"`            // 物理目录绝对路径
-	Size       int64  `json:"size"`                  // 字节数
-	IsOrphan   bool   `json:"is_orphan"`             // 是否为孤儿目录（DB 中无对应 task）
+	TaskID     string `json:"task_id,omitempty"` // 关联的 task ID（孤儿目录为空）
+	Status     string `json:"status,omitempty"`  // 关联 task 的状态（孤儿目录为 "orphan"）
+	OutputDir  string `json:"output_dir"`        // 物理目录绝对路径
+	Size       int64  `json:"size"`              // 字节数
+	IsOrphan   bool   `json:"is_orphan"`         // 是否为孤儿目录（DB 中无对应 task）
 }
 
 // PreprocessStorageUsage 预处理总占用统计响应体
 type PreprocessStorageUsage struct {
-	RootDir       string                  `json:"root_dir"`        // 预处理根目录
-	TotalSize     int64                   `json:"total_size"`      // 总占用字节数（含孤儿）
-	TotalCount    int                     `json:"total_count"`     // 占用空间的目录总数
-	TaskSize      int64                   `json:"task_size"`       // DB 中 task 对应的占用
-	OrphanSize    int64                   `json:"orphan_size"`     // 无主目录占用
-	OrphanCount   int                     `json:"orphan_count"`    // 无主目录数量
-	Items         []PreprocessStorageItem `json:"items"`           // 按 size 降序，最多返回 limit 条
-	ScannedAt     time.Time               `json:"scanned_at"`      // 扫描时间
-	ScanDurationMs int64                  `json:"scan_duration_ms"` // 扫描耗时（毫秒）
+	RootDir        string                  `json:"root_dir"`         // 预处理根目录
+	TotalSize      int64                   `json:"total_size"`       // 总占用字节数（含孤儿）
+	TotalCount     int                     `json:"total_count"`      // 占用空间的目录总数
+	TaskSize       int64                   `json:"task_size"`        // DB 中 task 对应的占用
+	OrphanSize     int64                   `json:"orphan_size"`      // 无主目录占用
+	OrphanCount    int                     `json:"orphan_count"`     // 无主目录数量
+	Items          []PreprocessStorageItem `json:"items"`            // 按 size 降序，最多返回 limit 条
+	ScannedAt      time.Time               `json:"scanned_at"`       // 扫描时间
+	ScanDurationMs int64                   `json:"scan_duration_ms"` // 扫描耗时（毫秒）
 }
 
 // ==================== 缓存总览（cache/ 整盘） ====================
 
 // CacheCategory 缓存目录分类条目
 type CacheCategory struct {
-	Key       string `json:"key"`        // preprocess / transcode / abr / thumbnails / images / subtitles / downloads / webdav_download / plugins / other / ...
+	Key       string `json:"key"`       // preprocess / transcode / abr / thumbnails / images / subtitles / downloads / webdav_download / plugins / other / ...
 	Label     string `json:"label"`     // 中文展示名
 	Path      string `json:"path"`      // 子目录绝对路径
 	Size      int64  `json:"size"`      // 字节数
@@ -1065,10 +1120,10 @@ var cacheCategoryMeta = map[string]struct {
 	"preprocess":      {"预处理产物", true},  // 用 CleanOrphan 清孤儿；当前接口仅描述，不直接清空
 	"transcode":       {"在线转码缓存", true}, // 删除后重新点播会重新生成
 	"abr":             {"自适应码率缓存", true},
-	"thumbnails":      {"缩略图/雪碧图", true},   // 重新扫描或播放时会重新生成
-	"images":          {"海报/封面", false},     // 删除会影响列表显示，需重新刮削
-	"subtitles":       {"字幕缓存", false},     // AI 字幕在子目录内，整体不默认可清
-	"downloads":       {"离线下载", false},     // 用户主动下载，不属于"缓存"
+	"thumbnails":      {"缩略图/雪碧图", true}, // 重新扫描或播放时会重新生成
+	"images":          {"海报/封面", false},  // 删除会影响列表显示，需重新刮削
+	"subtitles":       {"字幕缓存", false},   // AI 字幕在子目录内，整体不默认可清
+	"downloads":       {"离线下载", false},   // 用户主动下载，不属于"缓存"
 	"webdav_download": {"WebDAV 临时下载", true},
 	"plugins":         {"插件资源", false},
 }
@@ -2383,9 +2438,19 @@ func (s *PreprocessService) generateMasterPlaylist(task *model.PreprocessTask, v
 	hlsDir := filepath.Join(task.OutputDir, "hls")
 	masterPath := filepath.Join(hlsDir, "master.m3u8")
 
+	var audioTracks []AudioTrackInfo
+	if media, err := s.mediaRepo.FindByID(task.MediaID); err == nil {
+		audioTracks = probeAudioTracks(media, s.cfg.App.FFprobePath, s.logger)
+	}
+	hasMultiAudio := len(audioTracks) >= 2
+
 	var content strings.Builder
 	content.WriteString("#EXTM3U\n")
-	content.WriteString("#EXT-X-VERSION:3\n\n")
+	content.WriteString("#EXT-X-VERSION:3\n")
+	if hasMultiAudio {
+		content.WriteString(buildAudioMediaEntries(task.MediaID, audioTracks))
+	}
+	content.WriteString("\n")
 
 	for _, name := range variants {
 		// 查找对应的 ABR profile
@@ -2401,10 +2466,14 @@ func (s *PreprocessService) generateMasterPlaylist(task *model.PreprocessTask, v
 		}
 
 		bandwidth := parseBitrate(profile.VideoBitrate) + parseBitrate(profile.AudioBitrate)
-		content.WriteString(fmt.Sprintf(
-			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"\n",
+		streamInf := fmt.Sprintf(
+			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"",
 			bandwidth, profile.Width, profile.Height, profile.Name,
-		))
+		)
+		if hasMultiAudio {
+			streamInf += `,AUDIO="audio"`
+		}
+		content.WriteString(streamInf + "\n")
 		content.WriteString(fmt.Sprintf("%s/stream.m3u8\n\n", profile.Name))
 	}
 

@@ -15,11 +15,11 @@
 //
 // 本文件实现"按需分段切片"，作为主流程的补充：
 //   - 视频分片：/api/stream/:id/:quality/ondemand/seg_N.ts
-//       收到请求时若 seg_N.ts 不存在，就独立 ffmpeg 切一片再返回
+//     收到请求时若 seg_N.ts 不存在，就独立 ffmpeg 切一片再返回
 //   - 音频分片：/api/stream/:id/audio/:track/seg_N.aac
-//       为指定音轨号按需切片
+//     为指定音轨号按需切片
 //   - 音频 playlist：/api/stream/:id/audio/:track.m3u8
-//       基于 media.Duration 静态生成（每 2s 一片），客户端按需拉取
+//     基于 media.Duration 静态生成（每 2s 一片），客户端按需拉取
 //
 // 这样 Master Playlist 可以通过 #EXT-X-MEDIA:TYPE=AUDIO 声明多音轨，
 // 客户端切换音轨时无需触发整流重启。
@@ -37,6 +37,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nowen-video/nowen-video/internal/model"
+	"go.uber.org/zap"
 )
 
 // 按需分段的目标时长（秒），必须与主转码的 hlsTargetSegmentSeconds 一致，
@@ -75,7 +78,8 @@ func (l *onDemandLimiter) acquire(key string) func() {
 //   - 不干扰主转码的 FFmpeg 进程（在独立临时目录 ondemand/ 下切）
 //
 // 调用路径：
-//   GET /api/stream/:id/:quality/ondemand/seg_0003.ts
+//
+//	GET /api/stream/:id/:quality/ondemand/seg_0003.ts
 func (s *StreamService) ServeOnDemandSegment(mediaID, quality, segName string, w http.ResponseWriter, r *http.Request) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
@@ -206,14 +210,13 @@ type AudioTrackInfo struct {
 	Default  bool   `json:"default"`
 }
 
-// GetAudioTracks 探测媒体的所有音频轨。
+// probeAudioTracks 探测媒体的所有音频轨。
 // 使用 ffprobe，结果用于 Master Playlist 注入 #EXT-X-MEDIA:TYPE=AUDIO。
 //
 // 失败时（ffprobe 调用错误/解析失败）返回空切片，让 master playlist 回退到
 // 单音轨模式，保持向后兼容。
-func (s *StreamService) GetAudioTracks(mediaID string) []AudioTrackInfo {
-	media, err := s.mediaRepo.FindByID(mediaID)
-	if err != nil || media.StreamURL != "" {
+func probeAudioTracks(media *model.Media, ffprobePath string, logger *zap.SugaredLogger) []AudioTrackInfo {
+	if media == nil || media.StreamURL != "" {
 		return nil
 	}
 	// WebDAV / 远程路径不做探测（ffprobe 读远程开销过大）
@@ -227,7 +230,7 @@ func (s *StreamService) GetAudioTracks(mediaID string) []AudioTrackInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, s.cfg.App.FFprobePath,
+	cmd := exec.CommandContext(ctx, ffprobePath,
 		"-v", "error",
 		"-select_streams", "a",
 		"-show_entries", "stream=index,codec_name,channels:stream_tags=language,title:stream_disposition=default",
@@ -236,15 +239,17 @@ func (s *StreamService) GetAudioTracks(mediaID string) []AudioTrackInfo {
 	)
 	out, err := cmd.Output()
 	if err != nil {
-		s.logger.Debugf("GetAudioTracks ffprobe failed: %v", err)
+		if logger != nil {
+			logger.Debugf("probeAudioTracks ffprobe failed: %v", err)
+		}
 		return nil
 	}
 
 	var probe struct {
 		Streams []struct {
-			Index       int    `json:"index"`
-			CodecName   string `json:"codec_name"`
-			Channels    int    `json:"channels"`
+			Index       int               `json:"index"`
+			CodecName   string            `json:"codec_name"`
+			Channels    int               `json:"channels"`
 			Tags        map[string]string `json:"tags"`
 			Disposition struct {
 				Default int `json:"default"`
@@ -272,9 +277,18 @@ func (s *StreamService) GetAudioTracks(mediaID string) []AudioTrackInfo {
 	return tracks
 }
 
-// BuildAudioMediaEntries 为 Master Playlist 构造 #EXT-X-MEDIA:TYPE=AUDIO 行。
+// GetAudioTracks 探测媒体的所有音频轨。
+func (s *StreamService) GetAudioTracks(mediaID string) []AudioTrackInfo {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return nil
+	}
+	return probeAudioTracks(media, s.cfg.App.FFprobePath, s.logger)
+}
+
+// buildAudioMediaEntries 为 Master Playlist 构造 #EXT-X-MEDIA:TYPE=AUDIO 行。
 // 当且仅当返回 GROUP-ID="audio" 引用了实际轨道时才应该被注入到 EXT-X-STREAM-INF。
-func (s *StreamService) BuildAudioMediaEntries(mediaID string, tracks []AudioTrackInfo) string {
+func buildAudioMediaEntries(mediaID string, tracks []AudioTrackInfo) string {
 	if len(tracks) <= 1 {
 		return ""
 	}
@@ -288,13 +302,16 @@ func (s *StreamService) BuildAudioMediaEntries(mediaID string, tracks []AudioTra
 		if name == "" {
 			name = fmt.Sprintf("Track %d", i+1)
 		}
+		if t.Codec != "" {
+			name = fmt.Sprintf("%s [%s]", name, strings.ToUpper(t.Codec))
+		}
 		lang := t.Language
 		if lang == "" {
 			lang = "und"
 		}
 		isDefault := "NO"
 		// 优先选 disposition=default，否则选第一条
-		if (!defaultPicked && (t.Default || i == 0)) {
+		if !defaultPicked && (t.Default || i == 0) {
 			isDefault = "YES"
 			defaultPicked = true
 		}
@@ -304,6 +321,11 @@ func (s *StreamService) BuildAudioMediaEntries(mediaID string, tracks []AudioTra
 		))
 	}
 	return sb.String()
+}
+
+// BuildAudioMediaEntries 为 Master Playlist 构造 #EXT-X-MEDIA:TYPE=AUDIO 行。
+func (s *StreamService) BuildAudioMediaEntries(mediaID string, tracks []AudioTrackInfo) string {
+	return buildAudioMediaEntries(mediaID, tracks)
 }
 
 // escapeAttr 转义 HLS 属性字符串中的双引号（规范要求）
@@ -428,4 +450,3 @@ func (s *StreamService) ServeAudioSegment(mediaID string, trackIdx int, segName 
 }
 
 // 保证 io 未使用告警消失（根据实际使用情况移除）
-
