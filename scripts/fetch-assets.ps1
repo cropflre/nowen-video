@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
   nowen-video 桌面端 C 档资源一键抓取脚本（v2，单一资源失败不影响其余）
