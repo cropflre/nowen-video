@@ -70,14 +70,14 @@ type itemsQuery struct {
 
 func (h *Handler) parseItemsQuery(c *gin.Context) itemsQuery {
 	q := itemsQuery{
-		parentUUID:   h.idMap.Resolve(c.Query("ParentId")),
-		recursive:    boolQuery(c, "Recursive"),
-		startIndex:   getIntQuery(c, "StartIndex", 0),
-		limit:        getIntQuery(c, "Limit", 100),
-		searchTerm:   strings.TrimSpace(c.Query("SearchTerm")),
-		sortOrder:    c.Query("SortOrder"),
-		genreFilter:  c.Query("Genres"),
-		yearFilter:   getIntQuery(c, "Years", 0),
+		parentUUID:  h.idMap.Resolve(c.Query("ParentId")),
+		recursive:   boolQuery(c, "Recursive"),
+		startIndex:  getIntQuery(c, "StartIndex", 0),
+		limit:       getIntQuery(c, "Limit", 100),
+		searchTerm:  strings.TrimSpace(c.Query("SearchTerm")),
+		sortOrder:   c.Query("SortOrder"),
+		genreFilter: c.Query("Genres"),
+		yearFilter:  getIntQuery(c, "Years", 0),
 	}
 	if q.limit <= 0 || q.limit > 500 {
 		q.limit = 100
@@ -113,8 +113,9 @@ func (h *Handler) parseItemsQuery(c *gin.Context) itemsQuery {
 }
 
 // ItemsHandler 对应：
-//   GET /Users/{userId}/Items
-//   GET /Items
+//
+//	GET /Users/{userId}/Items
+//	GET /Items
 //
 // 在 nowen 里，顶层条目有两种：Movie（media_type="movie" 且 series_id 为空）和 Series。
 // 进入 Series 则列出 Episodes。
@@ -148,7 +149,7 @@ func (h *Handler) listLibraryChildren(c *gin.Context, userID string, q itemsQuer
 	// 记录并合并结果
 	var items []BaseItemDto
 
-	if (includeMovie || len(q.includeTypes) == 0) && !q.recursive {
+	if includeMovie || len(q.includeTypes) == 0 {
 		list, _, err := h.mediaRepo.ListNonEpisode(1, 5000, q.parentUUID)
 		if err == nil {
 			items = append(items, h.filterAndMapMedia(list, userID, q)...)
@@ -358,6 +359,9 @@ func (h *Handler) writeItemsResult(c *gin.Context, items []BaseItemDto, q itemsQ
 		end = total
 	}
 	paged := items[start:end]
+	if paged == nil {
+		paged = []BaseItemDto{}
+	}
 
 	c.JSON(http.StatusOK, QueryResult[BaseItemDto]{
 		Items:            paged,
@@ -439,8 +443,9 @@ func floatCompare(a, b float64) int {
 // ==================== 单个 Item 详情 ====================
 
 // ItemHandler 对应：
-//   GET /Users/{userId}/Items/{itemId}
-//   GET /Items/{itemId}
+//
+//	GET /Users/{userId}/Items/{itemId}
+//	GET /Items/{itemId}
 func (h *Handler) ItemHandler(c *gin.Context) {
 	userID := c.GetString("user_id")
 	uuid := h.idMap.Resolve(c.Param("id"))

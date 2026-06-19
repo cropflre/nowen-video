@@ -43,9 +43,9 @@ func atoiSafe(s string) int {
 //
 // 核心策略（对齐 Emby 官方行为）：
 //   - 通过 UA 探测客户端能力，分情况返回：
-//     * 兼容编码（H.264/AAC 等） → 只返 DirectStream/DirectPlay，不给 Transcoding URL，
-//       强制客户端走 Remux 秒开路径；
-//     * 不兼容编码 → 同时提供 DirectStream 与 Transcoding，允许客户端自行决策；
+//   - 兼容编码（H.264/AAC 等） → 只返 DirectStream/DirectPlay，不给 Transcoding URL，
+//     强制客户端走 Remux 秒开路径；
+//   - 不兼容编码 → 同时提供 DirectStream 与 Transcoding，允许客户端自行决策；
 //   - `DirectStreamUrl` 指向 `/emby/Videos/{embyId}/stream`，StreamVideoHandler
 //     会根据编码自动选择 RemuxStream 或 ServeContent；
 //   - 对 STRM（远程流）条目，Protocol=Http，Infuse 当作在线源处理。
@@ -53,9 +53,13 @@ func (h *Handler) buildMediaSource(m *model.Media, c *gin.Context) MediaSourceIn
 	container := containerFromPath(m.FilePath)
 	isRemote := strings.TrimSpace(m.StreamURL) != ""
 
-	// 构造 stream URL（相对 Host，不带 scheme——Infuse 会用连接时的 scheme）
-	streamPath := fmt.Sprintf("/emby/Videos/%s/stream", h.idMap.ToEmbyID(m.ID))
-	streamAbs := buildAbsoluteURL(c, streamPath)
+	// 构造 stream URL。官方 Emby Android/TV 客户端对 DirectStreamUrl 更适配相对路径；
+	// 返回绝对 URL 时，部分客户端会错误拼成 /emby/http://host/emby/Videos/.../stream。
+	// 视频播放器拉流时不一定携带认证 header，因此按 Emby 习惯把 token 放入 api_key 查询参数。
+	streamPath := fmt.Sprintf("/Videos/%s/stream", h.idMap.ToEmbyID(m.ID))
+	if token, _ := extractToken(c); token != "" {
+		streamPath += "?api_key=" + url.QueryEscape(token)
+	}
 
 	width := parseResolutionWidth(m.Resolution)
 	height := parseResolutionHeight(m.Resolution)
@@ -85,7 +89,7 @@ func (h *Handler) buildMediaSource(m *model.Media, c *gin.Context) MediaSourceIn
 		SupportsProbing:      true,
 		MediaStreams:         h.buildMediaStreams(m, width, height),
 		Formats:              []string{},
-		DirectStreamUrl:      streamAbs,
+		DirectStreamUrl:      streamPath,
 		ETag:                 shortTag(m.ID + "|" + m.FilePath + "|" + strconv.FormatInt(m.FileSize, 10)),
 	}
 
