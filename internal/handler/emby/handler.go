@@ -14,9 +14,9 @@ import (
 
 // Handler 聚合 Emby 兼容层所需的全部依赖。
 type Handler struct {
-	cfg     *config.Config
-	logger  *zap.SugaredLogger
-	idMap   *IDMapper
+	cfg    *config.Config
+	logger *zap.SugaredLogger
+	idMap  *IDMapper
 
 	// 业务服务（只复用，不新建）
 	auth      *service.AuthService
@@ -24,12 +24,12 @@ type Handler struct {
 	transcode *service.TranscodeService // 用于节流（SetPlaybackPosition）
 
 	// 仓储（只读为主）
-	userRepo      *repository.UserRepo
-	libraryRepo   *repository.LibraryRepo
-	mediaRepo     *repository.MediaRepo
-	seriesRepo    *repository.SeriesRepo
-	watchRepo     *repository.WatchHistoryRepo
-	favoriteRepo  *repository.FavoriteRepo
+	userRepo        *repository.UserRepo
+	libraryRepo     *repository.LibraryRepo
+	mediaRepo       *repository.MediaRepo
+	seriesRepo      *repository.SeriesRepo
+	watchRepo       *repository.WatchHistoryRepo
+	favoriteRepo    *repository.FavoriteRepo
 	mediaPersonRepo *repository.MediaPersonRepo
 
 	// 固定的 ServerId（基于 JWTSecret 派生，重启稳定）
@@ -87,26 +87,39 @@ func deriveServerID(cfg *config.Config) string {
 // mapLibraryToView 把 nowen Library 转成 Emby 左侧导航里的 "View"（CollectionFolder）。
 func (h *Handler) mapLibraryToView(lib *model.Library) BaseItemDto {
 	collType := "movies"
+	childCount := 0
 	switch strings.ToLower(lib.Type) {
 	case "tvshow", "tvshows", "series":
 		collType = "tvshows"
+		if n, err := h.seriesRepo.CountByLibrary(lib.ID); err == nil {
+			childCount = int(n)
+		}
 	case "music":
 		collType = "music"
 	case "photo", "photos":
 		collType = "photos"
 	case "mixed":
 		collType = "mixed"
+	default:
+		if n, err := h.mediaRepo.CountNonEpisodeByLibrary(lib.ID); err == nil {
+			childCount = int(n)
+		}
 	}
 	return BaseItemDto{
-		Name:           lib.Name,
-		ServerId:       h.serverID,
-		Id:             h.idMap.ToEmbyID(lib.ID),
-		IsFolder:       true,
-		Type:           "CollectionFolder",
-		CollectionType: collType,
-		LocationType:   "FileSystem",
-		Path:           lib.Path,
-		DateCreated:    formatEmbyTime(lib.CreatedAt),
+		Name:               lib.Name,
+		ServerId:           h.serverID,
+		Id:                 h.idMap.ToEmbyID(lib.ID),
+		IsFolder:           true,
+		Type:               "CollectionFolder",
+		CollectionType:     collType,
+		LocationType:       "FileSystem",
+		Path:               lib.Path,
+		DateCreated:        formatEmbyTime(lib.CreatedAt),
+		ChildCount:         childCount,
+		RecursiveItemCount: childCount,
+		ImageTags:          map[string]string{},
+		BackdropImageTags:  []string{},
+		UserData:           defaultUserData(lib.ID),
 	}
 }
 
@@ -118,33 +131,37 @@ func (h *Handler) mapMediaToItem(m *model.Media, userData *UserItemData) BaseIte
 	if m.MediaType == "episode" {
 		itemType = "Episode"
 	}
+	if userData == nil {
+		userData = defaultUserData(m.ID)
+	}
 
 	item := BaseItemDto{
-		Name:            m.Title,
-		OriginalTitle:   m.OrigTitle,
-		ServerId:        h.serverID,
-		Id:              h.idMap.ToEmbyID(m.ID),
-		SortName:        m.Title,
-		Overview:        m.Overview,
-		ProductionYear:  m.Year,
-		PremiereDate:    m.Premiered,
-		CommunityRating: m.Rating,
-		RunTimeTicks:    secondsToTicks(m.Duration),
-		IsFolder:        false,
-		Type:            itemType,
-		MediaType:       mediaType,
-		LocationType:    "FileSystem",
-		Path:            m.FilePath,
-		DateCreated:     formatEmbyTime(m.CreatedAt),
-		ParentId:        h.idMap.ToEmbyID(m.LibraryID),
-		ProviderIds:     buildProviderIds(m),
-		Genres:          splitGenres(m.Genres),
-		GenreItems:      genresToNameIdPairs(splitGenres(m.Genres)),
-		ImageTags:       buildImageTags(m),
-		UserData:        userData,
-		Width:           parseResolutionWidth(m.Resolution),
-		Height:          parseResolutionHeight(m.Resolution),
-		Container:       containerFromPath(m.FilePath),
+		Name:              m.Title,
+		OriginalTitle:     m.OrigTitle,
+		ServerId:          h.serverID,
+		Id:                h.idMap.ToEmbyID(m.ID),
+		SortName:          m.Title,
+		Overview:          m.Overview,
+		ProductionYear:    m.Year,
+		PremiereDate:      m.Premiered,
+		CommunityRating:   m.Rating,
+		RunTimeTicks:      secondsToTicks(m.Duration),
+		IsFolder:          false,
+		Type:              itemType,
+		MediaType:         mediaType,
+		LocationType:      "FileSystem",
+		Path:              m.FilePath,
+		DateCreated:       formatEmbyTime(m.CreatedAt),
+		ParentId:          h.idMap.ToEmbyID(m.LibraryID),
+		ProviderIds:       buildProviderIds(m),
+		Genres:            splitGenres(m.Genres),
+		GenreItems:        genresToNameIdPairs(splitGenres(m.Genres)),
+		ImageTags:         ensureImageTags(buildImageTags(m)),
+		BackdropImageTags: []string{},
+		UserData:          userData,
+		Width:             parseResolutionWidth(m.Resolution),
+		Height:            parseResolutionHeight(m.Resolution),
+		Container:         containerFromPath(m.FilePath),
 	}
 
 	// 时长 fallback：如果没有秒级时长但有分钟级 Runtime，使用它
@@ -175,28 +192,33 @@ func (h *Handler) mapMediaToItem(m *model.Media, userData *UserItemData) BaseIte
 
 // mapSeriesToItem 将 Series 转成 Emby "Series" 条目。
 func (h *Handler) mapSeriesToItem(s *model.Series, userData *UserItemData) BaseItemDto {
+	if userData == nil {
+		userData = defaultUserData(s.ID)
+	}
 	item := BaseItemDto{
-		Name:            s.Title,
-		OriginalTitle:   s.OrigTitle,
-		ServerId:        h.serverID,
-		Id:              h.idMap.ToEmbyID(s.ID),
-		SortName:        s.Title,
-		Overview:        s.Overview,
-		ProductionYear:  s.Year,
-		CommunityRating: s.Rating,
-		IsFolder:        true,
-		Type:            "Series",
-		MediaType:       "",
-		LocationType:    "FileSystem",
-		Path:            s.FolderPath,
-		DateCreated:     formatEmbyTime(s.CreatedAt),
-		ParentId:        h.idMap.ToEmbyID(s.LibraryID),
-		ProviderIds:     buildSeriesProviderIds(s),
-		Genres:          splitGenres(s.Genres),
-		GenreItems:      genresToNameIdPairs(splitGenres(s.Genres)),
-		ImageTags:       buildSeriesImageTags(s),
-		ChildCount:      s.EpisodeCount,
-		UserData:        userData,
+		Name:               s.Title,
+		OriginalTitle:      s.OrigTitle,
+		ServerId:           h.serverID,
+		Id:                 h.idMap.ToEmbyID(s.ID),
+		SortName:           s.Title,
+		Overview:           s.Overview,
+		ProductionYear:     s.Year,
+		CommunityRating:    s.Rating,
+		IsFolder:           true,
+		Type:               "Series",
+		MediaType:          "",
+		LocationType:       "FileSystem",
+		Path:               s.FolderPath,
+		DateCreated:        formatEmbyTime(s.CreatedAt),
+		ParentId:           h.idMap.ToEmbyID(s.LibraryID),
+		ProviderIds:        buildSeriesProviderIds(s),
+		Genres:             splitGenres(s.Genres),
+		GenreItems:         genresToNameIdPairs(splitGenres(s.Genres)),
+		ImageTags:          ensureImageTags(buildSeriesImageTags(s)),
+		BackdropImageTags:  []string{},
+		ChildCount:         s.EpisodeCount,
+		RecursiveItemCount: s.EpisodeCount,
+		UserData:           userData,
 	}
 	if s.Studio != "" {
 		item.Studios = []NameIdPair{{Name: s.Studio, Id: h.idMap.ToEmbyID("studio:" + s.Studio)}}

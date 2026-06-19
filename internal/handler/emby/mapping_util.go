@@ -102,6 +102,13 @@ func buildImageTags(m *model.Media) map[string]string {
 	return tags
 }
 
+func ensureImageTags(tags map[string]string) map[string]string {
+	if tags == nil {
+		return map[string]string{}
+	}
+	return tags
+}
+
 // buildSeriesImageTags 同上，针对 Series。
 func buildSeriesImageTags(s *model.Series) map[string]string {
 	tags := make(map[string]string, 2)
@@ -115,6 +122,10 @@ func buildSeriesImageTags(s *model.Series) map[string]string {
 		return nil
 	}
 	return tags
+}
+
+func defaultUserData(key string) *UserItemData {
+	return &UserItemData{Key: key}
 }
 
 // shortTag 生成稳定的短 tag（用于 ImageTag）。

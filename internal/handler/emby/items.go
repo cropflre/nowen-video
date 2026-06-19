@@ -62,6 +62,8 @@ type itemsQuery struct {
 	startIndex     int
 	limit          int
 	searchTerm     string
+	nameStartsWith string
+	nameLessThan   string
 	filterIsFav    bool
 	filterIsPlayed *bool // nil = don't filter
 	genreFilter    string
@@ -70,14 +72,16 @@ type itemsQuery struct {
 
 func (h *Handler) parseItemsQuery(c *gin.Context) itemsQuery {
 	q := itemsQuery{
-		parentUUID:  h.idMap.Resolve(c.Query("ParentId")),
-		recursive:   boolQuery(c, "Recursive"),
-		startIndex:  getIntQuery(c, "StartIndex", 0),
-		limit:       getIntQuery(c, "Limit", 100),
-		searchTerm:  strings.TrimSpace(c.Query("SearchTerm")),
-		sortOrder:   c.Query("SortOrder"),
-		genreFilter: c.Query("Genres"),
-		yearFilter:  getIntQuery(c, "Years", 0),
+		parentUUID:     h.idMap.Resolve(c.Query("ParentId")),
+		recursive:      boolQuery(c, "Recursive"),
+		startIndex:     getIntQuery(c, "StartIndex", 0),
+		limit:          getIntQuery(c, "Limit", 100),
+		searchTerm:     strings.TrimSpace(c.Query("SearchTerm")),
+		nameStartsWith: strings.TrimSpace(c.Query("NameStartsWith")),
+		nameLessThan:   strings.TrimSpace(c.Query("NameLessThan")),
+		sortOrder:      c.Query("SortOrder"),
+		genreFilter:    c.Query("Genres"),
+		yearFilter:     getIntQuery(c, "Years", 0),
 	}
 	if q.limit <= 0 || q.limit > 500 {
 		q.limit = 100
@@ -237,6 +241,64 @@ func (h *Handler) listGlobalItems(c *gin.Context, userID string, q itemsQuery) {
 	h.writeItemsResult(c, items, q)
 }
 
+// ItemPrefixesHandler 对应 /Items/Prefixes。
+// EmbyCon 的首字母目录直接把响应当数组遍历，因此这里按官方 Emby 形状返回：
+//
+//	[{"Name":"#"},{"Name":"A"}]
+func (h *Handler) ItemPrefixesHandler(c *gin.Context) {
+	q := h.parseItemsQuery(c)
+	includeMovie, includeSeries, _ := h.decideTypes(q.includeTypes)
+
+	prefixes := map[string]struct{}{}
+	addPrefix := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		r := []rune(strings.ToUpper(name))[0]
+		if r >= 'A' && r <= 'Z' {
+			prefixes[string(r)] = struct{}{}
+			return
+		}
+		prefixes["#"] = struct{}{}
+	}
+
+	if includeMovie || len(q.includeTypes) == 0 {
+		list, _, err := h.mediaRepo.ListNonEpisode(1, 5000, q.parentUUID)
+		if err == nil {
+			for i := range list {
+				addPrefix(list[i].Title)
+			}
+		}
+	}
+	if includeSeries || len(q.includeTypes) == 0 {
+		var list []model.Series
+		var err error
+		if q.parentUUID != "" {
+			list, err = h.seriesRepo.ListByLibraryID(q.parentUUID)
+		} else {
+			list, _, err = h.seriesRepo.List(1, 5000, "")
+		}
+		if err == nil {
+			for i := range list {
+				addPrefix(list[i].Title)
+			}
+		}
+	}
+
+	names := make([]string, 0, len(prefixes))
+	for name := range prefixes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]gin.H, 0, len(names))
+	for _, name := range names {
+		out = append(out, gin.H{"Name": name})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // decideTypes 根据 IncludeItemTypes 决定返回 Movie/Series/Episode 三类的开关。
 func (h *Handler) decideTypes(types []string) (movie, series, episode bool) {
 	if len(types) == 0 {
@@ -297,6 +359,9 @@ func (h *Handler) filterAndMapMedia(list []model.Media, userID string, q itemsQu
 				continue
 			}
 		}
+		if !matchesNameBounds(m.Title, q.nameStartsWith, q.nameLessThan) {
+			continue
+		}
 
 		ud := h.buildUserItemData(userID, m)
 
@@ -336,6 +401,9 @@ func (h *Handler) filterAndMapSeries(list []model.Series, userID string, q items
 				!strings.Contains(strings.ToLower(s.OrigTitle), needle) {
 				continue
 			}
+		}
+		if !matchesNameBounds(s.Title, q.nameStartsWith, q.nameLessThan) {
+			continue
 		}
 		out = append(out, h.mapSeriesToItem(s, nil))
 	}
@@ -438,6 +506,21 @@ func floatCompare(a, b float64) int {
 		return 1
 	}
 	return 0
+}
+
+func matchesNameBounds(name, startsWith, lessThan string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	folded := strings.ToUpper(name)
+	if startsWith != "" && !strings.HasPrefix(folded, strings.ToUpper(startsWith)) {
+		return false
+	}
+	if lessThan != "" && strings.Compare(folded, strings.ToUpper(lessThan)) >= 0 {
+		return false
+	}
+	return true
 }
 
 // ==================== 单个 Item 详情 ====================

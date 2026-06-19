@@ -138,6 +138,8 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	g.GET("/Users/:userId/Items", h.ItemsHandler)
 	g.GET("/users/:userId/items", h.ItemsHandler)
 	// 字面量路由必须放在 /Items/:id 前，避免官方客户端的 /Items/resume 被 :id 截获。
+	g.GET("/Items/Prefixes", h.ItemPrefixesHandler)
+	g.GET("/items/prefixes", h.ItemPrefixesHandler)
 	g.GET("/Users/:userId/Items/Latest", h.LatestItemsHandler)
 	g.GET("/users/:userId/items/latest", h.LatestItemsHandler)
 	g.GET("/Users/:userId/Items/latest", h.LatestItemsHandler)
