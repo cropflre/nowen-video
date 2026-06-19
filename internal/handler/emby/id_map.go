@@ -16,8 +16,9 @@ import (
 
 // IDMapper 负责在 UUID 字符串主键与 Emby 风格数字/字符串 ID 之间做稳定双向映射。
 //
-// Emby 客户端普遍把 ItemId 当成整数处理（Infuse 某些版本直接 parseInt），
-// 因此我们基于 UUID 的 SHA-1 前 8 字节生成一个非负 int64，
+// Emby 客户端普遍把 ItemId 当成整数处理。Kodi EmbyCon 还会把 Id 传给
+// xbmc.InfoTagVideo.setDbId，实际需要 32-bit signed int 范围内的值。
+// 因此我们基于 UUID 的 SHA-1 前 4 字节生成一个非零正 int31，
 // 该结果对同一 UUID 始终稳定，进程重启后仍然一致。
 //
 // 为了支持反向查询（数字 ID → UUID），缓存在内存里，
@@ -46,10 +47,17 @@ func (m *IDMapper) ToEmbyID(uuid string) string {
 		return uuid
 	}
 	h := sha1.Sum([]byte(uuid))
-	// 取前 8 字节转成非负 int64
-	v := int64(binary.BigEndian.Uint64(h[:8]) & 0x7FFFFFFFFFFFFFFF)
+	// 取前 4 字节转成非零 int31，避免 Kodi setDbId 对超大整数报错。
+	v := int64(binary.BigEndian.Uint32(h[:4]) & 0x7FFFFFFF)
+	if v == 0 {
+		v = 1
+	}
 	s := strconv.FormatInt(v, 10)
 	m.register(s, uuid)
+	// 兼容本次修复前已经发给客户端的 63-bit ID。只要同一进程里曾经为
+	// 该 UUID 生成过新 ID，旧链接也能反向解析。
+	legacy := strconv.FormatInt(int64(binary.BigEndian.Uint64(h[:8])&0x7FFFFFFFFFFFFFFF), 10)
+	m.register(legacy, uuid)
 	return s
 }
 
