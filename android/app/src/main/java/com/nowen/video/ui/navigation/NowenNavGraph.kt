@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.nowen.video.ui.screen.home.HomeScreen
+import com.nowen.video.ui.screen.mobile.MobileRootScreen
 import com.nowen.video.ui.screen.auth.LoginScreen
 import com.nowen.video.ui.screen.auth.ServerSetupScreen
 import com.nowen.video.ui.screen.collection.CollectionDetailScreen
@@ -166,12 +167,15 @@ fun NowenNavGraph(
             exitTransition = { softExitTransition() },
             popEnterTransition = { softPopEnterTransition() }
         ) {
-            HomeScreen(
+            MobileRootScreen(
                 onMediaClick = { mediaId ->
                     navController.navigate(Screen.MediaDetail.createRoute(mediaId))
                 },
                 onSeriesClick = { seriesId ->
                     navController.navigate(Screen.SeriesDetail.createRoute(seriesId))
+                },
+                onLibraryClick = { libraryId ->
+                    navController.navigate(Screen.MediaList.createRoute(libraryId))
                 },
                 onSearchClick = {
                     navController.navigate(Screen.Search.createRoute())
@@ -179,18 +183,9 @@ fun NowenNavGraph(
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 },
-                onLibraryClick = { libraryId ->
-                    navController.navigate(Screen.MediaList.createRoute(libraryId))
+                onPlayerClick = { mediaId ->
+                    navController.navigate(Screen.Player.createRoute(mediaId))
                 },
-                onFavoritesClick = {
-                    navController.navigate(Screen.Favorites.route)
-                },
-                onHistoryClick = {
-                    navController.navigate(Screen.History.route)
-                },
-                onCollectionsClick = {
-                    navController.navigate(Screen.Collections.route)
-                }
             )
         }
 
