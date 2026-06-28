@@ -183,13 +183,17 @@ fun MobileSettingsScreen(
                         icon = Icons.Default.Palette,
                         title = "主题模式",
                         status = "跟随系统",
-                        onClick = { /* TODO: 主题选择 */ },
+                        enabled = false,
+                        badge = "即将支持",
+                        onClick = { },
                     ),
                     SettingsRow.Action(
                         icon = Icons.Default.Language,
                         title = "语言",
                         status = "简体中文",
-                        onClick = { /* TODO: 语言选择 */ },
+                        enabled = false,
+                        badge = "即将支持",
+                        onClick = { },
                     ),
                 ),
             )
@@ -210,7 +214,9 @@ fun MobileSettingsScreen(
                     SettingsRow.Action(
                         icon = Icons.Default.Person,
                         title = "关于 Nowen Video",
-                        onClick = { /* TODO: 关于页面 */ },
+                        enabled = false,
+                        badge = "即将支持",
+                        onClick = { },
                     ),
                 ),
             )
