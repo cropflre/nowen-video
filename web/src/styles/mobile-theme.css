@@ -1,0 +1,191 @@
+/* 移动端主题覆盖 */
+/* Hills Pro 风格：柔和浅色背景 */
+
+/* 移动端浅色主题 */
+@media (max-width: 767px) {
+  :root {
+    /* 背景色 */
+    --bg-base: #F8F5FB;
+    --bg-elevated: #FFFFFF;
+    --bg-surface: #F4F1F8;
+    --bg-hover: rgba(0, 0, 0, 0.05);
+
+    /* 文字色 */
+    --text-primary: #171820;
+    --text-secondary: #6B6E7A;
+    --text-tertiary: #8E919E;
+
+    /* 主题色 */
+    --neon-blue: #142060;
+    --neon-purple: #4A5FC1;
+    --neon-pink: #8B5CF6;
+
+    /* 边框 */
+    --border-default: rgba(28, 32, 56, 0.08);
+    --border-hover: rgba(28, 32, 56, 0.15);
+
+    /* 阴影 */
+    --shadow-sm: 0 2px 8px rgba(31, 35, 70, 0.08);
+    --shadow-md: 0 8px 24px rgba(31, 35, 70, 0.12);
+    --shadow-lg: 0 18px 44px rgba(31, 35, 70, 0.14);
+
+    /* 卡片 */
+    --card-bg: rgba(255, 255, 255, 0.72);
+    --card-border: rgba(28, 32, 56, 0.08);
+
+    /* 毛玻璃 */
+    --glass-bg: rgba(246, 244, 252, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.72);
+
+    /* 导航 */
+    --nav-bg: rgba(246, 244, 252, 0.82);
+    --nav-hover-bg: rgba(0, 0, 0, 0.05);
+    --nav-active-bg: rgba(224, 226, 255, 0.86);
+    --nav-active-color: #0F1D5A;
+
+    /* 输入框 */
+    --input-bg: rgba(255, 255, 255, 0.6);
+    --input-border: rgba(28, 32, 56, 0.08);
+    --input-focus-border: #142060;
+    --input-focus-shadow: rgba(20, 32, 96, 0.1);
+
+    /* 成功/警告/错误 */
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+  }
+
+  /* 覆盖桌面端深色背景 */
+  body {
+    background-color: var(--bg-base) !important;
+    color: var(--text-primary) !important;
+  }
+
+  /* 覆盖桌面端侧边栏 */
+  .desktop-sidebar,
+  [class*="sidebar"] {
+    display: none !important;
+  }
+
+  /* 覆盖桌面端标题栏 */
+  .title-bar,
+  [class*="title-bar"] {
+    display: none !important;
+  }
+
+  /* 移动端全屏布局 */
+  .nv-app-shell {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .nv-app-body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* 覆盖桌面端主内容区 */
+  main {
+    background-color: var(--bg-base) !important;
+  }
+
+  /* 覆盖桌面端卡片样式 */
+  [class*="card"],
+  [class*="Card"] {
+    border-radius: 24px !important;
+    background: var(--card-bg) !important;
+    border: 1px solid var(--card-border) !important;
+    box-shadow: var(--shadow-sm) !important;
+  }
+
+  /* 覆盖桌面端按钮样式 */
+  button {
+    border-radius: 12px !important;
+  }
+
+  /* 覆盖桌面端输入框样式 */
+  input,
+  textarea,
+  select {
+    border-radius: 12px !important;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: var(--input-focus-border) !important;
+    box-shadow: 0 0 0 3px var(--input-focus-shadow) !important;
+    outline: none !important;
+  }
+}
+
+/* 移动端安全区支持 */
+@supports (padding: env(safe-area-inset-top)) {
+  @media (max-width: 767px) {
+    .mobile-safe-area-top {
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .mobile-safe-area-bottom {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .mobile-safe-area-left {
+      padding-left: env(safe-area-inset-left);
+    }
+
+    .mobile-safe-area-right {
+      padding-right: env(safe-area-inset-right);
+    }
+  }
+}
+
+/* 移动端刘海屏支持 */
+@supports (padding: max(0px)) {
+  @media (max-width: 767px) {
+    .mobile-notch {
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+    }
+  }
+}
+
+/* 移动端手势条支持 */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  @media (max-width: 767px) {
+    .mobile-gesture-bar {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .mobile-gesture-bar-margin {
+      margin-bottom: env(safe-area-inset-bottom);
+    }
+  }
+}
+
+/* 移动端横屏适配 */
+@media (max-width: 767px) and (orientation: landscape) {
+  .mobile-landscape {
+    /* 横屏时的特殊样式 */
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+
+/* 移动端暗色模式（可选） */
+@media (max-width: 767px) and (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --bg-base: #1A1A2E;
+    --bg-elevated: #16213E;
+    --bg-surface: #0F3460;
+    --text-primary: #EAEAEA;
+    --text-secondary: #A0A0B0;
+    --text-tertiary: #707080;
+    --card-bg: rgba(22, 33, 62, 0.72);
+    --card-border: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(26, 26, 46, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.12);
+  }
+}
