@@ -2,7 +2,6 @@ package com.nowen.video.ui.component.mobile
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,7 +83,7 @@ fun FloatingGlassBottomBar(
         ) {
             items.forEach { item ->
                 val isSelected = item.key == selectedKey
-                BottomNavItem(
+                BottomNavButton(
                     item = item,
                     isSelected = isSelected,
                     onClick = { onItemClick(item.key) },
@@ -97,7 +95,7 @@ fun FloatingGlassBottomBar(
 }
 
 @Composable
-private fun BottomNavItem(
+private fun BottomNavButton(
     item: BottomNavItem,
     isSelected: Boolean,
     onClick: () -> Unit,

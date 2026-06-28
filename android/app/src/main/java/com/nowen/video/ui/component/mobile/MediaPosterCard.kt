@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +38,13 @@ import com.nowen.video.ui.theme.MobileSpacing
 /**
  * 媒体海报卡片
  * Hills Pro 风格：大圆角 + 柔和阴影 + 进度条
+ *
+ * @param title 标题
+ * @param year 年份
+ * @param imageUrl 图片 URL
+ * @param progress 进度，范围 0f..1f
+ * @param badges 标签列表
+ * @param onClick 点击事件
  */
 @Composable
 fun MediaPosterCard(
@@ -48,6 +56,8 @@ fun MediaPosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 统一进度范围为 0f..1f
+    val normalizedProgress = progress?.coerceIn(0f, 1f)
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -108,7 +118,7 @@ fun MediaPosterCard(
             }
 
             // 进度条
-            if (progress != null && progress > 0) {
+            if (normalizedProgress != null && normalizedProgress > 0) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -129,7 +139,7 @@ fun MediaPosterCard(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(progress)
+                                    .fillMaxWidth(normalizedProgress)
                                     .background(MobileColors.Primary),
                             )
                         }
