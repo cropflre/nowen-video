@@ -3,6 +3,7 @@ package emby
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -20,18 +21,18 @@ import (
 
 // PlaybackInfoRequest Emby 官方 POST body 字段（只保留我们用到的）。
 type PlaybackInfoRequest struct {
-	UserId              string `json:"UserId"`
-	MaxStreamingBitrate int    `json:"MaxStreamingBitrate"`
-	StartTimeTicks      int64  `json:"StartTimeTicks"`
-	AudioStreamIndex    int    `json:"AudioStreamIndex"`
-	SubtitleStreamIndex int    `json:"SubtitleStreamIndex"`
-	MediaSourceId       string `json:"MediaSourceId"`
-	LiveStreamId        string `json:"LiveStreamId"`
-	EnableDirectPlay    bool   `json:"EnableDirectPlay"`
-	EnableDirectStream  bool   `json:"EnableDirectStream"`
-	EnableTranscoding   bool   `json:"EnableTranscoding"`
-	AllowVideoStreamCopy bool  `json:"AllowVideoStreamCopy"`
-	AllowAudioStreamCopy bool  `json:"AllowAudioStreamCopy"`
+	UserId               string `json:"UserId"`
+	MaxStreamingBitrate  int    `json:"MaxStreamingBitrate"`
+	StartTimeTicks       int64  `json:"StartTimeTicks"`
+	AudioStreamIndex     int    `json:"AudioStreamIndex"`
+	SubtitleStreamIndex  int    `json:"SubtitleStreamIndex"`
+	MediaSourceId        string `json:"MediaSourceId"`
+	LiveStreamId         string `json:"LiveStreamId"`
+	EnableDirectPlay     bool   `json:"EnableDirectPlay"`
+	EnableDirectStream   bool   `json:"EnableDirectStream"`
+	EnableTranscoding    bool   `json:"EnableTranscoding"`
+	AllowVideoStreamCopy bool   `json:"AllowVideoStreamCopy"`
+	AllowAudioStreamCopy bool   `json:"AllowAudioStreamCopy"`
 }
 
 // PlaybackInfoHandler 对应 GET/POST /Items/{id}/PlaybackInfo。
@@ -81,9 +82,12 @@ func (h *Handler) PlaybackInfoHandler(c *gin.Context) {
 		// 追加 TranscodingUrl —— 对应 /emby/Videos/{id}/master.m3u8?maxBitrate=xxx
 		// 若 buildMediaSource 未生成 TranscodingUrl（兼容直通场景），则跳过
 		if src.TranscodingUrl == "" {
-			src.TranscodingUrl = buildAbsoluteURL(c,
-				fmt.Sprintf("/emby/Videos/%s/master.m3u8?maxBitrate=%d",
-					h.idMap.ToEmbyID(m.ID), maxStreamingBitrate))
+			transcodingURL := fmt.Sprintf("/Videos/%s/master.m3u8?maxBitrate=%d",
+				h.idMap.ToEmbyID(m.ID), maxStreamingBitrate)
+			if token, _ := extractToken(c); token != "" {
+				transcodingURL += "&api_key=" + url.QueryEscape(token)
+			}
+			src.TranscodingUrl = transcodingURL
 			src.TranscodingSubProtocol = "hls"
 			src.TranscodingContainer = "ts"
 			src.SupportsTranscoding = true
