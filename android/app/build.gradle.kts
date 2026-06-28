@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -41,6 +42,13 @@ fun appVersionCode(version: String): Int {
 
 val appVersionName = resolveAppVersion()
 
+// 读取 release signing 配置
+val keystorePropertiesFile = rootProject.file("local.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
+}
+
 android {
     namespace = "com.nowen.video"
     compileSdk = 35
@@ -60,10 +68,26 @@ android {
             // 使用 Android SDK 自带的 debug.keystore
         }
         create("release") {
-            storeFile = file("nowen-release.keystore")
-            storePassword = "nowen2026"
-            keyAlias = "nowen-video"
-            keyPassword = "nowen2026"
+            // 从 local.properties 或环境变量读取签名配置
+            // 配置方式：在 local.properties 中添加：
+            //   RELEASE_STORE_FILE=path/to/nowen-release.keystore
+            //   RELEASE_STORE_PASSWORD=your-password
+            //   RELEASE_KEY_ALIAS=nowen-video
+            //   RELEASE_KEY_PASSWORD=your-password
+            val storeFilePath = keystoreProperties.getProperty("RELEASE_STORE_FILE")
+                ?: System.getenv("RELEASE_STORE_FILE")
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+            }
+            storePassword = keystoreProperties.getProperty("RELEASE_STORE_PASSWORD")
+                ?: System.getenv("RELEASE_STORE_PASSWORD")
+                ?: ""
+            keyAlias = keystoreProperties.getProperty("RELEASE_KEY_ALIAS")
+                ?: System.getenv("RELEASE_KEY_ALIAS")
+                ?: ""
+            keyPassword = keystoreProperties.getProperty("RELEASE_KEY_PASSWORD")
+                ?: System.getenv("RELEASE_KEY_PASSWORD")
+                ?: ""
         }
     }
 
