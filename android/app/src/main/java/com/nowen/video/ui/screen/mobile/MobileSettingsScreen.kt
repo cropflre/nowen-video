@@ -1,20 +1,15 @@
 package com.nowen.video.ui.screen.mobile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
@@ -29,21 +24,20 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VideoSettings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nowen.video.ui.component.mobile.MobilePageHeader
+import com.nowen.video.ui.component.mobile.SettingsGroup
+import com.nowen.video.ui.component.mobile.SettingsRow
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileFontSize
 import com.nowen.video.ui.theme.MobileRadius
@@ -96,23 +90,23 @@ fun MobileSettingsScreen(
         item {
             SettingsGroup(
                 title = "功能",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.Dns,
                         title = "服务器管理",
                         onClick = onServerManageClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.PlayArrow,
                         title = "播放器设置",
                         onClick = onPlayerSettingsClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.NetworkCheck,
                         title = "连接诊断",
                         onClick = onConnectionDiagnosticClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Notifications,
                         title = "后台任务",
                         status = "未连接",
@@ -126,50 +120,50 @@ fun MobileSettingsScreen(
         item {
             SettingsGroup(
                 title = "能力",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.CloudDownload,
                         title = "离线下载",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onDownloadsClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Subtitles,
                         title = "字幕中心",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onSubtitleCenterClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Sync,
                         title = "智能发现",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onSmartDiscoveryClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Language,
                         title = "远程访问",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onRemoteAccessClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Cast,
                         title = "投屏与遥控",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onCastClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.FamilyRestroom,
                         title = "家庭与儿童模式",
                         enabled = false,
                         badge = "即将支持",
                         onClick = onFamilyModeClick,
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.VideoSettings,
                         title = "设备适配",
                         enabled = false,
@@ -184,14 +178,14 @@ fun MobileSettingsScreen(
         item {
             SettingsGroup(
                 title = "外观",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.Palette,
                         title = "主题模式",
                         status = "跟随系统",
                         onClick = { /* TODO: 主题选择 */ },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Language,
                         title = "语言",
                         status = "简体中文",
@@ -205,15 +199,15 @@ fun MobileSettingsScreen(
         item {
             SettingsGroup(
                 title = "关于",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.Info,
                         title = "应用版本",
                         status = uiState.appVersion,
                         showArrow = false,
                         onClick = { },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Person,
                         title = "关于 Nowen Video",
                         onClick = { /* TODO: 关于页面 */ },
@@ -294,155 +288,6 @@ private fun UserServerCard(
                     fontSize = MobileFontSize.sm,
                 )
             }
-        }
-    }
-}
-
-/**
- * 设置分组
- */
-@Composable
-private fun SettingsGroup(
-    title: String,
-    items: List<SettingsItem>,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(
-                start = MobileSpacing.xl,
-                end = MobileSpacing.xl,
-                top = MobileSpacing.xl,
-            ),
-    ) {
-        Text(
-            text = title,
-            color = MobileColors.Primary,
-            fontSize = MobileFontSize.sm,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = MobileSpacing.sm),
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(MobileRadius.lg))
-                .background(MobileColors.Card)
-                .border(
-                    width = 1.dp,
-                    color = MobileColors.CardBorder,
-                    shape = RoundedCornerShape(MobileRadius.lg),
-                ),
-        ) {
-            items.forEach { item ->
-                SettingsItemRow(item = item)
-            }
-        }
-    }
-}
-
-/**
- * 设置项数据
- */
-private data class SettingsItem(
-    val icon: ImageVector,
-    val title: String,
-    val subtitle: String? = null,
-    val status: String? = null,
-    val badge: String? = null,
-    val enabled: Boolean = true,
-    val showArrow: Boolean = true,
-    val onClick: () -> Unit,
-)
-
-/**
- * 设置项行
- */
-@Composable
-private fun SettingsItemRow(
-    item: SettingsItem,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(enabled = item.enabled, onClick = item.onClick)
-            .padding(
-                horizontal = MobileSpacing.lg,
-                vertical = MobileSpacing.md,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(MobileSpacing.md),
-    ) {
-        // 图标
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(MobileRadius.sm))
-                .background(
-                    if (item.enabled) MobileColors.PrimarySoft
-                    else MobileColors.BgAlt
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = null,
-                tint = if (item.enabled) MobileColors.Primary else MobileColors.Muted,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-
-        // 标题和副标题
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = item.title,
-                color = if (item.enabled) MobileColors.Text else MobileColors.Muted,
-                fontSize = MobileFontSize.md,
-                fontWeight = FontWeight.Medium,
-            )
-            if (item.subtitle != null) {
-                Text(
-                    text = item.subtitle,
-                    color = MobileColors.Muted,
-                    fontSize = MobileFontSize.sm,
-                )
-            }
-        }
-
-        // 状态或 badge
-        if (item.status != null) {
-            Text(
-                text = item.status,
-                color = MobileColors.Muted,
-                fontSize = MobileFontSize.sm,
-            )
-        } else if (item.badge != null) {
-            Text(
-                text = item.badge,
-                color = MobileColors.Primary,
-                fontSize = MobileFontSize.xs,
-                modifier = Modifier
-                    .background(
-                        MobileColors.PrimarySoft,
-                        RoundedCornerShape(MobileRadius.xs)
-                    )
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
-        }
-
-        // 箭头
-        if (item.showArrow && item.enabled) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = MobileColors.Muted,
-                modifier = Modifier.size(20.dp),
-            )
         }
     }
 }
