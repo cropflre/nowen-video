@@ -9,6 +9,7 @@ import TitleBar from '@/components/TitleBar'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
+import { useIsMobile } from '@/hooks/useMobile'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -32,6 +33,7 @@ const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
 const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage'))
+const MobileApp = lazy(() => import('@/pages/mobile/MobileApp'))
 
 // 页面加载中的占位组件 — 品牌化霓虹脉冲环
 function PageLoader() {
@@ -93,6 +95,17 @@ function ForceChangePasswordRoute() {
   return <ForceChangePasswordPage />
 }
 
+// 响应式应用壳：根据屏幕宽度选择移动端或桌面端布局
+function ResponsiveAppShell() {
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return <MobileApp />
+  }
+
+  return <Layout />
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -126,12 +139,12 @@ export default function App() {
               }
             />
 
-            {/* 含侧边栏布局的路由 */}
+            {/* 含侧边栏布局的路由（响应式：移动端/桌面端） */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
-                  <Layout />
+                  <ResponsiveAppShell />
                 </ProtectedRoute>
               }
             >

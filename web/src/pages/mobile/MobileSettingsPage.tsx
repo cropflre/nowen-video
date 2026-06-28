@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Globe,
@@ -10,53 +9,21 @@ import {
   Subtitles,
   Zap,
   Info,
-  Server,
-  Settings,
 } from 'lucide-react'
 import {
-  MobileShell,
   MobilePageHeader,
   MobileSettingGroup,
   MobileSettingItem,
-  FloatingTabBar,
 } from '@/components/mobile'
 import { mobileTokens } from '@/styles/mobile-tokens'
-
-// 底部导航项
-const navItems = [
-  {
-    key: 'servers',
-    label: '服务器',
-    icon: <Server size={22} />,
-  },
-  {
-    key: 'aggregate',
-    label: '聚合视界',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="2" y="2" width="8" height="8" rx="2" />
-        <rect x="14" y="2" width="8" height="8" rx="2" />
-        <rect x="2" y="14" width="8" height="8" rx="2" />
-        <rect x="14" y="14" width="8" height="8" rx="2" />
-      </svg>
-    ),
-  },
-  {
-    key: 'settings',
-    label: '设置',
-    icon: <Settings size={22} />,
-  },
-]
 
 /**
  * 移动端设置页面
  * Hills Pro 风格：品牌卡片 + 分组列表
  */
 export default function MobileSettingsPage() {
-  const [activeTab, setActiveTab] = useState('settings')
-
   return (
-    <MobileShell>
+    <>
       {/* 页面标题 */}
       <MobilePageHeader title="设置" />
 
@@ -101,6 +68,9 @@ export default function MobileSettingsPage() {
 
         <motion.button
           whileTap={{ scale: 0.95 }}
+          onClick={() => {
+            // TODO: 跳转管理页面
+          }}
           style={{
             alignSelf: 'flex-start',
             padding: '12px 24px',
@@ -122,27 +92,37 @@ export default function MobileSettingsPage() {
           icon={<Globe size={22} />}
           title="语言"
           value="Auto"
-          onClick={() => console.log('Language')}
+          onClick={() => {
+            // TODO: 跳转语言设置
+          }}
         />
         <MobileSettingItem
           icon={<Palette size={22} />}
           title="主题"
-          onClick={() => console.log('Theme')}
+          onClick={() => {
+            // TODO: 跳转主题设置
+          }}
         />
         <MobileSettingItem
           icon={<FolderOpen size={22} />}
           title="媒体库"
-          onClick={() => console.log('Media library')}
+          onClick={() => {
+            // TODO: 跳转媒体库管理
+          }}
         />
         <MobileSettingItem
           icon={<Database size={22} />}
           title="备份与还原"
-          onClick={() => console.log('Backup')}
+          onClick={() => {
+            // TODO: 跳转备份还原
+          }}
         />
         <MobileSettingItem
           icon={<RefreshCw size={22} />}
           title="同步"
-          onClick={() => console.log('Sync')}
+          onClick={() => {
+            // TODO: 跳转同步设置
+          }}
         />
       </MobileSettingGroup>
 
@@ -150,17 +130,23 @@ export default function MobileSettingsPage() {
         <MobileSettingItem
           icon={<Zap size={22} />}
           title="交互"
-          onClick={() => console.log('Interaction')}
+          onClick={() => {
+            // TODO: 跳转交互设置
+          }}
         />
         <MobileSettingItem
           icon={<Play size={22} />}
           title="播放器"
-          onClick={() => console.log('Player')}
+          onClick={() => {
+            // TODO: 跳转播放器设置
+          }}
         />
         <MobileSettingItem
           icon={<Subtitles size={22} />}
           title="弹幕"
-          onClick={() => console.log('Danmaku')}
+          onClick={() => {
+            // TODO: 跳转弹幕设置
+          }}
         />
       </MobileSettingGroup>
 
@@ -168,16 +154,11 @@ export default function MobileSettingsPage() {
         <MobileSettingItem
           icon={<Info size={22} />}
           title="关于"
-          onClick={() => console.log('About')}
+          onClick={() => {
+            // TODO: 跳转关于页面
+          }}
         />
       </MobileSettingGroup>
-
-      {/* 底部导航 */}
-      <FloatingTabBar
-        items={navItems}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-      />
-    </MobileShell>
+    </>
   )
 }

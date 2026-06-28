@@ -1,34 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Search, FolderOpen, Server, Settings, Play } from 'lucide-react'
+import { Search, FolderOpen, Play } from 'lucide-react'
 import {
-  MobileShell,
   MobilePageHeader,
   SegmentedTabs,
   MediaPosterCard,
   MediaRail,
-  FloatingTabBar,
 } from '@/components/mobile'
 import { mobileTokens } from '@/styles/mobile-tokens'
-
-// 模拟数据
-const mockContinueWatching = [
-  { id: '1', title: '示例电影 1', year: 2024, progress: 45 },
-  { id: '2', title: '示例电影 2', year: 2023, progress: 78 },
-  { id: '3', title: '示例剧集 S01E05', year: 2024, progress: 30 },
-]
-
-const mockFavorites = [
-  { id: '4', title: '收藏电影 1', year: 2024 },
-  { id: '5', title: '收藏电影 2', year: 2023 },
-  { id: '6', title: '收藏电影 3', year: 2022 },
-]
-
-const mockLibraries = [
-  { id: 'lib1', name: '电影', count: 128 },
-  { id: 'lib2', name: '电视剧', count: 45 },
-  { id: 'lib3', name: '动画', count: 67 },
-]
+import { mediaApi, libraryApi, userApi } from '@/api'
 
 // Tab 配置
 const aggregateTabs = [
@@ -37,54 +17,93 @@ const aggregateTabs = [
   { key: 'libraries', label: '媒体库' },
 ]
 
-// 底部导航项
-const navItems = [
-  {
-    key: 'servers',
-    label: '服务器',
-    icon: <Server size={22} />,
-  },
-  {
-    key: 'aggregate',
-    label: '聚合视界',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="2" y="2" width="8" height="8" rx="2" />
-        <rect x="14" y="2" width="8" height="8" rx="2" />
-        <rect x="2" y="14" width="8" height="8" rx="2" />
-        <rect x="14" y="14" width="8" height="8" rx="2" />
-      </svg>
-    ),
-  },
-  {
-    key: 'settings',
-    label: '设置',
-    icon: <Settings size={22} />,
-  },
-]
-
 /**
  * 移动端聚合视界页面
  * Hills Pro 风格：Tab 切换 + 双列媒体网格
  */
 export default function MobileAggregatePage() {
-  const [activeTab, setActiveTab] = useState('aggregate')
   const [activeAggregateTab, setActiveAggregateTab] = useState('continue')
+  const [continueWatching, setContinueWatching] = useState<any[]>([])
+  const [favorites, setFavorites] = useState<any[]>([])
+  const [libraries, setLibraries] = useState<any[]>([])
+
+  // 类型断言辅助函数
+  const extractData = (res: any) => {
+    if (res?.data) return Array.isArray(res.data) ? res.data : []
+    if (res?.items) return res.items
+    return []
+  }
+  const [loading, setLoading] = useState(false)
+
+  // 获取继续观看数据
+  useEffect(() => {
+    if (activeAggregateTab === 'continue') {
+      setLoading(true)
+      mediaApi.continueWatching(20)
+        .then(res => {
+          setContinueWatching(extractData(res))
+        })
+        .catch(() => {
+          setContinueWatching([])
+        })
+        .finally(() => {
+          setLoading(false)
+        })
+    }
+  }, [activeAggregateTab])
+
+  // 获取收藏数据
+  useEffect(() => {
+    if (activeAggregateTab === 'favorites') {
+      setLoading(true)
+      userApi.favorites(1, 50)
+        .then(res => {
+          setFavorites(extractData(res))
+        })
+        .catch(() => {
+          setFavorites([])
+        })
+        .finally(() => {
+          setLoading(false)
+        })
+    }
+  }, [activeAggregateTab])
+
+  // 获取媒体库数据
+  useEffect(() => {
+    if (activeAggregateTab === 'libraries') {
+      setLoading(true)
+      libraryApi.list()
+        .then(res => {
+          setLibraries(extractData(res))
+        })
+        .catch(() => {
+          setLibraries([])
+        })
+        .finally(() => {
+          setLoading(false)
+        })
+    }
+  }, [activeAggregateTab])
 
   return (
-    <MobileShell>
+    <>
       {/* 页面标题 */}
       <MobilePageHeader
         title="聚合视界"
         actions={[
           {
             icon: <Search size={22} />,
-            onClick: () => console.log('Search'),
+            onClick: () => {
+              // TODO: 跳转搜索页
+            },
             label: '搜索',
           },
           {
             icon: <FolderOpen size={22} />,
-            onClick: () => console.log('Libraries'),
+            onClick: () => {
+              setActiveAggregateTab('libraries')
+            },
             label: '媒体库',
           },
         ]}
@@ -108,16 +127,23 @@ export default function MobileAggregatePage() {
         {/* 继续观看 */}
         {activeAggregateTab === 'continue' && (
           <div>
-            {mockContinueWatching.length > 0 ? (
+            {loading ? (
+              <div className="px-8 py-12 text-center" style={{ color: mobileTokens.textMuted }}>
+                加载中...
+              </div>
+            ) : continueWatching.length > 0 ? (
               <MediaRail title="继续观看">
-                {mockContinueWatching.map((item) => (
+                {continueWatching.map((item: any) => (
                   <div key={item.id} style={{ minWidth: '280px' }}>
                     <MediaPosterCard
-                      title={item.title}
+                      title={item.title || item.episode_title || '未知'}
                       year={item.year}
-                      progress={item.progress}
+                      imageUrl={item.thumbnail_path ? `/api/media/${item.id}/thumbnail` : undefined}
+                      progress={item.duration > 0 ? Math.round((item.position / item.duration) * 100) : 0}
                       aspect="landscape"
-                      onClick={() => console.log('Play', item.id)}
+                      onClick={() => {
+                        // TODO: 跳转播放
+                      }}
                     />
                   </div>
                 ))}
@@ -135,7 +161,11 @@ export default function MobileAggregatePage() {
         {/* 收藏 */}
         {activeAggregateTab === 'favorites' && (
           <div>
-            {mockFavorites.length > 0 ? (
+            {loading ? (
+              <div className="px-8 py-12 text-center" style={{ color: mobileTokens.textMuted }}>
+                加载中...
+              </div>
+            ) : favorites.length > 0 ? (
               <div className="px-8">
                 <h2
                   className="font-semibold mb-4"
@@ -144,7 +174,7 @@ export default function MobileAggregatePage() {
                     color: mobileTokens.text,
                   }}
                 >
-                  收藏的电影
+                  收藏的媒体
                 </h2>
                 <div
                   className="grid gap-4"
@@ -152,12 +182,15 @@ export default function MobileAggregatePage() {
                     gridTemplateColumns: 'repeat(2, 1fr)',
                   }}
                 >
-                  {mockFavorites.map((item) => (
+                  {favorites.map((item: any) => (
                     <MediaPosterCard
                       key={item.id}
-                      title={item.title}
+                      title={item.title || '未知'}
                       year={item.year}
-                      onClick={() => console.log('View', item.id)}
+                      imageUrl={item.poster_path ? `/api/media/${item.id}/poster` : undefined}
+                      onClick={() => {
+                        // TODO: 跳转详情
+                      }}
                     />
                   ))}
                 </div>
@@ -179,76 +212,83 @@ export default function MobileAggregatePage() {
         {/* 媒体库 */}
         {activeAggregateTab === 'libraries' && (
           <div>
-            <div className="px-8">
-              <h2
-                className="font-semibold mb-4"
-                style={{
-                  fontSize: mobileTokens.fontSize.xl,
-                  color: mobileTokens.text,
-                }}
-              >
-                emby
-              </h2>
-              <div className="space-y-3">
-                {mockLibraries.map((lib) => (
-                  <motion.div
-                    key={lib.id}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => console.log('Open library', lib.id)}
-                    className="flex items-center justify-between p-4"
-                    style={{
-                      borderRadius: mobileTokens.radius.lg,
-                      background: mobileTokens.card,
-                      border: `1px solid ${mobileTokens.cardBorder}`,
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <FolderOpen size={24} style={{ color: mobileTokens.primary }} />
-                      <span
-                        className="font-medium"
-                        style={{
-                          fontSize: mobileTokens.fontSize.lg,
-                          color: mobileTokens.text,
-                        }}
-                      >
-                        {lib.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        style={{
-                          fontSize: mobileTokens.fontSize.sm,
-                          color: mobileTokens.textMuted,
-                        }}
-                      >
-                        {lib.count} 部
-                      </span>
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={mobileTokens.textMuted}
-                        strokeWidth="2"
-                      >
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </div>
-                  </motion.div>
-                ))}
+            {loading ? (
+              <div className="px-8 py-12 text-center" style={{ color: mobileTokens.textMuted }}>
+                加载中...
               </div>
-            </div>
+            ) : libraries.length > 0 ? (
+              <div className="px-8">
+                <h2
+                  className="font-semibold mb-4"
+                  style={{
+                    fontSize: mobileTokens.fontSize.xl,
+                    color: mobileTokens.text,
+                  }}
+                >
+                  媒体库
+                </h2>
+                <div className="space-y-3">
+                  {libraries.map((lib: any) => (
+                    <motion.div
+                      key={lib.id}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        // TODO: 跳转媒体库详情
+                      }}
+                      className="flex items-center justify-between p-4"
+                      style={{
+                        borderRadius: mobileTokens.radius.lg,
+                        background: mobileTokens.card,
+                        border: `1px solid ${mobileTokens.cardBorder}`,
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FolderOpen size={24} style={{ color: mobileTokens.primary }} />
+                        <span
+                          className="font-medium"
+                          style={{
+                            fontSize: mobileTokens.fontSize.lg,
+                            color: mobileTokens.text,
+                          }}
+                        >
+                          {lib.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          style={{
+                            fontSize: mobileTokens.fontSize.sm,
+                            color: mobileTokens.textMuted,
+                          }}
+                        >
+                          {lib.media_count || 0} 部
+                        </span>
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke={mobileTokens.textMuted}
+                          strokeWidth="2"
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<FolderOpen size={48} />}
+                title="暂无媒体库"
+                subtitle="请先创建媒体库"
+              />
+            )}
           </div>
         )}
       </motion.div>
-
-      {/* 底部导航 */}
-      <FloatingTabBar
-        items={navItems}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-      />
-    </MobileShell>
+    </>
   )
 }
 
