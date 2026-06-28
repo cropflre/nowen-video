@@ -106,6 +106,42 @@ function ResponsiveAppShell() {
   return <Layout />
 }
 
+// 移动端媒体详情页包装器
+function MobileMediaDetailRoute() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <MobileApp initialPath="/media" />
+  }
+  return <MediaDetailPage />
+}
+
+// 移动端媒体库详情页包装器
+function MobileLibraryDetailRoute() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <MobileApp initialPath="/library" />
+  }
+  return <LibraryPage />
+}
+
+// 移动端搜索页包装器
+function MobileSearchRoute() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <MobileApp initialPath="/search" />
+  }
+  return <SearchPage />
+}
+
+// 移动端收藏页包装器
+function MobileFavoritesRoute() {
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <MobileApp initialPath="/favorites" />
+  }
+  return <FavoritesPage />
+}
+
 // 桌面端组件包装器：仅在桌面端渲染
 function DesktopOnlyComponents() {
   const isMobile = useIsMobile()
@@ -162,11 +198,11 @@ export default function App() {
               }
             >
               <Route index element={<HomePage />} />
-              <Route path="library/:id" element={<LibraryPage />} />
-              <Route path="media/:id" element={<MediaDetailPage />} />
+              <Route path="library/:id" element={<MobileLibraryDetailRoute />} />
+              <Route path="media/:id" element={<MobileMediaDetailRoute />} />
               <Route path="series/:id" element={<SeriesDetailPage />} />
-              <Route path="search" element={<SearchPage />} />
-              <Route path="favorites" element={<FavoritesPage />} />
+              <Route path="search" element={<MobileSearchRoute />} />
+              <Route path="favorites" element={<MobileFavoritesRoute />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="playlists" element={<PlaylistsPage />} />
               <Route path="admin" element={<AdminPage />} />

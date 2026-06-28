@@ -13,13 +13,21 @@ import { useNavigate } from 'react-router-dom'
 
 interface MobileServerHomePageProps {
   onBack: () => void
+  onGoSearch?: () => void
+  onGoMediaDetail?: (id: string) => void
+  onGoLibraryDetail?: (id: string) => void
 }
 
 /**
  * 移动端服务器首页
  * 展示 Hero、继续观看、媒体库、最近添加
  */
-export default function MobileServerHomePage({ onBack }: MobileServerHomePageProps) {
+export default function MobileServerHomePage({
+  onBack,
+  onGoSearch,
+  onGoMediaDetail,
+  onGoLibraryDetail,
+}: MobileServerHomePageProps) {
   const navigate = useNavigate()
   const [continueWatching, setContinueWatching] = useState<any[]>([])
   const [libraries, setLibraries] = useState<any[]>([])
@@ -79,10 +87,7 @@ export default function MobileServerHomePage({ onBack }: MobileServerHomePagePro
         actions={[
           {
             icon: <Search size={22} />,
-            onClick: () => {
-              // 切换到搜索 tab
-              // 通过父组件处理
-            },
+            onClick: onGoSearch || (() => {}),
             label: '搜索',
           },
         ]}
@@ -95,7 +100,11 @@ export default function MobileServerHomePage({ onBack }: MobileServerHomePagePro
           autoPlay
           interval={6500}
           onItemClick={(item) => {
-            navigate(`/media/${item.id}`)
+            if (onGoMediaDetail) {
+              onGoMediaDetail(item.id)
+            } else {
+              navigate(`/media/${item.id}`)
+            }
           }}
         />
       )}
@@ -128,7 +137,11 @@ export default function MobileServerHomePage({ onBack }: MobileServerHomePagePro
               key={lib.id}
               whileTap={{ scale: 0.98 }}
               onClick={() => {
-                navigate(`/library/${lib.id}`)
+                if (onGoLibraryDetail) {
+                  onGoLibraryDetail(lib.id)
+                } else {
+                  navigate(`/library/${lib.id}`)
+                }
               }}
               className="flex items-center gap-3 p-4"
               style={{
@@ -174,7 +187,11 @@ export default function MobileServerHomePage({ onBack }: MobileServerHomePagePro
                 year={item.year}
                 imageUrl={item.poster_path ? `/api/media/${item.id}/poster` : undefined}
                 onClick={() => {
-                  navigate(`/media/${item.id}`)
+                  if (onGoMediaDetail) {
+                    onGoMediaDetail(item.id)
+                  } else {
+                    navigate(`/media/${item.id}`)
+                  }
                 }}
               />
             </div>

@@ -11,12 +11,13 @@ import { useNavigate } from 'react-router-dom'
 
 interface MobileServerSearchPageProps {
   onBack: () => void
+  onGoMediaDetail?: (id: string) => void
 }
 
 /**
  * 移动端服务器搜索页
  */
-export default function MobileServerSearchPage({ onBack }: MobileServerSearchPageProps) {
+export default function MobileServerSearchPage({ onBack, onGoMediaDetail }: MobileServerSearchPageProps) {
   const navigate = useNavigate()
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<any[]>([])
@@ -198,7 +199,11 @@ export default function MobileServerSearchPage({ onBack }: MobileServerSearchPag
                   year={item.year}
                   imageUrl={item.poster_path ? `/api/media/${item.id}/poster` : undefined}
                   onClick={() => {
-                    navigate(`/media/${item.id}`)
+                    if (onGoMediaDetail) {
+                      onGoMediaDetail(item.id)
+                    } else {
+                      navigate(`/media/${item.id}`)
+                    }
                   }}
                 />
               ))}

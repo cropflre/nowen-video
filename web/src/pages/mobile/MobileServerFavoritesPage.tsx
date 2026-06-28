@@ -10,12 +10,13 @@ import { useNavigate } from 'react-router-dom'
 
 interface MobileServerFavoritesPageProps {
   onBack: () => void
+  onGoMediaDetail?: (id: string) => void
 }
 
 /**
  * 移动端服务器收藏页
  */
-export default function MobileServerFavoritesPage({ onBack }: MobileServerFavoritesPageProps) {
+export default function MobileServerFavoritesPage({ onBack, onGoMediaDetail }: MobileServerFavoritesPageProps) {
   const navigate = useNavigate()
   const [favorites, setFavorites] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +66,11 @@ export default function MobileServerFavoritesPage({ onBack }: MobileServerFavori
                 year={item.year}
                 imageUrl={item.poster_path ? `/api/media/${item.id}/poster` : undefined}
                 onClick={() => {
-                  navigate(`/media/${item.id}`)
+                  if (onGoMediaDetail) {
+                    onGoMediaDetail(item.id)
+                  } else {
+                    navigate(`/media/${item.id}`)
+                  }
                 }}
               />
             ))}
