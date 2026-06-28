@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,11 +31,38 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileFontSize
 import com.nowen.video.ui.theme.MobileRadius
 import com.nowen.video.ui.theme.MobileSpacing
+
+/**
+ * 海报 Fallback 组件
+ */
+@Composable
+private fun PosterFallback(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(MobileColors.PrimarySoft, MobileColors.BgAlt),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title.take(1),
+            color = MobileColors.Primary.copy(alpha = 0.5f),
+            fontSize = MobileFontSize.xxxl,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
 
 /**
  * 媒体海报卡片
@@ -90,31 +119,33 @@ fun MediaPosterCard(
                 .clip(RoundedCornerShape(topStart = MobileRadius.lg, topEnd = MobileRadius.lg)),
         ) {
             if (imageUrl != null) {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = imageUrl,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        // 加载中
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MobileColors.BgAlt),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MobileColors.Primary,
+                            )
+                        }
+                    },
+                    error = {
+                        // 加载失败
+                        PosterFallback(title = title)
+                    },
                 )
             } else {
-                // Fallback
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(MobileColors.PrimarySoft, MobileColors.BgAlt),
-                            ),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = title.take(1),
-                        color = MobileColors.Primary.copy(alpha = 0.5f),
-                        fontSize = MobileFontSize.xxxl,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                // 无图片
+                PosterFallback(title = title)
             }
 
             // 进度条

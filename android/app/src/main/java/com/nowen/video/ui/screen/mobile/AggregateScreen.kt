@@ -37,6 +37,7 @@ import com.nowen.video.ui.component.mobile.PageHeaderAction
 import com.nowen.video.ui.component.mobile.SegmentedTabs
 import com.nowen.video.ui.theme.MobileSpacing
 import com.nowen.video.ui.screen.home.HomeViewModel
+import com.nowen.video.ui.util.buildPosterUrl
 
 /**
  * 聚合视界内部 Tab
@@ -166,7 +167,7 @@ private fun ContinueWatchingContent(
                         title = media?.title ?: "未知",
                         year = media?.year,
                         imageUrl = if (media?.posterPath?.isNotBlank() == true) {
-                            "${uiState.serverUrl}/api/media/${media.id}/poster"
+                            buildPosterUrl(uiState.serverUrl, media.id, "media", uiState.token)
                         } else {
                             null
                         },

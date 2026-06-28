@@ -70,6 +70,7 @@ fun ServerHomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val serverUrl = uiState.serverUrl
+    val token = uiState.token
 
     // 进入页面时加载数据
     LaunchedEffect(Unit) {
@@ -161,7 +162,7 @@ fun ServerHomeScreen(
                                 title = heroDisplayItem.title,
                                 subtitle = heroDisplayItem.subtitle,
                                 imageUrl = if (heroDisplayItem.posterPath?.isNotBlank() == true) {
-                                    buildPosterUrl(serverUrl, heroDisplayItem.id, if (heroDisplayItem.isSeries) "series" else "media")
+                                    buildPosterUrl(serverUrl, heroDisplayItem.id, if (heroDisplayItem.isSeries) "series" else "media", token)
                                 } else {
                                     null
                                 },
@@ -199,7 +200,7 @@ fun ServerHomeScreen(
                                         title = media?.title ?: "未知",
                                         year = media?.year,
                                         imageUrl = if (media?.posterPath?.isNotBlank() == true) {
-                                            buildPosterUrl(serverUrl, media.id, "media")
+                                            buildPosterUrl(serverUrl, media.id, "media", token)
                                         } else {
                                             null
                                         },
@@ -259,7 +260,7 @@ fun ServerHomeScreen(
                                         title = title,
                                         year = year,
                                         imageUrl = if (posterPath.isNotBlank()) {
-                                            buildPosterUrl(serverUrl, id, if (isSeries) "series" else "media")
+                                            buildPosterUrl(serverUrl, id, if (isSeries) "series" else "media", token)
                                         } else {
                                             null
                                         },

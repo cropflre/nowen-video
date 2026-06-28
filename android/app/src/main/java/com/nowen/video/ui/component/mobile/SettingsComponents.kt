@@ -31,12 +31,43 @@ import com.nowen.video.ui.theme.MobileRadius
 import com.nowen.video.ui.theme.MobileSpacing
 
 /**
+ * 设置行类型
+ */
+sealed class SettingsRow {
+    /**
+     * 普通操作行
+     */
+    data class Action(
+        val icon: ImageVector,
+        val title: String,
+        val subtitle: String? = null,
+        val status: String? = null,
+        val badge: String? = null,
+        val enabled: Boolean = true,
+        val showArrow: Boolean = true,
+        val onClick: () -> Unit,
+    ) : SettingsRow()
+
+    /**
+     * Switch 行
+     */
+    data class Switch(
+        val icon: ImageVector,
+        val title: String,
+        val subtitle: String? = null,
+        val checked: Boolean,
+        val enabled: Boolean = true,
+        val onCheckedChange: (Boolean) -> Unit,
+    ) : SettingsRow()
+}
+
+/**
  * 设置分组
  */
 @Composable
 fun SettingsGroup(
     title: String,
-    items: List<SettingsItem>,
+    rows: List<SettingsRow>,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -67,9 +98,12 @@ fun SettingsGroup(
                     shape = RoundedCornerShape(MobileRadius.lg),
                 ),
         ) {
-            items.forEachIndexed { index, item ->
-                SettingsItemRow(item = item)
-                if (index < items.lastIndex) {
+            rows.forEachIndexed { index, row ->
+                when (row) {
+                    is SettingsRow.Action -> SettingsActionRow(row = row)
+                    is SettingsRow.Switch -> SettingsSwitchRow(row = row)
+                }
+                if (index < rows.lastIndex) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -84,31 +118,17 @@ fun SettingsGroup(
 }
 
 /**
- * 设置项数据
- */
-data class SettingsItem(
-    val icon: ImageVector,
-    val title: String,
-    val subtitle: String? = null,
-    val status: String? = null,
-    val badge: String? = null,
-    val enabled: Boolean = true,
-    val showArrow: Boolean = true,
-    val onClick: () -> Unit,
-)
-
-/**
- * 设置项行
+ * 普通操作行
  */
 @Composable
-fun SettingsItemRow(
-    item: SettingsItem,
+private fun SettingsActionRow(
+    row: SettingsRow.Action,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = item.enabled, onClick = item.onClick)
+            .clickable(enabled = row.enabled, onClick = row.onClick)
             .padding(
                 horizontal = MobileSpacing.lg,
                 vertical = MobileSpacing.md,
@@ -122,15 +142,15 @@ fun SettingsItemRow(
                 .size(40.dp)
                 .clip(RoundedCornerShape(MobileRadius.sm))
                 .background(
-                    if (item.enabled) MobileColors.PrimarySoft
+                    if (row.enabled) MobileColors.PrimarySoft
                     else MobileColors.BgAlt
                 ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = item.icon,
+                imageVector = row.icon,
                 contentDescription = null,
-                tint = if (item.enabled) MobileColors.Primary else MobileColors.Muted,
+                tint = if (row.enabled) MobileColors.Primary else MobileColors.Muted,
                 modifier = Modifier.size(22.dp),
             )
         }
@@ -141,14 +161,14 @@ fun SettingsItemRow(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = item.title,
-                color = if (item.enabled) MobileColors.Text else MobileColors.Muted,
+                text = row.title,
+                color = if (row.enabled) MobileColors.Text else MobileColors.Muted,
                 fontSize = MobileFontSize.md,
                 fontWeight = FontWeight.Medium,
             )
-            if (item.subtitle != null) {
+            if (row.subtitle != null) {
                 Text(
-                    text = item.subtitle,
+                    text = row.subtitle,
                     color = MobileColors.Muted,
                     fontSize = MobileFontSize.sm,
                 )
@@ -156,15 +176,15 @@ fun SettingsItemRow(
         }
 
         // 状态或 badge
-        if (item.status != null) {
+        if (row.status != null) {
             Text(
-                text = item.status,
+                text = row.status,
                 color = MobileColors.Muted,
                 fontSize = MobileFontSize.sm,
             )
-        } else if (item.badge != null) {
+        } else if (row.badge != null) {
             Text(
-                text = item.badge,
+                text = row.badge,
                 color = MobileColors.Primary,
                 fontSize = MobileFontSize.xs,
                 modifier = Modifier
@@ -177,7 +197,7 @@ fun SettingsItemRow(
         }
 
         // 箭头
-        if (item.showArrow && item.enabled) {
+        if (row.showArrow && row.enabled) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
@@ -189,22 +209,17 @@ fun SettingsItemRow(
 }
 
 /**
- * 设置项行（带 Switch）
+ * Switch 行
  */
 @Composable
-fun SettingsSwitchRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String? = null,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
+private fun SettingsSwitchRow(
+    row: SettingsRow.Switch,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .clickable(enabled = row.enabled) { row.onCheckedChange(!row.checked) }
             .padding(
                 horizontal = MobileSpacing.lg,
                 vertical = MobileSpacing.md,
@@ -218,15 +233,15 @@ fun SettingsSwitchRow(
                 .size(40.dp)
                 .clip(RoundedCornerShape(MobileRadius.sm))
                 .background(
-                    if (enabled) MobileColors.PrimarySoft
+                    if (row.enabled) MobileColors.PrimarySoft
                     else MobileColors.BgAlt
                 ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = icon,
+                imageVector = row.icon,
                 contentDescription = null,
-                tint = if (enabled) MobileColors.Primary else MobileColors.Muted,
+                tint = if (row.enabled) MobileColors.Primary else MobileColors.Muted,
                 modifier = Modifier.size(22.dp),
             )
         }
@@ -237,14 +252,14 @@ fun SettingsSwitchRow(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = title,
-                color = if (enabled) MobileColors.Text else MobileColors.Muted,
+                text = row.title,
+                color = if (row.enabled) MobileColors.Text else MobileColors.Muted,
                 fontSize = MobileFontSize.md,
                 fontWeight = FontWeight.Medium,
             )
-            if (subtitle != null) {
+            if (row.subtitle != null) {
                 Text(
-                    text = subtitle,
+                    text = row.subtitle,
                     color = MobileColors.Muted,
                     fontSize = MobileFontSize.sm,
                 )
@@ -253,9 +268,9 @@ fun SettingsSwitchRow(
 
         // Switch
         Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
+            checked = row.checked,
+            onCheckedChange = row.onCheckedChange,
+            enabled = row.enabled,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = MobileColors.Primary,
                 checkedThumbColor = Color.White,
@@ -272,4 +287,20 @@ fun SettingsSwitchRow(
 data class SelectionOption(
     val value: String,
     val label: String,
+)
+
+// ==================== 兼容旧接口 ====================
+
+/**
+ * 设置项数据（兼容旧接口）
+ */
+data class SettingsItem(
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String? = null,
+    val status: String? = null,
+    val badge: String? = null,
+    val enabled: Boolean = true,
+    val showArrow: Boolean = true,
+    val onClick: () -> Unit,
 )

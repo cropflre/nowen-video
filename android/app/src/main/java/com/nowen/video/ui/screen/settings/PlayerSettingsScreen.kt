@@ -29,6 +29,7 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,8 +47,7 @@ import com.nowen.video.data.local.PlayerPreferences
 import com.nowen.video.ui.component.mobile.MobilePageHeader
 import com.nowen.video.ui.component.mobile.SelectionOption
 import com.nowen.video.ui.component.mobile.SettingsGroup
-import com.nowen.video.ui.component.mobile.SettingsItem
-import com.nowen.video.ui.component.mobile.SettingsSwitchRow
+import com.nowen.video.ui.component.mobile.SettingsRow
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileRadius
 import com.nowen.video.ui.theme.MobileSpacing
@@ -132,6 +132,11 @@ fun PlayerSettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // 进入页面时加载设置
+    LaunchedEffect(Unit) {
+        viewModel.loadSettings()
+    }
+
     // 选择弹窗状态
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showPlayModeDialog by remember { mutableStateOf(false) }
@@ -176,20 +181,20 @@ fun PlayerSettingsScreen(
         item {
             SettingsGroup(
                 title = "播放控制",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.Speed,
                         title = "默认播放速度",
                         status = "${uiState.playbackSpeed}x",
                         onClick = { showSpeedDialog = true },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.PlayCircle,
                         title = "优先播放模式",
                         status = playModeLabels[uiState.preferredPlayMode],
                         onClick = { showPlayModeDialog = true },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.FastForward,
                         title = "快进/快退步长",
                         status = "${uiState.seekStep} 秒",
@@ -203,14 +208,14 @@ fun PlayerSettingsScreen(
         item {
             SettingsGroup(
                 title = "画面设置",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Action(
                         icon = Icons.Default.AspectRatio,
                         title = "默认画面比例",
                         status = aspectLabels[uiState.aspectRatio],
                         onClick = { showAspectDialog = true },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Memory,
                         title = "解码器优先级",
                         status = decoderLabels[uiState.decoderPriority],
@@ -224,15 +229,15 @@ fun PlayerSettingsScreen(
         item {
             SettingsGroup(
                 title = "字幕设置",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Switch(
                         icon = Icons.Default.Subtitles,
                         title = "自动加载字幕",
                         subtitle = "播放时自动加载可用字幕",
-                        showArrow = false,
-                        onClick = { },
+                        checked = uiState.autoLoadSubtitle,
+                        onCheckedChange = { viewModel.setAutoLoadSubtitle(it) },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Language,
                         title = "默认字幕语言",
                         status = subLangOptions.find { it.first == uiState.subtitleLanguage }?.second ?: uiState.subtitleLanguage,
@@ -242,30 +247,19 @@ fun PlayerSettingsScreen(
             )
         }
 
-        // 字幕设置 Switch（单独处理）
-        item {
-            SettingsSwitchRow(
-                icon = Icons.Default.Subtitles,
-                title = "自动加载字幕",
-                subtitle = "播放时自动加载可用字幕",
-                checked = uiState.autoLoadSubtitle,
-                onCheckedChange = { viewModel.setAutoLoadSubtitle(it) },
-            )
-        }
-
         // 手势控制分组
         item {
             SettingsGroup(
                 title = "手势控制",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Switch(
                         icon = Icons.Default.TouchApp,
                         title = "启用手势控制",
                         subtitle = "滑动调节亮度、音量和进度",
-                        showArrow = false,
-                        onClick = { },
+                        checked = uiState.gestureEnabled,
+                        onCheckedChange = { viewModel.setGestureEnabled(it) },
                     ),
-                    SettingsItem(
+                    SettingsRow.Action(
                         icon = Icons.Default.Tune,
                         title = "手势灵敏度",
                         status = sensitivityLabels[uiState.gestureSensitivity],
@@ -275,57 +269,26 @@ fun PlayerSettingsScreen(
             )
         }
 
-        // 手势控制 Switch（单独处理）
-        item {
-            SettingsSwitchRow(
-                icon = Icons.Default.TouchApp,
-                title = "启用手势控制",
-                subtitle = "滑动调节亮度、音量和进度",
-                checked = uiState.gestureEnabled,
-                onCheckedChange = { viewModel.setGestureEnabled(it) },
-            )
-        }
-
         // 其他分组
         item {
             SettingsGroup(
                 title = "其他",
-                items = listOf(
-                    SettingsItem(
+                rows = listOf(
+                    SettingsRow.Switch(
                         icon = Icons.Default.SkipNext,
                         title = "自动播放下一集",
                         subtitle = "剧集播放完毕后自动播放下一集",
-                        showArrow = false,
-                        onClick = { },
+                        checked = uiState.autoPlayNext,
+                        onCheckedChange = { viewModel.setAutoPlayNext(it) },
                     ),
-                    SettingsItem(
+                    SettingsRow.Switch(
                         icon = Icons.Default.Bookmark,
                         title = "记住播放位置",
                         subtitle = "下次打开时从上次位置继续播放",
-                        showArrow = false,
-                        onClick = { },
+                        checked = uiState.rememberPosition,
+                        onCheckedChange = { viewModel.setRememberPosition(it) },
                     ),
                 ),
-            )
-        }
-
-        // 其他 Switch（单独处理）
-        item {
-            SettingsSwitchRow(
-                icon = Icons.Default.SkipNext,
-                title = "自动播放下一集",
-                subtitle = "剧集播放完毕后自动播放下一集",
-                checked = uiState.autoPlayNext,
-                onCheckedChange = { viewModel.setAutoPlayNext(it) },
-            )
-        }
-        item {
-            SettingsSwitchRow(
-                icon = Icons.Default.Bookmark,
-                title = "记住播放位置",
-                subtitle = "下次打开时从上次位置继续播放",
-                checked = uiState.rememberPosition,
-                onCheckedChange = { viewModel.setRememberPosition(it) },
             )
         }
 
@@ -339,8 +302,8 @@ fun PlayerSettingsScreen(
     if (showSpeedDialog) {
         SelectionBottomSheet(
             title = "选择播放速度",
-            options = speedOptions.map { SelectionOption("${it}x", "${it}x") },
-            selectedValue = "${uiState.playbackSpeed}x",
+            options = speedOptions.map { SelectionOption(it.toString(), "${it}x") },
+            selectedValue = uiState.playbackSpeed.toString(),
             onSelect = { viewModel.setPlaybackSpeed(it.toFloat()); showSpeedDialog = false },
             onDismiss = { showSpeedDialog = false },
         )

@@ -133,7 +133,7 @@ fun ServerSearchScreen(
                             title = media.title,
                             year = media.year,
                             imageUrl = if (media.posterPath.isNotBlank()) {
-                                buildPosterUrl(uiState.serverUrl, media.id, "media")
+                                buildPosterUrl(uiState.serverUrl, media.id, "media", uiState.token)
                             } else {
                                 null
                             },

@@ -28,11 +28,32 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileFontSize
 import com.nowen.video.ui.theme.MobileRadius
 import com.nowen.video.ui.theme.MobileSpacing
+
+/**
+ * Hero Fallback 组件
+ */
+@Composable
+private fun HeroFallback(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        MobileColors.Primary.copy(alpha = 0.8f),
+                        MobileColors.PrimarySoft,
+                    ),
+                ),
+            ),
+    )
+}
 
 /**
  * Hero 大卡片
@@ -71,26 +92,27 @@ fun HeroCard(
     ) {
         // 背景图片
         if (imageUrl != null) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = imageUrl,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth(),
+                loading = {
+                    // 加载中
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MobileColors.BgAlt),
+                    )
+                },
+                error = {
+                    // 加载失败
+                    HeroFallback()
+                },
             )
         } else {
             // Fallback 背景
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MobileColors.Primary.copy(alpha = 0.8f),
-                                MobileColors.PrimarySoft,
-                            ),
-                        ),
-                    ),
-            )
+            HeroFallback()
         }
 
         // 底部渐变遮罩
