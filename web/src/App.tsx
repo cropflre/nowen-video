@@ -106,21 +106,34 @@ function ResponsiveAppShell() {
   return <Layout />
 }
 
+// 桌面端组件包装器：仅在桌面端渲染
+function DesktopOnlyComponents() {
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return null
+  }
+
+  return (
+    <>
+      <DesktopServerPicker />
+      <DesktopEventBinder />
+      <UpdateBanner />
+      <TitleBar />
+    </>
+  )
+}
+
 export default function App() {
   return (
     <ToastProvider>
       <DialogProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
-        {/* 桌面端：首次启动"服务器地址"引导（仅在默认端口探活失败时出现） */}
-        <DesktopServerPicker />
-        {/* 桌面端事件绑定器（仅 Tauri 环境生效） */}
-        <DesktopEventBinder />
-        {/* 桌面端自动更新横幅 */}
-        <UpdateBanner />
+        {/* 桌面端组件（移动端自动隐藏） */}
+        <DesktopOnlyComponents />
         {/* 顶层应用壳：桌面端标题栏 + 全屏主体 */}
         <div className="nv-app-shell">
-          <TitleBar />
           <div className="nv-app-body">
             <Suspense fallback={<PageLoader />}>
               <Routes>
