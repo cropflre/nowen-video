@@ -23,6 +23,7 @@ import com.nowen.video.ui.component.mobile.MediaPosterCard
 import com.nowen.video.ui.component.mobile.MobilePageHeader
 import com.nowen.video.ui.theme.MobileSpacing
 import com.nowen.video.ui.screen.favorites.FavoritesViewModel
+import com.nowen.video.ui.util.buildPosterUrl
 
 /**
  * 服务器收藏页
@@ -90,7 +91,7 @@ fun ServerFavoritesScreen(
                             title = media.title,
                             year = media.year,
                             imageUrl = if (media.posterPath.isNotBlank()) {
-                                "${uiState.serverUrl}/api/media/${media.id}/poster"
+                                buildPosterUrl(uiState.serverUrl, media.id, "media")
                             } else {
                                 null
                             },

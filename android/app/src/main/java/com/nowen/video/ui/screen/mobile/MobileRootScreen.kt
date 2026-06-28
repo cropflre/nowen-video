@@ -65,6 +65,8 @@ fun MobileRootScreen(
     onLibraryClick: (String) -> Unit,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onPlayerSettingsClick: () -> Unit,
+    onServerManageClick: () -> Unit,
     onPlayerClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -178,8 +180,8 @@ fun MobileRootScreen(
                             )
                             RootTab.Settings -> MobileSettingsScreen(
                                 onSettingsClick = onSettingsClick,
-                                onPlayerSettingsClick = onSettingsClick,
-                                onServerManageClick = onSettingsClick,
+                                onPlayerSettingsClick = onPlayerSettingsClick,
+                                onServerManageClick = onServerManageClick,
                             )
                         }
                     }

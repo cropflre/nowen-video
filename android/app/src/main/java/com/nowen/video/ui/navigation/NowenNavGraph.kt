@@ -183,6 +183,12 @@ fun NowenNavGraph(
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 },
+                onPlayerSettingsClick = {
+                    navController.navigate(Screen.PlayerSettings.route)
+                },
+                onServerManageClick = {
+                    navController.navigate(Screen.ServerManage.route)
+                },
                 onPlayerClick = { mediaId ->
                     navController.navigate(Screen.Player.createRoute(mediaId))
                 },

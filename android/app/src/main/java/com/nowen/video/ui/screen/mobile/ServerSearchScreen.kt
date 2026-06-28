@@ -31,6 +31,7 @@ import com.nowen.video.ui.component.mobile.MobilePageHeader
 import com.nowen.video.ui.component.mobile.SearchBarLarge
 import com.nowen.video.ui.theme.MobileSpacing
 import com.nowen.video.ui.screen.search.SearchViewModel
+import com.nowen.video.ui.util.buildPosterUrl
 import kotlinx.coroutines.delay
 
 /**
@@ -132,7 +133,7 @@ fun ServerSearchScreen(
                             title = media.title,
                             year = media.year,
                             imageUrl = if (media.posterPath.isNotBlank()) {
-                                "${uiState.serverUrl}/api/media/${media.id}/poster"
+                                buildPosterUrl(uiState.serverUrl, media.id, "media")
                             } else {
                                 null
                             },

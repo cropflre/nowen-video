@@ -36,6 +36,21 @@ import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileFontSize
 import com.nowen.video.ui.theme.MobileSpacing
 import com.nowen.video.ui.screen.home.HomeViewModel
+import com.nowen.video.ui.util.buildPosterUrl
+
+/**
+ * Hero 显示项
+ */
+private data class HeroDisplayItem(
+    val id: String,
+    val title: String,
+    val subtitle: String?,
+    val posterPath: String?,
+    val year: Int?,
+    val rating: Double?,
+    val resolution: String?,
+    val isSeries: Boolean,
+)
 
 /**
  * 服务器首页
@@ -93,37 +108,69 @@ fun ServerHomeScreen(
                     contentPadding = PaddingValues(bottom = MobileSpacing.xl),
                 ) {
                     // Hero 区
-                    val heroItem = uiState.recentMixed.firstOrNull()
-                        ?: uiState.continueWatching.firstOrNull()?.media
-                    if (heroItem != null) {
+                    val heroDisplayItem = uiState.recentMixed.firstOrNull()?.let { mixed ->
+                        val media = mixed.media
+                        val series = mixed.series
+                        if (mixed.type == "series" && series != null) {
+                            HeroDisplayItem(
+                                id = series.id,
+                                title = series.title,
+                                subtitle = series.overview?.take(100),
+                                posterPath = series.posterPath,
+                                year = series.year,
+                                rating = series.rating,
+                                resolution = null,
+                                isSeries = true,
+                            )
+                        } else if (media != null) {
+                            HeroDisplayItem(
+                                id = media.id,
+                                title = media.title,
+                                subtitle = media.overview?.take(100),
+                                posterPath = media.posterPath,
+                                year = media.year,
+                                rating = media.rating,
+                                resolution = media.resolution,
+                                isSeries = false,
+                            )
+                        } else {
+                            null
+                        }
+                    } ?: uiState.continueWatching.firstOrNull()?.media?.let { media ->
+                        HeroDisplayItem(
+                            id = media.id,
+                            title = media.title,
+                            subtitle = media.overview?.take(100),
+                            posterPath = media.posterPath,
+                            year = media.year,
+                            rating = media.rating,
+                            resolution = media.resolution,
+                            isSeries = media.seriesId.isNotBlank(),
+                        )
+                    }
+
+                    if (heroDisplayItem != null) {
                         item {
-                            val media = when (heroItem) {
-                                is com.nowen.video.data.model.MixedItem -> heroItem.media
-                                is com.nowen.video.data.model.Media -> heroItem
-                                else -> null
-                            }
-                            if (media != null) {
-                                HeroCard(
-                                    title = media.title,
-                                    subtitle = media.overview?.take(100),
-                                    imageUrl = if (media.posterPath.isNotBlank()) {
-                                        "$serverUrl/api/media/${media.id}/poster"
+                            HeroCard(
+                                title = heroDisplayItem.title,
+                                subtitle = heroDisplayItem.subtitle,
+                                imageUrl = if (heroDisplayItem.posterPath?.isNotBlank() == true) {
+                                    buildPosterUrl(serverUrl, heroDisplayItem.id, if (heroDisplayItem.isSeries) "series" else "media")
+                                } else {
+                                    null
+                                },
+                                year = heroDisplayItem.year,
+                                rating = heroDisplayItem.rating,
+                                resolution = heroDisplayItem.resolution,
+                                onClick = {
+                                    if (heroDisplayItem.isSeries) {
+                                        onSeriesClick(heroDisplayItem.id)
                                     } else {
-                                        null
-                                    },
-                                    year = media.year,
-                                    rating = media.rating,
-                                    resolution = media.resolution,
-                                    onClick = {
-                                        if (media.seriesId.isNotBlank()) {
-                                            onSeriesClick(media.seriesId)
-                                        } else {
-                                            onMediaClick(media.id)
-                                        }
-                                    },
-                                    modifier = Modifier.padding(horizontal = MobileSpacing.xl),
-                                )
-                            }
+                                        onMediaClick(heroDisplayItem.id)
+                                    }
+                                },
+                                modifier = Modifier.padding(horizontal = MobileSpacing.xl),
+                            )
                         }
                     }
 
@@ -146,7 +193,7 @@ fun ServerHomeScreen(
                                         title = media?.title ?: "未知",
                                         year = media?.year,
                                         imageUrl = if (media?.posterPath?.isNotBlank() == true) {
-                                            "$serverUrl/api/media/${media.id}/poster"
+                                            buildPosterUrl(serverUrl, media.id, "media")
                                         } else {
                                             null
                                         },
@@ -200,12 +247,13 @@ fun ServerHomeScreen(
                                     val year = media?.year ?: series?.year
                                     val posterPath = media?.posterPath ?: series?.posterPath ?: ""
                                     val id = media?.id ?: series?.id ?: ""
+                                    val isSeries = mixedItem.type == "series"
 
                                     MediaPosterCard(
                                         title = title,
                                         year = year,
                                         imageUrl = if (posterPath.isNotBlank()) {
-                                            "$serverUrl/api/media/$id/poster"
+                                            buildPosterUrl(serverUrl, id, if (isSeries) "series" else "media")
                                         } else {
                                             null
                                         },
