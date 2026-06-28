@@ -1,31 +1,56 @@
 package com.nowen.video.ui.screen.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.data.local.PlayerPreferences
-import com.nowen.video.ui.theme.*
+import com.nowen.video.ui.component.mobile.MobilePageHeader
+import com.nowen.video.ui.component.mobile.SelectionOption
+import com.nowen.video.ui.component.mobile.SettingsGroup
+import com.nowen.video.ui.component.mobile.SettingsItem
+import com.nowen.video.ui.component.mobile.SettingsSwitchRow
+import com.nowen.video.ui.theme.MobileColors
+import com.nowen.video.ui.theme.MobileRadius
+import com.nowen.video.ui.theme.MobileSpacing
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,471 +58,8 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * 播放器高级设置页面 — 赛博朋克风格
+ * 播放器设置 UI 状态
  */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PlayerSettingsScreen(
-    onBack: () -> Unit,
-    viewModel: PlayerSettingsViewModel = hiltViewModel()
-) {
-    val uiState by viewModel.uiState.collectAsState()
-    val colorScheme = MaterialTheme.colorScheme
-
-    LaunchedEffect(Unit) { viewModel.loadSettings() }
-
-    Box(Modifier.fillMaxSize().spaceBackground()) {
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "播放器设置",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                letterSpacing = 1.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-                    )
-                )
-            }
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // ==================== 播放控制 ====================
-                CyberSectionTitle("播放控制", MaterialTheme.colorScheme.primary)
-
-                Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
-                    Column {
-                        // 默认播放速度
-                        var showSpeedDialog by remember { mutableStateOf(false) }
-                        CyberClickItem(
-                            icon = Icons.Default.Speed,
-                            iconColor = MaterialTheme.colorScheme.primary,
-                            title = "默认播放速度",
-                            value = "${uiState.playbackSpeed}x",
-                            onClick = { showSpeedDialog = true }
-                        )
-                        if (showSpeedDialog) {
-                            CyberSelectionDialog(
-                                title = "选择播放速度",
-                                options = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f).map { "${it}x" },
-                                selectedIndex = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f).indexOf(uiState.playbackSpeed),
-                                onSelect = { idx ->
-                                    viewModel.setPlaybackSpeed(listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)[idx])
-                                    showSpeedDialog = false
-                                },
-                                onDismiss = { showSpeedDialog = false }
-                            )
-                        }
-
-                        CyberItemDivider()
-
-                        // 优先播放模式
-                        var showPlayModeDialog by remember { mutableStateOf(false) }
-                        val playModeLabels = listOf("自动选择", "直接播放", "Remux", "HLS 转码")
-                        CyberClickItem(
-                            icon = Icons.Default.PlayCircle,
-                            iconColor = MaterialTheme.colorScheme.tertiary,
-                            title = "优先播放模式",
-                            value = playModeLabels[uiState.preferredPlayMode],
-                            onClick = { showPlayModeDialog = true }
-                        )
-                        if (showPlayModeDialog) {
-                            val playModeDescs = listOf(
-                                "根据设备能力自动选择最佳模式",
-                                "直接播放原始文件，最低延迟",
-                                "转封装为 MP4，兼容性更好",
-                                "服务器端转码，兼容所有格式"
-                            )
-                            CyberSelectionDialog(
-                                title = "选择播放模式",
-                                options = playModeLabels,
-                                descriptions = playModeDescs,
-                                selectedIndex = uiState.preferredPlayMode,
-                                onSelect = { viewModel.setPreferredPlayMode(it); showPlayModeDialog = false },
-                                onDismiss = { showPlayModeDialog = false }
-                            )
-                        }
-
-                        CyberItemDivider()
-
-                        // 快进步长
-                        var showSeekDialog by remember { mutableStateOf(false) }
-                        CyberClickItem(
-                            icon = Icons.Default.FastForward,
-                            iconColor = MaterialTheme.colorScheme.secondary,
-                            title = "快进/快退步长",
-                            value = "${uiState.seekStep} 秒",
-                            onClick = { showSeekDialog = true }
-                        )
-                        if (showSeekDialog) {
-                            val steps = listOf(5, 10, 15, 30, 60)
-                            CyberSelectionDialog(
-                                title = "选择快进步长",
-                                options = steps.map { "$it 秒" },
-                                selectedIndex = steps.indexOf(uiState.seekStep),
-                                onSelect = { viewModel.setSeekStep(steps[it]); showSeekDialog = false },
-                                onDismiss = { showSeekDialog = false }
-                            )
-                        }
-                    }
-                }
-
-                // ==================== 画面设置 ====================
-                CyberSectionTitle("画面设置", colorScheme.secondary)
-
-                Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
-                    Column {
-                        // 画面比例
-                        var showAspectDialog by remember { mutableStateOf(false) }
-                        val aspectLabels = listOf("自适应", "填充屏幕", "16:9", "4:3")
-                        CyberClickItem(
-                            icon = Icons.Default.AspectRatio,
-                            iconColor = colorScheme.primary,
-                            title = "默认画面比例",
-                            value = aspectLabels[uiState.aspectRatio],
-                            onClick = { showAspectDialog = true }
-                        )
-                        if (showAspectDialog) {
-                            CyberSelectionDialog(
-                                title = "选择画面比例",
-                                options = aspectLabels,
-                                selectedIndex = uiState.aspectRatio,
-                                onSelect = { viewModel.setAspectRatio(it); showAspectDialog = false },
-                                onDismiss = { showAspectDialog = false }
-                            )
-                        }
-
-                        CyberItemDivider()
-
-                        // 解码器优先级
-                        var showDecoderDialog by remember { mutableStateOf(false) }
-                        val decoderLabels = listOf("自动", "硬件解码优先", "软件解码优先")
-                        CyberClickItem(
-                            icon = Icons.Default.Memory,
-                            iconColor = MaterialTheme.colorScheme.tertiary,
-                            title = "解码器优先级",
-                            value = decoderLabels[uiState.decoderPriority],
-                            onClick = { showDecoderDialog = true }
-                        )
-                        if (showDecoderDialog) {
-                            val decoderDescs = listOf(
-                                "系统自动选择最佳解码器",
-                                "优先使用 GPU 硬件加速，省电高效",
-                                "使用 CPU 软件解码，兼容性最好"
-                            )
-                            CyberSelectionDialog(
-                                title = "选择解码器",
-                                options = decoderLabels,
-                                descriptions = decoderDescs,
-                                selectedIndex = uiState.decoderPriority,
-                                onSelect = { viewModel.setDecoderPriority(it); showDecoderDialog = false },
-                                onDismiss = { showDecoderDialog = false }
-                            )
-                        }
-                    }
-                }
-
-                // ==================== 字幕设置 ====================
-                CyberSectionTitle("字幕设置", colorScheme.tertiary)
-
-                Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
-                    Column {
-                        // 自动加载字幕
-                        CyberSwitchItem(
-                            icon = Icons.Default.Subtitles,
-                            iconColor = MaterialTheme.colorScheme.tertiary,
-                            title = "自动加载字幕",
-                            subtitle = "播放时自动加载可用字幕",
-                            checked = uiState.autoLoadSubtitle,
-                            onCheckedChange = { viewModel.setAutoLoadSubtitle(it) }
-                        )
-
-                        CyberItemDivider()
-
-                        // 默认字幕语言
-                        var showSubLangDialog by remember { mutableStateOf(false) }
-                        val subLangOptions = listOf("chi" to "中文", "eng" to "英文", "jpn" to "日文", "kor" to "韩文")
-                        val currentLangLabel = subLangOptions.find { it.first == uiState.subtitleLanguage }?.second ?: uiState.subtitleLanguage
-                        CyberClickItem(
-                            icon = Icons.Default.Language,
-                            iconColor = colorScheme.secondary,
-                            title = "默认字幕语言",
-                            value = currentLangLabel,
-                            onClick = { showSubLangDialog = true }
-                        )
-                        if (showSubLangDialog) {
-                            CyberSelectionDialog(
-                                title = "选择字幕语言",
-                                options = subLangOptions.map { it.second },
-                                selectedIndex = subLangOptions.indexOfFirst { it.first == uiState.subtitleLanguage },
-                                onSelect = { viewModel.setSubtitleLanguage(subLangOptions[it].first); showSubLangDialog = false },
-                                onDismiss = { showSubLangDialog = false }
-                            )
-                        }
-                    }
-                }
-
-                // ==================== 手势控制 ====================
-                CyberSectionTitle("手势控制", colorScheme.tertiary)
-
-                Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
-                    Column {
-                        // 启用手势
-                        CyberSwitchItem(
-                            icon = Icons.Default.TouchApp,
-                            iconColor = AmberGold,
-                            title = "启用手势控制",
-                            subtitle = "滑动调节亮度、音量和进度",
-                            checked = uiState.gestureEnabled,
-                            onCheckedChange = { viewModel.setGestureEnabled(it) }
-                        )
-
-                        CyberItemDivider()
-
-                        // 手势灵敏度
-                        var showSensitivityDialog by remember { mutableStateOf(false) }
-                        val sensitivityLabels = listOf("低", "中", "高")
-                        CyberClickItem(
-                            icon = Icons.Default.Tune,
-                            iconColor = colorScheme.error,
-                            title = "手势灵敏度",
-                            value = sensitivityLabels[uiState.gestureSensitivity],
-                            onClick = { showSensitivityDialog = true }
-                        )
-                        if (showSensitivityDialog) {
-                            CyberSelectionDialog(
-                                title = "选择灵敏度",
-                                options = sensitivityLabels,
-                                selectedIndex = uiState.gestureSensitivity,
-                                onSelect = { viewModel.setGestureSensitivity(it); showSensitivityDialog = false },
-                                onDismiss = { showSensitivityDialog = false }
-                            )
-                        }
-                    }
-                }
-
-                // ==================== 其他 ====================
-                CyberSectionTitle("其他", MaterialTheme.colorScheme.outline)
-
-                Box(Modifier.fillMaxWidth().glassMorphism(cornerRadius = 14.dp)) {
-                    Column {
-                        // 自动播放下一集
-                        CyberSwitchItem(
-                            icon = Icons.Default.SkipNext,
-                            iconColor = colorScheme.primary,
-                            title = "自动播放下一集",
-                            subtitle = "剧集播放完毕后自动播放下一集",
-                            checked = uiState.autoPlayNext,
-                            onCheckedChange = { viewModel.setAutoPlayNext(it) }
-                        )
-
-                        CyberItemDivider()
-
-                        // 记住播放位置
-                        CyberSwitchItem(
-                            icon = Icons.Default.Bookmark,
-                            iconColor = colorScheme.secondary,
-                            title = "记住播放位置",
-                            subtitle = "下次打开时从上次位置继续播放",
-                            checked = uiState.rememberPosition,
-                            onCheckedChange = { viewModel.setRememberPosition(it) }
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(32.dp))
-            }
-        }
-    }
-}
-
-// ==================== 赛博朋克播放器设置组件 ====================
-
-@Composable
-private fun CyberSectionTitle(title: String, color: Color) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelMedium.copy(
-            letterSpacing = 2.sp,
-            fontWeight = FontWeight.Bold
-        ),
-        color = color.copy(alpha = 0.7f)
-    )
-}
-
-@Composable
-private fun CyberClickItem(
-    icon: ImageVector,
-    iconColor: Color,
-    title: String,
-    value: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(iconColor.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(20.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurface)
-            Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun CyberSwitchItem(
-    icon: ImageVector,
-    iconColor: Color,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(iconColor.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(20.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                uncheckedBorderColor = MaterialTheme.colorScheme.outline
-            )
-        )
-    }
-}
-
-@Composable
-private fun CyberItemDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-    )
-}
-
-@Composable
-private fun CyberSelectionDialog(
-    title: String,
-    options: List<String>,
-    descriptions: List<String>? = null,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = CyberDialogShape,
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                options.forEachIndexed { index, label ->
-                    val isSelected = selectedIndex == index
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .then(
-                                if (isSelected) Modifier
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
-                                else Modifier
-                            )
-                            .clickable { onSelect(index) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { onSelect(index) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = MaterialTheme.colorScheme.primary,
-                                unselectedColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                label,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
-                                )
-                            )
-                            if (descriptions != null && index < descriptions.size) {
-                                Text(
-                                    descriptions[index],
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = MaterialTheme.colorScheme.primary) }
-        }
-    )
-}
-
-// ==================== ViewModel ====================
-
 data class PlayerSettingsUiState(
     val playbackSpeed: Float = 1.0f,
     val aspectRatio: Int = 0,
@@ -509,9 +71,12 @@ data class PlayerSettingsUiState(
     val seekStep: Int = 10,
     val autoPlayNext: Boolean = true,
     val rememberPosition: Boolean = true,
-    val preferredPlayMode: Int = 0
+    val preferredPlayMode: Int = 0,
 )
 
+/**
+ * 播放器设置 ViewModel
+ */
 @HiltViewModel
 class PlayerSettingsViewModel @Inject constructor(
     private val playerPreferences: PlayerPreferences
@@ -555,4 +120,368 @@ class PlayerSettingsViewModel @Inject constructor(
     fun setAutoPlayNext(enabled: Boolean) = viewModelScope.launch { playerPreferences.setAutoPlayNext(enabled) }
     fun setRememberPosition(enabled: Boolean) = viewModelScope.launch { playerPreferences.setRememberPosition(enabled) }
     fun setPreferredPlayMode(mode: Int) = viewModelScope.launch { playerPreferences.setPreferredPlayMode(mode) }
+}
+
+/**
+ * 播放器高级设置页面 — Hills Pro 风格
+ */
+@Composable
+fun PlayerSettingsScreen(
+    onBack: () -> Unit,
+    viewModel: PlayerSettingsViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    // 选择弹窗状态
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showPlayModeDialog by remember { mutableStateOf(false) }
+    var showSeekDialog by remember { mutableStateOf(false) }
+    var showAspectDialog by remember { mutableStateOf(false) }
+    var showDecoderDialog by remember { mutableStateOf(false) }
+    var showSubLangDialog by remember { mutableStateOf(false) }
+    var showSensitivityDialog by remember { mutableStateOf(false) }
+
+    // 选项定义
+    val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
+    val playModeLabels = listOf("自动选择", "直接播放", "Remux", "HLS 转码")
+    val playModeDescs = listOf(
+        "根据设备能力自动选择最佳模式",
+        "直接播放原始文件，最低延迟",
+        "转封装为 MP4，兼容性更好",
+        "服务器端转码，兼容所有格式"
+    )
+    val seekSteps = listOf(5, 10, 15, 30, 60)
+    val aspectLabels = listOf("自适应", "填充屏幕", "16:9", "4:3")
+    val decoderLabels = listOf("自动", "硬件解码优先", "软件解码优先")
+    val decoderDescs = listOf(
+        "系统自动选择最佳解码器",
+        "优先使用 GPU 硬件加速，省电高效",
+        "使用 CPU 软件解码，兼容性最好"
+    )
+    val subLangOptions = listOf("chi" to "中文", "eng" to "英文", "jpn" to "日文", "kor" to "韩文")
+    val sensitivityLabels = listOf("低", "中", "高")
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        // 页面标题
+        item {
+            MobilePageHeader(
+                title = "播放器设置",
+                onBack = onBack,
+            )
+        }
+
+        // 播放控制分组
+        item {
+            SettingsGroup(
+                title = "播放控制",
+                items = listOf(
+                    SettingsItem(
+                        icon = Icons.Default.Speed,
+                        title = "默认播放速度",
+                        status = "${uiState.playbackSpeed}x",
+                        onClick = { showSpeedDialog = true },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.PlayCircle,
+                        title = "优先播放模式",
+                        status = playModeLabels[uiState.preferredPlayMode],
+                        onClick = { showPlayModeDialog = true },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.FastForward,
+                        title = "快进/快退步长",
+                        status = "${uiState.seekStep} 秒",
+                        onClick = { showSeekDialog = true },
+                    ),
+                ),
+            )
+        }
+
+        // 画面设置分组
+        item {
+            SettingsGroup(
+                title = "画面设置",
+                items = listOf(
+                    SettingsItem(
+                        icon = Icons.Default.AspectRatio,
+                        title = "默认画面比例",
+                        status = aspectLabels[uiState.aspectRatio],
+                        onClick = { showAspectDialog = true },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.Memory,
+                        title = "解码器优先级",
+                        status = decoderLabels[uiState.decoderPriority],
+                        onClick = { showDecoderDialog = true },
+                    ),
+                ),
+            )
+        }
+
+        // 字幕设置分组
+        item {
+            SettingsGroup(
+                title = "字幕设置",
+                items = listOf(
+                    SettingsItem(
+                        icon = Icons.Default.Subtitles,
+                        title = "自动加载字幕",
+                        subtitle = "播放时自动加载可用字幕",
+                        showArrow = false,
+                        onClick = { },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.Language,
+                        title = "默认字幕语言",
+                        status = subLangOptions.find { it.first == uiState.subtitleLanguage }?.second ?: uiState.subtitleLanguage,
+                        onClick = { showSubLangDialog = true },
+                    ),
+                ),
+            )
+        }
+
+        // 字幕设置 Switch（单独处理）
+        item {
+            SettingsSwitchRow(
+                icon = Icons.Default.Subtitles,
+                title = "自动加载字幕",
+                subtitle = "播放时自动加载可用字幕",
+                checked = uiState.autoLoadSubtitle,
+                onCheckedChange = { viewModel.setAutoLoadSubtitle(it) },
+            )
+        }
+
+        // 手势控制分组
+        item {
+            SettingsGroup(
+                title = "手势控制",
+                items = listOf(
+                    SettingsItem(
+                        icon = Icons.Default.TouchApp,
+                        title = "启用手势控制",
+                        subtitle = "滑动调节亮度、音量和进度",
+                        showArrow = false,
+                        onClick = { },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.Tune,
+                        title = "手势灵敏度",
+                        status = sensitivityLabels[uiState.gestureSensitivity],
+                        onClick = { showSensitivityDialog = true },
+                    ),
+                ),
+            )
+        }
+
+        // 手势控制 Switch（单独处理）
+        item {
+            SettingsSwitchRow(
+                icon = Icons.Default.TouchApp,
+                title = "启用手势控制",
+                subtitle = "滑动调节亮度、音量和进度",
+                checked = uiState.gestureEnabled,
+                onCheckedChange = { viewModel.setGestureEnabled(it) },
+            )
+        }
+
+        // 其他分组
+        item {
+            SettingsGroup(
+                title = "其他",
+                items = listOf(
+                    SettingsItem(
+                        icon = Icons.Default.SkipNext,
+                        title = "自动播放下一集",
+                        subtitle = "剧集播放完毕后自动播放下一集",
+                        showArrow = false,
+                        onClick = { },
+                    ),
+                    SettingsItem(
+                        icon = Icons.Default.Bookmark,
+                        title = "记住播放位置",
+                        subtitle = "下次打开时从上次位置继续播放",
+                        showArrow = false,
+                        onClick = { },
+                    ),
+                ),
+            )
+        }
+
+        // 其他 Switch（单独处理）
+        item {
+            SettingsSwitchRow(
+                icon = Icons.Default.SkipNext,
+                title = "自动播放下一集",
+                subtitle = "剧集播放完毕后自动播放下一集",
+                checked = uiState.autoPlayNext,
+                onCheckedChange = { viewModel.setAutoPlayNext(it) },
+            )
+        }
+        item {
+            SettingsSwitchRow(
+                icon = Icons.Default.Bookmark,
+                title = "记住播放位置",
+                subtitle = "下次打开时从上次位置继续播放",
+                checked = uiState.rememberPosition,
+                onCheckedChange = { viewModel.setRememberPosition(it) },
+            )
+        }
+
+        // 底部间距
+        item {
+            Spacer(modifier = Modifier.height(MobileSpacing.xl))
+        }
+    }
+
+    // 选择弹窗
+    if (showSpeedDialog) {
+        SelectionBottomSheet(
+            title = "选择播放速度",
+            options = speedOptions.map { SelectionOption("${it}x", "${it}x") },
+            selectedValue = "${uiState.playbackSpeed}x",
+            onSelect = { viewModel.setPlaybackSpeed(it.toFloat()); showSpeedDialog = false },
+            onDismiss = { showSpeedDialog = false },
+        )
+    }
+
+    if (showPlayModeDialog) {
+        SelectionBottomSheet(
+            title = "选择播放模式",
+            options = playModeLabels.mapIndexed { index, label ->
+                SelectionOption(index.toString(), label)
+            },
+            selectedValue = uiState.preferredPlayMode.toString(),
+            onSelect = { viewModel.setPreferredPlayMode(it.toInt()); showPlayModeDialog = false },
+            onDismiss = { showPlayModeDialog = false },
+        )
+    }
+
+    if (showSeekDialog) {
+        SelectionBottomSheet(
+            title = "选择快进步长",
+            options = seekSteps.map { SelectionOption(it.toString(), "$it 秒") },
+            selectedValue = uiState.seekStep.toString(),
+            onSelect = { viewModel.setSeekStep(it.toInt()); showSeekDialog = false },
+            onDismiss = { showSeekDialog = false },
+        )
+    }
+
+    if (showAspectDialog) {
+        SelectionBottomSheet(
+            title = "选择画面比例",
+            options = aspectLabels.mapIndexed { index, label ->
+                SelectionOption(index.toString(), label)
+            },
+            selectedValue = uiState.aspectRatio.toString(),
+            onSelect = { viewModel.setAspectRatio(it.toInt()); showAspectDialog = false },
+            onDismiss = { showAspectDialog = false },
+        )
+    }
+
+    if (showDecoderDialog) {
+        SelectionBottomSheet(
+            title = "选择解码器",
+            options = decoderLabels.mapIndexed { index, label ->
+                SelectionOption(index.toString(), label)
+            },
+            selectedValue = uiState.decoderPriority.toString(),
+            onSelect = { viewModel.setDecoderPriority(it.toInt()); showDecoderDialog = false },
+            onDismiss = { showDecoderDialog = false },
+        )
+    }
+
+    if (showSubLangDialog) {
+        SelectionBottomSheet(
+            title = "选择字幕语言",
+            options = subLangOptions.map { SelectionOption(it.first, it.second) },
+            selectedValue = uiState.subtitleLanguage,
+            onSelect = { viewModel.setSubtitleLanguage(it); showSubLangDialog = false },
+            onDismiss = { showSubLangDialog = false },
+        )
+    }
+
+    if (showSensitivityDialog) {
+        SelectionBottomSheet(
+            title = "选择灵敏度",
+            options = sensitivityLabels.mapIndexed { index, label ->
+                SelectionOption(index.toString(), label)
+            },
+            selectedValue = uiState.gestureSensitivity.toString(),
+            onSelect = { viewModel.setGestureSensitivity(it.toInt()); showSensitivityDialog = false },
+            onDismiss = { showSensitivityDialog = false },
+        )
+    }
+}
+
+/**
+ * 选择底部弹窗
+ */
+@Composable
+private fun SelectionBottomSheet(
+    title: String,
+    options: List<SelectionOption>,
+    selectedValue: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // 使用 ModalBottomSheet 或 AlertDialog
+    // 这里先用 AlertDialog 实现，后续可改为 BottomSheet
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            androidx.compose.material3.Text(
+                text = title,
+                color = com.nowen.video.ui.theme.MobileColors.Text,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+        },
+        containerColor = com.nowen.video.ui.theme.MobileColors.Bg,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(com.nowen.video.ui.theme.MobileRadius.xl),
+        text = {
+            androidx.compose.foundation.layout.Column(
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+            ) {
+                options.forEach { option ->
+                    val isSelected = option.value == selectedValue
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(com.nowen.video.ui.theme.MobileRadius.md))
+                            .then(
+                                if (isSelected) Modifier.background(com.nowen.video.ui.theme.MobileColors.PrimarySoft)
+                                else Modifier
+                            )
+                            .clickable { onSelect(option.value) }
+                            .padding(12.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = isSelected,
+                            onClick = { onSelect(option.value) },
+                            colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                selectedColor = com.nowen.video.ui.theme.MobileColors.Primary,
+                                unselectedColor = com.nowen.video.ui.theme.MobileColors.Muted,
+                            ),
+                        )
+                        androidx.compose.material3.Text(
+                            text = option.label,
+                            color = if (isSelected) com.nowen.video.ui.theme.MobileColors.Primary else com.nowen.video.ui.theme.MobileColors.Text,
+                            fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                androidx.compose.material3.Text(
+                    text = "取消",
+                    color = com.nowen.video.ui.theme.MobileColors.Primary,
+                )
+            }
+        },
+    )
 }
