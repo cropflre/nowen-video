@@ -39,6 +39,7 @@ import com.nowen.video.ui.component.mobile.MobilePageHeader
 import com.nowen.video.ui.component.mobile.PageHeaderAction
 import com.nowen.video.ui.component.mobile.SegmentedTabs
 import com.nowen.video.ui.theme.MobileSpacing
+import com.nowen.video.ui.screen.favorites.FavoritesViewModel
 import com.nowen.video.ui.screen.home.HomeViewModel
 import com.nowen.video.ui.util.buildPosterUrl
 
@@ -198,13 +199,66 @@ private fun ContinueWatchingContent(
 @Composable
 private fun FavoritesContent(
     onMediaClick: (String) -> Unit,
+    viewModel: FavoritesViewModel = hiltViewModel(),
 ) {
-    // TODO: 接入收藏 API
-    EmptyState(
-        icon = Icons.Default.FavoriteBorder,
-        title = "还没有收藏",
-        subtitle = "点亮喜欢的影片后会出现在这里",
-    )
+    val uiState by viewModel.uiState.collectAsState()
+
+    // 加载收藏数据
+    LaunchedEffect(Unit) {
+        viewModel.loadFavorites()
+    }
+
+    when {
+        uiState.loading -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        uiState.error != null -> {
+            EmptyState(
+                icon = Icons.Default.FavoriteBorder,
+                title = "加载失败",
+                subtitle = uiState.error,
+            )
+        }
+        uiState.favorites.isEmpty() -> {
+            EmptyState(
+                icon = Icons.Default.FavoriteBorder,
+                title = "还没有收藏",
+                subtitle = "点亮喜欢的影片后会出现在这里",
+            )
+        }
+        else -> {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = MobileSpacing.xl,
+                    end = MobileSpacing.xl,
+                    top = MobileSpacing.md,
+                    bottom = MobileSpacing.xl,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(MobileSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(MobileSpacing.md),
+            ) {
+                items(uiState.favorites) { media ->
+                    MediaPosterCard(
+                        title = media.title,
+                        year = media.year,
+                        imageUrl = if (media.posterPath.isNotBlank()) {
+                            buildPosterUrl(uiState.serverUrl, media.id, "media", uiState.token)
+                        } else {
+                            null
+                        },
+                        onClick = { onMediaClick(media.id) },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
