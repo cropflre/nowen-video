@@ -327,6 +327,9 @@ type EmbyConfig struct {
 	LoginDisclaimer string `mapstructure:"login_disclaimer"`
 	// 自定义 CSS（Jellyfin Web 客户端 /Branding/Css）
 	CustomCss string `mapstructure:"custom_css"`
+	// 是否允许 query 参数登录（默认关闭，更安全）
+	// 某些旧版客户端（如 EmbyCon）可能需要 query 登录
+	AllowQueryLogin bool `mapstructure:"allow_query_login"`
 }
 
 // AdultScraperConfig 番号刮削配置（混合架构：Go 原生爬虫 + Python 微服务）
@@ -814,6 +817,7 @@ func setDefaults() {
 	viper.SetDefault("emby.enable_websocket", true)
 	viper.SetDefault("emby.login_disclaimer", "")
 	viper.SetDefault("emby.custom_css", "")
+	viper.SetDefault("emby.allow_query_login", false)
 
 	// ---- 存储配置 ----
 	// WebDAV 存储配置

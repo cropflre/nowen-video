@@ -9,6 +9,39 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
+// ==================== Sessions 列表 ====================
+
+// SessionsHandler 对应 GET /Sessions。
+// Emby 官方客户端登录后会请求 /Sessions?DeviceId=... 来验证会话是否建立。
+// 返回当前用户当前设备的 active session，而不是空数组。
+func (h *Handler) SessionsHandler(c *gin.Context) {
+	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusOK, []SessionInfo{})
+		return
+	}
+
+	// 构建当前会话信息
+	authHdr := parseEmbyAuthHeader(c.GetHeader("X-Emby-Authorization"))
+	sess := SessionInfo{
+		Id:                 newSessionID(userID, authHdr.DeviceId),
+		UserId:             h.idMap.ToEmbyID(userID),
+		UserName:           c.GetString("username"),
+		Client:             authHdr.Client,
+		DeviceName:         authHdr.Device,
+		DeviceId:           authHdr.DeviceId,
+		ApplicationVersion: authHdr.Version,
+		ServerId:           h.serverID,
+		IsActive:           true,
+		SupportsRemoteControl: true,
+		PlayableMediaTypes: []string{"Video", "Audio"},
+		SupportedCommands:  []string{},
+		LastActivityDate:   formatEmbyTime(nowUTC()),
+	}
+
+	c.JSON(http.StatusOK, []SessionInfo{sess})
+}
+
 // ==================== Playback 会话上报 ====================
 //
 // Emby 客户端在播放过程中会周期性上报进度：

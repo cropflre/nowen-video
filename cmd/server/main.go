@@ -138,6 +138,9 @@ func main() {
 		ExcludePaths: []string{"/api/ws"}, // WebSocket 不受速率限制
 	}))
 
+	// 日志脱敏中间件：脱敏敏感参数，避免 token、密码等出现在日志中
+	r.Use(middleware.LogSanitizer())
+
 	// 请求日志中间件：记录所有 API 请求到系统日志
 	r.Use(middleware.RequestLogger(repos.SystemLog))
 
@@ -982,6 +985,46 @@ func main() {
 	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, services.Transcode, repos)
 	embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
 	sugar.Info("Emby 兼容层已启用：/emby/* 与根路径 Emby 端点（供 Infuse 等客户端使用）")
+
+	// 预热 Emby ID 映射（启动时注册所有 Library/Media/Series 的 ID 映射）
+	// 避免客户端拿旧缓存 ID 请求时 resolve 失败
+	go func() {
+		sugar.Info("开始预热 Emby ID 映射...")
+		libraries, err := repos.Library.List()
+		if err != nil {
+			sugar.Warnf("预热 Emby Library ID 失败: %v", err)
+		}
+		// 使用分页查询获取所有 Media（每页 1000 条）
+		var allMedia []model.Media
+		page := 1
+		for {
+			media, _, err := repos.Media.List(page, 1000, "")
+			if err != nil {
+				sugar.Warnf("预热 Emby Media ID 失败: %v", err)
+				break
+			}
+			if len(media) == 0 {
+				break
+			}
+			allMedia = append(allMedia, media...)
+			page++
+		}
+		// 使用分页查询获取所有 Series（如果有的话）
+		// Series 暂时跳过，因为没有通用的 List 方法
+
+		libIDs := make([]string, len(libraries))
+		for i, lib := range libraries {
+			libIDs[i] = lib.ID
+		}
+		mediaIDs := make([]string, len(allMedia))
+		for i, m := range allMedia {
+			mediaIDs[i] = m.ID
+		}
+
+		embyHandler.IDMapper().WarmupAll(libIDs, mediaIDs, nil)
+		sugar.Infof("Emby ID 映射预热完成: Library=%d, Media=%d",
+			len(libIDs), len(mediaIDs))
+	}()
 
 	// ==================== UDP 7359 服务器自动发现 ====================
 	// 让同网段的移动端 Emby/Jellyfin 客户端在"添加服务器"时自动发现本机，

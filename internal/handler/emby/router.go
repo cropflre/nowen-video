@@ -160,10 +160,10 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	g.POST("/Users/:userId/PlayedItems/:itemId", h.MarkPlayedHandler)
 	g.DELETE("/Users/:userId/PlayedItems/:itemId", h.MarkUnplayedHandler)
 
-	// Sessions 列表（最小实现：返回空数组，Infuse 会忽略）
-	g.GET("/Sessions", func(c *gin.Context) {
-		c.JSON(http.StatusOK, []SessionInfo{})
-	})
+	// Sessions 列表（返回当前用户当前设备的 active session）
+	// Emby 官方客户端登录后会请求 /Sessions?DeviceId=...，空数组会导致初始化失败
+	g.GET("/Sessions", h.SessionsHandler)
+	g.GET("/sessions", h.SessionsHandler) // lowercase alias
 
 	// Displayable preferences（Emby 客户端保存 UI 设置用；简化：echo 回去）
 	g.GET("/DisplayPreferences/:id", func(c *gin.Context) {

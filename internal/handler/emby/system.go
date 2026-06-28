@@ -124,25 +124,72 @@ type AuthenticateByNameRequest struct {
 
 // AuthenticateByNameHandler 对应 /Users/AuthenticateByName。
 // 这是 Infuse 登录入口。成功后返回 AuthenticationResult，其中 AccessToken 即为 JWT。
+//
+// 支持多种登录格式：
+//   - JSON body: {"Username": "xxx", "Pw": "xxx"}
+//   - Form body: Username=xxx&Pw=xxx
+//   - Query params: ?Username=xxx&Pw=xxx（需要配置 emby.allow_query_login=true）
+//
+// 字段大小写兼容：Username/username, Pw/pw, Password/password
 func (h *Handler) AuthenticateByNameHandler(c *gin.Context) {
-	var req AuthenticateByNameRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "Invalid request body"})
-		return
+	var username, password string
+
+	// 1. 尝试 JSON body
+	var jsonReq AuthenticateByNameRequest
+	if err := c.ShouldBindJSON(&jsonReq); err == nil {
+		username = jsonReq.Username
+		password = jsonReq.Pw
+		if password == "" {
+			password = jsonReq.Password
+		}
 	}
-	password := req.Pw
-	if password == "" {
-		password = req.Password
+
+	// 2. 尝试 form body（application/x-www-form-urlencoded）
+	if username == "" {
+		username = c.PostForm("Username")
+		if username == "" {
+			username = c.PostForm("username")
+		}
+		password = c.PostForm("Pw")
+		if password == "" {
+			password = c.PostForm("pw")
+		}
+		if password == "" {
+			password = c.PostForm("Password")
+		}
+		if password == "" {
+			password = c.PostForm("password")
+		}
 	}
-	if req.Username == "" || password == "" {
+
+	// 3. 尝试 query 参数（需要配置开关）
+	if username == "" && h.cfg.Emby.AllowQueryLogin {
+		username = c.Query("Username")
+		if username == "" {
+			username = c.Query("username")
+		}
+		password = c.Query("Pw")
+		if password == "" {
+			password = c.Query("pw")
+		}
+		if password == "" {
+			password = c.Query("Password")
+		}
+		if password == "" {
+			password = c.Query("password")
+		}
+	}
+
+	// 4. 验证用户名和密码
+	if username == "" || password == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"Error": "Username or password missing"})
 		return
 	}
 
-	loginReq := &service.LoginRequest{Username: req.Username, Password: password}
+	loginReq := &service.LoginRequest{Username: username, Password: password}
 	tok, err := h.auth.Login(loginReq, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
-		h.logger.Infof("[emby] 登录失败 user=%s err=%v", req.Username, err)
+		h.logger.Infof("[emby] 登录失败 user=%s err=%v", username, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"Error": "Invalid username or password"})
 		return
 	}
