@@ -67,6 +67,7 @@ fun MobileRootScreen(
     onSettingsClick: () -> Unit,
     onPlayerSettingsClick: () -> Unit,
     onServerManageClick: () -> Unit,
+    onAddServerClick: () -> Unit,
     onPlayerClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -162,6 +163,8 @@ fun MobileRootScreen(
                         when (RootTab.valueOf(currentTab)) {
                             RootTab.Servers -> ServerRootScreen(
                                 onEnterServer = enterServer,
+                                onAddServerClick = onAddServerClick,
+                                onServerManageClick = onServerManageClick,
                                 onMediaClick = onMediaClick,
                                 onSeriesClick = onSeriesClick,
                                 onLibraryClick = onLibraryClick,

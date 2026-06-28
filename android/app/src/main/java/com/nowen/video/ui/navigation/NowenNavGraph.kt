@@ -189,6 +189,9 @@ fun NowenNavGraph(
                 onServerManageClick = {
                     navController.navigate(Screen.ServerManage.route)
                 },
+                onAddServerClick = {
+                    navController.navigate(Screen.ServerSetup.route)
+                },
                 onPlayerClick = { mediaId ->
                     navController.navigate(Screen.Player.createRoute(mediaId))
                 },
