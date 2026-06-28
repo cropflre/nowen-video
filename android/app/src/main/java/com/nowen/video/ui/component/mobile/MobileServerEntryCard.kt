@@ -79,7 +79,7 @@ fun MobileServerEntryCard(
 
     Box(
         modifier = modifier
-            .width(188.dp)
+            .fillMaxWidth()
             .scale(scale)
             .clip(RoundedCornerShape(MobileRadius.xl))
             .background(MobileColors.Card)
