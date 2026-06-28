@@ -79,14 +79,22 @@ colors = TopAppBarDefaults.topAppBarColors(containerColor = colorScheme.surface.
     }
 }
 
-data class FavoritesUiState(val loading: Boolean = true, val favorites: List<Media> = emptyList(), val serverUrl: String = "", val token: String = "")
+data class FavoritesUiState(
+    val loading: Boolean = true,
+    val favorites: List<Media> = emptyList(),
+    val serverUrl: String = "",
+    val token: String = "",
+    val error: String? = null,
+)
 @HiltViewModel
 class FavoritesViewModel @Inject constructor(private val mediaRepository: MediaRepository, private val tokenManager: TokenManager) : ViewModel() {
     private val _uiState = MutableStateFlow(FavoritesUiState()); val uiState = _uiState.asStateFlow()
     fun loadFavorites() { viewModelScope.launch {
-        _uiState.value = _uiState.value.copy(loading = true)
+        _uiState.value = _uiState.value.copy(loading = true, error = null)
         val serverUrl = tokenManager.getServerUrl() ?: ""; val token = tokenManager.getToken() ?: ""
         _uiState.value = _uiState.value.copy(serverUrl = serverUrl, token = token)
-        mediaRepository.getFavorites().onSuccess { _uiState.value = _uiState.value.copy(loading = false, favorites = it) }.onFailure { _uiState.value = _uiState.value.copy(loading = false) }
+        mediaRepository.getFavorites()
+            .onSuccess { _uiState.value = _uiState.value.copy(loading = false, favorites = it) }
+            .onFailure { e -> _uiState.value = _uiState.value.copy(loading = false, error = "加载收藏失败: ${e.message}") }
     } }
 }

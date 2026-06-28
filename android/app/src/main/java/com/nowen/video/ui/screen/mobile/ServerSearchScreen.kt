@@ -8,15 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +31,7 @@ import com.nowen.video.ui.component.mobile.MobilePageHeader
 import com.nowen.video.ui.component.mobile.SearchBarLarge
 import com.nowen.video.ui.theme.MobileSpacing
 import com.nowen.video.ui.screen.search.SearchViewModel
+import kotlinx.coroutines.delay
 
 /**
  * 服务器搜索页
@@ -46,6 +46,19 @@ fun ServerSearchScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var query by remember { mutableStateOf("") }
+
+    // 300ms 防抖搜索
+    LaunchedEffect(query) {
+        val keyword = query.trim()
+        if (keyword.isBlank()) {
+            // 清空搜索结果
+            viewModel.search("")
+            return@LaunchedEffect
+        }
+
+        delay(300)
+        viewModel.search(keyword)
+    }
 
     Column(
         modifier = modifier
@@ -83,6 +96,14 @@ fun ServerSearchScreen(
                     icon = Icons.Default.Search,
                     title = "输入搜索内容",
                     subtitle = "搜索你的媒体库",
+                )
+            }
+            uiState.error != null -> {
+                // 错误状态
+                EmptyState(
+                    icon = Icons.Default.Search,
+                    title = "搜索失败",
+                    subtitle = uiState.error,
                 )
             }
             uiState.media.isEmpty() && !uiState.loading -> {

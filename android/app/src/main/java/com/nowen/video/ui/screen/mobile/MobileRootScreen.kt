@@ -178,6 +178,8 @@ fun MobileRootScreen(
                             )
                             RootTab.Settings -> MobileSettingsScreen(
                                 onSettingsClick = onSettingsClick,
+                                onPlayerSettingsClick = onSettingsClick,
+                                onServerManageClick = onSettingsClick,
                             )
                         }
                     }

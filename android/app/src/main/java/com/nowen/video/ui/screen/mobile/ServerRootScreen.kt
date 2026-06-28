@@ -62,11 +62,12 @@ fun ServerRootScreen(
                 .padding(horizontal = MobileSpacing.xl),
         ) {
             if (activeServer != null) {
-                // 已配置服务器
+                // 已配置服务器 - 显示为"当前服务器"而非假装已连接
                 ServerCard(
                     serverName = activeServer.name.ifBlank { "Nowen Video" },
                     serverUrl = activeServer.url,
-                    isConnected = true, // TODO: 真实健康检查
+                    isConnected = null, // 不假装已连接，显示中性状态
+                    statusText = "当前服务器",
                     onClick = onEnterServer,
                     onLongClick = {
                         // TODO: 显示服务器操作菜单
@@ -78,6 +79,7 @@ fun ServerRootScreen(
                     serverName = uiState.servers.first().name.ifBlank { "Nowen Video" },
                     serverUrl = uiState.servers.first().url,
                     isConnected = false,
+                    statusText = "未激活",
                     onClick = {
                         // TODO: 切换到这个服务器
                     },

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -18,7 +20,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileFontSize
@@ -27,7 +31,7 @@ import com.nowen.video.ui.theme.MobileSpacing
 
 /**
  * 大圆角搜索框
- * Hills Pro 风格：大圆角 + 半透明背景
+ * Hills Pro 风格：大圆角 + 半透明背景 + 键盘搜索按钮
  */
 @Composable
 fun SearchBarLarge(
@@ -37,6 +41,8 @@ fun SearchBarLarge(
     modifier: Modifier = Modifier,
     placeholder: String = "输入搜索内容",
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -72,6 +78,15 @@ fun SearchBarLarge(
             ),
             cursorBrush = SolidColor(MobileColors.Primary),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Search,
+            ),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    onSearch(query)
+                    keyboardController?.hide()
+                },
+            ),
             decorationBox = { innerTextField ->
                 if (query.isBlank()) {
                     Text(

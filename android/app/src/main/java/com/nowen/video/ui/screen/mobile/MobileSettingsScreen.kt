@@ -45,6 +45,8 @@ import com.nowen.video.ui.theme.MobileSpacing
 @Composable
 fun MobileSettingsScreen(
     onSettingsClick: () -> Unit,
+    onPlayerSettingsClick: () -> Unit = {},
+    onServerManageClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -73,7 +75,7 @@ fun MobileSettingsScreen(
                         icon = Icons.Default.Language,
                         title = "语言",
                         subtitle = "Auto",
-                        onClick = { /* TODO: 语言设置 */ },
+                        onClick = { onSettingsClick() },
                     ),
                     SettingsItem(
                         icon = Icons.Default.Palette,
@@ -83,12 +85,12 @@ fun MobileSettingsScreen(
                     SettingsItem(
                         icon = Icons.Default.Storage,
                         title = "媒体库",
-                        onClick = { /* TODO: 媒体库设置 */ },
+                        onClick = { onSettingsClick() },
                     ),
                     SettingsItem(
                         icon = Icons.Default.Sync,
-                        title = "同步",
-                        onClick = { /* TODO: 同步设置 */ },
+                        title = "服务器管理",
+                        onClick = { onServerManageClick() },
                     ),
                 ),
             )
@@ -102,7 +104,7 @@ fun MobileSettingsScreen(
                     SettingsItem(
                         icon = Icons.Default.PlayArrow,
                         title = "播放器设置",
-                        onClick = { onSettingsClick() },
+                        onClick = { onPlayerSettingsClick() },
                     ),
                 ),
             )

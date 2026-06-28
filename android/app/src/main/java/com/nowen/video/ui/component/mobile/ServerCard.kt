@@ -39,13 +39,19 @@ import com.nowen.video.ui.theme.MobileSpacing
 /**
  * 服务器卡片组件
  * Hills Pro 风格：半透明背景 + 大圆角 + 细边框
+ *
+ * @param serverName 服务器名称
+ * @param serverUrl 服务器地址
+ * @param isConnected 连接状态：null=中性/未检查, true=已连接, false=连接失败
+ * @param statusText 自定义状态文本，优先于 isConnected 显示
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ServerCard(
     serverName: String,
     serverUrl: String,
-    isConnected: Boolean,
+    isConnected: Boolean? = null,
+    statusText: String? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -114,15 +120,34 @@ fun ServerCard(
                     fontSize = MobileFontSize.sm,
                     maxLines = 1,
                 )
+                // 状态文本
+                if (statusText != null) {
+                    Text(
+                        text = statusText,
+                        color = MobileColors.Muted,
+                        fontSize = MobileFontSize.xs,
+                    )
+                }
             }
 
-            // 连接状态
-            Icon(
-                imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Error,
-                contentDescription = if (isConnected) "已连接" else "连接失败",
-                tint = if (isConnected) MobileColors.Success else MobileColors.Error,
-                modifier = Modifier.size(24.dp),
-            )
+            // 连接状态图标
+            when (isConnected) {
+                true -> Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "已连接",
+                    tint = MobileColors.Success,
+                    modifier = Modifier.size(24.dp),
+                )
+                false -> Icon(
+                    imageVector = Icons.Default.Error,
+                    contentDescription = "连接失败",
+                    tint = MobileColors.Error,
+                    modifier = Modifier.size(24.dp),
+                )
+                null -> {
+                    // 中性状态，不显示图标
+                }
+            }
         }
     }
 }

@@ -335,7 +335,8 @@ data class SearchUiState(
     val media: List<Media> = emptyList(),
     val series: List<Series> = emptyList(),
     val serverUrl: String = "",
-    val token: String = ""
+    val token: String = "",
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -360,23 +361,28 @@ class SearchViewModel @Inject constructor(
     fun search(query: String) {
         searchJob?.cancel()
         if (query.isBlank()) {
-            _uiState.value = _uiState.value.copy(media = emptyList(), series = emptyList())
+            _uiState.value = _uiState.value.copy(media = emptyList(), series = emptyList(), error = null)
             return
         }
 
         searchJob = viewModelScope.launch {
             delay(300) // 防抖
-            _uiState.value = _uiState.value.copy(loading = true)
+            _uiState.value = _uiState.value.copy(loading = true, error = null)
 
-            mediaRepository.searchMixed(query).onSuccess { result ->
-                _uiState.value = _uiState.value.copy(
-                    loading = false,
-                    media = result.media,
-                    series = result.series
-                )
-            }.onFailure {
-                _uiState.value = _uiState.value.copy(loading = false)
-            }
+            mediaRepository.searchMixed(query)
+                .onSuccess { result ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        media = result.media,
+                        series = result.series
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        error = "搜索失败: ${e.message}"
+                    )
+                }
         }
     }
 }

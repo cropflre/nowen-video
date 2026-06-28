@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nowen.video.ui.component.mobile.EmptyState
+import com.nowen.video.ui.component.mobile.HeroCard
 import com.nowen.video.ui.component.mobile.LibraryItem
 import com.nowen.video.ui.component.mobile.MediaPosterCard
 import com.nowen.video.ui.component.mobile.MobilePageHeader
@@ -91,6 +92,41 @@ fun ServerHomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = MobileSpacing.xl),
                 ) {
+                    // Hero 区
+                    val heroItem = uiState.recentMixed.firstOrNull()
+                        ?: uiState.continueWatching.firstOrNull()?.media
+                    if (heroItem != null) {
+                        item {
+                            val media = when (heroItem) {
+                                is com.nowen.video.data.model.MixedItem -> heroItem.media
+                                is com.nowen.video.data.model.Media -> heroItem
+                                else -> null
+                            }
+                            if (media != null) {
+                                HeroCard(
+                                    title = media.title,
+                                    subtitle = media.overview?.take(100),
+                                    imageUrl = if (media.posterPath.isNotBlank()) {
+                                        "$serverUrl/api/media/${media.id}/poster"
+                                    } else {
+                                        null
+                                    },
+                                    year = media.year,
+                                    rating = media.rating,
+                                    resolution = media.resolution,
+                                    onClick = {
+                                        if (media.seriesId.isNotBlank()) {
+                                            onSeriesClick(media.seriesId)
+                                        } else {
+                                            onMediaClick(media.id)
+                                        }
+                                    },
+                                    modifier = Modifier.padding(horizontal = MobileSpacing.xl),
+                                )
+                            }
+                        }
+                    }
+
                     // 继续观看
                     if (uiState.continueWatching.isNotEmpty()) {
                         item {

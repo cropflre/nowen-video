@@ -57,6 +57,14 @@ fun ServerFavoritesScreen(
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
+            uiState.error != null -> {
+                EmptyState(
+                    icon = Icons.Default.FavoriteBorder,
+                    title = "加载失败",
+                    subtitle = uiState.error,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
             uiState.favorites.isEmpty() -> {
                 EmptyState(
                     icon = Icons.Default.FavoriteBorder,
