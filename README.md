@@ -83,8 +83,8 @@ services:
       - NOWEN_SECRETS_JWT_SECRET=change-me-please    # ⚠️ 必须修改
       - TZ=Asia/Shanghai
     volumes:
-      - ./data:/app/data                             # 数据库与配置
-      - ./cache:/app/cache                           # 转码缓存
+      - ./data:/data                                 # 数据库与配置
+      - ./cache:/cache                               # 转码缓存
       - /volume1/Media:/media:ro                     # 你的媒体目录
     devices:
       - /dev/dri:/dev/dri                            # 可选：硬件加速
@@ -99,7 +99,7 @@ services:
 | `TZ` | `UTC` | 时区，建议 `Asia/Shanghai` |
 | `NOWEN_APP_PORT` | `8080` | HTTP 端口 |
 | `NOWEN_SECRETS_JWT_SECRET` | *(必填)* | JWT 签名密钥 — **首次部署务必修改** |
-| `NOWEN_APP_DATA_DIR` | `/app/data` | 数据目录（数据库 + 上传文件） |
+| `NOWEN_APP_DATA_DIR` | `/data` | 数据目录（数据库 + 上传文件） |
 | `NOWEN_LOGGING_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
 | `/dev/dri` 设备 | — | 透传 Intel/AMD GPU 用于硬件转码（NVIDIA 需用 `runtime: nvidia`） |
 

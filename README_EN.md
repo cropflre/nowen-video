@@ -83,8 +83,8 @@ services:
       - NOWEN_SECRETS_JWT_SECRET=change-me-please    # IMPORTANT
       - TZ=Asia/Shanghai
     volumes:
-      - ./data:/app/data                             # database & config
-      - ./cache:/app/cache                           # transcode cache
+      - ./data:/data                                 # database & config
+      - ./cache:/cache                               # transcode cache
       - /volume1/Media:/media:ro                     # YOUR media folder
     devices:
       - /dev/dri:/dev/dri                            # optional: HW accel
@@ -97,7 +97,7 @@ services:
 | `TZ` | `UTC` | Timezone |
 | `NOWEN_APP_PORT` | `8080` | HTTP port |
 | `NOWEN_SECRETS_JWT_SECRET` | *(required)* | JWT signing secret — **must be changed** |
-| `NOWEN_APP_DATA_DIR` | `/app/data` | Data dir (DB + uploads) |
+| `NOWEN_APP_DATA_DIR` | `/data` | Data dir (DB + uploads) |
 | `NOWEN_LOGGING_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `/dev/dri` device | — | Pass through Intel/AMD GPU for hardware transcoding |
 
