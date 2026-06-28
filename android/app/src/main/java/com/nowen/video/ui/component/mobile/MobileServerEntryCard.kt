@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
@@ -51,14 +50,23 @@ enum class ServerIconType {
 /**
  * 紧凑服务器入口卡片
  * Hills Pro 风格：小而明确的媒体服务器入口
+ *
+ * 尺寸规范：
+ * - 宽度：自适应网格，最小 200dp
+ * - 高度：96dp - 112dp
+ * - 圆角：24dp
+ * - 图标：44dp - 52dp
+ * - 标题：最多 1 行，不截断
+ * - 副标题：最多 1 行
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MobileServerEntryCard(
     name: String,
     subtitle: String,
-    iconType: ServerIconType = ServerIconType.Nowen,
+    serverUrl: String? = null,
     isActive: Boolean = false,
+    type: ServerIconType = ServerIconType.Nowen,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -98,20 +106,20 @@ fun MobileServerEntryCard(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MobileSpacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(MobileSpacing.md),
         ) {
             // 服务器图标
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(RoundedCornerShape(MobileRadius.md))
-                    .background(getServerIconBackground(iconType)),
+                    .background(getServerIconBackground(type)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = getServerIcon(iconType),
+                    imageVector = getServerIcon(type),
                     contentDescription = null,
-                    tint = getServerIconTint(iconType),
+                    tint = getServerIconTint(type),
                     modifier = Modifier.size(28.dp),
                 )
             }

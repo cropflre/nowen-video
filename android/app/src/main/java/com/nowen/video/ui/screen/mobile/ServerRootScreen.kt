@@ -38,6 +38,13 @@ import com.nowen.video.ui.screen.server.ServerManageViewModel
 /**
  * 服务器 Root 页面
  * 显示服务器列表网格和管理入口
+ *
+ * 布局规则：
+ * 1. MobilePageHeader 独立占位，不被内容覆盖
+ * 2. 服务器列表在标题下方 20dp 开始
+ * 3. 使用 LazyVerticalGrid 自适应网格
+ * 4. FAB 悬浮在右下角，避开底部导航
+ * 5. 底部留 120dp 空间给导航和 FAB
  */
 @Composable
 fun ServerRootScreen(
@@ -66,7 +73,7 @@ fun ServerRootScreen(
         Column(
             modifier = Modifier.fillMaxSize(),
         ) {
-            // 页面标题
+            // 页面标题 - 独立占位，不被内容覆盖
             MobilePageHeader(
                 title = "服务器",
                 actions = listOf(
@@ -78,15 +85,15 @@ fun ServerRootScreen(
                 ),
             )
 
-            // 服务器列表
+            // 服务器列表 - 从标题下方 20dp 开始
             if (uiState.servers.isNotEmpty()) {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 180.dp),
+                    columns = GridCells.Adaptive(minSize = 200.dp),
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(
                         start = MobileSpacing.xl,
                         end = MobileSpacing.xl,
-                        top = 20.dp,
+                        top = 20.dp, // 标题下方间距
                         bottom = 120.dp, // 为底部导航和 FAB 留空间
                     ),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -97,8 +104,9 @@ fun ServerRootScreen(
                         MobileServerEntryCard(
                             name = server.name.ifBlank { "默认服务器" },
                             subtitle = if (isActive) "当前服务器" else "点击切换",
-                            iconType = inferServerIconType(server.name),
+                            serverUrl = server.url,
                             isActive = isActive,
+                            type = inferServerIconType(server.name),
                             onClick = {
                                 if (!isActive) {
                                     viewModel.switchServer(server.id) {
@@ -115,7 +123,7 @@ fun ServerRootScreen(
                     }
                 }
             } else {
-                // 空状态
+                // 空状态 - 占满剩余空间
                 EmptyState(
                     icon = Icons.Default.Dns,
                     title = "还没有服务器",
