@@ -41,6 +41,7 @@ import com.nowen.video.data.model.WatchHistory
 import com.nowen.video.data.repository.MediaRepository
 import com.nowen.video.ui.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -891,38 +892,41 @@ class HomeViewModel @Inject constructor(
                 token = token
             )
 
-            launch {
-                mediaRepository.getLibraries()
-                    .onSuccess { libraries ->
-                        _uiState.value = _uiState.value.copy(libraries = libraries)
-                    }
-                    .onFailure { e ->
-                        _uiState.value = _uiState.value.copy(
-                            error = "加载媒体库失败: ${e.message}"
-                        )
-                    }
+            if (serverUrl.isBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    error = "未配置服务器"
+                )
+                return@launch
             }
 
-            launch {
-                mediaRepository.getContinueWatching()
-                    .onSuccess { history ->
-                        _uiState.value = _uiState.value.copy(continueWatching = history)
-                    }
-            }
+            try {
+                // 并发请求，等待所有完成
+                val librariesDeferred = async { mediaRepository.getLibraries() }
+                val continueDeferred = async { mediaRepository.getContinueWatching() }
+                val recentDeferred = async { mediaRepository.getRecentMixed(20) }
 
-            launch {
-                mediaRepository.getRecentMixed(20)
-                    .onSuccess { items ->
-                        _uiState.value = _uiState.value.copy(recentMixed = items)
-                    }
-                    .onFailure { e ->
-                        _uiState.value = _uiState.value.copy(
-                            error = "加载最近媒体失败: ${e.message}"
-                        )
-                    }
-            }
+                val librariesResult = librariesDeferred.await()
+                val continueResult = continueDeferred.await()
+                val recentResult = recentDeferred.await()
 
-            _uiState.value = _uiState.value.copy(loading = false)
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    libraries = librariesResult.getOrDefault(emptyList()),
+                    continueWatching = continueResult.getOrDefault(emptyList()),
+                    recentMixed = recentResult.getOrDefault(emptyList()),
+                    error = listOfNotNull(
+                        librariesResult.exceptionOrNull()?.message?.let { "媒体库加载失败: $it" },
+                        continueResult.exceptionOrNull()?.message?.let { "继续观看加载失败: $it" },
+                        recentResult.exceptionOrNull()?.message?.let { "最近添加加载失败: $it" },
+                    ).firstOrNull()
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    error = "加载失败: ${e.message}"
+                )
+            }
         }
     }
 

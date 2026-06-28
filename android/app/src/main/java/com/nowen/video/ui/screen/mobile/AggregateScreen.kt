@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,11 @@ fun AggregateScreen(
 ) {
     var selectedTab by remember { mutableStateOf(AggregateTab.ContinueWatching) }
     val uiState by viewModel.uiState.collectAsState()
+
+    // 进入页面时加载数据
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
+    }
 
     val tabs = listOf(
         AggregateTab.ContinueWatching to "继续观看",
@@ -134,6 +140,13 @@ private fun ContinueWatchingContent(
                 CircularProgressIndicator()
             }
         }
+        uiState.error != null -> {
+            EmptyState(
+                icon = Icons.Default.PlayArrow,
+                title = "加载失败",
+                subtitle = uiState.error,
+            )
+        }
         uiState.continueWatching.isEmpty() -> {
             EmptyState(
                 icon = Icons.Default.PlayArrow,
@@ -197,6 +210,13 @@ private fun LibrariesContent(
             ) {
                 CircularProgressIndicator()
             }
+        }
+        uiState.error != null -> {
+            EmptyState(
+                icon = Icons.Default.FolderOpen,
+                title = "加载失败",
+                subtitle = uiState.error,
+            )
         }
         uiState.libraries.isEmpty() -> {
             EmptyState(
