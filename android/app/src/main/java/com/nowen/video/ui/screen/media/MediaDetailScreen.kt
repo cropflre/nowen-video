@@ -61,6 +61,7 @@ import com.nowen.video.data.repository.MediaRepository
 import com.nowen.video.ui.theme.MobileColors
 import com.nowen.video.ui.theme.MobileRadius
 import com.nowen.video.ui.theme.MobileSpacing
+import com.nowen.video.ui.util.buildBackdropUrl
 import com.nowen.video.ui.util.buildPosterUrl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -111,6 +112,8 @@ fun MediaDetailScreen(
                         .height(300.dp),
                 ) {
                     val backdropUrl = if (media.backdropPath.isNotBlank()) {
+                        buildBackdropUrl(uiState.serverUrl, media.id, uiState.token)
+                    } else if (media.posterPath.isNotBlank()) {
                         buildPosterUrl(uiState.serverUrl, media.id, "media", uiState.token)
                     } else {
                         null
@@ -335,6 +338,7 @@ fun MediaDetailScreen(
                                     modifier = Modifier
                                         .width(100.dp)
                                         .clip(RoundedCornerShape(MobileRadius.md))
+                                        .background(MobileColors.BgAlt)
                                         .clickable { onMediaNavigate(s.id) },
                                 ) {
                                     AsyncImage(
