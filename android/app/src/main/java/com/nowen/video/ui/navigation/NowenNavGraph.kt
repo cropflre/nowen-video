@@ -190,14 +190,38 @@ fun NowenNavGraph(
                 onSearchClick = {
                     navController.navigate(Screen.Search.createRoute())
                 },
-                onSettingsClick = {
-                    navController.navigate(Screen.Settings.route)
+                onServerManageClick = {
+                    navController.navigate(Screen.ServerManage.route)
                 },
                 onPlayerSettingsClick = {
                     navController.navigate(Screen.PlayerSettings.route)
                 },
-                onServerManageClick = {
-                    navController.navigate(Screen.ServerManage.route)
+                onConnectionDiagnosticClick = {
+                    navController.navigate(Screen.ConnectionDiagnostic.route)
+                },
+                onNotificationsClick = {
+                    navController.navigate(Screen.Notifications.route)
+                },
+                onDownloadsClick = {
+                    navController.navigate(Screen.Downloads.route)
+                },
+                onSubtitleCenterClick = {
+                    navController.navigate(Screen.SubtitleCenter.route)
+                },
+                onSmartDiscoveryClick = {
+                    navController.navigate(Screen.SmartDiscovery.route)
+                },
+                onRemoteAccessClick = {
+                    navController.navigate(Screen.RemoteAccess.route)
+                },
+                onCastClick = {
+                    navController.navigate(Screen.Cast.route)
+                },
+                onFamilyModeClick = {
+                    navController.navigate(Screen.FamilyMode.route)
+                },
+                onDeviceAdaptationClick = {
+                    navController.navigate(Screen.DeviceAdaptation.route)
                 },
                 onAddServerClick = {
                     // 从服务器页添加服务器，完成后回到 Home

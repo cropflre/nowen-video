@@ -81,6 +81,10 @@ class TokenManager @Inject constructor(
         return context.dataStore.data.first()[KEY_USER_ID]
     }
 
+    suspend fun getUserRole(): String? {
+        return context.dataStore.data.first()[KEY_USER_ROLE]
+    }
+
     fun isLoggedInFlow(): Flow<Boolean> {
         return context.dataStore.data.map { it[KEY_TOKEN] != null }
     }
