@@ -1,5 +1,7 @@
 package com.nowen.video.ui.screen.auth
 
+import com.nowen.video.data.local.ServerManager
+import com.nowen.video.data.local.ServerProfile
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -707,6 +709,7 @@ data class ServerSetupUiState(
 @HiltViewModel
 class ServerSetupViewModel @Inject constructor(
     private val tokenManager: TokenManager,
+    private val serverManager: ServerManager,
     private val discoveryManager: ServerDiscoveryManager
 ) : ViewModel() {
 
@@ -743,7 +746,27 @@ class ServerSetupViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
             try {
+                // 保存到 TokenManager（兼容旧逻辑）
                 tokenManager.saveServerUrl(trimmedUrl)
+
+                // 保存到 ServerManager（新逻辑）
+                val existingServer = serverManager.getServers().find { it.url == trimmedUrl }
+                if (existingServer != null) {
+                    // 已存在相同 URL 的服务器，设为活跃
+                    serverManager.setActiveServer(existingServer.id)
+                } else {
+                    // 创建新的服务器配置
+                    val profile = ServerProfile(
+                        id = java.util.UUID.randomUUID().toString(),
+                        name = "Nowen Video",
+                        url = trimmedUrl,
+                        isActive = true,
+                        lastConnected = System.currentTimeMillis()
+                    )
+                    serverManager.saveServer(profile)
+                    serverManager.setActiveServer(profile.id)
+                }
+
                 onSuccess()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

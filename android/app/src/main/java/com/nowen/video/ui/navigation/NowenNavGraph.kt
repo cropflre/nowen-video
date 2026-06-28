@@ -125,14 +125,24 @@ fun NowenNavGraph(
     ) {
         // 服务器配置 — 全息投影式过渡
         composable(
-            route = Screen.ServerSetup.route,
+            route = Screen.ServerSetup.route + "?from={from}",
+            arguments = listOf(navArgument("from") { type = NavType.StringType; defaultValue = "" }),
             enterTransition = { authEnterTransition() },
             exitTransition = { authExitTransition() }
-        ) {
+        ) { backStackEntry ->
+            val from = backStackEntry.arguments?.getString("from") ?: ""
             ServerSetupScreen(
                 onServerConfigured = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(Screen.ServerSetup.route) { inclusive = true }
+                    if (from == "home") {
+                        // 从服务器页添加，回到 Home
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                        }
+                    } else {
+                        // 首次启动，跳到登录
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.ServerSetup.route) { inclusive = true }
+                        }
                     }
                 }
             )
@@ -190,7 +200,8 @@ fun NowenNavGraph(
                     navController.navigate(Screen.ServerManage.route)
                 },
                 onAddServerClick = {
-                    navController.navigate(Screen.ServerSetup.route)
+                    // 从服务器页添加服务器，完成后回到 Home
+                    navController.navigate(Screen.ServerSetup.route + "?from=home")
                 },
                 onPlayerClick = { mediaId ->
                     navController.navigate(Screen.Player.createRoute(mediaId))
