@@ -55,6 +55,7 @@ fun AggregateScreen(
     onMediaClick: (String) -> Unit,
     onPlayerClick: (String) -> Unit,
     onLibraryClick: (String) -> Unit,
+    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -77,7 +78,7 @@ fun AggregateScreen(
                 PageHeaderAction(
                     icon = Icons.Default.Search,
                     contentDescription = "搜索",
-                    onClick = { /* TODO: 导航到搜索 */ },
+                    onClick = onSearchClick,
                 ),
             ),
         )

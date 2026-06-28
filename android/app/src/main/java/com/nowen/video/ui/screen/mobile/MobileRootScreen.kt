@@ -4,13 +4,19 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +29,14 @@ import com.nowen.video.ui.component.mobile.BottomNavItem
 import com.nowen.video.ui.component.mobile.FloatingGlassBottomBar
 
 /**
+ * 移动端模式
+ */
+enum class MobileMode {
+    Root,
+    Server,
+}
+
+/**
  * Root 主导航 Tab
  */
 enum class RootTab {
@@ -32,8 +46,17 @@ enum class RootTab {
 }
 
 /**
+ * 服务器内导航 Tab
+ */
+enum class ServerTab {
+    Home,
+    Favorites,
+    Search,
+}
+
+/**
  * 移动端 Root 主页面
- * 底部导航：服务器 / 聚合视界 / 设置
+ * 支持 root/server 双模式
  */
 @Composable
 fun MobileRootScreen(
@@ -45,9 +68,12 @@ fun MobileRootScreen(
     onPlayerClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedTab by remember { mutableStateOf(RootTab.Servers) }
+    var mode by remember { mutableStateOf(MobileMode.Root) }
+    var rootTab by remember { mutableStateOf(RootTab.Servers) }
+    var serverTab by remember { mutableStateOf(ServerTab.Home) }
 
-    val navItems = listOf(
+    // Root 底部导航项
+    val rootNavItems = listOf(
         BottomNavItem(
             key = RootTab.Servers.name,
             label = "服务器",
@@ -68,40 +94,114 @@ fun MobileRootScreen(
         ),
     )
 
+    // Server 底部导航项
+    val serverNavItems = listOf(
+        BottomNavItem(
+            key = ServerTab.Home.name,
+            label = "首页",
+            icon = Icons.Outlined.Home,
+            selectedIcon = Icons.Filled.Home,
+        ),
+        BottomNavItem(
+            key = ServerTab.Favorites.name,
+            label = "收藏",
+            icon = Icons.Outlined.FavoriteBorder,
+            selectedIcon = Icons.Filled.Favorite,
+        ),
+        BottomNavItem(
+            key = ServerTab.Search.name,
+            label = "搜索",
+            icon = Icons.Outlined.Search,
+            selectedIcon = Icons.Filled.Search,
+        ),
+    )
+
+    // 进入服务器
+    val enterServer: () -> Unit = {
+        mode = MobileMode.Server
+        serverTab = ServerTab.Home
+    }
+
+    // 返回 Root
+    val exitServer: () -> Unit = {
+        mode = MobileMode.Root
+        rootTab = RootTab.Servers
+    }
+
     AppScaffold(
         modifier = modifier.fillMaxSize(),
         showBottomBar = true,
         bottomBar = {
             FloatingGlassBottomBar(
-                items = navItems,
-                selectedKey = selectedTab.name,
+                items = if (mode == MobileMode.Root) rootNavItems else serverNavItems,
+                selectedKey = if (mode == MobileMode.Root) rootTab.name else serverTab.name,
                 onItemClick = { key ->
-                    selectedTab = RootTab.valueOf(key)
+                    if (mode == MobileMode.Root) {
+                        rootTab = RootTab.valueOf(key)
+                    } else {
+                        serverTab = ServerTab.valueOf(key)
+                    }
                 },
             )
         },
-    ) { _ ->
-        AnimatedContent(
-            targetState = selectedTab,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "RootTabTransition",
-        ) { tab ->
-            when (tab) {
-                RootTab.Servers -> ServerRootScreen(
-                    onMediaClick = onMediaClick,
-                    onSeriesClick = onSeriesClick,
-                    onLibraryClick = onLibraryClick,
-                    onSearchClick = onSearchClick,
-                    onPlayerClick = onPlayerClick,
-                )
-                RootTab.Aggregate -> AggregateScreen(
-                    onMediaClick = onMediaClick,
-                    onPlayerClick = onPlayerClick,
-                    onLibraryClick = onLibraryClick,
-                )
-                RootTab.Settings -> MobileSettingsScreen(
-                    onSettingsClick = onSettingsClick,
-                )
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+        ) {
+            AnimatedContent(
+                targetState = mode to (if (mode == MobileMode.Root) rootTab.name else serverTab.name),
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "TabTransition",
+            ) { (currentMode, currentTab) ->
+                when (currentMode) {
+                    MobileMode.Root -> {
+                        when (RootTab.valueOf(currentTab)) {
+                            RootTab.Servers -> ServerRootScreen(
+                                onEnterServer = enterServer,
+                                onMediaClick = onMediaClick,
+                                onSeriesClick = onSeriesClick,
+                                onLibraryClick = onLibraryClick,
+                                onSearchClick = onSearchClick,
+                                onPlayerClick = onPlayerClick,
+                            )
+                            RootTab.Aggregate -> AggregateScreen(
+                                onMediaClick = onMediaClick,
+                                onPlayerClick = onPlayerClick,
+                                onLibraryClick = onLibraryClick,
+                                onSearchClick = {
+                                    // 切换到 Server 搜索模式
+                                    mode = MobileMode.Server
+                                    serverTab = ServerTab.Search
+                                },
+                            )
+                            RootTab.Settings -> MobileSettingsScreen(
+                                onSettingsClick = onSettingsClick,
+                            )
+                        }
+                    }
+                    MobileMode.Server -> {
+                        when (ServerTab.valueOf(currentTab)) {
+                            ServerTab.Home -> ServerHomeScreen(
+                                onBack = exitServer,
+                                onMediaClick = onMediaClick,
+                                onSeriesClick = onSeriesClick,
+                                onLibraryClick = onLibraryClick,
+                                onPlayerClick = onPlayerClick,
+                                onSearchClick = { serverTab = ServerTab.Search },
+                            )
+                            ServerTab.Favorites -> ServerFavoritesScreen(
+                                onBack = exitServer,
+                                onMediaClick = onMediaClick,
+                            )
+                            ServerTab.Search -> ServerSearchScreen(
+                                onBack = exitServer,
+                                onMediaClick = onMediaClick,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

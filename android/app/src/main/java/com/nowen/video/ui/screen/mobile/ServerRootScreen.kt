@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
@@ -29,6 +28,7 @@ import com.nowen.video.ui.screen.server.ServerManageViewModel
  */
 @Composable
 fun ServerRootScreen(
+    onEnterServer: () -> Unit,
     onMediaClick: (String) -> Unit,
     onSeriesClick: (String) -> Unit,
     onLibraryClick: (String) -> Unit,
@@ -66,11 +66,8 @@ fun ServerRootScreen(
                 ServerCard(
                     serverName = activeServer.name.ifBlank { "Nowen Video" },
                     serverUrl = activeServer.url,
-                    isConnected = true, // TODO: 检查连接状态
-                    onClick = {
-                        // TODO: 进入服务器首页
-                        // 暂时导航到现有 HomeScreen
-                    },
+                    isConnected = true, // TODO: 真实健康检查
+                    onClick = onEnterServer,
                     onLongClick = {
                         // TODO: 显示服务器操作菜单
                     },
