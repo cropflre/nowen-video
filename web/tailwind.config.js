@@ -13,12 +13,6 @@ export default {
         display: ['Orbitron', 'sans-serif'],
         body: ['Inter', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
       },
-      // 移动端断点
-      screens: {
-        'mobile': {'max': '767px'},
-        'tablet': {'min': '768px', 'max': '1023px'},
-        'desktop': {'min': '1024px'},
-      },
       colors: {
         // 「深空流体」赛博朋克色彩系统
         neon: {

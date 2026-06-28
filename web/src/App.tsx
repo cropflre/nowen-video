@@ -9,7 +9,6 @@ import TitleBar from '@/components/TitleBar'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
-import { useIsMobile } from '@/hooks/useMobile'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -33,7 +32,6 @@ const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
 const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage'))
-const MobileApp = lazy(() => import('@/pages/mobile/MobileApp'))
 
 // 页面加载中的占位组件 — 品牌化霓虹脉冲环
 function PageLoader() {
@@ -95,81 +93,21 @@ function ForceChangePasswordRoute() {
   return <ForceChangePasswordPage />
 }
 
-// 响应式应用壳：根据屏幕宽度选择移动端或桌面端布局
-function ResponsiveAppShell() {
-  const isMobile = useIsMobile()
-
-  if (isMobile) {
-    return <MobileApp />
-  }
-
-  return <Layout />
-}
-
-// 移动端媒体详情页包装器
-function MobileMediaDetailRoute() {
-  const isMobile = useIsMobile()
-  if (isMobile) {
-    return <MobileApp initialPath="/media" />
-  }
-  return <MediaDetailPage />
-}
-
-// 移动端媒体库详情页包装器
-function MobileLibraryDetailRoute() {
-  const isMobile = useIsMobile()
-  if (isMobile) {
-    return <MobileApp initialPath="/library" />
-  }
-  return <LibraryPage />
-}
-
-// 移动端搜索页包装器
-function MobileSearchRoute() {
-  const isMobile = useIsMobile()
-  if (isMobile) {
-    return <MobileApp initialPath="/search" />
-  }
-  return <SearchPage />
-}
-
-// 移动端收藏页包装器
-function MobileFavoritesRoute() {
-  const isMobile = useIsMobile()
-  if (isMobile) {
-    return <MobileApp initialPath="/favorites" />
-  }
-  return <FavoritesPage />
-}
-
-// 桌面端组件包装器：仅在桌面端渲染
-function DesktopOnlyComponents() {
-  const isMobile = useIsMobile()
-
-  if (isMobile) {
-    return null
-  }
-
-  return (
-    <>
-      <DesktopServerPicker />
-      <DesktopEventBinder />
-      <UpdateBanner />
-      <TitleBar />
-    </>
-  )
-}
-
 export default function App() {
   return (
     <ToastProvider>
       <DialogProvider>
       <Toaster position="top-right" />
       <BrowserRouter>
-        {/* 桌面端组件（移动端自动隐藏） */}
-        <DesktopOnlyComponents />
+        {/* 桌面端：首次启动"服务器地址"引导（仅在默认端口探活失败时出现） */}
+        <DesktopServerPicker />
+        {/* 桌面端事件绑定器（仅 Tauri 环境生效） */}
+        <DesktopEventBinder />
+        {/* 桌面端自动更新横幅 */}
+        <UpdateBanner />
         {/* 顶层应用壳：桌面端标题栏 + 全屏主体 */}
         <div className="nv-app-shell">
+          <TitleBar />
           <div className="nv-app-body">
             <Suspense fallback={<PageLoader />}>
               <Routes>
@@ -188,21 +126,21 @@ export default function App() {
               }
             />
 
-            {/* 含侧边栏布局的路由（响应式：移动端/桌面端） */}
+            {/* 含侧边栏布局的路由 */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
-                  <ResponsiveAppShell />
+                  <Layout />
                 </ProtectedRoute>
               }
             >
               <Route index element={<HomePage />} />
-              <Route path="library/:id" element={<MobileLibraryDetailRoute />} />
-              <Route path="media/:id" element={<MobileMediaDetailRoute />} />
+              <Route path="library/:id" element={<LibraryPage />} />
+              <Route path="media/:id" element={<MediaDetailPage />} />
               <Route path="series/:id" element={<SeriesDetailPage />} />
-              <Route path="search" element={<MobileSearchRoute />} />
-              <Route path="favorites" element={<MobileFavoritesRoute />} />
+              <Route path="search" element={<SearchPage />} />
+              <Route path="favorites" element={<FavoritesPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="playlists" element={<PlaylistsPage />} />
               <Route path="admin" element={<AdminPage />} />
