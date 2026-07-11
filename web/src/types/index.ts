@@ -394,8 +394,15 @@ export interface ASRServiceStatus {
 export interface TMDbConfigStatus {
   configured: boolean
   masked_key: string
+  /** API 反向代理 Base URL，程序自动拼接 /3/... */
   api_proxy?: string
+  /** 图片反向代理 Base URL，程序自动拼接 /t/p/... */
   image_proxy?: string
+  /** HTTP/HTTPS/SOCKS5 网络出口代理 */
+  network_proxy?: string
+  network_proxy_configured?: boolean
+  api_proxy_base_url?: string
+  image_proxy_base_url?: string
 }
 
 // ==================== 智能推荐 ====================

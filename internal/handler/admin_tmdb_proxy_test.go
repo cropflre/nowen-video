@@ -4,9 +4,9 @@ import "testing"
 
 func TestValidateTMDbProxyURLUsesReverseProxySemantics(t *testing.T) {
 	valid := map[string]string{
-		"": "",
+		"":                               "",
 		" https://example.com/tmdbapi/ ": "https://example.com/tmdbapi",
-		"http://192.168.1.10:8080": "http://192.168.1.10:8080",
+		"http://192.168.1.10:8080":       "http://192.168.1.10:8080",
 	}
 	for input, expected := range valid {
 		actual, err := validateTMDbProxyURL(input)

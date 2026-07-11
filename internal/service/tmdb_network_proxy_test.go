@@ -9,11 +9,11 @@ import (
 
 func TestNormalizeTMDbNetworkProxy(t *testing.T) {
 	valid := map[string]string{
-		"": "",
-		" http://127.0.0.1:7890/ ": "http://127.0.0.1:7890",
+		"":                              "",
+		" http://127.0.0.1:7890/ ":      "http://127.0.0.1:7890",
 		"https://proxy.example.com:443": "https://proxy.example.com:443",
-		"socks5://127.0.0.1:7891": "socks5://127.0.0.1:7891",
-		"SOCKS5H://proxy.local:1080": "socks5h://proxy.local:1080",
+		"socks5://127.0.0.1:7891":       "socks5://127.0.0.1:7891",
+		"SOCKS5H://proxy.local:1080":    "socks5h://proxy.local:1080",
 	}
 	for input, expected := range valid {
 		actual, err := NormalizeTMDbNetworkProxy(input)

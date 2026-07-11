@@ -20,10 +20,14 @@ func (h *AdminHandler) GetTMDbConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"configured":  configured,
-			"masked_key":  maskedKey,
-			"api_proxy":   h.cfg.GetTMDbAPIProxy(),
-			"image_proxy": h.cfg.GetTMDbImageProxy(),
+			"configured":               configured,
+			"masked_key":               maskedKey,
+			"api_proxy":                h.cfg.GetTMDbAPIProxy(),
+			"image_proxy":              h.cfg.GetTMDbImageProxy(),
+			"network_proxy":            h.cfg.GetTMDbNetworkProxy(),
+			"api_proxy_base_url":       h.cfg.GetTMDbAPIProxy(),
+			"image_proxy_base_url":     h.cfg.GetTMDbImageProxy(),
+			"network_proxy_configured": h.cfg.GetTMDbNetworkProxy() != "",
 		},
 	})
 }
@@ -137,155 +141,7 @@ func (h *AdminHandler) TestTMDbAPIKey(c *gin.Context) {
 	})
 }
 
-// ==================== TMDb 代理配置 ====================
-
-// UpdateTMDbProxyRequest 更新 TMDb 代理配置请求
-type UpdateTMDbProxyRequest struct {
-	APIProxy   string `json:"api_proxy"`
-	ImageProxy string `json:"image_proxy"`
-}
-
-// validateTMDbProxyURL 校验代理地址，允许空字符串（表示清除/官方直连）
-func validateTMDbProxyURL(raw string) (string, error) {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return "", nil
-	}
-	if !strings.HasPrefix(v, "http://") && !strings.HasPrefix(v, "https://") {
-		return "", fmt.Errorf("代理地址必须以 http:// 或 https:// 开头")
-	}
-	// 去掉末尾斜杠，避免拼接出双斜杠
-	return strings.TrimRight(v, "/"), nil
-}
-
-// UpdateTMDbProxy 更新 TMDb API/图片 代理地址
-// PUT /api/admin/settings/tmdb/proxy
-// Body: { "api_proxy": "https://...", "image_proxy": "https://..." }
-//
-// 任一字段传空字符串表示恢复官方直连。
-func (h *AdminHandler) UpdateTMDbProxy(c *gin.Context) {
-	var req UpdateTMDbProxyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求体格式错误"})
-		return
-	}
-
-	apiProxy, err := validateTMDbProxyURL(req.APIProxy)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "API 代理地址无效: " + err.Error()})
-		return
-	}
-	imageProxy, err := validateTMDbProxyURL(req.ImageProxy)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "图片代理地址无效: " + err.Error()})
-		return
-	}
-
-	if err := h.cfg.SetTMDbAPIProxy(apiProxy); err != nil {
-		h.logger.Errorf("保存 TMDb API 代理失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败: " + err.Error()})
-		return
-	}
-	if err := h.cfg.SetTMDbImageProxy(imageProxy); err != nil {
-		h.logger.Errorf("保存 TMDb 图片代理失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存配置失败: " + err.Error()})
-		return
-	}
-
-	h.logger.Infof("TMDb 代理配置已更新 (api=%q, image=%q)", apiProxy, imageProxy)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "TMDb 代理配置已保存",
-		"data": gin.H{
-			"api_proxy":   apiProxy,
-			"image_proxy": imageProxy,
-		},
-	})
-}
-
-// ClearTMDbProxy 清除 TMDb API/图片 代理（恢复官方直连）
-// DELETE /api/admin/settings/tmdb/proxy
-func (h *AdminHandler) ClearTMDbProxy(c *gin.Context) {
-	if err := h.cfg.SetTMDbAPIProxy(""); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "清除 API 代理失败: " + err.Error()})
-		return
-	}
-	if err := h.cfg.SetTMDbImageProxy(""); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "清除图片代理失败: " + err.Error()})
-		return
-	}
-
-	h.logger.Info("TMDb 代理已清除（恢复官方直连）")
-	c.JSON(http.StatusOK, gin.H{
-		"message": "已恢复官方直连",
-		"data": gin.H{
-			"api_proxy":   "",
-			"image_proxy": "",
-		},
-	})
-}
-
-// TestTMDbProxyRequest 测试代理连通性请求体
-// 任一字段为空表示用官方直连地址
-type TestTMDbProxyRequest struct {
-	APIProxy   string `json:"api_proxy"`
-	ImageProxy string `json:"image_proxy"`
-}
-
-// TestTMDbProxy 仅测试代理可达性（不验证 API Key）
-// POST /api/admin/settings/tmdb/proxy/test
-//
-// 用例：用户在输入框填好镜像地址后，先点"测试代理"看是否能通，再决定是否保存。
-// 此接口不会持久化，也不会消耗 API 配额。
-func (h *AdminHandler) TestTMDbProxy(c *gin.Context) {
-	var req TestTMDbProxyRequest
-	// 允许空 body（即测试当前已保存的代理）
-	_ = c.ShouldBindJSON(&req)
-
-	apiProxy := strings.TrimSpace(req.APIProxy)
-	imageProxy := strings.TrimSpace(req.ImageProxy)
-	// 未提供时回退到当前已保存的配置
-	if apiProxy == "" {
-		apiProxy = h.cfg.GetTMDbAPIProxy()
-	}
-	if imageProxy == "" {
-		imageProxy = h.cfg.GetTMDbImageProxy()
-	}
-
-	// 简单校验
-	if apiProxy != "" && !strings.HasPrefix(apiProxy, "http://") && !strings.HasPrefix(apiProxy, "https://") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "API 代理地址必须以 http:// 或 https:// 开头"})
-		return
-	}
-	if imageProxy != "" && !strings.HasPrefix(imageProxy, "http://") && !strings.HasPrefix(imageProxy, "https://") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "图片代理地址必须以 http:// 或 https:// 开头"})
-		return
-	}
-
-	apiOK, apiMsg, imgOK, imgMsg := h.metadataService.PingTMDbProxy(apiProxy, imageProxy)
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"api": gin.H{
-				"ok":      apiOK,
-				"message": apiMsg,
-				"target":  defaultStr(apiProxy, "https://api.themoviedb.org"),
-			},
-			"image": gin.H{
-				"ok":      imgOK,
-				"message": imgMsg,
-				"target":  defaultStr(imageProxy, "https://image.tmdb.org"),
-			},
-		},
-	})
-}
-
-// defaultStr 工具：空串回退默认值
-func defaultStr(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
+// TMDb 代理配置实现见 admin_tmdb_proxy.go
 
 // ==================== 手动元数据匹配 ====================
 

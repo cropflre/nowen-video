@@ -69,6 +69,7 @@ func buildTMDbHTTPClient(cfg *config.Config, logger *zap.SugaredLogger) *http.Cl
 	}
 
 	transport := &http.Transport{
+		Proxy: tmdbNetworkProxyFunc(cfg),
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// 如果配置了代理，不做额外处理，直接连
 			return dialer.DialContext(ctx, network, addr)
@@ -81,9 +82,10 @@ func buildTMDbHTTPClient(cfg *config.Config, logger *zap.SugaredLogger) *http.Cl
 		ResponseHeaderTimeout: 10 * time.Second,
 	}
 
-	logger.Infof("TMDb HTTP 客户端已初始化 (API代理: %s, 图片代理: %s)",
-		defaultIfEmpty(cfg.Secrets.TMDbAPIProxy, "官方直连"),
-		defaultIfEmpty(cfg.Secrets.TMDbImageProxy, "官方直连"))
+	logger.Infof("TMDb HTTP 客户端已初始化 (API反代: %s, 图片反代: %s, 网络出口: %s)",
+		defaultIfEmpty(cfg.Secrets.TMDbAPIProxy, "官方地址"),
+		defaultIfEmpty(cfg.Secrets.TMDbImageProxy, "官方地址"),
+		defaultIfEmpty(proxyDisplayURL(cfg.Secrets.TMDbNetworkProxy), "直接连接"))
 
 	return &http.Client{
 		Timeout:   12 * time.Second,

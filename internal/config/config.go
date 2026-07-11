@@ -36,12 +36,12 @@ type SecretsConfig struct {
 	JWTSecret string `mapstructure:"jwt_secret"`
 	// TMDb API Key，用于元数据刮削
 	TMDbAPIKey string `mapstructure:"tmdb_api_key"`
-	// TMDb API 代理地址（解决国内直连超时问题，如 https://api.tmdb.org 的镜像）
-	// 留空则使用官方地址 https://api.themoviedb.org
+	// TMDb API 反向代理 Base URL。程序会自动拼接 /3/...，不是 HTTP forward proxy。
 	TMDbAPIProxy string `mapstructure:"tmdb_api_proxy"`
-	// TMDb 图片代理地址（解决国内图片下载超时，如 https://image.tmdb.org 的镜像）
-	// 留空则使用官方地址 https://image.tmdb.org
+	// TMDb 图片反向代理 Base URL。程序会自动拼接 /t/p/...，不是 HTTP forward proxy。
 	TMDbImageProxy string `mapstructure:"tmdb_image_proxy"`
+	// TMDb 网络出口代理，支持 http/https/socks5/socks5h。
+	TMDbNetworkProxy string `mapstructure:"tmdb_network_proxy"`
 	// Bangumi Access Token（用于提高 API 请求速率限制，可选）
 	// 获取地址: https://next.bgm.tv/demo/access-token
 	// 留空也可使用（匿名请求，速率较低）
@@ -727,6 +727,7 @@ func setDefaults() {
 	viper.SetDefault("secrets.tmdb_api_key", "")
 	viper.SetDefault("secrets.tmdb_api_proxy", "")
 	viper.SetDefault("secrets.tmdb_image_proxy", "")
+	viper.SetDefault("secrets.tmdb_network_proxy", "")
 	viper.SetDefault("secrets.bangumi_access_token", "")
 	viper.SetDefault("secrets.thetvdb_api_key", "")
 	viper.SetDefault("secrets.fanart_tv_api_key", "")
@@ -1133,6 +1134,23 @@ func (c *Config) SetTMDbImageProxy(proxy string) error {
 	viper.Set("secrets.tmdb_image_proxy", proxy)
 	c.updateSecretsFile("tmdb_image_proxy", proxy)
 
+	return c.saveConfig()
+}
+
+// GetTMDbNetworkProxy 获取 TMDb HTTP/SOCKS 网络出口代理。
+func (c *Config) GetTMDbNetworkProxy() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Secrets.TMDbNetworkProxy
+}
+
+// SetTMDbNetworkProxy 设置网络出口代理并持久化。
+func (c *Config) SetTMDbNetworkProxy(proxy string) error {
+	c.mu.Lock()
+	c.Secrets.TMDbNetworkProxy = proxy
+	c.mu.Unlock()
+	viper.Set("secrets.tmdb_network_proxy", proxy)
+	c.updateSecretsFile("tmdb_network_proxy", proxy)
 	return c.saveConfig()
 }
 

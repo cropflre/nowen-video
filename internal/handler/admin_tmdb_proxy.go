@@ -124,8 +124,8 @@ func (h *AdminHandler) TestTMDbProxy(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
-		"api": gin.H{"ok": apiOK, "message": apiMsg, "target": fallback(apiProxy, "https://api.themoviedb.org")},
-		"image": gin.H{"ok": imageOK, "message": imageMsg, "target": fallback(imageProxy, "https://image.tmdb.org")},
+		"api":     gin.H{"ok": apiOK, "message": apiMsg, "target": fallback(apiProxy, "https://api.themoviedb.org")},
+		"image":   gin.H{"ok": imageOK, "message": imageMsg, "target": fallback(imageProxy, "https://image.tmdb.org")},
 		"network": gin.H{"ok": networkOK, "configured": networkProxy != "", "message": networkMsg, "target": fallback(displayProxyURL(networkProxy), "官方直连")},
 	}})
 }

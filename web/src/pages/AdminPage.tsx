@@ -41,6 +41,7 @@ import DashboardTab from '@/components/admin/DashboardTab'
 import UsersTab from '@/components/admin/UsersTab'
 import AITab from '@/components/admin/AITab'
 import StorageTab from '@/components/admin/StorageTab'
+import TMDbProxySettings from '@/components/admin/TMDbProxySettings'
 
 
 import { useTranslation } from '@/i18n'
@@ -272,17 +273,6 @@ export default function AdminPage() {
   const [tmdbTesting, setTmdbTesting] = useState(false)
   const [tmdbMessage, setTmdbMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 
-  // TMDb 代理（API/图片镜像）
-  const [tmdbApiProxy, setTmdbApiProxy] = useState('')
-  const [tmdbImageProxy, setTmdbImageProxy] = useState('')
-  const [tmdbProxySaving, setTmdbProxySaving] = useState(false)
-  const [tmdbProxyTesting, setTmdbProxyTesting] = useState(false)
-  const [tmdbProxyResult, setTmdbProxyResult] = useState<{
-    api: { ok: boolean; message: string; target: string }
-    image: { ok: boolean; message: string; target: string }
-  } | null>(null)
-  const [tmdbProxyMessage, setTmdbProxyMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
-
   // 豆瓣 Cookie 配置状态
   const [doubanConfig, setDoubanConfig] = useState<DoubanConfigStatus | null>(null)
   const [doubanCookieInput, setDoubanCookieInput] = useState('')
@@ -509,8 +499,6 @@ export default function AdminPage() {
         }
         setUsers(userRes.data.data || [])
         setTmdbConfig(tmdbRes.data.data)
-        setTmdbApiProxy(tmdbRes.data.data?.api_proxy || '')
-        setTmdbImageProxy(tmdbRes.data.data?.image_proxy || '')
         setDoubanConfig(doubanRes.data.data)
         if (settingsRes.data.data) setSysSettings(settingsRes.data.data)
       } catch {
@@ -524,95 +512,6 @@ export default function AdminPage() {
   const showTmdbMessage = (type: 'success' | 'error' | 'info', text: string) => {
     setTmdbMessage({ type, text })
     setTimeout(() => setTmdbMessage(null), 5000)
-  }
-
-  const showTmdbProxyMessage = (type: 'success' | 'error' | 'info', text: string) => {
-    setTmdbProxyMessage({ type, text })
-    setTimeout(() => setTmdbProxyMessage(null), 5000)
-  }
-
-  // 校验代理 URL（允许空，必须以 http(s):// 开头）
-  const validateProxyURL = (raw: string): string | null => {
-    const v = raw.trim()
-    if (!v) return null
-    if (!/^https?:\/\//i.test(v)) return '代理地址必须以 http:// 或 https:// 开头'
-    return null
-  }
-
-  const handleSaveTMDbProxy = async () => {
-    const apiErr = validateProxyURL(tmdbApiProxy)
-    if (apiErr) {
-      showTmdbProxyMessage('error', `API 代理: ${apiErr}`)
-      return
-    }
-    const imgErr = validateProxyURL(tmdbImageProxy)
-    if (imgErr) {
-      showTmdbProxyMessage('error', `图片代理: ${imgErr}`)
-      return
-    }
-    setTmdbProxySaving(true)
-    try {
-      const res = await adminApi.updateTMDbProxy(tmdbApiProxy.trim(), tmdbImageProxy.trim())
-      setTmdbApiProxy(res.data.data.api_proxy)
-      setTmdbImageProxy(res.data.data.image_proxy)
-      setTmdbConfig((prev) => prev ? { ...prev, api_proxy: res.data.data.api_proxy, image_proxy: res.data.data.image_proxy } : prev)
-      showTmdbProxyMessage('success', res.data.message || 'TMDb 代理已保存')
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || '保存失败，请稍后重试'
-      showTmdbProxyMessage('error', msg)
-    } finally {
-      setTmdbProxySaving(false)
-    }
-  }
-
-  const handleClearTMDbProxy = async () => {
-    setTmdbProxySaving(true)
-    try {
-      await adminApi.clearTMDbProxy()
-      setTmdbApiProxy('')
-      setTmdbImageProxy('')
-      setTmdbConfig((prev) => prev ? { ...prev, api_proxy: '', image_proxy: '' } : prev)
-      setTmdbProxyResult(null)
-      showTmdbProxyMessage('success', '已恢复官方直连')
-    } catch {
-      showTmdbProxyMessage('error', '清除失败，请稍后重试')
-    } finally {
-      setTmdbProxySaving(false)
-    }
-  }
-
-  // 仅测试代理可达性（不验证 API Key、不消耗配额、不持久化）
-  const handleTestTMDbProxy = async () => {
-    const apiErr = validateProxyURL(tmdbApiProxy)
-    if (apiErr) {
-      showTmdbProxyMessage('error', `API 代理: ${apiErr}`)
-      return
-    }
-    const imgErr = validateProxyURL(tmdbImageProxy)
-    if (imgErr) {
-      showTmdbProxyMessage('error', `图片代理: ${imgErr}`)
-      return
-    }
-    setTmdbProxyTesting(true)
-    setTmdbProxyResult(null)
-    try {
-      const res = await adminApi.testTMDbProxy(tmdbApiProxy.trim(), tmdbImageProxy.trim())
-      setTmdbProxyResult(res.data.data)
-      const both = res.data.data.api.ok && res.data.data.image.ok
-      const either = res.data.data.api.ok || res.data.data.image.ok
-      if (both) {
-        showTmdbProxyMessage('success', '代理测试通过：API 与图片均可达')
-      } else if (either) {
-        showTmdbProxyMessage('info', '代理部分可达，详见下方明细')
-      } else {
-        showTmdbProxyMessage('error', '代理测试失败：API 与图片均不可达')
-      }
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error || '测试失败，请稍后重试'
-      showTmdbProxyMessage('error', msg)
-    } finally {
-      setTmdbProxyTesting(false)
-    }
   }
 
   const handleSaveTMDbKey = async () => {
@@ -1168,109 +1067,10 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* TMDb 代理（API/图片镜像） */}
-                <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-default)' }}>
-                  <div className="mb-2 flex items-center gap-2">
-                    <Wifi size={14} className="text-neon/70" />
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>TMDb 代理（解决国内直连超时）</p>
-                  </div>
-                  <p className="mb-3 text-xs text-surface-500">留空则使用官方直连。修改后无需重启即可生效。</p>
-
-                  {tmdbProxyMessage && (
-                    <div className={clsx(
-                      'mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
-                      tmdbProxyMessage.type === 'success' && 'bg-green-500/10 text-green-400',
-                      tmdbProxyMessage.type === 'error' && 'bg-red-500/10 text-red-400',
-                      tmdbProxyMessage.type === 'info' && 'bg-blue-500/10 text-blue-400'
-                    )}>
-                      {tmdbProxyMessage.type === 'success' ? <Check size={14} /> : tmdbProxyMessage.type === 'error' ? <X size={14} /> : <Loader2 size={14} className="animate-spin" />}
-                      {tmdbProxyMessage.text}
-                    </div>
-                  )}
-
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="mb-1 block text-xs" style={{ color: 'var(--text-tertiary)' }}>API 代理（如 https://api.tmdb.org 镜像）</label>
-                      <input
-                        type="text"
-                        value={tmdbApiProxy}
-                        onChange={(e) => setTmdbApiProxy(e.target.value)}
-                        className="input font-mono text-sm"
-                        placeholder="https://api.themoviedb.org"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs" style={{ color: 'var(--text-tertiary)' }}>图片代理（如 image.tmdb.org 镜像）</label>
-                      <input
-                        type="text"
-                        value={tmdbImageProxy}
-                        onChange={(e) => setTmdbImageProxy(e.target.value)}
-                        className="input font-mono text-sm"
-                        placeholder="https://image.tmdb.org"
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        onClick={handleSaveTMDbProxy}
-                        disabled={tmdbProxySaving}
-                        className="btn-primary gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
-                      >
-                        {tmdbProxySaving ? (
-                          <><Loader2 size={14} className="animate-spin" />{t('admin.saving')}</>
-                        ) : (
-                          <><Check size={14} />保存代理</>
-                        )}
-                      </button>
-                      {(tmdbApiProxy || tmdbImageProxy || tmdbConfig?.api_proxy || tmdbConfig?.image_proxy) && (
-                        <button
-                          onClick={handleClearTMDbProxy}
-                          disabled={tmdbProxySaving}
-                          className="btn-ghost gap-1.5 px-4 py-2 text-sm text-red-400 hover:text-red-300 disabled:opacity-50"
-                          title="清除代理配置，恢复官方直连"
-                        >
-                          <Trash2 size={14} />恢复直连
-                        </button>
-                      )}
-                      <button
-                        onClick={handleTestTMDbProxy}
-                        disabled={tmdbProxyTesting}
-                        className="btn-ghost gap-1.5 px-4 py-2 text-sm disabled:opacity-50"
-                        title="仅测试代理是否可达，不验证 API Key、不消耗配额"
-                      >
-                        {tmdbProxyTesting ? (
-                          <><Loader2 size={14} className="animate-spin" />测试中...</>
-                        ) : (
-                          <><Wifi size={14} />测试代理</>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* 代理测试结果明细 */}
-                    {tmdbProxyResult && (
-                      <div className="mt-2 space-y-1.5 rounded-lg border px-3 py-2 text-xs"
-                        style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
-                        <div className="flex items-center gap-2">
-                          {tmdbProxyResult.api.ok
-                            ? <Check size={12} className="text-green-400 shrink-0" />
-                            : <X size={12} className="text-red-400 shrink-0" />}
-                          <span style={{ color: 'var(--text-tertiary)' }}>API：</span>
-                          <span className={tmdbProxyResult.api.ok ? 'text-green-400' : 'text-red-400'}>
-                            {tmdbProxyResult.api.message}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {tmdbProxyResult.image.ok
-                            ? <Check size={12} className="text-green-400 shrink-0" />
-                            : <X size={12} className="text-red-400 shrink-0" />}
-                          <span style={{ color: 'var(--text-tertiary)' }}>图片：</span>
-                          <span className={tmdbProxyResult.image.ok ? 'text-green-400' : 'text-red-400'}>
-                            {tmdbProxyResult.image.message}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <TMDbProxySettings
+                  config={tmdbConfig}
+                  onConfigChange={setTmdbConfig}
+                />
 
                 {/* 功能说明 */}
                 <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-default)' }}>
