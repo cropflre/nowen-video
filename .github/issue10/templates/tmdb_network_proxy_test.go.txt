@@ -1,0 +1,50 @@
+package service
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/nowen-video/nowen-video/internal/config"
+)
+
+func TestNormalizeTMDbNetworkProxy(t *testing.T) {
+	valid := map[string]string{
+		"": "",
+		" http://127.0.0.1:7890/ ": "http://127.0.0.1:7890",
+		"https://proxy.example.com:443": "https://proxy.example.com:443",
+		"socks5://127.0.0.1:7891": "socks5://127.0.0.1:7891",
+		"SOCKS5H://proxy.local:1080": "socks5h://proxy.local:1080",
+	}
+	for input, expected := range valid {
+		actual, err := NormalizeTMDbNetworkProxy(input)
+		if err != nil || actual != expected {
+			t.Fatalf("NormalizeTMDbNetworkProxy(%q) = %q, %v; want %q", input, actual, err, expected)
+		}
+	}
+	for _, input := range []string{"127.0.0.1:7890", "ftp://127.0.0.1:21", "http:///missing", "http://127.0.0.1:7890/path"} {
+		if _, err := NormalizeTMDbNetworkProxy(input); err == nil {
+			t.Fatalf("NormalizeTMDbNetworkProxy(%q) should fail", input)
+		}
+	}
+}
+
+func TestTMDbNetworkProxyFuncReadsLatestConfig(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Secrets.TMDbNetworkProxy = "http://127.0.0.1:7890"
+	proxy := tmdbNetworkProxyFunc(cfg)
+	req, _ := http.NewRequest(http.MethodGet, "https://api.themoviedb.org", nil)
+	first, err := proxy(req)
+	if err != nil || first.String() != "http://127.0.0.1:7890" {
+		t.Fatalf("first proxy = %v, err=%v", first, err)
+	}
+	cfg.Secrets.TMDbNetworkProxy = "socks5://127.0.0.1:7891"
+	second, err := proxy(req)
+	if err != nil || second.String() != "socks5://127.0.0.1:7891" {
+		t.Fatalf("second proxy = %v, err=%v", second, err)
+	}
+	cfg.Secrets.TMDbNetworkProxy = ""
+	direct, err := proxy(req)
+	if err != nil || direct != nil {
+		t.Fatalf("direct proxy = %v, err=%v; want nil", direct, err)
+	}
+}
