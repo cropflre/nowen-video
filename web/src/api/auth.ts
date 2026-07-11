@@ -20,7 +20,10 @@ export const authApi = {
   getStatus: () =>
     api.get<{ data: { initialized: boolean; registration_open: boolean } }>('/auth/status'),
 
-  /** 修改密码（需要认证） */
+  /** 修改密码（需要认证，成功时返回替换当前会话的新 Token） */
   changePassword: (oldPassword: string, newPassword: string) =>
-    api.put<{ message: string }>('/auth/password', { old_password: oldPassword, new_password: newPassword }),
+    api.put<{ message: string; data?: TokenResponse }>('/auth/password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
 }
