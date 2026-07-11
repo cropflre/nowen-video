@@ -28,11 +28,16 @@ export default function ForceChangePasswordPage() {
     setLoading(true)
     try {
       const res = await authApi.changePassword(oldPwd, newPwd)
-      // 后端返回新 Token（旧 Token 已失效），刷新到 store
-      const data = res.data as { message?: string; data?: { token: string; user: any } }
-      if (data.data?.token && data.data?.user) {
-        setAuth(data.data.token, data.data.user)
+      const tokenData = res.data.data
+
+      // 后端改密后会吊销旧 Token。只有拿到新 Token 才能视为完整成功，
+      // 避免响应异常时仍跳转首页，给用户造成“密码已经修改”的假象。
+      if (!tokenData?.token || !tokenData.user) {
+        setError(res.data.message || '密码已修改，但登录状态刷新失败，请退出后使用新密码重新登录')
+        return
       }
+
+      setAuth(tokenData.token, tokenData.user)
       navigate('/', { replace: true })
     } catch (err: any) {
       setError(err?.response?.data?.error || '修改密码失败')
@@ -68,15 +73,44 @@ export default function ForceChangePasswordPage() {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>当前密码</label>
-            <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} className="input" required autoFocus />
+            <input
+              type="password"
+              name="current-password"
+              autoComplete="current-password"
+              value={oldPwd}
+              onChange={e => setOldPwd(e.target.value)}
+              className="input"
+              required
+              autoFocus
+            />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>新密码</label>
-            <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="input" required minLength={6} />
+            <input
+              type="password"
+              name="new-password"
+              autoComplete="new-password"
+              value={newPwd}
+              onChange={e => setNewPwd(e.target.value)}
+              className="input"
+              required
+              minLength={6}
+              maxLength={64}
+            />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>确认新密码</label>
-            <input type="password" value={newPwd2} onChange={e => setNewPwd2(e.target.value)} className="input" required minLength={6} />
+            <input
+              type="password"
+              name="confirm-password"
+              autoComplete="new-password"
+              value={newPwd2}
+              onChange={e => setNewPwd2(e.target.value)}
+              className="input"
+              required
+              minLength={6}
+              maxLength={64}
+            />
           </div>
 
           <button type="submit" disabled={loading} className="btn-primary w-full py-3">
