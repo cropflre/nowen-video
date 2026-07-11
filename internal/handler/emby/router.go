@@ -52,27 +52,39 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 }
 
 // notUnderEmbyAPIGuard 阻止根路径的 Emby 路由抢占现有 /api/* 的路由。
-// 所有 Emby 端点都以大写开头（/System/ /Users/ /Items/ /Videos/ /Shows/ /Sessions/ 等），
-// 与项目的 /api/* 不会冲突，但为了安全——若以后新增其他无前缀路由，该守卫不会误伤。
+// 所有 Emby 端点都在 registerEmbyPublic/registerEmbyAuthed 中显式注册，
+// 与项目现有的 /api/* 路由不会冲突。
 func notUnderEmbyAPIGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 所有 Emby 路径都在下面 registerEmbyPublic/Authed 中显式注册，
-		// Gin 会先匹配精确路径，匹配不到才会走到 NoRoute，因此无需额外逻辑。
 		c.Next()
 	}
 }
 
 // registerEmbyPublic 注册无需认证的 Emby 端点。
 func registerEmbyPublic(g *gin.RouterGroup, h *Handler) {
-	// System / Ping
-	g.GET("/System/Ping", h.PingHandler)
-	g.HEAD("/System/Ping", h.PingHandler)
-	g.POST("/System/Ping", h.PingHandler)
+	// System / Ping：官方客户端既可能使用 PascalCase，也可能使用 lowercase。
+	for _, path := range []string{"/System/Ping", "/system/ping"} {
+		g.GET(path, h.PingHandler)
+		g.HEAD(path, h.PingHandler)
+		g.POST(path, h.PingHandler)
+	}
 	g.GET("/System/Info/Public", h.SystemInfoPublicHandler)
+	g.GET("/system/info/public", h.SystemInfoPublicHandler)
 
 	// 用户登录
 	g.POST("/Users/AuthenticateByName", h.AuthenticateByNameHandler)
+	g.POST("/users/authenticatebyname", h.AuthenticateByNameHandler)
 	g.GET("/Users/Public", h.PublicUsersHandler)
+	g.GET("/users/public", h.PublicUsersHandler)
+
+	// 官方客户端辅助探测端点。必须显式返回 Emby 期望的 JSON/二进制，
+	// 避免未匹配请求落到 nowen-video 前端 index.html。
+	g.GET("/System/WakeOnLanInfo", h.WakeOnLanInfoHandler)
+	g.GET("/system/wakeonlaninfo", h.WakeOnLanInfoHandler)
+	g.GET("/Playback/BitrateTest", h.BitrateTestHandler)
+	g.GET("/playback/bitratetest", h.BitrateTestHandler)
+	g.GET("/web/manifest.json", h.WebManifestHandler)
+	g.GET("/Web/manifest.json", h.WebManifestHandler)
 
 	// Branding / Localization / QuickConnect
 	// 这些端点不涉及隐私且被 Jellyfin/Emby Web 客户端在登录页无条件拉取，因此对外公开。
@@ -99,25 +111,46 @@ func registerEmbyPublic(g *gin.RouterGroup, h *Handler) {
 func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	// System（已登录视角）
 	g.GET("/System/Info", h.SystemInfoHandler)
+	g.GET("/system/info", h.SystemInfoHandler)
 	g.GET("/System/Endpoint", h.SystemEndpointHandler)
+	g.GET("/system/endpoint", h.SystemEndpointHandler)
 	g.GET("/System/Configuration", h.SystemConfigurationHandler)
+	g.GET("/system/configuration", h.SystemConfigurationHandler)
 
 	// 用户
 	g.POST("/Sessions/Logout", h.LogoutHandler)
+	g.POST("/sessions/logout", h.LogoutHandler)
 	g.GET("/Users/Me", h.GetCurrentUserHandler)
+	g.GET("/users/me", h.GetCurrentUserHandler)
 	g.GET("/Users", h.ListUsersHandler)
+	g.GET("/users", h.ListUsersHandler)
 	g.GET("/Users/:userId", h.GetUserByIDHandler)
+	g.GET("/users/:userId", h.GetUserByIDHandler)
 	g.GET("/Users/:userId/Views", h.UserViewsHandler)
+	g.GET("/users/:userId/views", h.UserViewsHandler)
 	g.GET("/Library/MediaFolders", h.MediaFoldersHandler)
+	g.GET("/library/mediafolders", h.MediaFoldersHandler)
 
 	// Items
 	g.GET("/Items", h.ItemsHandler)
+	g.GET("/items", h.ItemsHandler)
 	g.GET("/Users/:userId/Items", h.ItemsHandler)
-	g.GET("/Users/:userId/Items/:id", wrapItemIDParam(h.ItemHandler))
-	g.GET("/Items/:id", h.ItemHandler)
-	g.GET("/Items/:id/Similar", h.SimilarItemsHandler)
+	g.GET("/users/:userId/items", h.ItemsHandler)
+	// 字面量路由必须放在 /Items/:id 前，避免官方客户端的 /Items/resume 被 :id 截获。
+	g.GET("/Items/Prefixes", h.ItemPrefixesHandler)
+	g.GET("/items/prefixes", h.ItemPrefixesHandler)
 	g.GET("/Users/:userId/Items/Latest", h.LatestItemsHandler)
+	g.GET("/users/:userId/items/latest", h.LatestItemsHandler)
+	g.GET("/Users/:userId/Items/latest", h.LatestItemsHandler)
 	g.GET("/Users/:userId/Items/Resume", h.ResumeHandler)
+	g.GET("/Users/:userId/Items/resume", h.ResumeHandler)
+	g.GET("/users/:userId/items/resume", h.ResumeHandler)
+	g.GET("/Users/:userId/Items/:id", wrapItemIDParam(h.ItemHandler))
+	g.GET("/users/:userId/items/:id", wrapItemIDParam(h.ItemHandler))
+	g.GET("/Items/:id/Similar", h.SimilarItemsHandler)
+	g.GET("/items/:id/similar", h.SimilarItemsHandler)
+	g.GET("/Items/:id", h.ItemHandler)
+	g.GET("/items/:id", h.ItemHandler)
 	g.GET("/Genres", h.GenresHandler)
 
 	// Shows / Seasons / Episodes
@@ -127,19 +160,37 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 
 	// Playback
 	g.GET("/Items/:id/PlaybackInfo", h.PlaybackInfoHandler)
+	g.GET("/items/:id/playbackinfo", h.PlaybackInfoHandler)
 	g.POST("/Items/:id/PlaybackInfo", h.PlaybackInfoHandler)
+	g.POST("/items/:id/playbackinfo", h.PlaybackInfoHandler)
 
 	// Video 流（:id 是 emby 数字 id）
 	g.GET("/Videos/:id/stream", h.StreamVideoHandler)
 	g.HEAD("/Videos/:id/stream", h.StreamVideoHandler)
+	g.GET("/videos/:id/stream", h.StreamVideoHandler)
+	g.HEAD("/videos/:id/stream", h.StreamVideoHandler)
 	g.GET("/Videos/:id/stream.:container", h.StreamVideoHandler)
 	g.HEAD("/Videos/:id/stream.:container", h.StreamVideoHandler)
+	g.GET("/videos/:id/stream.:container", h.StreamVideoHandler)
+	g.HEAD("/videos/:id/stream.:container", h.StreamVideoHandler)
 	g.GET("/Videos/:id/original", h.OriginalVideoHandler)
 	g.GET("/Videos/:id/original.:container", h.OriginalVideoHandler)
 	g.GET("/Videos/:id/master.m3u8", h.HLSMasterHandler)
+	g.HEAD("/Videos/:id/master.m3u8", h.HLSMasterHandler)
+	g.GET("/videos/:id/master.m3u8", h.HLSMasterHandler)
+	g.HEAD("/videos/:id/master.m3u8", h.HLSMasterHandler)
 	g.GET("/Videos/:id/main.m3u8", h.HLSMasterHandler)
+	g.HEAD("/Videos/:id/main.m3u8", h.HLSMasterHandler)
+	g.GET("/videos/:id/main.m3u8", h.HLSMasterHandler)
+	g.HEAD("/videos/:id/main.m3u8", h.HLSMasterHandler)
 	g.GET("/Videos/:id/hls1/:quality/main.m3u8", h.HLSPlaylistHandler)
+	g.HEAD("/Videos/:id/hls1/:quality/main.m3u8", h.HLSPlaylistHandler)
+	g.GET("/videos/:id/hls1/:quality/main.m3u8", h.HLSPlaylistHandler)
+	g.HEAD("/videos/:id/hls1/:quality/main.m3u8", h.HLSPlaylistHandler)
 	g.GET("/Videos/:id/hls1/:quality/:segment", h.HLSSegmentHandler)
+	g.HEAD("/Videos/:id/hls1/:quality/:segment", h.HLSSegmentHandler)
+	g.GET("/videos/:id/hls1/:quality/:segment", h.HLSSegmentHandler)
+	g.HEAD("/videos/:id/hls1/:quality/:segment", h.HLSSegmentHandler)
 
 	// 字幕
 	g.GET("/Videos/:id/:sourceId/Subtitles/:index/Stream.:ext", h.SubtitleStreamHandler)
@@ -160,10 +211,9 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	g.POST("/Users/:userId/PlayedItems/:itemId", h.MarkPlayedHandler)
 	g.DELETE("/Users/:userId/PlayedItems/:itemId", h.MarkUnplayedHandler)
 
-	// Sessions 列表（返回当前用户当前设备的 active session）
-	// Emby 官方客户端登录后会请求 /Sessions?DeviceId=...，空数组会导致初始化失败
+	// Sessions 列表。官方 Emby 客户端登录后会用 DeviceId 查询当前会话；返回空数组会导致初始化失败。
 	g.GET("/Sessions", h.SessionsHandler)
-	g.GET("/sessions", h.SessionsHandler) // lowercase alias
+	g.GET("/sessions", h.SessionsHandler)
 
 	// Displayable preferences（Emby 客户端保存 UI 设置用；简化：echo 回去）
 	g.GET("/DisplayPreferences/:id", func(c *gin.Context) {
