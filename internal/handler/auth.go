@@ -117,7 +117,12 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 // ChangePassword 修改密码（需要认证）
 // 成功后旧 Token 失效，前端需用返回的新 Token 继续访问。
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDVal, exists := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !exists || !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "认证信息无效"})
+		return
+	}
 
 	var req service.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -125,10 +130,12 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.ChangePassword(userID.(string), &req); err != nil {
+	if err := h.authService.ChangePassword(userID, &req); err != nil {
 		switch err {
 		case service.ErrInvalidCredentials:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "当前密码错误"})
+			// 请求已经通过 JWT 认证；这里是旧密码校验失败，不应返回 401。
+			// 否则前端的 401 刷新拦截器会重试并强制登出，吞掉真实错误提示。
+			c.JSON(http.StatusBadRequest, gin.H{"error": "当前密码错误"})
 		case service.ErrUserNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		default:
@@ -139,7 +146,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 
 	// 修改密码后自动签发新 Token，避免用户被强制退出登录
-	token, err := h.authService.RefreshToken(userID.(string))
+	token, err := h.authService.RefreshToken(userID)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "密码修改成功，请重新登录"})
 		return
