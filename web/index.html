@@ -20,13 +20,5 @@
   <body class="font-body antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // 注册 Service Worker (PWA)
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {})
-        })
-      }
-    </script>
   </body>
 </html>
