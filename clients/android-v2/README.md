@@ -31,7 +31,7 @@ clients/android-v2/
 
 ## 本地构建
 
-项目复用旧 Android 工程提交的 Gradle Wrapper：
+项目复用仓库根 Android 工程的 Gradle Wrapper：
 
 ```bash
 ./android/gradlew -p clients/android-v2 testDebugUnitTest lintDebug assembleDebug
