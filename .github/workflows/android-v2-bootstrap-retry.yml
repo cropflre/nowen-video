@@ -1,0 +1,83 @@
+name: android-v2-bootstrap-retry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/android-v2-bootstrap-retry.yml
+      - .github/android-v2-bootstrap.tar.gz.b64
+      - android-v2/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-v2-bootstrap-main
+  cancel-in-progress: false
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Materialize staged source when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d android-v2 ]; then
+            test -f .github/android-v2-bootstrap.tar.gz.b64
+            base64 --decode .github/android-v2-bootstrap.tar.gz.b64 > /tmp/android-v2-bootstrap.tar.gz
+            tar -xzf /tmp/android-v2-bootstrap.tar.gz
+          fi
+          test -f android-v2/settings.gradle.kts
+          test -f android-v2/app/build.gradle.kts
+
+      - name: Build and capture result
+        id: build
+        shell: bash
+        run: |
+          set +e
+          chmod +x android/gradlew
+          ./android/gradlew -p android-v2 clean testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace > /tmp/android-v2-build.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          tail -n 300 /tmp/android-v2-build.log
+          exit 0
+
+      - name: Persist failure diagnostics
+        if: steps.build.outputs.status != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/android-v2-build.log .github/android-v2-build-error.log
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/android-v2-build-error.log
+          git commit -m 'chore(android-v2): capture bootstrap build failure' || true
+          git push origin HEAD:main
+          exit 1
+
+      - name: Commit verified implementation
+        if: steps.build.outputs.status == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/android-v2-bootstrap.tar.gz.b64
+          rm -f .github/android-v2-build-error.log
+          rm -f .github/workflows/android-v2-bootstrap.yml
+          rm -f .github/workflows/android-v2-bootstrap-retry.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A android-v2 .github
+          git diff --cached --check
+          git commit -m 'feat(android): add native Android V2 foundation' || true
+          git push origin HEAD:main
