@@ -1,0 +1,85 @@
+name: android-v2-finish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/android-v2-finish.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-v2-finish-main
+  cancel-in-progress: false
+
+jobs:
+  materialize-build-and-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Materialize complete Android V2 source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/android-v2-bootstrap.tar.gz.b64
+          base64 --decode .github/android-v2-bootstrap.tar.gz.b64 > /tmp/android-v2-bootstrap.tar.gz
+          rm -rf android-v2
+          tar -xzf /tmp/android-v2-bootstrap.tar.gz
+          test -f android-v2/settings.gradle.kts
+          test -f android-v2/app/build.gradle.kts
+          test -f android-v2/feature/main/src/main/java/com/nowen/video/v2/feature/NowenAppRoot.kt
+
+      - name: Build and test Android V2
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          chmod +x android/gradlew
+          ./android/gradlew -p android-v2 clean testDebugUnitTest lintDebug assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/android-v2-build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            mkdir -p .github
+            {
+              echo "Android V2 verification failed on commit $GITHUB_SHA"
+              echo
+              tail -n 500 /tmp/android-v2-build.log
+            } > .github/android-v2-build-failure.log
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .github/android-v2-build-failure.log
+            if ! git diff --cached --quiet; then
+              git commit -m 'test(android-v2): record build failure'
+              git push origin HEAD:main
+            fi
+            exit "$status"
+          fi
+
+      - name: Commit verified implementation and cleanup
+        if: steps.verify.outputs.status == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/android-v2-bootstrap.tar.gz.b64
+          rm -f .github/android-v2-build-failure.log
+          rm -f .github/workflows/android-v2-bootstrap.yml
+          rm -f .github/workflows/android-v2-finish.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A android-v2 .github
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(android): add verified native Android V2 foundation'
+            git push origin HEAD:main
+          fi
