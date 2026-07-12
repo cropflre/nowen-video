@@ -40,6 +40,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (loading) return
     setError('')
     setLoading(true)
 
@@ -47,14 +48,18 @@ export default function LoginPage() {
       const res = isRegister
         ? await authApi.register({ username, password, invite_code: inviteCode || undefined })
         : await authApi.login({ username, password })
-      setAuth(res.data.token, res.data.user)
-      // 返回 must_change_password 时，跳转到强制改密页
-      const mustChange = (res.data as { must_change_password?: boolean }).must_change_password
-      if (mustChange) {
-        navigate('/force-change-password')
-      } else {
-        navigate('/')
+
+      const { token, user } = res.data
+      if (!token || !user) {
+        setError('登录响应缺少认证信息，请刷新页面后重试')
+        return
       }
+
+      setAuth(token, user)
+      // 返回 must_change_password 时，跳转到强制改密页。
+      // replace 避免浏览器后退重新进入登录页并再次触发鉴权流程。
+      const mustChange = (res.data as { must_change_password?: boolean }).must_change_password
+      navigate(mustChange ? '/force-change-password' : '/', { replace: true })
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || t('auth.operationFailed'))
