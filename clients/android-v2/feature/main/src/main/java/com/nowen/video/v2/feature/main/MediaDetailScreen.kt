@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal data class MediaDetailUiState(
+data class MediaDetailUiState(
     val loading: Boolean = true,
     val media: MediaDetail? = null,
     val error: String? = null,
