@@ -36,7 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal data class LibraryUiState(
+data class LibraryUiState(
     val loading: Boolean = true,
     val items: List<MediaCard> = emptyList(),
     val error: String? = null,
