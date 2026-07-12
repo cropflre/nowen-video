@@ -19,7 +19,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
-import com.nowen.video.v2.core.designsystem.*
+import com.nowen.video.v2.core.designsystem.ElevatedPanel
+import com.nowen.video.v2.core.designsystem.MediaPosterCard
+import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.NowenPage
 import com.nowen.video.v2.core.model.MediaCard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -29,23 +32,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-@Composable
-fun LibraryScreen(modifier: Modifier = Modifier) {
-    NowenPage(modifier, PaddingValues(horizontal = 20.dp, vertical = 20.dp)) {
-        Text("媒体库", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "V2 已建立独立媒体库入口。后续在此接入 Paging 3、排序、筛选和双栏平板布局。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(24.dp))
-        MessagePanel(
-            title = "清晰、克制、可扩展",
-            message = "媒体库不会复制 Web 管理后台，而是围绕浏览、筛选和播放构建。",
-        )
-    }
-}
 
 data class SearchUiState(
     val query: String = "",
@@ -85,6 +71,7 @@ class SearchViewModel @Inject constructor(
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
+    onMediaClick: (String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -110,11 +97,11 @@ fun SearchScreen(
             else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(state.results, key = { it.resolvedId }) { media ->
                     MediaPosterCard(
-                        media.displayTitle,
-                        media.year?.toString(),
-                        resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                        media.normalizedProgress,
-                        onClick = {},
+                        title = media.displayTitle,
+                        subtitle = media.year?.toString(),
+                        imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                        progress = media.normalizedProgress,
+                        onClick = { onMediaClick(media.resolvedId) },
                     )
                 }
             }
