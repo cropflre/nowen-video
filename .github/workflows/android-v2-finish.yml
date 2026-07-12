@@ -1,3 +1,4 @@
+# Merge-triggered verification for the native Android V2 rewrite.
 name: android-v2-finish
 
 on:
