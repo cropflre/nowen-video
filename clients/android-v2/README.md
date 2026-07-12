@@ -49,6 +49,8 @@ Debug APK：
 clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+仓库的 `Android V2` 工作流会对每次相关 PR 和 main push 执行同一组单测、Lint 与 APK 构建门禁。
+
 ## 与旧版并行安装
 
 V2 当前使用独立应用 ID：
