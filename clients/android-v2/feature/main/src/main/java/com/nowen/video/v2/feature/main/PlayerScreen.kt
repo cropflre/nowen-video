@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-internal data class PlayerUiState(
+data class PlayerUiState(
     val loading: Boolean = true,
     val title: String = "",
     val playbackUrl: String = "",
