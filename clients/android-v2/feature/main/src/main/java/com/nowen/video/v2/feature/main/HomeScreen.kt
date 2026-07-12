@@ -1,5 +1,6 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,7 +18,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
-import com.nowen.video.v2.core.designsystem.*
+import com.nowen.video.v2.core.designsystem.ElevatedPanel
+import com.nowen.video.v2.core.designsystem.MediaPosterCard
+import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.SectionTitle
 import com.nowen.video.v2.core.model.HomeContent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -41,7 +45,10 @@ class HomeViewModel @Inject constructor(
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state
 
-    init { load(false) }
+    init {
+        load(false)
+    }
+
     fun refresh() = load(true)
 
     private fun load(refresh: Boolean) {
@@ -61,6 +68,8 @@ class HomeViewModel @Inject constructor(
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
+    onMediaClick: (String) -> Unit,
+    onLibraryClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -111,11 +120,11 @@ fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(state.content.continueWatching, key = { it.resolvedId }) { media ->
                         MediaPosterCard(
-                            media.displayTitle,
-                            media.year?.toString(),
-                            resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                            media.normalizedProgress,
-                            onClick = {},
+                            title = media.displayTitle,
+                            subtitle = media.year?.toString(),
+                            imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                            progress = media.normalizedProgress,
+                            onClick = { onMediaClick(media.resolvedId) },
                         )
                     }
                 }
@@ -125,7 +134,11 @@ fun HomeScreen(
         if (state.content.libraries.isNotEmpty()) {
             item { SectionTitle("我的媒体库", "${state.content.libraries.size} 个资料库") }
             items(state.content.libraries, key = { it.id }) { library ->
-                ElevatedPanel(Modifier.fillMaxWidth()) {
+                ElevatedPanel(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onLibraryClick),
+                ) {
                     Text(library.name, style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -145,11 +158,11 @@ fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(state.content.recent, key = { it.resolvedId }) { media ->
                         MediaPosterCard(
-                            media.displayTitle,
-                            media.year?.toString(),
-                            resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                            media.normalizedProgress,
-                            onClick = {},
+                            title = media.displayTitle,
+                            subtitle = media.year?.toString(),
+                            imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                            progress = media.normalizedProgress,
+                            onClick = { onMediaClick(media.resolvedId) },
                         )
                     }
                 }
