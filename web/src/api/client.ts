@@ -63,58 +63,83 @@ const api = axios.create({
   },
 })
 
-// 请求拦截器：自动添加Token
+type AuthRequestConfig = AxiosRequestConfig & {
+  _retry?: boolean
+  /** 发出请求时使用的 Token，用于识别跨登录会话的迟到 401。 */
+  _authToken?: string | null
+}
+
+// 请求拦截器：自动添加 Token，并记录本次请求所属的登录会话。
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
+  const authConfig = config as AuthRequestConfig
+  authConfig._authToken = token
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  } else if (config.headers) {
+    delete config.headers.Authorization
   }
   return config
 })
 
-// ========== 401 处理：静默刷新 + 并发抑制 ==========
+// ========== 401 处理：静默刷新 + 并发抑制 + 会话竞态保护 ==========
 // 不触发自动登出/刷新的白名单路径
 const AUTH_SAFE_PATHS = ['/auth/login', '/auth/register', '/auth/status', '/auth/refresh']
 
-// 正在进行中的刷新请求（去重，避免并发多次调用 /auth/refresh）
-let refreshPromise: Promise<string | null> | null = null
+// 刷新请求必须按 Token 隔离，防止旧会话的刷新结果覆盖刚登录的新会话。
+let refreshState: { token: string; promise: Promise<string | null> } | null = null
 
-// 是否已经在执行 logout（避免并发 401 重复 logout + 重复跳转）
+// 是否已经在执行 logout（避免同一会话并发 401 重复跳转）
 let loggingOut = false
 
-/** 调用后端刷新 token；返回新 token 或 null（刷新失败） */
-async function refreshAccessToken(): Promise<string | null> {
-  if (refreshPromise) return refreshPromise
+/** 调用后端刷新 token；仅允许刷新 expectedToken 对应的当前会话。 */
+async function refreshAccessToken(expectedToken: string): Promise<string | null> {
+  const currentToken = useAuthStore.getState().token
+  if (currentToken !== expectedToken) return currentToken
+  if (refreshState?.token === expectedToken) return refreshState.promise
 
-  refreshPromise = (async () => {
+  const promise = (async () => {
     try {
       // 直接用底层 axios，避开拦截器，防止递归
-      const oldToken = useAuthStore.getState().token
-      if (!oldToken) return null
       const resp = await axios.post<{ token: string; user: unknown; expires_at: number }>(
         `${API_BASE}/auth/refresh`,
         {},
-        { headers: { Authorization: `Bearer ${oldToken}` }, timeout: 10000 },
+        { headers: { Authorization: `Bearer ${expectedToken}` }, timeout: 10000 },
       )
       const { token, user } = resp.data as { token: string; user: any }
-      if (token && user) {
-        useAuthStore.getState().setAuth(token, user)
-        return token
-      }
-      return null
-    } catch (e) {
+      if (!token || !user) return null
+
+      // 刷新期间如果用户已经重新登录或切换会话，禁止旧刷新覆盖新 Token。
+      const tokenBeforeApply = useAuthStore.getState().token
+      if (tokenBeforeApply !== expectedToken) return tokenBeforeApply
+
+      useAuthStore.getState().setAuth(token, user)
+      return token
+    } catch {
       return null
     } finally {
-      // 下一轮 401 允许再尝试
-      setTimeout(() => { refreshPromise = null }, 0)
+      // 仅清理自己所属的刷新任务，不影响新会话可能已经启动的刷新。
+      window.setTimeout(() => {
+        if (refreshState?.token === expectedToken) refreshState = null
+      }, 0)
     }
   })()
 
-  return refreshPromise
+  refreshState = { token: expectedToken, promise }
+  return promise
 }
 
-/** 真正执行登出（防抖，避免并发 401 重复跳转） */
-function doLogout(reason: string) {
+/**
+ * 真正执行登出。
+ * expectedToken 必须仍是当前 Token；迟到的旧请求无权清除更新后的登录态。
+ */
+function doLogout(reason: string, expectedToken: string | null) {
+  const currentToken = useAuthStore.getState().token
+  if (currentToken !== expectedToken) {
+    // eslint-disable-next-line no-console
+    console.warn('[auth] ignored stale 401 from an older session:', reason)
+    return
+  }
   if (loggingOut) return
   loggingOut = true
   // eslint-disable-next-line no-console
@@ -122,12 +147,11 @@ function doLogout(reason: string) {
   try {
     useAuthStore.getState().logout()
   } catch { /* ignore */ }
-  // 已经在登录页就不跳转，避免白屏
+  // 已经在登录页就不跳转，避免登录页自身形成整页刷新循环
   if (!window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login'
+    window.location.replace('/login')
   }
-  // 留一小段时间让页面跳转完成
-  setTimeout(() => { loggingOut = false }, 3000)
+  window.setTimeout(() => { loggingOut = false }, 3000)
 }
 
 // 响应拦截器：401 自动刷新 token，刷新失败再登出
@@ -142,27 +166,44 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // 打印服务端返回的错误详情，便于定位"突然退出登录"根因
+    const cfg = error.config as AuthRequestConfig | undefined
+    const failedToken = cfg?._authToken ?? null
+    const currentToken = useAuthStore.getState().token
     const serverErr = (error.response?.data as any)?.error || ''
     // eslint-disable-next-line no-console
     console.warn(`[auth] 401 on ${url}: ${serverErr}`)
 
-    // 已经重试过一次就不再重试，避免无限循环
-    const cfg = error.config as AxiosRequestConfig & { _retry?: boolean }
+    // 请求发出后发生过登录、刷新或账号切换：直接使用当前新 Token 重放一次。
+    // 旧请求的 401 绝不能刷新或清除新会话。
+    if (cfg && currentToken && failedToken !== currentToken) {
+      if (cfg._retry) return Promise.reject(error)
+      cfg._retry = true
+      cfg._authToken = currentToken
+      cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${currentToken}` }
+      return api.request(cfg)
+    }
+
+    // 已重试仍失败，只允许清除产生该请求的同一会话。
     if (!cfg || cfg._retry) {
-      doLogout(serverErr || '令牌无效')
+      doLogout(serverErr || '令牌无效', failedToken)
       return Promise.reject(error)
     }
 
-    // 尝试刷新 token
-    const newToken = await refreshAccessToken()
+    if (!currentToken) {
+      doLogout(serverErr || '缺少登录凭证', failedToken)
+      return Promise.reject(error)
+    }
+
+    // 尝试刷新当前会话 Token
+    const newToken = await refreshAccessToken(currentToken)
     if (!newToken) {
-      doLogout(serverErr || '令牌刷新失败')
+      doLogout(serverErr || '令牌刷新失败', currentToken)
       return Promise.reject(error)
     }
 
     // 刷新成功，重放原请求
     cfg._retry = true
+    cfg._authToken = newToken
     cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${newToken}` }
     return api.request(cfg)
   },
