@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Minimal Unix launcher for the committed Gradle Wrapper JAR.
+# The repository already carries gradle-wrapper.jar and gradle-wrapper.properties;
+# this script keeps Linux/macOS and GitHub Actions builds aligned with gradlew.bat.
+
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
+CLASSPATH="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+
+if [ ! -f "$CLASSPATH" ]; then
+    echo "Gradle Wrapper JAR not found: $CLASSPATH" >&2
+    exit 1
+fi
+
+exec java \
+    ${JAVA_OPTS:-} \
+    ${GRADLE_OPTS:-} \
+    -Dorg.gradle.appname=gradlew \
+    -classpath "$CLASSPATH" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"
