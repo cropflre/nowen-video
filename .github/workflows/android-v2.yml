@@ -32,21 +32,29 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 35
-        shell: bash
-        run: yes | sdkmanager 'platforms;android-35' 'build-tools;35.0.0' >/dev/null
-
       - name: Unit tests, lint and debug APK
+        id: gradle
         shell: bash
         run: |
+          set +e
           chmod +x android/gradlew
           ./android/gradlew -p clients/android-v2 \
             testDebugUnitTest lintDebug assembleDebug \
-            --no-daemon --stacktrace
+            --no-daemon --stacktrace 2>&1 | tee android-v2-build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-android-v2-build-log
+          path: android-v2-build.log
+          if-no-files-found: error
 
       - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: nowen-video-android-v2-debug
