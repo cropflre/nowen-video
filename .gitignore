@@ -48,7 +48,7 @@ config/.master.key
 config/*.key
 *.master.key
 
-# Android
+# Android V1
 android/.gradle/
 android/build/
 android/app/build/
@@ -56,6 +56,15 @@ android/local.properties
 android/captures/
 android/.externalNativeBuild/
 android/.cxx/
+
+# Android V2
+clients/android-v2/.gradle/
+clients/android-v2/**/build/
+clients/android-v2/local.properties
+clients/android-v2/captures/
+clients/android-v2/.externalNativeBuild/
+clients/android-v2/.cxx/
+
 *.apk
 *.aab
 *.aar
@@ -80,7 +89,6 @@ desktop/src-tauri/resources/yt-dlp.exe
 !desktop/src-tauri/resources/fonts/.gitkeep
 !desktop/src-tauri/resources/mpv/.gitkeep
 !desktop/src-tauri/resources/shaders/.gitkeep
-
 
 # 临时下载的二进制包
 ffmpeg.zip
