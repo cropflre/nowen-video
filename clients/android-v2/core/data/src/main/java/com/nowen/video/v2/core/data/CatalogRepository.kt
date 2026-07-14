@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.nowen.video.v2.core.model.ApiEnvelope
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaDetail
+import com.nowen.video.v2.core.model.NullableMediaDetailEnvelope
 import com.nowen.video.v2.core.model.PaginatedEnvelope
 import com.nowen.video.v2.core.model.StreamInfo
 import com.nowen.video.v2.core.model.SubtitleTracksResponse
@@ -47,7 +48,7 @@ interface CatalogApi {
         @Path("id") seriesId: String,
         @Query("season") season: Int,
         @Query("episode") episode: Int,
-    ): ApiEnvelope<MediaDetail?>
+    ): NullableMediaDetailEnvelope
 }
 
 @Module
@@ -55,7 +56,7 @@ interface CatalogApi {
 object CatalogNetworkModule {
     @Provides
     @Singleton
-    fun catalogApi(client: OkHttpClient, json: Json): CatalogApi =
+    fun provideCatalogApi(client: OkHttpClient, json: Json): CatalogApi =
         Retrofit.Builder()
             .baseUrl("https://$CATALOG_PLACEHOLDER/api/")
             .client(client)
