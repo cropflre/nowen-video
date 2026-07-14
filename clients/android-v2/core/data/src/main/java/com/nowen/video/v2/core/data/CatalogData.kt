@@ -4,9 +4,11 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.nowen.video.v2.core.model.ApiEnvelope
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaDetail
+import com.nowen.video.v2.core.model.NullableMediaDetailEnvelope
 import com.nowen.video.v2.core.model.PaginatedEnvelope
 import com.nowen.video.v2.core.model.ProgressUpdate
 import com.nowen.video.v2.core.model.StreamInfo
+import com.nowen.video.v2.core.model.SubtitleTracksResponse
 import com.nowen.video.v2.core.model.WatchProgress
 import dagger.Module
 import dagger.Provides
@@ -41,6 +43,16 @@ interface CatalogApi {
 
     @GET("stream/{id}/info")
     suspend fun stream(@Path("id") id: String): ApiEnvelope<StreamInfo>
+
+    @GET("subtitle/{id}/tracks")
+    suspend fun subtitles(@Path("id") id: String): ApiEnvelope<SubtitleTracksResponse>
+
+    @GET("series/{id}/next")
+    suspend fun nextEpisode(
+        @Path("id") seriesId: String,
+        @Query("season") season: Int,
+        @Query("episode") episode: Int,
+    ): NullableMediaDetailEnvelope
 
     @PUT("users/me/progress/{mediaId}")
     suspend fun updateProgress(
@@ -84,6 +96,18 @@ class CatalogRepository @Inject constructor(
 
     suspend fun stream(id: String): Result<StreamInfo> = call {
         api.stream(id).data
+    }
+
+    suspend fun subtitles(id: String): Result<SubtitleTracksResponse> = call {
+        api.subtitles(id).data
+    }
+
+    suspend fun nextEpisode(
+        seriesId: String,
+        season: Int,
+        episode: Int,
+    ): Result<MediaDetail?> = call {
+        api.nextEpisode(seriesId, season, episode).data
     }
 
     private suspend fun <T> call(block: suspend () -> T): Result<T> =
