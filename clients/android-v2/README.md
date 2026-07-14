@@ -13,6 +13,8 @@
 - 原生媒体库网格与混合电影/剧集解析
 - 电影/单集详情页
 - Media3 原生播放，支持 Direct Play、Remux、HLS 和预处理流地址
+- 播放进度恢复、每 10 秒定时上报、暂停/拖动/退后台/退出时即时补报
+- 断网进度持久化队列，按服务器和账号隔离，恢复连接后自动补同步
 - 独立服务器会话和请求 Host 重写
 - 首页、搜索、续播三种后端媒体响应兼容
 
@@ -23,11 +25,19 @@ clients/android-v2/
 ├── app                  Android Application 与 Activity
 ├── core/model           领域模型和 API 契约
 ├── core/designsystem    主题、Token 和通用 Compose 组件
-├── core/data            会话、Keystore、Retrofit 与 Repository
+├── core/data            会话、Keystore、Retrofit、Repository 与离线进度队列
 └── feature/main         服务器、认证、首页、媒体库、详情和播放器
 ```
 
 当前先保持五个稳定模块，避免重写初期过度拆分。后续在功能边界稳定后再拆出 `feature:player`、`feature:downloads` 等模块。
+
+## 播放进度策略
+
+- 打开播放器时先重试当前服务器、当前账号的离线进度，再读取服务端进度。
+- 已观看达到 95% 或服务端标记完成时，从头播放，避免恢复到片尾字幕。
+- 播放中每 10 秒上报一次；暂停、拖动进度、播放结束、应用退到后台和退出播放器时立即补报。
+- 上报前先写入本地 DataStore，网络失败时保留最新记录；同一服务器、账号、媒体只保留最新进度。
+- 待同步队列最多保存 200 条，防止长期离线导致本地数据无限增长。
 
 ## 本地构建
 
@@ -49,7 +59,7 @@ Debug APK：
 clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-仓库的 `Android V2` 工作流会对每次相关 PR 和 main push执行同一组单测、Lint 与 APK 构建门禁，并保留失败日志便于定位 Kotlin 与 Android 资源问题。
+仓库的 `Android V2` 工作流会对每次相关 PR 和 main push 执行同一组单测、Lint 与 APK 构建门禁，并保留失败日志便于定位 Kotlin 与 Android 资源问题。
 
 ## 与旧版并行安装
 
@@ -63,7 +73,6 @@ com.nowen.video.v2
 
 ## 下一阶段
 
-- 播放进度定时上报与离线补报
 - 音轨、字幕、倍速、画面比例和下一集
 - Paging 3、媒体库筛选与平板双栏布局
 - WorkManager + Media3 离线下载
