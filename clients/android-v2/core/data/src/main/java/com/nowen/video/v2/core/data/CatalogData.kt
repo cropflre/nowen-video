@@ -5,7 +5,9 @@ import com.nowen.video.v2.core.model.ApiEnvelope
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.PaginatedEnvelope
+import com.nowen.video.v2.core.model.ProgressUpdate
 import com.nowen.video.v2.core.model.StreamInfo
+import com.nowen.video.v2.core.model.WatchProgress
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,7 +20,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.HttpException
 import retrofit2.Retrofit
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -37,6 +41,15 @@ interface CatalogApi {
 
     @GET("stream/{id}/info")
     suspend fun stream(@Path("id") id: String): ApiEnvelope<StreamInfo>
+
+    @PUT("users/me/progress/{mediaId}")
+    suspend fun updateProgress(
+        @Path("mediaId") mediaId: String,
+        @Body progress: ProgressUpdate,
+    )
+
+    @GET("users/me/progress/{mediaId}")
+    suspend fun progress(@Path("mediaId") mediaId: String): ApiEnvelope<WatchProgress?>
 }
 
 @Module
@@ -75,13 +88,15 @@ class CatalogRepository @Inject constructor(
 
     private suspend fun <T> call(block: suspend () -> T): Result<T> =
         runCatching { block() }.recoverCatching { error ->
-            when (error) {
-                is HttpException -> {
-                    if (error.code() == 401) throw UnauthorizedException()
-                    throw ServerException(error.code(), error.message())
-                }
-                is IOException -> throw NetworkException(error.message ?: "网络不可用")
-                else -> throw error
-            }
+            throw mapApiError(error)
         }
+}
+
+internal fun mapApiError(error: Throwable): Throwable = when (error) {
+    is HttpException -> {
+        if (error.code() == 401) UnauthorizedException()
+        else ServerException(error.code(), error.message())
+    }
+    is IOException -> NetworkException(error.message ?: "网络不可用")
+    else -> error
 }
