@@ -30,6 +30,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.nowen.video.v2.core.model.SubtitleTrack
 
@@ -97,6 +98,7 @@ internal fun disableTextTracks(
     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
     .build()
 
+@androidx.annotation.OptIn(UnstableApi::class)
 internal fun resizeModeForPreference(mode: Int): Int = when (mode) {
     1 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
     2 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
