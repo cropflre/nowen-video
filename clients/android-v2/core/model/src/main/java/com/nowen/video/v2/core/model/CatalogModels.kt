@@ -72,6 +72,12 @@ data class StreamInfo(
 }
 
 @Serializable
+data class NullableMediaDetailEnvelope(
+    val data: MediaDetail? = null,
+    val message: String = "",
+)
+
+@Serializable
 data class ProgressUpdate(
     val position: Double,
     val duration: Double,
