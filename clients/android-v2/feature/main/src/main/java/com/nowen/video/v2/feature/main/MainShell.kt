@@ -148,6 +148,12 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 PlayerScreen(
                     mediaId = mediaId,
                     onBack = { navController.popBackStack() },
+                    onPlayNext = { nextId ->
+                        navController.navigate("player/${Uri.encode(nextId)}") {
+                            popUpTo(entry.destination.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
         }
