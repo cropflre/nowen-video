@@ -5,11 +5,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -145,6 +145,7 @@ internal fun PlayerSettingsSheet(
     autoPlayNext: Boolean,
     onAutoPlayNextChange: (Boolean) -> Unit,
     audioTracks: List<PlayerTrackChoice>,
+    audioAutomatic: Boolean,
     onAudioTrackSelected: (PlayerTrackChoice?) -> Unit,
     subtitleTracks: List<PlayerTrackChoice>,
     subtitlesDisabled: Boolean,
@@ -201,13 +202,13 @@ internal fun PlayerSettingsSheet(
             SettingsSectionTitle("音轨")
             ChoiceRow {
                 FilterChip(
-                    selected = audioTracks.none(PlayerTrackChoice::selected),
+                    selected = audioAutomatic,
                     onClick = { onAudioTrackSelected(null) },
                     label = { Text("自动") },
                 )
                 audioTracks.forEach { track ->
                     FilterChip(
-                        selected = track.selected,
+                        selected = !audioAutomatic && track.selected,
                         onClick = { onAudioTrackSelected(track) },
                         label = { Text(track.label) },
                     )
@@ -252,7 +253,7 @@ private fun SettingsSectionTitle(title: String) {
 }
 
 @Composable
-private fun ChoiceRow(content: @Composable Row.() -> Unit) {
+private fun ChoiceRow(content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
