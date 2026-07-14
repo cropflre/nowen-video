@@ -15,6 +15,9 @@
 - Media3 原生播放，支持 Direct Play、Remux、HLS 和预处理流地址
 - 播放进度恢复、每 10 秒定时上报、暂停/拖动/退后台/退出时即时补报
 - 断网进度持久化队列，按服务器和账号隔离，恢复连接后自动补同步
+- Media3 实时音轨、内嵌字幕和外挂字幕选择
+- 播放速度、画面比例和自动下一集偏好持久化
+- 剧集播放结束后显示下一集信息与 5 秒自动续播倒计时
 - 独立服务器会话和请求 Host 重写
 - 首页、搜索、续播三种后端媒体响应兼容
 
@@ -25,7 +28,7 @@ clients/android-v2/
 ├── app                  Android Application 与 Activity
 ├── core/model           领域模型和 API 契约
 ├── core/designsystem    主题、Token 和通用 Compose 组件
-├── core/data            会话、Keystore、Retrofit、Repository 与离线进度队列
+├── core/data            会话、Keystore、Retrofit、Repository、播放器偏好与离线进度队列
 └── feature/main         服务器、认证、首页、媒体库、详情和播放器
 ```
 
@@ -39,6 +42,14 @@ clients/android-v2/
 - 上报前先写入本地 DataStore，网络失败时保留最新记录；同一服务器、账号、媒体只保留最新进度。
 - 待同步队列最多保存 200 条，防止长期离线导致本地数据无限增长。
 - 单元测试覆盖无效进度拒绝、超范围钳制和 95% 完播重置规则。
+
+## 播放器设置
+
+- 音轨与内嵌字幕直接读取 ExoPlayer 当前 Tracks，切换后立即生效。
+- 外挂字幕通过服务端字幕接口注入 MediaItem，兼容 SRT、ASS/SSA、WebVTT 和 TTML。
+- 倍速支持 0.5x 至 2x；画面支持适应、裁切和拉伸。
+- 倍速、画面比例、自动下一集使用独立 DataStore 保存，重新进入播放器后继续沿用。
+- 自动下一集使用当前媒体的 series、season、episode 查询后端，不通过列表位置猜测下一集。
 
 ## 本地构建
 
@@ -74,7 +85,6 @@ com.nowen.video.v2
 
 ## 下一阶段
 
-- 音轨、字幕、倍速、画面比例和下一集
 - Paging 3、媒体库筛选与平板双栏布局
 - WorkManager + Media3 离线下载
 - 局域网自动发现和扫码添加服务器
