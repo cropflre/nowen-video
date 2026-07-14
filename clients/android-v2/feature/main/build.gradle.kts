@@ -43,4 +43,5 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
 }
