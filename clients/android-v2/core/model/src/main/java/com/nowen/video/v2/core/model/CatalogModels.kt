@@ -70,3 +70,17 @@ data class StreamInfo(
             else -> ""
         }
 }
+
+@Serializable
+data class ProgressUpdate(
+    val position: Double,
+    val duration: Double,
+)
+
+@Serializable
+data class WatchProgress(
+    @SerialName("media_id") val mediaId: String = "",
+    val position: Double = 0.0,
+    val duration: Double = 0.0,
+    val completed: Boolean = false,
+)
