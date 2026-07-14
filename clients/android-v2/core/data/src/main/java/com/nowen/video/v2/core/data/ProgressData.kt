@@ -6,7 +6,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.nowen.video.v2.core.model.ProgressUpdate
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -57,11 +56,11 @@ internal fun effectiveResumePosition(
 }
 
 @Singleton
-internal class PendingProgressStore @Inject constructor(
+class PendingProgressStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val json: Json,
 ) {
-    suspend fun upsert(item: PendingProgress) {
+    internal suspend fun upsert(item: PendingProgress) {
         context.progressDataStore.edit { preferences ->
             val current = decode(preferences[KEY_PENDING_PROGRESS])
             val next = (current.filterNot { it.key == item.key } + item)
@@ -71,14 +70,14 @@ internal class PendingProgressStore @Inject constructor(
         }
     }
 
-    suspend fun pendingFor(serverId: String, userId: String): List<PendingProgress> =
+    internal suspend fun pendingFor(serverId: String, userId: String): List<PendingProgress> =
         read().filter { it.serverId == serverId && it.userId == userId }.sortedBy(PendingProgress::updatedAtEpochMs)
 
-    suspend fun latest(serverId: String, userId: String, mediaId: String): PendingProgress? =
+    internal suspend fun latest(serverId: String, userId: String, mediaId: String): PendingProgress? =
         read().filter { it.serverId == serverId && it.userId == userId && it.mediaId == mediaId }
             .maxByOrNull(PendingProgress::updatedAtEpochMs)
 
-    suspend fun removeIfNotNewer(item: PendingProgress) {
+    internal suspend fun removeIfNotNewer(item: PendingProgress) {
         context.progressDataStore.edit { preferences ->
             val next = decode(preferences[KEY_PENDING_PROGRESS]).filterNot {
                 it.key == item.key && it.updatedAtEpochMs <= item.updatedAtEpochMs
