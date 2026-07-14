@@ -50,6 +50,7 @@ clients/android-v2/
 - 倍速支持 0.5x 至 2x；画面支持适应、裁切和拉伸。
 - 倍速、画面比例、自动下一集使用独立 DataStore 保存，重新进入播放器后继续沿用。
 - 自动下一集使用当前媒体的 series、season、episode 查询后端，不通过列表位置猜测下一集。
+- 回归门禁覆盖字幕格式、画面比例映射、Kotlin 编译、Lint 和 Debug APK。
 
 ## 本地构建
 
