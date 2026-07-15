@@ -199,7 +199,6 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     personId = entry.arguments?.getString("personId").orEmpty(),
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
-                    onSeriesClick = ::openSeries,
                 )
             }
             composable(
@@ -225,13 +224,6 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onPlay = ::openPlayer,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
-                    onSeriesClick = ::openSeries,
-                    onSeriesRedirect = { seriesId ->
-                        navController.navigate("series/${Uri.encode(seriesId)}") {
-                            popUpTo(entry.destination.id) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
                 )
             }
             composable(
