@@ -52,6 +52,7 @@ enum class MainTab(
 
 private const val DETAIL_ROUTE = "detail/{mediaId}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
+private const val OFFLINE_PLAYER_ROUTE = "offline/{mediaId}"
 
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
@@ -77,6 +78,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
 
     fun openPlayer(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("player/${Uri.encode(mediaId)}")
+    }
+
+    fun openOfflinePlayer(mediaId: String) {
+        if (mediaId.isNotBlank()) navController.navigate("offline/${Uri.encode(mediaId)}")
     }
 
     Scaffold(
@@ -128,7 +133,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 SearchScreen(onMediaClick = ::openDetail)
             }
             composable(MainTab.Downloads.route) {
-                DownloadsScreen()
+                DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
             }
             composable(MainTab.Profile.route) {
                 ProfileScreen(
@@ -161,6 +166,16 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                             launchSingleTop = true
                         }
                     },
+                )
+            }
+            composable(
+                route = OFFLINE_PLAYER_ROUTE,
+                arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
+            ) { entry ->
+                val mediaId = entry.arguments?.getString("mediaId").orEmpty()
+                OfflinePlayerScreen(
+                    mediaId = mediaId,
+                    onBack = { navController.popBackStack() },
                 )
             }
         }
