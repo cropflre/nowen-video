@@ -52,6 +52,7 @@ enum class MainTab(
 }
 
 private const val DETAIL_ROUTE = "detail/{mediaId}"
+private const val SERIES_DETAIL_ROUTE = "series/{seriesId}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
 private const val OFFLINE_PLAYER_ROUTE = "offline/{mediaId}"
 private const val FAVORITES_ROUTE = "favorites"
@@ -80,6 +81,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
 
     fun openDetail(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("detail/${Uri.encode(mediaId)}")
+    }
+
+    fun openSeries(seriesId: String) {
+        if (seriesId.isNotBlank()) navController.navigate("series/${Uri.encode(seriesId)}")
     }
 
     fun openPlayer(mediaId: String) {
@@ -194,6 +199,19 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     personId = entry.arguments?.getString("personId").orEmpty(),
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
+                    onSeriesClick = ::openSeries,
+                )
+            }
+            composable(
+                route = SERIES_DETAIL_ROUTE,
+                arguments = listOf(navArgument("seriesId") { type = NavType.StringType }),
+            ) { entry ->
+                SeriesDetailScreen(
+                    seriesId = entry.arguments?.getString("seriesId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onEpisodeClick = ::openDetail,
+                    onPlayEpisode = ::openPlayer,
+                    onPersonClick = ::openPerson,
                 )
             }
             composable(
@@ -207,6 +225,13 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onPlay = ::openPlayer,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
+                    onSeriesClick = ::openSeries,
+                    onSeriesRedirect = { seriesId ->
+                        navController.navigate("series/${Uri.encode(seriesId)}") {
+                            popUpTo(entry.destination.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(
