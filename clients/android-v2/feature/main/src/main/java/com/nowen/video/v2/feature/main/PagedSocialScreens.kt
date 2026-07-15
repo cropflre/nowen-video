@@ -30,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
@@ -45,8 +46,6 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.cachedIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -282,7 +281,10 @@ private fun <T : Any> PagedSocialScaffold(
                     MessagePanel("加载失败", error.message ?: "网络请求失败", "重试", items::retry)
                 }
                 items.itemCount == 0 -> item { MessagePanel(emptyTitle, emptyMessage) }
-                else -> items(items.itemCount) { index -> items[index]?.let(row) }
+                else -> items(items.itemCount) { index ->
+                    val value = items[index]
+                    if (value != null) row(value)
+                }
             }
             when (val append = items.loadState.append) {
                 is androidx.paging.LoadState.Loading -> item {
