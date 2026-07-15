@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Search
@@ -105,24 +104,6 @@ fun SearchScreen(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun DownloadsScreen(modifier: Modifier = Modifier) {
-    NowenPage(modifier, PaddingValues(horizontal = 20.dp, vertical = 20.dp)) {
-        Text("下载", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(18.dp))
-        ElevatedPanel(Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.CloudDownload, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(12.dp))
-            Text("离线播放基础已预留", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "下一阶段使用 WorkManager 和 Media3 下载服务，按服务器隔离任务并支持断点续传。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
