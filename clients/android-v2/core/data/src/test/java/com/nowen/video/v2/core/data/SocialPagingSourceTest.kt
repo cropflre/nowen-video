@@ -2,14 +2,14 @@ package com.nowen.video.v2.core.data
 
 import androidx.paging.PagingSource
 import com.nowen.video.v2.core.model.PaginatedEnvelope
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SocialPagingSourceTest {
     @Test
-    fun `first page exposes next key while total remains`() = runTest {
+    fun `first page exposes next key while total remains`() = runBlocking {
         val source = SocialPagingSource<Int> { page, size ->
             PaginatedEnvelope(
                 data = (1..size).toList(),
@@ -28,7 +28,7 @@ class SocialPagingSourceTest {
     }
 
     @Test
-    fun `last partial page terminates pagination`() = runTest {
+    fun `last partial page terminates pagination`() = runBlocking {
         val source = SocialPagingSource<Int> { page, size ->
             PaginatedEnvelope(
                 data = listOf(61, 62, 63, 64, 65),
