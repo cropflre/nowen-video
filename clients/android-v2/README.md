@@ -10,7 +10,10 @@
 - Hills Calm × Nowen Deep Space 设计系统
 - 首页：继续观看、媒体库、最近添加
 - 五栏主导航：首页、媒体库、搜索、下载、我的
-- 原生媒体库网格与混合电影/剧集解析
+- Paging 3 媒体库：按服务端稳定分页加载电影与剧集合集
+- 媒体库筛选：媒体库、内容类型、标题、类型标签、年份范围
+- 媒体库排序：最近添加、标题、年份、评分及升降序
+- 840dp 起启用海报网格与详情预览双栏布局，手机保持单栏导航
 - 电影/单集详情页
 - Media3 原生播放，支持 Direct Play、Remux、HLS 和预处理流地址
 - 播放进度恢复、每 10 秒定时上报、暂停/拖动/退后台/退出时即时补报
@@ -26,13 +29,21 @@
 ```text
 clients/android-v2/
 ├── app                  Android Application 与 Activity
-├── core/model           领域模型和 API 契约
+├── core/model           领域模型、筛选条件和 API 契约
 ├── core/designsystem    主题、Token 和通用 Compose 组件
-├── core/data            会话、Keystore、Retrofit、Repository、播放器偏好与离线进度队列
-└── feature/main         服务器、认证、首页、媒体库、详情和播放器
+├── core/data            会话、Keystore、Retrofit、Paging、Repository、播放器偏好与离线进度队列
+└── feature/main         服务器、认证、首页、自适应媒体库、详情和播放器
 ```
 
 当前先保持五个稳定模块，避免重写初期过度拆分。后续在功能边界稳定后再拆出 `feature:player`、`feature:downloads` 等模块。
+
+## 媒体库分页与筛选
+
+- `/api/media/mixed` 在服务端完成筛选、排序后再分页，避免客户端本地筛选造成重复、漏项和空页。
+- 支持 `library_id`、`type`、`genre`、`q`、`year_from`、`year_to`、`sort`、`order` 参数。
+- Android 每页加载 36 项，预取距离为 12，关闭占位符；筛选条件变化时自动取消旧分页流并创建新流。
+- 手机点击海报进入完整详情；宽屏设备在右侧直接预览详情，并可立即播放或打开完整详情。
+- 分页首屏、追加页、空结果和网络错误均提供独立加载与重试状态。
 
 ## 播放进度策略
 
@@ -71,7 +82,7 @@ Debug APK：
 clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-仓库的 `Android V2` 工作流会对每次相关 PR 和 main push 执行同一组单测、Lint 与 APK 构建门禁，并保留失败日志便于定位 Kotlin 与 Android 资源问题。
+仓库的 `Android V2` 工作流会同时执行后端媒体契约测试、Android 单元测试、Lint 与 APK 构建门禁，并保留日志和 Debug APK。
 
 ## 与旧版并行安装
 
@@ -85,7 +96,6 @@ com.nowen.video.v2
 
 ## 下一阶段
 
-- Paging 3、媒体库筛选与平板双栏布局
-- WorkManager + Media3 离线下载
+- WorkManager + Media3 离线下载、暂停续传与空间管理
 - 局域网自动发现和扫码添加服务器
 - 收藏、历史、合集与人物详情
