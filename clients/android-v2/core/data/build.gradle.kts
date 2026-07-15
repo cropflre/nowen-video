@@ -29,6 +29,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.serialization.json)
     implementation(libs.hilt.android)
+    implementation(libs.androidx.work.runtime)
     ksp(libs.hilt.compiler)
     testImplementation(libs.junit)
 }
