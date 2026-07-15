@@ -75,6 +75,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         if (mediaId.isNotBlank()) navController.navigate("detail/${Uri.encode(mediaId)}")
     }
 
+    fun openPlayer(mediaId: String) {
+        if (mediaId.isNotBlank()) navController.navigate("player/${Uri.encode(mediaId)}")
+    }
+
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -115,7 +119,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 )
             }
             composable(MainTab.Library.route) {
-                LibraryScreen(onMediaClick = ::openDetail)
+                LibraryScreen(
+                    onMediaClick = ::openDetail,
+                    onPlay = ::openPlayer,
+                )
             }
             composable(MainTab.Search.route) {
                 SearchScreen(onMediaClick = ::openDetail)
@@ -137,7 +144,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 MediaDetailScreen(
                     mediaId = mediaId,
                     onBack = { navController.popBackStack() },
-                    onPlay = { id -> navController.navigate("player/${Uri.encode(id)}") },
+                    onPlay = ::openPlayer,
                 )
             }
             composable(
