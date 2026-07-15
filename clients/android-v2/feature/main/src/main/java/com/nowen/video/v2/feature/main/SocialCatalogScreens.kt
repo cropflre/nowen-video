@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.background
@@ -52,7 +54,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-private data class ListUiState<T>(
+data class ListUiState<T>(
     val loading: Boolean = true,
     val items: List<T> = emptyList(),
     val actionId: String? = null,
@@ -346,7 +348,7 @@ fun CollectionsScreen(
     }
 }
 
-private data class CollectionDetailUiState(
+data class CollectionDetailUiState(
     val loading: Boolean = true,
     val detail: CollectionWithMedia? = null,
     val error: String? = null,
@@ -455,7 +457,7 @@ fun CollectionDetailScreen(
     }
 }
 
-private data class PersonDetailUiState(
+data class PersonDetailUiState(
     val loading: Boolean = true,
     val person: Person? = null,
     val works: PersonMediaResponse = PersonMediaResponse(),
