@@ -1,15 +1,7 @@
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -208,7 +200,7 @@ private fun DownloadStoragePanel(
     ElevatedPanel(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.padding(6.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("离线空间", style = MaterialTheme.typography.titleLarge)
                 Text(
@@ -335,22 +327,22 @@ private fun DownloadTaskCard(
                 OfflineDownloadStatus.Queued,
                 -> FilledTonalButton(onClick = onPause) {
                     Icon(Icons.Default.Pause, contentDescription = null)
-                    Spacer(Modifier.padding(4.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("暂停")
                 }
                 OfflineDownloadStatus.Paused -> FilledTonalButton(onClick = onResume) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.padding(4.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("继续")
                 }
                 OfflineDownloadStatus.Failed -> FilledTonalButton(onClick = onRetry) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(Modifier.padding(4.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("重试")
                 }
                 OfflineDownloadStatus.Completed -> Button(onClick = onPlay) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.padding(4.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("离线播放")
                 }
             }
