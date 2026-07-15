@@ -4,11 +4,21 @@ on:
   pull_request:
     paths:
       - 'clients/android-v2/**'
+      - 'internal/handler/media.go'
+      - 'internal/service/media_mixed_filter.go'
+      - 'internal/service/media_mixed_filter_test.go'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/android-v2.yml'
   push:
     branches: [main]
     paths:
       - 'clients/android-v2/**'
+      - 'internal/handler/media.go'
+      - 'internal/service/media_mixed_filter.go'
+      - 'internal/service/media_mixed_filter_test.go'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/android-v2.yml'
   workflow_dispatch:
 
@@ -22,9 +32,14 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - uses: actions/setup-java@v4
         with:
@@ -32,8 +47,20 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Backend media contract tests
+        id: go
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          go test ./internal/service ./internal/handler 2>&1 | tee android-v2-go-test.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
       - name: Unit tests, lint and debug APK
         id: gradle
+        continue-on-error: true
         shell: bash
         run: |
           set +e
@@ -45,16 +72,27 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
 
-      - name: Upload build log
+      - name: Upload verification logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nowen-video-android-v2-build-log
-          path: android-v2-build.log
+          path: |
+            android-v2-go-test.log
+            android-v2-build.log
           if-no-files-found: error
 
+      - name: Enforce verification gate
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.go.outputs.status }}" != "0" || "${{ steps.gradle.outputs.status }}" != "0" ]]; then
+            echo "Backend or Android V2 verification failed."
+            exit 1
+          fi
+
       - name: Upload debug APK
-        if: success()
+        if: steps.gradle.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
           name: nowen-video-android-v2-debug
