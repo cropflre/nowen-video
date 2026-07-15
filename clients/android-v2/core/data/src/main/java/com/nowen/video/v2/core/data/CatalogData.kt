@@ -1,7 +1,12 @@
 package com.nowen.video.v2.core.data
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.nowen.video.v2.core.model.ApiEnvelope
+import com.nowen.video.v2.core.model.LibraryFilter
+import com.nowen.video.v2.core.model.LibrarySummary
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.NullableMediaDetailEnvelope
@@ -17,6 +22,7 @@ import dagger.hilt.components.SingletonComponent
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -29,6 +35,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 private const val CATALOG_PLACEHOLDER = "placeholder.invalid"
+internal const val LIBRARY_PAGE_SIZE = 36
 
 interface CatalogApi {
     @GET("media/mixed")
@@ -36,7 +43,17 @@ interface CatalogApi {
         @Query("page") page: Int,
         @Query("size") size: Int,
         @Query("library_id") libraryId: String? = null,
+        @Query("type") contentType: String? = null,
+        @Query("genre") genre: String? = null,
+        @Query("q") query: String? = null,
+        @Query("year_from") yearFrom: Int? = null,
+        @Query("year_to") yearTo: Int? = null,
+        @Query("sort") sort: String? = null,
+        @Query("order") order: String? = null,
     ): PaginatedEnvelope<MediaCard>
+
+    @GET("libraries")
+    suspend fun libraries(): ApiEnvelope<List<LibrarySummary>>
 
     @GET("media/{id}")
     suspend fun detail(@Path("id") id: String): ApiEnvelope<MediaDetail>
@@ -82,12 +99,26 @@ object CatalogNetworkModule {
 class CatalogRepository @Inject constructor(
     private val api: CatalogApi,
 ) {
+    fun pagedMedia(filter: LibraryFilter): Flow<PagingData<MediaCard>> = Pager(
+        config = PagingConfig(
+            pageSize = LIBRARY_PAGE_SIZE,
+            initialLoadSize = LIBRARY_PAGE_SIZE,
+            prefetchDistance = 12,
+            enablePlaceholders = false,
+        ),
+        pagingSourceFactory = { CatalogPagingSource(api, filter.normalized()) },
+    ).flow
+
     suspend fun media(
         page: Int = 1,
         size: Int = 60,
         libraryId: String? = null,
     ): Result<PaginatedEnvelope<MediaCard>> = call {
         api.media(page.coerceAtLeast(1), size.coerceIn(1, 200), libraryId)
+    }
+
+    suspend fun libraries(): Result<List<LibrarySummary>> = call {
+        api.libraries().data
     }
 
     suspend fun detail(id: String): Result<MediaDetail> = call {
