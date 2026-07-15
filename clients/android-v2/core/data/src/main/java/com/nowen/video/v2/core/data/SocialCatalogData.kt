@@ -1,5 +1,10 @@
 package com.nowen.video.v2.core.data
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.nowen.video.v2.core.model.ApiEnvelope
 import com.nowen.video.v2.core.model.CollectionWithMedia
@@ -16,6 +21,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -28,12 +34,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 private const val SOCIAL_CATALOG_PLACEHOLDER = "placeholder.invalid"
+internal const val SOCIAL_PAGE_SIZE = 30
 
 interface SocialCatalogApi {
     @GET("users/me/favorites")
     suspend fun favorites(
         @Query("page") page: Int = 1,
-        @Query("size") size: Int = 50,
+        @Query("size") size: Int = SOCIAL_PAGE_SIZE,
     ): PaginatedEnvelope<FavoriteRecord>
 
     @POST("users/me/favorites/{mediaId}")
@@ -48,7 +55,7 @@ interface SocialCatalogApi {
     @GET("users/me/history")
     suspend fun history(
         @Query("page") page: Int = 1,
-        @Query("size") size: Int = 50,
+        @Query("size") size: Int = SOCIAL_PAGE_SIZE,
     ): PaginatedEnvelope<WatchHistoryRecord>
 
     @DELETE("users/me/history/{mediaId}")
@@ -98,6 +105,16 @@ object SocialCatalogNetworkModule {
 class SocialCatalogRepository @Inject constructor(
     private val api: SocialCatalogApi,
 ) {
+    fun pagedFavorites(): Flow<PagingData<FavoriteRecord>> = Pager(
+        config = socialPagingConfig(),
+        pagingSourceFactory = { SocialPagingSource { page, size -> api.favorites(page, size) } },
+    ).flow
+
+    fun pagedHistory(): Flow<PagingData<WatchHistoryRecord>> = Pager(
+        config = socialPagingConfig(),
+        pagingSourceFactory = { SocialPagingSource { page, size -> api.history(page, size) } },
+    ).flow
+
     suspend fun favorites(): Result<PaginatedEnvelope<FavoriteRecord>> = call { api.favorites() }
 
     suspend fun favoriteStatus(mediaId: String): Result<Boolean> = call {
@@ -145,3 +162,33 @@ class SocialCatalogRepository @Inject constructor(
     private suspend fun <T> call(block: suspend () -> T): Result<T> =
         runCatching { block() }.recoverCatching { error -> throw mapApiError(error) }
 }
+
+internal class SocialPagingSource<T : Any>(
+    private val loader: suspend (page: Int, size: Int) -> PaginatedEnvelope<T>,
+) : PagingSource<Int, T>() {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, T> = try {
+        val page = params.key ?: 1
+        val response = loader(page, params.loadSize.coerceIn(1, 100))
+        val loadedThrough = (page - 1) * response.size + response.data.size
+        LoadResult.Page(
+            data = response.data,
+            prevKey = page.takeIf { it > 1 }?.minus(1),
+            nextKey = if (response.data.isEmpty() || loadedThrough >= response.total) null else page + 1,
+        )
+    } catch (error: Throwable) {
+        LoadResult.Error(mapApiError(error))
+    }
+
+    override fun getRefreshKey(state: PagingState<Int, T>): Int? {
+        val anchor = state.anchorPosition ?: return null
+        val page = state.closestPageToPosition(anchor) ?: return null
+        return page.prevKey?.plus(1) ?: page.nextKey?.minus(1)
+    }
+}
+
+private fun socialPagingConfig(): PagingConfig = PagingConfig(
+    pageSize = SOCIAL_PAGE_SIZE,
+    initialLoadSize = SOCIAL_PAGE_SIZE,
+    prefetchDistance = 8,
+    enablePlaceholders = false,
+)
