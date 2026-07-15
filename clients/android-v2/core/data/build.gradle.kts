@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.paging.runtime)
     implementation(libs.datastore.preferences)
     implementation(libs.coroutines.android)
     implementation(libs.retrofit)
