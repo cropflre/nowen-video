@@ -5,6 +5,8 @@
 ## 当前能力
 
 - 多服务器保存、切换、删除与连接探测
+- mDNS 自动发现局域网 Nowen Video，未收到广播时回退到私有网段常用端口探测
+- CameraX + ML Kit 设备端二维码扫描，可自动检测并添加服务器
 - Android Keystore 加密保存每台服务器的 Token
 - 登录与首次强制修改密码
 - Hills Calm × Nowen Deep Space 设计系统
@@ -33,14 +35,35 @@
 
 ```text
 clients/android-v2/
-├── app                  Android Application、Activity、启动下载恢复与前台服务声明
-├── core/model           领域模型、筛选条件、下载状态和 API 契约
+├── app                  Android Application、Activity、权限、启动下载恢复与前台服务声明
+├── core/model           领域模型、发现模型、筛选条件、下载状态和 API 契约
 ├── core/designsystem    主题、Token 和通用 Compose 组件
-├── core/data            会话、Keystore、Retrofit、Paging、WorkManager、Repository、偏好与离线队列
-└── feature/main         服务器、认证、首页、自适应媒体库、详情、在线/离线播放器和下载中心
+├── core/data            会话、Keystore、Retrofit、NSD、局域网探测、Paging、WorkManager 与 Repository
+└── feature/main         服务器发现/扫码、认证、首页、自适应媒体库、详情、播放器和下载中心
 ```
 
 当前先保持五个稳定模块，避免重写初期过度拆分。后续在功能边界稳定后再拆出 `feature:player`、`feature:downloads` 等模块。
+
+## 服务器发现与扫码
+
+- 服务器端广播标准 `_nowen-video._tcp.local` DNS-SD 服务；Android 使用 `NsdManager` 读取地址、端口、版本和服务器名称。
+- 扫描期间持有可控的 Wi-Fi MulticastLock，离开服务器页面或扫描超时后立即释放。
+- mDNS 无结果时，并行探测当前私有 IPv4 `/24` 网段的 80、443、3000、8080、8443、9090 端口。
+- HTTP 探测通过公开的 `/api/auth/status` 响应识别 Nowen Video，不会把普通网页或其他 NAS 服务加入结果。
+- mDNS 与 HTTP 结果按标准化 URL 去重，优先保留包含 TXT 元信息的 mDNS 结果。
+- 打开服务器中心时自动扫描，也可手动刷新；已保存服务器会直接显示为“打开”，不会重复创建记录。
+- 二维码识别由 CameraX 和 bundled ML Kit 在设备本地执行，相机画面不会上传。
+- 支持纯服务器地址、JSON 和自定义链接三种二维码载荷：
+
+```text
+http://192.168.1.10:8080
+
+{"type":"nowen-video-server","name":"客厅 NAS","url":"http://192.168.1.10:8080"}
+
+nowen-video://server?url=http%3A%2F%2F192.168.1.10%3A8080&name=Home%20NAS
+```
+
+扫码后仍会先执行服务器健康检测，通过后才保存并进入登录流程。
 
 ## 媒体库分页与筛选
 
@@ -113,5 +136,4 @@ com.nowen.video.v2
 
 ## 下一阶段
 
-- 局域网自动发现和扫码添加服务器
 - 收藏、历史、合集与人物详情
