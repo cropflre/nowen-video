@@ -123,6 +123,16 @@ class ProgressRepository @Inject constructor(
             ?: 0.0
     }
 
+    suspend fun restoreOfflinePosition(mediaId: String, mediaDurationSeconds: Double): Double = syncMutex.withLock {
+        val scope = activeScope() ?: return@withLock 0.0
+        pendingStore.latest(scope.serverId, scope.userId, mediaId)?.let { pending ->
+            effectiveResumePosition(
+                position = pending.position,
+                duration = pending.duration.takeIf { it > 0.0 } ?: mediaDurationSeconds,
+            )
+        } ?: 0.0
+    }
+
     suspend fun report(mediaId: String, position: Double, duration: Double): ProgressDelivery = syncMutex.withLock {
         val normalized = normalizeProgress(position, duration)
             ?: return@withLock ProgressDelivery(queued = false, flushedCount = 0)
