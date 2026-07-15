@@ -164,13 +164,13 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 )
             }
             composable(FAVORITES_ROUTE) {
-                FavoritesScreen(
+                PagedFavoritesScreen(
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
                 )
             }
             composable(HISTORY_ROUTE) {
-                HistoryScreen(
+                PagedHistoryScreen(
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
                 )
