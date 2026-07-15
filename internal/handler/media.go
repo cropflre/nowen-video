@@ -227,9 +227,166 @@ func (h *MediaHandler) Search(c *gin.Context) {
 	})
 }
 
-var (
-	_ = fmt.Sprintf
-	_ = os.Stat
-	_ = filepath.Ext
-	_ = strings.ToLower
-)
+// SearchAdvanced 高级搜索（支持多条件筛选和排序）
+// GET /api/search/advanced?q=xxx&type=movie&genre=动作&year_min=2020&year_max=2025&min_rating=7&sort_by=rating&sort_order=desc&page=1&size=20
+func (h *MediaHandler) SearchAdvanced(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	yearMin, _ := strconv.Atoi(c.DefaultQuery("year_min", "0"))
+	yearMax, _ := strconv.Atoi(c.DefaultQuery("year_max", "0"))
+	minRating, _ := strconv.ParseFloat(c.DefaultQuery("min_rating", "0"), 64)
+
+	params := repository.SearchAdvancedParams{
+		Keyword:   c.Query("q"),
+		MediaType: c.Query("type"),
+		Genre:     c.Query("genre"),
+		YearMin:   yearMin,
+		YearMax:   yearMax,
+		MinRating: minRating,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+		Page:      page,
+		Size:      size,
+	}
+
+	media, total, err := h.mediaService.SearchAdvanced(params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  media,
+		"total": total,
+		"page":  page,
+		"size":  size,
+	})
+}
+
+// SearchMixed 混合搜索（同时搜索媒体和合集）
+// GET /api/search/mixed?q=xxx&page=1&size=20
+func (h *MediaHandler) SearchMixed(c *gin.Context) {
+	keyword := c.Query("q")
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索关键词不能为空"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+
+	result, err := h.mediaService.SearchMixed(keyword, page, size)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"media":        result.Media,
+		"series":       result.Series,
+		"media_total":  result.MediaTotal,
+		"series_total": result.SeriesTotal,
+		"page":         page,
+		"size":         size,
+	})
+}
+
+// GetPersons 获取媒体的演职人员列表
+func (h *MediaHandler) GetPersons(c *gin.Context) {
+	mediaID := c.Param("id")
+	persons, err := h.mediaPersonRepo.ListByMediaID(mediaID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": []interface{}{}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": persons})
+}
+
+// GetPersonDetail 获取演员详情
+// GET /api/persons/:id
+func (h *MediaHandler) GetPersonDetail(c *gin.Context) {
+	personID := c.Param("id")
+	person, err := h.personRepo.FindByID(personID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": person})
+}
+
+// GetPersonMedia 获取某个演员参演的所有影视作品
+// GET /api/persons/:id/media
+func (h *MediaHandler) GetPersonMedia(c *gin.Context) {
+	personID := c.Param("id")
+
+	// 查询该演员参演的电影
+	media, err := h.mediaPersonRepo.ListMediaByPersonID(personID)
+	if err != nil {
+		media = nil
+	}
+
+	// 查询该演员参演的剧集
+	series, err := h.mediaPersonRepo.ListSeriesByPersonID(personID)
+	if err != nil {
+		series = nil
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"media":  media,
+		"series": series,
+	})
+}
+
+// PersonProfile 获取演员头像图片
+// GET /api/persons/:id/profile
+func (h *MediaHandler) PersonProfile(c *gin.Context) {
+	personID := c.Param("id")
+	person, err := h.personRepo.FindByID(personID)
+	if err != nil || person.ProfileURL == "" {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	// 本地路径
+	if _, statErr := os.Stat(person.ProfileURL); statErr != nil {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	fileInfo, statErr := os.Stat(person.ProfileURL)
+	if statErr != nil {
+		servePersonProfilePlaceholder(c)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(person.ProfileURL))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+	c.File(person.ProfileURL)
+}
+
+// servePersonProfilePlaceholder 返回演员头像占位 SVG
+func servePersonProfilePlaceholder(c *gin.Context) {
+	c.Header("Content-Type", "image/svg+xml")
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.String(http.StatusOK, `<svg xmlns="http://www.w3.org/2000/svg" width="185" height="185" viewBox="0 0 185 185"><rect fill="#1e1e2e" width="185" height="185" rx="16"/><circle cx="92.5" cy="70" r="30" fill="#334155"/><ellipse cx="92.5" cy="155" rx="50" ry="40" fill="#334155"/></svg>`)
+}
