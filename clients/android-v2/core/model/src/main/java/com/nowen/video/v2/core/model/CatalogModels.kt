@@ -9,6 +9,8 @@ data class PaginatedEnvelope<T>(
     val total: Int = 0,
     val page: Int = 1,
     val size: Int = 20,
+    @SerialName("movie_count") val movieCount: Int = 0,
+    @SerialName("series_count") val seriesCount: Int = 0,
 )
 
 @Serializable
@@ -90,3 +92,53 @@ data class WatchProgress(
     val duration: Double = 0.0,
     val completed: Boolean = false,
 )
+
+enum class LibraryContentType(val apiValue: String) {
+    All("all"),
+    Movies("movie"),
+    Series("series"),
+}
+
+enum class LibrarySort(val apiValue: String) {
+    Added("added"),
+    Title("title"),
+    Year("year"),
+    Rating("rating"),
+}
+
+enum class LibraryOrder(val apiValue: String) {
+    Ascending("asc"),
+    Descending("desc"),
+}
+
+data class LibraryFilter(
+    val libraryId: String? = null,
+    val contentType: LibraryContentType = LibraryContentType.All,
+    val genre: String = "",
+    val query: String = "",
+    val yearFrom: Int? = null,
+    val yearTo: Int? = null,
+    val sort: LibrarySort = LibrarySort.Added,
+    val order: LibraryOrder = LibraryOrder.Descending,
+) {
+    fun normalized(): LibraryFilter {
+        val start = yearFrom?.takeIf { it in 1888..2999 }
+        val end = yearTo?.takeIf { it in 1888..2999 }
+        return copy(
+            libraryId = libraryId?.trim()?.takeIf(String::isNotBlank),
+            genre = genre.trim(),
+            query = query.trim(),
+            yearFrom = if (start != null && end != null) minOf(start, end) else start,
+            yearTo = if (start != null && end != null) maxOf(start, end) else end,
+        )
+    }
+
+    val activeFilterCount: Int
+        get() = listOf(
+            libraryId != null,
+            contentType != LibraryContentType.All,
+            genre.isNotBlank(),
+            query.isNotBlank(),
+            yearFrom != null || yearTo != null,
+        ).count { it }
+}
