@@ -1,6 +1,7 @@
 package com.nowen.video.v2
 
 import android.app.Application
+import com.nowen.video.v2.core.data.OfflineDownloadScheduler
 import dagger.hilt.android.HiltAndroidApp
 
 /**
@@ -10,4 +11,9 @@ import dagger.hilt.android.HiltAndroidApp
  * 从 Application 级容器统一提供。
  */
 @HiltAndroidApp
-class NowenV2Application : Application()
+class NowenV2Application : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        OfflineDownloadScheduler.schedule(this)
+    }
+}
