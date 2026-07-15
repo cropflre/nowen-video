@@ -1,10 +1,14 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -12,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -112,6 +117,9 @@ fun SearchScreen(
 fun ProfileScreen(
     modifier: Modifier = Modifier,
     sessionStore: ServerSessionStore,
+    onFavorites: () -> Unit,
+    onHistory: () -> Unit,
+    onCollections: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val session by sessionStore.snapshot.collectAsState()
@@ -144,11 +152,58 @@ fun ProfileScreen(
                 }
             }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(22.dp))
+        Text("我的内容", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(10.dp))
+        ProfileDestinationRow(
+            icon = Icons.Default.Favorite,
+            title = "我的收藏",
+            subtitle = "集中查看喜欢的电影和单集",
+            onClick = onFavorites,
+        )
+        Spacer(Modifier.height(10.dp))
+        ProfileDestinationRow(
+            icon = Icons.Default.History,
+            title = "观看历史",
+            subtitle = "继续播放或管理已看记录",
+            onClick = onHistory,
+        )
+        Spacer(Modifier.height(10.dp))
+        ProfileDestinationRow(
+            icon = Icons.Default.Collections,
+            title = "系列合集",
+            subtitle = "按电影系列浏览馆藏内容",
+            onClick = onCollections,
+        )
+        Spacer(Modifier.height(22.dp))
         OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Logout, null)
             Spacer(Modifier.width(8.dp))
             Text("退出当前服务器账号")
+        }
+    }
+}
+
+@Composable
+private fun ProfileDestinationRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ElevatedPanel(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(3.dp))
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
