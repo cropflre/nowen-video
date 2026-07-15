@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.nowen.video.v2.feature.main
 
 import android.os.SystemClock
