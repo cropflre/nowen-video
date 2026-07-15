@@ -8,61 +8,60 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.item
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MessagePanel
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -77,7 +76,7 @@ import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.CatalogRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.MediaPosterCard
-import com.nowen.video.v2.core.designsystem.MessagePanel as NowenMessagePanel
+import com.nowen.video.v2.core.designsystem.MessagePanel
 import com.nowen.video.v2.core.model.LibraryContentType
 import com.nowen.video.v2.core.model.LibraryFilter
 import com.nowen.video.v2.core.model.LibraryOrder
@@ -87,6 +86,7 @@ import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaDetail
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,6 +108,7 @@ data class LibraryUiState(
     val selectedError: String? = null,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repository: CatalogRepository,
@@ -117,7 +118,7 @@ class LibraryViewModel @Inject constructor(
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state
     val media: Flow<PagingData<MediaCard>> = filterFlow
-        .flatMapLatest(repository::pagedMedia)
+        .flatMapLatest { repository.pagedMedia(it) }
         .cachedIn(viewModelScope)
     private var selectionJob: Job? = null
 
@@ -238,14 +239,11 @@ fun LibraryScreen(
                         .weight(0.58f)
                         .fillMaxHeight(),
                 )
-                HorizontalDivider(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(1.dp),
-                )
+                VerticalDivider(Modifier.fillMaxHeight())
                 LibraryDetailPane(
                     state = state,
                     baseUrl = session.activeServer?.baseUrl,
+                    onRetry = viewModel::selectMedia,
                     onOpenDetail = onMediaClick,
                     onPlay = onPlay,
                     modifier = Modifier
@@ -312,19 +310,17 @@ private fun LibraryCatalogPane(
             onFilterClick = onFilterClick,
             onRefresh = onRefresh,
         )
-        LibraryQuickFilters(
-            filter = state.filter,
-            onChange = onFilterChange,
-        )
+        LibraryQuickFilters(filter = state.filter, onChange = onFilterChange)
 
         Box(Modifier.weight(1f)) {
             when {
                 media.loadState.refresh is LoadState.Loading && media.itemCount == 0 -> {
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }
+
                 media.loadState.refresh is LoadState.Error && media.itemCount == 0 -> {
                     val error = (media.loadState.refresh as LoadState.Error).error
-                    NowenMessagePanel(
+                    MessagePanel(
                         title = "媒体库加载失败",
                         message = error.message ?: "无法连接服务器",
                         actionLabel = "重试",
@@ -334,9 +330,14 @@ private fun LibraryCatalogPane(
                             .padding(20.dp),
                     )
                 }
+
                 media.itemCount == 0 -> {
-                    NowenMessagePanel(
-                        title = if (state.filter.activeFilterCount > 0) "没有符合条件的内容" else "媒体库还是空的",
+                    MessagePanel(
+                        title = if (state.filter.activeFilterCount > 0) {
+                            "没有符合条件的内容"
+                        } else {
+                            "媒体库还是空的"
+                        },
                         message = if (state.filter.activeFilterCount > 0) {
                             "尝试清除部分筛选条件或切换媒体库。"
                         } else {
@@ -347,77 +348,93 @@ private fun LibraryCatalogPane(
                             .padding(20.dp),
                     )
                 }
-                else -> {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 132.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        items(media.itemCount) { index ->
-                            val item = media[index]
-                            if (item == null) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(2f / 3f)
-                                        .clip(MaterialTheme.shapes.large)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                )
-                            } else {
-                                val selected = item.resolvedId == state.selectedMediaId
-                                Surface(
-                                    shape = MaterialTheme.shapes.extraLarge,
-                                    color = if (selected) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f)
-                                    } else {
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
-                                    },
-                                    tonalElevation = if (selected) 4.dp else 0.dp,
-                                ) {
-                                    MediaPosterCard(
-                                        title = item.displayTitle,
-                                        subtitle = item.year?.toString(),
-                                        imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                                        progress = item.normalizedProgress,
-                                        onClick = { onMediaClick(item.resolvedId) },
-                                        modifier = Modifier.padding(3.dp),
-                                    )
-                                }
-                            }
-                        }
 
-                        when (val append = media.loadState.append) {
-                            is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(24.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                            is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(20.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        append.error.message ?: "下一页加载失败",
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                    TextButton(onClick = media::retry) { Text("重试") }
-                                }
-                            }
-                            else -> Unit
-                        }
-                    }
+                else -> LibraryGrid(
+                    media = media,
+                    state = state,
+                    baseUrl = baseUrl,
+                    onMediaClick = onMediaClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryGrid(
+    media: LazyPagingItems<MediaCard>,
+    state: LibraryUiState,
+    baseUrl: String?,
+    onMediaClick: (String) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 132.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        items(count = media.itemCount) { index ->
+            val item = media[index]
+            if (item == null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            } else {
+                val selected = item.resolvedId == state.selectedMediaId
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f)
+                    } else {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                    },
+                    tonalElevation = if (selected) 4.dp else 0.dp,
+                ) {
+                    MediaPosterCard(
+                        title = item.displayTitle,
+                        subtitle = item.year?.toString(),
+                        imageUrl = resolveImage(baseUrl, item.resolvedPoster),
+                        progress = item.normalizedProgress,
+                        onClick = { onMediaClick(item.resolvedId) },
+                        modifier = Modifier.padding(3.dp),
+                    )
                 }
             }
+        }
+
+        when (val append = media.loadState.append) {
+            is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        append.error.message ?: "下一页加载失败",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = media::retry) { Text("重试") }
+                }
+            }
+
+            else -> Unit
         }
     }
 }
@@ -501,8 +518,10 @@ private fun LibraryQuickFilters(
                         )
                     },
                     leadingIcon = if (filter.sort == sort) {
-                        { Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null) }
-                    } else null,
+                        { Icon(Icons.Default.Sort, contentDescription = null) }
+                    } else {
+                        null
+                    },
                     label = { Text(sortLabel(sort)) },
                 )
             }
@@ -515,110 +534,126 @@ private fun LibraryQuickFilters(
 private fun LibraryDetailPane(
     state: LibraryUiState,
     baseUrl: String?,
+    onRetry: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
     onPlay: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.background(MaterialTheme.colorScheme.surface)) {
         when {
-            state.selectedMediaId == null -> NowenMessagePanel(
+            state.selectedMediaId == null -> MessagePanel(
                 title = "选择一部影片",
                 message = "在左侧媒体库选择内容后，可在这里预览详情并直接播放。",
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(28.dp),
             )
+
             state.selectedLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            state.selectedError != null -> NowenMessagePanel(
+
+            state.selectedError != null -> MessagePanel(
                 title = "详情加载失败",
                 message = state.selectedError,
                 actionLabel = "重试",
-                onAction = { state.selectedMediaId?.let { } },
+                onAction = { state.selectedMediaId?.let(onRetry) },
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(28.dp),
             )
-            state.selectedDetail != null -> {
-                val media = state.selectedDetail
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
-                ) {
-                    AsyncImage(
-                        model = resolveImage(baseUrl, media.backdropPath.ifBlank { media.posterPath }),
-                        contentDescription = media.displayTitle,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(16f / 9f)
-                            .clip(MaterialTheme.shapes.extraLarge)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Row {
-                        AsyncImage(
-                            model = resolveImage(baseUrl, media.posterPath),
-                            contentDescription = media.displayTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .width(108.dp)
-                                .aspectRatio(2f / 3f)
-                                .clip(MaterialTheme.shapes.large)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        )
-                        Spacer(Modifier.width(18.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(media.displayTitle, style = MaterialTheme.typography.headlineSmall)
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                listOfNotNull(
-                                    media.year.takeIf { it > 0 }?.toString(),
-                                    media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
-                                    media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-                                ).joinToString(" · "),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (media.genres.isNotBlank()) {
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    media.genres,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(20.dp))
-                    Button(
-                        onClick = { onPlay(media.id) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("立即播放")
-                    }
-                    OutlinedButton(
-                        onClick = { onOpenDetail(media.id) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp),
-                    ) {
-                        Text("打开完整详情")
-                    }
-                    Spacer(Modifier.height(24.dp))
-                    Text("简介", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(8.dp))
+
+            state.selectedDetail != null -> LibraryDetailContent(
+                media = requireNotNull(state.selectedDetail),
+                baseUrl = baseUrl,
+                onOpenDetail = onOpenDetail,
+                onPlay = onPlay,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibraryDetailContent(
+    media: MediaDetail,
+    baseUrl: String?,
+    onOpenDetail: (String) -> Unit,
+    onPlay: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+    ) {
+        AsyncImage(
+            model = resolveImage(baseUrl, media.backdropPath.ifBlank { media.posterPath }),
+            contentDescription = media.displayTitle,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.height(20.dp))
+        Row {
+            AsyncImage(
+                model = resolveImage(baseUrl, media.posterPath),
+                contentDescription = media.displayTitle,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(108.dp)
+                    .aspectRatio(2f / 3f)
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text(media.displayTitle, style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    listOfNotNull(
+                        media.year.takeIf { it > 0 }?.toString(),
+                        media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+                        media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+                    ).joinToString(" · "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (media.genres.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        media.overview.ifBlank { "暂无简介" },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyLarge,
+                        media.genres,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Spacer(Modifier.height(36.dp))
                 }
             }
         }
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = { onPlay(media.id) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("立即播放")
+        }
+        OutlinedButton(
+            onClick = { onOpenDetail(media.id) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+        ) {
+            Text("打开完整详情")
+        }
+        Spacer(Modifier.height(24.dp))
+        Text("简介", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            media.overview.ifBlank { "暂无简介" },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(Modifier.height(36.dp))
     }
 }
 
@@ -647,7 +682,6 @@ private fun LibraryFilterSheet(
         ) {
             Text("筛选媒体库", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(18.dp))
-
             OutlinedTextField(
                 value = draft.query,
                 onValueChange = { draft = draft.copy(query = it) },
@@ -675,6 +709,7 @@ private fun LibraryFilterSheet(
                     )
                     TextButton(onClick = onRetryLibraries) { Text("重试") }
                 }
+
                 else -> ChoiceRow {
                     FilterChip(
                         selected = draft.libraryId == null,
@@ -748,10 +783,7 @@ private fun LibraryFilterSheet(
                     .padding(top = 28.dp, bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                OutlinedButton(
-                    onClick = onReset,
-                    modifier = Modifier.weight(1f),
-                ) {
+                OutlinedButton(onClick = onReset, modifier = Modifier.weight(1f)) {
                     Text("重置")
                 }
                 Button(
@@ -782,7 +814,7 @@ private fun FilterSectionTitle(title: String) {
 }
 
 @Composable
-private fun ChoiceRow(content: @Composable Row.() -> Unit) {
+private fun ChoiceRow(content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
