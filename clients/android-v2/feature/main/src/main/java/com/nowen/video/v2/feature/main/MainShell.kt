@@ -1,6 +1,7 @@
 package com.nowen.video.v2.feature.main
 
 import android.net.Uri
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
@@ -53,6 +54,11 @@ enum class MainTab(
 private const val DETAIL_ROUTE = "detail/{mediaId}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
 private const val OFFLINE_PLAYER_ROUTE = "offline/{mediaId}"
+private const val FAVORITES_ROUTE = "favorites"
+private const val HISTORY_ROUTE = "history"
+private const val COLLECTIONS_ROUTE = "collections"
+private const val COLLECTION_DETAIL_ROUTE = "collection/{collectionId}"
+private const val PERSON_DETAIL_ROUTE = "person/{personId}"
 
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
@@ -82,6 +88,14 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
 
     fun openOfflinePlayer(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("offline/${Uri.encode(mediaId)}")
+    }
+
+    fun openCollection(collectionId: String) {
+        if (collectionId.isNotBlank()) navController.navigate("collection/${Uri.encode(collectionId)}")
+    }
+
+    fun openPerson(personId: String) {
+        if (personId.isNotBlank()) navController.navigate("person/${Uri.encode(personId)}")
     }
 
     Scaffold(
@@ -115,7 +129,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         NavHost(
             navController = navController,
             startDestination = MainTab.Home.route,
-            modifier = Modifier.padding(if (showBottomBar) padding else androidx.compose.foundation.layout.PaddingValues()),
+            modifier = Modifier.padding(if (showBottomBar) padding else PaddingValues()),
         ) {
             composable(MainTab.Home.route) {
                 HomeScreen(
@@ -138,7 +152,48 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(MainTab.Profile.route) {
                 ProfileScreen(
                     sessionStore = viewModel.store,
+                    onFavorites = { navController.navigate(FAVORITES_ROUTE) },
+                    onHistory = { navController.navigate(HISTORY_ROUTE) },
+                    onCollections = { navController.navigate(COLLECTIONS_ROUTE) },
                     onLogout = viewModel::logout,
+                )
+            }
+            composable(FAVORITES_ROUTE) {
+                FavoritesScreen(
+                    onBack = { navController.popBackStack() },
+                    onMediaClick = ::openDetail,
+                )
+            }
+            composable(HISTORY_ROUTE) {
+                HistoryScreen(
+                    onBack = { navController.popBackStack() },
+                    onMediaClick = ::openDetail,
+                )
+            }
+            composable(COLLECTIONS_ROUTE) {
+                CollectionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onCollectionClick = ::openCollection,
+                )
+            }
+            composable(
+                route = COLLECTION_DETAIL_ROUTE,
+                arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+            ) { entry ->
+                CollectionDetailScreen(
+                    collectionId = entry.arguments?.getString("collectionId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onMediaClick = ::openDetail,
+                )
+            }
+            composable(
+                route = PERSON_DETAIL_ROUTE,
+                arguments = listOf(navArgument("personId") { type = NavType.StringType }),
+            ) { entry ->
+                PersonDetailScreen(
+                    personId = entry.arguments?.getString("personId").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onMediaClick = ::openDetail,
                 )
             }
             composable(
@@ -150,6 +205,8 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     mediaId = mediaId,
                     onBack = { navController.popBackStack() },
                     onPlay = ::openPlayer,
+                    onPersonClick = ::openPerson,
+                    onCollectionClick = ::openCollection,
                 )
             }
             composable(
