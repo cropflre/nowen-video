@@ -6,51 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 敏感参数列表
-var sensitiveKeys = []string{
-	"api_key",
-	"ApiKey",
-	"X-Emby-Token",
-	"X-MediaBrowser-Token",
-	"Pw",
-	"Password",
-	"password",
-	"Authorization",
-	"X-Emby-ApiKey",
-}
-
 // LogSanitizer 日志脱敏中间件
-// 脱敏敏感参数，避免 token、密码等出现在日志中
+//
+// 业务请求中的 query/header 必须保持原样。此前这里直接把 Authorization、
+// X-Emby-Token 等字段替换为 ***REDACTED***，导致后续 JWT/Emby 鉴权永远失败。
+// 当前请求日志只记录 method/path/status，并不会记录这些敏感字段；如果将来需要
+// 记录额外文本，应在写日志的最后一步调用 SanitizeLogMessage，而不能修改请求。
 func LogSanitizer() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 脱敏 query 参数
-		query := c.Request.URL.Query()
-		modified := false
-		for _, key := range sensitiveKeys {
-			if query.Has(key) {
-				query.Set(key, "***REDACTED***")
-				modified = true
-			}
-		}
-		if modified {
-			c.Request.URL.RawQuery = query.Encode()
-		}
-
-		// 脱敏 header
-		for _, key := range sensitiveKeys {
-			if c.Request.Header.Get(key) != "" {
-				c.Request.Header.Set(key, "***REDACTED***")
-			}
-		}
-
-		// 脱敏 X-Emby-Authorization 中的 Token
-		if auth := c.Request.Header.Get("X-Emby-Authorization"); auth != "" {
-			sanitized := sanitizeEmbyAuth(auth)
-			if sanitized != auth {
-				c.Request.Header.Set("X-Emby-Authorization", sanitized)
-			}
-		}
-
 		c.Next()
 	}
 }

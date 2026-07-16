@@ -37,7 +37,9 @@ export default function ForceChangePasswordPage() {
         return
       }
 
-      setAuth(tokenData.token, tokenData.user)
+      // 改密接口返回的新会话必须与清除后的强制改密状态一起落库。
+      // 显式归一化该字段，也兼容仍返回旧 user 快照的后端版本。
+      setAuth(tokenData.token, { ...tokenData.user, must_change_pwd: false })
       navigate('/', { replace: true })
     } catch (err: any) {
       setError(err?.response?.data?.error || '修改密码失败')

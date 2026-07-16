@@ -77,7 +77,15 @@ toast.error(t('profile.passwordMismatch'))
 
     setChangingPwd(true)
     try {
-      await authApi.changePassword(oldPassword, newPassword)
+      const res = await authApi.changePassword(oldPassword, newPassword)
+      const tokenData = res.data.data
+      // 后端改密后会递增 token_version，旧 Token 已经失效；必须在继续访问
+      // 其它接口前换成新会话，否则下一次请求会 401 并跳回登录页。
+      if (!tokenData?.token || !tokenData.user) {
+        toast.error(res.data.message || t('profile.passwordChangeFailed'))
+        return
+      }
+      setAuth(tokenData.token, { ...tokenData.user, must_change_pwd: false })
       toast.success(t('profile.passwordChangeSuccess'))
       setOldPassword('')
       setNewPassword('')

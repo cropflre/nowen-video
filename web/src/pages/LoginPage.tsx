@@ -58,7 +58,11 @@ export default function LoginPage() {
       setAuth(token, user)
       // 返回 must_change_password 时，跳转到强制改密页。
       // replace 避免浏览器后退重新进入登录页并再次触发鉴权流程。
-      const mustChange = (res.data as { must_change_password?: boolean }).must_change_password
+      // 同时兼容顶层提示字段和 user 上的持久化字段。后者才是路由守卫的
+      // 判断依据，避免服务端版本差异导致先进入首页、随后又被鉴权流程踢回。
+      const mustChange = Boolean(
+        (res.data as { must_change_password?: boolean }).must_change_password || user.must_change_pwd,
+      )
       navigate(mustChange ? '/force-change-password' : '/', { replace: true })
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }

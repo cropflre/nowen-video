@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLogSanitizer_QueryParams(t *testing.T) {
+func TestLogSanitizer_PreservesQueryParamsForHandlers(t *testing.T) {
 	// 设置 Gin 测试模式
 	gin.SetMode(gin.TestMode)
 
@@ -30,37 +30,39 @@ func TestLogSanitizer_QueryParams(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// 检查 api_key 是否被脱敏
-	assert.Contains(t, w.Body.String(), "***REDACTED***")
-	assert.NotContains(t, w.Body.String(), "my-secret-key")
-	// 检查普通参数是否保留
+	// 中间件不能破坏业务输入；真正写日志时再对日志副本脱敏。
+	assert.Contains(t, w.Body.String(), "my-secret-key")
 	assert.Contains(t, w.Body.String(), "value")
 }
 
-func TestLogSanitizer_Headers(t *testing.T) {
+func TestLogSanitizer_PreservesAuthenticationHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
 	router.Use(LogSanitizer())
 	router.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"x-emby-token":      c.Request.Header.Get("X-Emby-Token"),
+			"authorization":        c.Request.Header.Get("Authorization"),
+			"x-emby-token":         c.Request.Header.Get("X-Emby-Token"),
 			"x-mediabrowser-token": c.Request.Header.Get("X-MediaBrowser-Token"),
 		})
 	})
 
 	// 测试 X-Emby-Token header
 	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer signed-jwt")
 	req.Header.Set("X-Emby-Token", "my-secret-token")
 	req.Header.Set("X-MediaBrowser-Token", "my-secret-token-2")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "***REDACTED***")
+	assert.Contains(t, w.Body.String(), "Bearer signed-jwt")
+	assert.Contains(t, w.Body.String(), "my-secret-token")
+	assert.Contains(t, w.Body.String(), "my-secret-token-2")
 }
 
-func TestLogSanitizer_EmbyAuthorization(t *testing.T) {
+func TestLogSanitizer_PreservesEmbyAuthorizationForHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
@@ -78,8 +80,7 @@ func TestLogSanitizer_EmbyAuthorization(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "***REDACTED***")
-	assert.NotContains(t, w.Body.String(), "my-secret-token")
+	assert.Contains(t, w.Body.String(), "my-secret-token")
 }
 
 func TestLogSanitizer_NormalParams(t *testing.T) {
