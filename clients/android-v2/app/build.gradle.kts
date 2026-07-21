@@ -6,6 +6,33 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+fun environmentValue(name: String): String? =
+    providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = environmentValue("ANDROID_SIGNING_STORE_FILE")
+val releaseStorePassword = environmentValue("ANDROID_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = environmentValue("ANDROID_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = environmentValue("ANDROID_SIGNING_KEY_PASSWORD")
+val releaseSigningValues = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val hasAnyReleaseSigningValue = releaseSigningValues.any { it != null }
+val hasReleaseSigning = releaseSigningValues.all { it != null }
+
+check(!hasAnyReleaseSigningValue || hasReleaseSigning) {
+    "Android V2 release signing is partially configured. Set ANDROID_SIGNING_STORE_FILE, " +
+        "ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS and ANDROID_SIGNING_KEY_PASSWORD together."
+}
+
+val versionCodeInput = environmentValue("ANDROID_VERSION_CODE")
+val resolvedVersionCode = versionCodeInput?.toIntOrNull()
+    ?: if (versionCodeInput == null) 1 else error("ANDROID_VERSION_CODE must be a positive integer.")
+check(resolvedVersionCode > 0) { "ANDROID_VERSION_CODE must be a positive integer." }
+val resolvedVersionName = environmentValue("ANDROID_VERSION_NAME") ?: "0.1.0"
+
 android {
     namespace = "com.nowen.video.v2"
     compileSdk = 35
@@ -14,15 +41,29 @@ android {
         applicationId = "com.nowen.video.v2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = resolvedVersionCode
+        versionName = resolvedVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
