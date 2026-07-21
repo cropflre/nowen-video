@@ -4,6 +4,8 @@ set -u
 api_level="${1:-unknown}"
 log_file="android-v2-device-smoke-api-${api_level}.log"
 
+chmod +x android/gradlew
+
 set +e
 ./android/gradlew -p clients/android-v2 \
   connectedDebugAndroidTest \
