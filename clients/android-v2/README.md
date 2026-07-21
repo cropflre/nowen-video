@@ -118,25 +118,30 @@ nowen-video://server?url=http%3A%2F%2F192.168.1.10%3A8080&name=Home%20NAS
 
 ## 本地构建
 
-项目复用仓库根 Android 工程的 Gradle Wrapper：
+项目复用仓库根 Android 工程的 Gradle Wrapper。RC1 基线会同时验证单元测试、Lint、Debug APK 和未签名 Release APK：
 
 ```bash
-./android/gradlew -p clients/android-v2 testDebugUnitTest lintDebug assembleDebug
+./android/gradlew -p clients/android-v2 \
+  testDebugUnitTest lintDebug assembleDebug assembleRelease
 ```
 
 Windows：
 
 ```powershell
-.\android\gradlew.bat -p clients\android-v2 testDebugUnitTest lintDebug assembleDebug
+.\android\gradlew.bat -p clients\android-v2 `
+  testDebugUnitTest lintDebug assembleDebug assembleRelease
 ```
 
-Debug APK：
+构建产物：
 
 ```text
 clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
+clients/android-v2/app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-仓库的 `Android V2` 工作流会同时执行后端媒体契约测试、Android 单元测试、Lint 与 APK 构建门禁，并保留日志和 Debug APK。
+未签名 Release APK 仅用于验证 R8、资源压缩和 Release 变体是否可成功构建，不能作为正式升级包发布。正式签名与 APK/AAB 发布流程将在 RC1 发布任务中独立接入。
+
+仓库的 `Android V2` 工作流会在 Android V2、服务端路由以及相关 handler、service、repository、model、middleware 契约变化时执行后端测试、Android 单元测试、Lint、Debug/Release 构建门禁，并保留 14 天日志、Debug APK 和未签名 Release APK。
 
 ## 与旧版并行安装
 
