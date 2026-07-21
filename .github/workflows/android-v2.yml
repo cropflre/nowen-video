@@ -4,9 +4,16 @@ on:
   pull_request:
     paths:
       - 'clients/android-v2/**'
-      - 'internal/handler/media.go'
-      - 'internal/service/media_mixed_filter.go'
-      - 'internal/service/media_mixed_filter_test.go'
+      - 'cmd/server/main.go'
+      - 'internal/handler/**'
+      - 'internal/middleware/**'
+      - 'internal/model/**'
+      - 'internal/repository/**'
+      - 'internal/service/**'
+      - 'internal/version/**'
+      - 'android/gradlew'
+      - 'android/gradlew.bat'
+      - 'android/gradle/wrapper/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/android-v2.yml'
@@ -14,9 +21,16 @@ on:
     branches: [main]
     paths:
       - 'clients/android-v2/**'
-      - 'internal/handler/media.go'
-      - 'internal/service/media_mixed_filter.go'
-      - 'internal/service/media_mixed_filter_test.go'
+      - 'cmd/server/main.go'
+      - 'internal/handler/**'
+      - 'internal/middleware/**'
+      - 'internal/model/**'
+      - 'internal/repository/**'
+      - 'internal/service/**'
+      - 'internal/version/**'
+      - 'android/gradlew'
+      - 'android/gradlew.bat'
+      - 'android/gradle/wrapper/**'
       - 'go.mod'
       - 'go.sum'
       - '.github/workflows/android-v2.yml'
@@ -47,7 +61,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Backend media contract tests
+      - name: Backend contract tests
         id: go
         continue-on-error: true
         shell: bash
@@ -58,7 +72,7 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
 
-      - name: Unit tests, lint and debug APK
+      - name: Unit tests, lint, debug and release builds
         id: gradle
         continue-on-error: true
         shell: bash
@@ -66,7 +80,7 @@ jobs:
           set +e
           chmod +x android/gradlew
           ./android/gradlew -p clients/android-v2 \
-            testDebugUnitTest lintDebug assembleDebug \
+            testDebugUnitTest lintDebug assembleDebug assembleRelease \
             --no-daemon --stacktrace 2>&1 | tee android-v2-build.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -81,6 +95,7 @@ jobs:
             android-v2-go-test.log
             android-v2-build.log
           if-no-files-found: error
+          retention-days: 14
 
       - name: Enforce verification gate
         if: always()
@@ -98,3 +113,13 @@ jobs:
           name: nowen-video-android-v2-debug
           path: clients/android-v2/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload unsigned release APK
+        if: steps.gradle.outputs.status == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-android-v2-release-unsigned
+          path: clients/android-v2/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
