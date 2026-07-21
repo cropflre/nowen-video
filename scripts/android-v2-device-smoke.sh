@@ -8,7 +8,7 @@ chmod +x android/gradlew
 
 set +e
 ./android/gradlew -p clients/android-v2 \
-  connectedDebugAndroidTest \
+  :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest \
   --no-daemon --stacktrace >"$log_file" 2>&1
 status=$?
