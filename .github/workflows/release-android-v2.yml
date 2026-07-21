@@ -16,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'clients/android-v2/**'
+      - 'scripts/android-v2-version.sh'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -29,10 +30,6 @@ on:
         description: 'Android version name, for example 0.1.0-rc.1'
         required: true
         default: '0.1.0-rc.1'
-      version_code:
-        description: 'Positive Android version code'
-        required: true
-        default: '1'
 
 permissions:
   contents: read
@@ -48,6 +45,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
     env:
       ANDROID_V2_KEYSTORE_BASE64: ${{ secrets.ANDROID_V2_KEYSTORE_BASE64 }}
       ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_V2_KEYSTORE_PASSWORD }}
@@ -68,36 +66,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/android-v2-version.sh --self-test
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            version_name="0.0.0-ci"
-            version_code="1"
+            version_name="0.0.0-alpha.1"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             version_name="${GITHUB_REF_NAME#android-v2-v}"
-            core_version="${version_name%%-*}"
-            IFS='.' read -r major minor patch <<< "$core_version"
-            if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ || ! "$patch" =~ ^[0-9]+$ ]]; then
-              echo "Tag must use android-v2-vMAJOR.MINOR.PATCH with an optional suffix."
-              exit 1
-            fi
-            version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
           else
             version_name='${{ inputs.version_name }}'
-            version_code='${{ inputs.version_code }}'
           fi
 
-          if [[ ! "$version_name" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
-            echo "Invalid Android version name: $version_name"
-            exit 1
-          fi
-          if [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Android version code must be a positive integer."
-            exit 1
-          fi
-
+          version_code="$(bash scripts/android-v2-version.sh "$version_name")"
           echo "ANDROID_VERSION_NAME=$version_name" >> "$GITHUB_ENV"
           echo "ANDROID_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "Resolved Android V2 version $version_name ($version_code)"
 
       - name: Prepare signing key

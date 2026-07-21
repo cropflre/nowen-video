@@ -27,11 +27,16 @@ check(!hasAnyReleaseSigningValue || hasReleaseSigning) {
         "ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS and ANDROID_SIGNING_KEY_PASSWORD together."
 }
 
+val versionNameInput = environmentValue("ANDROID_VERSION_NAME")
 val versionCodeInput = environmentValue("ANDROID_VERSION_CODE")
+check((versionNameInput == null) == (versionCodeInput == null)) {
+    "ANDROID_VERSION_NAME and ANDROID_VERSION_CODE must be configured together. " +
+        "Use scripts/android-v2-version.sh to derive the version code."
+}
 val resolvedVersionCode = versionCodeInput?.toIntOrNull()
-    ?: if (versionCodeInput == null) 1 else error("ANDROID_VERSION_CODE must be a positive integer.")
+    ?: if (versionCodeInput == null) 100101 else error("ANDROID_VERSION_CODE must be a positive integer.")
 check(resolvedVersionCode > 0) { "ANDROID_VERSION_CODE must be a positive integer." }
-val resolvedVersionName = environmentValue("ANDROID_VERSION_NAME") ?: "0.1.0"
+val resolvedVersionName = versionNameInput ?: "0.1.0-alpha.1"
 
 android {
     namespace = "com.nowen.video.v2"
