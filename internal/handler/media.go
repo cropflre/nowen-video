@@ -302,10 +302,30 @@ func (h *MediaHandler) GetPersons(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": persons})
 }
 
-// GetPersonDetail 获取演员详情
+// GetPersonDetail 获取演员详情或搜索演职人员。
 // GET /api/persons/:id
+// GET /api/persons/search?q=xxx&limit=10
 func (h *MediaHandler) GetPersonDetail(c *gin.Context) {
 	personID := c.Param("id")
+	if personID == "search" {
+		keyword := strings.TrimSpace(c.Query("q"))
+		if keyword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "搜索关键词不能为空"})
+			return
+		}
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+		if limit < 1 || limit > 50 {
+			limit = 10
+		}
+		people, err := h.personRepo.Search(keyword, limit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "人物搜索失败"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": people})
+		return
+	}
+
 	person, err := h.personRepo.FindByID(personID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
