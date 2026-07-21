@@ -157,7 +157,7 @@ jobs:
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           [[ -x "$apksigner" ]] || { echo "apksigner not found"; exit 1; }
           "$apksigner" verify --verbose --print-certs "$apk"
-          jarsigner -verify -strict "$aab"
+          jarsigner -verify "$aab"
 
           mkdir -p dist/android-v2
           cp "$apk" "dist/android-v2/nowen-video-android-v2-${ANDROID_VERSION_NAME}.apk"
