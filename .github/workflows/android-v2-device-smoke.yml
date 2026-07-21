@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'clients/android-v2/**'
+      - 'scripts/android-v2-device-smoke.sh'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -12,6 +13,7 @@ on:
     branches: [main]
     paths:
       - 'clients/android-v2/**'
+      - 'scripts/android-v2-device-smoke.sh'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -63,14 +65,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: >-
-            bash -o pipefail -c '
-              ./android/gradlew -p clients/android-v2
-              connectedDebugAndroidTest
-              -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest
-              --no-daemon --stacktrace 2>&1 |
-              tee android-v2-device-smoke-api-${{ matrix.api-level }}.log
-            '
+          script: bash scripts/android-v2-device-smoke.sh ${{ matrix.api-level }}
 
       - name: Upload instrumentation reports
         if: always()
