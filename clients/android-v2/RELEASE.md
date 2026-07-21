@@ -154,8 +154,10 @@ apksigner verify --verbose --print-certs nowen-video-android-v2-0.1.0.apk
 AAB：
 
 ```bash
-jarsigner -verify -strict nowen-video-android-v2-0.1.0.aab
+jarsigner -verify nowen-video-android-v2-0.1.0.aab
 ```
+
+`jarsigner` 不使用 `-strict`，因为 Android 发布 keystore 通常是自签名证书；这里验证的是 AAB 内容与签名完整性，而不是公有 CA 信任链。
 
 SHA-256：
 
