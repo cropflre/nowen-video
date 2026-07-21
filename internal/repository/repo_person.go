@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"strings"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
@@ -56,8 +58,18 @@ func (r *PersonRepo) FindOrCreate(name string, tmdbID int) (*model.Person, error
 }
 
 func (r *PersonRepo) Search(keyword string, limit int) ([]model.Person, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" || limit <= 0 {
+		return []model.Person{}, nil
+	}
+
+	pattern := "%" + keyword + "%"
 	var people []model.Person
-	err := r.db.Where("name LIKE ?", "%"+keyword+"%").Limit(limit).Find(&people).Error
+	err := r.db.
+		Where("name LIKE ? OR orig_name LIKE ?", pattern, pattern).
+		Order("name ASC").
+		Limit(limit).
+		Find(&people).Error
 	return people, err
 }
 
