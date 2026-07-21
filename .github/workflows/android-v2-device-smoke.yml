@@ -63,11 +63,12 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: >-
-            ./android/gradlew -p clients/android-v2
-            connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest
-            --no-daemon --stacktrace
+          script: |
+            set -o pipefail
+            ./android/gradlew -p clients/android-v2 \
+              connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest \
+              --no-daemon --stacktrace 2>&1 | tee android-v2-device-smoke-api-${{ matrix.api-level }}.log
 
       - name: Upload instrumentation reports
         if: always()
@@ -75,7 +76,8 @@ jobs:
         with:
           name: android-v2-device-smoke-api-${{ matrix.api-level }}
           path: |
+            android-v2-device-smoke-api-${{ matrix.api-level }}.log
             clients/android-v2/app/build/reports/androidTests/connected/**
             clients/android-v2/app/build/outputs/androidTest-results/connected/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
