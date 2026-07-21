@@ -63,12 +63,14 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -o pipefail
-            ./android/gradlew -p clients/android-v2 \
-              connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest \
-              --no-daemon --stacktrace 2>&1 | tee android-v2-device-smoke-api-${{ matrix.api-level }}.log
+          script: >-
+            bash -o pipefail -c '
+              ./android/gradlew -p clients/android-v2
+              connectedDebugAndroidTest
+              -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest
+              --no-daemon --stacktrace 2>&1 |
+              tee android-v2-device-smoke-api-${{ matrix.api-level }}.log
+            '
 
       - name: Upload instrumentation reports
         if: always()
