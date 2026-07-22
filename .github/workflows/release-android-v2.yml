@@ -12,6 +12,10 @@
 #  - ANDROID_V2_KEY_PASSWORD
 #  - ANDROID_V2_CERTIFICATE_SHA256
 name: release-android-v2
+run-name: >-
+  release-android-v2
+  ${{ github.event_name == 'workflow_dispatch' && inputs.version_name || github.ref_name }}
+  ${{ github.event_name == 'workflow_dispatch' && inputs.request_id || github.run_id }}
 
 on:
   pull_request:
@@ -20,6 +24,7 @@ on:
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
       - 'scripts/android-v2-signing-preflight.sh'
+      - 'scripts/android-v2-release-candidate.sh'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -33,6 +38,10 @@ on:
         description: 'Android version name, for example 0.1.0-rc.1'
         required: true
         default: '0.1.0-rc.1'
+      request_id:
+        description: 'Optional unique caller correlation ID'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -75,6 +84,7 @@ jobs:
           bash scripts/android-v2-version.sh --self-test
           python3 scripts/android-v2-release-manifest.py --self-test
           bash scripts/android-v2-signing-preflight.sh --self-test
+          bash scripts/android-v2-release-candidate.sh --self-test
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             version_name="0.0.0-alpha.1"
