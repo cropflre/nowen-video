@@ -5,6 +5,8 @@ on:
     paths:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-device-smoke.sh'
+      - 'scripts/android-v2-device-p0.py'
+      - 'scripts/android_v2_p0/**'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-device-smoke.sh'
+      - 'scripts/android-v2-device-p0.py'
+      - 'scripts/android_v2_p0/**'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
