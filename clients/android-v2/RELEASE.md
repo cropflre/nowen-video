@@ -1,6 +1,6 @@
 # Android V2 Release Guide
 
-本文档说明 Android V2 的正式签名、GitHub Actions Secret、本地构建和发布流程。包名、升级与旧版迁移决策见 [MIGRATION.md](./MIGRATION.md)。
+本文档说明 Android V2 的正式签名、GitHub Actions Secret、本地构建和发布流程。普通用户安装与权限说明见 [README.md](./README.md)，包名、升级与旧版迁移决策见 [MIGRATION.md](./MIGRATION.md)，真机放行要求见 [SMOKE_TEST.md](./SMOKE_TEST.md)。
 
 ## 安全原则
 
@@ -161,7 +161,7 @@ Tag 构建成功后会创建草稿 GitHub Release，包含：
 - 签名 AAB
 - `SHA256SUMS.txt`
 
-发布前仍需完成真机安装、覆盖升级和关键播放链路回归。
+草稿 Release 不是自动放行。发布前仍需完成真机安装、覆盖升级和关键播放链路回归。
 
 ## 验证产物
 
@@ -184,3 +184,21 @@ SHA-256：
 ```bash
 sha256sum -c SHA256SUMS.txt
 ```
+
+## RC1 发布前检查
+
+只有以下项目全部完成，才能把草稿 Release 改为公开：
+
+- [ ] 发布 commit 已合并到 `main`，工作区与远端没有未记录改动。
+- [ ] `Android V2` 标准门禁通过：版本策略、后端契约、Android 单测、instrumentation 编译、Lint、Debug 和 Release 构建全绿。
+- [ ] `release-android-v2` 使用正式 Secrets 构建成功，APK/AAB 验签通过。
+- [ ] `Android V2 Device Smoke` 的 Android 8、13、15 三个任务全部通过。
+- [ ] APK、AAB、`SHA256SUMS.txt` 和 Release 版本号来自同一次 tag 构建。
+- [ ] 当前签名证书与上一版可升级 V2 Release 一致。
+- [ ] Fresh install、旧版并行安装、RC → 更高 RC、RC → Stable 覆盖升级均验证通过。
+- [ ] [SMOKE_TEST.md](./SMOKE_TEST.md) 中所有 P0 为 `PASS`，或已有明确批准的非阻断已知问题。
+- [ ] Release Notes 列出新增能力、修复、已知限制、最低 Android 版本和迁移说明。
+- [ ] 公开附件不包含 Debug APK、未签名 Release、临时 CI 签名包、keystore 或凭据。
+- [ ] 回归记录、设备信息、APK SHA-256 和 workflow 链接已附到 RC Issue 或草稿 Release。
+
+出现升级失败、签名不一致、数据串号、下载损坏、凭据泄露或 P0 崩溃时，必须停止发布并用更高 versionCode 修复，不能要求用户卸载降级。
