@@ -141,7 +141,12 @@ def prepare(args: argparse.Namespace) -> pathlib.Path:
     logcat = (logs.stdout or "") + (logs.stderr or "")
     _capture(evidence / "launch-logcat.txt", logcat)
     crashes = _crashes(logcat)
-    checks.append(_check("AUTO-09", "启动期间未发现崩溃或 ANR", "PASS" if not crashes else "FAIL", "no blocking pattern found" if not crashes else "\n---\n".join(crashes)))
+    checks.append(_check(
+        "AUTO-09",
+        "启动期间未发现崩溃或 ANR",
+        "PASS" if not crashes else "FAIL",
+        "no blocking pattern found" if not crashes else f"{len(crashes)} blocking pattern(s) found; inspect local-only launch-logcat.txt",
+    ))
     evidence_files = sorted(path.name for path in evidence.iterdir())
     required_evidence = {"dumpsys-package.txt", "dumpsys-activity.txt", "dumpsys-window.txt", "launch-logcat.txt"}
     checks.append(_check("AUTO-10", "本地证据已采集", "PASS" if required_evidence.issubset(evidence_files) else "BLOCKED", ", ".join(evidence_files)))
@@ -225,6 +230,9 @@ def validate_session(payload: dict[str, Any]) -> list[str]:
     if payload.get("required_case_ids") != expected_required:
         errors.append("required_case_ids do not match the scope")
     automatic_ids = [item.get("id") for item in payload.get("automatic_checks", [])]
+    expected_automatic_ids = [f"AUTO-{index:02d}" for index in range(1, 11)]
+    if automatic_ids != expected_automatic_ids:
+        errors.append("automatic check IDs/order do not match AUTO-01 through AUTO-10")
     if len(automatic_ids) != len(set(automatic_ids)):
         errors.append("automatic check IDs are duplicated")
     required = set(expected_required)
