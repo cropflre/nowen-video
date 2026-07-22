@@ -1,7 +1,9 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -10,27 +12,36 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
+import com.nowen.video.v2.core.data.SocialCatalogRepository
 import com.nowen.video.v2.core.designsystem.ElevatedPanel
 import com.nowen.video.v2.core.designsystem.MediaPosterCard
 import com.nowen.video.v2.core.designsystem.MessagePanel
 import com.nowen.video.v2.core.designsystem.NowenPage
 import com.nowen.video.v2.core.model.MediaCard
+import com.nowen.video.v2.core.model.MovieCollection
+import com.nowen.video.v2.core.model.Person
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,13 +51,24 @@ import kotlinx.coroutines.launch
 data class SearchUiState(
     val query: String = "",
     val loading: Boolean = false,
-    val results: List<MediaCard> = emptyList(),
+    val mediaResults: List<MediaCard> = emptyList(),
+    val peopleResults: List<Person> = emptyList(),
+    val collectionResults: List<MovieCollection> = emptyList(),
+    val unavailableSections: List<String> = emptyList(),
     val error: String? = null,
-)
+) {
+    val hasResults: Boolean
+        get() = mediaResults.isNotEmpty() || peopleResults.isNotEmpty() || collectionResults.isNotEmpty()
+
+    val unavailableMessage: String?
+        get() = unavailableSections.takeIf { it.isNotEmpty() }
+            ?.joinToString(prefix = "部分结果暂不可用：", separator = "、")
+}
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: NowenRepository,
+    private val socialRepository: SocialCatalogRepository,
     val store: ServerSessionStore,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
@@ -57,17 +79,53 @@ class SearchViewModel @Inject constructor(
         _state.update { it.copy(query = value, error = null) }
         searchJob?.cancel()
         if (value.isBlank()) {
-            _state.update { it.copy(results = emptyList(), loading = false) }
+            _state.value = SearchUiState(query = value)
             return
         }
         searchJob = viewModelScope.launch {
             delay(280)
-            _state.update { it.copy(loading = true) }
-            repository.search(value)
-                .onSuccess { results -> _state.update { it.copy(loading = false, results = results) } }
-                .onFailure { error ->
-                    _state.update { it.copy(loading = false, error = error.message ?: "搜索失败") }
+            val keyword = value.trim()
+            _state.update { it.copy(loading = true, error = null, unavailableSections = emptyList()) }
+
+            val mediaDeferred = async { repository.search(keyword) }
+            val peopleDeferred = async { socialRepository.searchPeople(keyword) }
+            val collectionsDeferred = async { socialRepository.searchCollections(keyword) }
+
+            val media = mediaDeferred.await()
+            val people = peopleDeferred.await()
+            val collections = collectionsDeferred.await()
+            val unavailable = buildList {
+                if (media.isFailure) add("影视")
+                if (people.isFailure) add("人物")
+                if (collections.isFailure) add("合集")
+            }
+
+            if (unavailable.size == 3) {
+                val error = media.exceptionOrNull()
+                    ?: people.exceptionOrNull()
+                    ?: collections.exceptionOrNull()
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        mediaResults = emptyList(),
+                        peopleResults = emptyList(),
+                        collectionResults = emptyList(),
+                        unavailableSections = emptyList(),
+                        error = error?.message ?: "搜索失败",
+                    )
                 }
+            } else {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        mediaResults = media.getOrDefault(emptyList()),
+                        peopleResults = people.getOrDefault(emptyList()),
+                        collectionResults = collections.getOrDefault(emptyList()),
+                        unavailableSections = unavailable,
+                        error = null,
+                    )
+                }
+            }
         }
     }
 }
@@ -76,6 +134,8 @@ class SearchViewModel @Inject constructor(
 fun SearchScreen(
     modifier: Modifier = Modifier,
     onMediaClick: (String) -> Unit,
+    onPersonClick: (String) -> Unit,
+    onCollectionClick: (String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -97,18 +157,128 @@ fun SearchScreen(
             state.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
             state.error != null -> MessagePanel("搜索失败", state.error!!)
             state.query.isBlank() -> MessagePanel("开始探索", "输入关键词即可搜索当前服务器。")
-            state.results.isEmpty() -> MessagePanel("没有找到结果", "换一个关键词试试。")
-            else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(state.results, key = { it.resolvedId }) { media ->
-                    MediaPosterCard(
-                        title = media.displayTitle,
-                        subtitle = media.year?.toString(),
-                        imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                        progress = media.normalizedProgress,
-                        onClick = { onMediaClick(media.resolvedId) },
+            !state.hasResults -> MessagePanel("没有找到结果", "换一个关键词试试。")
+            else -> {
+                state.unavailableMessage?.let { warning ->
+                    Text(
+                        warning,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.height(12.dp))
+                }
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp),
+                ) {
+                    if (state.mediaResults.isNotEmpty()) {
+                        item { SearchSectionHeader("影视", state.mediaResults.size) }
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                items(state.mediaResults, key = { "media-${it.resolvedId}" }) { media ->
+                                    MediaPosterCard(
+                                        title = media.displayTitle,
+                                        subtitle = media.year?.toString(),
+                                        imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                                        progress = media.normalizedProgress,
+                                        onClick = { onMediaClick(media.resolvedId) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (state.peopleResults.isNotEmpty()) {
+                        item { SearchSectionHeader("人物", state.peopleResults.size) }
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(state.peopleResults, key = { "person-${it.id}" }) { person ->
+                                    SearchPersonCard(
+                                        person = person,
+                                        imageUrl = personProfileUrl(session.activeServer?.baseUrl, person.id),
+                                        onClick = { onPersonClick(person.id) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (state.collectionResults.isNotEmpty()) {
+                        item { SearchSectionHeader("电影合集", state.collectionResults.size) }
+                        item {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                items(state.collectionResults, key = { "collection-${it.id}" }) { collection ->
+                                    MediaPosterCard(
+                                        title = collection.name,
+                                        subtitle = listOfNotNull(
+                                            collection.yearRange.takeIf(String::isNotBlank),
+                                            collection.mediaCount.takeIf { it > 0 }?.let { "$it 部" },
+                                        ).joinToString(" · ").ifBlank { "电影合集" },
+                                        imageUrl = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
+                                        progress = 0f,
+                                        onClick = { onCollectionClick(collection.id) },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchSectionHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text("$count 项", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SearchPersonCard(
+    person: Person,
+    imageUrl: String?,
+    onClick: () -> Unit,
+) {
+    ElevatedPanel(
+        Modifier
+            .width(220.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = person.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    person.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    person.originalName.ifBlank { "演职人员" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -186,7 +356,7 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileDestinationRow(
-    icon: ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit,

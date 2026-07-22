@@ -71,6 +71,12 @@ interface SocialCatalogApi {
         @Query("sort") sort: String = "name_asc",
     ): PaginatedEnvelope<MovieCollection>
 
+    @GET("collections/search")
+    suspend fun searchCollections(
+        @Query("keyword") keyword: String,
+        @Query("limit") limit: Int = 10,
+    ): ApiEnvelope<List<MovieCollection>>
+
     @GET("collections/{id}")
     suspend fun collection(@Path("id") id: String): ApiEnvelope<CollectionWithMedia>
 
@@ -79,6 +85,12 @@ interface SocialCatalogApi {
 
     @GET("media/{id}/persons")
     suspend fun mediaPersons(@Path("id") id: String): ApiEnvelope<List<MediaPerson>>
+
+    @GET("persons/search")
+    suspend fun searchPeople(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 10,
+    ): ApiEnvelope<List<Person>>
 
     @GET("persons/{id}")
     suspend fun person(@Path("id") id: String): ApiEnvelope<Person>
@@ -145,6 +157,10 @@ class SocialCatalogRepository @Inject constructor(
 
     suspend fun collections(): Result<PaginatedEnvelope<MovieCollection>> = call { api.collections() }
 
+    suspend fun searchCollections(query: String, limit: Int = 10): Result<List<MovieCollection>> = call {
+        if (query.isBlank()) emptyList() else api.searchCollections(query.trim(), limit).data
+    }
+
     suspend fun collection(id: String): Result<CollectionWithMedia> = call { api.collection(id).data }
 
     suspend fun mediaCollection(mediaId: String): Result<CollectionWithMedia?> = call {
@@ -153,6 +169,10 @@ class SocialCatalogRepository @Inject constructor(
 
     suspend fun mediaPersons(mediaId: String): Result<List<MediaPerson>> = call {
         api.mediaPersons(mediaId).data.sortedBy(MediaPerson::sortOrder)
+    }
+
+    suspend fun searchPeople(query: String, limit: Int = 10): Result<List<Person>> = call {
+        if (query.isBlank()) emptyList() else api.searchPeople(query.trim(), limit).data
     }
 
     suspend fun person(id: String): Result<Person> = call { api.person(id).data }
