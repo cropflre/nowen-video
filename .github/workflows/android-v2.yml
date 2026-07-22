@@ -7,6 +7,7 @@ on:
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
       - 'scripts/android-v2-signing-preflight.sh'
+      - 'scripts/android-v2-release-candidate.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -27,6 +28,7 @@ on:
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
       - 'scripts/android-v2-signing-preflight.sh'
+      - 'scripts/android-v2-release-candidate.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -74,6 +76,7 @@ jobs:
           bash scripts/android-v2-version.sh --self-test
           python3 scripts/android-v2-release-manifest.py --self-test
           bash scripts/android-v2-signing-preflight.sh --self-test
+          bash scripts/android-v2-release-candidate.sh --self-test
 
       - name: Backend contract tests
         id: go
