@@ -1,160 +1,245 @@
 # Nowen Video Android V2
 
-全新的 Kotlin + Jetpack Compose 原生客户端，与旧版 `android/` 并行开发。
+基于 **Kotlin、Jetpack Compose、Media3、Paging 3 和 WorkManager** 的原生 Android 客户端。V2 与旧版 `android/` 并行开发，RC1 使用独立包名，不会覆盖旧客户端。
+
+> 当前阶段：**RC1 候选版**  
+> 最低系统：**Android 8.0 / API 26**  
+> 目标系统：**Android 15 / API 35**
+
+## 文档入口
+
+- [正式签名、版本号与发布流程](./RELEASE.md)
+- [包名、覆盖升级与旧版迁移策略](./MIGRATION.md)
+- [Android 8 / 13 / 15 真机冒烟检查表](./SMOKE_TEST.md)
 
 ## 当前能力
 
-- 多服务器保存、切换、删除与连接探测
-- mDNS 自动发现局域网 Nowen Video，未收到广播时回退到私有网段常用端口探测
-- CameraX + ML Kit 设备端二维码扫描，可自动检测并添加服务器
-- Android Keystore 加密保存每台服务器的 Token
-- 登录与首次强制修改密码
-- Hills Calm × Nowen Deep Space 设计系统
-- 首页：继续观看、媒体库、最近添加
-- 五栏主导航：首页、媒体库、搜索、下载、我的
-- Paging 3 媒体库：按服务端稳定分页加载电影与剧集合集
-- 媒体库筛选：媒体库、内容类型、标题、类型标签、年份范围
-- 媒体库排序：最近添加、标题、年份、评分及升降序
-- 840dp 起启用海报网格与详情预览双栏布局，手机保持单栏导航
-- 电影/单集详情页，支持收藏切换、合集入口和演职人员入口
-- 我的收藏：列表、打开详情、取消收藏及幂等状态同步
-- 观看历史：进度展示、单条删除、确认后清空全部记录
-- 系列合集：合集列表、封面、简介和完整作品详情
-- 人物详情：头像、姓名、角色信息及当前服务器中的参演作品
-- Media3 原生播放，支持 Direct Play、Remux、HLS 和预处理流地址
-- 播放进度恢复、每 10 秒定时上报、暂停/拖动/退后台/退出时即时补报
-- 断网进度持久化队列，按服务器和账号隔离，恢复连接后自动补同步
-- Media3 实时音轨、内嵌字幕和外挂字幕选择
-- 播放速度、画面比例和自动下一集偏好持久化
-- 剧集播放结束后显示下一集信息与 5 秒自动续播倒计时
-- WorkManager 前台离线下载、HTTP Range 断点续传与系统约束调度
-- 离线任务按服务器和账号隔离，Token 在 Worker 执行时从 Android Keystore 读取
-- 下载暂停、继续、失败重试、删除、启动恢复和过期残留维护
-- 默认仅 Wi-Fi 下载，可切换移动网络；离线空间上限支持 5–100 GB
-- Media3 本地文件播放，离线观看进度继续写入待同步队列
-- 独立服务器会话和请求 Host 重写
-- 首页、搜索、续播三种后端媒体响应兼容
+### 服务器与账号
 
-## 模块
+- 保存、切换和删除多个 Nowen Video 服务器。
+- 使用 mDNS 自动发现局域网服务器；无广播时回退到私有 IPv4 `/24` 网段常用端口探测。
+- CameraX + bundled ML Kit 设备端二维码识别，支持 URL、JSON 和 `nowen-video://server`。
+- Android Keystore + AES/GCM 按服务器加密保存 Token。
+- 登录、退出登录和首次强制修改密码。
+- 多服务器、多账号凭据和下载任务隔离。
+
+### 浏览与搜索
+
+- 五栏主导航：首页、媒体库、搜索、下载、我的。
+- 首页展示继续观看、媒体库和最近添加；附属接口失败不会导致整页白屏。
+- Paging 3 媒体库，支持媒体库、类型、标题、标签、年份和排序筛选。
+- 840dp 以上启用海报网格与详情预览双栏布局。
+- 搜索并发聚合影视、人物和电影合集；单个分类接口失败时保留其他成功结果。
+- 电影、单集、剧集、人物和电影合集详情导航。
+- 剧集季选择、单集列表、下一集查询和自动续播。
+- 收藏与观看历史使用 Paging 3 跨页加载，支持取消收藏、删除单条历史和清空历史。
+
+### 播放
+
+- Media3 原生播放，支持 Direct Play、Remux、HLS 和预处理流。
+- 播放进度恢复，每 10 秒定时上报，并在暂停、拖动、退后台和退出时补报。
+- 断网进度写入本地队列，恢复连接后按服务器和账号补同步。
+- 实时音轨、内嵌字幕和外挂字幕选择。
+- 播放速度、画面比例和自动下一集偏好持久化。
+- 下一集信息和 5 秒自动续播倒计时。
+
+### 离线
+
+- WorkManager 前台下载、HTTP Range 断点续传和网络约束调度。
+- 下载暂停、继续、失败重试、删除、启动恢复和残留维护。
+- 默认仅 Wi-Fi 下载，可允许移动网络。
+- 离线空间上限支持 5、10、20、50 和 100 GB。
+- Media3 本地文件播放；离线播放进度恢复联网后补同步。
+
+## 安装 RC1
+
+公开测试包应来自 Android V2 专属 GitHub Release，文件通常包括：
 
 ```text
-clients/android-v2/
-├── app                  Android Application、Activity、权限、启动下载恢复与前台服务声明
-├── core/model           领域模型、发现模型、社交目录模型、筛选条件、下载状态和 API 契约
-├── core/designsystem    主题、Token 和通用 Compose 组件
-├── core/data            会话、Keystore、Retrofit、NSD、局域网探测、Paging、WorkManager 与 Repository
-└── feature/main         服务器、认证、首页、媒体库、社交目录、详情、播放器和下载中心
+nowen-video-android-v2-<version>.apk
+nowen-video-android-v2-<version>.aab
+SHA256SUMS.txt
 ```
 
-当前先保持五个稳定模块，避免重写初期过度拆分。后续在功能边界稳定后再拆出 `feature:player`、`feature:downloads` 等模块。
+普通用户安装 **APK**。AAB 用于应用商店或分发平台，不可直接在手机上点击安装。
 
-## 服务器发现与扫码
+### 校验文件
 
-- 服务器端广播标准 `_nowen-video._tcp.local` DNS-SD 服务；Android 使用 `NsdManager` 读取地址、端口、版本和服务器名称。
-- 扫描期间持有可控的 Wi-Fi MulticastLock，离开服务器页面或扫描超时后立即释放。
-- mDNS 无结果时，并行探测当前私有 IPv4 `/24` 网段的 80、443、3000、8080、8443、9090 端口。
-- HTTP 探测通过公开的 `/api/auth/status` 响应识别 Nowen Video，不会把普通网页或其他 NAS 服务加入结果。
-- mDNS 与 HTTP 结果按标准化 URL 去重，优先保留包含 TXT 元信息的 mDNS 结果。
-- 打开服务器中心时自动扫描，也可手动刷新；已保存服务器会直接显示为“打开”，不会重复创建记录。
-- 二维码识别由 CameraX 和 bundled ML Kit 在设备本地执行，相机画面不会上传。
-- 支持纯服务器地址、JSON 和自定义链接三种二维码载荷：
+Linux / macOS：
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+Windows PowerShell 可计算单个文件：
+
+```powershell
+Get-FileHash .\nowen-video-android-v2-0.1.0-rc.1.apk -Algorithm SHA256
+```
+
+计算结果应与 `SHA256SUMS.txt` 一致。
+
+### ADB 安装或覆盖升级
+
+```bash
+adb install -r nowen-video-android-v2-0.1.0-rc.1.apk
+```
+
+- 首次安装会创建 `com.nowen.video.v2`。
+- RC1 → 更高 RC → Stable 只有在 **applicationId 相同、正式签名相同、versionCode 更高** 时才能原位升级。
+- 旧版 `com.nowen.video` 可与 V2 并行安装。
+- 不要通过卸载 V2 来完成正式升级；卸载会清除 V2 本地会话、偏好和下载记录。
+
+## 连接服务器
+
+1. 确保手机和 Nowen Video 服务器网络互通。
+2. 首次启动阅读并关闭旧版迁移说明。
+3. 选择局域网发现、扫描二维码或手动添加。
+4. 等待健康检测通过后登录。
+5. 旧版服务器和 Token 不会自动迁移，需要重新添加并登录。
+
+常用手动地址示例：
 
 ```text
 http://192.168.1.10:8080
-
-{"type":"nowen-video-server","name":"客厅 NAS","url":"http://192.168.1.10:8080"}
-
-nowen-video://server?url=http%3A%2F%2F192.168.1.10%3A8080&name=Home%20NAS
+https://video.example.com
 ```
-
-扫码后仍会先执行服务器健康检测，通过后才保存并进入登录流程。
-
-## 收藏、历史、合集与人物
-
-- 媒体详情并行读取收藏状态、所属合集和演职人员；附属接口失败不会阻断播放、下载或基本详情。
-- 收藏操作支持重复添加和重复移除的幂等兼容，详情页与“我的收藏”保持一致。
-- 观看历史显示服务端真实播放比例，支持删除单条记录和二次确认后清空当前账号全部历史。
-- “我的”页面集中提供收藏、观看历史和系列合集入口，不增加新的一级底部导航。
-- 合集列表使用服务器合集海报接口，详情页展示简介、年份范围、作品数量及全部电影。
-- 媒体详情的演职人员卡片可进入人物页；人物页并行加载个人资料和馆藏作品。
-- 当前人物页中的电影和单集可继续进入媒体详情；剧集作品暂以只读列表展示，等待完整季集导航阶段接入。
-
-## 媒体库分页与筛选
-
-- `/api/media/mixed` 在服务端完成筛选、排序后再分页，避免客户端本地筛选造成重复、漏项和空页。
-- 支持 `library_id`、`type`、`genre`、`q`、`year_from`、`year_to`、`sort`、`order` 参数。
-- Android 每页加载 36 项，预取距离为 12，关闭占位符；筛选条件变化时自动取消旧分页流并创建新流。
-- 手机点击海报进入完整详情；宽屏设备在右侧直接预览详情，并可立即播放或打开完整详情。
-- 分页首屏、追加页、空结果和网络错误均提供独立加载与重试状态。
-
-## 离线下载
-
-- 影片详情页可创建、暂停、继续或重试离线任务；下载中心统一展示进度、错误与存储占用。
-- WorkManager 根据网络与存储条件执行任务，默认要求非计费网络，并以 `dataSync` 前台服务显示下载通知。
-- 文件先写入 `.part`，再次执行时发送 HTTP `Range` 请求；服务器不支持 Range 时会安全地从头重新下载。
-- 任务记录与文件目录按 `serverId + userId` 隔离，任务参数中不保存 Token，Worker 通过现有 Keystore 凭据访问服务器。
-- 默认离线配额为 20 GB，可选择 5、10、20、50 或 100 GB；下载前和写入过程中都会检查配额及设备剩余空间。
-- 应用启动时恢复排队或下载中的任务，每日维护会标记丢失文件并清理长期残留的无主文件。
-- 已完成文件由独立 Media3 本地播放器打开；无网络时的播放进度先保存在本机，恢复连接后自动同步。
-- 当前设备端下载面向 Direct Play、Remux 或预处理后的单文件地址。仅返回 HLS/m3u8 的媒体会明确提示，避免把播放列表误存为视频文件。
-
-## 播放进度策略
-
-- 打开在线播放器时先重试当前服务器、当前账号的离线进度，再读取服务端进度。
-- 离线播放器只读取本机待同步进度，不依赖当前网络状态。
-- 已观看达到 95% 或服务端标记完成时，从头播放，避免恢复到片尾字幕。
-- 播放中每 10 秒上报一次；暂停、拖动进度、播放结束、应用退到后台和退出播放器时立即补报。
-- 上报前先写入本地 DataStore，网络失败时保留最新记录；同一服务器、账号、媒体只保留最新进度。
-- 待同步队列最多保存 200 条，防止长期离线导致本地数据无限增长。
-- 单元测试覆盖无效进度拒绝、超范围钳制和 95% 完播重置规则。
-
-## 播放器设置
-
-- 音轨与内嵌字幕直接读取 ExoPlayer 当前 Tracks，切换后立即生效。
-- 外挂字幕通过服务端字幕接口注入 MediaItem，兼容 SRT、ASS/SSA、WebVTT 和 TTML。
-- 倍速支持 0.5x 至 2x；画面支持适应、裁切和拉伸。
-- 倍速、画面比例、自动下一集使用独立 DataStore 保存，重新进入播放器后继续沿用。
-- 自动下一集使用当前媒体的 series、season、episode 查询后端，不通过列表位置猜测下一集。
 
 ## 本地构建
 
-项目复用仓库根 Android 工程的 Gradle Wrapper。RC1 基线会同时验证单元测试、Lint、Debug APK 和未签名 Release APK：
+项目复用仓库根目录的 Gradle Wrapper，需要 **JDK 17** 和 Android SDK 35。
+
+### Debug APK
+
+Debug 使用 `com.nowen.video.v2.debug` 和 Android debug key，可与正式 V2 并行安装：
 
 ```bash
-./android/gradlew -p clients/android-v2 \
-  testDebugUnitTest lintDebug assembleDebug assembleRelease
+chmod +x android/gradlew
+./android/gradlew -p clients/android-v2 testDebugUnitTest lintDebug assembleDebug
+adb install -r clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Windows：
 
 ```powershell
-.\android\gradlew.bat -p clients\android-v2 `
-  testDebugUnitTest lintDebug assembleDebug assembleRelease
+.\android\gradlew.bat -p clients\android-v2 testDebugUnitTest lintDebug assembleDebug
+adb install -r clients\android-v2\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-构建产物：
+### 未签名 Release
+
+```bash
+./android/gradlew -p clients/android-v2 assembleRelease
+```
+
+产物：
 
 ```text
-clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
 clients/android-v2/app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-未签名 Release APK 仅用于验证 R8、资源压缩和 Release 变体是否可成功构建，不能作为正式升级包发布。正式签名与 APK/AAB 发布流程将在 RC1 发布任务中独立接入。
+**未签名 Release 仅用于验证 R8、资源压缩和 Release 变体，不具备 Android 安装签名，不能分发或安装。**
 
-仓库的 `Android V2` 工作流会在 Android V2、服务端路由以及相关 handler、service、repository、model、middleware 契约变化时执行后端测试、Android 单元测试、Lint、Debug/Release 构建门禁，并保留 14 天日志、Debug APK 和未签名 Release APK。
+### 正式签名 APK / AAB
 
-## 与旧版并行安装
+正式构建需要同时配置四项签名环境变量和版本变量：
 
-V2 当前使用独立应用 ID：
+```bash
+export ANDROID_VERSION_NAME='0.1.0-rc.1'
+export ANDROID_VERSION_CODE="$(bash scripts/android-v2-version.sh "$ANDROID_VERSION_NAME")"
+export ANDROID_SIGNING_STORE_FILE="$HOME/keys/nowen-video-android-v2-release.jks"
+export ANDROID_SIGNING_STORE_PASSWORD='replace-me'
+export ANDROID_SIGNING_KEY_ALIAS='nowen-video-android-v2'
+export ANDROID_SIGNING_KEY_PASSWORD='replace-me'
 
-```text
-com.nowen.video.v2
+./android/gradlew -p clients/android-v2 \
+  clean testDebugUnitTest lintDebug assembleRelease bundleRelease
 ```
 
-旧客户端不会被覆盖。V2 稳定并完成迁移验证后，再决定是否切换正式应用 ID 和签名。
+产物：
 
-## 下一阶段
+```text
+clients/android-v2/app/build/outputs/apk/release/app-release.apk
+clients/android-v2/app/build/outputs/bundle/release/app-release.aab
+```
 
-- 剧集完整详情、季选择与单集导航
-- 人物剧集作品跳转和搜索结果中的人物、合集聚合
-- 收藏与观看历史的 Paging 3 跨页加载
+密钥生成、GitHub Actions Secrets、tag 和草稿 Release 流程见 [RELEASE.md](./RELEASE.md)。
+
+## 自动化门禁
+
+每个相关 Pull Request 会执行：
+
+- Android 版本策略脚本自测。
+- 服务端 handler / service 契约测试。
+- Android 单元测试。
+- instrumentation APK 编译。
+- Lint、Debug APK 和未签名 Release APK 构建。
+- 临时 keystore 签名 APK/AAB 构建与验签。
+- Android 8、13、15 首次启动模拟器冒烟。
+
+本地执行首次启动 instrumentation 用例：
+
+```bash
+./android/gradlew -p clients/android-v2 \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest
+```
+
+## 权限与系统行为
+
+| 权限 / 能力 | 用途 |
+|---|---|
+| 网络与网络状态 | API、播放、下载和重试判断 |
+| Wi-Fi 状态与 MulticastLock | mDNS 与局域网发现 |
+| 相机 | 扫描服务器二维码，仅在用户进入扫码页后申请 |
+| 前台服务 `dataSync` | 长时间离线下载 |
+| Android 13+ 通知 | 显示前台下载进度 |
+
+- 相机识别在设备本地完成，画面不会上传。
+- HTTP 局域网服务器可连接，但公网部署应优先使用 HTTPS。
+- 拒绝通知权限可能影响下载前台通知的可见性，应按真机检查表验证设备行为。
+
+## RC1 已知限制
+
+- 局域网探测只扫描当前私有 IPv4 `/24` 和预设常用端口；跨 VLAN、访客 Wi-Fi、AP 隔离或复杂 IPv6 网络可能需要手动输入地址。
+- 路由器屏蔽组播时 mDNS 不可用，会自动回退 HTTP 探测，但不保证发现非标准端口。
+- 离线下载面向 Direct Play、Remux 或预处理后的单文件地址；仅返回 HLS/m3u8 的媒体不会下载为单文件。
+- V2 不读取旧版私有数据和 Token；服务器需要重新添加并登录。
+- RC1 是公开测试候选版本，关键播放格式、厂商后台限制、通知和覆盖升级仍需真机验证。
+- Debug、RC 和 Stable 的数据目录按 applicationId 隔离；Debug 数据不会自动迁移到 Release。
+
+## 模块结构
+
+```text
+clients/android-v2/
+├── app                  Application、Activity、权限、启动恢复和前台服务声明
+├── core/model           领域模型、筛选、下载、发现与 API 契约
+├── core/designsystem    主题、Token 和通用 Compose 组件
+├── core/data            会话、Keystore、Retrofit、Paging、发现、下载和 Repository
+└── feature/main         服务器、认证、首页、媒体库、搜索、详情、播放器与下载中心
+```
+
+当前保持五个稳定模块，等功能边界和复用关系稳定后再拆分播放器、下载等独立 feature。
+
+## 提交问题
+
+提交 GitHub Issue 前请先完成 [SMOKE_TEST.md](./SMOKE_TEST.md) 中对应模块的检查，并附上：
+
+```text
+标题：[Android V2 RC1][设备/API][模块] 简短现象
+
+V2 版本 / commit：
+服务器版本 / commit：
+设备型号 / Android API：
+网络环境：
+媒体格式与播放方式：
+复现步骤：
+实际结果：
+预期结果：
+复现率：
+日志时间范围：
+附件：截图 / 录屏 / logcat / 服务端日志
+是否阻断 RC：是 / 否
+```
+
+安全问题、Token、服务器公网地址、账号和密钥不要直接粘贴到公开 Issue。

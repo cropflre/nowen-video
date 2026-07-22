@@ -1,6 +1,6 @@
 # Android V2 RC1 真机冒烟检查表
 
-本文档用于 RC1 候选包的真机、模拟器和升级回归。自动化只覆盖首次启动的稳定基础链路；播放器、局域网、下载、系统生命周期和真实 NAS 环境必须按本检查表执行。
+本文档用于 RC1 候选包的真机、模拟器和升级回归。自动化只覆盖首次启动的稳定基础链路；播放器、聚合搜索、局域网、下载、系统生命周期和真实 NAS 环境必须按本检查表执行。
 
 ## 自动化基线
 
@@ -17,13 +17,38 @@
 3. 迁移提示可以关闭；
 4. 服务器设置页、扫码入口和手动添加入口可见。
 
-本地执行：
+标准 `Android V2` 门禁同时验证：
+
+- Android 版本策略脚本；
+- 后端 handler / service 契约；
+- Android 单元测试；
+- instrumentation APK 编译；
+- Lint、Debug APK 和未签名 Release APK。
+
+`release-android-v2` 在 Pull Request 中使用临时 keystore，验证签名 APK/AAB 构建、`apksigner`、`jarsigner` 和校验文件生成链路。临时密钥产物不能分发。
+
+本地执行首次启动用例：
 
 ```bash
 ./android/gradlew -p clients/android-v2 \
-  connectedDebugAndroidTest \
+  :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.nowen.video.v2.AppLaunchSmokeTest
 ```
+
+## RC 候选包预检
+
+开始真机测试前必须确认测试对象是同一份候选产物：
+
+- [ ] APK、AAB 和 `SHA256SUMS.txt` 来自同一 Android V2 workflow 或草稿 Release。
+- [ ] APK SHA-256 与 `SHA256SUMS.txt` 一致。
+- [ ] `apksigner verify --verbose --print-certs` 通过。
+- [ ] AAB 使用 `jarsigner -verify` 验证通过。
+- [ ] 当前 RC 与上一个可升级版本使用同一份正式 V2 release keystore。
+- [ ] `versionName` 符合 `MAJOR.MINOR.PATCH-rc.N`，`versionCode` 由 `scripts/android-v2-version.sh` 生成。
+- [ ] Debug、未签名 Release、临时 CI 签名包没有混入公开测试附件。
+- [ ] 候选 commit 的标准门禁、签名门禁和 Android 8 / 13 / 15 设备门禁全部通过。
+
+结果和 workflow 链接应记录在 RC Issue 或草稿 Release 中。
 
 ## 测试环境记录
 
@@ -32,7 +57,9 @@
 | 项目 | 结果 |
 |---|---|
 | RC 版本 / commit |  |
-| APK SHA-256 |  |
+| APK 文件名 / SHA-256 |  |
+| APK 签名证书摘要 |  |
+| workflow / Release 地址 |  |
 | 服务器版本 / commit |  |
 | 设备型号 |  |
 | Android 版本 / API |  |
@@ -50,11 +77,13 @@
 - [ ] 旧版 `com.nowen.video` 已安装时，V2 可以并行安装且出现两个独立图标。
 - [ ] V2 首次启动显示迁移说明，不读取或修改旧版服务器与登录状态。
 - [ ] 关闭迁移说明后进入服务器设置页。
-- [ ] Debug 与 Release 包名符合预期；Debug 可与 V2 Release 并行安装。
+- [ ] Debug 使用 `com.nowen.video.v2.debug`，可与 V2 Release 并行安装。
+- [ ] RC 使用 `com.nowen.video.v2` 和正式 V2 签名。
 - [ ] RC1 → 更高 RC 覆盖升级成功，服务器、会话和偏好保留。
 - [ ] RC → Stable 覆盖升级成功，下载记录和本地文件保留。
 - [ ] 更低 versionCode 安装被系统拒绝，不以卸载作为正式回滚方案。
 - [ ] 卸载 V2 不影响旧版数据和运行。
+- [ ] 卸载后重装 V2 会清除 V2 私有数据，行为符合用户提示。
 
 ## P0：服务器发现与认证
 
@@ -70,16 +99,22 @@
 - [ ] 退出登录后 Token 清除，但服务器资料保留。
 - [ ] 多服务器切换时账号和 Token 不串用。
 
-## P0：媒体浏览与导航
+## P0：媒体浏览、搜索与导航
 
 - [ ] 首页继续观看、媒体库、最近添加可以加载。
 - [ ] 首页空数据和部分接口失败不会白屏。
 - [ ] 媒体库首屏、追加页、空结果和失败重试正常。
 - [ ] 类型、媒体库、关键词、标签、年份和排序组合生效。
 - [ ] 快速连续修改筛选时旧分页请求被取消，没有重复或漏项。
+- [ ] 搜索结果按影视、人物和电影合集分组展示。
+- [ ] 使用中文名和人物原名均能找到对应人物。
+- [ ] 点击影视、人物和合集搜索结果分别进入正确详情页。
+- [ ] 某一个搜索分类接口失败时，其他成功分类仍展示，并出现部分结果不可用提示。
+- [ ] 空关键词不发起搜索；无结果、全量失败和加载状态文案正确。
 - [ ] 电影、单集和剧集详情可以打开。
 - [ ] 剧集季选择、单集列表、详情与播放跳转正确。
 - [ ] 收藏、历史、合集和人物入口可以打开并返回。
+- [ ] 收藏和观看历史跨页加载正常，无重复或漏项。
 - [ ] 系统返回键不会跳到错误页面或退出整个应用。
 
 ## P0：在线播放
@@ -124,6 +159,7 @@
 
 - [ ] 手机单栏导航正常。
 - [ ] 840dp 及以上设备显示媒体库双栏布局。
+- [ ] 搜索三分组在窄屏、横屏和大字体下可滚动且不互相遮挡。
 - [ ] 横屏、分屏和大字体下主要操作没有被裁切。
 - [ ] 深色模式下文本、海报占位和对话框可读。
 - [ ] 状态栏、导航栏和刘海安全区没有遮挡内容。
@@ -136,9 +172,10 @@
 ```text
 标题：[Android V2 RC1][设备/API][模块] 简短现象
 
-版本：
+V2 版本 / commit：
+APK 文件名 / SHA-256：
 设备 / Android API：
-服务器版本：
+服务器版本 / commit：
 网络环境：
 媒体信息：
 
@@ -158,11 +195,17 @@
 是否阻断 RC：是 / 否
 ```
 
+公开 Issue 中不要粘贴 Token、密码、正式 keystore、服务器私有地址或包含凭据的完整日志。
+
 ## RC 放行条件
 
+- Android 版本策略、后端契约、单元测试、Lint、Debug/Release 构建门禁全部通过；
+- 签名 APK/AAB 构建、验签和 SHA-256 校验通过；
 - Android 8、13、15 自动启动冒烟全部通过；
 - 三个 API 级别各至少一台真机或可信设备验证安装与启动；
 - 所有 P0 用例为 `PASS`，或存在明确批准的非阻断已知问题；
 - 没有崩溃、数据串号、凭据泄露、下载文件损坏或无法升级问题；
+- 旧版并行、RC 覆盖升级和 RC → Stable 升级路径验证通过；
 - APK/AAB 签名、versionCode、SHA-256 与发布记录一致；
-- 回归结果附在 RC Issue 或 Release 草稿中。
+- README、已知限制、安装步骤和发布说明与候选版本一致；
+- 回归结果附在 RC Issue 或 Release 草稿中，由发布负责人确认后再公开 Release。

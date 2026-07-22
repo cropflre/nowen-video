@@ -7,6 +7,7 @@
 <p>
   <img src="https://img.shields.io/badge/Go-1.22-00ADD8?style=flat-square&logo=go" alt="Go">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react" alt="React">
+  <img src="https://img.shields.io/badge/Android-Kotlin%20%2B%20Compose-3DDC84?style=flat-square&logo=android" alt="Android">
   <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite" alt="SQLite">
   <img src="https://img.shields.io/badge/Docker-Alpine-2496ED?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="License">
@@ -17,7 +18,8 @@
   <a href="#-快速开始">快速开始</a> •
   <a href="#-核心特性">特性</a> •
   <a href="#%EF%B8%8F-配置说明">配置</a> •
-  <a href="./desktop/README.md">桌面客户端</a>
+  <a href="./desktop/README.md">桌面客户端</a> •
+  <a href="./clients/android-v2/README.md">Android V2</a>
 </p>
 
 </div>
@@ -28,6 +30,8 @@
 **单二进制 + SQLite**，Docker 一键启动，零配置即可使用。
 
 > 🖥️ **PC 桌面客户端** 已上线，支持 **MKV / HEVC / HDR / 杜比视界 / DTS / Atmos 零转码播放** → 详见 [desktop/README.md](./desktop/README.md)
+>
+> 📱 **Android V2 RC1 候选版** 已具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线下载 → 详见 [clients/android-v2/README.md](./clients/android-v2/README.md)
 
 ## 📸 功能截图
 
@@ -45,6 +49,7 @@
 - 👨‍👩‍👧‍👦 **多用户** — JWT 认证，独立观看历史/收藏/播放列表，家长控制，每日观看时长，内容分级
 - 🧠 **AI 助手** — 自然语言搜索、推荐理由、元数据增强、智能重命名、场景识别（章节/精彩片段）
 - 📡 **Emby API 兼容** — Infuse / Kodi / Emby 原生客户端无缝接入（140+ 接口）
+- 📱 **Android 原生客户端** — Kotlin + Compose，局域网发现、二维码添加、聚合搜索、Media3 播放、Paging 3 和离线下载
 - 💻 **投屏** — DLNA / Chromecast 设备发现与控制
 - 📊 **统计** — 观影时长、按日图表、管理员仪表板
 - 📁 **文件管理** — 浏览/导入/重命名/批量刮削，AI 重命名建议，操作审计日志
@@ -120,6 +125,23 @@ make build
 ./bin/nowen-video
 ```
 
+### 四、Android V2 RC1
+
+Android V2 最低支持 Android 8.0 / API 26。Debug 构建需要 JDK 17 和 Android SDK 35：
+
+```bash
+chmod +x android/gradlew
+./android/gradlew -p clients/android-v2 testDebugUnitTest lintDebug assembleDebug
+adb install -r clients/android-v2/app/build/outputs/apk/debug/app-debug.apk
+```
+
+正式签名、公开测试包安装、覆盖升级、旧版并行策略和真机检查表见：
+
+- [Android V2 README](./clients/android-v2/README.md)
+- [Release Guide](./clients/android-v2/RELEASE.md)
+- [Migration Guide](./clients/android-v2/MIGRATION.md)
+- [RC1 Smoke Test](./clients/android-v2/SMOKE_TEST.md)
+
 ## ⚙️ 配置说明
 
 配置加载顺序（后者覆盖前者）：
@@ -161,7 +183,9 @@ ai: { provider: ollama,   api_base: http://localhost:11434/v1,                  
 
 **后端** Go 1.22 · Gin · GORM + SQLite (WAL) · Zap · Viper · gorilla/websocket · fsnotify · FFmpeg
 
-**前端** React 18 · TypeScript · Vite · Tailwind CSS · Zustand · HLS.js · React Router · Framer Motion
+**Web 前端** React 18 · TypeScript · Vite · Tailwind CSS · Zustand · HLS.js · React Router · Framer Motion
+
+**Android V2** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
 
 **部署** Docker (Alpine 3.19) · docker-compose
 
@@ -170,12 +194,14 @@ ai: { provider: ollama,   api_base: http://localhost:11434/v1,                  
 - ✅ **v0.1 – v0.9** 核心播放、刮削、多用户、AI 助手、文件管理、Pulse 动态、分享、标签
 - ✅ **v0.9.5** 完整 Emby API 兼容层（Infuse / Kodi / Emby 原生客户端）
 - 🔄 **v1.0** ABR 无缝码率切换、FFmpeg 节流、移动端响应式、PWA、测试覆盖率 > 60%、Prometheus 监控
-- 🚀 **v1.1+** 移动原生 App、4K/HDR、WebDAV、分布式转码、AV1、插件市场
+- 🧪 **Android V2 RC1** 原生媒体库、搜索、播放、下载、迁移与正式签名发布验证
+- 🚀 **v1.1+** 4K/HDR、WebDAV、分布式转码、AV1、插件市场
 
 ## 💬 交流与反馈
 
 - **QQ 群**：`1093473044`
 - **Issues**：欢迎在 GitHub 上提交问题与建议
+- **Android V2 问题**：请使用 [RC1 缺陷模板](./clients/android-v2/SMOKE_TEST.md#缺陷记录模板)，不要公开 Token、密钥或私人服务器地址
 
 ## ☕ 赞赏支持
 
