@@ -149,7 +149,11 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 )
             }
             composable(MainTab.Search.route) {
-                SearchScreen(onMediaClick = ::openDetail)
+                SearchScreen(
+                    onMediaClick = ::openDetail,
+                    onPersonClick = ::openPerson,
+                    onCollectionClick = ::openCollection,
+                )
             }
             composable(MainTab.Downloads.route) {
                 DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
