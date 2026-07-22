@@ -172,24 +172,33 @@ list_existing_run_ids() {
 find_dispatched_run() {
   local source_commit="$1"
   local before_file="$2"
-  local attempt json run_id
-  for attempt in $(seq 1 90); do
+  local request_id="$3"
+  local attempt json json_file run_id
+  for ((attempt = 1; attempt <= 90; attempt++)); do
     json="$(gh run list \
       --repo "$REPOSITORY" \
       --workflow release-android-v2.yml \
       --event workflow_dispatch \
       --limit 30 \
-      --json databaseId,headSha,event,status,createdAt)"
-    run_id="$(python3 - "$source_commit" "$before_file" <<'PY' <<<"$json"
+      --json databaseId,headSha,displayTitle,event,status,createdAt)"
+    json_file="$(mktemp)"
+    printf '%s' "$json" > "$json_file"
+    run_id="$(python3 - "$source_commit" "$before_file" "$request_id" "$json_file" <<'PY'
 import json, pathlib, sys
-source_commit, before_path = sys.argv[1:]
+source_commit, before_path, request_id, json_path = sys.argv[1:]
 before = set(pathlib.Path(before_path).read_text(encoding="utf-8").split())
-for run in json.load(sys.stdin):
-    if str(run["databaseId"]) not in before and run.get("headSha") == source_commit:
+runs = json.loads(pathlib.Path(json_path).read_text(encoding="utf-8"))
+for run in runs:
+    if (
+        str(run["databaseId"]) not in before
+        and run.get("headSha") == source_commit
+        and request_id in (run.get("displayTitle") or "")
+    ):
         print(run["databaseId"])
         break
 PY
 )"
+    rm -f "$json_file"
     if [[ -n "$run_id" ]]; then
       printf '%s\n' "$run_id"
       return 0
@@ -215,22 +224,24 @@ dispatch_download_candidate() {
   gh repo view "$REPOSITORY" >/dev/null
 
   prepare_output_dir "$OUTPUT_DIR"
-  local before_file run_id
+  local before_file run_id request_id
   before_file="$(mktemp)"
+  request_id="candidate-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}"
   list_existing_run_ids > "$before_file"
 
   printf 'Dispatching release-android-v2 for %s at %s\n' "$VERSION_NAME" "$source_commit"
   gh workflow run release-android-v2.yml \
     --repo "$REPOSITORY" \
     --ref main \
-    -f "version_name=$VERSION_NAME"
+    -f "version_name=$VERSION_NAME" \
+    -f "request_id=$request_id"
 
-  run_id="$(find_dispatched_run "$source_commit" "$before_file")" || {
+  run_id="$(find_dispatched_run "$source_commit" "$before_file" "$request_id")" || {
     rm -f "$before_file"
     fail "unable to identify the newly dispatched workflow run"
   }
   rm -f "$before_file"
-  printf 'Watching workflow run %s\n' "$run_id"
+  printf 'Watching workflow run %s (%s)\n' "$run_id" "$request_id"
   gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
 
   gh run download "$run_id" \
@@ -238,6 +249,7 @@ dispatch_download_candidate() {
     --name nowen-video-android-v2-release \
     --dir "$OUTPUT_DIR"
   printf '%s\n' "$run_id" > "$OUTPUT_DIR/workflow-run-id.txt"
+  printf '%s\n' "$request_id" > "$OUTPUT_DIR/workflow-request-id.txt"
   printf 'Downloaded candidate artifact to %s\n' "$OUTPUT_DIR"
 }
 
@@ -313,25 +325,29 @@ if errors:
 print("Candidate metadata verification passed")
 PY
 
+  local apk_signature_verified=false
+  local aab_signature_verified=false
   if [[ "$SKIP_SIGNATURE_VERIFICATION" != true ]]; then
     local apksigner
     if apksigner="$(find_apksigner)"; then
       "$apksigner" verify --verbose --print-certs "$apk" >/dev/null
+      apk_signature_verified=true
       printf 'APK signature verification passed\n'
     else
       printf 'warning: apksigner not found; APK cryptographic verification skipped\n' >&2
     fi
     if command -v jarsigner >/dev/null 2>&1; then
       jarsigner -verify "$aab" >/dev/null
+      aab_signature_verified=true
       printf 'AAB signature verification passed\n'
     else
       printf 'warning: jarsigner not found; AAB cryptographic verification skipped\n' >&2
     fi
   fi
 
-  python3 - "$directory/candidate-verification.json" "$VERSION_NAME" "$version_code" "$REPOSITORY" "$source_commit" "$expected_fingerprint" <<'PY'
+  python3 - "$directory/candidate-verification.json" "$VERSION_NAME" "$version_code" "$REPOSITORY" "$source_commit" "$expected_fingerprint" "$apk_signature_verified" "$aab_signature_verified" <<'PY'
 import datetime, json, pathlib, sys
-output, version_name, version_code, repository, commit, fingerprint = sys.argv[1:]
+output, version_name, version_code, repository, commit, fingerprint, apk_verified, aab_verified = sys.argv[1:]
 payload = {
     "schema_version": 1,
     "product": "Nowen Video Android V2",
@@ -342,6 +358,8 @@ payload = {
     "certificate_sha256": fingerprint,
     "checksums_verified": True,
     "metadata_verified": True,
+    "apk_signature_verified": apk_verified == "true",
+    "aab_signature_verified": aab_verified == "true",
     "sensitive_values_included": False,
 }
 pathlib.Path(output).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -367,8 +385,24 @@ create_and_push_tag() {
 run_self_test() {
   require_command python3
   require_command sha256sum
+  require_command keytool
   local temp_dir fixture fingerprint commit
   temp_dir="$(mktemp -d)"
+
+  KEYSTORE_PATH="$temp_dir/generated-release.jks"
+  KEY_ALIAS="android-v2-candidate-self-test"
+  GENERATE_KEYSTORE=true
+  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-password'
+  export ANDROID_V2_KEY_PASSWORD='android-ci-password'
+  generate_keystore_if_requested >/dev/null
+  [[ -f "$KEYSTORE_PATH" ]] || fail "self-test failed to generate a keystore"
+  bash "$ROOT_DIR/scripts/android-v2-signing-preflight.sh" \
+    --version 0.1.0-rc.1 \
+    --keystore "$KEYSTORE_PATH" \
+    --alias "$KEY_ALIAS" \
+    --report "$temp_dir/generated-preflight.json" \
+    --skip-git-checks >/dev/null
+
   fixture="$temp_dir/candidate"
   mkdir -p "$fixture"
   fingerprint="$(printf 'ab%.0s' {1..32})"
@@ -446,7 +480,6 @@ while (($# > 0)); do
     --expected-fingerprint) EXPECTED_FINGERPRINT="${2:-}"; shift 2 ;;
     --create-tag) CREATE_TAG=true; shift ;;
     --self-test) SELF_TEST=true; shift ;;
-    --skip-signature-verification) SKIP_SIGNATURE_VERIFICATION=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
@@ -474,8 +507,8 @@ generate_keystore_if_requested
 [[ -f "$KEYSTORE_PATH" ]] || fail "keystore not found: $KEYSTORE_PATH"
 
 SOURCE_COMMIT="$(resolve_git_source)"
-prepare_output_dir "$OUTPUT_DIR"
-run_signing_preflight "$OUTPUT_DIR/signing-preflight-local.json"
+LOCAL_PREFLIGHT_REPORT="${OUTPUT_DIR%/}.signing-preflight-local.json"
+run_signing_preflight "$LOCAL_PREFLIGHT_REPORT"
 
 if [[ "$DISPATCH" == true && "$CONFIGURE_SECRETS" != true ]]; then
   fail "--dispatch requires --configure-secrets to avoid using stale signing Secrets"
