@@ -75,6 +75,18 @@ def verify_candidate(directory: pathlib.Path, version_name: str) -> Candidate:
     for name in files:
         if not (directory / name).is_file():
             fail(f"required candidate release file is missing: {name}")
+    preflight = load_json(directory / "signing-preflight.json")
+    if not isinstance(preflight, dict):
+        fail("signing-preflight.json root must be an object")
+    errors: list[str] = []
+    if str(preflight.get("source", {}).get("commit", "")).lower() != source_commit:
+        errors.append("signing preflight source commit does not match candidate")
+    if str(preflight.get("version", {}).get("name", "")) != version_name:
+        errors.append("signing preflight versionName does not match candidate")
+    if fingerprint(str(preflight.get("signing", {}).get("certificate_sha256", ""))) != certificate:
+        errors.append("signing preflight certificate does not match candidate")
+    if errors:
+        fail("candidate signing preflight verification failed:\n- " + "\n- ".join(errors))
     return Candidate(
         directory=directory,
         version_name=version_name,
