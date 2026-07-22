@@ -79,10 +79,11 @@ MAJOR.MINOR.PATCH
 
 `scripts/android-v2-version.sh` 是 `versionCode` 的唯一计算来源。发布 workflow 不允许手工填写 versionCode，避免同版本 RC 无法覆盖升级、正式版低于测试版或人为输入错误。
 
-检查版本规则：
+检查版本规则和候选包 manifest 生成器：
 
 ```bash
 bash scripts/android-v2-version.sh --self-test
+python3 scripts/android-v2-release-manifest.py --self-test
 bash scripts/android-v2-version.sh 0.1.0-rc.1
 ```
 
@@ -117,19 +118,22 @@ clients/android-v2/app/build/outputs/bundle/release/app-release.aab
 
 四项签名变量必须全部设置或全部不设置。只设置其中一部分时 Gradle 会直接失败，避免误以为生成了正式签名包。
 
+本地手工构建不会自动生成正式 manifest；推荐通过 `release-android-v2` workflow 生成可追溯候选包。
+
 ## 手动构建正式 artifact
 
 在 GitHub Actions 中运行 `release-android-v2`，只填写 `version_name`，例如 `0.1.0-rc.1`。workflow 会自动校验版本格式并生成单调递增的 versionCode。
 
 手动运行会：
 
-1. 自测并解析版本策略；
+1. 自测并解析版本策略和 manifest 规则；
 2. 校验四项签名 Secret；
 3. 执行单元测试和 Lint；
 4. 构建签名 APK 与 AAB；
 5. 使用 `apksigner` 和 `jarsigner` 验证签名；
-6. 生成 `SHA256SUMS.txt`；
-7. 上传保存 30 天的 workflow artifact。
+6. 从最终 APK 反读 applicationId、versionName、versionCode、minSdk 和 targetSdk；
+7. 生成 `release-manifest.json` 与 `SHA256SUMS.txt`；
+8. 上传保存 30 天的 workflow artifact。
 
 手动运行不会自动创建 GitHub Release。
 
@@ -160,21 +164,43 @@ Tag 构建成功后会创建草稿 GitHub Release，包含：
 - 签名 APK
 - 签名 AAB
 - `SHA256SUMS.txt`
+- `release-manifest.json`
 
 草稿 Release 不是自动放行。发布前仍需完成真机安装、覆盖升级和关键播放链路回归。
+
+## 候选包 manifest
+
+`release-manifest.json` 由 workflow 根据最终 APK、AAB 和 GitHub Actions 环境生成，不接受手工填写关键字段。它记录：
+
+- 产品与发布渠道：`ci-smoke`、`alpha`、`beta`、`rc` 或 `stable`；
+- versionName 与 versionCode；
+- applicationId、minSdk 与 targetSdk；
+- 仓库、commit 和 ref；
+- workflow event、run ID 和 attempt；
+- APK 签名证书 SHA-256 指纹；
+- APK/AAB 文件名、大小和 SHA-256。
+
+生成 manifest 前，workflow 会从 APK 反读版本和 SDK 信息。以下任一情况都会立即失败：
+
+- applicationId 不是 `com.nowen.video.v2`；
+- minSdk 不是 26；
+- targetSdk 不是 35；
+- APK versionName/versionCode 与 workflow 解析结果不一致；
+- 无法提取签名证书 SHA-256；
+- APK 或 AAB 缺失。
 
 ## 验证产物
 
 APK：
 
 ```bash
-apksigner verify --verbose --print-certs nowen-video-android-v2-0.1.0.apk
+apksigner verify --verbose --print-certs nowen-video-android-v2-0.1.0-rc.1.apk
 ```
 
 AAB：
 
 ```bash
-jarsigner -verify nowen-video-android-v2-0.1.0.aab
+jarsigner -verify nowen-video-android-v2-0.1.0-rc.1.aab
 ```
 
 `jarsigner` 不使用 `-strict`，因为 Android 发布 keystore 通常是自签名证书；这里验证的是 AAB 内容与签名完整性，而不是公有 CA 信任链。
@@ -185,20 +211,34 @@ SHA-256：
 sha256sum -c SHA256SUMS.txt
 ```
 
+manifest JSON 格式：
+
+```bash
+python3 -m json.tool release-manifest.json > /dev/null
+```
+
+核验时还应确认：
+
+- manifest 中的两个 artifact 哈希与 `SHA256SUMS.txt` 一致；
+- manifest 的 `source.commit` 是本轮候选版本对应的 commit；
+- manifest 的签名证书指纹与上一版可覆盖升级的 V2 Release 相同；
+- manifest 的 versionName/versionCode 与 APK 系统信息一致。
+
 ## RC1 发布前检查
 
 只有以下项目全部完成，才能把草稿 Release 改为公开：
 
 - [ ] 发布 commit 已合并到 `main`，工作区与远端没有未记录改动。
-- [ ] `Android V2` 标准门禁通过：版本策略、后端契约、Android 单测、instrumentation 编译、Lint、Debug 和 Release 构建全绿。
+- [ ] `Android V2` 标准门禁通过：版本与 manifest 规则、后端契约、Android 单测、instrumentation 编译、Lint、Debug 和 Release 构建全绿。
 - [ ] `release-android-v2` 使用正式 Secrets 构建成功，APK/AAB 验签通过。
 - [ ] `Android V2 Device Smoke` 的 Android 8、13、15 三个任务全部通过。
-- [ ] APK、AAB、`SHA256SUMS.txt` 和 Release 版本号来自同一次 tag 构建。
+- [ ] APK、AAB、`SHA256SUMS.txt`、`release-manifest.json` 和 Release 版本号来自同一次 tag 构建。
+- [ ] manifest 中的 commit、applicationId、SDK、versionName 和 versionCode 符合候选版本。
 - [ ] 当前签名证书与上一版可升级 V2 Release 一致。
 - [ ] Fresh install、旧版并行安装、RC → 更高 RC、RC → Stable 覆盖升级均验证通过。
 - [ ] [SMOKE_TEST.md](./SMOKE_TEST.md) 中所有 P0 为 `PASS`，或已有明确批准的非阻断已知问题。
 - [ ] Release Notes 列出新增能力、修复、已知限制、最低 Android 版本和迁移说明。
 - [ ] 公开附件不包含 Debug APK、未签名 Release、临时 CI 签名包、keystore 或凭据。
-- [ ] 回归记录、设备信息、APK SHA-256 和 workflow 链接已附到 RC Issue 或草稿 Release。
+- [ ] 回归记录、设备信息、APK SHA-256、签名证书指纹和 workflow 链接已附到 RC Issue 或草稿 Release。
 
 出现升级失败、签名不一致、数据串号、下载损坏、凭据泄露或 P0 崩溃时，必须停止发布并用更高 versionCode 修复，不能要求用户卸载降级。
