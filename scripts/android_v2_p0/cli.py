@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 
+from .integrity import validate_session_file
 from .report import matrix, post
 from .selftest import run as self_test
 from .session import finalize, prepare, record
@@ -45,15 +46,23 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     if args.command == "prepare":
-        prepare(args); return 0
+        prepare(args)
+        return 0
     if args.command == "record":
-        record(args); return 0
+        validate_session_file(args.session_dir)
+        record(args)
+        return 0
     if args.command == "finalize":
+        validate_session_file(args.session_dir)
         return finalize(args)
     if args.command == "matrix":
+        for directory in args.session_dir:
+            validate_session_file(directory)
         return matrix(args)
     if args.command == "post":
-        post(args); return 0
+        post(args)
+        return 0
     if args.command == "self-test":
-        self_test(); return 0
+        self_test()
+        return 0
     raise SystemExit(f"unsupported command: {args.command}")
