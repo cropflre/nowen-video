@@ -77,15 +77,21 @@ validate_private_key_password() {
   local temp_dir
   temp_dir="$(mktemp -d)"
 
+  local status=0
   printf 'android-v2-signing-preflight\n' > "$temp_dir/payload.txt"
-  jar --create --file "$temp_dir/preflight.jar" -C "$temp_dir" payload.txt >/dev/null
-  jarsigner \
-    -keystore "$keystore" \
-    -storepass:env ANDROID_V2_KEYSTORE_PASSWORD \
-    -keypass:env ANDROID_V2_KEY_PASSWORD \
-    "$temp_dir/preflight.jar" "$alias" >/dev/null
-  jarsigner -verify "$temp_dir/preflight.jar" >/dev/null
+  jar --create --file "$temp_dir/preflight.jar" -C "$temp_dir" payload.txt >/dev/null || status=$?
+  if (( status == 0 )); then
+    jarsigner \
+      -keystore "$keystore" \
+      -storepass:env ANDROID_V2_KEYSTORE_PASSWORD \
+      -keypass:env ANDROID_V2_KEY_PASSWORD \
+      "$temp_dir/preflight.jar" "$alias" >/dev/null || status=$?
+  fi
+  if (( status == 0 )); then
+    jarsigner -verify "$temp_dir/preflight.jar" >/dev/null || status=$?
+  fi
   rm -rf "$temp_dir"
+  return "$status"
 }
 
 validate_keystore() {
@@ -114,8 +120,8 @@ run_self_test() {
   local temp_dir keystore fingerprint
   temp_dir="$(mktemp -d)"
   keystore="$temp_dir/android-v2-test.jks"
-  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-store'
-  export ANDROID_V2_KEY_PASSWORD='android-ci-key'
+  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-password'
+  export ANDROID_V2_KEY_PASSWORD='android-ci-password'
 
   keytool -genkeypair -noprompt \
     -keystore "$keystore" \
@@ -129,6 +135,24 @@ run_self_test() {
 
   fingerprint="$(validate_keystore "$keystore" android-v2-test)"
   [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]] || fail "self-test produced an invalid fingerprint"
+
+  export ANDROID_V2_KEY_PASSWORD='wrong-key-password'
+  if validate_private_key_password "$keystore" android-v2-test >/dev/null 2>&1; then
+    fail "wrong key password must be rejected"
+  fi
+  export ANDROID_V2_KEY_PASSWORD='android-ci-password'
+
+  export ANDROID_V2_KEYSTORE_PASSWORD='wrong-store-password'
+  if keytool -list -keystore "$keystore" -alias android-v2-test \
+      -storepass:env ANDROID_V2_KEYSTORE_PASSWORD >/dev/null 2>&1; then
+    fail "wrong store password must be rejected"
+  fi
+  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-password'
+
+  if keytool -list -keystore "$keystore" -alias missing-alias \
+      -storepass:env ANDROID_V2_KEYSTORE_PASSWORD >/dev/null 2>&1; then
+    fail "missing alias must be rejected"
+  fi
 
   if normalize_fingerprint 'not-a-fingerprint' >/dev/null 2>&1; then
     fail "invalid fingerprint must be rejected"
