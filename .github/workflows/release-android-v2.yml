@@ -10,6 +10,7 @@
 #  - ANDROID_V2_KEYSTORE_PASSWORD
 #  - ANDROID_V2_KEY_ALIAS
 #  - ANDROID_V2_KEY_PASSWORD
+#  - ANDROID_V2_CERTIFICATE_SHA256
 name: release-android-v2
 
 on:
@@ -18,6 +19,7 @@ on:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
+      - 'scripts/android-v2-signing-preflight.sh'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -49,9 +51,10 @@ jobs:
       version_code: ${{ steps.version.outputs.version_code }}
     env:
       ANDROID_V2_KEYSTORE_BASE64: ${{ secrets.ANDROID_V2_KEYSTORE_BASE64 }}
-      ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_V2_KEYSTORE_PASSWORD }}
-      ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_V2_KEY_ALIAS }}
-      ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_V2_KEY_PASSWORD }}
+      ANDROID_V2_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_V2_KEYSTORE_PASSWORD }}
+      ANDROID_V2_KEY_ALIAS: ${{ secrets.ANDROID_V2_KEY_ALIAS }}
+      ANDROID_V2_KEY_PASSWORD: ${{ secrets.ANDROID_V2_KEY_PASSWORD }}
+      ANDROID_V2_CERTIFICATE_SHA256: ${{ secrets.ANDROID_V2_CERTIFICATE_SHA256 }}
       ANDROID_V2_APK: clients/android-v2/app/build/outputs/apk/release/app-release.apk
       ANDROID_V2_AAB: clients/android-v2/app/build/outputs/bundle/release/app-release.aab
 
@@ -71,6 +74,7 @@ jobs:
           set -euo pipefail
           bash scripts/android-v2-version.sh --self-test
           python3 scripts/android-v2-release-manifest.py --self-test
+          bash scripts/android-v2-signing-preflight.sh --self-test
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             version_name="0.0.0-alpha.1"
@@ -87,31 +91,32 @@ jobs:
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "Resolved Android V2 version $version_name ($version_code)"
 
-      - name: Prepare signing key
+      - name: Prepare and preflight signing key
         shell: bash
         run: |
           set -euo pipefail
 
           store_file="$RUNNER_TEMP/nowen-video-android-v2-release.jks"
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            export ANDROID_V2_KEYSTORE_PASSWORD=android-ci
+            export ANDROID_V2_KEY_ALIAS=android-v2-ci
+            export ANDROID_V2_KEY_PASSWORD=android-ci
             keytool -genkeypair -noprompt \
               -keystore "$store_file" \
-              -storepass android-ci \
-              -keypass android-ci \
-              -alias android-v2-ci \
+              -storepass "$ANDROID_V2_KEYSTORE_PASSWORD" \
+              -keypass "$ANDROID_V2_KEY_PASSWORD" \
+              -alias "$ANDROID_V2_KEY_ALIAS" \
               -keyalg RSA \
               -keysize 2048 \
               -validity 1 \
               -dname "CN=Nowen Video Android V2 CI, OU=CI, O=Nowen, L=CI, S=CI, C=US"
-            echo "ANDROID_SIGNING_STORE_PASSWORD=android-ci" >> "$GITHUB_ENV"
-            echo "ANDROID_SIGNING_KEY_ALIAS=android-v2-ci" >> "$GITHUB_ENV"
-            echo "ANDROID_SIGNING_KEY_PASSWORD=android-ci" >> "$GITHUB_ENV"
           else
             missing=()
             [[ -n "${ANDROID_V2_KEYSTORE_BASE64:-}" ]] || missing+=(ANDROID_V2_KEYSTORE_BASE64)
-            [[ -n "${ANDROID_SIGNING_STORE_PASSWORD:-}" ]] || missing+=(ANDROID_V2_KEYSTORE_PASSWORD)
-            [[ -n "${ANDROID_SIGNING_KEY_ALIAS:-}" ]] || missing+=(ANDROID_V2_KEY_ALIAS)
-            [[ -n "${ANDROID_SIGNING_KEY_PASSWORD:-}" ]] || missing+=(ANDROID_V2_KEY_PASSWORD)
+            [[ -n "${ANDROID_V2_KEYSTORE_PASSWORD:-}" ]] || missing+=(ANDROID_V2_KEYSTORE_PASSWORD)
+            [[ -n "${ANDROID_V2_KEY_ALIAS:-}" ]] || missing+=(ANDROID_V2_KEY_ALIAS)
+            [[ -n "${ANDROID_V2_KEY_PASSWORD:-}" ]] || missing+=(ANDROID_V2_KEY_PASSWORD)
+            [[ -n "${ANDROID_V2_CERTIFICATE_SHA256:-}" ]] || missing+=(ANDROID_V2_CERTIFICATE_SHA256)
             if (( ${#missing[@]} > 0 )); then
               printf 'Missing required Android V2 signing secret: %s\n' "${missing[@]}"
               exit 1
@@ -120,7 +125,27 @@ jobs:
           fi
 
           chmod 600 "$store_file"
-          echo "ANDROID_SIGNING_STORE_FILE=$store_file" >> "$GITHUB_ENV"
+          mkdir -p dist/android-v2
+
+          preflight_args=(
+            --keystore "$store_file"
+            --alias "$ANDROID_V2_KEY_ALIAS"
+            --version "$ANDROID_VERSION_NAME"
+            --repository "$GITHUB_REPOSITORY"
+            --report dist/android-v2/signing-preflight.json
+            --skip-git-checks
+          )
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            preflight_args+=(--expected-fingerprint "$ANDROID_V2_CERTIFICATE_SHA256")
+          fi
+          bash scripts/android-v2-signing-preflight.sh "${preflight_args[@]}"
+
+          {
+            echo "ANDROID_SIGNING_STORE_FILE=$store_file"
+            echo "ANDROID_SIGNING_STORE_PASSWORD=$ANDROID_V2_KEYSTORE_PASSWORD"
+            echo "ANDROID_SIGNING_KEY_ALIAS=$ANDROID_V2_KEY_ALIAS"
+            echo "ANDROID_SIGNING_KEY_PASSWORD=$ANDROID_V2_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
 
       - name: Test and build signed APK/AAB
         shell: bash
@@ -152,10 +177,16 @@ jobs:
           match = re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", text, re.IGNORECASE)
           if match is None:
               raise SystemExit("Unable to resolve APK signing certificate SHA-256")
-          value = match.group(1)
+          actual = match.group(1).replace(":", "").lower()
+          expected = os.environ.get("ANDROID_V2_CERTIFICATE_SHA256", "").replace(":", "").lower()
+          if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
+              if not re.fullmatch(r"[0-9a-f]{64}", expected):
+                  raise SystemExit("Expected Android V2 certificate SHA-256 is invalid")
+              if actual != expected:
+                  raise SystemExit("Signed APK certificate SHA-256 does not match ANDROID_V2_CERTIFICATE_SHA256")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-              handle.write(f"ANDROID_V2_CERTIFICATE_SHA256={value}\n")
-          print(f"Signing certificate SHA-256: {value}")
+              handle.write(f"ANDROID_V2_APK_CERTIFICATE_SHA256={actual}\n")
+          print(f"Signed APK certificate SHA-256: {actual}")
           PY
 
       - name: Inspect signed APK metadata
@@ -201,7 +232,7 @@ jobs:
           echo "minSdk=$min_sdk"
           echo "targetSdk=$target_sdk"
 
-      - name: Generate release manifest and checksums
+      - name: Generate release manifest, notes and checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -223,7 +254,35 @@ jobs:
             --application-id "$ANDROID_V2_APPLICATION_ID" \
             --min-sdk "$ANDROID_V2_MIN_SDK" \
             --target-sdk "$ANDROID_V2_TARGET_SDK" \
-            --certificate-sha256 "$ANDROID_V2_CERTIFICATE_SHA256"
+            --certificate-sha256 "$ANDROID_V2_APK_CERTIFICATE_SHA256"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("dist/android-v2/release-manifest.json").read_text(encoding="utf-8"))
+          artifacts = {item["type"]: item for item in manifest["artifacts"]}
+          release_status = (
+              "这是预发布测试版本，建议先在非关键设备上完成真机 P0 验证。"
+              if manifest["channel"] != "stable"
+              else "这是 Android V2 正式版本。"
+          )
+          replacements = {
+              "{{RELEASE_STATUS}}": release_status,
+              "{{VERSION_NAME}}": manifest["version"]["name"],
+              "{{VERSION_CODE}}": str(manifest["version"]["code"]),
+              "{{SOURCE_COMMIT}}": manifest["source"]["commit"],
+              "{{CERTIFICATE_SHA256}}": manifest["signing"]["certificate_sha256"],
+              "{{APK_SHA256}}": artifacts["apk"]["sha256"],
+              "{{AAB_SHA256}}": artifacts["aab"]["sha256"],
+          }
+          notes = Path("clients/android-v2/RELEASE_NOTES_TEMPLATE.md").read_text(encoding="utf-8")
+          for marker, value in replacements.items():
+              notes = notes.replace(marker, value)
+          if "{{" in notes:
+              raise SystemExit("Unresolved Android V2 release notes placeholder")
+          Path("dist/android-v2/RELEASE_NOTES.md").write_text(notes, encoding="utf-8")
+          PY
 
           (
             cd dist/android-v2
@@ -259,6 +318,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ contains(needs.build.outputs.version_name, '-') }}
           generate_release_notes: true
+          body_path: artifacts/RELEASE_NOTES.md
           name: Nowen Video Android V2 ${{ needs.build.outputs.version_name }}
           files: artifacts/*
