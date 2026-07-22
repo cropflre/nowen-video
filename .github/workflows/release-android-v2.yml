@@ -17,6 +17,7 @@ on:
     paths:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-version.sh'
+      - 'scripts/android-v2-release-manifest.py'
       - 'android/gradlew'
       - 'android/gradlew.bat'
       - 'android/gradle/wrapper/**'
@@ -67,6 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/android-v2-version.sh --self-test
+          python3 scripts/android-v2-release-manifest.py --self-test
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             version_name="0.0.0-alpha.1"
@@ -138,17 +140,52 @@ jobs:
           [[ -f "$aab" ]] || { echo "Signed AAB not found: $aab"; exit 1; }
 
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           [[ -x "$apksigner" ]] || { echo "apksigner not found"; exit 1; }
-          "$apksigner" verify --verbose --print-certs "$apk"
+          [[ -x "$aapt" ]] || { echo "aapt not found"; exit 1; }
+
+          signer_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$signer_output"
           jarsigner -verify "$aab"
 
+          badging="$("$aapt" dump badging "$apk")"
+          application_id="$(printf '%s\n' "$badging" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+          apk_version_code="$(printf '%s\n' "$badging" | sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" | head -n 1)"
+          apk_version_name="$(printf '%s\n' "$badging" | sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          min_sdk="$(printf '%s\n' "$badging" | sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" | head -n 1)"
+          target_sdk="$(printf '%s\n' "$badging" | sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" | head -n 1)"
+          certificate_sha256="$(printf '%s\n' "$signer_output" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+
+          for field in application_id apk_version_code apk_version_name min_sdk target_sdk certificate_sha256; do
+            [[ -n "${!field}" ]] || { echo "Unable to resolve APK metadata field: $field"; exit 1; }
+          done
+
           mkdir -p dist/android-v2
-          cp "$apk" "dist/android-v2/nowen-video-android-v2-${ANDROID_VERSION_NAME}.apk"
-          cp "$aab" "dist/android-v2/nowen-video-android-v2-${ANDROID_VERSION_NAME}.aab"
+          dist_apk="dist/android-v2/nowen-video-android-v2-${ANDROID_VERSION_NAME}.apk"
+          dist_aab="dist/android-v2/nowen-video-android-v2-${ANDROID_VERSION_NAME}.aab"
+          cp "$apk" "$dist_apk"
+          cp "$aab" "$dist_aab"
+
+          python3 scripts/android-v2-release-manifest.py \
+            --apk "$dist_apk" \
+            --aab "$dist_aab" \
+            --output dist/android-v2/release-manifest.json \
+            --checksums-output dist/android-v2/SHA256SUMS.txt \
+            --version-name "$ANDROID_VERSION_NAME" \
+            --version-code "$ANDROID_VERSION_CODE" \
+            --apk-version-name "$apk_version_name" \
+            --apk-version-code "$apk_version_code" \
+            --application-id "$application_id" \
+            --min-sdk "$min_sdk" \
+            --target-sdk "$target_sdk" \
+            --certificate-sha256 "$certificate_sha256"
+
           (
             cd dist/android-v2
-            sha256sum *.apk *.aab > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+            python3 -m json.tool release-manifest.json > /dev/null
           )
+          cat dist/android-v2/release-manifest.json
           ls -la dist/android-v2
 
       - name: Upload signed Android V2 artifacts
