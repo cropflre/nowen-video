@@ -120,6 +120,12 @@ def write_manifest(manifest: dict[str, Any], output: Path) -> None:
     output.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def write_checksums(manifest: dict[str, Any], output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"{artifact['sha256']}  {artifact['name']}" for artifact in manifest["artifacts"]]
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def run_self_test() -> None:
     import tempfile
 
@@ -154,6 +160,18 @@ def run_self_test() -> None:
         assert manifest["artifacts"][0]["sha256"] == sha256_file(apk)
         assert manifest["artifacts"][1]["size_bytes"] == len(b"aab-content")
 
+        manifest_output = root / "release-manifest.json"
+        checksums_output = root / "SHA256SUMS.txt"
+        write_manifest(manifest, manifest_output)
+        write_checksums(manifest, checksums_output)
+        loaded = json.loads(manifest_output.read_text(encoding="utf-8"))
+        assert loaded["source"]["commit"] == "a" * 40
+        checksum_lines = checksums_output.read_text(encoding="utf-8").splitlines()
+        assert checksum_lines == [
+            f"{sha256_file(apk)}  sample.apk",
+            f"{sha256_file(aab)}  sample.aab",
+        ]
+
         args.apk_version_code = 100500
         try:
             build_manifest(args)
@@ -180,6 +198,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apk")
     parser.add_argument("--aab")
     parser.add_argument("--output", default="release-manifest.json")
+    parser.add_argument("--checksums-output", default="SHA256SUMS.txt")
     parser.add_argument("--version-name")
     parser.add_argument("--version-code", type=int)
     parser.add_argument("--apk-version-name")
@@ -231,10 +250,12 @@ def main() -> int:
     try:
         manifest = build_manifest(args)
         write_manifest(manifest, Path(args.output))
+        write_checksums(manifest, Path(args.checksums_output))
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"Wrote Android V2 release manifest to {args.output}")
+    print(f"Wrote Android V2 checksums to {args.checksums_output}")
     return 0
 
 
