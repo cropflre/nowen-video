@@ -69,15 +69,10 @@ normalize_fingerprint() {
 }
 
 read_secret() {
-  local variable_name="$1"
-  local prompt="$2"
-  local confirm="${3:-false}"
+  local variable_name="$1" prompt="$2" confirm="${3:-false}"
   local value confirmation
-
   value="${!variable_name:-}"
-  if [[ -n "$value" ]]; then
-    return 0
-  fi
+  [[ -n "$value" ]] && return 0
   [[ -t 0 ]] || fail "$variable_name is required in non-interactive mode"
 
   read -r -s -p "$prompt: " value
@@ -112,6 +107,7 @@ generate_keystore_if_requested() {
   mkdir -p "$(dirname "$KEYSTORE_PATH")"
   keytool -genkeypair -noprompt \
     -keystore "$KEYSTORE_PATH" \
+    -storetype JKS \
     -storepass:env ANDROID_V2_KEYSTORE_PASSWORD \
     -keypass:env ANDROID_V2_KEY_PASSWORD \
     -alias "$KEY_ALIAS" \
@@ -170,9 +166,7 @@ list_existing_run_ids() {
 }
 
 find_dispatched_run() {
-  local source_commit="$1"
-  local before_file="$2"
-  local request_id="$3"
+  local source_commit="$1" before_file="$2" request_id="$3"
   local attempt json json_file run_id
   for ((attempt = 1; attempt <= 90; attempt++)); do
     json="$(gh run list \
@@ -254,7 +248,7 @@ dispatch_download_candidate() {
 }
 
 find_apksigner() {
-  local candidate
+  local candidate root
   if command -v apksigner >/dev/null 2>&1; then
     command -v apksigner
     return 0
@@ -268,12 +262,13 @@ find_apksigner() {
 }
 
 verify_candidate_dir() {
-  local directory="$1"
-  local source_commit="$2"
-  local expected_fingerprint="$3"
+  local directory="$1" source_commit="$2" expected_fingerprint="$3"
   local version_code
-  version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")"
-  expected_fingerprint="$(normalize_fingerprint "$expected_fingerprint")" || fail "invalid expected certificate SHA-256"
+  version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")" || return 1
+  expected_fingerprint="$(normalize_fingerprint "$expected_fingerprint")" || {
+    printf 'error: invalid expected certificate SHA-256\n' >&2
+    return 1
+  }
 
   local apk="$directory/nowen-video-android-v2-${VERSION_NAME}.apk"
   local aab="$directory/nowen-video-android-v2-${VERSION_NAME}.aab"
@@ -283,14 +278,21 @@ verify_candidate_dir() {
   local notes="$directory/RELEASE_NOTES.md"
   local required
   for required in "$apk" "$aab" "$sums" "$manifest" "$preflight" "$notes"; do
-    [[ -f "$required" ]] || fail "required candidate file is missing: $required"
+    if [[ ! -f "$required" ]]; then
+      printf 'error: required candidate file is missing: %s\n' "$required" >&2
+      return 1
+    fi
   done
 
-  (cd "$directory" && sha256sum -c SHA256SUMS.txt)
-  python3 - "$manifest" "$preflight" "$notes" "$VERSION_NAME" "$version_code" "$source_commit" "$expected_fingerprint" <<'PY'
-import json, pathlib, sys
+  if ! (cd "$directory" && sha256sum -c SHA256SUMS.txt); then
+    return 1
+  fi
+
+  if ! python3 - "$manifest" "$preflight" "$notes" "$VERSION_NAME" "$version_code" "$source_commit" "$expected_fingerprint" <<'PY'
+import hashlib, json, pathlib, sys
 manifest_path, preflight_path, notes_path, version_name, version_code, commit, fingerprint = sys.argv[1:]
-manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
+manifest_path = pathlib.Path(manifest_path)
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 preflight = json.loads(pathlib.Path(preflight_path).read_text(encoding="utf-8"))
 notes = pathlib.Path(notes_path).read_text(encoding="utf-8")
 errors = []
@@ -309,12 +311,22 @@ expect(manifest["signing"]["certificate_sha256"].replace(":", "").lower(), finge
 expect(preflight["source"]["commit"], commit, "preflight commit")
 expect(preflight["version"]["name"], version_name, "preflight versionName")
 expect(preflight["signing"]["certificate_sha256"].replace(":", "").lower(), fingerprint, "preflight certificate")
+
 artifact_names = {entry["name"] for entry in manifest["artifacts"]}
 expected_names = {
     f"nowen-video-android-v2-{version_name}.apk",
     f"nowen-video-android-v2-{version_name}.aab",
 }
 expect(artifact_names, expected_names, "manifest artifact names")
+for entry in manifest["artifacts"]:
+    path = manifest_path.parent / entry["name"]
+    if not path.is_file():
+        errors.append(f"manifest artifact is missing: {path.name}")
+        continue
+    actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    expect(actual_hash, entry["sha256"].lower(), f"manifest hash for {path.name}")
+    expect(path.stat().st_size, int(entry["size_bytes"]), f"manifest size for {path.name}")
+
 for token, label in ((version_name, "version"), (commit, "commit"), (fingerprint, "certificate")):
     if token not in notes:
         errors.append(f"release notes missing {label}: {token}")
@@ -324,20 +336,21 @@ if errors:
     raise SystemExit("Candidate verification failed:\n- " + "\n- ".join(errors))
 print("Candidate metadata verification passed")
 PY
+  then
+    return 1
+  fi
 
-  local apk_signature_verified=false
-  local aab_signature_verified=false
+  local apk_signature_verified=false aab_signature_verified=false apksigner
   if [[ "$SKIP_SIGNATURE_VERIFICATION" != true ]]; then
-    local apksigner
     if apksigner="$(find_apksigner)"; then
-      "$apksigner" verify --verbose --print-certs "$apk" >/dev/null
+      "$apksigner" verify --verbose --print-certs "$apk" >/dev/null || return 1
       apk_signature_verified=true
       printf 'APK signature verification passed\n'
     else
       printf 'warning: apksigner not found; APK cryptographic verification skipped\n' >&2
     fi
     if command -v jarsigner >/dev/null 2>&1; then
-      jarsigner -verify "$aab" >/dev/null
+      jarsigner -verify "$aab" >/dev/null || return 1
       aab_signature_verified=true
       printf 'AAB signature verification passed\n'
     else
@@ -368,15 +381,10 @@ PY
 }
 
 create_and_push_tag() {
-  local source_commit="$1"
-  local tag="android-v2-v${VERSION_NAME}"
+  local source_commit="$1" tag="android-v2-v${VERSION_NAME}"
   require_command git
-  if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag"; then
-    fail "local tag already exists: $tag"
-  fi
-  if git -C "$ROOT_DIR" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-    fail "remote tag already exists: $tag"
-  fi
+  git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag" && fail "local tag already exists: $tag"
+  git -C "$ROOT_DIR" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && fail "remote tag already exists: $tag"
   git -C "$ROOT_DIR" tag "$tag" "$source_commit"
   git -C "$ROOT_DIR" push origin "$tag"
   printf 'Pushed tag %s. The tag workflow will create a draft prerelease.\n' "$tag"
@@ -386,14 +394,14 @@ run_self_test() {
   require_command python3
   require_command sha256sum
   require_command keytool
-  local temp_dir fixture fingerprint commit
+  local temp_dir fixture fingerprint commit version_code apk_name aab_name
   temp_dir="$(mktemp -d)"
 
   KEYSTORE_PATH="$temp_dir/generated-release.jks"
   KEY_ALIAS="android-v2-candidate-self-test"
   GENERATE_KEYSTORE=true
-  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-password'
-  export ANDROID_V2_KEY_PASSWORD='android-ci-password'
+  export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-store-password'
+  export ANDROID_V2_KEY_PASSWORD='android-ci-key-password'
   generate_keystore_if_requested >/dev/null
   [[ -f "$KEYSTORE_PATH" ]] || fail "self-test failed to generate a keystore"
   bash "$ROOT_DIR/scripts/android-v2-signing-preflight.sh" \
@@ -408,13 +416,13 @@ run_self_test() {
   fingerprint="$(printf 'ab%.0s' {1..32})"
   commit="$(printf 'c%.0s' {1..40})"
   VERSION_NAME="0.1.0-rc.1"
-  local version_code apk_name aab_name
   version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")"
   apk_name="nowen-video-android-v2-${VERSION_NAME}.apk"
   aab_name="nowen-video-android-v2-${VERSION_NAME}.aab"
   printf 'fixture-apk' > "$fixture/$apk_name"
   printf 'fixture-aab' > "$fixture/$aab_name"
   (cd "$fixture" && sha256sum "$apk_name" "$aab_name" > SHA256SUMS.txt)
+
   python3 - "$fixture" "$VERSION_NAME" "$version_code" "$commit" "$fingerprint" "$apk_name" "$aab_name" <<'PY'
 import hashlib, json, pathlib, sys
 root, version, code, commit, fingerprint, apk_name, aab_name = sys.argv[1:]
@@ -448,7 +456,7 @@ preflight = {
 PY
 
   SKIP_SIGNATURE_VERIFICATION=true
-  verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null
+  verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null || fail "valid fixture candidate was rejected"
 
   python3 - "$fixture/release-manifest.json" <<'PY'
 import json, pathlib, sys
@@ -457,7 +465,7 @@ data = json.loads(path.read_text(encoding="utf-8"))
 data["source"]["commit"] = "d" * 40
 path.write_text(json.dumps(data), encoding="utf-8")
 PY
-  if (verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null 2>&1); then
+  if verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null 2>&1; then
     rm -rf "$temp_dir"
     fail "self-test must reject an incorrect manifest commit"
   fi
@@ -497,7 +505,7 @@ if [[ -n "$VERIFY_DIR" ]]; then
   [[ -n "$EXPECTED_COMMIT" ]] || fail "--expected-commit is required with --verify-dir"
   [[ -n "$EXPECTED_FINGERPRINT" ]] || fail "--expected-fingerprint is required with --verify-dir"
   [[ "$CREATE_TAG" != true ]] || fail "--create-tag is only allowed after a dispatched build"
-  verify_candidate_dir "$VERIFY_DIR" "$EXPECTED_COMMIT" "$EXPECTED_FINGERPRINT"
+  verify_candidate_dir "$VERIFY_DIR" "$EXPECTED_COMMIT" "$EXPECTED_FINGERPRINT" || fail "candidate verification failed"
   exit 0
 fi
 
@@ -516,7 +524,7 @@ fi
 
 if [[ "$DISPATCH" == true ]]; then
   dispatch_download_candidate "$SOURCE_COMMIT"
-  verify_candidate_dir "$OUTPUT_DIR" "$SOURCE_COMMIT" "$EXPECTED_FINGERPRINT"
+  verify_candidate_dir "$OUTPUT_DIR" "$SOURCE_COMMIT" "$EXPECTED_FINGERPRINT" || fail "downloaded candidate verification failed"
 fi
 
 if [[ "$CREATE_TAG" == true ]]; then
