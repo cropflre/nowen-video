@@ -6,6 +6,7 @@ on:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
+      - 'scripts/android-v2-signing-preflight.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -25,6 +26,7 @@ on:
       - 'clients/android-v2/**'
       - 'scripts/android-v2-version.sh'
       - 'scripts/android-v2-release-manifest.py'
+      - 'scripts/android-v2-signing-preflight.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -71,6 +73,7 @@ jobs:
           set -euo pipefail
           bash scripts/android-v2-version.sh --self-test
           python3 scripts/android-v2-release-manifest.py --self-test
+          bash scripts/android-v2-signing-preflight.sh --self-test
 
       - name: Backend contract tests
         id: go
