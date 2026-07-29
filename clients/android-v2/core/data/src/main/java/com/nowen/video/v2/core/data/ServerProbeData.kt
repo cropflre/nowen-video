@@ -21,7 +21,11 @@ internal suspend fun probeServer(
     json: Json,
 ): Result<ServerProbe> = withContext(Dispatchers.IO) {
     runCatching {
-        val normalized = requireNotNull(UrlNormalizer.normalize(baseUrl)) { "服务器地址无效" }
+        val candidate = baseUrl.trim()
+        require(candidate.isNotBlank() && candidate.lowercase() !in setOf("http://", "https://")) {
+            "服务器地址无效"
+        }
+        val normalized = requireNotNull(UrlNormalizer.normalize(candidate)) { "服务器地址无效" }
         val directClient = client.newBuilder().apply {
             interceptors().clear()
             networkInterceptors().clear()
