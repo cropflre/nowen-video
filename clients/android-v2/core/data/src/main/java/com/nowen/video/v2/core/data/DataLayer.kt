@@ -15,6 +15,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.KeyStore
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -24,6 +27,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +40,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Response
 import retrofit2.HttpException
 import retrofit2.Retrofit
@@ -345,17 +348,24 @@ class NowenRepository @Inject constructor(
     private val api: NowenApi,
     private val client: OkHttpClient,
     private val sessionStore: ServerSessionStore,
+    private val json: Json,
 ) {
     suspend fun probe(baseUrl: String): Result<ServerProbe> = runCatching {
-        val healthUrl = requireNotNull(UrlNormalizer.apiUrl(baseUrl, "api/health"))
         val directClient = client.newBuilder().apply {
             interceptors().clear()
             networkInterceptors().clear()
         }.build()
-        directClient.newCall(Request.Builder().url(healthUrl).header("Accept", "application/json").build())
+        directClient.newCall(buildServerHandshakeRequest(baseUrl))
             .execute()
-            .use { if (!it.isSuccessful) error("服务器返回 HTTP ${it.code}") }
-        ServerProbe()
+            .use { response ->
+                val handshake = response.readServerHandshake(json)
+                ServerProbe(
+                    serverName = handshake.serverName,
+                    version = handshake.version,
+                )
+            }
+    }.recoverCatching { error ->
+        throw error.asConnectionFailure()
     }
 
     suspend fun login(username: String, password: String): Result<TokenResponse> = apiCall {
@@ -398,6 +408,22 @@ class NowenRepository @Inject constructor(
             else -> throw it
         }
     }
+}
+
+private fun Throwable.asConnectionFailure(): Throwable = when (this) {
+    is IllegalArgumentException -> this
+    is SocketTimeoutException -> IOException("连接超时，请确认服务器已启动，并且手机与服务器位于同一局域网", this)
+    is UnknownHostException -> IOException("无法解析服务器地址，请检查域名或 IP 地址", this)
+    is ConnectException -> IOException("无法连接服务器，请确认服务正在运行且端口可以访问", this)
+    is SSLException -> IOException("HTTPS 连接失败，请检查证书，或确认服务器是否应使用 HTTP", this)
+    is IOException -> when {
+        message?.contains("CLEARTEXT", ignoreCase = true) == true ->
+            IOException("Android 阻止了明文 HTTP 连接，请检查应用网络策略或改用 HTTPS", this)
+        message.isNullOrBlank() ->
+            IOException("连接失败，请确认服务器地址、端口和局域网访问权限", this)
+        else -> this
+    }
+    else -> IOException(message?.takeIf { it.isNotBlank() } ?: "连接失败，请确认服务器地址和网络状态", this)
 }
 
 class UnauthorizedException : IllegalStateException("登录状态已失效")
