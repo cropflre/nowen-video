@@ -37,7 +37,7 @@ func main() {
 	sugar := logger.Sugar()
 
 	db := openDatabase(cfg, sugar)
-	if err := model.AutoMigrate(db); err != nil {
+	if err := model.AutoMigrateLite(db, cfg.AI.Enabled); err != nil {
 		sugar.Fatalf("数据库迁移失败: %v", err)
 	}
 
