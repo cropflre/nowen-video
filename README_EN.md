@@ -49,7 +49,6 @@ A lightweight home media server built with **Go + React**, similar to Jellyfin /
 - 📊 **Analytics** — watch time stats, daily charts, admin dashboard
 - 📁 **File manager** — browse / import / rename / batch scrape, AI-assisted rename, audit log
 - 🔗 **Sharing & tagging** — share links with password & expiry, custom tags, bulk move, match rules
-- 💓 **Pulse feed** — community activity stream, likes & comments
 - 🛡️ **Security** — JWT, bcrypt, CORS, security headers, rate limiting, access log
 - 🌐 **i18n** — Chinese / English / Japanese
 - 🪶 **Lightweight** — single binary + SQLite (WAL), Alpine Docker image, healthcheck, PUID/PGID
@@ -165,7 +164,7 @@ ai: { provider: ollama,   api_base: http://localhost:11434/v1,                  
 
 ## 🗺️ Roadmap
 
-- ✅ **v0.1 – v0.9** Core playback, scraping, multi-user, AI assistant, file manager, Pulse, sharing, tags
+- ✅ **v0.1 – v0.9** Core playback, scraping, multi-user, AI assistant, file manager, sharing, tags
 - ✅ **v0.9.5** Full Emby API compatibility layer (Infuse / Kodi / Emby native clients)
 - 🔄 **v1.0** ABR seamless bitrate switching, FFmpeg throttling, mobile responsive, PWA, test coverage > 60%, Prometheus metrics
 - 🚀 **v1.1+** Native mobile apps, 4K/HDR, WebDAV, distributed transcoding, AV1, plugin marketplace
