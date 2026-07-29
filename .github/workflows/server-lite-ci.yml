@@ -9,6 +9,7 @@ on:
       - 'cmd/server-lite/**'
       - 'internal/service/lite.go'
       - 'internal/handler/lite.go'
+      - 'internal/model/migrate_lite.go'
       - 'web/**'
       - 'Dockerfile'
       - 'Dockerfile.full'
@@ -52,3 +53,34 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  docker:
+    name: Docker lite and full images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build lite image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: false
+          tags: nowen-video:lite-ci
+          build-args: |
+            NOWEN_VERSION=ci
+          cache-from: type=gha,scope=server-lite
+          cache-to: type=gha,mode=max,scope=server-lite
+      - name: Build full image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.full
+          push: false
+          load: false
+          tags: nowen-video:full-ci
+          build-args: |
+            NOWEN_VERSION=ci
+          cache-from: type=gha,scope=server-full
+          cache-to: type=gha,mode=max,scope=server-full
