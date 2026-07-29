@@ -4,11 +4,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
 	"github.com/nowen-video/nowen-video/internal/middleware"
 )
 
-func registerAdminAPI(r *gin.Engine, handlers *handler.Handlers, jwtMiddleware gin.HandlerFunc) {
+func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handlers, jwtMiddleware gin.HandlerFunc) {
 	r.OPTIONS("/api/admin/settings/douban/import", handler.DoubanImportCORS(), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -125,25 +126,27 @@ func registerAdminAPI(r *gin.Engine, handlers *handler.Handlers, jwtMiddleware g
 	admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)
 	admin.POST("/series/:seriesId/match/thetvdb", handlers.Admin.MatchSeriesTheTVDB)
 
-	admin.GET("/ai/status", handlers.AI.GetAIStatus)
-	admin.PUT("/ai/config", handlers.AI.UpdateAIConfig)
-	admin.POST("/ai/auto-pilot", handlers.AI.EnableAutoPilot)
-	admin.POST("/ai/test", handlers.AI.TestAIConnection)
-	admin.DELETE("/ai/cache", handlers.AI.ClearAICache)
-	admin.GET("/ai/cache", handlers.AI.GetAICacheStats)
-	admin.GET("/ai/errors", handlers.AI.GetAIErrorLogs)
-	admin.POST("/ai/test/search", handlers.AI.TestSmartSearch)
-	admin.POST("/ai/test/recommend", handlers.AI.TestRecommendReason)
-	admin.GET("/ai/models", handlers.AICost.ListModels)
-	admin.GET("/ai/cost/estimate", handlers.AICost.Estimate)
-	admin.GET("/ai/cost/summary", handlers.AICost.Summary)
-	admin.GET("/ai/presets", handlers.AI.ListProviderPresets)
-	admin.POST("/ai/quick-config/qwen", handlers.AI.QuickConfigQwen)
-	admin.GET("/ai/router", handlers.AI.GetRouterSnapshot)
-	admin.POST("/ai/router/switch", handlers.AI.ForceSwitchProvider)
-	admin.POST("/ai/router/restore", handlers.AI.RestoreProvider)
-	admin.GET("/ai/router/logs", handlers.AI.ListFailoverLogs)
-	admin.GET("/ai/usage", handlers.AI.GetUsageBuckets)
+	if cfg.AI.Enabled {
+		admin.GET("/ai/status", handlers.AI.GetAIStatus)
+		admin.PUT("/ai/config", handlers.AI.UpdateAIConfig)
+		admin.POST("/ai/auto-pilot", handlers.AI.EnableAutoPilot)
+		admin.POST("/ai/test", handlers.AI.TestAIConnection)
+		admin.DELETE("/ai/cache", handlers.AI.ClearAICache)
+		admin.GET("/ai/cache", handlers.AI.GetAICacheStats)
+		admin.GET("/ai/errors", handlers.AI.GetAIErrorLogs)
+		admin.POST("/ai/test/search", handlers.AI.TestSmartSearch)
+		admin.POST("/ai/test/recommend", handlers.AI.TestRecommendReason)
+		admin.GET("/ai/models", handlers.AICost.ListModels)
+		admin.GET("/ai/cost/estimate", handlers.AICost.Estimate)
+		admin.GET("/ai/cost/summary", handlers.AICost.Summary)
+		admin.GET("/ai/presets", handlers.AI.ListProviderPresets)
+		admin.POST("/ai/quick-config/qwen", handlers.AI.QuickConfigQwen)
+		admin.GET("/ai/router", handlers.AI.GetRouterSnapshot)
+		admin.POST("/ai/router/switch", handlers.AI.ForceSwitchProvider)
+		admin.POST("/ai/router/restore", handlers.AI.RestoreProvider)
+		admin.GET("/ai/router/logs", handlers.AI.ListFailoverLogs)
+		admin.GET("/ai/usage", handlers.AI.GetUsageBuckets)
+	}
 	admin.GET("/stats/:userId", handlers.Stats.GetUserStatsAdmin)
 
 	admin.POST("/scrape/tasks", handlers.ScrapeManager.CreateTask)
@@ -153,9 +156,13 @@ func registerAdminAPI(r *gin.Engine, handlers *handler.Handlers, jwtMiddleware g
 	admin.PUT("/scrape/tasks/:id", handlers.ScrapeManager.UpdateTask)
 	admin.DELETE("/scrape/tasks/:id", handlers.ScrapeManager.DeleteTask)
 	admin.POST("/scrape/tasks/:id/scrape", handlers.ScrapeManager.StartScrape)
-	admin.POST("/scrape/tasks/:id/translate", handlers.ScrapeManager.TranslateTask)
+	if cfg.AI.Enabled {
+		admin.POST("/scrape/tasks/:id/translate", handlers.ScrapeManager.TranslateTask)
+	}
 	admin.POST("/scrape/batch/scrape", handlers.ScrapeManager.BatchStartScrape)
-	admin.POST("/scrape/batch/translate", handlers.ScrapeManager.BatchTranslate)
+	if cfg.AI.Enabled {
+		admin.POST("/scrape/batch/translate", handlers.ScrapeManager.BatchTranslate)
+	}
 	admin.POST("/scrape/batch/delete", handlers.ScrapeManager.BatchDeleteTasks)
 	admin.POST("/scrape/export", handlers.ScrapeManager.ExportTasks)
 	admin.GET("/scrape/statistics", handlers.ScrapeManager.GetStatistics)
@@ -178,7 +185,9 @@ func registerAdminAPI(r *gin.Engine, handlers *handler.Handlers, jwtMiddleware g
 	admin.POST("/files/batch/scrape", handlers.FileManager.BatchScrapeFiles)
 	admin.POST("/files/rename/preview", handlers.FileManager.PreviewRename)
 	admin.POST("/files/rename/execute", handlers.FileManager.ExecuteRename)
-	admin.POST("/files/rename/ai", handlers.FileManager.AIGenerateRenames)
+	if cfg.AI.Enabled {
+		admin.POST("/files/rename/ai", handlers.FileManager.AIGenerateRenames)
+	}
 	admin.GET("/files/rename/templates", handlers.FileManager.GetRenameTemplates)
 	admin.GET("/files/stats", handlers.FileManager.GetStats)
 	admin.GET("/files/logs", handlers.FileManager.GetOperationLogs)
