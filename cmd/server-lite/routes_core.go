@@ -109,14 +109,6 @@ func registerCoreAPI(
 		api.GET("/ai/search", handlers.AI.SmartSearch)
 	}
 
-	api.GET("/cast/devices", handlers.Cast.ListDevices)
-	api.POST("/cast/devices/refresh", handlers.Cast.RefreshDevices)
-	api.POST("/cast/start", handlers.Cast.CastMedia)
-	api.GET("/cast/sessions", handlers.Cast.ListSessions)
-	api.GET("/cast/sessions/:sessionId", handlers.Cast.GetSession)
-	api.POST("/cast/sessions/:sessionId/control", handlers.Cast.ControlCast)
-	api.DELETE("/cast/sessions/:sessionId", handlers.Cast.StopSession)
-
 	api.POST("/bookmarks", handlers.Bookmark.Create)
 	api.GET("/bookmarks", handlers.Bookmark.ListByUser)
 	api.GET("/bookmarks/media/:mediaId", handlers.Bookmark.ListByMedia)
