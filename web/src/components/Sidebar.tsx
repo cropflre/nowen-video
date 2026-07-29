@@ -29,7 +29,6 @@ import {
   X,
   BarChart3,
   FolderOpen as FolderOpenIcon,
-  Activity,
   Library as LibraryIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -285,15 +284,6 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             >
               <FolderOpenIcon size={18} />
               {(!collapsed || isMobileOpen) && <span>{t('nav.files')}</span>}
-            </NavLink>
-
-            <NavLink
-              to="/pulse"
-              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-              onClick={onMobileClose}
-            >
-              <Activity size={18} />
-              {(!collapsed || isMobileOpen) && <span>{t('nav.pulse')}</span>}
             </NavLink>
 
             <NavLink
