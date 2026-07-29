@@ -9,6 +9,7 @@ import TitleBar from '@/components/TitleBar'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
+import '@/styles/remove-pulse.css'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -24,7 +25,6 @@ const SeriesDetailPage = lazy(() => import('@/pages/SeriesDetailPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const StatsPage = lazy(() => import('@/pages/StatsPage'))
 const FileManagerPage = lazy(() => import('@/pages/FileManagerPage'))
-const PulsePage = lazy(() => import('@/pages/PulsePage'))
 const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
 const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
 const PreprocessLayout = lazy(() => import('@/pages/PreprocessLayout'))
@@ -148,7 +148,6 @@ export default function App() {
               <Route path="files" element={<FileManagerPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="stats" element={<StatsPage />} />
-              <Route path="pulse" element={<PulsePage />} />
               <Route path="preprocess" element={<PreprocessLayout />}>
                 <Route index element={<PreprocessPage />} />
                 <Route path="subtitle" element={<SubtitlePreprocessPage />} />
