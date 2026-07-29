@@ -151,7 +151,6 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		Scanner:        scanner,
 		Playlist:       NewPlaylistService(repos.Playlist, logger),
 		Recommend:      recommendService,
-		Cast:           NewCastService(repos.Media, cfg, logger),
 		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
 		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
 		FileWatcher:    fileWatcher,
