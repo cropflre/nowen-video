@@ -7,7 +7,6 @@ import android.net.wifi.WifiManager
 import android.util.Log
 import com.nowen.video.v2.core.model.DiscoveredServer
 import com.nowen.video.v2.core.model.DiscoverySource
-import com.nowen.video.v2.core.model.InitStatusEnvelope
 import com.nowen.video.v2.core.model.ServerQrPayload
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.net.Inet4Address
@@ -45,7 +44,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
-import okhttp3.Request
 
 private const val DISCOVERY_TIMEOUT_MS = 15_000L
 private const val MDNS_SERVICE_TYPE = "_nowen-video._tcp."
@@ -260,20 +258,14 @@ private class HttpSweepServerDiscovery(
 
     private fun probe(host: String, endpoint: ProbeEndpoint): DiscoveredServer? {
         val baseUrl = "${endpoint.scheme}://$host:${endpoint.port}"
-        val request = Request.Builder()
-            .url("$baseUrl/api/auth/status")
-            .header("Accept", "application/json")
-            .build()
         return runCatching {
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val body = response.body?.string()?.takeIf(String::isNotBlank) ?: return null
-                val status = json.decodeFromString<InitStatusEnvelope>(body).data
+            httpClient.newCall(buildServerHandshakeRequest(baseUrl)).execute().use { response ->
+                val handshake = response.readServerHandshake(json)
                 DiscoveredServer(
-                    name = status.serverName.ifBlank { "Nowen Video" },
+                    name = handshake.serverName,
                     host = host,
                     port = endpoint.port,
-                    version = status.version,
+                    version = handshake.version,
                     source = DiscoverySource.HTTP_SWEEP,
                     url = baseUrl,
                 )
