@@ -41,9 +41,6 @@ export { aiSceneApi } from './v3'
 // V2 扩展
 export { userProfileApi, offlineDownloadApi, pluginApi, musicApi, photoApi, federationApi, abrApi } from './v2'
 
-// V5: Pulse 数据中心
-export { pulseApi } from './pulse'
-
 // V6: P1~P3 新增功能
 export { batchMoveApi } from './v4'
 
