@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
 	"github.com/nowen-video/nowen-video/internal/middleware"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -10,6 +11,7 @@ import (
 
 func registerCoreAPI(
 	r *gin.Engine,
+	cfg *config.Config,
 	services *service.Services,
 	handlers *handler.Handlers,
 	repos *repository.Repositories,
@@ -103,7 +105,9 @@ func registerCoreAPI(
 	api.GET("/search/mixed", handlers.Media.SearchMixed)
 	api.GET("/recommend", handlers.Recommend.GetRecommendations)
 	api.GET("/recommend/similar/:mediaId", handlers.Recommend.GetSimilarMedia)
-	api.GET("/ai/search", handlers.AI.SmartSearch)
+	if cfg.AI.Enabled {
+		api.GET("/ai/search", handlers.AI.SmartSearch)
+	}
 
 	api.GET("/cast/devices", handlers.Cast.ListDevices)
 	api.POST("/cast/devices/refresh", handlers.Cast.RefreshDevices)
