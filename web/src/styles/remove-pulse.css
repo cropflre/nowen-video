@@ -1,0 +1,4 @@
+/* Pulse 已从产品中移除。保留选择器用于兼容旧版侧栏代码和缓存。 */
+a[href="/pulse"] {
+  display: none !important;
+}
