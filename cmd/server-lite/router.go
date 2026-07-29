@@ -51,9 +51,9 @@ func buildRouter(
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 
 	startMaintenanceJobs(repos, appVer)
-	registerPublicRoutes(r, cfg, handlers, services, appVer, jwtMiddleware, jwtRefreshMiddleware)
-	registerCoreAPI(r, services, handlers, repos, jwtMiddleware)
-	registerAdminAPI(r, handlers, jwtMiddleware)
+	registerPublicRoutes(r, cfg, handlers, appVer, jwtMiddleware, jwtRefreshMiddleware)
+	registerCoreAPI(r, cfg, services, handlers, repos, jwtMiddleware)
+	registerAdminAPI(r, cfg, handlers, jwtMiddleware)
 
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
@@ -94,7 +94,6 @@ func registerPublicRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
 	handlers *handler.Handlers,
-	services *service.Services,
 	appVer string,
 	jwtMiddleware gin.HandlerFunc,
 	jwtRefreshMiddleware gin.HandlerFunc,
@@ -161,8 +160,6 @@ func registerPublicRoutes(
 		c.File(cfg.App.WebDir + "/sw.js")
 	})
 	r.GET("/api/ws", jwtMiddleware, handlers.WS.HandleWebSocket)
-
-	_ = services
 }
 
 func getLocalIPv4Addresses() []string {
