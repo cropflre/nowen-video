@@ -28,11 +28,13 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -351,19 +353,21 @@ class NowenRepository @Inject constructor(
     private val json: Json,
 ) {
     suspend fun probe(baseUrl: String): Result<ServerProbe> = runCatching {
-        val directClient = client.newBuilder().apply {
-            interceptors().clear()
-            networkInterceptors().clear()
-        }.build()
-        directClient.newCall(buildServerHandshakeRequest(baseUrl))
-            .execute()
-            .use { response ->
-                val handshake = response.readServerHandshake(json)
-                ServerProbe(
-                    serverName = handshake.serverName,
-                    version = handshake.version,
-                )
-            }
+        withContext(Dispatchers.IO) {
+            val directClient = client.newBuilder().apply {
+                interceptors().clear()
+                networkInterceptors().clear()
+            }.build()
+            directClient.newCall(buildServerHandshakeRequest(baseUrl))
+                .execute()
+                .use { response ->
+                    val handshake = response.readServerHandshake(json)
+                    ServerProbe(
+                        serverName = handshake.serverName,
+                        version = handshake.version,
+                    )
+                }
+        }
     }.recoverCatching { error ->
         throw error.asConnectionFailure()
     }
