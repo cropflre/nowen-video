@@ -30,7 +30,7 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		repos.Favorite,
 		repos.WatchHistory,
 		repos.MediaPerson,
-		repos.ScanClassification,
+		nil, // Lite 不迁移或访问 AI 扫描归类表
 		cfg,
 		scanner,
 		metadata,
@@ -69,7 +69,11 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 	SetGlobalRemoteStorageService(remoteStorageService)
 
 	aiService := NewAIService(cfg.AI, cfg, repos.Media, repos.AICache, logger)
-	metadata.SetAIService(aiService)
+	var aiEnhancer *AIService
+	if cfg.AI.Enabled {
+		aiEnhancer = aiService
+		metadata.SetAIService(aiService)
+	}
 
 	theTVDBService := NewTheTVDBService(repos.Media, repos.Series, cfg, logger)
 	fanartService := NewFanartService(repos.Media, repos.Series, cfg, logger)
@@ -103,7 +107,7 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		repos.Media,
 		repos.Series,
 		metadata,
-		aiService,
+		aiEnhancer,
 		logger,
 	)
 	scrapeManager.SetWSHub(wsHub)
@@ -113,7 +117,7 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		repos.Series,
 		repos.FileOpLog,
 		metadata,
-		aiService,
+		aiEnhancer,
 		logger,
 	)
 	fileManager.SetWSHub(wsHub)
@@ -125,8 +129,11 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 	collectionService := NewCollectionService(repos.MovieCollection, repos.Media, logger)
 
 	aicostService := NewAICostService(aiService)
-	aiRouter := NewAIRouter(aiService, aicostService, repos.AIUsage, repos.AIFailover, cfg, logger)
-	aiRouter.LoadMonthUsage()
+	var aiRouter *AIRouter
+	if cfg.AI.Enabled {
+		aiRouter = NewAIRouter(aiService, aicostService, repos.AIUsage, repos.AIFailover, cfg, logger)
+		aiRouter.LoadMonthUsage()
+	}
 
 	streamService := NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger)
 	streamService.SetSettingRepo(repos.SystemSetting)
