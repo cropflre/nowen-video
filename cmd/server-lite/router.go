@@ -116,6 +116,7 @@ func registerPublicRoutes(
 			"preprocess":            false,
 			"adult_scraper":         false,
 			"ai_scene":              false,
+			"cast":                  false,
 			"ai_enabled":            cfg.AI.Enabled,
 			"smart_search":          cfg.AI.Enabled && cfg.AI.EnableSmartSearch,
 			"metadata_enhance":      cfg.AI.Enabled && cfg.AI.EnableMetadataEnhance,
