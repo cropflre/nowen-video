@@ -32,4 +32,5 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     ksp(libs.hilt.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }
