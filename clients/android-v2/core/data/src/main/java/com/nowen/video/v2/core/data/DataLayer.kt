@@ -36,7 +36,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Response
 import retrofit2.HttpException
 import retrofit2.Retrofit
@@ -345,18 +344,9 @@ class NowenRepository @Inject constructor(
     private val api: NowenApi,
     private val client: OkHttpClient,
     private val sessionStore: ServerSessionStore,
+    private val json: Json,
 ) {
-    suspend fun probe(baseUrl: String): Result<ServerProbe> = runCatching {
-        val healthUrl = requireNotNull(UrlNormalizer.apiUrl(baseUrl, "api/health"))
-        val directClient = client.newBuilder().apply {
-            interceptors().clear()
-            networkInterceptors().clear()
-        }.build()
-        directClient.newCall(Request.Builder().url(healthUrl).header("Accept", "application/json").build())
-            .execute()
-            .use { if (!it.isSuccessful) error("服务器返回 HTTP ${it.code}") }
-        ServerProbe()
-    }
+    suspend fun probe(baseUrl: String): Result<ServerProbe> = probeServer(baseUrl, client, json)
 
     suspend fun login(username: String, password: String): Result<TokenResponse> = apiCall {
         val response = api.login(LoginRequest(username.trim(), password))
