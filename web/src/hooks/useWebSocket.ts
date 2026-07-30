@@ -125,12 +125,14 @@ export interface TranscodeProgressData {
 }
 
 export interface TaskUpdatedData {
-  id: string
   kind: 'scan' | 'scrape' | 'transcode'
-  source_id: string
-  action: 'cancel' | 'retry'
-  accepted: boolean
-  message: string
+  source_id?: string
+  source_event?: string
+  status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  id?: string
+  action?: 'cancel' | 'retry'
+  accepted?: boolean
+  message?: string
 }
 
 export interface LibraryChangedData {
@@ -178,7 +180,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     reconnectInterval = 3000,
     maxRetries = 10,
   } = options
-
   const wsRef = useRef<WebSocket | null>(null)
   const retriesRef = useRef(0)
   const listenersRef = useRef<Map<string, Set<WSEventHandler>>>(new Map())
