@@ -48,16 +48,22 @@ func (s *StreamService) DefaultPlaybackClientCapabilities(userAgent string) Play
 	}
 }
 
-// PlanPlayback applies the Lite priority order: direct play, zero-copy remux,
-// then HLS transcoding. The method is read-only and does not start FFmpeg.
+// PlanPlayback loads media information once and applies the Lite priority
+// order: direct play, zero-copy remux, then HLS transcoding. Planning is
+// read-only and never starts FFmpeg.
 func (s *StreamService) PlanPlayback(mediaID string, caps PlaybackClientCapabilities) (*PlaybackPlan, error) {
 	info, err := s.GetMediaPlayInfo(mediaID)
 	if err != nil {
 		return nil, err
 	}
+	return s.PlanPlaybackWithInfo(mediaID, info, caps)
+}
 
-	media, err := s.mediaRepo.FindByID(mediaID)
-	if err != nil {
+// PlanPlaybackWithInfo lets the canonical Lite /info endpoint reuse the media
+// information it has already loaded. This avoids duplicate repository reads and
+// guarantees the legacy fields and embedded playback plan describe one snapshot.
+func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo, caps PlaybackClientCapabilities) (*PlaybackPlan, error) {
+	if info == nil {
 		return nil, ErrMediaNotFound
 	}
 
@@ -94,7 +100,7 @@ func (s *StreamService) PlanPlayback(mediaID string, caps PlaybackClientCapabili
 		return chooseTranscode(plan, hlsURL, "system_prefers_transcode", "系统设置要求优先使用兼容转码"), nil
 	}
 
-	hevcSource := isHEVCCodec(media.VideoCodec)
+	hevcSource := isHEVCCodec(info.VideoCodec)
 	directAllowed := info.CanDirectPlay && caps.SupportsDirectPlay && (!hevcSource || caps.SupportsHEVC)
 	if directAllowed {
 		plan.Method = PlaybackMethodDirect
