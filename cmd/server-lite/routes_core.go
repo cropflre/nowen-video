@@ -14,6 +14,7 @@ func registerCoreAPI(
 	cfg *config.Config,
 	services *service.Services,
 	handlers *handler.Handlers,
+	playbackPlan *handler.PlaybackPlanHandler,
 	repos *repository.Repositories,
 	jwtMiddleware gin.HandlerFunc,
 ) {
@@ -53,6 +54,7 @@ func registerCoreAPI(
 	api.GET("/series/:id/persons", handlers.Series.GetPersons)
 
 	api.GET("/stream/:id/info", guardByMediaID, handlers.Stream.MediaInfo)
+	api.GET("/stream/:id/plan", guardByMediaID, playbackPlan.Get)
 	api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
 	api.GET("/stream/:id/remux", guardByMediaID, handlers.Stream.Remux)
 	api.GET("/stream/:id/master.m3u8", guardByMediaID, handlers.Stream.Master)
