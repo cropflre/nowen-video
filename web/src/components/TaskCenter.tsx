@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Ban, CheckCircle2, CircleAlert, Clock3, Database, Film, Loader2, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { taskCenterApi } from '@/api'
 import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskAction, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 
-const TASK_EVENTS = [WS_EVENTS.TASK_UPDATED] as const
+const TASK_REFRESH_DEBOUNCE_MS = 250
 
 const kindLabel: Record<UnifiedTaskKind, string> = {
   scan: '媒体库扫描',
@@ -152,23 +152,60 @@ export default function TaskCenter() {
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const refreshInFlightRef = useRef<Promise<void> | null>(null)
+  const refreshQueuedRef = useRef(false)
+  const taskRefreshTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
   const { on, off } = useWebSocket()
 
   const enabled = user?.role === 'admin' && manifest?.profile === 'lite'
 
+  const performRefresh = useCallback(async () => {
+    const response = await taskCenterApi.list({ limit: 50 })
+    setSnapshot(response.data.data)
+    setError(null)
+  }, [])
+
   const refresh = useCallback(async (quiet = false) => {
     if (!enabled) return
+
+    // 生命周期事件可能高频到达。请求执行期间只记录一次追加刷新，
+    // 避免多个 GET /admin/tasks 并发并导致旧响应覆盖新快照。
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true
+      return refreshInFlightRef.current
+    }
+
     if (!quiet) setLoading(true)
+    const request = (async () => {
+      do {
+        refreshQueuedRef.current = false
+        try {
+          await performRefresh()
+        } catch (requestError) {
+          setError(requestError instanceof Error ? requestError.message : '无法读取任务状态')
+        }
+      } while (refreshQueuedRef.current)
+    })()
+
+    refreshInFlightRef.current = request
     try {
-      const response = await taskCenterApi.list({ limit: 50 })
-      setSnapshot(response.data.data)
-      setError(null)
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '无法读取任务状态')
+      await request
     } finally {
+      refreshInFlightRef.current = null
       if (!quiet) setLoading(false)
     }
-  }, [enabled])
+  }, [enabled, performRefresh])
+
+  const scheduleTaskRefresh = useCallback(() => {
+    if (!enabled) return
+    if (taskRefreshTimerRef.current !== null) {
+      window.clearTimeout(taskRefreshTimerRef.current)
+    }
+    taskRefreshTimerRef.current = window.setTimeout(() => {
+      taskRefreshTimerRef.current = null
+      void refresh(true)
+    }, TASK_REFRESH_DEBOUNCE_MS)
+  }, [enabled, refresh])
 
   const handleAction = useCallback(async (task: UnifiedTask, action: UnifiedTaskAction) => {
     const sourceID = task.source_id || task.id.replace(`${task.kind}:`, '')
@@ -194,10 +231,16 @@ export default function TaskCenter() {
 
   useEffect(() => {
     if (!enabled) return
-    const handleTaskEvent = () => void refresh(true)
-    TASK_EVENTS.forEach((event) => on(event, handleTaskEvent))
-    return () => TASK_EVENTS.forEach((event) => off(event, handleTaskEvent))
-  }, [enabled, off, on, refresh])
+    const handleTaskEvent = () => scheduleTaskRefresh()
+    on(WS_EVENTS.TASK_UPDATED, handleTaskEvent)
+    return () => {
+      off(WS_EVENTS.TASK_UPDATED, handleTaskEvent)
+      if (taskRefreshTimerRef.current !== null) {
+        window.clearTimeout(taskRefreshTimerRef.current)
+        taskRefreshTimerRef.current = null
+      }
+    }
+  }, [enabled, off, on, scheduleTaskRefresh])
 
   const tasks = snapshot?.tasks || []
   const activeCount = snapshot?.summary.active || 0
