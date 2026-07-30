@@ -58,8 +58,8 @@ export default function MyPage() {
   const enabledOptional = manifest
     ? Object.entries(optionalCapabilityLabels).filter(([name]) => manifest.capabilities[name]?.enabled)
     : []
-  const restartBound = manifest
-    ? Object.entries(manifest.capabilities).filter(([, capability]) => capability.configurable && capability.requires_restart)
+  const pendingRestart = manifest
+    ? Object.entries(manifest.capabilities).filter(([, capability]) => capability.pending_restart)
     : []
 
   return (
@@ -117,6 +117,14 @@ export default function MyPage() {
                   >
                     {profileLoading ? '检测中' : manifest?.profile === 'lite' ? 'Lite' : manifest?.profile === 'full' ? 'Full' : '未知'}
                   </span>
+                  {pendingRestart.length > 0 && (
+                    <span
+                      className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                      style={{ color: '#B45309', background: 'rgba(245, 158, 11, 0.12)' }}
+                    >
+                      待重启
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 text-sm leading-6" style={{ color: 'var(--text-tertiary)' }}>
                   {manifest?.profile === 'lite'
@@ -140,9 +148,9 @@ export default function MyPage() {
                   </div>
                 )}
 
-                {restartBound.length > 0 && (
-                  <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {restartBound.map(([name]) => optionalCapabilityLabels[name] || name).join('、')} 的启停在 Lite 模式下需重启服务生效。
+                {pendingRestart.length > 0 && (
+                  <p className="mt-3 text-xs" style={{ color: '#B45309' }}>
+                    {pendingRestart.map(([name]) => optionalCapabilityLabels[name] || name).join('、')} 配置已更改，重启服务后生效。
                   </p>
                 )}
               </div>
