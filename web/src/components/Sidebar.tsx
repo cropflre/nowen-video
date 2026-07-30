@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useServerProfileStore } from '@/stores/serverProfile'
 import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { libraryApi } from '@/api'
@@ -38,6 +39,9 @@ interface SidebarProps {
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
+  const manifest = useServerProfileStore((state) => state.manifest)
+  const isFullProfile = manifest?.profile === 'full'
+  const preprocessAvailable = manifest?.capabilities.preprocess?.available === true
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -181,6 +185,8 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               <div className="my-3 mx-3 border-t border-neon-blue/10" />
             )}
             {navItem('/admin', <Settings size={18} />, '管理中心')}
+            {isFullProfile && navItem('/files', <FolderOpen size={18} />, '文件管理')}
+            {preprocessAvailable && navItem('/preprocess', <Zap size={18} />, '预处理')}
           </>
         )}
       </nav>
