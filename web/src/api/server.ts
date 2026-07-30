@@ -3,8 +3,10 @@ import api from './client'
 export interface ServerCapability {
   available: boolean
   enabled: boolean
+  configured: boolean
   configurable: boolean
   requires_restart: boolean
+  pending_restart: boolean
   mode?: string
 }
 
