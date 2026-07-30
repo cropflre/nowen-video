@@ -26,6 +26,9 @@ const SeriesDetailPage = lazy(() => import('@/pages/SeriesDetailPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const StatsPage = lazy(() => import('@/pages/StatsPage'))
 const FileManagerPage = lazy(() => import('@/pages/FileManagerPage'))
+const PreprocessPage = lazy(() => import('@/pages/PreprocessPage'))
+const SubtitlePreprocessPage = lazy(() => import('@/pages/SubtitlePreprocessPage'))
+const PreprocessLayout = lazy(() => import('@/pages/PreprocessLayout'))
 const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
@@ -85,6 +88,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (user?.must_change_pwd && window.location.pathname !== '/force-change-password') {
     return <Navigate to="/force-change-password" replace />
   }
+  return <>{children}</>
+}
+
+function CapabilityRoute({
+  capability,
+  fallback,
+  children,
+}: {
+  capability: string
+  fallback: string
+  children: React.ReactNode
+}) {
+  const loaded = useServerProfileStore((state) => state.loaded)
+  const available = useServerProfileStore(
+    (state) => state.manifest?.capabilities[capability]?.available === true,
+  )
+  if (!loaded) return <PageLoader />
+  if (!available) return <Navigate to={fallback} replace />
   return <>{children}</>
 }
 
@@ -151,9 +172,25 @@ export default function App() {
                     <Route path="files" element={<FileManagerPage />} />
                     <Route path="scrape" element={<Navigate to="/files?tab=scrape" replace />} />
 
-                    {/* 预处理已从 lite 产品入口下线；旧地址保留兼容跳转。 */}
-                    <Route path="preprocess/*" element={<Navigate to="/admin#dashboard" replace />} />
-                    <Route path="subtitle-preprocess" element={<Navigate to="/admin#dashboard" replace />} />
+                    <Route
+                      path="preprocess"
+                      element={
+                        <CapabilityRoute capability="preprocess" fallback="/admin#dashboard">
+                          <PreprocessLayout />
+                        </CapabilityRoute>
+                      }
+                    >
+                      <Route index element={<PreprocessPage />} />
+                      <Route path="subtitle" element={<SubtitlePreprocessPage />} />
+                    </Route>
+                    <Route
+                      path="subtitle-preprocess"
+                      element={
+                        <CapabilityRoute capability="preprocess" fallback="/admin#dashboard">
+                          <Navigate to="/preprocess/subtitle" replace />
+                        </CapabilityRoute>
+                      }
+                    />
                   </Route>
 
                   <Route path="*" element={<Navigate to="/" replace />} />
