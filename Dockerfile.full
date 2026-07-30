@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.6
-# Default NAS-oriented lite image.
-# The complete legacy feature set remains available through Dockerfile.full.
+# Full compatibility image: legacy server entrypoint plus Python adult scraper.
 
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 ARG NOWEN_VERSION=0.1.0
@@ -24,7 +23,7 @@ COPY --from=frontend /app/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags="-s -w -X github.com/nowen-video/nowen-video/internal/version.Version=${NOWEN_VERSION}" \
-      -o nowen-video ./cmd/server-lite
+      -o nowen-video ./cmd/server
 
 FROM alpine:3.19
 ARG TARGETARCH
@@ -37,11 +36,15 @@ RUN apk add --no-cache \
       su-exec \
       coreutils \
       wget \
+      python3 \
+      py3-pip \
+      py3-flask \
+      py3-requests \
+      py3-beautifulsoup4 \
+      py3-lxml \
     && rm -rf /var/cache/apk/* \
     && ln -sf /bin/nice /usr/bin/nice
 
-# Hardware acceleration drivers remain in the lite image because direct play,
-# remux and on-demand fallback transcoding are core playback capabilities.
 RUN set -eux; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
       apk add --no-cache intel-media-driver libva-intel-driver mesa-va-gallium libva-utils; \
@@ -54,9 +57,10 @@ RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
 COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
 COPY --from=frontend /app/web/dist /app/web/dist
+COPY scripts/adult-scraper /app/scripts/adult-scraper
 
 RUN mkdir -p /data /cache /media \
-    && chown -R nowen:nowen /data /cache /media
+    && chown -R nowen:nowen /data /cache /media /app/scripts
 
 ENV NOWEN_APP_PORT=8080
 ENV NOWEN_APP_DATA_DIR=/data
@@ -65,6 +69,10 @@ ENV NOWEN_DATABASE_DB_PATH=/data/nowen.db
 ENV NOWEN_CACHE_CACHE_DIR=/cache
 ENV NOWEN_LOGGING_LEVEL=info
 ENV NOWEN_VERSION=${NOWEN_VERSION}
+ENV NOWEN_ADULT_SCRAPER_ENABLED=false
+ENV NOWEN_ADULT_SCRAPER_AUTO_START_PYTHON=true
+ENV NOWEN_ADULT_SCRAPER_PYTHON_EXECUTABLE=/usr/bin/python3
+ENV NOWEN_ADULT_SCRAPER_PYTHON_SERVICE_DIR=/app/scripts/adult-scraper
 ENV TZ=Asia/Shanghai
 
 EXPOSE 8080
@@ -83,6 +91,7 @@ if [ "$PUID" != "$(id -u nowen)" ] || [ "$PGID" != "$(id -g nowen)" ]; then\n\
 fi\n\
 chown -R nowen:nowen /data /cache 2>/dev/null || true\n\
 chown nowen:nowen /media 2>/dev/null || true\n\
+chown -R nowen:nowen /app/scripts 2>/dev/null || true\n\
 if [ "$PUID" = "0" ]; then\n\
   exec nowen-video\n\
 fi\n\

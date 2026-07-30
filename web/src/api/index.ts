@@ -13,6 +13,8 @@
 
 // 核心模块
 export { authApi } from './auth'
+export { serverApi } from './server'
+export type { ServerCapability, ServerProfileManifest, ServerHealthData } from './server'
 export { libraryApi } from './library'
 export { mediaApi, personApi, collectionApi } from './media'
 export { streamApi } from './stream'
