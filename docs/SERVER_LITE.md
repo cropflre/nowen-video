@@ -34,10 +34,12 @@ Lite 不启动：
 
 ## 能力契约
 
-Lite 通过两个公开接口声明真实运行能力：
+Lite 和 Full 都通过公开接口声明真实运行能力：
 
 - `GET /api/capabilities`：稳定的类型化能力清单
-- `GET /api/health`：健康信息、类型化能力清单，以及兼容旧客户端的 `features`
+- `GET /api/health`：健康信息，以及兼容旧客户端的 `features`
+
+Lite 的 `/api/health` 同时包含类型化能力清单。Full 通过独立的公开能力提供器原生响应 `/api/capabilities`，不再依赖 SPA 回退或前端猜测服务类型。旧版服务端仍可由 Web 通过 `/api/health` 兼容识别。
 
 能力字段含义：
 
@@ -47,7 +49,7 @@ Lite 通过两个公开接口声明真实运行能力：
 - `configurable`：管理员是否可以配置
 - `requires_restart`：改变启停状态后是否需要重启
 - `pending_restart`：配置状态和实际运行状态是否不一致
-- `mode`：`core`、`optional`、`on_demand`、`full_only` 或 `removed`
+- `mode`：`core`、`optional`、`on_demand`、`full_only`、`lite_only`、`full` 或 `removed`
 
 `enabled` 与 `configured` 被刻意分开。例如 AI 从关闭改为开启后，接口会返回：
 
@@ -75,6 +77,19 @@ AI 在 Lite 中属于可选能力：
 - 从开启改为关闭后会立即停止向客户端声明 AI 可用，并提示重启完成运行组件回收
 
 这样既保留了管理端开启入口，也避免关闭 AI 时创建相关表或启动运行组件。
+
+### 管理端能力保护
+
+共享管理页面会按照能力清单修正交互：
+
+- Lite 不展示“扫描后自动预处理”，避免保存一个当前构建永远不会执行的设置
+- AI 配置与实际运行状态不一致时，AI 标签页顶部会显示待重启原因
+- 开启 AI 后提示重启完成路由、数据表和后台组件装配
+- 关闭 AI 后提示重启完成运行组件回收
+- 提供“重新检测”入口，重新读取 `/api/capabilities`
+- Full 保留自动预处理设置和高级管理入口
+
+当前保护逻辑集中在 `CapabilityAdminGuard`，用于约束仍由 Lite/Full 共用的大型管理组件。后续管理页拆分后，可将能力判断下沉到具体设置区块。
 
 ## 统一任务中心
 
@@ -164,6 +179,8 @@ docker build -f Dockerfile.full -t nowen-video:full .
 ```
 
 Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 即使在 Full 中也不再提供功能。
+
+Full 原生提供 schema v2 的 `/api/capabilities`。预处理、字幕预处理、Emby 兼容、番号、投屏、音乐、图片、联邦、插件、离线下载、多用户 Profile、评论、弹幕和 AI 场景会标记为 `full` 模式；统一任务中心标记为 `lite_only`；Pulse 标记为 `removed`。
 
 Web 客户端会通过能力契约自动适配服务端：Lite 隐藏预处理等高级入口；Full 会恢复文件管理、视频预处理和字幕预处理路由与侧栏入口。同一套前端构建产物可以连接两种服务端模式。
 
