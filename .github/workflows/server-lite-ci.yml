@@ -8,7 +8,10 @@ on:
     paths:
       - 'cmd/server-lite/**'
       - 'internal/service/lite.go'
+      - 'internal/service/task_center.go'
+      - 'internal/service/task_center_test.go'
       - 'internal/handler/lite.go'
+      - 'internal/handler/task_center.go'
       - 'internal/model/migrate_lite.go'
       - 'internal/serverprofile/**'
       - 'web/**'
