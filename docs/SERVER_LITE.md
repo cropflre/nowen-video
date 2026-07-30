@@ -24,7 +24,7 @@ Lite 保留：
 Lite 不启动：
 
 - 音乐库、图片库、服务器联邦、插件系统
-- Pulse
+- Pulse 页面、接口和公开能力
 - 视频/字幕预处理 worker 和 GPU 常驻监控
 - AI 场景、精彩片段、封面分析
 - Emby/Infuse 兼容路由和 ID 预热
@@ -49,7 +49,7 @@ Lite 的 `/api/health` 同时包含类型化能力清单。Full 通过独立的�
 - `configurable`：管理员是否可以配置
 - `requires_restart`：改变启停状态后是否需要重启
 - `pending_restart`：配置状态和实际运行状态是否不一致
-- `mode`：`core`、`optional`、`on_demand`、`full_only`、`lite_only`、`full` 或 `removed`
+- `mode`：`core`、`optional`、`on_demand`、`full_only`、`lite_only` 或 `full`
 
 `enabled` 与 `configured` 被刻意分开。例如 AI 从关闭改为开启后，接口会返回：
 
@@ -157,15 +157,19 @@ GET /api/stream/:id/plan
 
 ## Pulse 移除策略
 
-Pulse 已从产品能力中永久移除：
+Pulse 已从公开产品表面移除：
 
-- Lite 不注册 Pulse 路由，也不创建 Pulse 运行组件
-- 原有分析仓储和服务实现已经删除，只剩零状态兼容类型
-- Full 暂时保留旧 `/api/admin/pulse/*` URL，统一返回 `410 Gone`
-- 兼容响应包含 `Deprecation: true`、`Sunset` 和 `pulse_removed` 错误码
+- 新版侧边栏、页面组件和正常路由不再提供 Pulse 入口
+- `/api/capabilities` 在 Lite 和 Full 中都不再返回 `pulse` 键
+- 旧 `/pulse`、`/pulse/*` 地址在 Lite 和 Full 中统一跳转到 `/admin`，并禁止缓存
+- 旧 `/api/admin/pulse/*` 请求表现为普通 `404 Not Found`，不再返回 `410`、`pulse_removed`、`Deprecation` 或 `Sunset`
+- Service Worker 升级为 v5，不再在安装阶段预缓存 `/` 旧应用壳
+- 新 Worker 接管后页面自动刷新一次，旧缓存会被删除，避免已删除菜单继续留在打开的标签页中
+- `/sw.js` 在 Lite 和 Full 中均使用 `no-store`，每次启动主动检查更新
+- 运行时语言词典屏蔽旧 `nav.pulse` 键，旧代码无法重新渲染该菜单文案
 - 不删除历史 SQLite 数据，避免升级或回退时发生破坏性数据操作
 
-兼容墓碑只用于告诉旧客户端该能力已永久移除，不查询数据库、不启动协程，也不提供任何 Pulse 功能。
+Full 组合内部暂时仍保留零状态兼容类型，用于降低大型旧服务装配代码的改造风险；这些类型不启动协程、不查询数据库，也不再形成公开页面、能力或可识别 API 响应。后续拆分 `cmd/server` 时可连同内部占位类型一起删除。
 
 ## Full（兼容）
 
@@ -178,9 +182,9 @@ make dev-full
 docker build -f Dockerfile.full -t nowen-video:full .
 ```
 
-Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 即使在 Full 中也不再提供功能。
+Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 在 Full 中同样没有公开产品表面。
 
-Full 原生提供 schema v2 的 `/api/capabilities`。预处理、字幕预处理、Emby 兼容、番号、投屏、音乐、图片、联邦、插件、离线下载、多用户 Profile、评论、弹幕和 AI 场景会标记为 `full` 模式；统一任务中心标记为 `lite_only`；Pulse 标记为 `removed`。
+Full 原生提供 schema v2 的 `/api/capabilities`。预处理、字幕预处理、Emby 兼容、番号、投屏、音乐、图片、联邦、插件、离线下载、多用户 Profile、评论、弹幕和 AI 场景会标记为 `full` 模式；统一任务中心标记为 `lite_only`。Pulse 不出现在能力清单中。
 
 Web 客户端会通过能力契约自动适配服务端：Lite 隐藏预处理等高级入口；Full 会恢复文件管理、视频预处理和字幕预处理路由与侧栏入口。同一套前端构建产物可以连接两种服务端模式。
 
