@@ -7,6 +7,43 @@ GET /api/admin/tasks?active=true&limit=50
 Authorization: Bearer <token>
 ```
 
+任务项会返回服务端允许的操作，客户端不应根据状态自行猜测：
+
+```json
+{
+  "id": "transcode:<task-id>",
+  "kind": "transcode",
+  "status": "running",
+  "source_id": "<task-id>",
+  "actions": ["cancel"]
+}
+```
+
+## 执行统一任务操作
+
+```http
+POST /api/admin/tasks/transcode/<task-id>/cancel
+Authorization: Bearer <token>
+```
+
+```http
+POST /api/admin/tasks/transcode/<task-id>/retry
+Authorization: Bearer <token>
+```
+
+```http
+POST /api/admin/tasks/scrape/<task-id>/retry
+Authorization: Bearer <token>
+```
+
+当前安全策略：
+
+- 仅运行中的转码任务提供 `cancel`
+- 失败或已取消的转码任务提供 `retry`
+- 失败的刮削任务提供 `retry`
+- 扫描任务和排队中的转码任务不暴露操作
+- 操作继续委托原转码/刮削服务执行，不创建新的任务队列或数据库表
+
 ## 一次获取播放信息与规划
 
 Lite 的常规播放信息接口已经是统一入口。客户端能力通过查询参数传入，响应保留原有播放字段，并额外包含 `playback_plan`。
