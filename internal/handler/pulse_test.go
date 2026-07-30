@@ -3,13 +3,12 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
-func TestPulseRemovedReturnsGone(t *testing.T) {
+func TestPulseRemovedReturnsNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -17,13 +16,13 @@ func TestPulseRemovedReturnsGone(t *testing.T) {
 
 	(&PulseHandler{}).GetDashboard(ctx)
 
-	if recorder.Code != http.StatusGone {
-		t.Fatalf("expected %d, got %d", http.StatusGone, recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected %d, got %d", http.StatusNotFound, recorder.Code)
 	}
-	if recorder.Header().Get("Deprecation") != "true" {
-		t.Fatal("expected deprecation header")
+	if recorder.Header().Get("Deprecation") != "" {
+		t.Fatal("retired endpoint must not advertise deprecated module metadata")
 	}
-	if body := recorder.Body.String(); body == "" || !strings.Contains(body, "pulse_removed") {
-		t.Fatalf("expected pulse_removed response, got %q", body)
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("retired endpoint must behave like a missing route, got %q", recorder.Body.String())
 	}
 }
