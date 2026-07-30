@@ -24,14 +24,27 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   const currentCaches = [STATIC_CACHE, DYNAMIC_CACHE, IMAGE_CACHE]
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
+  event.waitUntil((async () => {
+    const keys = await caches.keys()
+    await Promise.all(
       keys
         .filter((key) => key.startsWith('nowen-') && !currentCaches.includes(key))
         .map((key) => caches.delete(key)),
-    )),
-  )
-  self.clients.claim()
+    )
+
+    await self.clients.claim()
+
+    // 当前打开的标签页可能还在执行旧版 JS，无法监听新 Worker 的 controllerchange。
+    // 激活时由 Worker 主动重新导航一次，确保已经删除的页面和菜单立即退出。
+    const windowClients = await self.clients.matchAll({ type: 'window' })
+    await Promise.all(windowClients.map(async (client) => {
+      try {
+        await client.navigate(client.url)
+      } catch {
+        // 标签页可能在刷新过程中关闭；不影响其他客户端更新。
+      }
+    }))
+  })())
 })
 
 async function trimCache(cacheName, maxItems) {
