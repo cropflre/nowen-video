@@ -28,9 +28,34 @@ Lite 不启动：
 - Emby/Infuse 兼容路由和 ID 预热
 - 番号刮削、Python 子进程和调度器
 - 多用户 Profile、服务端离线下载
-- 评论与弹幕
+- 评论、弹幕、DLNA/Chromecast 投屏
 
-`GET /api/health` 会返回 `profile: lite` 以及实际能力清单。
+## 能力契约
+
+Lite 通过两个公开接口声明真实运行能力：
+
+- `GET /api/capabilities`：稳定的类型化能力清单
+- `GET /api/health`：健康信息、类型化能力清单，以及兼容旧客户端的 `features`
+
+能力字段含义：
+
+- `available`：当前构建是否包含该能力
+- `enabled`：本次进程是否已启用
+- `configurable`：管理员是否可以配置
+- `requires_restart`：改变启停状态后是否需要重启
+- `mode`：`core`、`optional`、`on_demand`、`full_only` 或 `removed`
+
+Web 客户端启动时会读取能力清单。管理员可在“我的”页面查看当前 Lite/Full 模式、已启用扩展以及需要重启才能生效的能力。
+
+### AI 生命周期
+
+AI 在 Lite 中属于可选能力：
+
+- AI 关闭时，状态、配置、连接测试和提供商预设接口仍可访问
+- AI 缓存、用量、路由、AI 搜索和 AI 重命名等运行接口只在启动时已开启 AI 的情况下注册
+- 从关闭改为开启后需要重启服务；重启时会完成 AI 表迁移、路由和 AIRouter 装配
+
+这样既保留了管理端开启入口，也避免关闭 AI 时创建相关表或启动运行组件。
 
 ## Full（兼容）
 
@@ -60,5 +85,6 @@ Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python�
 
 - 现有数据库仍使用同一份 SQLite 文件，Lite 与 Full 可以回退切换。
 - 不删除旧表和高级功能数据。
+- 新安装的 Lite 只迁移核心表和启动时已启用的可选能力表。
 - Web、桌面端、Android V2 依赖的登录、媒体库、搜索、播放、收藏和进度 API 保持不变。
-- 需要 Emby/Infuse、预处理或番号功能时，使用 Full 构建。
+- 需要 Emby/Infuse、预处理、投屏或番号功能时，使用 Full 构建。
