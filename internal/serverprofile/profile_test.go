@@ -17,7 +17,7 @@ func TestLiteCoreAndUnsupportedCapabilities(t *testing.T) {
 		t.Fatalf("expected schema version %d, got %d", SchemaVersion, manifest.SchemaVersion)
 	}
 
-	for _, name := range []string{"library", "playback", "transcode", "metadata", "subtitles"} {
+	for _, name := range []string{"library", "playback", "transcode", "metadata", "subtitles", "task_center"} {
 		capability := manifest.Capabilities[name]
 		if !capability.Available || !capability.Enabled || !capability.Configured {
 			t.Fatalf("core capability %q must be available, configured and enabled: %+v", name, capability)
