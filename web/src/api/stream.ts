@@ -28,6 +28,10 @@ export interface PlaybackPlan {
   client_capabilities: PlaybackClientCapabilities
 }
 
+type PlannedMediaPlayInfo = MediaPlayInfo & {
+  playback_plan?: PlaybackPlan
+}
+
 const playbackPlanCache = new Map<string, PlaybackPlan>()
 
 function browserSupportsHEVC(): boolean {
@@ -46,7 +50,7 @@ function browserSupportsHEVC(): boolean {
 }
 
 function applyPlaybackPlan(info: MediaPlayInfo, plan: PlaybackPlan): MediaPlayInfo {
-  const next = { ...info } as MediaPlayInfo & { playback_plan?: PlaybackPlan }
+  const next = { ...info } as PlannedMediaPlayInfo
   next.playback_plan = plan
 
   if (plan.method === 'direct') {
@@ -85,7 +89,23 @@ function withToken(url: string): string {
 
 export const streamApi = {
   getPlayInfo: async (mediaId: string) => {
-    const response = await api.get<{ data: MediaPlayInfo }>(`/stream/${mediaId}/info`)
+    const supportsHEVC = browserSupportsHEVC()
+    const response = await api.get<{ data: PlannedMediaPlayInfo }>(`/stream/${mediaId}/info`, {
+      params: {
+        supports_direct: true,
+        supports_remux: true,
+        supports_hevc: supportsHEVC,
+      },
+    })
+
+    // Current Lite servers embed the plan in /info, so playback initialization
+    // needs only one network round trip.
+    const embeddedPlan = response.data.data.playback_plan
+    if (embeddedPlan) {
+      playbackPlanCache.set(mediaId, embeddedPlan)
+      response.data.data = applyPlaybackPlan(response.data.data, embeddedPlan) as PlannedMediaPlayInfo
+      return response
+    }
 
     try {
       await useServerProfileStore.getState().load()
@@ -94,19 +114,20 @@ export const streamApi = {
         return response
       }
 
+      // Transitional Lite deployments may expose /plan without embedding it in
+      // /info. Keep this fallback until those deployments have upgraded.
       const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
         params: {
           supports_direct: true,
           supports_remux: true,
-          supports_hevc: browserSupportsHEVC(),
+          supports_hevc: supportsHEVC,
         },
       })
       const plan = planResponse.data.data
       playbackPlanCache.set(mediaId, plan)
-      response.data.data = applyPlaybackPlan(response.data.data, plan)
+      response.data.data = applyPlaybackPlan(response.data.data, plan) as PlannedMediaPlayInfo
     } catch {
-      // Older Full servers and transitional deployments do not expose /plan.
-      // Existing play-info behavior remains the compatibility fallback.
+      // Full and older servers keep the historical play-info behavior.
       playbackPlanCache.delete(mediaId)
     }
 
