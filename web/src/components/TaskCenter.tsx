@@ -6,21 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 
-const TASK_EVENTS = [
-  WS_EVENTS.SCAN_STARTED,
-  WS_EVENTS.SCAN_PROGRESS,
-  WS_EVENTS.SCAN_PHASE,
-  WS_EVENTS.SCAN_COMPLETED,
-  WS_EVENTS.SCAN_FAILED,
-  WS_EVENTS.SCRAPE_STARTED,
-  WS_EVENTS.SCRAPE_PROGRESS,
-  WS_EVENTS.SCRAPE_COMPLETED,
-  WS_EVENTS.TRANSCODE_STARTED,
-  WS_EVENTS.TRANSCODE_PROGRESS,
-  WS_EVENTS.TRANSCODE_COMPLETED,
-  WS_EVENTS.TRANSCODE_FAILED,
-  WS_EVENTS.TASK_UPDATED,
-] as const
+const TASK_EVENTS = [WS_EVENTS.TASK_UPDATED] as const
 
 const kindLabel: Record<UnifiedTaskKind, string> = {
   scan: '媒体库扫描',
