@@ -85,6 +85,7 @@ func (r LiteRuntime) Manifest(cfg *config.Config) Manifest {
 			"subtitles":           always("core"),
 			"users":               always("core"),
 			"collections":         always("core"),
+			"task_center":         always("core"),
 			"ai":                  restartConfigurable(r.aiStarted, cfg.AI.Enabled, "optional"),
 			"webdav":              hotConfigurable(cfg.Storage.WebDAV.Enabled, "optional"),
 			"alist":               hotConfigurable(cfg.Storage.Alist.Enabled, "optional"),
