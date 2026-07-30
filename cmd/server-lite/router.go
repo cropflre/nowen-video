@@ -51,11 +51,13 @@ func buildRouter(
 	jwtMiddleware := middleware.JWTAuthWithValidator(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	profileRuntime := serverprofile.NewLiteRuntime(cfg)
+	taskCenterService := service.NewTaskCenterService(services.Library, repos.Transcode, repos.ScrapeTask, logger)
+	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, logger)
 
 	startMaintenanceJobs(repos, appVer)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
 	registerCoreAPI(r, cfg, services, handlers, repos, jwtMiddleware)
-	registerAdminAPI(r, cfg, handlers, jwtMiddleware)
+	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
 
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
