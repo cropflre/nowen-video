@@ -18,7 +18,6 @@ const (
 )
 
 var (
-	ErrTaskNotFound          = errors.New("task not found")
 	ErrTaskActionConflict    = errors.New("task action conflicts with current status")
 	ErrTaskActionUnsupported = errors.New("task action unsupported")
 )
