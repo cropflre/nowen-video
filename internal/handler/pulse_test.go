@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -22,16 +23,7 @@ func TestPulseRemovedReturnsGone(t *testing.T) {
 	if recorder.Header().Get("Deprecation") != "true" {
 		t.Fatal("expected deprecation header")
 	}
-	if body := recorder.Body.String(); body == "" || !contains(body, "pulse_removed") {
+	if body := recorder.Body.String(); body == "" || !strings.Contains(body, "pulse_removed") {
 		t.Fatalf("expected pulse_removed response, got %q", body)
 	}
-}
-
-func contains(value, needle string) bool {
-	for i := 0; i+len(needle) <= len(value); i++ {
-		if value[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }
