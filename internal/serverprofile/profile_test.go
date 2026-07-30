@@ -24,11 +24,14 @@ func TestLiteCoreAndUnsupportedCapabilities(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"preprocess", "emby_compat", "adult_scraper", "cast", "music", "photos", "federation", "plugins", "pulse"} {
+	for _, name := range []string{"preprocess", "emby_compat", "adult_scraper", "cast", "music", "photos", "federation", "plugins"} {
 		capability := manifest.Capabilities[name]
 		if capability.Available || capability.Enabled || capability.Configured {
 			t.Fatalf("lite-only exclusion %q must be unavailable: %+v", name, capability)
 		}
+	}
+	if _, exists := manifest.Capabilities["pulse"]; exists {
+		t.Fatal("Pulse must not remain in the Lite capability contract")
 	}
 }
 
@@ -115,8 +118,8 @@ func TestFullManifestExposesAdvancedCapabilities(t *testing.T) {
 	if manifest.Capabilities["task_center"].Available {
 		t.Fatal("full keeps its advanced task pages instead of the Lite task center")
 	}
-	if manifest.Capabilities["pulse"].Available {
-		t.Fatal("Pulse must remain permanently removed in Full")
+	if _, exists := manifest.Capabilities["pulse"]; exists {
+		t.Fatal("Pulse must not remain in the Full capability contract")
 	}
 	if manifest.Capabilities["ai"].Enabled || !manifest.Capabilities["ai"].Available {
 		t.Fatalf("disabled Full AI should remain configurable but not enabled: %+v", manifest.Capabilities["ai"])
