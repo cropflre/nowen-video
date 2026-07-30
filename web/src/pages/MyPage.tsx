@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { BarChart3, Clock, Heart, ListVideo, Settings, UserRound } from 'lucide-react'
+import { BarChart3, ChevronRight, Clock, Heart, ListVideo, Server, Settings, UserRound } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { useServerProfileStore } from '@/stores/serverProfile'
 
 const entries = [
   {
@@ -35,8 +36,31 @@ const entries = [
   },
 ]
 
+const optionalCapabilityLabels: Record<string, string> = {
+  ai: 'AI',
+  webdav: 'WebDAV',
+  alist: 'Alist',
+  s3: 'S3',
+  preprocess: '预处理',
+  emby_compat: 'Emby 兼容',
+  cast: '投屏',
+  music: '音乐',
+  photos: '相册',
+  federation: '联邦',
+  plugins: '插件',
+}
+
 export default function MyPage() {
   const user = useAuthStore((state) => state.user)
+  const manifest = useServerProfileStore((state) => state.manifest)
+  const profileLoading = useServerProfileStore((state) => state.loading)
+
+  const enabledOptional = manifest
+    ? Object.entries(optionalCapabilityLabels).filter(([name]) => manifest.capabilities[name]?.enabled)
+    : []
+  const restartBound = manifest
+    ? Object.entries(manifest.capabilities).filter(([, capability]) => capability.configurable && capability.requires_restart)
+    : []
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -66,6 +90,67 @@ export default function MyPage() {
           </div>
         </div>
       </section>
+
+      {user?.role === 'admin' && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>
+            服务端
+          </h2>
+          <Link
+            to="/admin"
+            className="group block rounded-2xl border p-5 transition-all duration-200 hover:-translate-y-0.5"
+            style={{ borderColor: 'var(--border-default)', background: 'var(--card-bg)' }}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-blue/10 text-neon">
+                <Server size={21} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>服务端模式</h3>
+                  <span
+                    className="rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide"
+                    style={{
+                      color: manifest?.profile === 'lite' ? 'var(--neon-blue)' : 'var(--neon-purple)',
+                      background: manifest?.profile === 'lite' ? 'var(--neon-blue-10)' : 'var(--neon-purple-10)',
+                    }}
+                  >
+                    {profileLoading ? '检测中' : manifest?.profile === 'lite' ? 'Lite' : manifest?.profile === 'full' ? 'Full' : '未知'}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm leading-6" style={{ color: 'var(--text-tertiary)' }}>
+                  {manifest?.profile === 'lite'
+                    ? '面向 NAS 的影视核心模式，非核心服务按配置启用。'
+                    : manifest?.profile === 'full'
+                      ? '完整兼容模式，包含高级扩展与历史功能。'
+                      : '正在读取服务端能力与运行状态。'}
+                </p>
+
+                {enabledOptional.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {enabledOptional.map(([name, label]) => (
+                      <span
+                        key={name}
+                        className="rounded-lg px-2 py-1 text-xs"
+                        style={{ background: 'var(--nav-hover-bg)', color: 'var(--text-secondary)' }}
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {restartBound.length > 0 && (
+                  <p className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {restartBound.map(([name]) => optionalCapabilityLabels[name] || name).join('、')} 的启停在 Lite 模式下需重启服务生效。
+                  </p>
+                )}
+              </div>
+              <ChevronRight size={18} className="mt-1 shrink-0 text-surface-500 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </Link>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>
