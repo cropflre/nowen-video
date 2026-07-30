@@ -28,15 +28,15 @@ type PlaybackClientCapabilities struct {
 // PlaybackPlan is an additive contract. Existing media info fields and routes
 // remain unchanged so Web, desktop and Android clients can migrate gradually.
 type PlaybackPlan struct {
-	MediaID          string                     `json:"media_id"`
-	Method           string                     `json:"method"`
-	URL              string                     `json:"url"`
-	ReasonCode       string                     `json:"reason_code"`
-	Reason           string                     `json:"reason"`
+	MediaID           string                     `json:"media_id"`
+	Method            string                     `json:"method"`
+	URL               string                     `json:"url"`
+	ReasonCode        string                     `json:"reason_code"`
+	Reason            string                     `json:"reason"`
 	RequiresTranscode bool                       `json:"requires_transcode"`
-	FallbackMethod   string                     `json:"fallback_method,omitempty"`
-	FallbackURL      string                     `json:"fallback_url,omitempty"`
-	Capabilities     PlaybackClientCapabilities `json:"client_capabilities"`
+	FallbackMethod    string                     `json:"fallback_method,omitempty"`
+	FallbackURL       string                     `json:"fallback_url,omitempty"`
+	Capabilities      PlaybackClientCapabilities `json:"client_capabilities"`
 }
 
 func (s *StreamService) DefaultPlaybackClientCapabilities(userAgent string) PlaybackClientCapabilities {
@@ -88,7 +88,7 @@ func (s *StreamService) PlanPlayback(mediaID string, caps PlaybackClientCapabili
 	}
 
 	if caps.ForceTranscode {
-		return chooseTranscode(plan, hlsURL, "client_forced_transcode", "客户端要求使用兼容转码") , nil
+		return chooseTranscode(plan, hlsURL, "client_forced_transcode", "客户端要求使用兼容转码"), nil
 	}
 	if !info.PreferDirectPlay {
 		return chooseTranscode(plan, hlsURL, "system_prefers_transcode", "系统设置要求优先使用兼容转码"), nil
