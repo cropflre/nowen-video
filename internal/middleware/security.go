@@ -53,6 +53,35 @@ func servePublicCapabilities(c *gin.Context) bool {
 	return true
 }
 
+func retirePulseRoute(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+		return false
+	}
+	path := c.Request.URL.Path
+	if path != "/pulse" && !strings.HasPrefix(path, "/pulse/") {
+		return false
+	}
+
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+	c.Redirect(http.StatusTemporaryRedirect, "/admin")
+	c.Abort()
+	return true
+}
+
+func applyPWAUpgradeHeaders(c *gin.Context) {
+	if c.Request.URL.Path != "/sw.js" {
+		return
+	}
+	// Service Worker 必须每次重新验证。否则 Full/Lite 更新镜像后，浏览器仍可能
+	// 由旧 Worker 启动已经删除的菜单、路由和页面。
+	c.Header("Service-Worker-Allowed", "/")
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+}
+
 // Security 安全头中间件
 func Security() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -70,6 +99,10 @@ func Security() gin.HandlerFunc {
 				"connect-src 'self' ws: wss:; "+
 				"font-src 'self' data:;")
 
+		applyPWAUpgradeHeaders(c)
+		if retirePulseRoute(c) {
+			return
+		}
 		if servePublicCapabilities(c) {
 			return
 		}
