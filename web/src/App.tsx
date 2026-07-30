@@ -173,6 +173,8 @@ export default function App() {
                     <Route path="admin" element={<AdminPage />} />
                     <Route path="files" element={<FileManagerPage />} />
                     <Route path="scrape" element={<Navigate to="/files?tab=scrape" replace />} />
+                    <Route path="pulse" element={<Navigate to="/admin" replace />} />
+                    <Route path="pulse/*" element={<Navigate to="/admin" replace />} />
 
                     <Route
                       path="preprocess"
