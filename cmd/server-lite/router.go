@@ -50,9 +50,10 @@ func buildRouter(
 	}
 	jwtMiddleware := middleware.JWTAuthWithValidator(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
+	profileRuntime := serverprofile.NewLiteRuntime(cfg)
 
 	startMaintenanceJobs(repos, appVer)
-	registerPublicRoutes(r, cfg, handlers, appVer, jwtMiddleware, jwtRefreshMiddleware)
+	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
 	registerCoreAPI(r, cfg, services, handlers, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, jwtMiddleware)
 
@@ -95,6 +96,7 @@ func registerPublicRoutes(
 	r *gin.Engine,
 	cfg *config.Config,
 	handlers *handler.Handlers,
+	profileRuntime serverprofile.LiteRuntime,
 	appVer string,
 	jwtMiddleware gin.HandlerFunc,
 	jwtRefreshMiddleware gin.HandlerFunc,
@@ -107,13 +109,13 @@ func registerPublicRoutes(
 	auth.PUT("/password", jwtMiddleware, handlers.Auth.ChangePassword)
 
 	writeCapabilities := func(c *gin.Context) {
-		manifest := serverprofile.Lite(cfg)
+		manifest := profileRuntime.Manifest(cfg)
 		c.JSON(http.StatusOK, gin.H{"data": manifest})
 	}
 	r.GET("/api/capabilities", writeCapabilities)
 
 	r.GET("/api/health", func(c *gin.Context) {
-		manifest := serverprofile.Lite(cfg)
+		manifest := profileRuntime.Manifest(cfg)
 		features := manifest.LegacyFeatures(cfg)
 		data := gin.H{
 			"status":         "ok",
