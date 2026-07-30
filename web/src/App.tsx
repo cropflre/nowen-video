@@ -7,6 +7,7 @@ import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
+import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
@@ -122,6 +123,7 @@ export default function App() {
         <Toaster position="top-right" />
         <BrowserRouter>
           <ServerProfileLoader />
+          <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />
           <UpdateBanner />
