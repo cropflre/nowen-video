@@ -92,13 +92,19 @@ Lite 管理员页面右上角提供全局任务入口，任务数量和进度会
 
 ## 播放规划器
 
-Lite 新增只读接口：
+Lite 的常规播放信息接口已经是统一入口：
+
+```text
+GET /api/stream/:id/info
+```
+
+响应保留现有 `MediaPlayInfo` 字段，并额外返回 `playback_plan`。Web 客户端可以用一次请求同时获得媒体信息与服务端决策，不再额外请求规划接口。独立诊断接口仍保留：
 
 ```text
 GET /api/stream/:id/plan
 ```
 
-可选客户端参数：
+两个接口都支持以下客户端参数：
 
 - `supports_direct`：是否支持原始文件直放
 - `supports_remux`：是否支持 fragmented MP4 Remux
@@ -117,17 +123,34 @@ GET /api/stream/:id/plan
 
 ```json
 {
-  "method": "remux",
-  "url": "/api/stream/media-id/remux",
-  "reason_code": "container_remux",
-  "reason": "编码兼容，仅需转换容器，无需重新编码",
-  "requires_transcode": false,
-  "fallback_method": "transcode",
-  "fallback_url": "/api/stream/media-id/master.m3u8"
+  "media_id": "media-id",
+  "can_direct_play": false,
+  "can_remux": true,
+  "playback_plan": {
+    "method": "remux",
+    "url": "/api/stream/media-id/remux",
+    "reason_code": "container_remux",
+    "reason": "编码兼容，仅需转换容器，无需重新编码",
+    "requires_transcode": false,
+    "fallback_method": "transcode",
+    "fallback_url": "/api/stream/media-id/master.m3u8"
+  }
 }
 ```
 
-Web 客户端仅在连接 Lite 服务时采用规划结果；连接旧版或 Full 服务时自动退回现有播放信息逻辑。Android V2 的原有播放契约保持不变。
+服务端会在同一次请求中复用已加载的媒体信息生成规划，避免重复读库。连接旧版或 Full 服务时，Web 自动退回历史播放信息逻辑。Android V2 的原有播放契约保持不变，额外字段不会改变现有调用。
+
+## Pulse 移除策略
+
+Pulse 已从产品能力中永久移除：
+
+- Lite 不注册 Pulse 路由，也不创建 Pulse 运行组件
+- 原有分析仓储和服务实现已经删除，只剩零状态兼容类型
+- Full 暂时保留旧 `/api/admin/pulse/*` URL，统一返回 `410 Gone`
+- 兼容响应包含 `Deprecation: true`、`Sunset` 和 `pulse_removed` 错误码
+- 不删除历史 SQLite 数据，避免升级或回退时发生破坏性数据操作
+
+兼容墓碑只用于告诉旧客户端该能力已永久移除，不查询数据库、不启动协程，也不提供任何 Pulse 功能。
 
 ## Full（兼容）
 
@@ -140,7 +163,7 @@ make dev-full
 docker build -f Dockerfile.full -t nowen-video:full .
 ```
 
-Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。
+Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 即使在 Full 中也不再提供功能。
 
 Web 客户端会通过能力契约自动适配服务端：Lite 隐藏预处理等高级入口；Full 会恢复文件管理、视频预处理和字幕预处理路由与侧栏入口。同一套前端构建产物可以连接两种服务端模式。
 
