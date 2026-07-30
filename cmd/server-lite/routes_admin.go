@@ -126,11 +126,17 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 	admin.GET("/metadata/thetvdb/search", handlers.Admin.SearchTheTVDB)
 	admin.POST("/series/:seriesId/match/thetvdb", handlers.Admin.MatchSeriesTheTVDB)
 
+	// AI is an optional Lite capability. Configuration and connection testing
+	// remain available while disabled so an administrator can enable it. Routes
+	// that require migrated AI tables or the startup-time router are registered
+	// only when AI was enabled at process startup; enabling it requires restart.
+	admin.GET("/ai/status", handlers.AI.GetAIStatus)
+	admin.PUT("/ai/config", handlers.AI.UpdateAIConfig)
+	admin.POST("/ai/auto-pilot", handlers.AI.EnableAutoPilot)
+	admin.POST("/ai/test", handlers.AI.TestAIConnection)
+	admin.GET("/ai/presets", handlers.AI.ListProviderPresets)
+	admin.POST("/ai/quick-config/qwen", handlers.AI.QuickConfigQwen)
 	if cfg.AI.Enabled {
-		admin.GET("/ai/status", handlers.AI.GetAIStatus)
-		admin.PUT("/ai/config", handlers.AI.UpdateAIConfig)
-		admin.POST("/ai/auto-pilot", handlers.AI.EnableAutoPilot)
-		admin.POST("/ai/test", handlers.AI.TestAIConnection)
 		admin.DELETE("/ai/cache", handlers.AI.ClearAICache)
 		admin.GET("/ai/cache", handlers.AI.GetAICacheStats)
 		admin.GET("/ai/errors", handlers.AI.GetAIErrorLogs)
@@ -139,8 +145,6 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 		admin.GET("/ai/models", handlers.AICost.ListModels)
 		admin.GET("/ai/cost/estimate", handlers.AICost.Estimate)
 		admin.GET("/ai/cost/summary", handlers.AICost.Summary)
-		admin.GET("/ai/presets", handlers.AI.ListProviderPresets)
-		admin.POST("/ai/quick-config/qwen", handlers.AI.QuickConfigQwen)
 		admin.GET("/ai/router", handlers.AI.GetRouterSnapshot)
 		admin.POST("/ai/router/switch", handlers.AI.ForceSwitchProvider)
 		admin.POST("/ai/router/restore", handlers.AI.RestoreProvider)
