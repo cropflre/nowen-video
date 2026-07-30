@@ -5,30 +5,72 @@ import type { ServerCapability, ServerProfileManifest } from '@/api/server'
 const unavailable = (): ServerCapability => ({
   available: false,
   enabled: false,
+  configured: false,
   configurable: false,
   requires_restart: false,
+  pending_restart: false,
 })
+
+function normalizeCapability(capability: Partial<ServerCapability> | undefined): ServerCapability {
+  const available = capability?.available === true
+  const enabled = available && capability?.enabled === true
+  return {
+    available,
+    enabled,
+    configured: capability?.configured ?? enabled,
+    configurable: capability?.configurable === true,
+    requires_restart: capability?.requires_restart === true,
+    pending_restart: capability?.pending_restart === true,
+    mode: capability?.mode,
+  }
+}
+
+function normalizeManifest(manifest: ServerProfileManifest): ServerProfileManifest {
+  return {
+    ...manifest,
+    capabilities: Object.fromEntries(
+      Object.entries(manifest.capabilities || {}).map(([name, capability]) => [name, normalizeCapability(capability)]),
+    ),
+  }
+}
+
+function coreCapability(): ServerCapability {
+  return {
+    available: true,
+    enabled: true,
+    configured: true,
+    configurable: false,
+    requires_restart: false,
+    pending_restart: false,
+    mode: 'core',
+  }
+}
 
 function legacyManifest(features: Record<string, unknown> = {}, profileHint?: string): ServerProfileManifest {
   const profile = profileHint === 'lite' || features.profile === 'lite' ? 'lite' : 'full'
   const enabled = (name: string) => Boolean(features[name])
-  const capability = (name: string, available = true): ServerCapability => ({
-    available,
-    enabled: available && enabled(name),
-    configurable: false,
-    requires_restart: false,
-    mode: available ? 'legacy' : 'unknown',
-  })
+  const capability = (name: string, available = true): ServerCapability => {
+    const running = available && enabled(name)
+    return {
+      available,
+      enabled: running,
+      configured: running,
+      configurable: false,
+      requires_restart: false,
+      pending_restart: false,
+      mode: available ? 'legacy' : 'unknown',
+    }
+  }
 
   return {
     schema_version: 0,
     profile,
     capabilities: {
-      library: { available: true, enabled: true, configurable: false, requires_restart: false, mode: 'core' },
-      metadata: { available: true, enabled: true, configurable: false, requires_restart: false, mode: 'core' },
-      playback: { available: true, enabled: true, configurable: false, requires_restart: false, mode: 'core' },
-      transcode: { available: true, enabled: true, configurable: false, requires_restart: false, mode: 'core' },
-      subtitles: { available: true, enabled: true, configurable: false, requires_restart: false, mode: 'core' },
+      library: coreCapability(),
+      metadata: coreCapability(),
+      playback: coreCapability(),
+      transcode: coreCapability(),
+      subtitles: coreCapability(),
       ai: capability('ai_enabled'),
       webdav: capability('webdav'),
       alist: capability('alist'),
@@ -69,18 +111,18 @@ export const useServerProfileStore = create<ServerProfileState>((set, get) => ({
       set({ loading: true, error: null })
       try {
         const res = await serverApi.capabilities()
-        set({ manifest: res.data.data, loaded: true, loading: false })
+        set({ manifest: normalizeManifest(res.data.data), loaded: true, loading: false })
       } catch {
         try {
           // Full servers and older deployments may only expose /health.
           const res = await serverApi.health()
           const health = res.data.data || res.data
           const manifest = health.capabilities
-            ? {
+            ? normalizeManifest({
                 schema_version: health.schema_version || 1,
                 profile: health.profile === 'lite' ? 'lite' : 'full',
                 capabilities: health.capabilities,
-              } satisfies ServerProfileManifest
+              })
             : legacyManifest(health.features || {}, health.profile)
           set({ manifest, loaded: true, loading: false })
         } catch (error) {
