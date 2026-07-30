@@ -52,13 +52,23 @@ func buildRouter(
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	profileRuntime := serverprofile.NewLiteRuntime(cfg)
 	taskCenterService := service.NewTaskCenterService(services.Library, repos.Transcode, repos.ScrapeTask, logger)
-	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, logger)
+	taskActionDispatcher := service.NewTaskActionDispatcher(
+		services.Transcode,
+		services.ScrapeManager,
+		repos.Transcode,
+		repos.ScrapeTask,
+		repos.Media,
+		services.WSHub,
+		logger,
+	)
+	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, taskActionDispatcher, logger)
 	playbackPlanHandler := handler.NewPlaybackPlanHandler(services.Stream, logger)
 
 	startMaintenanceJobs(repos, appVer)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
 	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
+	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
