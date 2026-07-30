@@ -19,6 +19,7 @@ const TASK_EVENTS = [
   WS_EVENTS.TRANSCODE_PROGRESS,
   WS_EVENTS.TRANSCODE_COMPLETED,
   WS_EVENTS.TRANSCODE_FAILED,
+  WS_EVENTS.TASK_UPDATED,
 ] as const
 
 const kindLabel: Record<UnifiedTaskKind, string> = {
