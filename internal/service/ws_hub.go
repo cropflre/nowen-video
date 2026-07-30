@@ -57,7 +57,7 @@ type ScanProgressData struct {
 	Message     string `json:"message"`   // 描述信息
 }
 
-// ScanPhaseData 扫描阶段变更数据（用于多步骤流程的阶段通知）
+// ScanPhaseData 扫描阶段变更数据（用于多步骤流程通知）
 type ScanPhaseData struct {
 	LibraryID   string `json:"library_id"`
 	LibraryName string `json:"library_name"`
@@ -254,14 +254,26 @@ func (h *WSHub) Run() {
 	}
 }
 
-// BroadcastEvent 广播事件到所有连接的客户端
+// BroadcastEvent 广播事件到所有连接的客户端。扫描、刮削和转码生命周期
+// 会同时产生一个标准 task_updated 信封；原模块事件继续保留给旧页面使用。
 func (h *WSHub) BroadcastEvent(eventType string, data interface{}) {
-	event := WSEvent{
+	timestamp := time.Now().UnixMilli()
+	h.enqueueEvent(WSEvent{
 		Type:      eventType,
 		Data:      data,
-		Timestamp: time.Now().UnixMilli(),
-	}
+		Timestamp: timestamp,
+	})
 
+	if update, ok := taskLifecycleUpdateForEvent(eventType, data); ok {
+		h.enqueueEvent(WSEvent{
+			Type:      EventTaskUpdated,
+			Data:      update,
+			Timestamp: timestamp,
+		})
+	}
+}
+
+func (h *WSHub) enqueueEvent(event WSEvent) {
 	msg, err := json.Marshal(event)
 	if err != nil {
 		h.logger.Warnf("序列化WebSocket事件失败: %v", err)
