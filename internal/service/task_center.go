@@ -119,6 +119,7 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 				tasks = append(tasks, task)
 			}
 		}
+	}
 
 	sort.SliceStable(tasks, func(i, j int) bool {
 		leftActive := isTaskActive(tasks[i].Status)
