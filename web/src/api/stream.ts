@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
+import { useServerProfileStore } from '@/stores/serverProfile'
 import type {
   MediaPlayInfo,
 } from '@/types'
@@ -27,6 +28,52 @@ export interface PlaybackPlan {
   client_capabilities: PlaybackClientCapabilities
 }
 
+const playbackPlanCache = new Map<string, PlaybackPlan>()
+
+function browserSupportsHEVC(): boolean {
+  if (typeof document === 'undefined') return false
+  try {
+    const video = document.createElement('video')
+    return (
+      video.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') !== '' ||
+      video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') !== '' ||
+      video.canPlayType('video/mp4; codecs="hev1"') !== '' ||
+      video.canPlayType('video/mp4; codecs="hvc1"') !== ''
+    )
+  } catch {
+    return false
+  }
+}
+
+function applyPlaybackPlan(info: MediaPlayInfo, plan: PlaybackPlan): MediaPlayInfo {
+  const next = { ...info } as MediaPlayInfo & { playback_plan?: PlaybackPlan }
+  next.playback_plan = plan
+
+  if (plan.method === 'direct') {
+    next.can_direct_play = true
+    next.direct_play_url = plan.url
+    next.can_remux = false
+    // Lite 的优先级是原始直放优先于历史预处理缓存。
+    next.is_preprocessed = false
+  } else if (plan.method === 'remux') {
+    next.can_direct_play = false
+    next.can_remux = true
+    next.remux_url = plan.url
+    next.is_preprocessed = false
+  } else {
+    next.can_direct_play = false
+    next.can_remux = false
+    next.hls_url = plan.url
+    if (info.preprocessed_url && plan.url === info.preprocessed_url) {
+      next.is_preprocessed = true
+    } else {
+      next.is_preprocessed = false
+    }
+  }
+
+  return next
+}
+
 // ==================== 流媒体 ====================
 
 function withToken(url: string): string {
@@ -37,8 +84,34 @@ function withToken(url: string): string {
 }
 
 export const streamApi = {
-  getPlayInfo: (mediaId: string) =>
-    api.get<{ data: MediaPlayInfo }>(`/stream/${mediaId}/info`),
+  getPlayInfo: async (mediaId: string) => {
+    const response = await api.get<{ data: MediaPlayInfo }>(`/stream/${mediaId}/info`)
+
+    try {
+      await useServerProfileStore.getState().load()
+      if (useServerProfileStore.getState().manifest?.profile !== 'lite') {
+        playbackPlanCache.delete(mediaId)
+        return response
+      }
+
+      const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
+        params: {
+          supports_direct: true,
+          supports_remux: true,
+          supports_hevc: browserSupportsHEVC(),
+        },
+      })
+      const plan = planResponse.data.data
+      playbackPlanCache.set(mediaId, plan)
+      response.data.data = applyPlaybackPlan(response.data.data, plan)
+    } catch {
+      // Older Full servers and transitional deployments do not expose /plan.
+      // Existing play-info behavior remains the compatibility fallback.
+      playbackPlanCache.delete(mediaId)
+    }
+
+    return response
+  },
 
   getPlaybackPlan: (mediaId: string, capabilities?: {
     supportsDirect?: boolean
@@ -57,14 +130,20 @@ export const streamApi = {
       },
     }),
 
-  getMasterUrl: (mediaId: string) =>
-    withToken(`/api/stream/${mediaId}/master.m3u8`),
+  getMasterUrl: (mediaId: string) => {
+    const plan = playbackPlanCache.get(mediaId)
+    return withToken(plan?.method === 'transcode' ? plan.url : `/api/stream/${mediaId}/master.m3u8`)
+  },
 
-  getDirectUrl: (mediaId: string) =>
-    withToken(`/api/stream/${mediaId}/direct`),
+  getDirectUrl: (mediaId: string) => {
+    const plan = playbackPlanCache.get(mediaId)
+    return withToken(plan?.method === 'direct' ? plan.url : `/api/stream/${mediaId}/direct`)
+  },
 
-  getRemuxUrl: (mediaId: string) =>
-    withToken(`/api/stream/${mediaId}/remux`),
+  getRemuxUrl: (mediaId: string) => {
+    const plan = playbackPlanCache.get(mediaId)
+    return withToken(plan?.method === 'remux' ? plan.url : `/api/stream/${mediaId}/remux`)
+  },
 
   // 上报当前播放位置，驱动后端 FFmpeg 节流（Throttling）
   // position: 当前播放时间（秒，绝对位置）
