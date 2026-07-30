@@ -85,6 +85,7 @@ private const val PERIODIC_PROGRESS_INTERVAL_MS = 10_000L
 private const val MIN_PROGRESS_DELTA_MS = 2_000L
 private const val MIN_PROGRESS_INTERVAL_MS = 8_000L
 private const val NEXT_EPISODE_COUNTDOWN_SECONDS = 5
+private const val FALLBACK_NOTICE_DURATION_MS = 4_000L
 
 data class PlayerUiState(
     val loading: Boolean = true,
@@ -94,6 +95,8 @@ data class PlayerUiState(
     val mediaDurationMs: Long = 0L,
     val externalSubtitles: List<SubtitleTrack> = emptyList(),
     val nextEpisode: MediaDetail? = null,
+    val playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
+    val fallbackNotice: String? = null,
     val playbackSpeed: Float = 1f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
@@ -141,6 +144,8 @@ class PlayerViewModel @Inject constructor(
                     mediaDurationMs = 0L,
                     externalSubtitles = emptyList(),
                     nextEpisode = null,
+                    playbackDiagnostics = PlaybackDiagnostics(),
+                    fallbackNotice = null,
                     error = null,
                 )
             }
@@ -148,14 +153,16 @@ class PlayerViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, error = error.message ?: "播放信息加载失败") }
                 return@launch
             }
-            val resolved = resolveServerResource(
-                sessionStore.snapshot.value.activeServer?.baseUrl,
-                stream.preferredUrl,
-            )
+            val baseUrl = sessionStore.snapshot.value.activeServer?.baseUrl
+            val resolved = resolveServerResource(baseUrl, stream.preferredUrl)
             if (resolved.isNullOrBlank()) {
                 _state.update { it.copy(loading = false, error = "服务器没有返回可播放地址") }
                 return@launch
             }
+            val fallbackResolved = resolveServerResource(baseUrl, stream.fallbackUrl)
+                ?.takeUnless { it == resolved }
+                .orEmpty()
+            val fallbackMethod = stream.playbackPlan?.fallbackMethod.orEmpty()
 
             val detail = repository.detail(mediaId).getOrNull()
             val subtitles = repository.subtitles(mediaId).getOrNull()
@@ -178,6 +185,15 @@ class PlayerViewModel @Inject constructor(
                     mediaDurationMs = (stream.duration * 1_000).toLong().coerceAtLeast(0L),
                     externalSubtitles = subtitles?.external.orEmpty(),
                     nextEpisode = nextEpisode,
+                    playbackDiagnostics = PlaybackDiagnostics(
+                        method = stream.playbackMethod,
+                        methodLabel = stream.playbackMethodLabel,
+                        reasonCode = stream.playbackReasonCode,
+                        reason = stream.playbackReason,
+                        fallbackUrl = fallbackResolved,
+                        fallbackMethod = fallbackMethod,
+                        fallbackMethodLabel = playbackMethodLabel(fallbackMethod),
+                    ),
                 )
             }
         }
@@ -198,10 +214,54 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { preferencesStore.setAutoPlayNext(enabled) }
     }
 
-    fun onPlayerError(error: PlaybackException) {
-        _state.update {
-            it.copy(error = error.errorCodeName.ifBlank { error.message ?: "播放器发生错误" })
+    fun onPlayerError(error: PlaybackException, positionMs: Long) {
+        val current = _state.value
+        val diagnostics = current.playbackDiagnostics
+        if (
+            shouldAttemptPlaybackFallback(
+                errorCode = error.errorCode,
+                currentUrl = current.playbackUrl,
+                fallbackUrl = diagnostics.fallbackUrl,
+                alreadyUsingFallback = diagnostics.usingFallback,
+            )
+        ) {
+            val fallbackMethod = diagnostics.fallbackMethod.ifBlank { "transcode" }
+            val fallbackMethodLabel = diagnostics.fallbackMethodLabel
+                .takeUnless { it == "自动选择" }
+                ?: playbackMethodLabel(fallbackMethod)
+            val previousMethodLabel = diagnostics.methodLabel
+            _state.update {
+                it.copy(
+                    playbackUrl = diagnostics.fallbackUrl,
+                    resumePositionMs = positionMs.coerceAtLeast(0L),
+                    playbackDiagnostics = diagnostics.copy(
+                        method = fallbackMethod,
+                        methodLabel = fallbackMethodLabel,
+                        reasonCode = "client_playback_fallback",
+                        reason = "原播放方式（$previousMethodLabel）失败，已自动切换到服务端备用地址",
+                        fallbackUrl = "",
+                        fallbackMethod = "",
+                        fallbackMethodLabel = "",
+                        usingFallback = true,
+                        lastError = error.errorCodeName,
+                    ),
+                    fallbackNotice = "播放失败，已自动切换到$fallbackMethodLabel",
+                    error = null,
+                )
+            }
+            return
         }
+
+        _state.update {
+            it.copy(
+                playbackDiagnostics = diagnostics.copy(lastError = error.errorCodeName),
+                error = error.errorCodeName.ifBlank { error.message ?: "播放器发生错误" },
+            )
+        }
+    }
+
+    fun clearFallbackNotice() {
+        _state.update { it.copy(fallbackNotice = null) }
     }
 
     fun reportProgress(
@@ -309,6 +369,13 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(state.fallbackNotice) {
+        if (state.fallbackNotice != null) {
+            delay(FALLBACK_NOTICE_DURATION_MS)
+            viewModel.clearFallbackNotice()
+        }
+    }
+
     LaunchedEffect(state.playbackSpeed) {
         player.setPlaybackSpeed(state.playbackSpeed)
     }
@@ -373,7 +440,7 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                viewModel.onPlayerError(error)
+                viewModel.onPlayerError(error, player.currentPosition)
             }
 
             override fun onPositionDiscontinuity(
@@ -466,7 +533,9 @@ fun PlayerScreen(
             Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)
         }
 
-        if (state.progressQueued && !showNextEpisodePanel) {
+        val statusNotice = state.fallbackNotice
+            ?: if (state.progressQueued) "当前离线，观看进度将在恢复连接后自动同步" else null
+        if (statusNotice != null && !showNextEpisodePanel) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -476,7 +545,7 @@ fun PlayerScreen(
                 color = Color.Black.copy(alpha = 0.76f),
             ) {
                 Text(
-                    text = "当前离线，观看进度将在恢复连接后自动同步",
+                    text = statusNotice,
                     color = Color.White,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -540,6 +609,7 @@ fun PlayerScreen(
     if (showSettings) {
         PlayerSettingsSheet(
             onDismiss = { showSettings = false },
+            playbackDiagnostics = state.playbackDiagnostics,
             playbackSpeed = state.playbackSpeed,
             onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
             resizeMode = state.resizeMode,
