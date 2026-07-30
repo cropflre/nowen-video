@@ -2,6 +2,7 @@ import api from './client'
 
 export type UnifiedTaskKind = 'scan' | 'scrape' | 'transcode'
 export type UnifiedTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type UnifiedTaskAction = 'cancel' | 'retry'
 
 export interface UnifiedTask {
   id: string
@@ -12,6 +13,7 @@ export interface UnifiedTask {
   message?: string
   progress: number
   source_id?: string
+  actions: UnifiedTaskAction[]
   created_at?: string
   updated_at?: string
   started_at?: string
@@ -31,7 +33,18 @@ export interface TaskCenterSnapshot {
   summary: TaskCenterSummary
 }
 
+export interface TaskActionResult {
+  id: string
+  kind: UnifiedTaskKind
+  source_id: string
+  action: UnifiedTaskAction
+  accepted: boolean
+  message: string
+}
+
 export const taskCenterApi = {
   list: (params?: { active?: boolean; limit?: number }) =>
     api.get<{ data: TaskCenterSnapshot }>('/admin/tasks', { params }),
+  action: (kind: UnifiedTaskKind, sourceId: string, action: UnifiedTaskAction) =>
+    api.post<{ data: TaskActionResult }>(`/admin/tasks/${kind}/${encodeURIComponent(sourceId)}/${action}`),
 }
