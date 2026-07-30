@@ -53,7 +53,9 @@ func registerCoreAPI(
 	api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
 	api.GET("/series/:id/persons", handlers.Series.GetPersons)
 
-	api.GET("/stream/:id/info", guardByMediaID, handlers.Stream.MediaInfo)
+	// Lite 的常规播放信息接口直接携带 playback_plan，客户端一次请求即可
+	// 得到旧字段和服务端决策。独立 /plan 仍作为诊断与显式重规划接口保留。
+	api.GET("/stream/:id/info", guardByMediaID, playbackPlan.GetInfo)
 	api.GET("/stream/:id/plan", guardByMediaID, playbackPlan.Get)
 	api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
 	api.GET("/stream/:id/remux", guardByMediaID, handlers.Stream.Remux)
