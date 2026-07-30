@@ -140,6 +140,7 @@ internal fun externalSubtitleConfigurations(
 @Composable
 internal fun PlayerSettingsSheet(
     onDismiss: () -> Unit,
+    playbackDiagnostics: PlaybackDiagnostics,
     playbackSpeed: Float,
     onPlaybackSpeedChange: (Float) -> Unit,
     resizeMode: Int,
@@ -165,6 +166,9 @@ internal fun PlayerSettingsSheet(
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
+
+            PlaybackDiagnosticsItem(playbackDiagnostics)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             SettingsSectionTitle("播放速度")
             ChoiceRow {
@@ -243,6 +247,49 @@ internal fun PlayerSettingsSheet(
             Spacer(Modifier.height(12.dp))
         }
     }
+}
+
+@Composable
+private fun PlaybackDiagnosticsItem(diagnostics: PlaybackDiagnostics) {
+    ListItem(
+        headlineContent = {
+            Text(
+                text = buildString {
+                    append("当前播放：")
+                    append(diagnostics.methodLabel)
+                    if (diagnostics.usingFallback) append("（已自动降级）")
+                },
+            )
+        },
+        supportingContent = {
+            Column {
+                Text(
+                    text = diagnostics.reason.ifBlank { "等待服务端返回播放规划" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (diagnostics.reasonCode.isNotBlank()) {
+                    Text(
+                        text = "诊断码：${diagnostics.reasonCode}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (diagnostics.lastError.isNotBlank()) {
+                    Text(
+                        text = "最近错误：${diagnostics.lastError}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else if (diagnostics.fallbackAvailable) {
+                    Text(
+                        text = "当前方式失败时会自动切换到${diagnostics.fallbackMethodLabel}",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+    )
 }
 
 @Composable
