@@ -104,7 +104,6 @@ func (r LiteRuntime) Manifest(cfg *config.Config) Manifest {
 			"comments":            unavailable("full_only"),
 			"danmaku":             unavailable("full_only"),
 			"ai_scene":            unavailable("full_only"),
-			"pulse":               unavailable("removed"),
 		},
 	}
 }
@@ -149,7 +148,6 @@ func Full(cfg *config.Config) Manifest {
 			"comments":            always("full"),
 			"danmaku":             always("full"),
 			"ai_scene":            always("full"),
-			"pulse":               unavailable("removed"),
 		},
 	}
 }
