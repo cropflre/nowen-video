@@ -10,6 +10,7 @@ on:
       - 'internal/service/lite.go'
       - 'internal/handler/lite.go'
       - 'internal/model/migrate_lite.go'
+      - 'internal/serverprofile/**'
       - 'web/**'
       - 'Dockerfile'
       - 'Dockerfile.full'
