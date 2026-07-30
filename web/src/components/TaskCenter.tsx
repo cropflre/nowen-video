@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, CheckCircle2, CircleAlert, Clock3, Database, Film, Loader2, RefreshCw, X, XCircle } from 'lucide-react'
+import { Activity, Ban, CheckCircle2, CircleAlert, Clock3, Database, Film, Loader2, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { taskCenterApi } from '@/api'
-import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
+import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskAction, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -66,9 +66,18 @@ function formatTime(value?: string) {
   }).format(date)
 }
 
-function TaskRow({ task }: { task: UnifiedTask }) {
+function TaskRow({
+  task,
+  actionLoading,
+  onAction,
+}: {
+  task: UnifiedTask
+  actionLoading: string | null
+  onAction: (task: UnifiedTask, action: UnifiedTaskAction) => void
+}) {
   const active = task.status === 'queued' || task.status === 'running'
   const time = formatTime(task.updated_at || task.started_at || task.created_at)
+  const actions = task.actions || []
 
   return (
     <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-default)', background: 'var(--card-bg)' }}>
@@ -113,6 +122,35 @@ function TaskRow({ task }: { task: UnifiedTask }) {
               <span className="shrink-0">{time}</span>
             </div>
           )}
+
+          {actions.length > 0 && (
+            <div className="mt-3 flex justify-end gap-2">
+              {actions.includes('retry') && (
+                <button
+                  type="button"
+                  onClick={() => onAction(task, 'retry')}
+                  disabled={actionLoading !== null}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
+                  style={{ borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
+                >
+                  {actionLoading === `${task.id}:retry` ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  重试
+                </button>
+              )}
+              {actions.includes('cancel') && (
+                <button
+                  type="button"
+                  onClick={() => onAction(task, 'cancel')}
+                  disabled={actionLoading !== null}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
+                  style={{ borderColor: 'rgba(220,38,38,.25)', color: '#DC2626' }}
+                >
+                  {actionLoading === `${task.id}:cancel` ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+                  取消
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -125,6 +163,7 @@ export default function TaskCenter() {
   const [open, setOpen] = useState(false)
   const [snapshot, setSnapshot] = useState<TaskCenterSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { on, off } = useWebSocket()
 
@@ -143,6 +182,21 @@ export default function TaskCenter() {
       if (!quiet) setLoading(false)
     }
   }, [enabled])
+
+  const handleAction = useCallback(async (task: UnifiedTask, action: UnifiedTaskAction) => {
+    const sourceID = task.source_id || task.id.replace(`${task.kind}:`, '')
+    const key = `${task.id}:${action}`
+    setActionLoading(key)
+    setError(null)
+    try {
+      await taskCenterApi.action(task.kind, sourceID, action)
+      await refresh(true)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : '任务操作失败')
+    } finally {
+      setActionLoading(null)
+    }
+  }, [refresh])
 
   useEffect(() => {
     if (!enabled) return
@@ -165,6 +219,10 @@ export default function TaskCenter() {
 
   if (!enabled) return null
 
+  const renderTask = (task: UnifiedTask) => (
+    <TaskRow key={task.id} task={task} actionLoading={actionLoading} onAction={handleAction} />
+  )
+
   return (
     <>
       <button
@@ -185,44 +243,21 @@ export default function TaskCenter() {
 
       {open && (
         <div className="fixed inset-0 z-[100]">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            aria-label="关闭任务中心"
-            onClick={() => setOpen(false)}
-          />
-          <aside
-            className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l shadow-2xl"
-            style={{ borderColor: 'var(--border-default)', background: 'var(--bg-base)' }}
-          >
+          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="关闭任务中心" onClick={() => setOpen(false)} />
+          <aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l shadow-2xl" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-base)' }}>
             <header className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
               <div>
                 <div className="flex items-center gap-2">
                   <Activity size={19} className="text-neon" />
                   <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>任务中心</h2>
                 </div>
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  扫描、刮削和转码统一进度
-                </p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削和转码统一进度与安全操作</p>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => void refresh()}
-                  disabled={loading}
-                  className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-50"
-                  style={{ color: 'var(--text-secondary)' }}
-                  aria-label="刷新任务"
-                >
+                <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-50" style={{ color: 'var(--text-secondary)' }} aria-label="刷新任务">
                   <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)]"
-                  style={{ color: 'var(--text-secondary)' }}
-                  aria-label="关闭任务中心"
-                >
+                <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)]" style={{ color: 'var(--text-secondary)' }} aria-label="关闭任务中心">
                   <X size={19} />
                 </button>
               </div>
@@ -237,9 +272,7 @@ export default function TaskCenter() {
               )}
 
               {loading && !snapshot ? (
-                <div className="flex min-h-60 items-center justify-center">
-                  <Loader2 size={24} className="animate-spin text-neon" />
-                </div>
+                <div className="flex min-h-60 items-center justify-center"><Loader2 size={24} className="animate-spin text-neon" /></div>
               ) : tasks.length === 0 ? (
                 <div className="flex min-h-60 flex-col items-center justify-center text-center">
                   <CheckCircle2 size={34} className="mb-3 text-green-500" />
@@ -254,14 +287,13 @@ export default function TaskCenter() {
                         <h3 className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>进行中</h3>
                         <span className="text-xs text-neon">{activeTasks.length} 项</span>
                       </div>
-                      <div className="space-y-2">{activeTasks.map((task) => <TaskRow key={task.id} task={task} />)}</div>
+                      <div className="space-y-2">{activeTasks.map(renderTask)}</div>
                     </section>
                   )}
-
                   {recentTasks.length > 0 && (
                     <section>
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>最近任务</h3>
-                      <div className="space-y-2">{recentTasks.map((task) => <TaskRow key={task.id} task={task} />)}</div>
+                      <div className="space-y-2">{recentTasks.map(renderTask)}</div>
                     </section>
                   )}
                 </div>
