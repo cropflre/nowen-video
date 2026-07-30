@@ -53,10 +53,11 @@ func buildRouter(
 	profileRuntime := serverprofile.NewLiteRuntime(cfg)
 	taskCenterService := service.NewTaskCenterService(services.Library, repos.Transcode, repos.ScrapeTask, logger)
 	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, logger)
+	playbackPlanHandler := handler.NewPlaybackPlanHandler(services.Stream, logger)
 
 	startMaintenanceJobs(repos, appVer)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
-	registerCoreAPI(r, cfg, services, handlers, repos, jwtMiddleware)
+	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
 
 	r.Static("/assets", cfg.App.WebDir+"/assets")
