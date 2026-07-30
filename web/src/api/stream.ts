@@ -4,6 +4,29 @@ import type {
 } from '@/types'
 import api from './client'
 
+export type PlaybackMethod = 'direct' | 'remux' | 'transcode'
+
+export interface PlaybackClientCapabilities {
+  user_agent?: string
+  supports_direct_play: boolean
+  supports_remux: boolean
+  supports_hevc: boolean
+  force_transcode: boolean
+  max_bitrate?: number
+}
+
+export interface PlaybackPlan {
+  media_id: string
+  method: PlaybackMethod
+  url: string
+  reason_code: string
+  reason: string
+  requires_transcode: boolean
+  fallback_method?: PlaybackMethod
+  fallback_url?: string
+  client_capabilities: PlaybackClientCapabilities
+}
+
 // ==================== 流媒体 ====================
 
 function withToken(url: string): string {
@@ -16,6 +39,23 @@ function withToken(url: string): string {
 export const streamApi = {
   getPlayInfo: (mediaId: string) =>
     api.get<{ data: MediaPlayInfo }>(`/stream/${mediaId}/info`),
+
+  getPlaybackPlan: (mediaId: string, capabilities?: {
+    supportsDirect?: boolean
+    supportsRemux?: boolean
+    supportsHEVC?: boolean
+    forceTranscode?: boolean
+    maxBitrate?: number
+  }) =>
+    api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
+      params: {
+        supports_direct: capabilities?.supportsDirect ?? true,
+        supports_remux: capabilities?.supportsRemux ?? true,
+        supports_hevc: capabilities?.supportsHEVC,
+        force_transcode: capabilities?.forceTranscode,
+        max_bitrate: capabilities?.maxBitrate,
+      },
+    }),
 
   getMasterUrl: (mediaId: string) =>
     withToken(`/api/stream/${mediaId}/master.m3u8`),
