@@ -13,11 +13,19 @@ export const SUPPORTED_LOCALES = [
 
 export type LocaleCode = typeof SUPPORTED_LOCALES[number]['code']
 
-// 语言包映射
+const RETIRED_TRANSLATION_KEYS = new Set(['nav.pulse'])
+
+function activeMessages(messages: Record<string, string>): Record<string, string> {
+  const active = { ...messages }
+  RETIRED_TRANSLATION_KEYS.forEach((key) => delete active[key])
+  return active
+}
+
+// 语言包映射。历史语言文件可能仍被旧版本引用，但退役功能键不会进入运行时词典。
 const localeMessages: Record<LocaleCode, Record<string, string>> = {
-  'zh-CN': zhCN,
-  'en-US': enUS,
-  'ja-JP': jaJP,
+  'zh-CN': activeMessages(zhCN),
+  'en-US': activeMessages(enUS),
+  'ja-JP': activeMessages(jaJP),
 }
 
 // i18n Store
@@ -58,6 +66,8 @@ export const useI18nStore = create<I18nStore>()(
  * @returns 翻译后的文本
  */
 export function t(key: string, params?: Record<string, string | number>): string {
+  if (RETIRED_TRANSLATION_KEYS.has(key)) return ''
+
   const locale = useI18nStore.getState().locale
   const messages = localeMessages[locale] || localeMessages['zh-CN']
   let text = messages[key] || localeMessages['zh-CN'][key] || key
@@ -81,6 +91,8 @@ export function useTranslation() {
   const setLocale = useI18nStore((s) => s.setLocale)
 
   const translate = (key: string, params?: Record<string, string | number>): string => {
+    if (RETIRED_TRANSLATION_KEYS.has(key)) return ''
+
     const messages = localeMessages[locale] || localeMessages['zh-CN']
     let text = messages[key] || localeMessages['zh-CN'][key] || key
 
