@@ -1,13 +1,14 @@
-// Nowen Video Service Worker v4
+// Nowen Video Service Worker v5
 // 仅缓存生产环境的静态资源；认证、API、开发模块和非 GET 请求全部直连网络。
 
-const CACHE_VERSION = 'v4'
+const CACHE_VERSION = 'v5'
 const STATIC_CACHE = `nowen-static-${CACHE_VERSION}`
 const DYNAMIC_CACHE = `nowen-dynamic-${CACHE_VERSION}`
 const IMAGE_CACHE = `nowen-images-${CACHE_VERSION}`
 
+// 不再预缓存 / 应用壳。旧版本曾把首页 HTML 固定进缓存，部署新前端后可能继续
+// 启动已经删除的页面与菜单。导航请求只允许网络成功后更新离线回退副本。
 const PRECACHE_ASSETS = [
-  '/',
   '/manifest.json',
 ]
 
@@ -126,7 +127,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // 非认证 HTML 导航：网络优先；离线时仅回退应用壳。
+  // 非认证 HTML 导航：网络优先；离线时仅回退最近一次成功加载的应用壳。
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request, { cache: 'no-store' })
