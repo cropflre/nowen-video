@@ -59,7 +59,12 @@ interface CatalogApi {
     suspend fun detail(@Path("id") id: String): ApiEnvelope<MediaDetail>
 
     @GET("stream/{id}/info")
-    suspend fun stream(@Path("id") id: String): ApiEnvelope<StreamInfo>
+    suspend fun stream(
+        @Path("id") id: String,
+        @Query("supports_direct") supportsDirect: Boolean,
+        @Query("supports_remux") supportsRemux: Boolean,
+        @Query("supports_hevc") supportsHevc: Boolean,
+    ): ApiEnvelope<StreamInfo>
 
     @GET("subtitle/{id}/tracks")
     suspend fun subtitles(@Path("id") id: String): ApiEnvelope<SubtitleTracksResponse>
@@ -98,6 +103,7 @@ object CatalogNetworkModule {
 @Singleton
 class CatalogRepository @Inject constructor(
     private val api: CatalogApi,
+    private val playbackCapabilities: PlaybackCapabilityProvider,
 ) {
     fun pagedMedia(filter: LibraryFilter): Flow<PagingData<MediaCard>> = Pager(
         config = PagingConfig(
@@ -126,7 +132,13 @@ class CatalogRepository @Inject constructor(
     }
 
     suspend fun stream(id: String): Result<StreamInfo> = call {
-        api.stream(id).data
+        val capabilities = playbackCapabilities.current()
+        api.stream(
+            id = id,
+            supportsDirect = capabilities.supportsDirectPlay,
+            supportsRemux = capabilities.supportsRemux,
+            supportsHevc = capabilities.supportsHevc,
+        ).data
     }
 
     suspend fun subtitles(id: String): Result<SubtitleTracksResponse> = call {
