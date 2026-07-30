@@ -13,6 +13,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/middleware"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
+	"github.com/nowen-video/nowen-video/internal/serverprofile"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
 )
@@ -105,53 +106,45 @@ func registerPublicRoutes(
 	auth.POST("/refresh", jwtRefreshMiddleware, handlers.Auth.RefreshToken)
 	auth.PUT("/password", jwtMiddleware, handlers.Auth.ChangePassword)
 
+	writeCapabilities := func(c *gin.Context) {
+		manifest := serverprofile.Lite(cfg)
+		c.JSON(http.StatusOK, gin.H{"data": manifest})
+	}
+	r.GET("/api/capabilities", writeCapabilities)
+
 	r.GET("/api/health", func(c *gin.Context) {
-		features := gin.H{
-			"profile":               "lite",
-			"emby_compat":           false,
-			"music":                 false,
-			"photos":                false,
-			"federation":            false,
-			"plugins":               false,
-			"preprocess":            false,
-			"adult_scraper":         false,
-			"ai_scene":              false,
-			"cast":                  false,
-			"ai_enabled":            cfg.AI.Enabled,
-			"smart_search":          cfg.AI.Enabled && cfg.AI.EnableSmartSearch,
-			"metadata_enhance":      cfg.AI.Enabled && cfg.AI.EnableMetadataEnhance,
-			"webdav":                cfg.Storage.WebDAV.Enabled,
-			"alist":                 cfg.Storage.Alist.Enabled,
-			"s3":                    cfg.Storage.S3.Enabled,
-			"strm_hls_rewrite":      cfg.STRM.RewriteHLS,
-			"direct_play_preferred": true,
-		}
+		manifest := serverprofile.Lite(cfg)
+		features := manifest.LegacyFeatures(cfg)
 		data := gin.H{
-			"status":      "ok",
-			"version":     appVer,
-			"server_name": cfg.Emby.ServerName,
-			"profile":     "lite",
-			"go":          runtime.Version(),
-			"os":          runtime.GOOS,
-			"arch":        runtime.GOARCH,
-			"port":        cfg.App.Port,
-			"listen_addr": fmt.Sprintf(":%d", cfg.App.Port),
-			"lan_ips":     getLocalIPv4Addresses(),
-			"features":    features,
+			"status":         "ok",
+			"version":        appVer,
+			"server_name":    cfg.Emby.ServerName,
+			"profile":        manifest.Profile,
+			"schema_version": manifest.SchemaVersion,
+			"capabilities":   manifest.Capabilities,
+			"go":             runtime.Version(),
+			"os":             runtime.GOOS,
+			"arch":           runtime.GOARCH,
+			"port":           cfg.App.Port,
+			"listen_addr":    fmt.Sprintf(":%d", cfg.App.Port),
+			"lan_ips":        getLocalIPv4Addresses(),
+			"features":       features,
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"status":      data["status"],
-			"version":     data["version"],
-			"server_name": data["server_name"],
-			"profile":     data["profile"],
-			"go":          data["go"],
-			"os":          data["os"],
-			"arch":        data["arch"],
-			"port":        data["port"],
-			"listen_addr": data["listen_addr"],
-			"lan_ips":     data["lan_ips"],
-			"features":    features,
-			"data":        data,
+			"status":         data["status"],
+			"version":        data["version"],
+			"server_name":    data["server_name"],
+			"profile":        data["profile"],
+			"schema_version": data["schema_version"],
+			"capabilities":   data["capabilities"],
+			"go":             data["go"],
+			"os":             data["os"],
+			"arch":           data["arch"],
+			"port":           data["port"],
+			"listen_addr":    data["listen_addr"],
+			"lan_ips":        data["lan_ips"],
+			"features":       features,
+			"data":           data,
 		})
 	})
 
