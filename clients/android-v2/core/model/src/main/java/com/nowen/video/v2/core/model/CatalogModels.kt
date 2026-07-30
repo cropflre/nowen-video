@@ -61,9 +61,10 @@ data class StreamInfo(
     @SerialName("remux_url") val remuxUrl: String = "",
     @SerialName("hls_url") val hlsUrl: String = "",
     @SerialName("preprocessed_url") val preprocessedUrl: String = "",
+    @SerialName("playback_plan") val playbackPlan: PlaybackPlan? = null,
 ) {
     val preferredUrl: String
-        get() = when {
+        get() = playbackPlan?.url?.takeIf(String::isNotBlank) ?: when {
             isPreprocessed && preprocessedUrl.isNotBlank() -> preprocessedUrl
             canDirectPlay && directPlayUrl.isNotBlank() -> directPlayUrl
             canRemux && remuxUrl.isNotBlank() -> remuxUrl
@@ -71,6 +72,33 @@ data class StreamInfo(
             directPlayUrl.isNotBlank() -> directPlayUrl
             else -> ""
         }
+
+    val fallbackUrl: String
+        get() = playbackPlan?.fallbackUrl.orEmpty()
+
+    val playbackMethod: String
+        get() = playbackPlan?.method?.takeIf(String::isNotBlank) ?: when {
+            isPreprocessed && preprocessedUrl.isNotBlank() -> "transcode"
+            canDirectPlay && directPlayUrl.isNotBlank() -> "direct"
+            canRemux && remuxUrl.isNotBlank() -> "remux"
+            hlsUrl.isNotBlank() -> "transcode"
+            else -> ""
+        }
+
+    val playbackMethodLabel: String
+        get() = playbackPlan?.methodLabel ?: when (playbackMethod) {
+            "direct" -> "直接播放"
+            "remux" -> "无损封装转换"
+            "transcode" -> "兼容转码"
+            else -> "自动选择"
+        }
+
+    val playbackReasonCode: String
+        get() = playbackPlan?.reasonCode?.takeIf(String::isNotBlank) ?: "legacy_stream_info"
+
+    val playbackReason: String
+        get() = playbackPlan?.reason?.takeIf(String::isNotBlank)
+            ?: "服务端未返回播放规划，已使用兼容地址选择"
 }
 
 @Serializable
