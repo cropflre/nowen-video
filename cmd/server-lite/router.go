@@ -70,8 +70,20 @@ func buildRouter(
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 
+	// Pulse 已从客户端移除。旧书签或旧浏览器地址必须在服务端直接退出该页面，
+	// 避免尚未完成 Service Worker 升级的旧前端继续渲染历史页面。
+	redirectLegacyPulse := func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Redirect(http.StatusTemporaryRedirect, "/admin")
+	}
+	r.GET("/pulse", redirectLegacyPulse)
+	r.GET("/pulse/*path", redirectLegacyPulse)
+
 	r.Static("/assets", cfg.App.WebDir+"/assets")
 	r.NoRoute(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.File(cfg.App.WebDir + "/index.html")
 	})
 	return r
@@ -163,9 +175,15 @@ func registerPublicRoutes(
 		})
 	})
 
-	r.GET("/manifest.json", func(c *gin.Context) { c.File(cfg.App.WebDir + "/manifest.json") })
+	r.GET("/manifest.json", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache")
+		c.File(cfg.App.WebDir + "/manifest.json")
+	})
 	r.GET("/sw.js", func(c *gin.Context) {
 		c.Header("Service-Worker-Allowed", "/")
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.File(cfg.App.WebDir + "/sw.js")
 	})
 	r.GET("/api/ws", jwtMiddleware, handlers.WS.HandleWebSocket)
