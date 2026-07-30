@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth'
+import { useServerProfileStore } from '@/stores/serverProfile'
 import { ToastProvider } from '@/components/Toast'
 import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
@@ -29,6 +30,14 @@ const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
 const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage'))
+
+function ServerProfileLoader() {
+  const load = useServerProfileStore((state) => state.load)
+  useEffect(() => {
+    void load()
+  }, [load])
+  return null
+}
 
 function PageLoader() {
   return (
@@ -91,6 +100,7 @@ export default function App() {
       <DialogProvider>
         <Toaster position="top-right" />
         <BrowserRouter>
+          <ServerProfileLoader />
           <DesktopServerPicker />
           <DesktopEventBinder />
           <UpdateBanner />
