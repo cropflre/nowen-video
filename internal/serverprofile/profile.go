@@ -115,6 +115,45 @@ func Lite(cfg *config.Config) Manifest {
 	return NewLiteRuntime(cfg).Manifest(cfg)
 }
 
+// Full describes the legacy all-in-one server. Its routes and services are
+// assembled unconditionally, so configurable modules such as AI and remote
+// storage can report the latest persisted state without a restart boundary.
+func Full(cfg *config.Config) Manifest {
+	return Manifest{
+		SchemaVersion: SchemaVersion,
+		Profile:       "full",
+		Capabilities: map[string]Capability{
+			"library":             always("core"),
+			"metadata":            always("core"),
+			"playback":            always("core"),
+			"transcode":           always("core"),
+			"subtitles":           always("core"),
+			"users":               always("core"),
+			"collections":         always("core"),
+			"task_center":         unavailable("lite_only"),
+			"ai":                  hotConfigurable(cfg.AI.Enabled, "optional"),
+			"webdav":              hotConfigurable(cfg.Storage.WebDAV.Enabled, "optional"),
+			"alist":               hotConfigurable(cfg.Storage.Alist.Enabled, "optional"),
+			"s3":                  hotConfigurable(cfg.Storage.S3.Enabled, "optional"),
+			"preprocess":          always("full"),
+			"subtitle_preprocess": always("full"),
+			"emby_compat":         always("full"),
+			"adult_scraper":       always("full"),
+			"cast":                always("full"),
+			"music":               always("full"),
+			"photos":              always("full"),
+			"federation":          always("full"),
+			"plugins":             always("full"),
+			"offline_download":    always("full"),
+			"user_profiles":       always("full"),
+			"comments":            always("full"),
+			"danmaku":             always("full"),
+			"ai_scene":            always("full"),
+			"pulse":               unavailable("removed"),
+		},
+	}
+}
+
 // LegacyFeatures keeps older clients working while the typed capability
 // manifest is adopted. Flags represent actual runtime state, not merely desired
 // configuration, so clients never call routes that still require a restart.
