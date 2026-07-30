@@ -18,6 +18,8 @@ Lite 保留：
 - TMDb、豆瓣、Bangumi、TheTVDB、Fanart.tv
 - WebDAV、Alist、S3（仅配置后初始化）
 - Web、桌面端、Android V2 核心 API
+- 扫描、刮削、转码统一任务中心
+- 服务端播放规划器
 
 Lite 不启动：
 
@@ -73,6 +75,59 @@ AI 在 Lite 中属于可选能力：
 - 从开启改为关闭后会立即停止向客户端声明 AI 可用，并提示重启完成运行组件回收
 
 这样既保留了管理端开启入口，也避免关闭 AI 时创建相关表或启动运行组件。
+
+## 统一任务中心
+
+Lite 不再要求管理员分别进入媒体库、刮削管理和转码面板查看进度。
+
+- `GET /api/admin/tasks` 返回统一任务快照
+- 支持 `active=true` 只查询活动任务
+- 支持 `limit=1..200` 控制最近任务数量
+- 聚合媒体库扫描内存状态、刮削任务表和转码任务表
+- 不增加新的数据库表，也不改变原有任务执行队列
+- 统一任务类型：`scan`、`scrape`、`transcode`
+- 统一状态：`queued`、`running`、`completed`、`failed`、`cancelled`
+
+Lite 管理员页面右上角提供全局任务入口，任务数量和进度会通过现有 WebSocket 事件刷新，并以 30 秒轮询作为断线兜底。Full 保留原来的高级任务页面。
+
+## 播放规划器
+
+Lite 新增只读接口：
+
+```text
+GET /api/stream/:id/plan
+```
+
+可选客户端参数：
+
+- `supports_direct`：是否支持原始文件直放
+- `supports_remux`：是否支持 fragmented MP4 Remux
+- `supports_hevc`：是否支持 HEVC 解码
+- `force_transcode`：是否强制使用兼容转码
+- `max_bitrate`：HLS 最大码率建议，单位 bit/s
+
+规划器不会启动 FFmpeg，只返回播放方式、地址、原因和回退地址。Lite 的默认优先级为：
+
+1. STRM 服务端代理直放
+2. 原生直接播放
+3. 零转码 Remux
+4. HLS 转码
+
+返回示例：
+
+```json
+{
+  "method": "remux",
+  "url": "/api/stream/media-id/remux",
+  "reason_code": "container_remux",
+  "reason": "编码兼容，仅需转换容器，无需重新编码",
+  "requires_transcode": false,
+  "fallback_method": "transcode",
+  "fallback_url": "/api/stream/media-id/master.m3u8"
+}
+```
+
+Web 客户端仅在连接 Lite 服务时采用规划结果；连接旧版或 Full 服务时自动退回现有播放信息逻辑。Android V2 的原有播放契约保持不变。
 
 ## Full（兼容）
 
