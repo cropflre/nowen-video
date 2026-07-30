@@ -94,3 +94,34 @@ func TestLiteRuntimeReportsAIDisablePendingRestart(t *testing.T) {
 		t.Fatalf("AI disable should be pending restart and unavailable to callers: %+v", ai)
 	}
 }
+
+func TestFullManifestExposesAdvancedCapabilities(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.AI.Enabled = false
+	cfg.Storage.WebDAV.Enabled = true
+
+	manifest := Full(cfg)
+	if manifest.Profile != "full" || manifest.SchemaVersion != SchemaVersion {
+		t.Fatalf("unexpected full manifest identity: %+v", manifest)
+	}
+
+	for _, name := range []string{"preprocess", "subtitle_preprocess", "emby_compat", "adult_scraper", "cast", "music", "photos", "federation", "plugins", "offline_download", "user_profiles", "comments", "danmaku", "ai_scene"} {
+		capability := manifest.Capabilities[name]
+		if !capability.Available || !capability.Enabled || !capability.Configured {
+			t.Fatalf("full capability %q must be available and enabled: %+v", name, capability)
+		}
+	}
+
+	if manifest.Capabilities["task_center"].Available {
+		t.Fatal("full keeps its advanced task pages instead of the Lite task center")
+	}
+	if manifest.Capabilities["pulse"].Available {
+		t.Fatal("Pulse must remain permanently removed in Full")
+	}
+	if manifest.Capabilities["ai"].Enabled || !manifest.Capabilities["ai"].Available {
+		t.Fatalf("disabled Full AI should remain configurable but not enabled: %+v", manifest.Capabilities["ai"])
+	}
+	if !manifest.Capabilities["webdav"].Enabled {
+		t.Fatal("configured Full WebDAV must be enabled")
+	}
+}
