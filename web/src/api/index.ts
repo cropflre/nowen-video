@@ -15,6 +15,8 @@
 export { authApi } from './auth'
 export { serverApi } from './server'
 export type { ServerCapability, ServerProfileManifest, ServerHealthData } from './server'
+export { taskCenterApi } from './tasks'
+export type { UnifiedTask, UnifiedTaskKind, UnifiedTaskStatus, TaskCenterSnapshot, TaskCenterSummary } from './tasks'
 export { libraryApi } from './library'
 export { mediaApi, personApi, collectionApi } from './media'
 export { streamApi } from './stream'
