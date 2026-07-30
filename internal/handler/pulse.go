@@ -8,16 +8,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// PulseHandler 仅保留旧路由的方法签名，避免旧版服务启动链断裂。
-// Pulse 功能已经从产品中移除，所有旧接口统一返回 404。
+// PulseHandler is a compatibility tombstone for legacy Full routes.
+// Pulse has been removed; endpoints return 410 so clients can distinguish a
+// permanently removed capability from a temporary missing route.
 type PulseHandler struct {
 	pulseService *service.PulseService
 	logger       *zap.SugaredLogger
 }
 
 func (h *PulseHandler) removed(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
-		"error": "Pulse 功能已移除",
+	c.Header("Deprecation", "true")
+	c.Header("Sunset", "Thu, 30 Jul 2026 00:00:00 GMT")
+	c.AbortWithStatusJSON(http.StatusGone, gin.H{
+		"error": "Pulse 功能已永久移除",
+		"code":  "pulse_removed",
 	})
 }
 
