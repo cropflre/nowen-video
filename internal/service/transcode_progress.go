@@ -77,6 +77,7 @@ func (s *TranscodeService) finalizeCancelled(job *TranscodeJob) {
 	if err != nil {
 		s.logger.Warnf("持久化转码取消状态失败 task=%s: %v", job.Task.ID, err)
 	}
+	s.persistJobTerminal(job, "cancelled", now)
 	s.broadcastTranscodeEvent(EventTranscodeCancelled, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
@@ -101,6 +102,7 @@ func (s *TranscodeService) finalizeFailed(job *TranscodeJob, result transcodeexe
 	if err != nil {
 		s.logger.Warnf("持久化转码失败状态失败 task=%s: %v", job.Task.ID, err)
 	}
+	s.persistJobTerminal(job, "failed", now)
 	s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
@@ -122,6 +124,8 @@ func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
 	if err != nil {
 		s.logger.Warnf("持久化转码完成状态失败 task=%s: %v", job.Task.ID, err)
 	}
+	s.publishHLSArtifact(job)
+	s.persistJobTerminal(job, "completed", now)
 	s.broadcastTranscodeEvent(EventTranscodeCompleted, &TranscodeProgressData{
 		TaskID:   job.Task.ID,
 		MediaID:  job.Media.ID,
