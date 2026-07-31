@@ -6,39 +6,73 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
 )
 
-// CancelTranscode writes desired_state=cancelled before signalling the process
-// context. A queued task therefore cannot lose cancellation, and recovery will
-// not revive it after a restart.
+// CancelTranscode persists desired_state=cancelled before signalling any local
+// process. Unlike the legacy implementation it also handles queued rows that
+// were reconstructed from the database and therefore have no local job yet.
 func (s *TranscodeService) CancelTranscode(taskID string) error {
-	s.mu.RLock()
-	job, exists := s.running[taskID]
-	s.mu.RUnlock()
-	if !exists {
-		return fmt.Errorf("转码任务不存在或已完成: %s", taskID)
+	task, err := s.repo.FindByID(taskID)
+	if err != nil {
+		return fmt.Errorf("转码任务不存在: %w", err)
 	}
-
-	job.taskMu.Lock()
-	if job.Task.Status == "done" || job.Task.Status == "failed" || job.Task.Status == "cancelled" {
-		job.taskMu.Unlock()
+	if task.Status == "done" || task.Status == "failed" || task.Status == "cancelled" {
 		return fmt.Errorf("转码任务已经结束: %s", taskID)
 	}
+
+	executionJob, err := s.executionRepo.FindActiveByLegacyTaskID(taskID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return fmt.Errorf("转码执行 Job 不存在或已完成: %s", taskID)
+		}
+		return fmt.Errorf("读取转码执行 Job 失败: %w", err)
+	}
+
 	now := time.Now()
-	if err := s.persistCancellation(job, now); err != nil {
-		job.taskMu.Unlock()
+	if err := s.executionRepo.RequestCancellation(executionJob.ID, now); err != nil {
 		return fmt.Errorf("持久化转码取消意图失败: %w", err)
 	}
-	job.Task.Status = "cancelled"
-	job.Task.Error = ""
-	job.Task.CompletedAt = &now
-	err := s.repo.Update(job.Task)
-	job.taskMu.Unlock()
-	if err != nil {
+
+	task.Status = "cancelled"
+	task.Error = ""
+	task.CompletedAt = &now
+	if err := s.repo.Update(task); err != nil {
 		return fmt.Errorf("持久化取消状态失败: %w", err)
 	}
 
-	job.RequestCancel()
+	s.mu.RLock()
+	localJob := s.running[taskID]
+	s.mu.RUnlock()
+	if localJob != nil {
+		localJob.RequestCancel()
+	}
+
+	// A queued row has no process and no Lease owner to publish its terminal
+	// state. Finalize it immediately, but only if Claim did not win the race.
+	if executionJob.Status == "queued" && executionJob.LeaseToken == "" {
+		completed, completeErr := s.executionRepo.CompleteUnleasedJob(executionJob.ID, "cancelled", now)
+		if completeErr != nil {
+			return fmt.Errorf("确认排队任务取消失败: %w", completeErr)
+		}
+		if completed {
+			s.mu.Lock()
+			if current := s.running[taskID]; current != nil {
+				current.RequestCancel()
+				delete(s.running, taskID)
+			}
+			s.mu.Unlock()
+			s.broadcastTranscodeEvent(EventTranscodeCancelled, &TranscodeProgressData{
+				TaskID:  task.ID,
+				MediaID: task.MediaID,
+				Title:   task.MediaTitle,
+				Quality: task.Quality,
+				Message: fmt.Sprintf("转码已取消: %s (%s)", task.MediaTitle, task.Quality),
+			})
+		}
+	}
+
+	s.jobs.Notify()
 	s.logger.Infof("转码取消意图与兼容任务状态已持久化: %s", taskID)
 	return nil
 }
