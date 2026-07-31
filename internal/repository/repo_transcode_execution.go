@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"errors"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -117,8 +116,4 @@ func (r *TranscodeExecutionRepo) CreateArtifact(artifact *model.TranscodeArtifac
 func (r *TranscodeExecutionRepo) DeleteArtifactByJobAndKind(jobID, kind, profileID string) error {
 	return r.db.Where("job_id = ? AND kind = ? AND profile_id = ?", jobID, kind, profileID).
 		Delete(&model.TranscodeArtifactRecord{}).Error
-}
-
-func IsNotFound(err error) bool {
-	return errors.Is(err, gorm.ErrRecordNotFound)
 }
