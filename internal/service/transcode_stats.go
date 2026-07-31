@@ -10,17 +10,18 @@ import (
 )
 
 type TranscodeStatistics struct {
-	StatusCounts     map[string]int64               `json:"status_counts"`
-	RunningCount     int                            `json:"running_count"`
-	ActiveWorkers    int                            `json:"active_workers"`
-	MaxWorkers       int                            `json:"max_workers"`
-	QueueDepth       int                            `json:"queue_depth"`
-	Scheduler        string                         `json:"scheduler"`
-	HWAccel          string                         `json:"hw_accel"`
-	DiskUsageBytes   int64                          `json:"disk_usage_bytes"`
-	DiskUsageDir     string                         `json:"disk_usage_dir"`
-	ResourceCapacity map[transcodegovernor.Kind]int `json:"resource_capacity,omitempty"`
-	ResourceInUse    map[transcodegovernor.Kind]int `json:"resource_in_use,omitempty"`
+	StatusCounts       map[string]int64               `json:"status_counts"`
+	RunningCount       int                            `json:"running_count"`
+	ActiveWorkers      int                            `json:"active_workers"`
+	MaxWorkers         int                            `json:"max_workers"`
+	QueueDepth         int                            `json:"queue_depth"`
+	DurableQueueDepth  int64                          `json:"durable_queue_depth"`
+	Scheduler          string                         `json:"scheduler"`
+	HWAccel            string                         `json:"hw_accel"`
+	DiskUsageBytes     int64                          `json:"disk_usage_bytes"`
+	DiskUsageDir       string                         `json:"disk_usage_dir"`
+	ResourceCapacity   map[transcodegovernor.Kind]int `json:"resource_capacity,omitempty"`
+	ResourceInUse      map[transcodegovernor.Kind]int `json:"resource_in_use,omitempty"`
 }
 
 func (s *TranscodeService) ListTasks(page, pageSize int, status string) ([]model.TranscodeTask, int64, error) {
@@ -49,19 +50,24 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		}
 	}
 	s.mu.RUnlock()
+	durableQueueDepth, err := s.executionRepo.CountQueuedJobs()
+	if err != nil {
+		s.logger.Debugf("读取持久化转码队列深度失败: %v", err)
+	}
 	snapshot := s.executionRuntime.Snapshot()
 	return TranscodeStatistics{
-		StatusCounts:     counts,
-		RunningCount:     active,
-		ActiveWorkers:    active,
-		MaxWorkers:       s.workerCount,
-		QueueDepth:       s.jobs.Len(),
-		Scheduler:        "priority_fifo",
-		HWAccel:          s.hwAccel,
-		DiskUsageBytes:   s.GetCacheDiskUsage(),
-		DiskUsageDir:     filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
-		ResourceCapacity: snapshot.Capacity,
-		ResourceInUse:    snapshot.InUse,
+		StatusCounts:       counts,
+		RunningCount:       active,
+		ActiveWorkers:      active,
+		MaxWorkers:         s.workerCount,
+		QueueDepth:         s.jobs.Len(),
+		DurableQueueDepth:  durableQueueDepth,
+		Scheduler:          "durable_priority_fifo",
+		HWAccel:            s.hwAccel,
+		DiskUsageBytes:     s.GetCacheDiskUsage(),
+		DiskUsageDir:       filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
+		ResourceCapacity:   snapshot.Capacity,
+		ResourceInUse:      snapshot.InUse,
 	}
 }
 
