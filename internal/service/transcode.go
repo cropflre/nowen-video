@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,6 +17,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
 	transcodegovernor "github.com/nowen-video/nowen-video/internal/transcode/governor"
+	transcoderuntime "github.com/nowen-video/nowen-video/internal/transcode/runtime"
 	"go.uber.org/zap"
 )
 
@@ -25,24 +25,23 @@ const EventTranscodeCancelled = "transcode_cancelled"
 
 // TranscodeService remains the compatibility facade used by handlers and
 // clients. Process ownership, cancellation and resource capacity are delegated
-// to the new execution runtime so the external API can migrate incrementally.
+// to the shared execution runtime so every media path can migrate incrementally.
 type TranscodeService struct {
 	repo   *repository.TranscodeRepo
 	cfg    *config.Config
 	logger *zap.SugaredLogger
 
-	jobs       chan *TranscodeJob
+	jobs        chan *TranscodeJob
 	workerCount int
-	submitMu   sync.Mutex
-	mu         sync.RWMutex
-	running    map[string]*TranscodeJob
+	submitMu    sync.Mutex
+	mu          sync.RWMutex
+	running     map[string]*TranscodeJob
 
 	hwAccel   string
 	hwAccelMu sync.Once
 	wsHub     *WSHub
 
-	runner           transcodeexecutor.Runner
-	resourceGovernor *transcodegovernor.Governor
+	executionRuntime *transcoderuntime.Runtime
 
 	throttleSuspendSeconds atomic.Uint64
 	throttleSuspendCount   atomic.Uint64
@@ -69,11 +68,11 @@ type TranscodeJob struct {
 	processMu sync.RWMutex
 	process   *os.Process
 
-	playbackPos   atomic.Uint64
-	transcodedPos atomic.Uint64
+	playbackPos    atomic.Uint64
+	transcodedPos  atomic.Uint64
 	lastDBProgress atomic.Uint64
-	suspended    atomic.Int32
-	startOffset  float64
+	suspended      atomic.Int32
+	startOffset    float64
 
 	throttleDone    chan struct{}
 	throttleStop    sync.Once
@@ -128,14 +127,13 @@ func (j *TranscodeJob) getTranscodedPosition() float64 {
 
 func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
 	service := &TranscodeService{
-		repo:               repo,
-		cfg:                cfg,
-		logger:             logger,
-		jobs:               make(chan *TranscodeJob, 100),
-		running:            make(map[string]*TranscodeJob),
-		runner:             transcodeexecutor.NewProcessRunner(),
-		resourceGovernor:   transcodegovernor.New(transcodegovernor.DefaultConfig()),
-		diskUsageTTL:       30 * time.Second,
+		repo:             repo,
+		cfg:              cfg,
+		logger:           logger,
+		jobs:             make(chan *TranscodeJob, 100),
+		running:          make(map[string]*TranscodeJob),
+		executionRuntime: transcoderuntime.Default(),
+		diskUsageTTL:     30 * time.Second,
 	}
 
 	service.hwAccelMu.Do(func() {
@@ -143,8 +141,8 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", service.hwAccel)
 	})
 
-	// Workers only drain and prepare jobs. The governor is the source of truth
-	// for actual CPU/GPU process concurrency.
+	// Workers drain and prepare jobs. The shared runtime is the source of truth
+	// for actual CPU/GPU/remux/on-demand process concurrency.
 	service.workerCount = 1
 	if service.hwAccel != "" && service.hwAccel != ffmpeg.HWAccelNone {
 		service.workerCount = 2
@@ -158,6 +156,7 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 
 func (s *TranscodeService) SetWSHub(hub *WSHub) { s.wsHub = hub }
 func (s *TranscodeService) GetHWAccelInfo() string { return s.hwAccel }
+func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return s.executionRuntime }
 
 func (s *TranscodeService) detectHWAccel() string {
 	return ffmpeg.DetectHWAccel(s.cfg, s.logger)
@@ -185,10 +184,9 @@ func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*
 	return s.startTranscodeInternal(media, quality, 0)
 }
 
-// StartABRTranscode now performs progressive warmup: only the first valid
-// rendition is queued immediately. Other renditions remain advertised in the
-// master playlist and are started when the client requests their child
-// playlist. This protects first-frame latency from multi-rendition contention.
+// StartABRTranscode performs progressive warmup: only the first valid rendition
+// is queued immediately. Other renditions remain advertised and start when the
+// client requests their child playlist, protecting first-frame latency.
 func (s *TranscodeService) StartABRTranscode(media *model.Media, qualities []string) ([]*model.TranscodeTask, error) {
 	if media == nil {
 		return nil, fmt.Errorf("media 不能为空")
@@ -223,8 +221,6 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 		return nil, fmt.Errorf("未知转码档位: %s", quality)
 	}
 
-	// Process-local admission is serialized so duplicate HTTP requests cannot
-	// both pass the cache/running checks and create duplicate active jobs.
 	s.submitMu.Lock()
 	defer s.submitMu.Unlock()
 
@@ -368,19 +364,10 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string) transco
 	if backend != "" && backend != ffmpeg.HWAccelNone {
 		kind = transcodegovernor.KindHardwareTranscode
 	}
-	lease, err := s.resourceGovernor.Acquire(job.ctx, kind)
-	if err != nil {
-		return transcodeexecutor.Result{
-			Err:       err,
-			Cancelled: errors.Is(err, context.Canceled),
-			TimedOut:  errors.Is(err, context.DeadlineExceeded),
-		}
-	}
-	defer lease.Release()
 
 	args := s.buildFFmpegArgsForBackend(job.Media, job.Media.FilePath, job.Task.OutputDir, job.Quality, job.startOffset, backend)
 	s.logger.Debugf("FFmpeg attempt backend=%s command=%s %s", backend, s.cfg.App.FFmpegPath, strings.Join(args, " "))
-	result := s.runner.Run(job.ctx, transcodeexecutor.Command{
+	result := s.executionRuntime.Run(job.ctx, kind, transcodeexecutor.Command{
 		Path:       s.cfg.App.FFmpegPath,
 		Args:       args,
 		StderrTail: 60,
