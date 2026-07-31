@@ -17,10 +17,21 @@ import (
 
 const transcodePlannerVersion = "runtime-hls-v2"
 
+func transcodeActiveKey(media *model.Media, quality string, startOffset float64) string {
+	return stableHash(fmt.Sprintf(
+		"%s|runtime_hls|%s|%.3f|%s|%s",
+		media.ID,
+		quality,
+		startOffset,
+		transcodeSourceFingerprint(media),
+		transcodePlannerVersion,
+	))
+}
+
 func (s *TranscodeService) createExecutionJob(media *model.Media, quality string, startOffset float64, legacyTaskID string) (*model.TranscodeJobRecord, error) {
 	fingerprint := transcodeSourceFingerprint(media)
 	planHash := stableHash(fmt.Sprintf("%s|%s|%.3f|%s", transcodePlannerVersion, quality, startOffset, s.hwAccel))
-	activeKey := stableHash(fmt.Sprintf("%s|runtime_hls|%s|%.3f|%s|%s", media.ID, quality, startOffset, fingerprint, transcodePlannerVersion))
+	activeKey := transcodeActiveKey(media, quality, startOffset)
 	job := &model.TranscodeJobRecord{
 		LegacyTaskID:      legacyTaskID,
 		MediaID:           media.ID,
@@ -46,16 +57,24 @@ func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality s
 	if s.executionRepo == nil || media == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
-	fingerprint := transcodeSourceFingerprint(media)
-	activeKey := stableHash(fmt.Sprintf("%s|runtime_hls|%s|%.3f|%s|%s", media.ID, quality, startOffset, fingerprint, transcodePlannerVersion))
-	job, err := s.executionRepo.FindActiveByKey(activeKey)
+	job, err := s.executionRepo.FindActiveByKey(transcodeActiveKey(media, quality, startOffset))
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(job.LegacyTaskID) == "" {
+		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
 		return nil, gorm.ErrRecordNotFound
 	}
-	return s.repo.FindByID(job.LegacyTaskID)
+	task, err := s.repo.FindByID(job.LegacyTaskID)
+	if err != nil {
+		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
+		return nil, gorm.ErrRecordNotFound
+	}
+	if task.Status != "pending" && task.Status != "running" {
+		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
+		return nil, gorm.ErrRecordNotFound
+	}
+	return task, nil
 }
 
 func (s *TranscodeService) persistCancellation(job *TranscodeJob, requestedAt time.Time) error {
