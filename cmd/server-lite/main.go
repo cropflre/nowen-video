@@ -61,21 +61,35 @@ func main() {
 	go func() {
 		sugar.Infof("nowen-video lite 启动于 %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			sugar.Fatalf("服务器启动失败: %v", err)
+			sugar.Errorf("服务器异常退出: %v", err)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	signal.Stop(quit)
 	sugar.Info("正在关闭 nowen-video lite...")
 	mdnsService.Stop()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		sugar.Fatalf("服务器强制关闭: %v", err)
+	// Stop accepting new API requests first, so no new transcode submission can
+	// race with queue draining.
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := srv.Shutdown(httpCtx); err != nil {
+		sugar.Warnf("HTTP 服务优雅关闭超时: %v", err)
 	}
+	httpCancel()
+
+	// Claimed jobs may finish normally. At the deadline, TranscodeService fences
+	// the old worker by returning its Lease to queued before cancelling Context.
+	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if services.Transcode != nil {
+		if err := services.Transcode.Shutdown(transcodeCtx); err != nil {
+			sugar.Warnf("转码服务关闭超时，未完成任务已重新排队: %v", err)
+		}
+	}
+	transcodeCancel()
+
 	sugar.Info("nowen-video lite 已优雅关闭")
 }
 
