@@ -24,7 +24,7 @@ Lite 保留：
 Lite 不启动：
 
 - 音乐库、图片库、服务器联邦、插件系统
-- Pulse 页面、接口和公开能力
+- Pulse 页面、接口和运行组件
 - 视频/字幕预处理 worker 和 GPU 常驻监控
 - AI 场景、精彩片段、封面分析
 - Emby/Infuse 兼容路由和 ID 预热
@@ -155,21 +155,22 @@ GET /api/stream/:id/plan
 
 服务端会在同一次请求中复用已加载的媒体信息生成规划，避免重复读库。连接旧版或 Full 服务时，Web 自动退回历史播放信息逻辑。Android V2 的原有播放契约保持不变，额外字段不会改变现有调用。
 
-## Pulse 移除策略
+## Pulse 完整移除
 
-Pulse 已从公开产品表面移除：
+Pulse 已从 Lite 和 Full 的产品及运行时中删除：
 
 - 新版侧边栏、页面组件和正常路由不再提供 Pulse 入口
 - `/api/capabilities` 在 Lite 和 Full 中都不再返回 `pulse` 键
-- 旧 `/pulse`、`/pulse/*` 地址在 Lite 和 Full 中统一跳转到 `/admin`，并禁止缓存
-- 旧 `/api/admin/pulse/*` 请求表现为普通 `404 Not Found`，不再返回 `410`、`pulse_removed`、`Deprecation` 或 `Sunset`
+- Full 不再包含 `PulseRepo`、`PulseService`、`PulseHandler` 或对应聚合字段
+- Full 不再注册任何 `/api/admin/pulse/*` 路由，旧请求自然返回普通 `404 Not Found`
+- `internal/repository/repo_pulse.go`、`internal/service/pulse.go`、`internal/handler/pulse.go` 已删除
+- 旧 `/pulse`、`/pulse/*` 页面地址仍统一跳转到 `/admin`，用于清理旧书签和旧应用壳
 - Service Worker 升级为 v5，不再在安装阶段预缓存 `/` 旧应用壳
-- 新 Worker 接管后页面自动刷新一次，旧缓存会被删除，避免已删除菜单继续留在打开的标签页中
+- 新 Worker 激活后删除旧缓存并主动重新导航已打开标签页
 - `/sw.js` 在 Lite 和 Full 中均使用 `no-store`，每次启动主动检查更新
-- 运行时语言词典屏蔽旧 `nav.pulse` 键，旧代码无法重新渲染该菜单文案
-- 不删除历史 SQLite 数据，避免升级或回退时发生破坏性数据操作
-
-Full 组合内部暂时仍保留零状态兼容类型，用于降低大型旧服务装配代码的改造风险；这些类型不启动协程、不查询数据库，也不再形成公开页面、能力或可识别 API 响应。后续拆分 `cmd/server` 时可连同内部占位类型一起删除。
+- 运行时语言词典屏蔽旧 `nav.pulse` 键，旧前端代码无法重新渲染该菜单文案
+- 不执行破坏性数据库清理；Pulse 原先复用的播放统计和媒体数据继续服务现有统计功能
+- `cmd/server/pulse_removed_test.go` 阻止旧路由或运行文件被重新引入
 
 ## Full（兼容）
 
@@ -182,7 +183,7 @@ make dev-full
 docker build -f Dockerfile.full -t nowen-video:full .
 ```
 
-Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 在 Full 中同样没有公开产品表面。
+Full 镜像继续包含 Python 番号刮削依赖。Lite 镜像不安装 Python，也不复制刮削微服务源码。Pulse 在 Full 中同样已经完整删除。
 
 Full 原生提供 schema v2 的 `/api/capabilities`。预处理、字幕预处理、Emby 兼容、番号、投屏、音乐、图片、联邦、插件、离线下载、多用户 Profile、评论、弹幕和 AI 场景会标记为 `full` 模式；统一任务中心标记为 `lite_only`。Pulse 不出现在能力清单中。
 
