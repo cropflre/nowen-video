@@ -22,9 +22,6 @@ var (
 	ErrTaskActionUnsupported = errors.New("task action unsupported")
 )
 
-// TaskActionResult is returned after a task operation has been accepted by the
-// existing module-specific executor. It does not introduce another queue or
-// persistence layer.
 type TaskActionResult struct {
 	ID       string `json:"id"`
 	Kind     string `json:"kind"`
@@ -51,9 +48,6 @@ type scrapeTaskActions interface {
 	StartScrape(taskID, userID string) error
 }
 
-// TaskActionDispatcher validates unified task operations, then delegates to the
-// existing transcode and scrape services. The original services remain the
-// authoritative executors and task stores.
 type TaskActionDispatcher struct {
 	transcode       transcodeTaskActions
 	scrape          scrapeTaskActions
@@ -88,9 +82,9 @@ func NewTaskActionDispatcher(
 	}
 }
 
-// AvailableTaskActions is the shared policy used by both the API response and
-// the action dispatcher. Only operations that are safe with the current
-// executor implementation are exposed.
+// AvailableTaskActions is shared by the API and dispatcher. Queued transcode
+// jobs are cancellable because cancellation is now a persisted desired state,
+// not a best-effort signal consumed only by a running worker.
 func AvailableTaskActions(kind, status string) []string {
 	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
 	normalizedStatus := normalizeTaskStatus(status)
@@ -98,7 +92,7 @@ func AvailableTaskActions(kind, status string) []string {
 	switch normalizedKind {
 	case TaskKindTranscode:
 		switch normalizedStatus {
-		case TaskStatusRunning:
+		case TaskStatusQueued, TaskStatusRunning:
 			return []string{TaskActionCancel}
 		case TaskStatusFailed, TaskStatusCancelled:
 			return []string{TaskActionRetry}
