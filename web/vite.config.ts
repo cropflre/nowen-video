@@ -7,7 +7,7 @@ import path from 'path'
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080'
 const devPort = Number(process.env.WEB_PORT) || 3000
 
-// 历史语言包仍保存旧版本文案。构建和开发转换阶段直接删除退役导航项，
+// 历史语言包仍保存旧版本文案。构建和开发转换阶段直接删除所有退役 Pulse 文案，
 // 避免已经下线的功能名称继续进入生产 JS，或被旧组件意外重新渲染。
 function stripRetiredLocaleEntries(): Plugin {
   return {
@@ -17,7 +17,10 @@ function stripRetiredLocaleEntries(): Plugin {
       const normalizedId = id.replace(/\\/g, '/')
       if (!normalizedId.includes('/src/i18n/locales/')) return null
 
-      const stripped = code.replace(/^\s*'nav\.pulse':\s*[^\n]*\r?\n/gm, '')
+      const stripped = code.replace(
+        /^\s*'(?:nav\.pulse|pulse\.[^']+)':\s*[^\n]*\r?\n/gm,
+        '',
+      )
       if (stripped === code) return null
       return { code: stripped, map: null }
     },
