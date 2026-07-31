@@ -24,12 +24,13 @@ import (
 const EventTranscodeCancelled = "transcode_cancelled"
 
 // TranscodeService remains the compatibility facade used by handlers and
-// clients. Process ownership, cancellation and resource capacity are delegated
-// to the shared execution runtime so every media path can migrate incrementally.
+// clients. The execution job tables are authoritative; transcode_tasks is kept
+// as the existing API projection while clients migrate.
 type TranscodeService struct {
-	repo   *repository.TranscodeRepo
-	cfg    *config.Config
-	logger *zap.SugaredLogger
+	repo          *repository.TranscodeRepo
+	executionRepo *repository.TranscodeExecutionRepo
+	cfg           *config.Config
+	logger        *zap.SugaredLogger
 
 	jobs        chan *TranscodeJob
 	workerCount int
@@ -53,12 +54,13 @@ type TranscodeService struct {
 }
 
 // TranscodeJob owns one durable cancellation context from queue admission until
-// finalization. The same signal prevents queued startup and terminates a running
-// FFmpeg process through exec.CommandContext.
+// finalization. ExecutionJob persists orchestration state and Attempt records
+// preserve every concrete process run, including hardware fallback failures.
 type TranscodeJob struct {
-	Task    *model.TranscodeTask
-	Media   *model.Media
-	Quality string
+	Task         *model.TranscodeTask
+	ExecutionJob *model.TranscodeJobRecord
+	Media        *model.Media
+	Quality      string
 
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -71,6 +73,7 @@ type TranscodeJob struct {
 	playbackPos    atomic.Uint64
 	transcodedPos  atomic.Uint64
 	lastDBProgress atomic.Uint64
+	lastHeartbeat  atomic.Int64
 	suspended      atomic.Int32
 	startOffset    float64
 
@@ -126,8 +129,15 @@ func (j *TranscodeJob) getTranscodedPosition() float64 {
 }
 
 func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
+	if repo == nil || repo.DB() == nil {
+		panic("transcode repository is required")
+	}
+	if err := model.AutoMigrateTranscodeExecution(repo.DB()); err != nil {
+		panic(fmt.Sprintf("migrate transcode execution schema: %v", err))
+	}
 	service := &TranscodeService{
 		repo:             repo,
+		executionRepo:    repository.NewTranscodeExecutionRepo(repo.DB()),
 		cfg:              cfg,
 		logger:           logger,
 		jobs:             make(chan *TranscodeJob, 100),
@@ -141,8 +151,6 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", service.hwAccel)
 	})
 
-	// Workers drain and prepare jobs. The shared runtime is the source of truth
-	// for actual CPU/GPU/remux/on-demand process concurrency.
 	service.workerCount = 1
 	if service.hwAccel != "" && service.hwAccel != ffmpeg.HWAccelNone {
 		service.workerCount = 2
@@ -174,9 +182,12 @@ func (s *TranscodeService) recoverPendingTasks() {
 		if err := s.repo.Update(&rows[i]); err != nil {
 			s.logger.Warnf("重置中断任务状态失败 task=%s: %v", rows[i].ID, err)
 		}
+		if executionJob, findErr := s.executionRepo.FindActiveByLegacyTaskID(rows[i].ID); findErr == nil {
+			_ = s.executionRepo.CompleteJob(executionJob.ID, "failed", time.Now())
+		}
 	}
 	if len(rows) > 0 {
-		s.logger.Infof("已回收 %d 个重启前未完成的旧转码任务", len(rows))
+		s.logger.Infof("已回收 %d 个重启前未完成的转码任务及执行租约", len(rows))
 	}
 }
 
@@ -185,8 +196,7 @@ func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*
 }
 
 // StartABRTranscode performs progressive warmup: only the first valid rendition
-// is queued immediately. Other renditions remain advertised and start when the
-// client requests their child playlist, protecting first-frame latency.
+// is queued immediately. Other renditions start when requested by the client.
 func (s *TranscodeService) StartABRTranscode(media *model.Media, qualities []string) ([]*model.TranscodeTask, error) {
 	if media == nil {
 		return nil, fmt.Errorf("media 不能为空")
@@ -224,6 +234,9 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 	s.submitMu.Lock()
 	defer s.submitMu.Unlock()
 
+	if task, err := s.findActiveExecutionTask(media, quality, startOffset); err == nil {
+		return task, nil
+	}
 	if startOffset == 0 {
 		if task, err := s.repo.FindByMediaAndQuality(media.ID, quality); err == nil {
 			m3u8Path := filepath.Join(s.GetOutputDir(media.ID, quality), "stream.m3u8")
@@ -255,10 +268,16 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 	if err := s.repo.Create(task); err != nil {
 		return nil, err
 	}
+	executionJob, err := s.createExecutionJob(media, quality, startOffset, task.ID)
+	if err != nil {
+		_ = s.repo.DeleteByID(task.ID)
+		return nil, fmt.Errorf("创建持久化转码 Job 失败: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &TranscodeJob{
 		Task:         task,
+		ExecutionJob: executionJob,
 		Media:        media,
 		Quality:      quality,
 		ctx:          ctx,
@@ -281,6 +300,7 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 		task.Status = "failed"
 		task.Error = "转码队列已满"
 		_ = s.repo.Update(task)
+		s.persistJobTerminal(job, "failed", time.Now())
 		return nil, fmt.Errorf("转码队列已满")
 	}
 }
@@ -337,7 +357,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	if backend == "" {
 		backend = ffmpeg.HWAccelNone
 	}
-	result := s.runAttempt(job, backend)
+	result := s.runAttempt(job, backend, 1)
 	if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 		s.finalizeCancelled(job)
 		return
@@ -346,7 +366,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	if result.Err != nil && backend != ffmpeg.HWAccelNone {
 		s.logger.Warnf("硬件转码失败 backend=%s media=%s: %v，切换独立软件 Attempt", backend, job.Media.ID, result.Err)
 		s.cleanAttemptOutput(job.Task.OutputDir)
-		result = s.runAttempt(job, ffmpeg.HWAccelNone)
+		result = s.runAttempt(job, ffmpeg.HWAccelNone, 2)
 		if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 			s.finalizeCancelled(job)
 			return
@@ -359,14 +379,18 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 	s.finalizeCompleted(job)
 }
 
-func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string) transcodeexecutor.Result {
+func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string, attemptNumber int) transcodeexecutor.Result {
 	kind := transcodegovernor.KindSoftwareTranscode
 	if backend != "" && backend != ffmpeg.HWAccelNone {
 		kind = transcodegovernor.KindHardwareTranscode
 	}
 
 	args := s.buildFFmpegArgsForBackend(job.Media, job.Media.FilePath, job.Task.OutputDir, job.Quality, job.startOffset, backend)
-	s.logger.Debugf("FFmpeg attempt backend=%s command=%s %s", backend, s.cfg.App.FFmpegPath, strings.Join(args, " "))
+	attempt, err := s.createAttempt(job, attemptNumber, backend, args)
+	if err != nil {
+		return transcodeexecutor.Result{Err: fmt.Errorf("创建 Attempt 记录失败: %w", err)}
+	}
+	s.logger.Debugf("FFmpeg attempt=%d backend=%s command=%s %s", attemptNumber, backend, s.cfg.App.FFmpegPath, strings.Join(redactFFmpegArgs(args), " "))
 	result := s.executionRuntime.Run(job.ctx, kind, transcodeexecutor.Command{
 		Path:       s.cfg.App.FFmpegPath,
 		Args:       args,
@@ -377,13 +401,23 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string) transco
 	}, transcodeexecutor.Callbacks{
 		OnStarted: func(process *os.Process) {
 			job.setProcess(process)
+			now := time.Now()
+			job.lastHeartbeat.Store(now.UnixNano())
+			s.markAttemptStarted(job, attempt, process.Pid, now)
 			job.throttleStarted.Do(func() { go s.throttleLoop(job) })
 		},
 		OnProgress: func(progress transcodeexecutor.Progress) {
 			s.recordProgress(job, progress)
+			now := time.Now()
+			last := time.Unix(0, job.lastHeartbeat.Load())
+			if now.Sub(last) >= 10*time.Second {
+				job.lastHeartbeat.Store(now.UnixNano())
+				s.touchAttempt(attempt, now)
+			}
 		},
 	})
 	job.setProcess(nil)
+	s.completeAttempt(attempt, result)
 	return result
 }
 
