@@ -135,9 +135,16 @@ func (s *TranscodeService) persistJobTerminal(job *TranscodeJob, status string, 
 	return true
 }
 
-func (s *TranscodeService) createAttempt(job *TranscodeJob, number int, backend string, args []string) (*model.TranscodeAttemptRecord, error) {
+func (s *TranscodeService) createAttempt(job *TranscodeJob, requestedNumber int, backend string, args []string) (*model.TranscodeAttemptRecord, error) {
 	if s.executionRepo == nil || job == nil || job.ExecutionJob == nil {
 		return nil, nil
+	}
+	nextNumber, err := s.executionRepo.NextAttemptNumber(job.ExecutionJob.ID)
+	if err != nil {
+		return nil, fmt.Errorf("读取下一个 Attempt 编号失败: %w", err)
+	}
+	if requestedNumber > nextNumber {
+		nextNumber = requestedNumber
 	}
 	commandJSON, _ := json.Marshal(map[string]any{
 		"path": s.cfg.App.FFmpegPath,
@@ -145,7 +152,7 @@ func (s *TranscodeService) createAttempt(job *TranscodeJob, number int, backend 
 	})
 	attempt := &model.TranscodeAttemptRecord{
 		JobID:       job.ExecutionJob.ID,
-		Number:      number,
+		Number:      nextNumber,
 		Backend:     backend,
 		Status:      "preparing",
 		CommandJSON: string(commandJSON),
