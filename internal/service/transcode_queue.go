@@ -47,9 +47,6 @@ func (h *transcodeJobHeap) Pop() any {
 	return item
 }
 
-// transcodePriorityQueue is the process-local delivery layer. Priority is also
-// persisted on transcode_jobs, so replacing this queue with database polling
-// later will not change the scheduling contract.
 type transcodePriorityQueue struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
@@ -93,6 +90,34 @@ func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
 	})
 	q.cond.Signal()
 	return true
+}
+
+// Promote reorders a still-pending local delivery after its persisted Job was
+// atomically promoted. A linear scan is intentional: the queue is bounded to a
+// small NAS-friendly capacity, while avoiding a second mutable index map.
+func (q *transcodePriorityQueue) Promote(executionJobID string, priority int) bool {
+	if q == nil || executionJobID == "" {
+		return false
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, item := range q.items {
+		if item == nil || item.job == nil || item.job.ExecutionJob == nil || item.job.ExecutionJob.ID != executionJobID {
+			continue
+		}
+		if priority <= item.priority {
+			return false
+		}
+		item.priority = priority
+		item.job.ExecutionJob.Priority = priority
+		if item.job.Task != nil {
+			item.job.Task.Priority = priority
+		}
+		heap.Fix(&q.items, item.index)
+		q.cond.Signal()
+		return true
+	}
+	return false
 }
 
 func (q *transcodePriorityQueue) Pop() (*TranscodeJob, bool) {
