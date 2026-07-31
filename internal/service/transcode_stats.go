@@ -47,7 +47,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		}
 	}
 	s.mu.RUnlock()
-	snapshot := s.resourceGovernor.Snapshot()
+	snapshot := s.executionRuntime.Snapshot()
 	return TranscodeStatistics{
 		StatusCounts:     counts,
 		RunningCount:     active,
