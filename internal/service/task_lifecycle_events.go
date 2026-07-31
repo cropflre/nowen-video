@@ -36,6 +36,9 @@ func taskLifecycleUpdateForEvent(eventType string, data interface{}) (*TaskLifec
 	case EventTranscodeCompleted:
 		update.Kind = TaskKindTranscode
 		update.Status = TaskStatusCompleted
+	case EventTranscodeCancelled:
+		update.Kind = TaskKindTranscode
+		update.Status = TaskStatusCancelled
 	case EventTranscodeFailed:
 		update.Kind = TaskKindTranscode
 		update.Status = TaskStatusFailed
