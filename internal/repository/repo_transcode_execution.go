@@ -54,6 +54,25 @@ func (r *TranscodeExecutionRepo) ListActiveJobs() ([]model.TranscodeJobRecord, e
 	return jobs, err
 }
 
+// PromoteQueuedJob raises priority only while the job is still unclaimed. The
+// greater-than predicate makes repeated interactive requests idempotent and
+// prevents a late low-priority caller from lowering an existing job.
+func (r *TranscodeExecutionRepo) PromoteQueuedJob(jobID string, priority int, updatedAt time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeJobRecord{}).
+		Where(
+			"id = ? AND status = ? AND desired_state = ? AND lease_token = '' AND active_key IS NOT NULL AND priority < ?",
+			jobID,
+			"queued",
+			"running",
+			priority,
+		).
+		Updates(map[string]any{
+			"priority":   priority,
+			"updated_at": updatedAt,
+		})
+	return result.RowsAffected == 1, result.Error
+}
+
 func (r *TranscodeExecutionRepo) ClaimJob(jobID, workerID string, now time.Time, leaseDuration time.Duration) (*model.TranscodeJobRecord, bool, error) {
 	if leaseDuration <= 0 {
 		leaseDuration = 30 * time.Second
