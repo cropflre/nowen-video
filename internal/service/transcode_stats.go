@@ -14,6 +14,8 @@ type TranscodeStatistics struct {
 	RunningCount     int                            `json:"running_count"`
 	ActiveWorkers    int                            `json:"active_workers"`
 	MaxWorkers       int                            `json:"max_workers"`
+	QueueDepth       int                            `json:"queue_depth"`
+	Scheduler        string                         `json:"scheduler"`
 	HWAccel          string                         `json:"hw_accel"`
 	DiskUsageBytes   int64                          `json:"disk_usage_bytes"`
 	DiskUsageDir     string                         `json:"disk_usage_dir"`
@@ -53,6 +55,8 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		RunningCount:     active,
 		ActiveWorkers:    active,
 		MaxWorkers:       s.workerCount,
+		QueueDepth:       s.jobs.Len(),
+		Scheduler:        "priority_fifo",
 		HWAccel:          s.hwAccel,
 		DiskUsageBytes:   s.GetCacheDiskUsage(),
 		DiskUsageDir:     filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
