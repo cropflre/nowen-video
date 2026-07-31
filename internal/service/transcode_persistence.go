@@ -65,16 +65,22 @@ func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality s
 		return nil, err
 	}
 	if job.LegacyTaskID == nil || strings.TrimSpace(*job.LegacyTaskID) == "" {
-		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
+		if job.Status == "queued" {
+			_, _ = s.executionRepo.CompleteQueuedJob(job.ID, "failed", time.Now())
+		}
 		return nil, gorm.ErrRecordNotFound
 	}
 	task, err := s.repo.FindByID(*job.LegacyTaskID)
 	if err != nil {
-		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
+		if job.Status == "queued" {
+			_, _ = s.executionRepo.CompleteQueuedJob(job.ID, "failed", time.Now())
+		}
 		return nil, gorm.ErrRecordNotFound
 	}
 	if task.Status != "pending" && task.Status != "running" {
-		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
+		if job.Status == "queued" {
+			_, _ = s.executionRepo.CompleteQueuedJob(job.ID, "failed", time.Now())
+		}
 		return nil, gorm.ErrRecordNotFound
 	}
 	return task, nil
@@ -87,13 +93,30 @@ func (s *TranscodeService) persistCancellation(job *TranscodeJob, requestedAt ti
 	return s.executionRepo.RequestCancellation(job.ExecutionJob.ID, requestedAt)
 }
 
-func (s *TranscodeService) persistJobTerminal(job *TranscodeJob, status string, completedAt time.Time) {
+// persistJobTerminal returns false when this worker no longer owns the lease.
+// Callers must not update the legacy projection or publish artifacts in that
+// case, otherwise a stale worker could overwrite timeout recovery.
+func (s *TranscodeService) persistJobTerminal(job *TranscodeJob, status string, completedAt time.Time) bool {
 	if s.executionRepo == nil || job == nil || job.ExecutionJob == nil {
-		return
+		return true
+	}
+	if job.leaseToken != "" {
+		completed, err := s.executionRepo.CompleteLeasedJob(job.ExecutionJob.ID, job.leaseToken, status, completedAt)
+		if err != nil {
+			s.logger.Warnf("更新租约转码 Job 终态失败 job=%s status=%s: %v", job.ExecutionJob.ID, status, err)
+			return false
+		}
+		if !completed {
+			s.logger.Warnf("拒绝旧 Worker 写入终态 job=%s worker=%s status=%s", job.ExecutionJob.ID, job.workerID, status)
+			return false
+		}
+		return true
 	}
 	if err := s.executionRepo.CompleteJob(job.ExecutionJob.ID, status, completedAt); err != nil {
-		s.logger.Warnf("更新转码 Job 终态失败 job=%s status=%s: %v", job.ExecutionJob.ID, status, err)
+		s.logger.Warnf("更新未租约转码 Job 终态失败 job=%s status=%s: %v", job.ExecutionJob.ID, status, err)
+		return false
 	}
+	return true
 }
 
 func (s *TranscodeService) createAttempt(job *TranscodeJob, number int, backend string, args []string) (*model.TranscodeAttemptRecord, error) {
@@ -126,10 +149,18 @@ func (s *TranscodeService) markAttemptStarted(job *TranscodeJob, attempt *model.
 	if err := s.executionRepo.MarkAttemptStarted(attempt.ID, pid, startedAt); err != nil {
 		s.logger.Warnf("标记 Attempt 启动失败 attempt=%s: %v", attempt.ID, err)
 	}
-	if job != nil && job.ExecutionJob != nil {
-		if err := s.executionRepo.SetJobRunning(job.ExecutionJob.ID, attempt.ID, startedAt); err != nil {
-			s.logger.Warnf("标记 Job 运行失败 job=%s: %v", job.ExecutionJob.ID, err)
-		}
+	if job == nil || job.ExecutionJob == nil {
+		return
+	}
+	running, err := s.executionRepo.SetJobRunning(job.ExecutionJob.ID, attempt.ID, job.leaseToken, startedAt)
+	if err != nil {
+		s.logger.Warnf("标记 Job 运行失败 job=%s: %v", job.ExecutionJob.ID, err)
+		job.RequestCancel()
+		return
+	}
+	if !running {
+		s.logger.Warnf("Job Lease 已失效，拒绝进入运行态 job=%s worker=%s", job.ExecutionJob.ID, job.workerID)
+		job.RequestCancel()
 	}
 }
 
