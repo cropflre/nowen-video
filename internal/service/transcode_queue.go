@@ -146,6 +146,36 @@ func (q *transcodePriorityQueue) Close() {
 	q.mu.Unlock()
 }
 
+// CloseAndDrain stops new local delivery and removes jobs that have not yet
+// been claimed by a worker. Their database rows stay queued and are restored on
+// the next service start.
+func (q *transcodePriorityQueue) CloseAndDrain() []*TranscodeJob {
+	if q == nil {
+		return nil
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.closed = true
+	drained := make([]*TranscodeJob, 0, len(q.items))
+	for len(q.items) > 0 {
+		item := heap.Pop(&q.items).(*queuedTranscodeJob)
+		if item != nil && item.job != nil {
+			drained = append(drained, item.job)
+		}
+	}
+	q.cond.Broadcast()
+	return drained
+}
+
+func (q *transcodePriorityQueue) IsClosed() bool {
+	if q == nil {
+		return true
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.closed
+}
+
 func (q *transcodePriorityQueue) Len() int {
 	if q == nil {
 		return 0
