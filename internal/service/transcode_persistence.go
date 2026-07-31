@@ -56,7 +56,7 @@ func (s *TranscodeService) createExecutionJob(media *model.Media, quality string
 	return job, nil
 }
 
-func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
+func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality string, startOffset float64, requestedPriority int) (*model.TranscodeTask, error) {
 	if s.executionRepo == nil || media == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -82,6 +82,22 @@ func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality s
 			_, _ = s.executionRepo.CompleteQueuedJob(job.ID, "failed", time.Now())
 		}
 		return nil, gorm.ErrRecordNotFound
+	}
+
+	if requestedPriority > job.Priority && job.Status == "queued" {
+		promoted, promoteErr := s.executionRepo.PromoteQueuedJob(job.ID, requestedPriority, time.Now())
+		if promoteErr != nil {
+			s.logger.Warnf("提升复用转码 Job 优先级失败 job=%s from=%d to=%d: %v", job.ID, job.Priority, requestedPriority, promoteErr)
+		} else if promoted {
+			job.Priority = requestedPriority
+			task.Priority = requestedPriority
+			if updateErr := s.repo.Update(task); updateErr != nil {
+				s.logger.Warnf("同步旧转码任务优先级失败 task=%s priority=%d: %v", task.ID, requestedPriority, updateErr)
+			}
+			if s.jobs.Promote(job.ID, requestedPriority) {
+				s.logger.Infof("已提升排队转码优先级 job=%s media=%s priority=%d", job.ID, media.ID, requestedPriority)
+			}
+		}
 	}
 	return task, nil
 }
