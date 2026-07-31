@@ -152,10 +152,26 @@ func (s *TranscodeService) recoverPendingTasks() {
 				recovered++
 			}
 		case "claimed", "running", "cancel_requested":
-			if job.LeaseExpiresAt == nil || !job.LeaseExpiresAt.After(now) {
-				if s.recoverExpiredLease(job, now) {
-					recovered++
+			// Rows created before Lease fields were introduced have no valid
+			// ownership proof. Startup is the only safe point to release them
+			// immediately because the new process has not accepted work yet.
+			if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
+				terminalStatus := "failed"
+				errorMessage := "升级前执行记录没有 Worker Lease，已安全回收"
+				if job.DesiredState == "cancelled" || job.Status == "cancel_requested" {
+					terminalStatus = "cancelled"
+					errorMessage = "升级前取消任务没有 Worker Lease，已确认取消"
 				}
+				if completeErr := s.executionRepo.CompleteJob(job.ID, terminalStatus, now); completeErr != nil {
+					s.logger.Warnf("回收无租约 Job 失败 job=%s: %v", job.ID, completeErr)
+					continue
+				}
+				s.updateRecoveredLegacyTask(job, terminalStatus, errorMessage, now)
+				recovered++
+				continue
+			}
+			if !job.LeaseExpiresAt.After(now) && s.recoverExpiredLease(job, now) {
+				recovered++
 			}
 		default:
 			if err := s.executionRepo.CompleteJob(job.ID, "failed", now); err != nil {
