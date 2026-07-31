@@ -28,7 +28,7 @@ func transcodeActiveKey(media *model.Media, quality string, startOffset float64)
 	))
 }
 
-func (s *TranscodeService) createExecutionJob(media *model.Media, quality string, startOffset float64, legacyTaskID string) (*model.TranscodeJobRecord, error) {
+func (s *TranscodeService) createExecutionJob(media *model.Media, quality string, startOffset float64, legacyTaskID string, priority int) (*model.TranscodeJobRecord, error) {
 	fingerprint := transcodeSourceFingerprint(media)
 	planHash := stableHash(fmt.Sprintf("%s|%s|%.3f|%s", transcodePlannerVersion, quality, startOffset, s.hwAccel))
 	activeKey := transcodeActiveKey(media, quality, startOffset)
@@ -39,7 +39,7 @@ func (s *TranscodeService) createExecutionJob(media *model.Media, quality string
 		ProfileID:         quality,
 		AudioTrack:        -1,
 		StartMS:           int64(startOffset * 1000),
-		Priority:          100,
+		Priority:          priority,
 		Status:            "queued",
 		DesiredState:      "running",
 		ActiveKey:         &activeKey,
