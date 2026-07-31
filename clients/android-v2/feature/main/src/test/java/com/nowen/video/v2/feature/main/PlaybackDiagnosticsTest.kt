@@ -30,6 +30,7 @@ class PlaybackDiagnosticsTest {
     fun `playback methods have stable diagnostic labels`() {
         assertEquals("直接播放", playbackMethodLabel("direct"))
         assertEquals("无损封装转换", playbackMethodLabel("REMUX"))
+        assertEquals("视频直通·音频兼容转换", playbackMethodLabel("smart_remux"))
         assertEquals("兼容转码", playbackMethodLabel("transcode"))
         assertEquals("自动选择", playbackMethodLabel("unknown"))
     }
