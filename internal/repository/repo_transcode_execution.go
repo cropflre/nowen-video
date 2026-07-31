@@ -54,9 +54,6 @@ func (r *TranscodeExecutionRepo) ListActiveJobs() ([]model.TranscodeJobRecord, e
 	return jobs, err
 }
 
-// ClaimJob atomically transfers one queued job to a concrete worker. The
-// status, desired state and lease predicates are part of the UPDATE so two
-// workers can never both acquire the same job, even across processes.
 func (r *TranscodeExecutionRepo) ClaimJob(jobID, workerID string, now time.Time, leaseDuration time.Duration) (*model.TranscodeJobRecord, bool, error) {
 	if leaseDuration <= 0 {
 		leaseDuration = 30 * time.Second
@@ -93,8 +90,6 @@ func (r *TranscodeExecutionRepo) ClaimJob(jobID, workerID string, now time.Time,
 	return job, true, nil
 }
 
-// RenewJobLease extends ownership only while the same lease token is current.
-// Expired or cancelled jobs are never resurrected by a late heartbeat.
 func (r *TranscodeExecutionRepo) RenewJobLease(jobID, leaseToken string, now time.Time, leaseDuration time.Duration) (bool, error) {
 	if leaseDuration <= 0 {
 		leaseDuration = 30 * time.Second
@@ -116,13 +111,15 @@ func (r *TranscodeExecutionRepo) RenewJobLease(jobID, leaseToken string, now tim
 	return result.RowsAffected == 1, result.Error
 }
 
+// SetJobRunning also advances CurrentAttemptID for hardware fallback attempts.
+// A job may already be running, but the same lease token must still own it.
 func (r *TranscodeExecutionRepo) SetJobRunning(jobID, attemptID, leaseToken string, startedAt time.Time) (bool, error) {
 	result := r.db.Model(&model.TranscodeJobRecord{}).
 		Where(
-			"id = ? AND lease_token = ? AND status = ? AND desired_state = ? AND lease_expires_at > ?",
+			"id = ? AND lease_token = ? AND status IN ? AND desired_state = ? AND lease_expires_at > ?",
 			jobID,
 			leaseToken,
-			"claimed",
+			[]string{"claimed", "running"},
 			"running",
 			startedAt,
 		).
@@ -160,16 +157,12 @@ func terminalJobUpdates(status string, completedAt time.Time) map[string]any {
 	}
 }
 
-// CompleteJob is reserved for jobs that never acquired a worker lease, such as
-// cancelled queued jobs or startup recovery of orphaned queue entries.
 func (r *TranscodeExecutionRepo) CompleteJob(jobID, status string, completedAt time.Time) error {
 	return r.db.Model(&model.TranscodeJobRecord{}).
 		Where("id = ?", jobID).
 		Updates(terminalJobUpdates(status, completedAt)).Error
 }
 
-// CompleteQueuedJob fails an unclaimed queue entry only if no worker acquired
-// it between the preceding read and this write.
 func (r *TranscodeExecutionRepo) CompleteQueuedJob(jobID, status string, completedAt time.Time) (bool, error) {
 	result := r.db.Model(&model.TranscodeJobRecord{}).
 		Where("id = ? AND status = ? AND lease_token = '' AND active_key IS NOT NULL", jobID, "queued").
@@ -177,11 +170,16 @@ func (r *TranscodeExecutionRepo) CompleteQueuedJob(jobID, status string, complet
 	return result.RowsAffected == 1, result.Error
 }
 
-// CompleteLeasedJob prevents a stale worker from publishing a terminal state
-// after its lease has expired or been replaced.
+// CompleteLeasedJob rejects both replaced and already-expired leases. Recovery
+// therefore wins even when the old process exits just before the reaper runs.
 func (r *TranscodeExecutionRepo) CompleteLeasedJob(jobID, leaseToken, status string, completedAt time.Time) (bool, error) {
 	result := r.db.Model(&model.TranscodeJobRecord{}).
-		Where("id = ? AND lease_token = ? AND active_key IS NOT NULL", jobID, leaseToken).
+		Where(
+			"id = ? AND lease_token = ? AND active_key IS NOT NULL AND lease_expires_at IS NOT NULL AND lease_expires_at > ?",
+			jobID,
+			leaseToken,
+			completedAt,
+		).
 		Updates(terminalJobUpdates(status, completedAt))
 	return result.RowsAffected == 1, result.Error
 }
@@ -196,8 +194,6 @@ func (r *TranscodeExecutionRepo) ListExpiredLeases(now time.Time) ([]model.Trans
 	return jobs, err
 }
 
-// CompleteExpiredLease atomically owns timeout recovery. A concurrent worker
-// heartbeat or terminal write wins by changing the lease predicate first.
 func (r *TranscodeExecutionRepo) CompleteExpiredLease(jobID, leaseToken, status string, now time.Time) (bool, error) {
 	result := r.db.Model(&model.TranscodeJobRecord{}).
 		Where(
