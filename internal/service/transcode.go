@@ -232,7 +232,7 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 	s.submitMu.Lock()
 	defer s.submitMu.Unlock()
 
-	if task, err := s.findActiveExecutionTask(media, quality, startOffset); err == nil {
+	if task, err := s.findActiveExecutionTask(media, quality, startOffset, priority); err == nil {
 		return task, nil
 	}
 	if startOffset == 0 {
