@@ -28,11 +28,12 @@ func (s *TranscodeService) recordProgress(job *TranscodeJob, progress transcodee
 		job.taskMu.Unlock()
 		return
 	}
-	previous := job.Task.Progress
 	job.Task.Progress = percentage
 	job.taskMu.Unlock()
 
-	if percentage-previous >= 5 || percentage >= 99.5 {
+	lastPersisted := float64(job.lastDBProgress.Load()) / 100
+	if percentage-lastPersisted >= 5 || percentage >= 99.5 {
+		job.lastDBProgress.Store(uint64(percentage * 100))
 		if err := s.repo.UpdateProgress(job.Task.ID, percentage); err != nil {
 			s.logger.Warnf("更新转码进度失败 task=%s: %v", job.Task.ID, err)
 		}
