@@ -169,10 +169,27 @@ func terminalJobUpdates(status string, completedAt time.Time) map[string]any {
 		"current_attempt_id": "",
 		"worker_id":          "",
 		"lease_token":        "",
+		"claimed_at":         nil,
 		"last_heartbeat_at":  nil,
 		"lease_expires_at":   nil,
 		"completed_at":       completedAt,
 		"updated_at":         completedAt,
+	}
+}
+
+func queuedJobUpdates(updatedAt time.Time) map[string]any {
+	return map[string]any{
+		"status":              "queued",
+		"desired_state":       "running",
+		"current_attempt_id":  "",
+		"worker_id":           "",
+		"lease_token":         "",
+		"claimed_at":          nil,
+		"last_heartbeat_at":   nil,
+		"lease_expires_at":    nil,
+		"cancel_requested_at": nil,
+		"completed_at":        nil,
+		"updated_at":          updatedAt,
 	}
 }
 
@@ -186,6 +203,53 @@ func (r *TranscodeExecutionRepo) CompleteQueuedJob(jobID, status string, complet
 	result := r.db.Model(&model.TranscodeJobRecord{}).
 		Where("id = ? AND status = ? AND lease_token = '' AND active_key IS NOT NULL", jobID, "queued").
 		Updates(terminalJobUpdates(status, completedAt))
+	return result.RowsAffected == 1, result.Error
+}
+
+// RequeueUnleasedJob upgrades active rows created before Lease ownership was
+// introduced. Only desired_state=running rows are recoverable; cancelled rows
+// must be finalized instead of being revived.
+func (r *TranscodeExecutionRepo) RequeueUnleasedJob(jobID string, now time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeJobRecord{}).
+		Where(
+			"id = ? AND active_key IS NOT NULL AND desired_state = ? AND lease_token = '' AND status IN ?",
+			jobID,
+			"running",
+			[]string{"claimed", "running"},
+		).
+		Updates(queuedJobUpdates(now))
+	return result.RowsAffected == 1, result.Error
+}
+
+// RequeueLeasedJob releases ownership during graceful shutdown. The lease token
+// fences a late worker result, while ActiveKey remains allocated to the same Job.
+func (r *TranscodeExecutionRepo) RequeueLeasedJob(jobID, leaseToken string, now time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeJobRecord{}).
+		Where(
+			"id = ? AND lease_token = ? AND active_key IS NOT NULL AND desired_state = ? AND status IN ?",
+			jobID,
+			leaseToken,
+			"running",
+			[]string{"claimed", "running"},
+		).
+		Updates(queuedJobUpdates(now))
+	return result.RowsAffected == 1, result.Error
+}
+
+// RequeueExpiredLease returns abandoned work to the durable queue instead of
+// losing it as a terminal failure. Cancellation remains terminal and is handled
+// by CompleteExpiredLease.
+func (r *TranscodeExecutionRepo) RequeueExpiredLease(jobID, leaseToken string, now time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeJobRecord{}).
+		Where(
+			"id = ? AND lease_token = ? AND active_key IS NOT NULL AND desired_state = ? AND lease_expires_at IS NOT NULL AND lease_expires_at <= ? AND status IN ?",
+			jobID,
+			leaseToken,
+			"running",
+			now,
+			[]string{"claimed", "running"},
+		).
+		Updates(queuedJobUpdates(now))
 	return result.RowsAffected == 1, result.Error
 }
 
@@ -224,6 +288,18 @@ func (r *TranscodeExecutionRepo) CompleteExpiredLease(jobID, leaseToken, status 
 		).
 		Updates(terminalJobUpdates(status, now))
 	return result.RowsAffected == 1, result.Error
+}
+
+func (r *TranscodeExecutionRepo) NextAttemptNumber(jobID string) (int, error) {
+	var maximum int
+	err := r.db.Model(&model.TranscodeAttemptRecord{}).
+		Select("COALESCE(MAX(number), 0)").
+		Where("job_id = ?", jobID).
+		Scan(&maximum).Error
+	if err != nil {
+		return 0, err
+	}
+	return maximum + 1, nil
 }
 
 func (r *TranscodeExecutionRepo) CreateAttempt(attempt *model.TranscodeAttemptRecord) error {
