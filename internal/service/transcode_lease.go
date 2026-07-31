@@ -26,25 +26,6 @@ func newTranscodeInstanceID() string {
 	return fmt.Sprintf("%s-%s", hostname, uuid.NewString())
 }
 
-func (s *TranscodeService) claimExecutionJob(job *TranscodeJob, workerID string) (bool, error) {
-	if job == nil || job.ExecutionJob == nil {
-		return false, fmt.Errorf("持久化转码 Job 不存在")
-	}
-	claimed, ok, err := s.executionRepo.ClaimJob(
-		job.ExecutionJob.ID,
-		workerID,
-		time.Now(),
-		s.leaseDuration,
-	)
-	if err != nil || !ok {
-		return false, err
-	}
-	job.ExecutionJob = claimed
-	job.workerID = claimed.WorkerID
-	job.leaseToken = claimed.LeaseToken
-	return true, nil
-}
-
 func (s *TranscodeService) leaseHeartbeatLoop(job *TranscodeJob) {
 	if job == nil || job.ExecutionJob == nil || job.leaseToken == "" {
 		return
@@ -76,69 +57,16 @@ func (s *TranscodeService) leaseHeartbeatLoop(job *TranscodeJob) {
 	}
 }
 
-func (s *TranscodeService) handleUnclaimedJob(job *TranscodeJob) {
-	if job == nil || job.ExecutionJob == nil {
-		return
-	}
-	current, err := s.executionRepo.FindJobByID(job.ExecutionJob.ID)
-	if err != nil {
-		s.logger.Warnf("读取未 Claim 的转码 Job 失败 job=%s: %v", job.ExecutionJob.ID, err)
-		return
-	}
-	if current.DesiredState == "cancelled" || current.Status == "cancel_requested" || job.CancellationRequested() {
-		s.finalizeCancelled(job)
-		return
-	}
-	s.logger.Warnf(
-		"转码 Job 未获得执行权，跳过本地队列项 job=%s status=%s worker=%s",
-		current.ID,
-		current.Status,
-		current.WorkerID,
-	)
-}
-
-func (s *TranscodeService) failUnclaimedJob(job *TranscodeJob, reason string) {
-	if job == nil || job.ExecutionJob == nil {
-		return
-	}
-	now := time.Now()
-	completed, err := s.executionRepo.CompleteQueuedJob(job.ExecutionJob.ID, "failed", now)
-	if err != nil {
-		s.logger.Warnf("终止未 Claim 的转码 Job 失败 job=%s: %v", job.ExecutionJob.ID, err)
-		return
-	}
-	if !completed {
-		s.handleUnclaimedJob(job)
-		return
-	}
-	job.taskMu.Lock()
-	job.Task.Status = "failed"
-	job.Task.Error = reason
-	job.Task.CompletedAt = &now
-	legacyErr := s.repo.Update(job.Task)
-	job.taskMu.Unlock()
-	if legacyErr != nil {
-		s.logger.Warnf("更新未 Claim 任务兼容投影失败 task=%s: %v", job.Task.ID, legacyErr)
-	}
-	s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
-		TaskID:  job.Task.ID,
-		MediaID: job.Media.ID,
-		Title:   job.Media.Title,
-		Quality: job.Quality,
-		Message: fmt.Sprintf("转码调度失败: %s", reason),
-	})
-}
-
 func (s *TranscodeService) recoverPendingTasks() {
 	now := time.Now()
 	activeJobs, err := s.executionRepo.ListActiveJobs()
 	if err != nil {
 		s.logger.Warnf("读取待恢复转码 Job 失败: %v", err)
-		go s.dispatchQueuedLoop()
 		return
 	}
 
 	recovered := 0
+	queued := 0
 	for i := range activeJobs {
 		job := &activeJobs[i]
 		switch job.Status {
@@ -156,7 +84,8 @@ func (s *TranscodeService) recoverPendingTasks() {
 				continue
 			}
 			s.updateRecoveredLegacyTask(job, "queued", "", now)
-			recovered++
+			queued++
+
 		case "claimed", "running", "cancel_requested":
 			if job.DesiredState == "cancelled" || job.Status == "cancel_requested" {
 				if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
@@ -174,8 +103,8 @@ func (s *TranscodeService) recoverPendingTasks() {
 				continue
 			}
 
-			// Rows created before Lease ownership was introduced can safely return
-			// to queued during startup. No new worker has been started yet.
+			// Active rows written before Lease ownership existed are safe to
+			// return to queued at startup, before this process starts Workers.
 			if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
 				requeued, requeueErr := s.executionRepo.RequeueUnleasedJob(job.ID, now)
 				if requeueErr != nil {
@@ -184,13 +113,14 @@ func (s *TranscodeService) recoverPendingTasks() {
 				}
 				if requeued {
 					s.updateRecoveredLegacyTask(job, "queued", "", now)
-					recovered++
+					queued++
 				}
 				continue
 			}
 			if !job.LeaseExpiresAt.After(now) && s.recoverExpiredLease(job, now) {
 				recovered++
 			}
+
 		default:
 			if err := s.executionRepo.CompleteJob(job.ID, "failed", now); err != nil {
 				s.logger.Warnf("回收未知状态 Job 失败 job=%s status=%s: %v", job.ID, job.Status, err)
@@ -218,10 +148,12 @@ func (s *TranscodeService) recoverPendingTasks() {
 		}
 	}
 
-	dispatched := s.dispatchPersistedQueuedJobs()
-	go s.dispatchQueuedLoop()
-	if recovered > 0 || dispatched > 0 {
-		s.logger.Infof("已恢复 %d 个持久化转码 Job，重新装载 %d 个排队任务", recovered, dispatched)
+	if queued > 0 {
+		s.jobs.Notify()
+		s.logger.Infof("已保留并唤醒 %d 个数据库排队转码 Job", queued)
+	}
+	if recovered > 0 {
+		s.logger.Infof("已恢复或回收 %d 个重启前转码 Job", recovered)
 	}
 }
 
@@ -273,6 +205,7 @@ func (s *TranscodeService) recoverExpiredLease(job *model.TranscodeJobRecord, no
 		return false
 	}
 	s.updateRecoveredLegacyTask(job, "queued", "", now)
+	s.jobs.Notify()
 	s.logger.Warnf("Worker Lease 已过期，任务重新排队 job=%s worker=%s", job.ID, job.WorkerID)
 	return true
 }
@@ -290,6 +223,7 @@ func (s *TranscodeService) updateRecoveredLegacyTask(job *model.TranscodeJobReco
 		task.Status = "pending"
 		task.Progress = 0
 		task.Error = ""
+		task.Priority = job.Priority
 		task.StartedAt = nil
 		task.CompletedAt = nil
 	case "cancelled":
