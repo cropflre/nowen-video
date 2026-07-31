@@ -38,6 +38,11 @@ type TranscodeService struct {
 	mu          sync.RWMutex
 	running     map[string]*TranscodeJob
 
+	instanceID             string
+	leaseDuration          time.Duration
+	leaseHeartbeatInterval time.Duration
+	leaseRecoveryInterval  time.Duration
+
 	hwAccel   string
 	hwAccelMu sync.Once
 	wsHub     *WSHub
@@ -67,15 +72,20 @@ type TranscodeJob struct {
 	cancelOnce sync.Once
 	taskMu     sync.Mutex
 
+	workerID  string
+	leaseToken string
+	leaseDone  chan struct{}
+	leaseStop  sync.Once
+
 	processMu sync.RWMutex
 	process   *os.Process
 
-	playbackPos    atomic.Uint64
-	transcodedPos  atomic.Uint64
-	lastDBProgress atomic.Uint64
-	lastHeartbeat  atomic.Int64
-	suspended      atomic.Int32
-	startOffset    float64
+	playbackPos         atomic.Uint64
+	transcodedPos       atomic.Uint64
+	lastDBProgress      atomic.Uint64
+	lastAttemptHeartbeat atomic.Int64
+	suspended           atomic.Int32
+	startOffset         float64
 
 	throttleDone    chan struct{}
 	throttleStop    sync.Once
@@ -113,6 +123,10 @@ func (j *TranscodeJob) stopThrottle() {
 	j.throttleStop.Do(func() { close(j.throttleDone) })
 }
 
+func (j *TranscodeJob) stopLeaseHeartbeat() {
+	j.leaseStop.Do(func() { close(j.leaseDone) })
+}
+
 func (j *TranscodeJob) SetPlaybackPosition(sec float64) {
 	if sec < 0 {
 		sec = 0
@@ -136,14 +150,18 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		panic(fmt.Sprintf("migrate transcode execution schema: %v", err))
 	}
 	service := &TranscodeService{
-		repo:             repo,
-		executionRepo:    repository.NewTranscodeExecutionRepo(repo.DB()),
-		cfg:              cfg,
-		logger:           logger,
-		jobs:             make(chan *TranscodeJob, 100),
-		running:          make(map[string]*TranscodeJob),
-		executionRuntime: transcoderuntime.Default(),
-		diskUsageTTL:     30 * time.Second,
+		repo:                   repo,
+		executionRepo:          repository.NewTranscodeExecutionRepo(repo.DB()),
+		cfg:                    cfg,
+		logger:                 logger,
+		jobs:                   make(chan *TranscodeJob, 100),
+		running:                make(map[string]*TranscodeJob),
+		instanceID:             newTranscodeInstanceID(),
+		leaseDuration:          defaultTranscodeLeaseDuration,
+		leaseHeartbeatInterval: defaultTranscodeLeaseHeartbeatInterval,
+		leaseRecoveryInterval:  defaultTranscodeLeaseRecoveryInterval,
+		executionRuntime:       transcoderuntime.Default(),
+		diskUsageTTL:           30 * time.Second,
 	}
 
 	service.hwAccelMu.Do(func() {
@@ -151,14 +169,19 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", service.hwAccel)
 	})
 
+	// Startup recovery runs before the service accepts submissions. This makes
+	// every pre-existing queued row an orphan from the previous process, while
+	// active leases are allowed to expire naturally before recovery.
+	service.recoverPendingTasks()
+
 	service.workerCount = 1
 	if service.hwAccel != "" && service.hwAccel != ffmpeg.HWAccelNone {
 		service.workerCount = 2
 	}
-	for workerID := 0; workerID < service.workerCount; workerID++ {
-		go service.worker(workerID)
+	for workerIndex := 0; workerIndex < service.workerCount; workerIndex++ {
+		go service.worker(workerIndex)
 	}
-	go service.recoverPendingTasks()
+	go service.leaseRecoveryLoop()
 	return service
 }
 
@@ -168,27 +191,6 @@ func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return
 
 func (s *TranscodeService) detectHWAccel() string {
 	return ffmpeg.DetectHWAccel(s.cfg, s.logger)
-}
-
-func (s *TranscodeService) recoverPendingTasks() {
-	rows, err := s.repo.ListRunning()
-	if err != nil {
-		s.logger.Warnf("恢复转码任务状态失败: %v", err)
-		return
-	}
-	for i := range rows {
-		rows[i].Status = "failed"
-		rows[i].Error = "服务重启导致执行租约失效，请重新提交"
-		if err := s.repo.Update(&rows[i]); err != nil {
-			s.logger.Warnf("重置中断任务状态失败 task=%s: %v", rows[i].ID, err)
-		}
-		if executionJob, findErr := s.executionRepo.FindActiveByLegacyTaskID(rows[i].ID); findErr == nil {
-			_ = s.executionRepo.CompleteJob(executionJob.ID, "failed", time.Now())
-		}
-	}
-	if len(rows) > 0 {
-		s.logger.Infof("已回收 %d 个重启前未完成的转码任务及执行租约", len(rows))
-	}
 }
 
 func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*model.TranscodeTask, error) {
@@ -283,6 +285,7 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 		ctx:          ctx,
 		cancel:       cancel,
 		startOffset:  startOffset,
+		leaseDone:    make(chan struct{}),
 		throttleDone: make(chan struct{}),
 	}
 	s.mu.Lock()
@@ -324,15 +327,17 @@ func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, qua
 	}
 }
 
-func (s *TranscodeService) worker(id int) {
-	s.logger.Infof("转码工作协程 #%d 启动", id)
+func (s *TranscodeService) worker(index int) {
+	workerID := fmt.Sprintf("%s/worker-%d", s.instanceID, index)
+	s.logger.Infof("转码 Worker 启动: %s", workerID)
 	for job := range s.jobs {
-		s.processJob(job)
+		s.processJob(job, workerID)
 	}
 }
 
-func (s *TranscodeService) processJob(job *TranscodeJob) {
+func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 	defer func() {
+		job.stopLeaseHeartbeat()
 		job.stopThrottle()
 		job.setProcess(nil)
 		s.mu.Lock()
@@ -340,11 +345,26 @@ func (s *TranscodeService) processJob(job *TranscodeJob) {
 		s.mu.Unlock()
 	}()
 
+	if job.CancellationRequested() {
+		s.finalizeCancelled(job)
+		return
+	}
+	claimed, err := s.claimExecutionJob(job, workerID)
+	if err != nil {
+		s.failUnclaimedJob(job, fmt.Sprintf("数据库 Claim 失败: %v", err))
+		return
+	}
+	if !claimed {
+		s.handleUnclaimedJob(job)
+		return
+	}
+	go s.leaseHeartbeatLoop(job)
+
 	if !s.markJobRunning(job) {
 		s.finalizeCancelled(job)
 		return
 	}
-	s.logger.Infof("开始转码: %s (%s)", job.Media.Title, job.Quality)
+	s.logger.Infof("开始转码: %s (%s), worker=%s", job.Media.Title, job.Quality, workerID)
 	s.broadcastTranscodeEvent(EventTranscodeStarted, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
@@ -402,16 +422,16 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string, attempt
 		OnStarted: func(process *os.Process) {
 			job.setProcess(process)
 			now := time.Now()
-			job.lastHeartbeat.Store(now.UnixNano())
+			job.lastAttemptHeartbeat.Store(now.UnixNano())
 			s.markAttemptStarted(job, attempt, process.Pid, now)
 			job.throttleStarted.Do(func() { go s.throttleLoop(job) })
 		},
 		OnProgress: func(progress transcodeexecutor.Progress) {
 			s.recordProgress(job, progress)
 			now := time.Now()
-			last := time.Unix(0, job.lastHeartbeat.Load())
+			last := time.Unix(0, job.lastAttemptHeartbeat.Load())
 			if now.Sub(last) >= 10*time.Second {
-				job.lastHeartbeat.Store(now.UnixNano())
+				job.lastAttemptHeartbeat.Store(now.UnixNano())
 				s.touchAttempt(attempt, now)
 			}
 		},
