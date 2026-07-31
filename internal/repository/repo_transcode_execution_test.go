@@ -1,17 +1,19 @@
 package repository
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/nowen-video/nowen-video/internal/model"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func newTranscodeExecutionTestRepo(t *testing.T) *TranscodeExecutionRepo {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:transcode-execution-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
