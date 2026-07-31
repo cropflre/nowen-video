@@ -142,18 +142,19 @@ func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duratio
 	}
 }
 
-func (q *transcodePriorityQueue) releaseClaimAfterClose(record *model.TranscodeJobRecord) {
+func (q *transcodePriorityQueue) releaseClaimAfterClose(record *model.TranscodeJobRecord) bool {
 	if record == nil || record.LeaseToken == "" {
-		return
+		return false
 	}
 	released, err := q.executionRepo.RequeueLeasedJob(record.ID, record.LeaseToken, time.Now())
 	if err != nil {
 		q.warnf("服务关闭释放刚领取的转码 Lease 失败 job=%s worker=%s: %v", record.ID, record.WorkerID, err)
-		return
+		return false
 	}
 	if released {
 		q.warnf("服务关闭已释放刚领取的转码 Lease job=%s worker=%s", record.ID, record.WorkerID)
 	}
+	return released
 }
 
 func (q *transcodePriorityQueue) hydrateClaimedJob(record *model.TranscodeJobRecord) (*TranscodeJob, error) {
