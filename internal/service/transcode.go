@@ -343,6 +343,27 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		s.finalizeCancelled(job)
 		return
 	}
+
+	// Close the small Claim-to-local-registration race before starting FFmpeg.
+	// Cancellation changes desired_state, so the same lease predicate rejects
+	// this preflight and the process never starts. A transient database error
+	// leaves the claim untouched for the recovery loop instead of executing
+	// without verified ownership.
+	renewed, renewErr := s.executionRepo.RenewJobLease(
+		job.ExecutionJob.ID,
+		job.leaseToken,
+		time.Now(),
+		s.leaseDuration,
+	)
+	if renewErr != nil {
+		s.logger.Warnf("启动前验证转码 Lease 失败 job=%s worker=%s: %v", job.ExecutionJob.ID, workerID, renewErr)
+		return
+	}
+	if !renewed {
+		job.RequestCancel()
+		s.finalizeCancelled(job)
+		return
+	}
 	go s.leaseHeartbeatLoop(job)
 
 	if !s.markJobRunning(job) {
