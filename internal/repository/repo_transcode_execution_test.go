@@ -107,11 +107,19 @@ func TestTranscodeExecutionRepoAtomicClaimAndLeaseOwnership(t *testing.T) {
 	if running, runningErr := repo.SetJobRunning(job.ID, "attempt-1", claimed.LeaseToken, now.Add(6*time.Second)); runningErr != nil || !running {
 		t.Fatalf("owner failed to mark job running: running=%v err=%v", running, runningErr)
 	}
+	if running, runningErr := repo.SetJobRunning(job.ID, "attempt-2", claimed.LeaseToken, now.Add(7*time.Second)); runningErr != nil || !running {
+		t.Fatalf("fallback attempt failed to retain lease: running=%v err=%v", running, runningErr)
+	}
+	stored, err = repo.FindJobByID(job.ID)
+	if err != nil || stored.CurrentAttemptID != "attempt-2" {
+		t.Fatalf("current attempt did not advance: job=%+v err=%v", stored, err)
+	}
 
-	if completed, completeErr := repo.CompleteLeasedJob(job.ID, "wrong-token", "completed", now.Add(time.Minute)); completeErr != nil || completed {
+	completedAt := now.Add(20 * time.Second)
+	if completed, completeErr := repo.CompleteLeasedJob(job.ID, "wrong-token", "completed", completedAt); completeErr != nil || completed {
 		t.Fatalf("wrong token completed job: completed=%v err=%v", completed, completeErr)
 	}
-	if completed, completeErr := repo.CompleteLeasedJob(job.ID, claimed.LeaseToken, "completed", now.Add(time.Minute)); completeErr != nil || !completed {
+	if completed, completeErr := repo.CompleteLeasedJob(job.ID, claimed.LeaseToken, "completed", completedAt); completeErr != nil || !completed {
 		t.Fatalf("lease owner failed to complete job: completed=%v err=%v", completed, completeErr)
 	}
 	if _, err := repo.FindActiveByKey("claim-key"); !IsNotFound(err) {
@@ -142,6 +150,9 @@ func TestTranscodeExecutionRepoExpiredLeaseRecovery(t *testing.T) {
 
 	if recovered, recoverErr := repo.CompleteExpiredLease(job.ID, claimed.LeaseToken, "failed", now.Add(9*time.Second)); recoverErr != nil || recovered {
 		t.Fatalf("live lease was recovered early: recovered=%v err=%v", recovered, recoverErr)
+	}
+	if completed, completeErr := repo.CompleteLeasedJob(job.ID, claimed.LeaseToken, "completed", now.Add(11*time.Second)); completeErr != nil || completed {
+		t.Fatalf("expired worker wrote terminal success: completed=%v err=%v", completed, completeErr)
 	}
 	if recovered, recoverErr := repo.CompleteExpiredLease(job.ID, claimed.LeaseToken, "failed", now.Add(11*time.Second)); recoverErr != nil || !recovered {
 		t.Fatalf("expired lease was not recovered: recovered=%v err=%v", recovered, recoverErr)
