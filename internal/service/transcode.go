@@ -324,7 +324,18 @@ func (s *TranscodeService) worker(index int) {
 		}
 		s.mu.Lock()
 		s.running[job.Task.ID] = job
+		closed := s.jobs.IsClosed()
 		s.mu.Unlock()
+		if closed {
+			if s.jobs.releaseClaimAfterClose(job.ExecutionJob) {
+				s.markJobQueuedForRecovery(job)
+			}
+			job.RequestCancel()
+			s.mu.Lock()
+			delete(s.running, job.Task.ID)
+			s.mu.Unlock()
+			continue
+		}
 		s.processJob(job, workerID)
 	}
 }
