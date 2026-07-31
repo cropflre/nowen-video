@@ -148,15 +148,15 @@ func (r *TranscodeExecutionRepo) RequestCancellation(jobID string, requestedAt t
 
 func terminalJobUpdates(status string, completedAt time.Time) map[string]any {
 	return map[string]any{
-		"status":               status,
-		"active_key":           nil,
-		"current_attempt_id":   "",
-		"worker_id":            "",
-		"lease_token":          "",
-		"last_heartbeat_at":    nil,
-		"lease_expires_at":     nil,
-		"completed_at":         completedAt,
-		"updated_at":           completedAt,
+		"status":             status,
+		"active_key":         nil,
+		"current_attempt_id": "",
+		"worker_id":          "",
+		"lease_token":        "",
+		"last_heartbeat_at":  nil,
+		"lease_expires_at":   nil,
+		"completed_at":       completedAt,
+		"updated_at":         completedAt,
 	}
 }
 
@@ -166,6 +166,15 @@ func (r *TranscodeExecutionRepo) CompleteJob(jobID, status string, completedAt t
 	return r.db.Model(&model.TranscodeJobRecord{}).
 		Where("id = ?", jobID).
 		Updates(terminalJobUpdates(status, completedAt)).Error
+}
+
+// CompleteQueuedJob fails an unclaimed queue entry only if no worker acquired
+// it between the preceding read and this write.
+func (r *TranscodeExecutionRepo) CompleteQueuedJob(jobID, status string, completedAt time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeJobRecord{}).
+		Where("id = ? AND status = ? AND lease_token = '' AND active_key IS NOT NULL", jobID, "queued").
+		Updates(terminalJobUpdates(status, completedAt))
+	return result.RowsAffected == 1, result.Error
 }
 
 // CompleteLeasedJob prevents a stale worker from publishing a terminal state
