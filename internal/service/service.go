@@ -402,7 +402,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 启动调度器（后台循环，默认未启用，需配置开启）
 	adultScheduler.Start()
 
-	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职员关联）	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
+	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职员关联）
+	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
 
 	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
 	svcs.Library.SetSeriesService(svcs.Series)
@@ -457,6 +458,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 					if lang != "" {
 						targetLangs = append(targetLangs, lang)
 					}
+				}
 			}
 			subCount, err := subtitlePreprocessService.SubmitLibrary(libraryID, targetLangs, false)
 			if err != nil {
