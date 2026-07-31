@@ -25,12 +25,6 @@ import (
 // 这两种都由 EmbyAuth 中间件统一处理。
 
 // StreamVideoHandler 对应 GET/HEAD /Videos/{id}/stream(.{container})?...
-// 策略（对齐 Emby "秒开"）：
-//   1) STRM 远程流 -> 代理
-//   2) 探测编码兼容性：若视频/音频编码都是浏览器可解码的 → 走 RemuxStream（零转码秒开）
-//      无论容器是 mkv/avi/mov 都如此，这是 Emby 秒开的核心
-//   3) 编码不兼容 或 容器本身可直接播放（mp4/m4v/webm） → ServeContent 直出
-//   4) 客户端显式请求 Static=false/TranscodingProtocol=hls 时 → Remux
 func (h *Handler) StreamVideoHandler(c *gin.Context) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
@@ -45,7 +39,6 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 		return
 	}
 
-	// 1) STRM 远程流 → 透明代理
 	if strings.TrimSpace(m.StreamURL) != "" {
 		if err := h.stream.ProxyRemoteStream(m.StreamURL, c.Writer, c.Request); err != nil {
 			h.logger.Warnf("[emby] proxy remote stream failed media=%s err=%v", uuid, err)
@@ -56,7 +49,6 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 		return
 	}
 
-	// 2) 本地文件
 	filePath := m.FilePath
 	if filePath == "" {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "File path not configured"})
@@ -74,20 +66,12 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 
 	container := strings.ToLower(containerFromPath(filePath))
 	ua := c.Request.Header.Get("User-Agent")
-
-	// 3) 客户端显式要求 remux
 	wantRemux := c.Query("Static") == "false" || c.Query("TranscodingProtocol") == "hls"
-
-	// 4) 编码兼容 → 走 Remux（秒开核心路径）
-	//    注意：对 mp4/webm 等原本可 ServeContent 的容器，编码兼容时也优先 Remux？
-	//    不 —— 它们 Range 请求更高效，保留 ServeContent 更省资源。
-	//    ShouldRemux 已在白名单内限定了容器（mkv/avi/mov/flv/wmv/ts）。
 	canRemux := h.stream.ShouldRemux(m, ua)
 
 	if wantRemux || canRemux {
-		if err := h.stream.RemuxStream(uuid, c.Writer, c.Request); err != nil {
-			h.logger.Warnf("[emby] remux failed media=%s err=%v, fallback to direct serve", uuid, err)
-			// fallthrough to direct serve，但需确认响应还没写出
+		if err := h.stream.ManagedRemuxStream(uuid, c.Writer, c.Request); err != nil {
+			h.logger.Warnf("[emby] managed remux failed media=%s err=%v, fallback to direct serve", uuid, err)
 			if c.Writer.Written() {
 				return
 			}
@@ -96,7 +80,6 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 		}
 	}
 
-	// 5) 直接发送文件（http.ServeContent 自动处理 Range / If-Modified-Since / HEAD）
 	mime := mimeFromContainer(container)
 	c.Header("Content-Type", mime)
 	c.Header("Accept-Ranges", "bytes")
@@ -110,18 +93,10 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 	http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)
 }
 
-// OriginalVideoHandler 对应 GET /Videos/{id}/original(.{ext})
-// 直接返回文件原始字节，Infuse 少数情况下使用。
 func (h *Handler) OriginalVideoHandler(c *gin.Context) {
 	h.StreamVideoHandler(c)
 }
 
-// ==================== HLS 流 ====================
-
-// HLSMasterHandler 对应 GET /Videos/{id}/master.m3u8。
-// 复用现有的 StreamService.GetMasterPlaylistFiltered，返回 master playlist 文本。
-// 支持 ?maxBitrate=xxx 参数（由 PlaybackInfo 的 MaxStreamingBitrate 带入），
-// 用于过滤超过客户端网络上限的档位。
 func (h *Handler) HLSMasterHandler(c *gin.Context) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
@@ -139,23 +114,17 @@ func (h *Handler) HLSMasterHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "HLS not available"})
 		return
 	}
-	// 将内部 /api/stream/ 路径重写为 /emby/Videos/:id/hls1/:quality/main.m3u8
-	// 这样客户端请求分片时会走 Emby 路由，保持路径风格一致
 	playlist = rewriteMasterForEmby(playlist, embyID)
 	c.Header("Content-Type", "application/vnd.apple.mpegurl")
 	c.Header("Cache-Control", "no-cache")
 	c.String(http.StatusOK, playlist)
 }
 
-// rewriteMasterForEmby 把 /api/stream/{uuid}/{quality}/stream.m3u8
-// 替换为 /emby/Videos/{embyID}/hls1/{quality}/main.m3u8，
-// 让 Emby 客户端的后续分片请求命中 Emby 路由。
 func rewriteMasterForEmby(playlist, embyID string) string {
 	lines := strings.Split(playlist, "\n")
 	for i, ln := range lines {
 		ln = strings.TrimSpace(ln)
 		if strings.HasPrefix(ln, "/api/stream/") && strings.HasSuffix(ln, "/stream.m3u8") {
-			// 形如 /api/stream/{uuid}/{quality}/stream.m3u8
 			parts := strings.Split(ln, "/")
 			if len(parts) >= 6 {
 				quality := parts[4]
@@ -166,8 +135,6 @@ func rewriteMasterForEmby(playlist, embyID string) string {
 	return strings.Join(lines, "\n")
 }
 
-// HLSPlaylistHandler 对应 GET /Videos/{id}/hls1/{quality}/main.m3u8。
-// 返回该码率的 variant playlist；若首片未生成会等待最多 10 秒（详见 GetSegmentPlaylist）。
 func (h *Handler) HLSPlaylistHandler(c *gin.Context) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
@@ -181,15 +148,11 @@ func (h *Handler) HLSPlaylistHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "Quality not available"})
 		return
 	}
-	// 将 FFmpeg 产出的绝对文件路径分片名改写为相对 URL，便于客户端拼接
-	// 由于 GetSegmentPlaylist 返回的是 FFmpeg 写入文件内容，分片名为 seg0001.ts 相对路径
-	// 这里保留原样即可，客户端会基于当前 URL（.../hls1/:quality/main.m3u8）解析相对路径
 	c.Header("Content-Type", "application/vnd.apple.mpegurl")
 	c.Header("Cache-Control", "no-cache")
 	c.String(http.StatusOK, playlist)
 }
 
-// HLSSegmentHandler 对应 GET /Videos/{id}/hls1/{quality}/{segment}.ts。
 func (h *Handler) HLSSegmentHandler(c *gin.Context) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
