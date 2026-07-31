@@ -24,6 +24,11 @@ type TranscodeJobRecord struct {
 	PlannerVersion    string     `json:"planner_version" gorm:"type:text"`
 	SessionID         string     `json:"session_id" gorm:"index;type:text"`
 	CurrentAttemptID  string     `json:"current_attempt_id" gorm:"index;type:text"`
+	WorkerID          string     `json:"worker_id" gorm:"index;type:text"`
+	LeaseToken        string     `json:"lease_token" gorm:"index;type:text"`
+	ClaimedAt         *time.Time `json:"claimed_at"`
+	LastHeartbeatAt   *time.Time `json:"last_heartbeat_at" gorm:"index"`
+	LeaseExpiresAt    *time.Time `json:"lease_expires_at" gorm:"index"`
 	CancelRequestedAt *time.Time `json:"cancel_requested_at"`
 	CompletedAt       *time.Time `json:"completed_at"`
 	CreatedAt         time.Time  `json:"created_at" gorm:"index"`
