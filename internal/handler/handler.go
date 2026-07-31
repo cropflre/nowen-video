@@ -44,8 +44,6 @@ type Handlers struct {
 	Federation      *FederationHandler
 	// V3: 新增处理器
 	AIScene *AISceneHandler
-	// V5: Pulse 数据中心
-	Pulse *PulseHandler
 	// V6: P1~P3 新增处理器
 	// 视频预处理
 	Preprocess *PreprocessHandler
@@ -130,8 +128,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Federation:      &FederationHandler{federationService: services.Federation, logger: logger},
 		// V3
 		AIScene: &AISceneHandler{sceneService: services.AIScene, logger: logger},
-		// V5: Pulse 数据中心
-		Pulse: &PulseHandler{pulseService: services.Pulse, logger: logger},
 		// V6: P1~P3 新增处理器
 		// 视频预处理
 		Preprocess: NewPreprocessHandler(services.Preprocess),
