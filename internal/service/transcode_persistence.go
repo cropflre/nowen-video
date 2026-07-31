@@ -32,8 +32,8 @@ func (s *TranscodeService) createExecutionJob(media *model.Media, quality string
 	fingerprint := transcodeSourceFingerprint(media)
 	planHash := stableHash(fmt.Sprintf("%s|%s|%.3f|%s", transcodePlannerVersion, quality, startOffset, s.hwAccel))
 	activeKey := transcodeActiveKey(media, quality, startOffset)
+	legacyID := strings.TrimSpace(legacyTaskID)
 	job := &model.TranscodeJobRecord{
-		LegacyTaskID:      legacyTaskID,
 		MediaID:           media.ID,
 		Intent:            "runtime_hls",
 		ProfileID:         quality,
@@ -46,6 +46,9 @@ func (s *TranscodeService) createExecutionJob(media *model.Media, quality string
 		SourceFingerprint: fingerprint,
 		PlanHash:          planHash,
 		PlannerVersion:    transcodePlannerVersion,
+	}
+	if legacyID != "" {
+		job.LegacyTaskID = &legacyID
 	}
 	if err := s.executionRepo.CreateJob(job); err != nil {
 		return nil, err
@@ -61,11 +64,11 @@ func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality s
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(job.LegacyTaskID) == "" {
+	if job.LegacyTaskID == nil || strings.TrimSpace(*job.LegacyTaskID) == "" {
 		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
 		return nil, gorm.ErrRecordNotFound
 	}
-	task, err := s.repo.FindByID(job.LegacyTaskID)
+	task, err := s.repo.FindByID(*job.LegacyTaskID)
 	if err != nil {
 		_ = s.executionRepo.CompleteJob(job.ID, "failed", time.Now())
 		return nil, gorm.ErrRecordNotFound
