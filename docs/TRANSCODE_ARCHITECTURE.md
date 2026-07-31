@@ -23,7 +23,7 @@
 5. `transcode`：完整视频与音频兼容转码。
 6. `preprocessed`：复用已经发布的完整长期产物。
 
-当前第一阶段已落地 direct、remux、smart_remux 与 runtime HLS 的统一规划和执行基础。`startup_stream` 与长期预处理迁移属于后续阶段，不应通过伪造缓存或短路播放状态代替。
+当前已落地 direct、remux、smart_remux、runtime HLS，以及持久化 Job Claim / Lease 执行基础。`startup_stream` 与长期预处理迁移属于后续阶段，不应通过伪造缓存或短路播放状态代替。
 
 ## 领域边界
 
@@ -49,9 +49,13 @@ Probe
 
 `transcode_jobs` 是长期任务状态源，负责幂等 Active Key、优先级、取消意图、领取、租约、心跳、重试与重启恢复。旧 `transcode_tasks` 在迁移期间仅作为现有管理 API 的兼容投影。
 
+领取使用带状态条件的数据库原子 `UPDATE`。每次成功领取生成独立 `lease_token`，后续进入运行态、续租和提交终态都必须匹配该令牌。旧 Worker 丢失或过期 Lease 后，即使进程延迟返回成功，也不能覆盖恢复器已经提交的最终状态。
+
+Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续租；数据库拒绝续租时立即取消该 Worker 的 Context。服务启动时会立即回收上一个进程遗留的 queued 或升级前无 Lease 记录，仍在有效期内的 Lease 则等待超时后由周期回收器原子终结。
+
 ### Attempt
 
-一次 Job 可以包含多个 `transcode_attempts`。硬件失败转软件时创建新的 Attempt，不能覆盖失败证据或修改服务级硬件状态。
+一次 Job 可以包含多个 `transcode_attempts`。硬件失败转软件时创建新的 Attempt，不能覆盖失败证据或修改服务级硬件状态。硬件与软件 Attempt 复用同一 Job Lease，但每次启动都会更新 `current_attempt_id`。
 
 ### Resource Governor
 
@@ -76,10 +80,14 @@ Probe
 
 - 持久化 `transcode_jobs`、`transcode_attempts`、`transcode_artifacts`。
 - Active Key 幂等与终态释放。
+- 数据库原子 Claim，跨 Worker 只能有一个领取者。
+- Worker ID、Lease Token、领取时间、独立心跳与过期时间。
+- Lease 所有权约束运行态和终态写入，阻止旧 Worker 覆盖恢复结果。
+- 服务重启恢复 queued、过期 Lease 和升级前无 Lease 记录。
 - 排队和运行中任务的持久取消语义。
 - Context 驱动的 FFmpeg 生命周期。
 - 机器可读进度与 stderr 诊断。
-- 硬件失败独立软件 Attempt。
+- 硬件失败独立软件 Attempt，并在同一 Lease 下推进 Attempt。
 - CPU/GPU/Remux/On-demand 独立资源槽。
 - Runtime HLS 渐进 ABR：首次只启动一个基础档位。
 - Smart Remux：兼容视频 copy，不兼容音频转 AAC。
@@ -88,12 +96,20 @@ Probe
 
 ## 后续正式阶段
 
-### Phase B：持久优先级编排与租约恢复
+### Phase B：持久优先级编排与运行控制
+
+已完成：
 
 - 数据库原子 Claim。
 - Worker ID、Lease、Heartbeat 和过期回收。
+- 启动升级兼容与旧 Worker fencing。
+
+仍需完成：
+
 - 交互任务抢占后台任务。
-- 服务优雅关闭和恢复策略。
+- 数据库优先级队列替换进程内 FIFO channel。
+- 服务优雅关闭：停止领取、延长或释放 Lease、等待进程退出。
+- 可配置 Lease 与恢复阈值及管理端诊断。
 
 ### Phase C：统一媒体 Probe 与编码配置
 
@@ -123,6 +139,7 @@ Probe
 - 不得通过修改全局硬件字段实现单任务回退。
 - 不得使用无缓冲一次性消息表示取消状态。
 - 不得在 HTTP Handler 中绕过 Runtime 直接启动媒体 FFmpeg。
+- 不得让未持有有效 Lease 的 Worker 写入 Job 运行态或终态。
 - 不得把多个码率常量复制到前端。
 - 不得在正式目录直接写半成品。
 - 不得以“能编译”替代首帧、取消、恢复和资源竞争验收。
