@@ -40,6 +40,34 @@ func TestTranscodePriorityQueueOrdersByPriority(t *testing.T) {
 	}
 }
 
+func TestTranscodePriorityQueuePromotesReusedBackgroundJob(t *testing.T) {
+	queue := newTranscodePriorityQueue(3)
+	firstBackground := queueTestJob("first-background", TranscodePriorityBackground)
+	playbackTarget := queueTestJob("playback-target", TranscodePriorityBackground)
+	retry := queueTestJob("retry", TranscodePriorityRetry)
+	if !queue.Push(firstBackground) || !queue.Push(playbackTarget) || !queue.Push(retry) {
+		t.Fatal("failed to enqueue promotion test jobs")
+	}
+	if !queue.Promote(playbackTarget.ExecutionJob.ID, TranscodePriorityInteractive) {
+		t.Fatal("queued background job was not promoted")
+	}
+	if queue.Promote(playbackTarget.ExecutionJob.ID, TranscodePriorityRetry) {
+		t.Fatal("lower priority must not demote a promoted job")
+	}
+	if playbackTarget.ExecutionJob.Priority != TranscodePriorityInteractive || playbackTarget.Task.Priority != TranscodePriorityInteractive {
+		t.Fatalf("job projections did not receive promoted priority: %+v %+v", playbackTarget.ExecutionJob, playbackTarget.Task)
+	}
+
+	first, ok := queue.Pop()
+	if !ok || first.Task.ID != "playback-target" {
+		t.Fatalf("promoted playback target must run first: %+v", first)
+	}
+	second, ok := queue.Pop()
+	if !ok || second.Task.ID != "retry" {
+		t.Fatalf("retry must remain ahead of background work: %+v", second)
+	}
+}
+
 func TestTranscodePriorityQueuePreservesFIFOWithinPriority(t *testing.T) {
 	queue := newTranscodePriorityQueue(3)
 	for _, id := range []string{"first", "second", "third"} {
