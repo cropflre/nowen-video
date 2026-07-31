@@ -103,3 +103,32 @@ func TestTranscodePriorityQueueCapacityAndClose(t *testing.T) {
 		t.Fatal("closed queue accepted new work")
 	}
 }
+
+func TestTranscodePriorityQueueCloseAndDrainPreservesDurableOrder(t *testing.T) {
+	queue := newTranscodePriorityQueue(3)
+	background := queueTestJob("background", TranscodePriorityBackground)
+	interactive := queueTestJob("interactive", TranscodePriorityInteractive)
+	retry := queueTestJob("retry", TranscodePriorityRetry)
+	if !queue.Push(background) || !queue.Push(interactive) || !queue.Push(retry) {
+		t.Fatal("failed to enqueue drain test jobs")
+	}
+
+	drained := queue.CloseAndDrain()
+	if len(drained) != 3 {
+		t.Fatalf("expected three drained jobs, got %d", len(drained))
+	}
+	for index, expected := range []string{"interactive", "retry", "background"} {
+		if drained[index].Task.ID != expected {
+			t.Fatalf("expected drained[%d]=%s, got %s", index, expected, drained[index].Task.ID)
+		}
+	}
+	if !queue.IsClosed() || queue.Len() != 0 {
+		t.Fatalf("drained queue must be closed and empty: closed=%v len=%d", queue.IsClosed(), queue.Len())
+	}
+	if job, ok := queue.Pop(); ok || job != nil {
+		t.Fatalf("drained queue returned work: %+v", job)
+	}
+	if queue.Push(queueTestJob("late", TranscodePriorityInteractive)) {
+		t.Fatal("drained queue accepted new work")
+	}
+}
