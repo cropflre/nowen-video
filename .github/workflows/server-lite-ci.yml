@@ -65,7 +65,7 @@ jobs:
       - run: npm run build
       - name: Reject retired Pulse UI copy
         run: |
-          if grep -R -n -E 'Pulse 数据中心|Pulse Center|Pulse データセンター|nav\.pulse' dist; then
+          if grep -R -n -E 'Pulse 数据中心|Pulse (Data )?Center|Pulse データセンター|nav\.pulse|pulse\.' dist; then
             echo 'Retired Pulse UI copy must not be present in production assets.' >&2
             exit 1
           fi
