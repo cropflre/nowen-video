@@ -1,139 +1,199 @@
 package service
 
 import (
-	"container/heap"
+	"context"
+	"fmt"
 	"sync"
+	"time"
+
+	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
+	"go.uber.org/zap"
 )
 
 const (
 	TranscodePriorityBackground  = 20
 	TranscodePriorityRetry       = 70
 	TranscodePriorityInteractive = 100
+
+	defaultTranscodeQueuePollInterval = 500 * time.Millisecond
+	defaultTranscodeQueueScanLimit    = 16
 )
 
-type queuedTranscodeJob struct {
-	job      *TranscodeJob
-	priority int
-	sequence uint64
-	index    int
-}
-
-type transcodeJobHeap []*queuedTranscodeJob
-
-func (h transcodeJobHeap) Len() int { return len(h) }
-func (h transcodeJobHeap) Less(i, j int) bool {
-	if h[i].priority == h[j].priority {
-		return h[i].sequence < h[j].sequence
-	}
-	return h[i].priority > h[j].priority
-}
-func (h transcodeJobHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
-	h[i].index = i
-	h[j].index = j
-}
-func (h *transcodeJobHeap) Push(value any) {
-	item := value.(*queuedTranscodeJob)
-	item.index = len(*h)
-	*h = append(*h, item)
-}
-func (h *transcodeJobHeap) Pop() any {
-	old := *h
-	last := len(old) - 1
-	item := old[last]
-	old[last] = nil
-	item.index = -1
-	*h = old[:last]
-	return item
-}
-
+// transcodePriorityQueue is a database-backed Priority + FIFO scheduler. The
+// channel is only a wake-up hint; transcode_jobs is the sole source of pending
+// work and ClaimNextQueuedJob is the ownership boundary across processes.
 type transcodePriorityQueue struct {
-	mu       sync.Mutex
-	cond     *sync.Cond
-	items    transcodeJobHeap
-	capacity int
-	sequence uint64
-	closed   bool
+	executionRepo *repository.TranscodeExecutionRepo
+	legacyRepo    *repository.TranscodeRepo
+	logger        *zap.SugaredLogger
+	capacity      int64
+	pollInterval  time.Duration
+	wake          chan struct{}
+
+	mu     sync.RWMutex
+	closed bool
 }
 
-func newTranscodePriorityQueue(capacity int) *transcodePriorityQueue {
+func newTranscodePriorityQueue(
+	executionRepo *repository.TranscodeExecutionRepo,
+	legacyRepo *repository.TranscodeRepo,
+	capacity int,
+	logger *zap.SugaredLogger,
+) *transcodePriorityQueue {
 	if capacity <= 0 {
 		capacity = 1
 	}
-	queue := &transcodePriorityQueue{capacity: capacity}
-	queue.cond = sync.NewCond(&queue.mu)
-	heap.Init(&queue.items)
-	return queue
+	return &transcodePriorityQueue{
+		executionRepo: executionRepo,
+		legacyRepo:    legacyRepo,
+		logger:        logger,
+		capacity:      int64(capacity),
+		pollInterval:  defaultTranscodeQueuePollInterval,
+		wake:          make(chan struct{}, 1),
+	}
 }
 
-func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
-	if q == nil || job == nil {
+func (q *transcodePriorityQueue) CanAccept() bool {
+	if q == nil || q.IsClosed() || q.executionRepo == nil {
 		return false
 	}
-	priority := TranscodePriorityInteractive
-	if job.ExecutionJob != nil {
-		priority = job.ExecutionJob.Priority
-	} else if job.Task != nil {
-		priority = job.Task.Priority
+	depth, err := q.executionRepo.CountQueuedJobs()
+	if err != nil {
+		q.warnf("读取持久化转码队列深度失败: %v", err)
+		return false
 	}
+	return depth < q.capacity
+}
 
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.closed || len(q.items) >= q.capacity {
+// Push preserves the existing submission call shape but never stores the Job
+// pointer. The durable row has already been created; this only validates global
+// capacity and wakes database-polling workers.
+func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
+	if q == nil || job == nil || job.ExecutionJob == nil || q.IsClosed() {
 		return false
 	}
-	q.sequence++
-	heap.Push(&q.items, &queuedTranscodeJob{
-		job:      job,
-		priority: priority,
-		sequence: q.sequence,
-	})
-	q.cond.Signal()
+	depth, err := q.executionRepo.CountQueuedJobs()
+	if err != nil {
+		q.warnf("读取持久化转码队列深度失败: %v", err)
+		return false
+	}
+	if depth > q.capacity {
+		return false
+	}
+	return q.Notify()
+}
+
+func (q *transcodePriorityQueue) Notify() bool {
+	if q == nil || q.IsClosed() {
+		return false
+	}
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
 	return true
 }
 
-// Promote reorders a still-pending local delivery after its persisted Job was
-// atomically promoted. A linear scan is intentional: the queue is bounded to a
-// small NAS-friendly capacity, while avoiding a second mutable index map.
-func (q *transcodePriorityQueue) Promote(executionJobID string, priority int) bool {
-	if q == nil || executionJobID == "" {
-		return false
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	for _, item := range q.items {
-		if item == nil || item.job == nil || item.job.ExecutionJob == nil || item.job.ExecutionJob.ID != executionJobID {
-			continue
-		}
-		if priority <= item.priority {
-			return false
-		}
-		item.priority = priority
-		item.job.ExecutionJob.Priority = priority
-		if item.job.Task != nil {
-			item.job.Task.Priority = priority
-		}
-		heap.Fix(&q.items, item.index)
-		q.cond.Signal()
-		return true
-	}
-	return false
+// Promote is already persisted by PromoteQueuedJob. Waking workers is enough;
+// their next database selection observes the new priority atomically.
+func (q *transcodePriorityQueue) Promote(_ string, _ int) bool {
+	return q.Notify()
 }
 
-func (q *transcodePriorityQueue) Pop() (*TranscodeJob, bool) {
-	if q == nil {
+func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duration) (*TranscodeJob, bool) {
+	if q == nil || q.executionRepo == nil || q.legacyRepo == nil {
 		return nil, false
 	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	for len(q.items) == 0 && !q.closed {
-		q.cond.Wait()
+	for {
+		if q.IsClosed() {
+			return nil, false
+		}
+
+		record, claimed, err := q.executionRepo.ClaimNextQueuedJob(
+			workerID,
+			time.Now(),
+			leaseDuration,
+			defaultTranscodeQueueScanLimit,
+		)
+		if err != nil {
+			q.warnf("数据库领取转码 Job 失败 worker=%s: %v", workerID, err)
+		} else if claimed {
+			job, hydrateErr := q.hydrateClaimedJob(record)
+			if hydrateErr == nil {
+				return job, true
+			}
+			q.failClaimedPayload(record, hydrateErr)
+			continue
+		}
+
+		if !q.waitForWork() {
+			return nil, false
+		}
 	}
-	if len(q.items) == 0 {
-		return nil, false
+}
+
+func (q *transcodePriorityQueue) hydrateClaimedJob(record *model.TranscodeJobRecord) (*TranscodeJob, error) {
+	task, media, err := q.executionRepo.LoadJobPayload(record)
+	if err != nil {
+		return nil, err
 	}
-	item := heap.Pop(&q.items).(*queuedTranscodeJob)
-	return item.job, true
+	if _, ok := qualityPresets[record.ProfileID]; !ok {
+		return nil, fmt.Errorf("unknown transcode profile %q", record.ProfileID)
+	}
+	if task.OutputDir == "" {
+		return nil, fmt.Errorf("transcode task %s has empty output directory", task.ID)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	return &TranscodeJob{
+		Task:         task,
+		ExecutionJob: record,
+		Media:        media,
+		Quality:      record.ProfileID,
+		ctx:          ctx,
+		cancel:       cancel,
+		workerID:     record.WorkerID,
+		leaseToken:   record.LeaseToken,
+		startOffset:  float64(record.StartMS) / 1000,
+		leaseDone:    make(chan struct{}),
+		throttleDone: make(chan struct{}),
+	}, nil
+}
+
+func (q *transcodePriorityQueue) failClaimedPayload(record *model.TranscodeJobRecord, cause error) {
+	if record == nil {
+		return
+	}
+	now := time.Now()
+	completed, err := q.executionRepo.CompleteLeasedJob(record.ID, record.LeaseToken, "failed", now)
+	if err != nil {
+		q.warnf("终结无法重建的转码 Job 失败 job=%s: %v", record.ID, err)
+		return
+	}
+	if !completed {
+		return
+	}
+	if record.LegacyTaskID != nil && *record.LegacyTaskID != "" {
+		if task, findErr := q.legacyRepo.FindByID(*record.LegacyTaskID); findErr == nil {
+			task.Status = "failed"
+			task.Error = fmt.Sprintf("无法恢复持久化转码任务: %v", cause)
+			task.CompletedAt = &now
+			_ = q.legacyRepo.Update(task)
+		}
+	}
+	q.warnf("持久化转码 Job 载荷无效，已终结 job=%s: %v", record.ID, cause)
+}
+
+func (q *transcodePriorityQueue) waitForWork() bool {
+	timer := time.NewTimer(q.PollInterval())
+	defer timer.Stop()
+	select {
+	case <-q.wake:
+		return !q.IsClosed()
+	case <-timer.C:
+		return !q.IsClosed()
+	}
 }
 
 func (q *transcodePriorityQueue) Close() {
@@ -142,45 +202,50 @@ func (q *transcodePriorityQueue) Close() {
 	}
 	q.mu.Lock()
 	q.closed = true
-	q.cond.Broadcast()
 	q.mu.Unlock()
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
 }
 
-// CloseAndDrain stops new local delivery and removes jobs that have not yet
-// been claimed by a worker. Their database rows stay queued and are restored on
-// the next service start.
+// There are no unclaimed process-local deliveries to drain. Closing only
+// stops future database Claims; queued rows remain durable for the next start.
 func (q *transcodePriorityQueue) CloseAndDrain() []*TranscodeJob {
-	if q == nil {
-		return nil
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.closed = true
-	drained := make([]*TranscodeJob, 0, len(q.items))
-	for len(q.items) > 0 {
-		item := heap.Pop(&q.items).(*queuedTranscodeJob)
-		if item != nil && item.job != nil {
-			drained = append(drained, item.job)
-		}
-	}
-	q.cond.Broadcast()
-	return drained
+	q.Close()
+	return nil
 }
 
 func (q *transcodePriorityQueue) IsClosed() bool {
 	if q == nil {
 		return true
 	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
+	q.mu.RLock()
+	defer q.mu.RUnlock()
 	return q.closed
 }
 
 func (q *transcodePriorityQueue) Len() int {
-	if q == nil {
+	if q == nil || q.executionRepo == nil {
 		return 0
 	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return len(q.items)
+	depth, err := q.executionRepo.CountQueuedJobs()
+	if err != nil {
+		q.warnf("读取持久化转码队列深度失败: %v", err)
+		return 0
+	}
+	return int(depth)
+}
+
+func (q *transcodePriorityQueue) PollInterval() time.Duration {
+	if q == nil || q.pollInterval <= 0 {
+		return defaultTranscodeQueuePollInterval
+	}
+	return q.pollInterval
+}
+
+func (q *transcodePriorityQueue) warnf(template string, args ...any) {
+	if q != nil && q.logger != nil {
+		q.logger.Warnf(template, args...)
+	}
 }
