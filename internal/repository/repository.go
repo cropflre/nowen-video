@@ -36,8 +36,6 @@ type Repositories struct {
 	AICache        *AICacheRepo
 	GenreMapping   *GenreMappingRepo
 	RecommendCache *RecommendCacheRepo
-	// V5: Pulse 数据中心
-	Pulse *PulseRepo
 	// V6: P1~P3 新增功能
 	Preprocess         *PreprocessRepo
 	SubtitlePreprocess *SubtitlePreprocessRepo
@@ -91,8 +89,6 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		AICache:        &AICacheRepo{db: db},
 		GenreMapping:   &GenreMappingRepo{db: db},
 		RecommendCache: &RecommendCacheRepo{db: db},
-		// V5: Pulse 数据中心
-		Pulse: &PulseRepo{db: db},
 		// V6: P1~P3 新增功能
 		Preprocess:         &PreprocessRepo{db: db},
 		SubtitlePreprocess: &SubtitlePreprocessRepo{db: db},
