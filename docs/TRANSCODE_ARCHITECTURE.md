@@ -23,7 +23,7 @@
 5. `transcode`：完整视频与音频兼容转码。
 6. `preprocessed`：复用已经发布的完整长期产物。
 
-当前已落地 direct、remux、smart_remux、runtime HLS，以及持久化 Job Claim / Lease 执行基础。`startup_stream` 与长期预处理迁移属于后续阶段，不应通过伪造缓存或短路播放状态代替。
+当前已落地 direct、remux、smart_remux、runtime HLS，以及持久化 Job Claim / Lease 和领取前优先级调度。`startup_stream` 与长期预处理迁移属于后续阶段，不应通过伪造缓存或短路播放状态代替。
 
 ## 领域边界
 
@@ -53,6 +53,10 @@ Probe
 
 Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续租；数据库拒绝续租时立即取消该 Worker 的 Context。服务启动时会立即回收上一个进程遗留的 queued 或升级前无 Lease 记录，仍在有效期内的 Lease 则等待超时后由周期回收器原子终结。
 
+领取前采用 Priority + FIFO 调度：交互播放为 100，失败重试为 70，后台批量任务为 20；相同优先级按提交顺序执行。若后台任务已通过 Active Key 排队，后续播放请求会原子提升数据库 Priority，并同步修正兼容投影与本地堆位置。已被 Worker Claim 或正在运行的任务不会被伪装成仍可重排。
+
+当前优先级队列仍是进程内有界交付层，Priority 已持久化，为后续数据库轮询调度保留稳定契约。当前不对运行中的 FFmpeg 做强制抢占；这需要产物隔离、可续跑点和显式抢占策略后再实现。
+
 ### Attempt
 
 一次 Job 可以包含多个 `transcode_attempts`。硬件失败转软件时创建新的 Attempt，不能覆盖失败证据或修改服务级硬件状态。硬件与软件 Attempt 复用同一 Job Lease，但每次启动都会更新 `current_attempt_id`。
@@ -66,7 +70,7 @@ Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续
 - Remux / Smart Remux 槽
 - On-demand 视频与音频分片槽
 
-后续优先级编排必须保证交互播放高于后台预热和完整预处理。
+交互播放任务在领取前高于失败重试和后台批量任务。运行中抢占仍属于后续阶段。
 
 ### Process Runtime
 
@@ -84,6 +88,10 @@ Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续
 - Worker ID、Lease Token、领取时间、独立心跳与过期时间。
 - Lease 所有权约束运行态和终态写入，阻止旧 Worker 覆盖恢复结果。
 - 服务重启恢复 queued、过期 Lease 和升级前无 Lease 记录。
+- Priority + FIFO 有界调度队列。
+- 交互 100、重试 70、后台 20 的持久优先级分类。
+- Active Key 复用时的排队任务优先级原子提升。
+- 管理统计返回 `queue_depth` 与 `scheduler=priority_fifo`。
 - 排队和运行中任务的持久取消语义。
 - Context 驱动的 FFmpeg 生命周期。
 - 机器可读进度与 stderr 诊断。
@@ -103,13 +111,16 @@ Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续
 - 数据库原子 Claim。
 - Worker ID、Lease、Heartbeat 和过期回收。
 - 启动升级兼容与旧 Worker fencing。
+- 领取前 Priority + FIFO 调度。
+- 后台 Active Key 被播放复用时的优先级提升。
+- Queue Depth 与 Scheduler 统计。
 
 仍需完成：
 
-- 交互任务抢占后台任务。
-- 数据库优先级队列替换进程内 FIFO channel。
+- 数据库轮询队列替换进程内交付堆，使重启后可重建待执行载荷。
+- 基于可续跑点的运行中后台任务抢占，而不是直接杀进程丢弃工作。
 - 服务优雅关闭：停止领取、延长或释放 Lease、等待进程退出。
-- 可配置 Lease 与恢复阈值及管理端诊断。
+- 可配置 Lease、队列容量与恢复阈值及管理端诊断。
 
 ### Phase C：统一媒体 Probe 与编码配置
 
@@ -140,6 +151,7 @@ Lease 心跳独立于 FFmpeg 进度：任务等待 CPU/GPU 资源槽时仍会续
 - 不得使用无缓冲一次性消息表示取消状态。
 - 不得在 HTTP Handler 中绕过 Runtime 直接启动媒体 FFmpeg。
 - 不得让未持有有效 Lease 的 Worker 写入 Job 运行态或终态。
+- 不得让低优先级请求降低已排队 Job 的 Priority。
 - 不得把多个码率常量复制到前端。
 - 不得在正式目录直接写半成品。
 - 不得以“能编译”替代首帧、取消、恢复和资源竞争验收。
