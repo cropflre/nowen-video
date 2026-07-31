@@ -8,9 +8,9 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
-// CancelTranscode persists cancellation before signalling the in-memory
-// context. A queued task therefore cannot lose the request before a worker
-// starts listening.
+// CancelTranscode writes desired_state=cancelled before signalling the process
+// context. A queued task therefore cannot lose cancellation, and recovery will
+// not revive it after a restart.
 func (s *TranscodeService) CancelTranscode(taskID string) error {
 	s.mu.RLock()
 	job, exists := s.running[taskID]
@@ -25,6 +25,10 @@ func (s *TranscodeService) CancelTranscode(taskID string) error {
 		return fmt.Errorf("转码任务已经结束: %s", taskID)
 	}
 	now := time.Now()
+	if err := s.persistCancellation(job, now); err != nil {
+		job.taskMu.Unlock()
+		return fmt.Errorf("持久化转码取消意图失败: %w", err)
+	}
 	job.Task.Status = "cancelled"
 	job.Task.Error = ""
 	job.Task.CompletedAt = &now
@@ -35,7 +39,7 @@ func (s *TranscodeService) CancelTranscode(taskID string) error {
 	}
 
 	job.RequestCancel()
-	s.logger.Infof("转码取消请求已持久化: %s", taskID)
+	s.logger.Infof("转码取消意图与兼容任务状态已持久化: %s", taskID)
 	return nil
 }
 
