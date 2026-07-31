@@ -5,7 +5,7 @@ import type {
 } from '@/types'
 import api from './client'
 
-export type PlaybackMethod = 'direct' | 'remux' | 'transcode'
+export type PlaybackMethod = 'direct' | 'remux' | 'smart_remux' | 'transcode'
 
 export interface PlaybackClientCapabilities {
   user_agent?: string
@@ -57,9 +57,8 @@ function applyPlaybackPlan(info: MediaPlayInfo, plan: PlaybackPlan): MediaPlayIn
     next.can_direct_play = true
     next.direct_play_url = plan.url
     next.can_remux = false
-    // Lite 的优先级是原始直放优先于历史预处理缓存。
     next.is_preprocessed = false
-  } else if (plan.method === 'remux') {
+  } else if (plan.method === 'remux' || plan.method === 'smart_remux') {
     next.can_direct_play = false
     next.can_remux = true
     next.remux_url = plan.url
@@ -68,17 +67,11 @@ function applyPlaybackPlan(info: MediaPlayInfo, plan: PlaybackPlan): MediaPlayIn
     next.can_direct_play = false
     next.can_remux = false
     next.hls_url = plan.url
-    if (info.preprocessed_url && plan.url === info.preprocessed_url) {
-      next.is_preprocessed = true
-    } else {
-      next.is_preprocessed = false
-    }
+    next.is_preprocessed = Boolean(info.preprocessed_url && plan.url === info.preprocessed_url)
   }
 
   return next
 }
-
-// ==================== 流媒体 ====================
 
 function withToken(url: string): string {
   const token = useAuthStore.getState().token
@@ -98,8 +91,6 @@ export const streamApi = {
       },
     })
 
-    // Current Lite servers embed the plan in /info, so playback initialization
-    // needs only one network round trip.
     const embeddedPlan = response.data.data.playback_plan
     if (embeddedPlan) {
       playbackPlanCache.set(mediaId, embeddedPlan)
@@ -114,8 +105,6 @@ export const streamApi = {
         return response
       }
 
-      // Transitional Lite deployments may expose /plan without embedding it in
-      // /info. Keep this fallback until those deployments have upgraded.
       const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
         params: {
           supports_direct: true,
@@ -127,7 +116,6 @@ export const streamApi = {
       playbackPlanCache.set(mediaId, plan)
       response.data.data = applyPlaybackPlan(response.data.data, plan) as PlannedMediaPlayInfo
     } catch {
-      // Full and older servers keep the historical play-info behavior.
       playbackPlanCache.delete(mediaId)
     }
 
@@ -163,21 +151,15 @@ export const streamApi = {
 
   getRemuxUrl: (mediaId: string) => {
     const plan = playbackPlanCache.get(mediaId)
-    return withToken(plan?.method === 'remux' ? plan.url : `/api/stream/${mediaId}/remux`)
+    const plannedRemux = plan?.method === 'remux' || plan?.method === 'smart_remux'
+    return withToken(plannedRemux ? plan.url : `/api/stream/${mediaId}/remux`)
   },
 
-  // 上报当前播放位置，驱动后端 FFmpeg 节流（Throttling）
-  // position: 当前播放时间（秒，绝对位置）
   reportPlayback: (mediaId: string, position: number) =>
     api.post(`/stream/${mediaId}/playback`, null, {
       params: { position: position.toFixed(2) },
     }),
 
-  // 上报客户端 hls.js 的带宽评估（bit/s），驱动服务端 ABR 档位过滤建议
-  // 服务端会在响应中返回推荐的 maxBitrate（留 20% 余量）和当前节流状态，
-  // 前端可用于：
-  //   1. 下次请求 master.m3u8 时带上 ?maxBitrate=xxx
-  //   2. 在 Settings 菜单显示节流/转码状态
   reportBandwidth: (mediaId: string, bitrate: number) =>
     api.post<{
       ok: boolean
@@ -194,7 +176,6 @@ export const streamApi = {
       }
     }>(`/stream/${mediaId}/bandwidth`, null, { params: { bitrate: Math.round(bitrate) } }),
 
-  // 独立查询节流/转码状态（低频，5s 一次即可）
   getThrottleStatus: (mediaId: string) =>
     api.get<{
       data: {
@@ -208,7 +189,6 @@ export const streamApi = {
       }
     }>(`/stream/${mediaId}/throttle`),
 
-  // STRM 链路健康检查：返回连通性 + 关键响应头，用于播放器诊断面板
   checkSTRM: (mediaId: string) =>
     api.get<{
       data: {
@@ -226,8 +206,6 @@ export const streamApi = {
       }
     }>(`/stream/${mediaId}/strm-check`),
 
-  // version 可选：用于缓存破坏（cache-busting）。
-  // 当元数据/海报被替换后，传入一个新的数字即可触发浏览器重新请求图片。
   getPosterUrl: (mediaId: string, version?: number) =>
     withToken(`/api/media/${mediaId}/poster${version ? `?v=${version}` : ''}`),
 
@@ -243,9 +221,7 @@ export const streamApi = {
   getPersonProfileUrl: (personId: string, version?: number) =>
     withToken(`/api/persons/${personId}/profile${version ? `?v=${version}` : ''}`),
 
-  // 为任意 URL 添加认证 token
   withTokenUrl: (url: string) => withToken(url),
 }
 
-// 导出 withToken 供其他模块使用
 export { withToken }
