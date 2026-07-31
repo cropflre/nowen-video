@@ -7,11 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// TranscodeJobRecord is the durable orchestration source of truth. The legacy
-// transcode_tasks row remains an API compatibility projection during migration.
 type TranscodeJobRecord struct {
 	ID                string     `json:"id" gorm:"primaryKey;type:text"`
-	LegacyTaskID      string     `json:"legacy_task_id" gorm:"uniqueIndex;type:text"`
+	LegacyTaskID      *string    `json:"legacy_task_id,omitempty" gorm:"uniqueIndex;type:text"`
 	MediaID           string     `json:"media_id" gorm:"index;type:text;not null"`
 	Intent            string     `json:"intent" gorm:"index;type:text;not null"`
 	ProfileID         string     `json:"profile_id" gorm:"type:text"`
@@ -40,15 +38,13 @@ func (j *TranscodeJobRecord) BeforeCreate(*gorm.DB) error {
 	return nil
 }
 
-// TranscodeAttemptRecord stores one concrete process execution. Hardware
-// fallback creates another attempt instead of overwriting the failed evidence.
 type TranscodeAttemptRecord struct {
 	ID           string     `json:"id" gorm:"primaryKey;type:text"`
 	JobID        string     `json:"job_id" gorm:"uniqueIndex:idx_transcode_attempt_no;index;type:text;not null"`
 	Number       int        `json:"number" gorm:"uniqueIndex:idx_transcode_attempt_no;not null"`
 	Backend      string     `json:"backend" gorm:"index;type:text"`
 	Status       string     `json:"status" gorm:"index;type:text;not null"`
-	PID          int        `json:"pid"`
+	PID          int        `json:"pid" gorm:"column:pid"`
 	CommandJSON  string     `json:"command_json" gorm:"type:text"`
 	StartedAt    *time.Time `json:"started_at"`
 	HeartbeatAt  *time.Time `json:"heartbeat_at" gorm:"index"`
@@ -70,8 +66,6 @@ func (a *TranscodeAttemptRecord) BeforeCreate(*gorm.DB) error {
 	return nil
 }
 
-// TranscodeArtifactRecord describes published outputs. TempPath is retained for
-// crash recovery and garbage collection of unpublished attempt data.
 type TranscodeArtifactRecord struct {
 	ID              string     `json:"id" gorm:"primaryKey;type:text"`
 	JobID           string     `json:"job_id" gorm:"index;type:text;not null"`
@@ -98,9 +92,6 @@ func (a *TranscodeArtifactRecord) BeforeCreate(*gorm.DB) error {
 	return nil
 }
 
-// AutoMigrateTranscodeExecution is intentionally idempotent and is called by
-// the transcode subsystem in both Lite and Full profiles while the global model
-// bootstrap is being decomposed.
 func AutoMigrateTranscodeExecution(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&TranscodeJobRecord{},
