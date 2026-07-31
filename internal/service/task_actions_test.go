@@ -54,6 +54,8 @@ func TestAvailableTaskActions(t *testing.T) {
 		status string
 		want   string
 	}{
+		{TaskKindTranscode, "pending", TaskActionCancel},
+		{TaskKindTranscode, "queued", TaskActionCancel},
 		{TaskKindTranscode, "running", TaskActionCancel},
 		{TaskKindTranscode, "failed", TaskActionRetry},
 		{TaskKindTranscode, "cancelled", TaskActionRetry},
@@ -68,23 +70,22 @@ func TestAvailableTaskActions(t *testing.T) {
 	if actions := AvailableTaskActions(TaskKindScan, "running"); len(actions) != 0 {
 		t.Fatalf("scan actions must stay empty: %v", actions)
 	}
-	if actions := AvailableTaskActions(TaskKindTranscode, "pending"); len(actions) != 0 {
-		t.Fatalf("queued transcode cancellation is intentionally unavailable: %v", actions)
-	}
 }
 
 func TestTaskActionDispatcherCancelTranscode(t *testing.T) {
-	actions := &fakeTranscodeActions{}
-	dispatcher := &TaskActionDispatcher{
-		transcode:       actions,
-		transcodeLookup: &fakeTranscodeLookup{task: &model.TranscodeTask{Status: "running"}},
-	}
-	result, err := dispatcher.Execute(TaskKindTranscode, "t-1", TaskActionCancel, "admin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if actions.cancelled != "t-1" || !result.Accepted || result.Action != TaskActionCancel {
-		t.Fatalf("unexpected result=%+v cancelled=%s", result, actions.cancelled)
+	for _, status := range []string{"pending", "running"} {
+		actions := &fakeTranscodeActions{}
+		dispatcher := &TaskActionDispatcher{
+			transcode:       actions,
+			transcodeLookup: &fakeTranscodeLookup{task: &model.TranscodeTask{Status: status}},
+		}
+		result, err := dispatcher.Execute(TaskKindTranscode, "t-1", TaskActionCancel, "admin")
+		if err != nil {
+			t.Fatalf("status=%s: %v", status, err)
+		}
+		if actions.cancelled != "t-1" || !result.Accepted || result.Action != TaskActionCancel {
+			t.Fatalf("status=%s result=%+v cancelled=%s", status, result, actions.cancelled)
+		}
 	}
 }
 
@@ -122,7 +123,7 @@ func TestTaskActionDispatcherRetryScrape(t *testing.T) {
 func TestTaskActionDispatcherRejectsUnsafeActions(t *testing.T) {
 	dispatcher := &TaskActionDispatcher{
 		transcode:       &fakeTranscodeActions{},
-		transcodeLookup: &fakeTranscodeLookup{task: &model.TranscodeTask{Status: "pending"}},
+		transcodeLookup: &fakeTranscodeLookup{task: &model.TranscodeTask{Status: "done"}},
 	}
 	_, err := dispatcher.Execute(TaskKindTranscode, "t-3", TaskActionCancel, "admin")
 	if !errors.Is(err, ErrTaskActionConflict) {
