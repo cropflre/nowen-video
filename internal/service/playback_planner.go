@@ -8,14 +8,12 @@ import (
 )
 
 const (
-	PlaybackMethodDirect    = "direct"
-	PlaybackMethodRemux     = "remux"
-	PlaybackMethodTranscode = "transcode"
+	PlaybackMethodDirect     = "direct"
+	PlaybackMethodRemux      = "remux"
+	PlaybackMethodSmartRemux = "smart_remux"
+	PlaybackMethodTranscode  = "transcode"
 )
 
-// PlaybackClientCapabilities describes the playback features that materially
-// affect server-side planning. Unknown clients should use the conservative
-// defaults returned by DefaultPlaybackClientCapabilities.
 type PlaybackClientCapabilities struct {
 	UserAgent          string `json:"user_agent,omitempty"`
 	SupportsDirectPlay bool   `json:"supports_direct_play"`
@@ -25,8 +23,6 @@ type PlaybackClientCapabilities struct {
 	MaxBitrate         int    `json:"max_bitrate,omitempty"`
 }
 
-// PlaybackPlan is an additive contract. Existing media info fields and routes
-// remain unchanged so Web, desktop and Android clients can migrate gradually.
 type PlaybackPlan struct {
 	MediaID           string                     `json:"media_id"`
 	Method            string                     `json:"method"`
@@ -48,9 +44,6 @@ func (s *StreamService) DefaultPlaybackClientCapabilities(userAgent string) Play
 	}
 }
 
-// PlanPlayback loads media information once and applies the Lite priority
-// order: direct play, zero-copy remux, then HLS transcoding. Planning is
-// read-only and never starts FFmpeg.
 func (s *StreamService) PlanPlayback(mediaID string, caps PlaybackClientCapabilities) (*PlaybackPlan, error) {
 	info, err := s.GetMediaPlayInfo(mediaID)
 	if err != nil {
@@ -59,9 +52,6 @@ func (s *StreamService) PlanPlayback(mediaID string, caps PlaybackClientCapabili
 	return s.PlanPlaybackWithInfo(mediaID, info, caps)
 }
 
-// PlanPlaybackWithInfo lets the canonical Lite /info endpoint reuse the media
-// information it has already loaded. This avoids duplicate repository reads and
-// guarantees the legacy fields and embedded playback plan describe one snapshot.
 func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo, caps PlaybackClientCapabilities) (*PlaybackPlan, error) {
 	if info == nil {
 		return nil, ErrMediaNotFound
@@ -77,22 +67,14 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		hlsURL = appendQuery(hlsURL, "maxBitrate", strconv.Itoa(caps.MaxBitrate))
 	}
 
-	plan := &PlaybackPlan{
-		MediaID:      mediaID,
-		Capabilities: caps,
-	}
-
-	// STRM already represents a remote playback source. The direct route is a
-	// controlled proxy and therefore remains the safest first choice.
+	plan := &PlaybackPlan{MediaID: mediaID, Capabilities: caps}
 	if info.IsSTRM {
 		plan.Method = PlaybackMethodDirect
 		plan.URL = directURL
 		plan.ReasonCode = "strm_proxy"
 		plan.Reason = "远程 STRM 通过服务端代理直接播放"
-		plan.RequiresTranscode = false
 		return plan, nil
 	}
-
 	if caps.ForceTranscode {
 		return chooseTranscode(plan, hlsURL, "client_forced_transcode", "客户端要求使用兼容转码"), nil
 	}
@@ -107,7 +89,6 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.URL = directURL
 		plan.ReasonCode = "native_direct_play"
 		plan.Reason = "容器与音视频编码均受客户端原生支持"
-		plan.RequiresTranscode = false
 		plan.FallbackMethod = PlaybackMethodTranscode
 		plan.FallbackURL = hlsURL
 		return plan, nil
@@ -118,8 +99,21 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.Method = PlaybackMethodRemux
 		plan.URL = remuxURL
 		plan.ReasonCode = "container_remux"
-		plan.Reason = "编码兼容，仅需转换容器，无需重新编码"
-		plan.RequiresTranscode = false
+		plan.Reason = "编码兼容，仅转换容器，音视频均直接复制"
+		plan.FallbackMethod = PlaybackMethodTranscode
+		plan.FallbackURL = hlsURL
+		return plan, nil
+	}
+
+	// Smart Remux keeps compatible video bit-for-bit and only converts an
+	// incompatible audio track to AAC. This is dramatically cheaper than full
+	// video transcoding and covers common H.264+DTS/TrueHD/FLAC libraries.
+	if caps.SupportsRemux && canSmartRemuxInfo(info, caps) {
+		plan.Method = PlaybackMethodSmartRemux
+		plan.URL = remuxURL
+		plan.ReasonCode = "audio_transcode_only"
+		plan.Reason = "视频编码可直接复制，仅将不兼容音频转换为 AAC"
+		plan.RequiresTranscode = true
 		plan.FallbackMethod = PlaybackMethodTranscode
 		plan.FallbackURL = hlsURL
 		return plan, nil
@@ -133,11 +127,27 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	} else if info.CanDirectPlay && !caps.SupportsDirectPlay {
 		reasonCode = "client_direct_play_disabled"
 		reason = "客户端关闭了原始文件直放能力"
-	} else if info.CanRemux && !caps.SupportsRemux {
+	} else if (info.CanRemux || smartRemuxVideoCodec(info.VideoCodec)) && !caps.SupportsRemux {
 		reasonCode = "client_remux_disabled"
 		reason = "客户端不支持 fragmented MP4 Remux"
 	}
 	return chooseTranscode(plan, hlsURL, reasonCode, reason), nil
+}
+
+func canSmartRemuxInfo(info *MediaPlayInfo, caps PlaybackClientCapabilities) bool {
+	if info == nil || info.IsSTRM || !smartRemuxVideoCodec(info.VideoCodec) {
+		return false
+	}
+	if isHEVCCodec(info.VideoCodec) && !caps.SupportsHEVC {
+		return false
+	}
+	audio := strings.ToLower(strings.TrimSpace(info.AudioCodec))
+	return audio != "" && !mp4CopyAudioCodecs[audio]
+}
+
+func smartRemuxVideoCodec(codec string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(codec))
+	return managedRemuxVideoCodecs[normalized]
 }
 
 func chooseTranscode(plan *PlaybackPlan, hlsURL, reasonCode, reason string) *PlaybackPlan {
