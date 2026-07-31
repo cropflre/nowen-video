@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
-	"github.com/nowen-video/nowen-video/internal/repository"
 	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
+	"gorm.io/gorm"
 )
 
 const transcodePlannerVersion = "runtime-hls-v2"
@@ -44,7 +44,7 @@ func (s *TranscodeService) createExecutionJob(media *model.Media, quality string
 
 func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
 	if s.executionRepo == nil || media == nil {
-		return nil, repository.ErrNotFound
+		return nil, gorm.ErrRecordNotFound
 	}
 	fingerprint := transcodeSourceFingerprint(media)
 	activeKey := stableHash(fmt.Sprintf("%s|runtime_hls|%s|%.3f|%s|%s", media.ID, quality, startOffset, fingerprint, transcodePlannerVersion))
@@ -53,7 +53,7 @@ func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality s
 		return nil, err
 	}
 	if strings.TrimSpace(job.LegacyTaskID) == "" {
-		return nil, repository.ErrNotFound
+		return nil, gorm.ErrRecordNotFound
 	}
 	return s.repo.FindByID(job.LegacyTaskID)
 }
