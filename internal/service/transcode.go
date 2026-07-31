@@ -23,16 +23,13 @@ import (
 
 const EventTranscodeCancelled = "transcode_cancelled"
 
-// TranscodeService remains the compatibility facade used by handlers and
-// clients. The execution job tables are authoritative; transcode_tasks is kept
-// as the existing API projection while clients migrate.
 type TranscodeService struct {
 	repo          *repository.TranscodeRepo
 	executionRepo *repository.TranscodeExecutionRepo
 	cfg           *config.Config
 	logger        *zap.SugaredLogger
 
-	jobs        chan *TranscodeJob
+	jobs        *transcodePriorityQueue
 	workerCount int
 	submitMu    sync.Mutex
 	mu          sync.RWMutex
@@ -58,9 +55,6 @@ type TranscodeService struct {
 	diskUsageTTL   time.Duration
 }
 
-// TranscodeJob owns one durable cancellation context from queue admission until
-// finalization. ExecutionJob persists orchestration state and Attempt records
-// preserve every concrete process run, including hardware fallback failures.
 type TranscodeJob struct {
 	Task         *model.TranscodeTask
 	ExecutionJob *model.TranscodeJobRecord
@@ -72,7 +66,7 @@ type TranscodeJob struct {
 	cancelOnce sync.Once
 	taskMu     sync.Mutex
 
-	workerID  string
+	workerID   string
 	leaseToken string
 	leaseDone  chan struct{}
 	leaseStop  sync.Once
@@ -80,12 +74,12 @@ type TranscodeJob struct {
 	processMu sync.RWMutex
 	process   *os.Process
 
-	playbackPos         atomic.Uint64
-	transcodedPos       atomic.Uint64
-	lastDBProgress      atomic.Uint64
+	playbackPos          atomic.Uint64
+	transcodedPos        atomic.Uint64
+	lastDBProgress       atomic.Uint64
 	lastAttemptHeartbeat atomic.Int64
-	suspended           atomic.Int32
-	startOffset         float64
+	suspended            atomic.Int32
+	startOffset          float64
 
 	throttleDone    chan struct{}
 	throttleStop    sync.Once
@@ -154,7 +148,7 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		executionRepo:          repository.NewTranscodeExecutionRepo(repo.DB()),
 		cfg:                    cfg,
 		logger:                 logger,
-		jobs:                   make(chan *TranscodeJob, 100),
+		jobs:                   newTranscodePriorityQueue(100),
 		running:                make(map[string]*TranscodeJob),
 		instanceID:             newTranscodeInstanceID(),
 		leaseDuration:          defaultTranscodeLeaseDuration,
@@ -169,9 +163,6 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		logger.Infof("硬件加速模式: %s", service.hwAccel)
 	})
 
-	// Startup recovery runs before the service accepts submissions. This makes
-	// every pre-existing queued row an orphan from the previous process, while
-	// active leases are allowed to expire naturally before recovery.
 	service.recoverPendingTasks()
 
 	service.workerCount = 1
@@ -197,8 +188,6 @@ func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*
 	return s.startTranscodeInternal(media, quality, 0)
 }
 
-// StartABRTranscode performs progressive warmup: only the first valid rendition
-// is queued immediately. Other renditions start when requested by the client.
 func (s *TranscodeService) StartABRTranscode(media *model.Media, qualities []string) ([]*model.TranscodeTask, error) {
 	if media == nil {
 		return nil, fmt.Errorf("media 不能为空")
@@ -226,11 +215,18 @@ func (s *TranscodeService) StartTranscodeWithStart(media *model.Media, quality s
 }
 
 func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
+	return s.startTranscodeWithPriority(media, quality, startOffset, TranscodePriorityInteractive)
+}
+
+func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, quality string, startOffset float64, priority int) (*model.TranscodeTask, error) {
 	if media == nil || strings.TrimSpace(media.ID) == "" {
 		return nil, fmt.Errorf("媒体不能为空")
 	}
 	if _, ok := qualityPresets[quality]; !ok {
 		return nil, fmt.Errorf("未知转码档位: %s", quality)
+	}
+	if priority <= 0 {
+		priority = TranscodePriorityBackground
 	}
 
 	s.submitMu.Lock()
@@ -266,11 +262,12 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 		Status:     "pending",
 		OutputDir:  outputDir,
 		MediaTitle: media.DescriptiveTitle(),
+		Priority:   priority,
 	}
 	if err := s.repo.Create(task); err != nil {
 		return nil, err
 	}
-	executionJob, err := s.createExecutionJob(media, quality, startOffset, task.ID)
+	executionJob, err := s.createExecutionJob(media, quality, startOffset, task.ID, priority)
 	if err != nil {
 		_ = s.repo.DeleteByID(task.ID)
 		return nil, fmt.Errorf("创建持久化转码 Job 失败: %w", err)
@@ -292,20 +289,19 @@ func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality st
 	s.running[task.ID] = job
 	s.mu.Unlock()
 
-	select {
-	case s.jobs <- job:
+	if s.jobs.Push(job) {
 		return task, nil
-	default:
-		job.RequestCancel()
-		s.mu.Lock()
-		delete(s.running, task.ID)
-		s.mu.Unlock()
-		task.Status = "failed"
-		task.Error = "转码队列已满"
-		_ = s.repo.Update(task)
-		s.persistJobTerminal(job, "failed", time.Now())
-		return nil, fmt.Errorf("转码队列已满")
 	}
+
+	job.RequestCancel()
+	s.mu.Lock()
+	delete(s.running, task.ID)
+	s.mu.Unlock()
+	task.Status = "failed"
+	task.Error = "转码队列已满"
+	_ = s.repo.Update(task)
+	s.persistJobTerminal(job, "failed", time.Now())
+	return nil, fmt.Errorf("转码队列已满")
 }
 
 func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, quality string) error {
@@ -330,7 +326,11 @@ func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, qua
 func (s *TranscodeService) worker(index int) {
 	workerID := fmt.Sprintf("%s/worker-%d", s.instanceID, index)
 	s.logger.Infof("转码 Worker 启动: %s", workerID)
-	for job := range s.jobs {
+	for {
+		job, ok := s.jobs.Pop()
+		if !ok {
+			return
+		}
 		s.processJob(job, workerID)
 	}
 }
@@ -364,7 +364,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		s.finalizeCancelled(job)
 		return
 	}
-	s.logger.Infof("开始转码: %s (%s), worker=%s", job.Media.Title, job.Quality, workerID)
+	s.logger.Infof("开始转码: %s (%s), worker=%s priority=%d", job.Media.Title, job.Quality, workerID, job.ExecutionJob.Priority)
 	s.broadcastTranscodeEvent(EventTranscodeStarted, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
