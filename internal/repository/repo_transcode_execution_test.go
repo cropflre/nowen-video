@@ -69,6 +69,35 @@ func TestTranscodeExecutionRepoActiveKeyLifecycle(t *testing.T) {
 	}
 }
 
+func TestTranscodeExecutionRepoPromotesOnlyUnclaimedQueuedJob(t *testing.T) {
+	repo := newTranscodeExecutionTestRepo(t)
+	job := createQueuedExecutionJob(t, repo, "promote-key")
+	job.Priority = 20
+	if err := repo.db.Model(&model.TranscodeJobRecord{}).Where("id = ?", job.ID).Update("priority", 20).Error; err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	promoted, err := repo.PromoteQueuedJob(job.ID, 100, now)
+	if err != nil || !promoted {
+		t.Fatalf("queued job promotion failed: promoted=%v err=%v", promoted, err)
+	}
+	stored, err := repo.FindJobByID(job.ID)
+	if err != nil || stored.Priority != 100 {
+		t.Fatalf("priority was not persisted: job=%+v err=%v", stored, err)
+	}
+	if promoted, err := repo.PromoteQueuedJob(job.ID, 70, now.Add(time.Second)); err != nil || promoted {
+		t.Fatalf("lower priority must not demote job: promoted=%v err=%v", promoted, err)
+	}
+
+	claimed, ok, err := repo.ClaimJob(job.ID, "worker", now.Add(2*time.Second), time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim failed: job=%+v ok=%v err=%v", claimed, ok, err)
+	}
+	if promoted, err := repo.PromoteQueuedJob(job.ID, 120, now.Add(3*time.Second)); err != nil || promoted {
+		t.Fatalf("claimed job must not be promoted: promoted=%v err=%v", promoted, err)
+	}
+}
+
 func TestTranscodeExecutionRepoAtomicClaimAndLeaseOwnership(t *testing.T) {
 	repo := newTranscodeExecutionTestRepo(t)
 	job := createQueuedExecutionJob(t, repo, "claim-key")
