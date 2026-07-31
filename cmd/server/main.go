@@ -899,17 +899,6 @@ func main() {
 		admin.GET("/libraries/:id/duplicates", handlers.Library.DetectDuplicates)
 		admin.POST("/libraries/:id/mark-duplicates", handlers.Library.MarkDuplicates)
 
-		// ==================== V5: Pulse 数据中心（管理员） ====================
-		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
-		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
-		admin.GET("/pulse/dashboard/top-content", handlers.Pulse.GetTopContent)
-		admin.GET("/pulse/dashboard/top-users", handlers.Pulse.GetTopUsers)
-		admin.GET("/pulse/dashboard/recent", handlers.Pulse.GetRecentPlays)
-		admin.GET("/pulse/analytics", handlers.Pulse.GetAnalytics)
-		admin.GET("/pulse/analytics/hourly", handlers.Pulse.GetHourlyDistribution)
-		admin.GET("/pulse/analytics/libraries", handlers.Pulse.GetLibraryStats)
-		admin.GET("/pulse/analytics/growth", handlers.Pulse.GetMediaGrowth)
-
 		// ==================== 视频预处理管理 ====================
 		admin.POST("/preprocess/submit", handlers.Preprocess.SubmitMedia)
 		admin.POST("/preprocess/batch", handlers.Preprocess.BatchSubmit)
@@ -1074,7 +1063,7 @@ func main() {
 		}
 	}()
 
-	// 等待中断信号以优雅关闭服务器
+	// 等待中断信号以优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
