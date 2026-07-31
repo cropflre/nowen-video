@@ -18,6 +18,7 @@ data class PlaybackDiagnostics(
 internal fun playbackMethodLabel(method: String): String = when (method.lowercase()) {
     "direct" -> "直接播放"
     "remux" -> "无损封装转换"
+    "smart_remux" -> "视频直通·音频兼容转换"
     "transcode" -> "兼容转码"
     else -> "自动选择"
 }
