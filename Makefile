@@ -1,4 +1,4 @@
-.PHONY: all build build-lite build-full build-server build-server-full build-web run run-full dev dev-full dev-web clean docker docker-full docker-stop tidy
+.PHONY: all build build-lite build-full build-server build-server-full build-web run run-full dev dev-full dev-server dev-server-full dev-web clean docker docker-full docker-stop tidy
 
 VERSION ?= $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || echo 0.1.0)
 GO_VERSION_PKG := github.com/nowen-video/nowen-video/internal/version.Version
@@ -23,11 +23,21 @@ build-server-full:
 build-web:
 	cd web && VITE_APP_VERSION=$(VERSION) npm run build
 
-# 默认开发模式运行轻量服务
-dev:
+# 默认开发模式运行轻量服务。
+# Go 服务直接读取 web/dist，因此每次启动前必须重建当前分支前端，
+# 避免继续提供其他分支或旧版本遗留的首页、菜单和页面。
+dev: build-web
 	NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
 
-dev-full:
+dev-full: build-web
+	NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server
+
+# 仅供明确需要复用现有 dist 的后端调试场景使用。
+# 常规开发请使用 make dev / make dev-full。
+dev-server:
+	NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
+
+dev-server-full:
 	NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server
 
 dev-web:
