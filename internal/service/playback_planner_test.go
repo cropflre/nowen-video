@@ -39,6 +39,7 @@ func TestPlanPlaybackWithInfoDirect(t *testing.T) {
 		CanDirectPlay:    true,
 		PreferDirectPlay: true,
 		VideoCodec:       "h264",
+		AudioCodec:       "aac",
 		HlsURL:           "/hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 	if err != nil {
@@ -56,13 +57,50 @@ func TestPlanPlaybackWithInfoRemux(t *testing.T) {
 		CanRemux:         true,
 		PreferDirectPlay: true,
 		VideoCodec:       "h264",
+		AudioCodec:       "aac",
 		HlsURL:           "/hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Method != PlaybackMethodRemux || plan.URL != "/api/stream/m1/remux" {
+	if plan.Method != PlaybackMethodRemux || plan.URL != "/api/stream/m1/remux" || plan.RequiresTranscode {
 		t.Fatalf("unexpected remux plan: %+v", plan)
+	}
+}
+
+func TestPlanPlaybackWithInfoSmartRemuxesIncompatibleAudio(t *testing.T) {
+	stream := &StreamService{}
+	for _, codec := range []string{"dts", "truehd", "flac", "opus"} {
+		plan, err := stream.PlanPlaybackWithInfo("m1", &MediaPlayInfo{
+			MediaID:          "m1",
+			PreferDirectPlay: true,
+			VideoCodec:       "h264",
+			AudioCodec:       codec,
+			HlsURL:           "/hls",
+		}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
+		if err != nil {
+			t.Fatalf("codec=%s: %v", codec, err)
+		}
+		if plan.Method != PlaybackMethodSmartRemux || plan.URL != "/api/stream/m1/remux" || plan.ReasonCode != "audio_transcode_only" || !plan.RequiresTranscode {
+			t.Fatalf("codec=%s unexpected smart remux plan: %+v", codec, plan)
+		}
+	}
+}
+
+func TestPlanPlaybackWithInfoDoesNotSmartRemuxUnsupportedVideo(t *testing.T) {
+	stream := &StreamService{}
+	plan, err := stream.PlanPlaybackWithInfo("m1", &MediaPlayInfo{
+		MediaID:          "m1",
+		PreferDirectPlay: true,
+		VideoCodec:       "mpeg2video",
+		AudioCodec:       "dts",
+		HlsURL:           "/hls",
+	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Method != PlaybackMethodTranscode {
+		t.Fatalf("unsupported video must use full transcode: %+v", plan)
 	}
 }
 
@@ -74,6 +112,7 @@ func TestPlanPlaybackWithInfoRejectsUnsupportedHEVC(t *testing.T) {
 		CanRemux:         true,
 		PreferDirectPlay: true,
 		VideoCodec:       "hevc-main10",
+		AudioCodec:       "dts",
 		HlsURL:           "/hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true, SupportsHEVC: false})
 	if err != nil {
