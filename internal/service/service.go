@@ -58,8 +58,6 @@ type Services struct {
 	Federation      *FederationService
 	// V3: 新增服务
 	AIScene *AISceneService
-	// V5: Pulse 数据中心
-	Pulse *PulseService
 	// V6: P1~P3 新增功能
 	ASR                *ASRService
 	Preprocess         *PreprocessService
@@ -280,10 +278,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	)
 	aiSceneService.SetWSHub(wsHub)
 
-	// V5: 创建 Pulse 数据中心服务
-	pulseService := NewPulseService(repos.Pulse, logger)
-	pulseService.SetWSHub(wsHub)
-
 	svcs := &Services{
 		User:           NewUserService(repos.User, repos.AuditLog, cfg, logger),
 		Auth:           NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
@@ -331,8 +325,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Federation:      federationService,
 		// V3
 		AIScene: aiSceneService,
-		// V5: Pulse 数据中心
-		Pulse: pulseService,
 		// V6: P1~P3 新增功能
 		ASR:                asrService,
 		Preprocess:         preprocessService,
@@ -465,7 +457,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 					if lang != "" {
 						targetLangs = append(targetLangs, lang)
 					}
-				}
 			}
 			subCount, err := subtitlePreprocessService.SubmitLibrary(libraryID, targetLangs, false)
 			if err != nil {
