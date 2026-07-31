@@ -134,6 +134,7 @@ func (s *TranscodeService) recoverPendingTasks() {
 	activeJobs, err := s.executionRepo.ListActiveJobs()
 	if err != nil {
 		s.logger.Warnf("读取待恢复转码 Job 失败: %v", err)
+		go s.dispatchQueuedLoop()
 		return
 	}
 
@@ -142,32 +143,49 @@ func (s *TranscodeService) recoverPendingTasks() {
 		job := &activeJobs[i]
 		switch job.Status {
 		case "queued":
-			completed, completeErr := s.executionRepo.CompleteQueuedJob(job.ID, "failed", now)
-			if completeErr != nil {
-				s.logger.Warnf("回收重启前排队 Job 失败 job=%s: %v", job.ID, completeErr)
-				continue
-			}
-			if completed {
-				s.updateRecoveredLegacyTask(job, "failed", "服务重启前任务尚未被 Worker Claim，请重新提交", now)
-				recovered++
-			}
-		case "claimed", "running", "cancel_requested":
-			// Rows created before Lease fields were introduced have no valid
-			// ownership proof. Startup is the only safe point to release them
-			// immediately because the new process has not accepted work yet.
-			if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
-				terminalStatus := "failed"
-				errorMessage := "升级前执行记录没有 Worker Lease，已安全回收"
-				if job.DesiredState == "cancelled" || job.Status == "cancel_requested" {
-					terminalStatus = "cancelled"
-					errorMessage = "升级前取消任务没有 Worker Lease，已确认取消"
-				}
-				if completeErr := s.executionRepo.CompleteJob(job.ID, terminalStatus, now); completeErr != nil {
-					s.logger.Warnf("回收无租约 Job 失败 job=%s: %v", job.ID, completeErr)
+			if job.DesiredState == "cancelled" {
+				completed, completeErr := s.executionRepo.CompleteQueuedJob(job.ID, "cancelled", now)
+				if completeErr != nil {
+					s.logger.Warnf("确认重启前排队取消失败 job=%s: %v", job.ID, completeErr)
 					continue
 				}
-				s.updateRecoveredLegacyTask(job, terminalStatus, errorMessage, now)
-				recovered++
+				if completed {
+					s.updateRecoveredLegacyTask(job, "cancelled", "", now)
+					recovered++
+				}
+				continue
+			}
+			s.updateRecoveredLegacyTask(job, "queued", "", now)
+			recovered++
+		case "claimed", "running", "cancel_requested":
+			if job.DesiredState == "cancelled" || job.Status == "cancel_requested" {
+				if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
+					if completeErr := s.executionRepo.CompleteJob(job.ID, "cancelled", now); completeErr != nil {
+						s.logger.Warnf("确认无租约取消 Job 失败 job=%s: %v", job.ID, completeErr)
+						continue
+					}
+					s.updateRecoveredLegacyTask(job, "cancelled", "", now)
+					recovered++
+					continue
+				}
+				if !job.LeaseExpiresAt.After(now) && s.recoverExpiredLease(job, now) {
+					recovered++
+				}
+				continue
+			}
+
+			// Rows created before Lease ownership was introduced can safely return
+			// to queued during startup. No new worker has been started yet.
+			if job.LeaseToken == "" || job.LeaseExpiresAt == nil {
+				requeued, requeueErr := s.executionRepo.RequeueUnleasedJob(job.ID, now)
+				if requeueErr != nil {
+					s.logger.Warnf("恢复无租约 Job 失败 job=%s: %v", job.ID, requeueErr)
+					continue
+				}
+				if requeued {
+					s.updateRecoveredLegacyTask(job, "queued", "", now)
+					recovered++
+				}
 				continue
 			}
 			if !job.LeaseExpiresAt.After(now) && s.recoverExpiredLease(job, now) {
@@ -200,22 +218,30 @@ func (s *TranscodeService) recoverPendingTasks() {
 		}
 	}
 
-	if recovered > 0 {
-		s.logger.Infof("已回收 %d 个重启前遗留的转码 Job", recovered)
+	dispatched := s.dispatchPersistedQueuedJobs()
+	go s.dispatchQueuedLoop()
+	if recovered > 0 || dispatched > 0 {
+		s.logger.Infof("已恢复 %d 个持久化转码 Job，重新装载 %d 个排队任务", recovered, dispatched)
 	}
 }
 
 func (s *TranscodeService) leaseRecoveryLoop() {
 	ticker := time.NewTicker(s.leaseRecoveryInterval)
 	defer ticker.Stop()
-	for now := range ticker.C {
-		expired, err := s.executionRepo.ListExpiredLeases(now)
-		if err != nil {
-			s.logger.Warnf("扫描过期转码 Lease 失败: %v", err)
-			continue
-		}
-		for i := range expired {
-			s.recoverExpiredLease(&expired[i], now)
+	for {
+		select {
+		case now := <-ticker.C:
+			if s.jobs.IsClosed() {
+				return
+			}
+			expired, err := s.executionRepo.ListExpiredLeases(now)
+			if err != nil {
+				s.logger.Warnf("扫描过期转码 Lease 失败: %v", err)
+				continue
+			}
+			for i := range expired {
+				s.recoverExpiredLease(&expired[i], now)
+			}
 		}
 	}
 }
@@ -224,22 +250,30 @@ func (s *TranscodeService) recoverExpiredLease(job *model.TranscodeJobRecord, no
 	if job == nil || job.LeaseToken == "" {
 		return false
 	}
-	terminalStatus := "failed"
-	errorMessage := fmt.Sprintf("Worker Lease 已过期: %s", job.WorkerID)
 	if job.DesiredState == "cancelled" || job.Status == "cancel_requested" {
-		terminalStatus = "cancelled"
-		errorMessage = "取消请求已确认，Worker Lease 已释放"
+		completed, err := s.executionRepo.CompleteExpiredLease(job.ID, job.LeaseToken, "cancelled", now)
+		if err != nil {
+			s.logger.Warnf("确认过期 Lease 取消失败 job=%s worker=%s: %v", job.ID, job.WorkerID, err)
+			return false
+		}
+		if !completed {
+			return false
+		}
+		s.updateRecoveredLegacyTask(job, "cancelled", "", now)
+		s.logger.Warnf("已确认过期取消 Job job=%s worker=%s", job.ID, job.WorkerID)
+		return true
 	}
-	completed, err := s.executionRepo.CompleteExpiredLease(job.ID, job.LeaseToken, terminalStatus, now)
+
+	requeued, err := s.executionRepo.RequeueExpiredLease(job.ID, job.LeaseToken, now)
 	if err != nil {
-		s.logger.Warnf("回收过期转码 Lease 失败 job=%s worker=%s: %v", job.ID, job.WorkerID, err)
+		s.logger.Warnf("重新排队过期转码 Lease 失败 job=%s worker=%s: %v", job.ID, job.WorkerID, err)
 		return false
 	}
-	if !completed {
+	if !requeued {
 		return false
 	}
-	s.updateRecoveredLegacyTask(job, terminalStatus, errorMessage, now)
-	s.logger.Warnf("已回收过期转码 Lease job=%s worker=%s status=%s", job.ID, job.WorkerID, terminalStatus)
+	s.updateRecoveredLegacyTask(job, "queued", "", now)
+	s.logger.Warnf("Worker Lease 已过期，任务重新排队 job=%s worker=%s", job.ID, job.WorkerID)
 	return true
 }
 
@@ -251,15 +285,23 @@ func (s *TranscodeService) updateRecoveredLegacyTask(job *model.TranscodeJobReco
 	if err != nil {
 		return
 	}
-	if status == "cancelled" {
+	switch status {
+	case "queued":
+		task.Status = "pending"
+		task.Progress = 0
+		task.Error = ""
+		task.StartedAt = nil
+		task.CompletedAt = nil
+	case "cancelled":
 		task.Status = "cancelled"
 		task.Error = ""
-	} else {
+		task.CompletedAt = &now
+	default:
 		task.Status = "failed"
 		task.Error = errorMessage
+		task.CompletedAt = &now
 	}
-	task.CompletedAt = &now
 	if err := s.repo.Update(task); err != nil {
-		s.logger.Warnf("更新 Lease 回收兼容投影失败 task=%s: %v", task.ID, err)
+		s.logger.Warnf("更新 Lease 恢复兼容投影失败 task=%s: %v", task.ID, err)
 	}
 }
