@@ -143,12 +143,13 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 	if err := model.AutoMigrateTranscodeExecution(repo.DB()); err != nil {
 		panic(fmt.Sprintf("migrate transcode execution schema: %v", err))
 	}
+	executionRepo := repository.NewTranscodeExecutionRepo(repo.DB())
 	service := &TranscodeService{
 		repo:                   repo,
-		executionRepo:          repository.NewTranscodeExecutionRepo(repo.DB()),
+		executionRepo:          executionRepo,
 		cfg:                    cfg,
 		logger:                 logger,
-		jobs:                   newTranscodePriorityQueue(100),
+		jobs:                   newTranscodePriorityQueue(executionRepo, repo, 100, logger),
 		running:                make(map[string]*TranscodeJob),
 		instanceID:             newTranscodeInstanceID(),
 		leaseDuration:          defaultTranscodeLeaseDuration,
@@ -176,8 +177,8 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 	return service
 }
 
-func (s *TranscodeService) SetWSHub(hub *WSHub) { s.wsHub = hub }
-func (s *TranscodeService) GetHWAccelInfo() string { return s.hwAccel }
+func (s *TranscodeService) SetWSHub(hub *WSHub)                         { s.wsHub = hub }
+func (s *TranscodeService) GetHWAccelInfo() string                      { return s.hwAccel }
 func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return s.executionRuntime }
 
 func (s *TranscodeService) detectHWAccel() string {
@@ -252,6 +253,10 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 		s.mu.RUnlock()
 	}
 
+	if !s.jobs.CanAccept() {
+		return nil, fmt.Errorf("转码队列已满或服务正在关闭")
+	}
+
 	outputDir := s.GetOutputDir(media.ID, quality)
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建转码目录失败: %w", err)
@@ -273,35 +278,21 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 		return nil, fmt.Errorf("创建持久化转码 Job 失败: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	job := &TranscodeJob{
-		Task:         task,
-		ExecutionJob: executionJob,
-		Media:        media,
-		Quality:      quality,
-		ctx:          ctx,
-		cancel:       cancel,
-		startOffset:  startOffset,
-		leaseDone:    make(chan struct{}),
-		throttleDone: make(chan struct{}),
-	}
-	s.mu.Lock()
-	s.running[task.ID] = job
-	s.mu.Unlock()
-
-	if s.jobs.Push(job) {
+	wakeJob := &TranscodeJob{Task: task, ExecutionJob: executionJob}
+	if s.jobs.Push(wakeJob) {
 		return task, nil
 	}
 
-	job.RequestCancel()
-	s.mu.Lock()
-	delete(s.running, task.ID)
-	s.mu.Unlock()
-	task.Status = "failed"
-	task.Error = "转码队列已满"
-	_ = s.repo.Update(task)
-	s.persistJobTerminal(job, "failed", time.Now())
-	return nil, fmt.Errorf("转码队列已满")
+	now := time.Now()
+	if completed, completeErr := s.executionRepo.CompleteQueuedJob(executionJob.ID, "failed", now); completeErr != nil {
+		s.logger.Warnf("回滚未进入持久队列的转码 Job 失败 job=%s: %v", executionJob.ID, completeErr)
+	} else if completed {
+		task.Status = "failed"
+		task.Error = "转码队列已满或服务正在关闭"
+		task.CompletedAt = &now
+		_ = s.repo.Update(task)
+	}
+	return nil, fmt.Errorf("转码队列已满或服务正在关闭")
 }
 
 func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, quality string) error {
@@ -327,10 +318,13 @@ func (s *TranscodeService) worker(index int) {
 	workerID := fmt.Sprintf("%s/worker-%d", s.instanceID, index)
 	s.logger.Infof("转码 Worker 启动: %s", workerID)
 	for {
-		job, ok := s.jobs.Pop()
+		job, ok := s.jobs.Pop(workerID, s.leaseDuration)
 		if !ok {
 			return
 		}
+		s.mu.Lock()
+		s.running[job.Task.ID] = job
+		s.mu.Unlock()
 		s.processJob(job, workerID)
 	}
 }
@@ -349,15 +343,6 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		s.finalizeCancelled(job)
 		return
 	}
-	claimed, err := s.claimExecutionJob(job, workerID)
-	if err != nil {
-		s.failUnclaimedJob(job, fmt.Sprintf("数据库 Claim 失败: %v", err))
-		return
-	}
-	if !claimed {
-		s.handleUnclaimedJob(job)
-		return
-	}
 	go s.leaseHeartbeatLoop(job)
 
 	if !s.markJobRunning(job) {
@@ -373,11 +358,20 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		Message: fmt.Sprintf("开始转码: %s (%s)", job.Media.Title, job.Quality),
 	})
 
+	nextAttempt, err := s.executionRepo.NextAttemptNumber(job.ExecutionJob.ID)
+	if err != nil {
+		s.finalizeFailed(job, transcodeexecutor.Result{Err: fmt.Errorf("读取下一 Attempt 编号失败: %w", err)})
+		return
+	}
+	if nextAttempt > 1 {
+		s.cleanAttemptOutput(job.Task.OutputDir)
+	}
+
 	backend := s.hwAccel
 	if backend == "" {
 		backend = ffmpeg.HWAccelNone
 	}
-	result := s.runAttempt(job, backend, 1)
+	result := s.runAttempt(job, backend, nextAttempt)
 	if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 		s.finalizeCancelled(job)
 		return
@@ -386,7 +380,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 	if result.Err != nil && backend != ffmpeg.HWAccelNone {
 		s.logger.Warnf("硬件转码失败 backend=%s media=%s: %v，切换独立软件 Attempt", backend, job.Media.ID, result.Err)
 		s.cleanAttemptOutput(job.Task.OutputDir)
-		result = s.runAttempt(job, ffmpeg.HWAccelNone, 2)
+		result = s.runAttempt(job, ffmpeg.HWAccelNone, nextAttempt+1)
 		if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 			s.finalizeCancelled(job)
 			return
