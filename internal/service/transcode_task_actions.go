@@ -80,7 +80,7 @@ func (s *TranscodeService) RetryTask(taskID string, mediaResolver func(mediaID s
 	if err := s.repo.Update(task); err != nil {
 		return fmt.Errorf("更新重试计数失败: %w", err)
 	}
-	if _, err := s.startTranscodeInternal(media, task.Quality, 0); err != nil {
+	if _, err := s.startTranscodeWithPriority(media, task.Quality, 0, TranscodePriorityRetry); err != nil {
 		return fmt.Errorf("重新启动转码失败: %w", err)
 	}
 	return nil
@@ -157,7 +157,7 @@ func (s *TranscodeService) BatchSubmitByMediaIDs(mediaIDs, qualities []string, m
 		}
 		mediaSubmitted := 0
 		for _, quality := range effective {
-			task, err := s.startTranscodeInternal(media, quality, 0)
+			task, err := s.startTranscodeWithPriority(media, quality, 0, TranscodePriorityBackground)
 			if err != nil {
 				s.logger.Warnf("BatchSubmitByMediaIDs: %s/%s 启动失败: %v", mediaID, quality, err)
 				continue
