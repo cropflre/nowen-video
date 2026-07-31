@@ -183,3 +183,22 @@ func TestDatabaseTranscodeQueueCapacityAndClose(t *testing.T) {
 		t.Fatalf("database queue must not expose process-local deliveries: %d", len(drained))
 	}
 }
+
+func TestDatabaseTranscodeQueueReleasesClaimWhenClosed(t *testing.T) {
+	ctx := newDatabaseQueueTestContext(t, 10)
+	record := ctx.createJob(t, "shutdown-race", TranscodePriorityInteractive, time.Now())
+	job, ok := ctx.queue.Pop("shutdown-worker", time.Minute)
+	if !ok || job == nil {
+		t.Fatal("worker did not claim shutdown test job")
+	}
+
+	ctx.queue.Close()
+	ctx.queue.releaseClaimAfterClose(job.ExecutionJob)
+	stored, err := ctx.executionRepo.FindJobByID(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "queued" || stored.LeaseToken != "" || stored.WorkerID != "" || stored.LeaseExpiresAt != nil {
+		t.Fatalf("shutdown did not release just-claimed ownership: %+v", stored)
+	}
+}
