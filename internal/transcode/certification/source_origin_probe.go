@@ -61,16 +61,17 @@ func (n sourceOriginFlexibleNumber) int64Value() (int64, bool) {
 	return value, err == nil
 }
 
-func probeSourceOrigin(ctx context.Context, ffprobePath, sourcePath string) (transcodesourceorigin.StreamEvidence, transcodesourceorigin.StreamEvidence, error) {
+func probeSourceOrigin(ctx context.Context, ffprobePath, sourceGraph string) (transcodesourceorigin.StreamEvidence, transcodesourceorigin.StreamEvidence, error) {
 	command := exec.CommandContext(
 		ctx,
 		ffprobePath,
 		"-v", "error",
+		"-f", "lavfi",
+		"-i", sourceGraph,
 		"-print_format", "json",
 		"-show_streams",
 		"-show_packets",
 		"-show_entries", "stream=index,codec_type,time_base:packet=stream_index,pts,dts,duration",
-		sourcePath,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
