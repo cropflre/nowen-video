@@ -57,7 +57,11 @@ func (c CaseEvidence) Validate() error {
 		return fmt.Errorf("reorder candidate comparison is inconsistent")
 	}
 	if !c.Comparison.Equivalent {
-		return fmt.Errorf("reorder candidates diverged for case %s", base.ID)
+		return fmt.Errorf(
+			"reorder candidates diverged for case %s: %s",
+			base.ID,
+			CandidateDivergenceDiagnostic(c.Candidates[0], c.Candidates[1]),
+		)
 	}
 	return nil
 }
