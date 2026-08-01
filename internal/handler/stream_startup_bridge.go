@@ -4,71 +4,79 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"gorm.io/gorm"
 )
 
-func (h *ArtifactStreamHandler) StartupBridgePlaylist(c *fiber.Ctx) error {
+func (h *ArtifactStreamHandler) StartupBridgePlaylist(c *gin.Context) {
 	if h == nil || h.StreamHandler == nil || h.streamService == nil {
-		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "stream service unavailable"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "stream service unavailable"})
+		return
 	}
-	playlist, err := h.streamService.GetStartupBridgePlaylist(c.Params("id"), c.Params("quality"))
+	playlist, err := h.streamService.GetStartupBridgePlaylist(c.Param("id"), c.Param("quality"))
 	if err != nil {
-		return startupBridgeError(c, err)
+		startupBridgeError(c, err)
+		return
 	}
-	c.Set(fiber.HeaderContentType, "application/vnd.apple.mpegurl")
-	c.Set(fiber.HeaderCacheControl, "no-store")
-	return c.SendString(playlist)
+	c.Header("Content-Type", "application/vnd.apple.mpegurl")
+	c.Header("Cache-Control", "no-store")
+	c.String(http.StatusOK, playlist)
 }
 
-func (h *ArtifactStreamHandler) StartupBridgeSegment(c *fiber.Ctx) error {
+func (h *ArtifactStreamHandler) StartupBridgeSegment(c *gin.Context) {
 	if h == nil || h.StreamHandler == nil || h.streamService == nil {
-		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "stream service unavailable"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "stream service unavailable"})
+		return
 	}
 	file, err := h.streamService.ResolveStartupBridgeSegment(
-		c.Params("id"),
-		c.Params("quality"),
-		c.Params("segment"),
+		c.Param("id"),
+		c.Param("quality"),
+		c.Param("segment"),
 	)
 	if err != nil {
-		return startupBridgeError(c, err)
+		startupBridgeError(c, err)
+		return
 	}
-	return sendStartupBridgeFile(c, file)
+	sendStartupBridgeFile(c, file)
 }
 
-func (h *ArtifactStreamHandler) StartupContinuationSegment(c *fiber.Ctx) error {
+func (h *ArtifactStreamHandler) StartupContinuationSegment(c *gin.Context) {
 	if h == nil || h.StreamHandler == nil || h.streamService == nil {
-		return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": "stream service unavailable"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "stream service unavailable"})
+		return
 	}
 	file, err := h.streamService.ResolveStartupContinuationSegment(
-		c.Params("id"),
-		c.Params("quality"),
-		c.Params("segment"),
+		c.Param("id"),
+		c.Param("quality"),
+		c.Param("segment"),
 	)
 	if err != nil {
-		return startupBridgeError(c, err)
+		startupBridgeError(c, err)
+		return
 	}
-	return sendStartupBridgeFile(c, file)
+	sendStartupBridgeFile(c, file)
 }
 
-func sendStartupBridgeFile(c *fiber.Ctx, file *service.StartupBridgeFile) error {
+func sendStartupBridgeFile(c *gin.Context, file *service.StartupBridgeFile) {
 	if file == nil || file.Path == "" {
-		return c.SendStatus(http.StatusNotFound)
+		c.Status(http.StatusNotFound)
+		return
 	}
-	c.Set(fiber.HeaderContentType, "video/mp2t")
-	c.Set(fiber.HeaderAcceptRanges, "bytes")
+	c.Header("Content-Type", "video/mp2t")
+	c.Header("Accept-Ranges", "bytes")
 	if file.Immutable {
-		c.Set(fiber.HeaderCacheControl, "private, max-age=31536000, immutable")
+		c.Header("Cache-Control", "private, max-age=31536000, immutable")
 	} else {
-		c.Set(fiber.HeaderCacheControl, "no-store")
+		c.Header("Cache-Control", "no-store")
 	}
-	return c.SendFile(file.Path)
+	http.ServeFile(c.Writer, c.Request, file.Path)
 }
 
-func startupBridgeError(c *fiber.Ctx, err error) error {
+func startupBridgeError(c *gin.Context, err error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, service.ErrMediaNotFound) {
-		return c.SendStatus(http.StatusNotFound)
+		c.Status(http.StatusNotFound)
+		return
 	}
-	return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 }
