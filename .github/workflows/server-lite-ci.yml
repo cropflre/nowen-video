@@ -85,7 +85,7 @@ jobs:
           fi
 
   docker:
-    name: Docker lite and full images
+    name: Docker lite and full deployment smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +96,7 @@ jobs:
           context: .
           file: Dockerfile
           push: false
-          load: false
+          load: true
           tags: nowen-video:lite-ci
           build-args: |
             NOWEN_VERSION=ci
@@ -108,9 +108,76 @@ jobs:
           context: .
           file: Dockerfile.full
           push: false
-          load: false
+          load: true
           tags: nowen-video:full-ci
           build-args: |
             NOWEN_VERSION=ci
           cache-from: type=gha,scope=server-full
           cache-to: type=gha,mode=max,scope=server-full
+      - name: Start lite and full with persistent volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker rm -f nowen-lite-smoke nowen-full-smoke >/dev/null 2>&1 || true
+            docker volume rm -f nowen-lite-data-ci nowen-lite-cache-ci nowen-full-data-ci nowen-full-cache-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_health() {
+            local name="$1"
+            local port="$2"
+            for _ in $(seq 1 90); do
+              if curl --fail --silent --show-error "http://127.0.0.1:${port}/api/health" >/dev/null; then
+                return 0
+              fi
+              if ! docker inspect "$name" >/dev/null 2>&1 || [ "$(docker inspect -f '{{.State.Running}}' "$name")" != "true" ]; then
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 1
+            done
+            docker logs "$name" || true
+            return 1
+          }
+
+          smoke_profile() {
+            local profile="$1"
+            local image="$2"
+            local port="$3"
+            local data_volume="nowen-${profile}-data-ci"
+            local cache_volume="nowen-${profile}-cache-ci"
+            local container="nowen-${profile}-smoke"
+
+            docker volume create "$data_volume" >/dev/null
+            docker volume create "$cache_volume" >/dev/null
+            docker run -d \
+              --name "$container" \
+              -p "${port}:8080" \
+              -v "${data_volume}:/data" \
+              -v "${cache_volume}:/cache" \
+              "$image" >/dev/null
+            wait_health "$container" "$port"
+            docker exec "$container" test -s /data/nowen.db
+            docker exec "$container" test -d /cache/transcode
+
+            # Restart the exact image against the same volumes. This exercises
+            # additive migrations, Artifact startup reconciliation and normal
+            # ownership/permission handling rather than only a cold boot.
+            docker rm -f "$container" >/dev/null
+            docker run -d \
+              --name "$container" \
+              -p "${port}:8080" \
+              -v "${data_volume}:/data" \
+              -v "${cache_volume}:/cache" \
+              "$image" >/dev/null
+            wait_health "$container" "$port"
+            docker exec "$container" test -s /data/nowen.db
+            docker exec "$container" test -d /cache/transcode/workspaces
+            docker exec "$container" test -d /cache/transcode/artifacts
+            docker rm -f "$container" >/dev/null
+          }
+
+          smoke_profile lite nowen-video:lite-ci 18080
+          smoke_profile full nowen-video:full-ci 18081
