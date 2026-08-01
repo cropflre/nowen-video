@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/nowen-video/nowen-video/internal/model"
 )
 
 const (
@@ -23,6 +25,18 @@ type PlaybackClientCapabilities struct {
 	MaxBitrate         int    `json:"max_bitrate,omitempty"`
 }
 
+type PlaybackSourceTechnical struct {
+	ProbeVersion string   `json:"probe_version"`
+	VideoCodec  string   `json:"video_codec"`
+	AudioCodecs []string `json:"audio_codecs,omitempty"`
+	Width       int      `json:"width,omitempty"`
+	Height      int      `json:"height,omitempty"`
+	FrameRate   float64  `json:"frame_rate,omitempty"`
+	PixelFormat string   `json:"pixel_format,omitempty"`
+	BitDepth    int      `json:"bit_depth,omitempty"`
+	HDR         bool     `json:"hdr"`
+}
+
 type PlaybackPlan struct {
 	MediaID           string                     `json:"media_id"`
 	Method            string                     `json:"method"`
@@ -33,6 +47,7 @@ type PlaybackPlan struct {
 	FallbackMethod    string                     `json:"fallback_method,omitempty"`
 	FallbackURL       string                     `json:"fallback_url,omitempty"`
 	Capabilities      PlaybackClientCapabilities `json:"client_capabilities"`
+	SourceTechnical   *PlaybackSourceTechnical   `json:"source_technical,omitempty"`
 }
 
 func (s *StreamService) DefaultPlaybackClientCapabilities(userAgent string) PlaybackClientCapabilities {
@@ -57,6 +72,31 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		return nil, ErrMediaNotFound
 	}
 
+	// Playback planning is latency sensitive. Only a fresh cached Probe is read
+	// here; this path never starts FFprobe. Runtime HLS performs cold probing in
+	// its claimed Worker, while future scan warm-up populates this cache ahead of
+	// playback.
+	effectiveInfo := *info
+	var sourceTechnical *PlaybackSourceTechnical
+	if s != nil && s.mediaRepo != nil && s.transcoder != nil {
+		if media, err := s.mediaRepo.FindByID(mediaID); err == nil {
+			if probe := s.transcoder.GetCachedMediaProbe(media); probe != nil {
+				technical, preferredAudio := playbackTechnicalFromProbe(probe)
+				sourceTechnical = technical
+				if probe.VideoCodec != "" {
+					effectiveInfo.VideoCodec = probe.VideoCodec
+				}
+				if preferredAudio != "" {
+					effectiveInfo.AudioCodec = preferredAudio
+				}
+				if probe.DurationMS > 0 {
+					effectiveInfo.Duration = float64(probe.DurationMS) / 1000
+				}
+			}
+		}
+	}
+	info = &effectiveInfo
+
 	directURL := fmt.Sprintf("/api/stream/%s/direct", mediaID)
 	remuxURL := fmt.Sprintf("/api/stream/%s/remux", mediaID)
 	hlsURL := info.HlsURL
@@ -67,7 +107,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		hlsURL = appendQuery(hlsURL, "maxBitrate", strconv.Itoa(caps.MaxBitrate))
 	}
 
-	plan := &PlaybackPlan{MediaID: mediaID, Capabilities: caps}
+	plan := &PlaybackPlan{MediaID: mediaID, Capabilities: caps, SourceTechnical: sourceTechnical}
 	if info.IsSTRM {
 		plan.Method = PlaybackMethodDirect
 		plan.URL = directURL
@@ -132,6 +172,43 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		reason = "客户端不支持 fragmented MP4 Remux"
 	}
 	return chooseTranscode(plan, hlsURL, reasonCode, reason), nil
+}
+
+func playbackTechnicalFromProbe(probe *model.MediaProbeRecord) (*PlaybackSourceTechnical, string) {
+	if probe == nil {
+		return nil, ""
+	}
+	technical := &PlaybackSourceTechnical{
+		ProbeVersion: probe.ProbeVersion,
+		VideoCodec:  probe.VideoCodec,
+		Width:       probe.Width,
+		Height:      probe.Height,
+		FrameRate:   probe.FrameRate(),
+		PixelFormat: probe.PixelFormat,
+		BitDepth:    probe.BitDepth,
+		HDR:         probe.HDR,
+	}
+	preferredAudio := ""
+	seen := make(map[string]struct{})
+	for _, stream := range probe.AudioStreams() {
+		codec := strings.ToLower(strings.TrimSpace(stream.Codec))
+		if codec == "" {
+			continue
+		}
+		if _, exists := seen[codec]; !exists {
+			seen[codec] = struct{}{}
+			technical.AudioCodecs = append(technical.AudioCodecs, codec)
+		}
+		if preferredAudio == "" || stream.Default {
+			preferredAudio = codec
+			if stream.Default {
+				// The default track is the one copied or transcoded by the current
+				// single-audio playback paths.
+				break
+			}
+		}
+	}
+	return technical, preferredAudio
 }
 
 func canSmartRemuxInfo(info *MediaPlayInfo, caps PlaybackClientCapabilities) bool {
