@@ -16,6 +16,8 @@ EXPECTED_CANDIDATES = [
     "encoder-time-base-avtb-v1",
     "encoder-time-base-90k-v1",
 ]
+PERCEPTUAL_HASH_HEX_LENGTH = 32
+PERCEPTUAL_MAX_HAMMING_DISTANCE = 8
 
 
 def fail(message: str) -> None:
@@ -51,6 +53,35 @@ def verify_packet_order(order: dict, frame_count: int) -> None:
         fail("composition offset histogram ordering is invalid")
 
 
+def verify_perceptual_sequence(sequence: dict, frame_count: int) -> None:
+    hashes = sequence["frame_hashes"]
+    if sequence["frame_count"] != frame_count or len(hashes) != frame_count:
+        fail("perceptual frame count differs from cadence frame count")
+    for value in hashes:
+        if len(value) != PERCEPTUAL_HASH_HEX_LENGTH:
+            fail("perceptual frame hash length is invalid")
+        int(value, 16)
+    canonical = "\n".join(hashes).encode()
+    if hashlib.sha256(canonical).hexdigest() != sequence["sequence_sha256"]:
+        fail("perceptual sequence identity is invalid")
+
+
+def verify_perceptual_comparison(comparison: dict) -> None:
+    if comparison["frame_count"] <= 0:
+        fail("perceptual comparison has no frames")
+    if comparison["max_hamming_distance"] > PERCEPTUAL_MAX_HAMMING_DISTANCE:
+        fail("perceptual frame correspondence exceeded the safety bound")
+    if comparison["exact_hash_match_count"] < 0 or comparison["exact_hash_match_count"] > comparison["frame_count"]:
+        fail("perceptual exact-match count is invalid")
+    if comparison["total_hamming_distance"] < comparison["max_hamming_distance"]:
+        fail("perceptual distance aggregate is invalid")
+    expected_mean = (comparison["total_hamming_distance"] * 1000 + comparison["frame_count"] // 2) // comparison["frame_count"]
+    if comparison["mean_hamming_milli"] != expected_mean:
+        fail("perceptual mean distance is inconsistent")
+    if comparison["equivalent"] is not True:
+        fail("perceptual candidate sequences diverged")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: verify_encoder_time_base_reorder.py REPORT.json")
@@ -66,6 +97,8 @@ def main() -> None:
         fail("contract hash is invalid")
     if evidence["repeat_count"] != 3 or evidence["packet_variance_ticks"] != 0:
         fail("repeat or variance policy drifted")
+    if evidence["perceptual_max_hamming_distance"] != PERCEPTUAL_MAX_HAMMING_DISTANCE:
+        fail("perceptual safety policy drifted")
     if evidence["seamless_allowed"] is not False or evidence["discontinuity_required"] is not True:
         fail("fail-closed policy drifted")
     cases = evidence["cases"]
@@ -79,16 +112,20 @@ def main() -> None:
         candidates = case["candidates"]
         if [item["spec"]["id"] for item in candidates] != EXPECTED_CANDIDATES:
             fail("candidate registry drifted")
-        if case["comparison"]["equivalent"] is not True:
-            fail("AVTB and 90 kHz reorder evidence diverged")
-        if case["comparison"]["startup_packet_order_equivalent"] is not True or case["comparison"]["continuation_packet_order_equivalent"] is not True:
+        comparison = case["comparison"]
+        if comparison["equivalent"] is not True or comparison["semantic_base_equivalent"] is not True:
+            fail("AVTB and 90 kHz semantic reorder evidence diverged")
+        if comparison["startup_packet_order_equivalent"] is not True or comparison["continuation_packet_order_equivalent"] is not True:
             fail("packet-order evidence diverged between candidates")
-        if case["comparison"]["base"]["equivalent"] is not True:
-            fail("base cadence or A/V evidence diverged between candidates")
+        base_comparison = comparison["base"]
+        if not base_comparison["frame_mapping_equivalent"] or not base_comparison["cadence_equivalent"] or not base_comparison["av_sync_within_tolerance"]:
+            fail("base cadence, mapping or A/V evidence diverged between candidates")
+        verify_perceptual_comparison(comparison["startup_perceptual_comparison"])
+        verify_perceptual_comparison(comparison["continuation_perceptual_comparison"])
 
         for candidate in candidates:
             summary = candidate["summary"]
-            if not summary["stable"] or not summary["strict_dts"] or not summary["reorder_observed"] or not summary["packet_order_stable"]:
+            if not summary["stable"] or not summary["strict_dts"] or not summary["reorder_observed"] or not summary["packet_order_stable"] or not summary["perceptual_sequence_stable"]:
                 fail("candidate reorder summary is not stable")
             if not summary["base"]["stable"] or not summary["base"]["all_preserved"]:
                 fail("base candidate preservation failed")
@@ -108,6 +145,7 @@ def main() -> None:
                     if fingerprint["adjacent_duplicate_count"] != 0:
                         fail("decoded adjacent duplicate frame detected")
                     verify_packet_order(run[f"{window}_packet_order"], timeline["frame_count"])
+                    verify_perceptual_sequence(run[f"{window}_perceptual_sequence"], timeline["frame_count"])
                 if base["boundary"]["seamless_allowed"] is not False or base["boundary"]["discontinuity_required"] is not True:
                     fail("boundary evidence authorized seamless playback")
                 if base["av_sync"]["seamless_allowed"] is not False or base["av_sync"]["discontinuity_required"] is not True:
@@ -115,15 +153,21 @@ def main() -> None:
 
     print(json.dumps({
         case["case"]["base"]["id"]: {
-            candidate["spec"]["id"]: {
-                "startup_reordered": candidate["summary"]["startup_reordered_packet_count"]["min"],
-                "continuation_reordered": candidate["summary"]["continuation_reordered_packet_count"]["min"],
-                "startup_depth": candidate["summary"]["startup_max_reorder_depth"]["min"],
-                "continuation_depth": candidate["summary"]["continuation_max_reorder_depth"]["min"],
-                "startup_max_cts_us": candidate["summary"]["startup_max_composition_offset_micros"]["min"],
-                "continuation_max_cts_us": candidate["summary"]["continuation_max_composition_offset_micros"]["min"],
-            }
-            for candidate in case["candidates"]
+            "startup_exact_pixels": case["comparison"]["base"]["startup_sequence_equivalent"],
+            "continuation_exact_pixels": case["comparison"]["base"]["continuation_sequence_equivalent"],
+            "startup_perceptual_max": case["comparison"]["startup_perceptual_comparison"]["max_hamming_distance"],
+            "continuation_perceptual_max": case["comparison"]["continuation_perceptual_comparison"]["max_hamming_distance"],
+            "candidates": {
+                candidate["spec"]["id"]: {
+                    "startup_reordered": candidate["summary"]["startup_reordered_packet_count"]["min"],
+                    "continuation_reordered": candidate["summary"]["continuation_reordered_packet_count"]["min"],
+                    "startup_depth": candidate["summary"]["startup_max_reorder_depth"]["min"],
+                    "continuation_depth": candidate["summary"]["continuation_max_reorder_depth"]["min"],
+                    "startup_max_cts_us": candidate["summary"]["startup_max_composition_offset_micros"]["min"],
+                    "continuation_max_cts_us": candidate["summary"]["continuation_max_composition_offset_micros"]["min"],
+                }
+                for candidate in case["candidates"]
+            },
         }
         for case in cases
     }, sort_keys=True))
