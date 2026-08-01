@@ -55,6 +55,33 @@ The certification JSON is uploaded as CI evidence. No database table, Artifact c
 
 The matrix deliberately uses only production-shaped software fixtures. The historical default-B-frame fixture remains in the overlap-attribution matrix and is not mixed into boundary-placement certification.
 
+## Observed CI baseline
+
+The first complete matrix was produced on Ubuntu 24.04 with FFmpeg/FFprobe 6.1.1. These values are reproducible evidence for that toolchain and runner image, not cross-version constants.
+
+| Case | Video relation | Video delta | Audio relation | Audio delta | Audio samples |
+| --- | --- | ---: | --- | ---: | ---: |
+| 48k keyframe | single-packet overlap | -21.333 ms | multi-packet overlap | -58.667 ms | -2816 |
+| 48k one video frame before | single-packet overlap | -21.333 ms | multi-packet overlap | -49.333 ms | -2368 |
+| 48k one video frame after | single-packet overlap | -21.333 ms | multi-packet overlap | -46.667 ms | -2240 |
+| 48k one AAC packet before | single-packet overlap | -21.333 ms | multi-packet overlap | -58.667 ms | -2816 |
+| 48k one AAC packet after | single-packet overlap | -21.333 ms | multi-packet overlap | -58.667 ms | -2816 |
+| 44.1k keyframe | single-packet overlap | -23.222 ms | multi-packet overlap | -46.622 ms | -2056 |
+| 44.1k one AAC packet before | single-packet overlap | -23.222 ms | multi-packet overlap | -46.622 ms | -2056 |
+| 44.1k one AAC packet after | single-packet overlap | -23.222 ms | multi-packet overlap | -46.611 ms | -2056 |
+
+The packet-derived video rate is 30,000 milli-fps in all eight cases. The video overlap is approximately 0.64 of one nominal frame at 48 kHz and 0.697 of one nominal frame at 44.1 kHz. The small difference between the two fixtures follows a produced-media packet-duration difference rather than a declared source-rate change.
+
+Boundary movement did not remove the video overlap. Moving by one AAC packet also did not move the 48 kHz audio result, while moving by one video frame changed the 48 kHz audio overlap. This indicates that the observed boundary is governed by the combined encoder/muxer packet schedule, not by a simple independent `-ss` offset per stream.
+
+FFprobe exposed generic `MPEGTS Stream ID` packet side data, but no `skip_samples` or `discard_padding` evidence in the retained packet windows. The contract therefore reports:
+
+```text
+side_data_observed = false
+```
+
+This means relevant encoder-delay metadata was not observed. It does not mean encoder delay or padding is zero.
+
 ## Exact seek Adapter
 
 The shared FFmpeg builder historically formats input-side `-ss` with two decimal places. That is sufficient for normal whole-second requests, but it quantizes:
@@ -93,11 +120,19 @@ FFprobe supplies:
 - stream index and type;
 - stream time base;
 - audio sample rate;
-- video frame rate;
 - packet PTS and DTS;
 - packet duration;
 - keyframe flag;
 - packet side data when exposed by the container and FFprobe build.
+
+FFprobe also reports stream-level average and real frame rates. Short or partial TS segments can report different average-rate values for the same CFR stream, so those fields are retained only as probe observations and are not authoritative contract identity. The canonical video rate is derived from median packet duration and time base:
+
+```text
+frame_rate_milli = round(time_base_denominator * 1000 /
+                         (time_base_numerator * packet_duration_ticks))
+```
+
+The contract validates this projection independently.
 
 The contract retains at most:
 
@@ -172,11 +207,13 @@ It records:
 - boundary delta samples;
 - Startup and Continuation `skip_samples` totals;
 - Startup and Continuation `discard_padding` totals;
-- whether any relevant packet side data was observed.
+- whether relevant encoder-delay or padding side data was observed.
 
 AAC-LC normally represents 1024 samples per access unit, but MPEG-TS uses a 90 kHz clock and may alternate integer packet durations. The contract therefore derives the value from produced media instead of hard-coding a timestamp duration.
 
-Absence of FFprobe side data is represented as:
+All packet side data remains in the raw packet windows. `side_data_observed` is narrower: it becomes true only for `skip_samples`, `discard_padding`, or an explicitly named skip/discard side-data record. Generic MPEG-TS stream metadata does not count as encoder-delay evidence.
+
+Absence of relevant FFprobe side data is represented as:
 
 ```text
 side_data_observed = false
@@ -196,7 +233,9 @@ The containing case report validates that:
 - every packet microsecond projection matches its ticks and time base;
 - packet ordinals match the head or tail window position;
 - packet durations and segment summaries are positive and consistent;
+- video rate matches packet duration and time base;
 - AAC sample projections match the packet timeline;
+- generic container side data cannot become encoder-delay evidence;
 - v1 remains fail-closed.
 
 The matrix additionally requires all registered cases in canonical order and one consistent FFmpeg/FFprobe toolchain identity.
@@ -229,7 +268,7 @@ go run ./cmd/transcode-fixture-cert \
 
 ## CI verification
 
-`.github/workflows/transcode-fixture-cert.yml` now produces and uploads both matrices. CI verifies:
+`.github/workflows/transcode-fixture-cert.yml` produces and uploads both matrices. CI verifies:
 
 - Go contracts and the precise seek Adapter;
 - all registered case identities and exact boundaries;
@@ -238,8 +277,9 @@ go run ./cmd/transcode-fixture-cert \
 - packet-window size and ordinal rules;
 - presentation and decode tick arithmetic;
 - positive nominal durations;
+- packet-derived video rate;
 - AAC nominal sample range;
-- explicit side-data observation state;
+- explicit relevant-side-data observation state;
 - fail-closed seamless/discontinuity policy.
 
 Exact measured overlap values are printed and stored as evidence, not embedded as permanent pass/fail constants. FFmpeg versions, muxer behavior, and runner images can lawfully change the values while the contract remains internally valid.
