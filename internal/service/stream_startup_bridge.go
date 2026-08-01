@@ -104,7 +104,8 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 	}
 
 	var continuation *hlsPlaylistSnapshot
-	if artifact, resolveErr := s.transcoder.ResolveReadableStartupContinuation(media, startup); resolveErr == nil && artifact != nil {
+	var handoff *StartupHandoffDecision
+	if artifact, decision, resolveErr := s.transcoder.ResolveReadableStartupContinuationWithHandoff(media, startup); resolveErr == nil && artifact != nil {
 		manifestPath := artifact.ManifestPath
 		if manifestPath == "" {
 			directory := readableArtifactDirectory(artifact)
@@ -115,13 +116,14 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 		if manifestPath != "" {
 			if snapshot, readErr := readHLSPlaylist(manifestPath); readErr == nil && len(snapshot.Segments) > 0 {
 				continuation = &snapshot
+				handoff = decision
 			}
 		}
 	} else if resolveErr != nil && !errors.Is(resolveErr, gorm.ErrRecordNotFound) && s.logger != nil {
 		s.logger.Warnf("解析 Startup Continuation Artifact 失败 media=%s: %v", media.ID, resolveErr)
 	}
 
-	return buildStartupBridgePlaylist(media.ID, profileID, startupPlaylist, continuation), nil
+	return buildStartupBridgePlaylist(media.ID, profileID, startupPlaylist, continuation, handoff), nil
 }
 
 func (s *StreamService) ResolveStartupBridgeSegment(mediaID, profileID, segment string) (*StartupBridgeFile, error) {
@@ -237,6 +239,7 @@ func buildStartupBridgePlaylist(
 	profileID string,
 	startup hlsPlaylistSnapshot,
 	continuation *hlsPlaylistSnapshot,
+	handoff *StartupHandoffDecision,
 ) string {
 	targetDuration := startup.TargetDuration
 	if continuation != nil && continuation.TargetDuration > targetDuration {
@@ -258,7 +261,9 @@ func buildStartupBridgePlaylist(
 		builder.WriteByte('\n')
 	}
 	if continuation != nil && len(continuation.Segments) > 0 {
-		builder.WriteString("#EXT-X-DISCONTINUITY\n")
+		if startupHandoffRequiresDiscontinuity(handoff) {
+			builder.WriteString("#EXT-X-DISCONTINUITY\n")
+		}
 		for _, segment := range continuation.Segments {
 			builder.WriteString(segment.Duration)
 			builder.WriteByte('\n')
@@ -270,6 +275,13 @@ func buildStartupBridgePlaylist(
 		}
 	}
 	return builder.String()
+}
+
+// Missing or malformed policy always fails closed. Timeline schema v1 also
+// requires SeamlessAllowed=false, so this cannot remove the boundary until a
+// future certified contract version is introduced deliberately.
+func startupHandoffRequiresDiscontinuity(handoff *StartupHandoffDecision) bool {
+	return handoff == nil || handoff.DiscontinuityRequired || !handoff.SeamlessAllowed
 }
 
 func startupVirtualProfile(profileID string) string {
