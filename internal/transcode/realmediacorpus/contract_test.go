@@ -99,6 +99,24 @@ func TestManifestRejectsDifferentSpecIdentity(t *testing.T) {
 	}
 }
 
+func TestManifestRejectsNondeterministicRepeatHash(t *testing.T) {
+	spec := DefaultSpec()
+	manifest := validManifest(t, spec)
+	manifest.Assets[0].RepeatSHA256[1] = strings.Repeat("b", 64)
+	if err := manifest.ValidateFor(spec); err == nil || !strings.Contains(err.Error(), "not deterministic") {
+		t.Fatalf("expected repeat determinism failure, got %v", err)
+	}
+}
+
+func TestManifestRejectsObservedEditListDrift(t *testing.T) {
+	spec := DefaultSpec()
+	manifest := validManifest(t, spec)
+	manifest.Assets[0].Probe.HasEditList = true
+	if err := manifest.ValidateFor(spec); err == nil || !strings.Contains(err.Error(), "edit-list") {
+		t.Fatalf("expected edit-list drift failure, got %v", err)
+	}
+}
+
 func TestCaseRejectsIncompleteEvidenceSet(t *testing.T) {
 	caseSpec := DefaultSpec().Cases[0]
 	caseSpec.RequiredEvidence = caseSpec.RequiredEvidence[:len(caseSpec.RequiredEvidence)-1]
@@ -116,28 +134,41 @@ func validManifest(t *testing.T, spec Spec) Manifest {
 	assets := make([]AssetEvidence, 0, len(spec.Cases))
 	for _, caseSpec := range spec.Cases {
 		plan := caseSpec.Source
+		fileHash := strings.Repeat("a", 64)
 		assets = append(assets, AssetEvidence{
-			CaseID:       caseSpec.ID,
-			RelativePath: "sources/" + caseSpec.ID + ".media",
-			SHA256:       strings.Repeat("a", 64),
-			SizeBytes:    1024,
+			CaseID:        caseSpec.ID,
+			RelativePath:  "assets/" + caseSpec.ID + ".media",
+			CommandSHA256: strings.Repeat("c", 64),
+			SHA256:        fileHash,
+			RepeatSHA256:  []string{fileHash, fileHash},
+			SizeBytes:     1024,
 			Probe: ProbeEvidence{
-				Container:        plan.Container,
-				DurationMicros:   plan.Timeline.DurationMicros,
-				StartMicros:      plan.Timeline.OriginMicros,
-				VideoCodec:       plan.Video.Codec,
-				PixelFormat:      plan.Video.PixelFormat,
-				Width:            plan.Video.Width,
-				Height:           plan.Video.Height,
-				FrameRateMode:    plan.Video.FrameRateMode,
-				ObservedRates:    append([]Rational(nil), plan.Video.FrameRates...),
-				VideoTimeBase:    Rational{Numerator: 1, Denominator: 90_000},
-				AudioCodec:       plan.Audio.Codec,
-				AudioSampleRate:  plan.Audio.SampleRate,
-				AudioChannels:    plan.Audio.Channels,
-				AudioTrackCount:  plan.Audio.TrackCount,
-				AudioTimeBase:    Rational{Numerator: 1, Denominator: int64(plan.Audio.SampleRate)},
-				HasBFrameReorder: plan.Video.BFrames > 0,
+				Container:                   plan.Container,
+				DurationMicros:              plan.Timeline.DurationMicros,
+				StartMicros:                 plan.Timeline.OriginMicros,
+				VideoCodec:                  plan.Video.Codec,
+				VideoProfile:                plan.Video.Profile,
+				PixelFormat:                 plan.Video.PixelFormat,
+				Width:                       plan.Video.Width,
+				Height:                      plan.Video.Height,
+				ColorPrimaries:              plan.Video.ColorPrimaries,
+				ColorTransfer:               plan.Video.ColorTransfer,
+				ColorMatrix:                 plan.Video.ColorMatrix,
+				FrameRateMode:               plan.Video.FrameRateMode,
+				ObservedRates:               append([]Rational(nil), plan.Video.FrameRates...),
+				VideoTimeBase:               Rational{Numerator: 1, Denominator: 90_000},
+				FrameCount:                  expectedFrameCount(plan),
+				KeyFrameCount:               2,
+				MaxKeyFrameInterval:         plan.Video.GOPSize,
+				MaxPresentationReorderDepth: plan.Video.BFrames,
+				MaxCompositionOffsetMicros:  100_000,
+				AudioCodec:                  plan.Audio.Codec,
+				AudioSampleRate:             plan.Audio.SampleRate,
+				AudioChannels:               plan.Audio.Channels,
+				AudioTrackCount:             plan.Audio.TrackCount,
+				AudioTimeBase:               Rational{Numerator: 1, Denominator: int64(plan.Audio.SampleRate)},
+				HasBFrameReorder:            plan.Video.BFrames > 0,
+				HasEditList:                 plan.Timeline.HasEditList,
 			},
 		})
 	}
@@ -146,6 +177,7 @@ func validManifest(t *testing.T, spec Spec) Manifest {
 		SpecVersion:           version,
 		SpecHash:              hash,
 		GeneratorVersion:      "test-generator-v1",
+		GenerationRepeatCount: 2,
 		FFmpegVersion:         "ffmpeg test",
 		FFprobeVersion:        "ffprobe test",
 		Assets:                assets,
