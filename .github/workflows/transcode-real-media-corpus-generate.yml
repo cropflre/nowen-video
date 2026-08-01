@@ -1,0 +1,60 @@
+name: Transcode Real Media Corpus Generate
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-real-media-corpus-generate/**'
+      - 'internal/transcode/corpusgenerator/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - '.github/scripts/verify_real_media_corpus_manifest.py'
+      - '.github/workflows/transcode-real-media-corpus-generate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-real-media-corpus-generate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-corpus:
+    name: Generate deterministic MP4, Matroska and MPEG-TS corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify corpus domain and generator contracts
+        run: |
+          go test ./internal/transcode/realmediacorpus
+          go test ./internal/transcode/corpusgenerator
+      - name: Build corpus generator command
+        run: go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+      - name: Generate deterministic file-backed corpus
+        run: |
+          rm -rf /tmp/nowen-transcode-real-media-corpus-v1
+          /tmp/nowen-transcode-real-media-corpus-generate \
+            -output-dir /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Verify manifest, file digests and observed media policy
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_manifest.py \
+            /tmp/nowen-transcode-real-media-corpus-v1/real-media-corpus-manifest-v1.json
+          du -sh /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Upload real media corpus assets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-real-media-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+          if-no-files-found: error
+          retention-days: 7
