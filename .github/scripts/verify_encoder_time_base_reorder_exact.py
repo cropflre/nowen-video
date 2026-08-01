@@ -24,8 +24,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "f30eb7419ce6cd8de3ee00f37acda9c4b3250dfec936ba87ca24ed7e8b34c518",
-            "encoder-time-base-90k-v1": "f30eb7419ce6cd8de3ee00f37acda9c4b3250dfec936ba87ca24ed7e8b34c518",
+            "encoder-time-base-avtb-v1": "d6cd5ccf2346bb3210f3104bc09f400f01c90c03650a477cd381815c18ed91f5",
+            "encoder-time-base-90k-v1": "d6cd5ccf2346bb3210f3104bc09f400f01c90c03650a477cd381815c18ed91f5",
         },
     },
     "reorder-cfr-30000-1001-b3-origin-zero-v1": {
@@ -44,8 +44,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "2ce6219bc6fb3573270cde1d1758a940ccac7d827333d2db5b32fcd44c8abad7",
-            "encoder-time-base-90k-v1": "153cc1158a382acae03a72f03b4c80cdaa1e3319cb8369c851745fdec5bf312c",
+            "encoder-time-base-avtb-v1": "b361f212431e1aa7a2e044dbfb339f30d1c732d663ee17ca6d68efb4f01cc462",
+            "encoder-time-base-90k-v1": "5ada6289ae2e040ce92eadbb214717e8a72ef49ffa323b5f7e7e06c74197723e",
         },
     },
     "reorder-vfr-24-30-b3-origin-zero-v1": {
@@ -64,8 +64,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "4b06a6431d1ac8b56ae53e949ee9f332b0d161752fdfc8928f6a12bb074fa212",
-            "encoder-time-base-90k-v1": "4b06a6431d1ac8b56ae53e949ee9f332b0d161752fdfc8928f6a12bb074fa212",
+            "encoder-time-base-avtb-v1": "b521aef133e41b3f7aabe9edefb6188ccbdee00133e0edbd5b6051584c012936",
+            "encoder-time-base-90k-v1": "b521aef133e41b3f7aabe9edefb6188ccbdee00133e0edbd5b6051584c012936",
         },
     },
     "reorder-cfr-30-b3-origin-positive-5s-v1": {
@@ -84,8 +84,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "c7bbeed422316481950869655b139b242355c67b7c81785eff69871ffb41ef27",
-            "encoder-time-base-90k-v1": "140a215a61ff6e296d63d03bed61c66ef0ecd608b8eae9738be064924104a700",
+            "encoder-time-base-avtb-v1": "f74aafdce45035d481c3429dc03134abdd576db53f2688cdd7f74db886ce4a3e",
+            "encoder-time-base-90k-v1": "9b1db75ed5482506e035e16bd8381f7c4e6792dfdd5694638280a13eb9488401",
         },
     },
     "reorder-cfr-30-b3-origin-negative-2s-v1": {
@@ -104,8 +104,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "c7bbeed422316481950869655b139b242355c67b7c81785eff69871ffb41ef27",
-            "encoder-time-base-90k-v1": "140a215a61ff6e296d63d03bed61c66ef0ecd608b8eae9738be064924104a700",
+            "encoder-time-base-avtb-v1": "f74aafdce45035d481c3429dc03134abdd576db53f2688cdd7f74db886ce4a3e",
+            "encoder-time-base-90k-v1": "9b1db75ed5482506e035e16bd8381f7c4e6792dfdd5694638280a13eb9488401",
         },
     },
     "reorder-cfr-30-b3-long-gop-origin-zero-v1": {
@@ -124,8 +124,8 @@ EXPECTED = {
             "perceptual_max": [0, 0],
         },
         "semantic_sha256": {
-            "encoder-time-base-avtb-v1": "c7bbeed422316481950869655b139b242355c67b7c81785eff69871ffb41ef27",
-            "encoder-time-base-90k-v1": "140a215a61ff6e296d63d03bed61c66ef0ecd608b8eae9738be064924104a700",
+            "encoder-time-base-avtb-v1": "f74aafdce45035d481c3429dc03134abdd576db53f2688cdd7f74db886ce4a3e",
+            "encoder-time-base-90k-v1": "9b1db75ed5482506e035e16bd8381f7c4e6792dfdd5694638280a13eb9488401",
         },
     },
 }
