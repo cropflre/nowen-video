@@ -85,33 +85,33 @@ func probeOutputCadenceContract(
 	}
 
 	contract := transcodeoutputcadence.Contract{
-		SchemaVersion:                   transcodeoutputcadence.SchemaVersion,
-		CaseID:                         spec.ID,
-		FixtureID:                      spec.FixtureID,
-		SourceMode:                     spec.SourceMode,
-		DeclaredFrameRateNumerator:     spec.DeclaredFrameRateNumerator,
-		DeclaredFrameRateDenominator:   spec.DeclaredFrameRateDenominator,
-		DeclaredFrameRateMilli:         spec.DeclaredFrameRateMilli(),
-		ExpectedBoundaryMicros:         spec.ExpectedBoundaryMicros,
-		ExpectedStartupVariable:        spec.SourceMode == transcodesourceorigin.ModeVFR,
-		ExpectedContinuationVariable:   false,
-		FFmpegVersion:                  ffmpegVersion,
-		FFprobeVersion:                 ffprobeVersion,
-		SourceOriginVersion:            sourceOriginVersion,
-		SourceOriginHash:               sourceOriginHash,
-		TimestampPlanVersion:           timestampVersion,
-		TimestampPlanHash:              timestampHash,
-		BoundaryEvidenceVersion:        boundaryVersion,
-		BoundaryEvidenceHash:           boundaryHash,
-		AVSyncEvidenceVersion:          avSyncVersion,
-		AVSyncEvidenceHash:             avSyncHash,
-		SourceTimeline:                 sourceTimeline,
-		StartupTimeline:                startupTimeline,
-		ContinuationTimeline:           continuationTimeline,
-		StartupMapping:                 transcodeoutputcadence.NewFrameMapping(startupInputFrames, startupTimeline.FrameCount),
-		ContinuationMapping:            transcodeoutputcadence.NewFrameMapping(continuationInputFrames, continuationTimeline.FrameCount),
-		ContentDuplicateClassification: transcodeoutputcadence.ContentDuplicateNotMeasured,
-		DiscontinuityRequired:          true,
+		SchemaVersion:                         transcodeoutputcadence.SchemaVersion,
+		CaseID:                               spec.ID,
+		FixtureID:                            spec.FixtureID,
+		SourceMode:                           spec.SourceMode,
+		DeclaredFrameRateNumerator:           spec.DeclaredFrameRateNumerator,
+		DeclaredFrameRateDenominator:         spec.DeclaredFrameRateDenominator,
+		DeclaredFrameRateMilli:               spec.DeclaredFrameRateMilli(),
+		ExpectedBoundaryMicros:               spec.ExpectedBoundaryMicros,
+		ExpectedStartupMaterialVariable:      spec.SourceMode == transcodesourceorigin.ModeVFR,
+		ExpectedContinuationMaterialVariable: false,
+		FFmpegVersion:                        ffmpegVersion,
+		FFprobeVersion:                       ffprobeVersion,
+		SourceOriginVersion:                  sourceOriginVersion,
+		SourceOriginHash:                     sourceOriginHash,
+		TimestampPlanVersion:                 timestampVersion,
+		TimestampPlanHash:                    timestampHash,
+		BoundaryEvidenceVersion:              boundaryVersion,
+		BoundaryEvidenceHash:                 boundaryHash,
+		AVSyncEvidenceVersion:                avSyncVersion,
+		AVSyncEvidenceHash:                   avSyncHash,
+		SourceTimeline:                       sourceTimeline,
+		StartupTimeline:                      startupTimeline,
+		ContinuationTimeline:                 continuationTimeline,
+		StartupMapping:                       transcodeoutputcadence.NewFrameMapping(startupInputFrames, startupTimeline.FrameCount),
+		ContinuationMapping:                  transcodeoutputcadence.NewFrameMapping(continuationInputFrames, continuationTimeline.FrameCount),
+		ContentDuplicateClassification:       transcodeoutputcadence.ContentDuplicateNotMeasured,
+		DiscontinuityRequired:                true,
 	}
 	contract.PreservationStatus = transcodeoutputcadence.PreservationFor(contract)
 	if err := contract.Validate(); err != nil {
@@ -152,19 +152,12 @@ func probeVideoCadenceTimeline(
 	if !ok {
 		return transcodeoutputcadence.TimelineEvidence{}, nil, fmt.Errorf("cadence probe has no video stream")
 	}
-	selected := make([]sourceOriginProbePacket, 0, len(document.Packets))
+	ptsTicks := make([]int64, 0, len(document.Packets))
+	ptsMicros := make([]int64, 0, len(document.Packets))
 	for _, packet := range document.Packets {
-		if packet.StreamIndex == stream.Index {
-			selected = append(selected, packet)
+		if packet.StreamIndex != stream.Index {
+			continue
 		}
-	}
-	if len(selected) < 2 {
-		return transcodeoutputcadence.TimelineEvidence{}, nil, fmt.Errorf("cadence probe has %d video packets", len(selected))
-	}
-
-	ptsTicks := make([]int64, 0, len(selected))
-	ptsMicros := make([]int64, 0, len(selected))
-	for _, packet := range selected {
 		pts, ok := packet.PTS.int64Value()
 		if !ok {
 			return transcodeoutputcadence.TimelineEvidence{}, nil, fmt.Errorf("video packet PTS is unavailable")
@@ -176,63 +169,15 @@ func probeVideoCadenceTimeline(
 		ptsTicks = append(ptsTicks, pts)
 		ptsMicros = append(ptsMicros, micros)
 	}
-
-	deltas := make([]int64, 0, len(ptsTicks)-1)
-	duplicatePTS := 0
-	nonMonotonicPTS := 0
-	for index := 0; index < len(ptsTicks)-1; index++ {
-		delta := ptsTicks[index+1] - ptsTicks[index]
-		switch {
-		case delta == 0:
-			duplicatePTS++
-		case delta < 0:
-			nonMonotonicPTS++
-		default:
-			deltas = append(deltas, delta)
-		}
-	}
-	if len(deltas) == 0 {
-		return transcodeoutputcadence.TimelineEvidence{}, nil, fmt.Errorf("cadence probe has no positive video deltas")
-	}
-	minimum := deltas[0]
-	maximum := deltas[0]
-	distinct := make(map[int64]struct{}, 4)
-	for _, delta := range deltas {
-		if delta < minimum {
-			minimum = delta
-		}
-		if delta > maximum {
-			maximum = delta
-		}
-		distinct[delta] = struct{}{}
-	}
-	minimumMicros, err := ticksToMicrosCertification(minimum, stream.TimeBase)
+	evidence, err := transcodeoutputcadence.NewTimelineEvidence(
+		kind,
+		stream.TimeBase,
+		windowStartMicros,
+		windowEndMicros,
+		ptsTicks,
+	)
 	if err != nil {
 		return transcodeoutputcadence.TimelineEvidence{}, nil, err
 	}
-	maximumMicros, err := ticksToMicrosCertification(maximum, stream.TimeBase)
-	if err != nil {
-		return transcodeoutputcadence.TimelineEvidence{}, nil, err
-	}
-	spread := maximumMicros - minimumMicros
-	return transcodeoutputcadence.TimelineEvidence{
-		Kind: kind,
-		TimeBase: stream.TimeBase,
-		WindowStartMicros: windowStartMicros,
-		WindowEndMicros: windowEndMicros,
-		FrameCount: len(ptsTicks),
-		FirstPTS: ptsTicks[0],
-		LastPTS: ptsTicks[len(ptsTicks)-1],
-		FirstPTSMicros: ptsMicros[0],
-		LastPTSMicros: ptsMicros[len(ptsMicros)-1],
-		MinDeltaTicks: minimum,
-		MaxDeltaTicks: maximum,
-		MinDeltaMicros: minimumMicros,
-		MaxDeltaMicros: maximumMicros,
-		DurationSpreadMicros: spread,
-		DistinctDeltas: len(distinct),
-		VariableDuration: spread >= transcodesourceorigin.VFRSpreadThresholdMicros,
-		DuplicatePTSCount: duplicatePTS,
-		NonMonotonicPTSCount: nonMonotonicPTS,
-	}, ptsMicros, nil
+	return evidence, ptsMicros, nil
 }
