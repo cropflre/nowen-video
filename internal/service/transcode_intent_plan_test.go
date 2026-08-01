@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
 )
@@ -27,7 +28,7 @@ func TestStartupIntentUsesDedicatedArtifactIdentityAndDuration(t *testing.T) {
 }
 
 func TestStartupIntentBuildsBoundedVODOutputPlan(t *testing.T) {
-	service := &TranscodeService{}
+	service := &TranscodeService{cfg: &config.Config{}}
 	job := &TranscodeJob{
 		Media:   &model.Media{ID: "media-startup", FilePath: "/media/movie.mkv", Duration: 7200},
 		Quality: "720p",
@@ -36,8 +37,6 @@ func TestStartupIntentBuildsBoundedVODOutputPlan(t *testing.T) {
 			DurationMS: startupStreamDurationMS,
 		},
 	}
-	// buildJobFFmpegArgs needs only fields consumed by the pure argument builder.
-	service.cfg = testTranscodeConfig()
 	args := service.buildJobFFmpegArgs(job, "/cache/workspaces/job/attempt/hls", "none")
 	joined := strings.Join(args, " ")
 	for _, expected := range []string{"-t 30.000", "-hls_playlist_type vod"} {
@@ -45,8 +44,4 @@ func TestStartupIntentBuildsBoundedVODOutputPlan(t *testing.T) {
 			t.Fatalf("startup output plan missing %q: %s", expected, joined)
 		}
 	}
-}
-
-func testTranscodeConfig() *config.Config {
-	return &config.Config{}
 }
