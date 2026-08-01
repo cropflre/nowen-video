@@ -10,11 +10,14 @@ import (
 	transcodeboundary "github.com/nowen-video/nowen-video/internal/transcode/boundaryevidence"
 )
 
-const SchemaVersion = "hls-av-boundary-sync-evidence-v1"
+const (
+	SchemaVersion               = "hls-av-boundary-sync-evidence-v1"
+	MaxProjectionResidualMicros = int64(2)
+)
 
 const (
-	StatusAligned         = "aligned"
-	StatusWithinOnePacket = "within_one_packet"
+	StatusAligned          = "aligned"
+	StatusWithinOnePacket  = "within_one_packet"
 	StatusOutsideOnePacket = "outside_one_packet"
 )
 
@@ -36,6 +39,8 @@ type Contract struct {
 	VideoBoundaryDeltaMicros     int64  `json:"video_boundary_delta_micros"`
 	AudioBoundaryDeltaMicros     int64  `json:"audio_boundary_delta_micros"`
 	BoundaryDeltaSkewMicros      int64  `json:"boundary_delta_skew_micros"`
+	SkewTransitionMicros         int64  `json:"skew_transition_micros"`
+	ProjectionResidualMicros     int64  `json:"projection_residual_micros"`
 	ToleranceMicros              int64  `json:"tolerance_micros"`
 	OnePacketBudgetMicros        int64  `json:"one_packet_budget_micros"`
 	StartupStatus                string `json:"startup_status"`
@@ -74,6 +79,7 @@ func FromBoundary(source transcodeboundary.Contract) (Contract, error) {
 	startupSkew := startupAudioEnd - startupVideoEnd
 	continuationSkew := continuationAudioStart - continuationVideoStart
 	boundarySkew := source.Audio.PresentationDeltaMicros - source.Video.PresentationDeltaMicros
+	skewTransition := continuationSkew - startupSkew
 	result := Contract{
 		SchemaVersion:                SchemaVersion,
 		CaseID:                       source.CaseID,
@@ -89,6 +95,8 @@ func FromBoundary(source transcodeboundary.Contract) (Contract, error) {
 		VideoBoundaryDeltaMicros:     source.Video.PresentationDeltaMicros,
 		AudioBoundaryDeltaMicros:     source.Audio.PresentationDeltaMicros,
 		BoundaryDeltaSkewMicros:      boundarySkew,
+		SkewTransitionMicros:         skewTransition,
+		ProjectionResidualMicros:     skewTransition - boundarySkew,
 		ToleranceMicros:              tolerance,
 		OnePacketBudgetMicros:        onePacketBudget,
 		StartupStatus:                Classify(startupSkew, tolerance, onePacketBudget),
@@ -124,8 +132,14 @@ func (c Contract) Validate() error {
 	if c.BoundaryDeltaSkewMicros != c.AudioBoundaryDeltaMicros-c.VideoBoundaryDeltaMicros {
 		return fmt.Errorf("boundary A/V delta skew is inconsistent")
 	}
-	if c.ContinuationStartSkewMicros-c.StartupEndSkewMicros != c.BoundaryDeltaSkewMicros {
+	if c.SkewTransitionMicros != c.ContinuationStartSkewMicros-c.StartupEndSkewMicros {
 		return fmt.Errorf("A/V skew transition is inconsistent")
+	}
+	if c.ProjectionResidualMicros != c.SkewTransitionMicros-c.BoundaryDeltaSkewMicros {
+		return fmt.Errorf("A/V projection residual is inconsistent")
+	}
+	if abs64(c.ProjectionResidualMicros) > MaxProjectionResidualMicros {
+		return fmt.Errorf("A/V projection residual exceeds integer-microsecond rounding bound")
 	}
 	if c.StartupStatus != Classify(c.StartupEndSkewMicros, c.ToleranceMicros, c.OnePacketBudgetMicros) {
 		return fmt.Errorf("startup A/V status is inconsistent")
