@@ -40,35 +40,35 @@ type Contract struct {
 }
 
 type VariantSpec struct {
-	ID               string `json:"id"`
-	Description      string `json:"description"`
-	Layer            string `json:"layer"`
-	Container        string `json:"container"`
-	FPSMode          string `json:"fps_mode"`
-	EncoderTimeBase  string `json:"encoder_time_base"`
-	CopyOnly         bool   `json:"copy_only"`
-	ParentVariantID  string `json:"parent_variant_id,omitempty"`
+	ID              string `json:"id"`
+	Description     string `json:"description"`
+	Layer           string `json:"layer"`
+	Container       string `json:"container"`
+	FPSMode         string `json:"fps_mode"`
+	EncoderTimeBase string `json:"encoder_time_base"`
+	CopyOnly        bool   `json:"copy_only"`
+	ParentVariantID string `json:"parent_variant_id,omitempty"`
 }
 
 type VariantEvidence struct {
-	Spec                         VariantSpec                              `json:"spec"`
-	CommandHash                  string                                   `json:"command_hash"`
-	Timeline                     transcodeoutputcadence.TimelineEvidence  `json:"timeline"`
-	Mapping                      transcodeoutputcadence.FrameMapping      `json:"mapping"`
-	Fingerprint                  FrameFingerprint                         `json:"fingerprint"`
-	CadenceClassification        string                                   `json:"cadence_classification"`
-	SequenceReference            string                                   `json:"sequence_reference"`
-	SequenceReferenceVariantID   string                                   `json:"sequence_reference_variant_id,omitempty"`
-	SequenceMatchesReference     bool                                     `json:"sequence_matches_reference"`
+	Spec                       VariantSpec                              `json:"spec"`
+	CommandHash                string                                   `json:"command_hash"`
+	Timeline                   transcodeoutputcadence.TimelineEvidence  `json:"timeline"`
+	Mapping                    transcodeoutputcadence.FrameMapping      `json:"mapping"`
+	Fingerprint                FrameFingerprint                         `json:"fingerprint"`
+	CadenceClassification      string                                   `json:"cadence_classification"`
+	SequenceReference          string                                   `json:"sequence_reference"`
+	SequenceReferenceVariantID string                                   `json:"sequence_reference_variant_id,omitempty"`
+	SequenceMatchesReference   bool                                     `json:"sequence_matches_reference"`
 }
 
 type FrameFingerprint struct {
-	FrameCount             int    `json:"frame_count"`
-	UniqueFrameCount       int    `json:"unique_frame_count"`
-	AdjacentDuplicateCount int    `json:"adjacent_duplicate_count"`
-	SequenceSHA256         string `json:"sequence_sha256"`
-	FirstFrameSHA256       string `json:"first_frame_sha256"`
-	LastFrameSHA256        string `json:"last_frame_sha256"`
+	FrameCount              int    `json:"frame_count"`
+	UniqueFrameCount        int    `json:"unique_frame_count"`
+	AdjacentDuplicateCount  int    `json:"adjacent_duplicate_count"`
+	SequenceSHA256          string `json:"sequence_sha256"`
+	FirstFrameSHA256        string `json:"first_frame_sha256"`
+	LastFrameSHA256         string `json:"last_frame_sha256"`
 }
 
 func (c Contract) Validate() error {
@@ -93,8 +93,8 @@ func (c Contract) Validate() error {
 	if c.WindowStartMicros < 0 || c.WindowEndMicros <= c.WindowStartMicros {
 		return fmt.Errorf("VFR isolation window is invalid")
 	}
-	if c.SourceTimeline.Kind != transcodeoutputcadence.TimelineSourceContinuation || c.SourceTimeline.FrameCount < 2 {
-		return fmt.Errorf("source continuation cadence is incomplete")
+	if err := c.SourceTimeline.ValidateFor(transcodeoutputcadence.TimelineSourceContinuation); err != nil {
+		return fmt.Errorf("source continuation cadence is invalid: %w", err)
 	}
 	if c.SourceTimeline.WindowStartMicros != c.WindowStartMicros || c.SourceTimeline.WindowEndMicros != c.WindowEndMicros {
 		return fmt.Errorf("source continuation window is inconsistent")
@@ -178,11 +178,14 @@ func (v VariantEvidence) validate(source transcodeoutputcadence.TimelineEvidence
 	if !v.Spec.CopyOnly && v.Spec.ParentVariantID != "" {
 		return fmt.Errorf("encoded variant cannot declare a parent")
 	}
-	if v.Timeline.Kind != "isolation_"+v.Spec.ID || v.Timeline.FrameCount < 2 {
-		return fmt.Errorf("variant timeline identity is incomplete")
+	if err := v.Timeline.ValidateFor("isolation_" + v.Spec.ID); err != nil {
+		return fmt.Errorf("variant timeline is invalid: %w", err)
 	}
 	if v.Timeline.WindowStartMicros != source.WindowStartMicros || v.Timeline.WindowEndMicros != source.WindowEndMicros {
 		return fmt.Errorf("variant window differs from source continuation")
+	}
+	if err := v.Mapping.Validate(); err != nil {
+		return fmt.Errorf("variant frame mapping is invalid: %w", err)
 	}
 	wantMapping := transcodeoutputcadence.NewFrameMapping(source.FrameCount, v.Timeline.FrameCount)
 	if v.Mapping != wantMapping {
