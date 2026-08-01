@@ -31,6 +31,22 @@ func TestContractRejectsCopySequenceDrift(t *testing.T) {
 	}
 }
 
+func TestContractRejectsCadenceHistogramDrift(t *testing.T) {
+	contract := validContract(t)
+	contract.Variants[0].Timeline.DeltaHistogram[0].Count--
+	if err := contract.Validate(); err == nil || !strings.Contains(err.Error(), "histogram count") {
+		t.Fatalf("unexpected validation result: %v", err)
+	}
+}
+
+func TestContractRejectsFrameMappingDrift(t *testing.T) {
+	contract := validContract(t)
+	contract.Variants[0].Mapping.FrameCountDelta = 1
+	if err := contract.Validate(); err == nil || !strings.Contains(err.Error(), "mapping") {
+		t.Fatalf("unexpected validation result: %v", err)
+	}
+}
+
 func TestContractRejectsSeamlessAuthorization(t *testing.T) {
 	contract := validContract(t)
 	contract.SeamlessAllowed = true
