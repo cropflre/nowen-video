@@ -329,7 +329,7 @@ func (s *TranscodeService) ResolveHLSOutputDir(media *model.Media, quality strin
 }
 
 func (s *TranscodeService) importLegacyHLSArtifact(media *model.Media, quality, fingerprint string) (string, error) {
-	legacyDir := s.GetOutputDir(media.ID, quality)
+	legacyDir := s.GetLegacyOutputDir(media.ID, quality)
 	manifestPath := filepath.Join(legacyDir, "stream.m3u8")
 	content, err := os.ReadFile(manifestPath)
 	if err != nil || !strings.Contains(string(content), ".ts") {
