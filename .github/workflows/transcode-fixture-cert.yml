@@ -41,10 +41,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cfr-software:
-    name: CFR H.264 AAC 48k software
+  overlap-attribution:
+    name: CFR overlap attribution matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -59,16 +59,53 @@ jobs:
         run: go test ./internal/transcode/certification ./internal/transcode/timestampplan
       - name: Build certification command
         run: go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
-      - name: Produce real-media evidence
+      - name: Produce real-media matrix evidence
         run: |
           mkdir -p /tmp/nowen-transcode-certification
           /tmp/nowen-transcode-fixture-cert \
-            -output /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
-          cat /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
-      - name: Upload certification report
+            -all \
+            -output /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
+          cat /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
+      - name: Verify matrix identities and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json')
+          matrix = json.loads(path.read_text())
+          assert matrix['schema_version'] == 'ffmpeg-handoff-fixture-matrix-v1'
+          required = {
+              'cfr-h264-aac-48k-software-v1',
+              'cfr-h264-aac-48k-software-zerolatency-v1',
+              'cfr-h264-aac-44k1-software-zerolatency-v1',
+          }
+          reports = {report['fixture_id']: report for report in matrix['reports']}
+          assert set(reports) == required
+          for report in reports.values():
+              assert report['schema_version'] == 'ffmpeg-handoff-fixture-report-v2'
+              assert report['handoff']['seamless_allowed'] is False
+              assert report['handoff']['discontinuity_required'] is True
+              assert report['handoff']['status'] in {'aligned', 'gap', 'overlap', 'mixed'}
+          comparisons = {item['name']: item for item in matrix['comparisons']}
+          assert set(comparisons) == {
+              'x264_zerolatency_effect_48k',
+              'aac_sample_rate_effect_zerolatency',
+          }
+          print(json.dumps({
+              fixture_id: {
+                  'status': report['handoff']['status'],
+                  'video_pts_delta_us': report['handoff']['video_presentation_delta_micros'],
+                  'audio_pts_delta_us': report['handoff']['audio_presentation_delta_micros'],
+              }
+              for fixture_id, report in reports.items()
+          }, sort_keys=True))
+          print(json.dumps(comparisons, sort_keys=True))
+          PY
+      - name: Upload certification matrix
         uses: actions/upload-artifact@v4
         with:
-          name: transcode-fixture-cfr-software-${{ github.sha }}
-          path: /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
+          name: transcode-fixture-overlap-matrix-${{ github.sha }}
+          path: /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
           if-no-files-found: error
           retention-days: 14
