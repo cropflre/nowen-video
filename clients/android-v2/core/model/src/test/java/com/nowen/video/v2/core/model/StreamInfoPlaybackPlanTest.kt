@@ -1,6 +1,7 @@
 package com.nowen.video.v2.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamInfoPlaybackPlanTest {
@@ -26,6 +27,38 @@ class StreamInfoPlaybackPlanTest {
         assertEquals("remux", stream.playbackMethod)
         assertEquals("无损封装转换", stream.playbackMethodLabel)
         assertEquals("container_remux", stream.playbackReasonCode)
+    }
+
+    @Test
+    fun startupStreamPlanUsesBridgeAndKeepsRuntimeFallback() {
+        val bridge = "/api/stream/media/startup-720p/stream.m3u8"
+        val fallback = "/api/stream/media/master.m3u8"
+        val stream = StreamInfo(
+            hlsUrl = fallback,
+            playbackPlan = PlaybackPlan(
+                mediaId = "media",
+                method = "startup_stream",
+                url = bridge,
+                reasonCode = "startup_artifact_ready",
+                reason = "已命中预生成启动流",
+                requiresTranscode = true,
+                fallbackMethod = "transcode",
+                fallbackUrl = fallback,
+                startupStream = PlaybackStartupStream(
+                    profileId = "720p",
+                    durationMs = 30_000,
+                    playlistUrl = bridge,
+                    continuationMode = "event_bridge_v1",
+                    discontinuityAtHandoff = true,
+                ),
+            ),
+        )
+
+        assertEquals(bridge, stream.preferredUrl)
+        assertEquals(fallback, stream.fallbackUrl)
+        assertEquals("startup_stream", stream.playbackMethod)
+        assertEquals("启动流秒开", stream.playbackMethodLabel)
+        assertTrue(stream.playbackPlan?.startupStream?.discontinuityAtHandoff == true)
     }
 
     @Test
