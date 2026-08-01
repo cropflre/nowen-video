@@ -13,13 +13,23 @@ on:
       - 'internal/service/task_center_test.go'
       - 'internal/service/playback_planner.go'
       - 'internal/service/playback_planner_test.go'
+      - 'internal/service/transcode*.go'
+      - 'internal/service/stream_artifacts.go'
+      - 'internal/service/ondemand.go'
       - 'internal/handler/lite.go'
+      - 'internal/handler/handler.go'
+      - 'internal/handler/stream_artifacts.go'
       - 'internal/handler/task_center.go'
       - 'internal/handler/playback_plan.go'
       - 'internal/model/migrate_lite.go'
+      - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_artifact_migration_test.go'
+      - 'internal/repository/repo_transcode*.go'
+      - 'internal/transcode/**'
       - 'internal/middleware/security.go'
       - 'internal/middleware/**/*_test.go'
       - 'internal/serverprofile/**'
+      - 'docs/TRANSCODE_*.md'
       - 'web/**'
       - 'Dockerfile'
       - 'Dockerfile.full'
@@ -43,6 +53,10 @@ jobs:
         run: go mod download
       - name: Test Go packages
         run: go test ./...
+      - name: Artifact lease and filesystem race tests
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|Lease|Shutdown'
+      - name: Artifact resolver performance baseline
+        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableHLSArtifact$' -benchtime=100x -benchmem
       - name: Build lite server
         run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-video-lite ./cmd/server-lite
       - name: Build full server
