@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	startupContinuationPlannerVersion = "startup-continuation-hls-v3"
+	startupContinuationPlannerVersion = "startup-continuation-hls-v4"
 	startupContinuationArtifactKind   = "startup_continuation_hls"
 	startupContinuationPriority       = 95
 )
@@ -24,22 +24,26 @@ const (
 // or attestation JSON are intentionally kept inside the service boundary; API
 // clients receive authenticated URLs plus safe identity diagnostics only.
 type StartupStreamDescriptor struct {
-	MediaID             string
-	ProfileID           string
-	SourceFingerprint   string
-	DurationMS          int64
-	ArtifactID          string
-	ManifestPath        string
-	OutputDir           string
-	EncodingPlanVersion string
-	EncodingPlanHash    string
-	EncodingPlanJSON    string
-	AttestationVersion  string
-	AttestationHash     string
-	AttestationJSON     string
-	TimelineStartMS     int64
-	TimelineEndMS       int64
-	Probe               *model.MediaProbeRecord
+	MediaID              string
+	ProfileID            string
+	SourceFingerprint    string
+	DurationMS           int64
+	ArtifactID           string
+	ManifestPath         string
+	OutputDir            string
+	EncodingPlanVersion  string
+	EncodingPlanHash     string
+	EncodingPlanJSON     string
+	TimestampPlanVersion string
+	TimestampPlanHash    string
+	TimestampPlanJSON    string
+	TimelineOriginMS     int64
+	AttestationVersion   string
+	AttestationHash      string
+	AttestationJSON      string
+	TimelineStartMS      int64
+	TimelineEndMS        int64
+	Probe                *model.MediaProbeRecord
 }
 
 func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*StartupStreamDescriptor, error) {
@@ -55,7 +59,11 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 	if err != nil {
 		return nil, fmt.Errorf("build startup encoding plan: %w", err)
 	}
-	artifact, err := s.executionRepo.FindPublishedArtifactByEncodingPlan(
+	timestampIdentity, err := startupTimestampIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("build startup timestamp plan: %w", err)
+	}
+	artifact, err := s.executionRepo.FindPublishedArtifactByExecutionContract(
 		media.ID,
 		profileID,
 		probe.SourceFingerprint,
@@ -63,6 +71,9 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 		startupStreamArtifactKind,
 		encodingIdentity.Version,
 		encodingIdentity.Hash,
+		timestampIdentity.Version,
+		timestampIdentity.Hash,
+		0,
 	)
 	if err != nil {
 		return nil, err
@@ -74,7 +85,14 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 		encodingIdentity.Version,
 		encodingIdentity.Hash,
 		encodingIdentity.Canonical,
-	) {
+	) || !sameTimestampPlan(
+		artifact.TimestampPlanVersion,
+		artifact.TimestampPlanHash,
+		artifact.TimestampPlanJSON,
+		timestampIdentity.Version,
+		timestampIdentity.Hash,
+		timestampIdentity.Canonical,
+	) || artifact.TimelineOriginMS != 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
 	if _, err := decodeArtifactAttestation(artifact); err != nil {
@@ -95,26 +113,37 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 		durationMS = startupStreamDurationMS
 	}
 	return &StartupStreamDescriptor{
-		MediaID:             media.ID,
-		ProfileID:           profileID,
-		SourceFingerprint:   probe.SourceFingerprint,
-		DurationMS:          durationMS,
-		ArtifactID:          artifact.ID,
-		ManifestPath:        manifestPath,
-		OutputDir:           artifact.Path,
-		EncodingPlanVersion: encodingIdentity.Version,
-		EncodingPlanHash:    encodingIdentity.Hash,
-		EncodingPlanJSON:    encodingIdentity.Canonical,
-		AttestationVersion:  artifact.AttestationVersion,
-		AttestationHash:     artifact.AttestationHash,
-		AttestationJSON:     artifact.AttestationJSON,
-		TimelineStartMS:     artifact.TimelineStartMS,
-		TimelineEndMS:       artifact.TimelineEndMS,
-		Probe:               probe,
+		MediaID:              media.ID,
+		ProfileID:            profileID,
+		SourceFingerprint:    probe.SourceFingerprint,
+		DurationMS:           durationMS,
+		ArtifactID:           artifact.ID,
+		ManifestPath:         manifestPath,
+		OutputDir:            artifact.Path,
+		EncodingPlanVersion:  encodingIdentity.Version,
+		EncodingPlanHash:     encodingIdentity.Hash,
+		EncodingPlanJSON:     encodingIdentity.Canonical,
+		TimestampPlanVersion: timestampIdentity.Version,
+		TimestampPlanHash:    timestampIdentity.Hash,
+		TimestampPlanJSON:    timestampIdentity.Canonical,
+		TimelineOriginMS:     artifact.TimelineOriginMS,
+		AttestationVersion:   artifact.AttestationVersion,
+		AttestationHash:      artifact.AttestationHash,
+		AttestationJSON:      artifact.AttestationJSON,
+		TimelineStartMS:      artifact.TimelineStartMS,
+		TimelineEndMS:        artifact.TimelineEndMS,
+		Probe:                probe,
 	}, nil
 }
 
-func startupContinuationActiveKey(mediaID, profileID, fingerprint string, startMS int64, encodingPlanHash string) string {
+func startupContinuationActiveKey(
+	mediaID,
+	profileID,
+	fingerprint string,
+	startMS int64,
+	encodingPlanHash,
+	timestampPlanHash string,
+) string {
 	return stableHash(strings.Join([]string{
 		mediaID,
 		string(transcodedomain.IntentStartupContinuationHLS),
@@ -123,13 +152,14 @@ func startupContinuationActiveKey(mediaID, profileID, fingerprint string, startM
 		fingerprint,
 		startupContinuationPlannerVersion,
 		encodingPlanHash,
+		timestampPlanHash,
 	}, "|"))
 }
 
 // SubmitStartupContinuation creates an interactive, durable continuation from
 // the exact end of the immutable startup artifact. It never writes into the
-// startup artifact directory and persists the exact Startup Encoding Plan
-// identity rather than independently inventing a second output contract.
+// startup artifact directory and persists both shared plan identities plus the
+// Job-owned continuation timeline origin.
 func (s *TranscodeService) SubmitStartupContinuation(
 	media *model.Media,
 	startup *StartupStreamDescriptor,
@@ -143,7 +173,7 @@ func (s *TranscodeService) SubmitStartupContinuation(
 	if _, err := decodeStartupDescriptorAttestation(startup); err != nil {
 		return nil, fmt.Errorf("startup descriptor attestation is invalid: %w", err)
 	}
-	expectedIdentity, err := startupEncodingIdentity(startup.Probe, startup.ProfileID)
+	expectedEncodingIdentity, err := startupEncodingIdentity(startup.Probe, startup.ProfileID)
 	if err != nil {
 		return nil, fmt.Errorf("rebuild continuation encoding plan: %w", err)
 	}
@@ -151,11 +181,25 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startup.EncodingPlanVersion,
 		startup.EncodingPlanHash,
 		startup.EncodingPlanJSON,
-		expectedIdentity.Version,
-		expectedIdentity.Hash,
-		expectedIdentity.Canonical,
+		expectedEncodingIdentity.Version,
+		expectedEncodingIdentity.Hash,
+		expectedEncodingIdentity.Canonical,
 	) {
 		return nil, fmt.Errorf("startup descriptor encoding plan is stale")
+	}
+	expectedTimestampIdentity, err := startupTimestampIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("rebuild continuation timestamp plan: %w", err)
+	}
+	if !sameTimestampPlan(
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startup.TimestampPlanJSON,
+		expectedTimestampIdentity.Version,
+		expectedTimestampIdentity.Hash,
+		expectedTimestampIdentity.Canonical,
+	) || startup.TimelineOriginMS != 0 {
+		return nil, fmt.Errorf("startup descriptor timestamp plan is stale")
 	}
 	startMS := startup.DurationMS
 	if startMS <= 0 {
@@ -170,9 +214,10 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startup.SourceFingerprint,
 		startMS,
 		startup.EncodingPlanHash,
+		startup.TimestampPlanHash,
 	)
 
-	if artifact, findErr := s.executionRepo.FindPublishedArtifactByEncodingPlan(
+	if artifact, findErr := s.executionRepo.FindPublishedArtifactByExecutionContract(
 		media.ID,
 		startup.ProfileID,
 		startup.SourceFingerprint,
@@ -180,6 +225,9 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startupContinuationArtifactKind,
 		startup.EncodingPlanVersion,
 		startup.EncodingPlanHash,
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startMS,
 	); findErr == nil && artifact != nil && sameEncodingPlan(
 		artifact.EncodingPlanVersion,
 		artifact.EncodingPlanHash,
@@ -187,7 +235,14 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startup.EncodingPlanVersion,
 		startup.EncodingPlanHash,
 		startup.EncodingPlanJSON,
-	) {
+	) && sameTimestampPlan(
+		artifact.TimestampPlanVersion,
+		artifact.TimestampPlanHash,
+		artifact.TimestampPlanJSON,
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startup.TimestampPlanJSON,
+	) && artifact.TimelineOriginMS == startMS {
 		if continuationEvidence, evidenceErr := decodeArtifactAttestation(artifact); evidenceErr == nil {
 			if startupEvidence, startupErr := decodeStartupDescriptorAttestation(startup); startupErr == nil && transcodeattestation.BridgeCompatible(startupEvidence, continuationEvidence) == nil {
 				if artifact.ManifestPath != "" {
@@ -250,15 +305,20 @@ func (s *TranscodeService) SubmitStartupContinuation(
 			startupContinuationPlannerVersion,
 			startup.ProfileID,
 			fmt.Sprintf("%d", startMS),
-			normalizeAttemptBackend(s.hwAccel),
+			"none",
 			startup.EncodingPlanHash,
+			startup.TimestampPlanHash,
 		}, "|")),
-		PlannerVersion:      startupContinuationPlannerVersion,
-		EncodingPlanVersion: startup.EncodingPlanVersion,
-		EncodingPlanHash:    startup.EncodingPlanHash,
-		EncodingPlanJSON:    startup.EncodingPlanJSON,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		PlannerVersion:       startupContinuationPlannerVersion,
+		EncodingPlanVersion:  startup.EncodingPlanVersion,
+		EncodingPlanHash:     startup.EncodingPlanHash,
+		EncodingPlanJSON:     startup.EncodingPlanJSON,
+		TimestampPlanVersion: startup.TimestampPlanVersion,
+		TimestampPlanHash:    startup.TimestampPlanHash,
+		TimestampPlanJSON:    startup.TimestampPlanJSON,
+		TimelineOriginMS:     startMS,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if err := s.executionRepo.CreateJob(record); err != nil {
 		_ = s.repo.DeleteByID(task.ID)
@@ -275,12 +335,14 @@ func (s *TranscodeService) SubmitStartupContinuation(
 	}
 	if s.logger != nil {
 		s.logger.Infof(
-			"已提交 Startup Continuation job=%s media=%s profile=%s start=%dms encoding_plan=%s",
+			"已提交 Startup Continuation job=%s media=%s profile=%s start=%dms encoding_plan=%s timestamp_plan=%s origin=%dms",
 			record.ID,
 			media.ID,
 			startup.ProfileID,
 			startMS,
 			startup.EncodingPlanHash,
+			startup.TimestampPlanHash,
+			startMS,
 		)
 	}
 	return task, nil
@@ -310,7 +372,11 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 	if s == nil || s.executionRepo == nil || media == nil || startup == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
-	artifact, err := s.executionRepo.FindReadableArtifactByEncodingPlan(
+	startMS := startup.DurationMS
+	if startMS <= 0 {
+		startMS = startupStreamDurationMS
+	}
+	artifact, err := s.executionRepo.FindReadableArtifactByExecutionContract(
 		media.ID,
 		startup.ProfileID,
 		startup.SourceFingerprint,
@@ -318,13 +384,16 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 		startupContinuationArtifactKind,
 		startup.EncodingPlanVersion,
 		startup.EncodingPlanHash,
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startMS,
 		time.Now(),
 	)
 	if err != nil {
 		if !errorsIsRecordNotFound(err) {
 			return nil, err
 		}
-		artifact, err = s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
+		artifact, err = s.executionRepo.FindActiveArtifactByExecutionContractForAttestation(
 			media.ID,
 			startup.ProfileID,
 			startup.SourceFingerprint,
@@ -332,6 +401,9 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 			startupContinuationArtifactKind,
 			startup.EncodingPlanVersion,
 			startup.EncodingPlanHash,
+			startup.TimestampPlanVersion,
+			startup.TimestampPlanHash,
+			startMS,
 			time.Now(),
 		)
 		if err != nil {
@@ -348,7 +420,14 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 		startup.EncodingPlanVersion,
 		startup.EncodingPlanHash,
 		startup.EncodingPlanJSON,
-	) {
+	) || !sameTimestampPlan(
+		artifact.TimestampPlanVersion,
+		artifact.TimestampPlanHash,
+		artifact.TimestampPlanJSON,
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startup.TimestampPlanJSON,
+	) || artifact.TimelineOriginMS != startMS {
 		return nil, gorm.ErrRecordNotFound
 	}
 	startupEvidence, err := decodeStartupDescriptorAttestation(startup)
@@ -370,15 +449,19 @@ func decodeStartupDescriptorAttestation(startup *StartupStreamDescriptor) (trans
 		return transcodeattestation.Attestation{}, fmt.Errorf("startup descriptor is nil")
 	}
 	return decodeArtifactAttestation(&model.TranscodeArtifactRecord{
-		EncodingPlanVersion: startup.EncodingPlanVersion,
-		EncodingPlanHash:    startup.EncodingPlanHash,
-		EncodingPlanJSON:    startup.EncodingPlanJSON,
-		AttestationVersion:  startup.AttestationVersion,
-		AttestationStatus:   artifactAttestationVerified,
-		AttestationHash:     startup.AttestationHash,
-		AttestationJSON:     startup.AttestationJSON,
-		TimelineStartMS:     startup.TimelineStartMS,
-		TimelineEndMS:       startup.TimelineEndMS,
+		EncodingPlanVersion:  startup.EncodingPlanVersion,
+		EncodingPlanHash:     startup.EncodingPlanHash,
+		EncodingPlanJSON:     startup.EncodingPlanJSON,
+		TimestampPlanVersion: startup.TimestampPlanVersion,
+		TimestampPlanHash:    startup.TimestampPlanHash,
+		TimestampPlanJSON:    startup.TimestampPlanJSON,
+		TimelineOriginMS:     startup.TimelineOriginMS,
+		AttestationVersion:   startup.AttestationVersion,
+		AttestationStatus:    artifactAttestationVerified,
+		AttestationHash:      startup.AttestationHash,
+		AttestationJSON:      startup.AttestationJSON,
+		TimelineStartMS:      startup.TimelineStartMS,
+		TimelineEndMS:        startup.TimelineEndMS,
 	})
 }
 
