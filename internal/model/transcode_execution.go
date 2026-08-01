@@ -149,13 +149,14 @@ func AutoMigrateTranscodeExecution(db *gorm.DB) error {
 		&TranscodeJobRecord{},
 		&TranscodeAttemptRecord{},
 		&TranscodeArtifactRecord{},
+		&TranscodeHandoffAttestationRecord{},
 	); err != nil {
 		return err
 	}
 	// Existing artifact rows were created before identity and Encoding Plan
 	// fields were stored on the artifact itself. Backfill only declarative plan
-	// identity from the owning Job. Produced-media attestation fields are never
-	// backfilled because historical output was not observed by the verifier.
+	// identity from the owning Job. Produced-media and handoff attestations are
+	// never backfilled because historical output was not observed by a verifier.
 	return db.Exec(`
 		UPDATE transcode_artifacts
 		SET
