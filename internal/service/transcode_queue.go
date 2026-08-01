@@ -30,6 +30,8 @@ type transcodePriorityQueue struct {
 	capacity      int64
 	pollInterval  time.Duration
 	wake          chan struct{}
+	done          chan struct{}
+	closeOnce     sync.Once
 
 	mu     sync.RWMutex
 	closed bool
@@ -51,6 +53,7 @@ func newTranscodePriorityQueue(
 		capacity:      int64(capacity),
 		pollInterval:  defaultTranscodeQueuePollInterval,
 		wake:          make(chan struct{}, 1),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -217,6 +220,8 @@ func (q *transcodePriorityQueue) waitForWork() bool {
 		return !q.IsClosed()
 	case <-timer.C:
 		return !q.IsClosed()
+	case <-q.done:
+		return false
 	}
 }
 
@@ -224,13 +229,16 @@ func (q *transcodePriorityQueue) Close() {
 	if q == nil {
 		return
 	}
-	q.mu.Lock()
-	q.closed = true
-	q.mu.Unlock()
-	select {
-	case q.wake <- struct{}{}:
-	default:
-	}
+	q.closeOnce.Do(func() {
+		q.mu.Lock()
+		q.closed = true
+		q.mu.Unlock()
+		close(q.done)
+		select {
+		case q.wake <- struct{}{}:
+		default:
+		}
+	})
 }
 
 // There are no unclaimed process-local deliveries to drain. Closing only
@@ -238,6 +246,15 @@ func (q *transcodePriorityQueue) Close() {
 func (q *transcodePriorityQueue) CloseAndDrain() []*TranscodeJob {
 	q.Close()
 	return nil
+}
+
+func (q *transcodePriorityQueue) Done() <-chan struct{} {
+	if q == nil || q.done == nil {
+		closed := make(chan struct{})
+		close(closed)
+		return closed
+	}
+	return q.done
 }
 
 func (q *transcodePriorityQueue) IsClosed() bool {
