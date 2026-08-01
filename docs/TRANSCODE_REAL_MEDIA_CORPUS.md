@@ -2,13 +2,18 @@
 
 ## Status
 
-Real Media Corpus v1 introduces a separately versioned, file-backed source domain for transcode certification.
+Real Media Corpus v1 is a separately versioned, file-backed source domain for transcode certification. It does not reuse or expand the historical synthetic `FixtureSpec`.
 
-It does not reuse or expand the historical synthetic `FixtureSpec`. The old fixture matrix remains backward-compatible and keeps its existing meaning. The new corpus owns its own source intent, byte identity, observed probe metadata, and future certification output.
+The current implementation includes:
 
-Phase 1 in this document implements the immutable **Spec** and **Manifest** contracts. It does not claim that the media assets or their certification reports already exist.
+1. immutable Spec and Manifest contracts;
+2. a six-case deterministic source registry;
+3. a real MP4, Matroska, and MPEG-TS asset generator;
+4. two-pass byte determinism verification;
+5. FFprobe and MP4 box evidence bound into the Manifest;
+6. independent Spec and asset-generation CI workflows.
 
-Production policy remains fail-closed:
+It does not yet run the generated files through both encoder time-base candidates. Production remains fail-closed:
 
 ```text
 seamless_allowed = false
@@ -18,17 +23,9 @@ discontinuity_required = true
 
 ## Why a separate domain is required
 
-The existing fixture certification is deliberately small and synthetic:
+The historical fixture matrix is deliberately small and synthetic. Adding MP4 edit-list behavior, Matroska VFR, MPEG-TS timestamp origins, Opus, color metadata, and immutable file digests to that structure would make old evidence ambiguous.
 
-- one generated MP4 source shape;
-- fixed CFR behavior;
-- limited audio variants;
-- no independent container registry;
-- no immutable source digest contract.
-
-Adding MP4 edit-list behavior, Matroska VFR, MPEG-TS source timestamps, Opus, and additional timeline origins to that structure would turn one fixture type into several unrelated models and make old evidence ambiguous.
-
-Real Media Corpus therefore has two explicit identities:
+Real Media Corpus therefore owns two explicit identities:
 
 ```text
 real-media-corpus-spec-v1
@@ -37,19 +34,19 @@ real-media-corpus-manifest-v1
 
 ## Spec contract
 
-The Spec is the immutable intent for the corpus. Every case declares:
+Every case declares:
 
 - stable case ID, description, purpose, and tier;
 - source container;
-- video codec, profile, pixel format, dimensions, and color metadata;
+- video codec, profile, pixel format, dimensions, and BT.709 metadata;
 - CFR or VFR policy and exact rational rates;
 - GOP, B-frame, reference-frame, and open-GOP policy;
-- audio codec, sample rate, channel layout, and track count;
-- duration, timestamp origin, edit-list policy, and discontinuity policy;
+- audio codec, sample rate, layout, and track count;
+- duration, timestamp origin, edit-list, and discontinuity policy;
 - Startup/Continuation boundary;
-- the complete evidence set required before the source can influence production decisions.
+- the evidence set required before the source can influence production decisions.
 
-The v1 required evidence set is:
+Required downstream evidence:
 
 ```text
 timestamp_plan
@@ -60,22 +57,31 @@ boundary_packet
 av_boundary_sync
 ```
 
-The canonical Spec JSON is hashed with SHA-256. Case ordering is part of the contract identity.
+The canonical Spec JSON is hashed with SHA-256. Case ordering is part of the identity.
+
+Current Spec SHA-256:
+
+```text
+ae9623f20d401c1f6cf985a5d687939f7a3a9fd3b59869fc9f27f719f22267fc
+```
 
 ## Manifest contract
 
-The Manifest binds one resolved corpus execution to actual files. Every asset must contain:
+The Manifest binds one generator execution to real files. It records:
 
-- the exact Spec version and Spec SHA-256;
-- a stable case ID;
-- a corpus-root-relative path;
-- file SHA-256 and byte size;
+- Spec version and SHA-256;
 - generator, FFmpeg, and FFprobe versions;
-- observed container and codec identities;
-- observed duration and start timestamp;
-- video dimensions, pixel format, frame-rate mode, rational rates, and time base;
+- exactly two generation repeats;
+- canonical asset order;
+- normalized FFmpeg command SHA-256;
+- final file SHA-256 and byte size;
+- the SHA-256 from both independent generation repeats;
+- observed container, codecs, profile, pixel format, dimensions, and color metadata;
+- observed start, duration, frame count, CFR/VFR rates, and stream time bases;
+- observed key-frame count and maximum key-frame interval;
+- observed B-frame reorder depth and maximum composition offset;
 - audio codec, sample rate, channel count, track count, and time base;
-- observed B-frame reorder classification.
+- observed MP4 edit-list presence.
 
 Relative paths are diagnostic. The authoritative source identity is:
 
@@ -83,119 +89,142 @@ Relative paths are diagnostic. The authoritative source identity is:
 case_id + file_sha256
 ```
 
-Absolute paths and paths that escape the corpus root are rejected.
+Absolute paths, root escapes, asset reordering, non-deterministic repeat hashes, and probe/Spec mismatches are rejected.
 
 ## Corpus tiers
 
-v1 defines two tiers:
-
 | Tier | Meaning |
 |---|---|
-| `deterministic_container` | media bytes produced by the pinned corpus generator and then consumed through real file demuxers |
-| `curated_external` | immutable externally sourced media with recorded provenance and SHA-256 |
+| `deterministic_container` | media bytes produced by the pinned generator and consumed through real file demuxers |
+| `curated_external` | immutable externally sourced media with provenance, licensing review, and SHA-256 |
 
-The initial registry contains deterministic container-backed cases. Curated external assets require a separate provenance and licensing review before inclusion.
+The initial registry contains deterministic container-backed cases only.
 
-## Initial case registry
+## Initial registry
 
-Every initial source is 40 seconds long with a 30-second certification boundary.
+Every source is 40 seconds long with a 30-second certification boundary.
 
 | Case | Container | Video | Audio | Timeline purpose |
 |---|---|---|---|---|
-| `real-mp4-h264-aac-cfr-24000-1001-v1` | MP4 | H.264 CFR 24000/1001, B2 | AAC 48 kHz | cinematic rational cadence |
-| `real-mp4-h264-aac-cfr-30000-1001-edit-list-v1` | MP4 | H.264 CFR 30000/1001, B3 | AAC 48 kHz | positive origin and edit-list behavior |
-| `real-mkv-h264-aac-vfr-24-30-v1` | Matroska | H.264 VFR 24 → 30, B3 | AAC 48 kHz | file-backed VFR demuxing |
-| `real-mpegts-h264-aac-cfr-30-b3-v1` | MPEG-TS | H.264 CFR 30, B3 | AAC 48 kHz | transport timestamp origin and packet ordering |
-| `real-mkv-h264-opus-cfr-25-v1` | Matroska | H.264 CFR 25, B2 | Opus 48 kHz | non-AAC input audio and Matroska time bases |
-| `real-mp4-h264-aac-cfr-30-aac-44100-v1` | MP4 | H.264 CFR 30, B3 | AAC 44.1 kHz | input audio resampling and boundary projection |
+| `real-mp4-h264-aac-cfr-24000-1001-v1` | MP4 | H.264 CFR 24000/1001, B2 | AAC 48 kHz | cinematic rational cadence, no edit list |
+| `real-mp4-h264-aac-cfr-30000-1001-edit-list-v1` | MP4 | H.264 CFR 30000/1001, B3 | AAC 48 kHz | +5 s origin and explicit edit list |
+| `real-mkv-h264-aac-vfr-24-30-v1` | Matroska | H.264 VFR 24 → 30, B3 | AAC 48 kHz | real file-backed VFR demuxing |
+| `real-mpegts-h264-aac-cfr-30-b3-v1` | MPEG-TS | H.264 CFR 30, B3 | AAC 48 kHz | +1.4 s transport origin |
+| `real-mkv-h264-opus-cfr-25-v1` | Matroska | H.264 CFR 25, B2 | Opus 48 kHz | non-AAC input audio |
+| `real-mp4-h264-aac-cfr-30-aac-44100-v1` | MP4 | H.264 CFR 30, B3 | AAC 44.1 kHz | input audio resampling boundary |
 
-All v1 video sources are progressive SDR BT.709 H.264 High Profile `yuv420p`. Interlaced, HDR, HEVC, AV1, open-GOP, discontinuous-source, multi-audio, and subtitle cases remain explicit later phases rather than hidden extensions to v1.
+All v1 video sources are progressive SDR BT.709 H.264 High Profile `yuv420p`. Interlaced, HDR, HEVC, AV1, open-GOP, discontinuous-source, multi-audio, subtitle, and curated external cases remain later phases.
 
-## Package boundaries
+## Deterministic generator
 
-Domain package:
+Execution package:
+
+```text
+internal/transcode/corpusgenerator
+```
+
+The domain package remains execution-free:
 
 ```text
 internal/transcode/realmediacorpus
 ```
 
-Responsibilities:
+For every case the generator:
 
-- immutable Spec and Manifest models;
-- canonical SHA-256 identity;
-- default case registry;
-- validation of source plans, resolved assets, probe evidence, and fail-closed policy.
+1. builds a normalized FFmpeg command from the immutable Spec;
+2. writes two independent files into an isolated staging directory;
+3. requires both file SHA-256 values to be identical;
+4. probes the first file with FFprobe;
+5. analyzes presentation-order PTS, cadence, key frames, B-frame reorder depth, and composition offsets;
+6. parses MP4 boxes directly to prove or reject `edts` edit-list presence;
+7. validates the complete observed evidence against the Spec;
+8. constructs and validates the canonical Manifest;
+9. only then moves assets into `assets/` and writes the Manifest;
+10. removes the staging directory.
 
-The package does not execute FFmpeg, write media files, or choose a production encoder time base.
+The generator never mutates the Spec to match observed output. A mismatch is a failed build.
+
+### Determinism controls
+
+The generated H.264 policy uses:
+
+```text
+threads = 1
+lookahead-threads = 1
+sliced-threads = 0
+b-adapt = 0
+b-pyramid = none
+open-gop = 0
+scenecut = 0
+```
+
+Additional controls include bitexact mux/codec flags, fixed metadata, MP4 `use_editlist`, Matroska CRC policy, explicit MPEG-TS mux delay, deterministic color VUI, fixed GOP/ref/B-frame policy, and normalized output-path-independent command hashing.
 
 ## CLI
 
-List the registry:
+List and emit the immutable Spec:
 
 ```bash
 go run ./cmd/transcode-real-media-corpus-spec -list
-```
 
-Write the canonical Spec report:
-
-```bash
 go run ./cmd/transcode-real-media-corpus-spec \
   -output /tmp/real-media-corpus-spec-v1.json
 ```
 
-The report includes:
+Generate assets and Manifest:
+
+```bash
+go run ./cmd/transcode-real-media-corpus-generate \
+  -output-dir /tmp/real-media-corpus-v1
+```
+
+Output layout:
 
 ```text
-schema_version = real-media-corpus-spec-report-v1
-spec_version   = real-media-corpus-spec-v1
-spec_hash      = <sha256>
+/tmp/real-media-corpus-v1/
+├── real-media-corpus-manifest-v1.json
+└── assets/
+    ├── real-mp4-h264-aac-cfr-24000-1001-v1.mp4
+    ├── real-mp4-h264-aac-cfr-30000-1001-edit-list-v1.mp4
+    ├── real-mkv-h264-aac-vfr-24-30-v1.mkv
+    ├── real-mpegts-h264-aac-cfr-30-b3-v1.ts
+    ├── real-mkv-h264-opus-cfr-25-v1.mkv
+    └── real-mp4-h264-aac-cfr-30-aac-44100-v1.mp4
 ```
 
 ## CI
 
-Workflow:
+Spec workflow:
 
 ```text
 .github/workflows/transcode-real-media-corpus-spec.yml
-```
-
-Semantic verifier:
-
-```text
 .github/scripts/verify_real_media_corpus_spec.py
 ```
 
-The workflow:
+Asset generation workflow:
 
-1. runs the real-media corpus Go contract tests;
-2. builds the standalone Spec command;
-3. produces canonical Spec JSON;
-4. verifies exact case ordering and required evidence;
-5. verifies MP4, Matroska, and MPEG-TS coverage;
-6. verifies CFR/VFR, AAC/Opus, 44.1/48 kHz, edit-list, and non-zero-origin coverage;
-7. verifies fail-closed seamless/discontinuity policy;
-8. uploads the canonical Spec as a CI artifact.
+```text
+.github/workflows/transcode-real-media-corpus-generate.yml
+.github/scripts/verify_real_media_corpus_manifest.py
+```
 
-## Phase 2: deterministic asset generator
+The asset workflow:
 
-The next implementation phase must add a generator that:
+1. runs domain and generator Go tests;
+2. builds the standalone generator;
+3. installs the Ubuntu 24.04 FFmpeg toolchain;
+4. generates every asset twice;
+5. requires exact byte equality between repeats;
+6. validates the Manifest and recomputes every file SHA-256 and size;
+7. verifies exact case order, containers, CFR/VFR rates, frame counts, GOPs, B-frame depth, audio policy, origins, color metadata, and edit-list policy;
+8. verifies no staging directory survives;
+9. uploads assets and Manifest for seven days.
 
-1. creates each source in an isolated directory;
-2. uses pinned, normalized FFmpeg commands;
-3. writes real MP4, Matroska, or MPEG-TS files;
-4. computes byte size and SHA-256;
-5. probes every file with FFprobe;
-6. verifies observed metadata against the Spec;
-7. writes `real-media-corpus-manifest-v1`;
-8. rejects any asset whose observed identity differs from intent;
-9. uploads the assets and Manifest as short-lived CI artifacts.
+## Next gate: corpus candidate certification
 
-The generator must never mutate the Spec to match observed output. A mismatch is a failed build, not a dynamic contract update.
+The next phase must consume the generated Manifest as an immutable input and run every file through both explicit encoder time-base candidates. It must bind:
 
-## Later gates
-
-After deterministic assets exist, each source must run through both explicit encoder time-base candidates and bind:
-
+- source file SHA-256;
 - Timestamp Plan;
 - Output Cadence Evidence;
 - Encoder Time-Base Candidate Evidence;
@@ -204,13 +233,8 @@ After deterministic assets exist, each source must run through both explicit enc
 - Boundary Packet Evidence;
 - A/V Boundary Sync Evidence.
 
-Further independent gates are still required for:
+The certification runner must fail if the source file bytes, Manifest identity, observed demuxer behavior, candidate evidence, or fail-closed policy changes.
 
-- curated real-world media;
-- hardware encoders;
-- long-duration drift;
-- HEVC, AV1, HDR, interlaced, subtitles, multi-audio, and discontinuous sources;
-- Web, PC, Android, Emby, and Infuse client acceptance;
-- rollout, fallback, and rollback.
+Independent later gates are still required for curated real-world media, hardware encoders, long-duration drift, HEVC/AV1/HDR/interlaced/subtitles/multi-audio, client acceptance, rollout, fallback, and rollback.
 
 No Real Media Corpus evidence can remove `#EXT-X-DISCONTINUITY` or enable a production encoder time-base candidate by itself.
