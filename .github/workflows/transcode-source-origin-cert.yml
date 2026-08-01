@@ -1,0 +1,168 @@
+name: Transcode Source Origin Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-source-origin-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_SOURCE_ORIGIN.md'
+      - '.github/workflows/transcode-source-origin-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-source-origin-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_SOURCE_ORIGIN.md'
+      - '.github/workflows/transcode-source-origin-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-source-origin-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-origin-certification:
+    name: Frame-rate and source-origin matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify source-origin contracts
+        run: |
+          go test ./internal/transcode/sourceorigin
+          go test ./internal/transcode/boundaryevidence ./internal/transcode/avsync ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-source-origin-cert ./cmd/transcode-source-origin-cert
+      - name: Produce frame-rate and source-origin matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-source-origin
+          /tmp/nowen-transcode-source-origin-cert \
+            -output /tmp/nowen-transcode-source-origin/source-origin-matrix-v1.json
+      - name: Verify source, normalization, evidence identity and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-source-origin/source-origin-matrix-v1.json')
+          matrix = json.loads(path.read_text())
+          assert matrix['schema_version'] == 'ffmpeg-source-origin-matrix-v1'
+          expected = [
+              ('source-cfr-24-origin-zero-v1', 'cfr', 24000, 0),
+              ('source-cfr-25-origin-zero-v1', 'cfr', 25000, 0),
+              ('source-cfr-30000-1001-origin-zero-v1', 'cfr', 29970, 0),
+              ('source-vfr-24-30-origin-zero-v1', 'vfr', 27000, 0),
+              ('source-cfr-30-origin-positive-5s-v1', 'cfr', 30000, 5000000),
+              ('source-cfr-30-origin-negative-2s-v1', 'cfr', 30000, -2000000),
+          ]
+          assert len(matrix['cases']) == len(expected)
+          assert [item['case']['id'] for item in matrix['cases']] == [item[0] for item in expected]
+
+          toolchain = None
+          contract_hashes = set()
+          summary = {}
+          for item, (case_id, mode, rate_milli, offset_us) in zip(matrix['cases'], expected):
+              case = item['case']
+              evidence = item['evidence']
+              boundary = item['boundary']
+              av = item['av_sync']
+
+              assert case['source_mode'] == mode
+              assert evidence['case_id'] == case_id
+              assert evidence['fixture_id'] == case['fixture_id']
+              assert evidence['source_mode'] == mode
+              assert evidence['declared_frame_rate_milli'] == rate_milli
+              assert evidence['source_offset_micros'] == offset_us
+              assert evidence['origin_tolerance_micros'] == 100000
+              assert evidence['expected_boundary_micros'] == 30000000
+              assert abs(evidence['source_video']['first_pts_micros'] - offset_us) <= 100000
+              assert abs(evidence['source_audio']['first_pts_micros'] - offset_us) <= 100000
+
+              video = evidence['source_video']
+              audio = evidence['source_audio']
+              assert video['duration_spread_micros'] == video['max_packet_duration_micros'] - video['min_packet_duration_micros']
+              assert audio['duration_spread_micros'] == audio['max_packet_duration_micros'] - audio['min_packet_duration_micros']
+              if mode == 'vfr':
+                  assert video['variable_duration'] is True
+                  assert video['duration_spread_micros'] >= 5000
+              else:
+                  assert video['variable_duration'] is False
+                  assert video['duration_spread_micros'] < 5000
+              assert audio['variable_duration'] is False
+
+              assert -250 <= evidence['normalized_startup_video_start_ms'] <= 3000
+              assert -250 <= evidence['normalized_startup_audio_start_ms'] <= 3000
+              assert 29750 <= evidence['normalized_continuation_video_start_ms'] <= 33000
+              assert 29750 <= evidence['normalized_continuation_audio_start_ms'] <= 33000
+
+              assert item['contract_version'] == 'hls-source-origin-evidence-v1'
+              assert evidence['schema_version'] == item['contract_version']
+              evidence_canonical = json.dumps(evidence, ensure_ascii=False, separators=(',', ':'))
+              assert hashlib.sha256(evidence_canonical.encode()).hexdigest() == item['contract_hash']
+              contract_hashes.add(item['contract_hash'])
+
+              assert item['boundary_version'] == 'hls-boundary-packet-evidence-v1'
+              assert evidence['boundary_evidence_version'] == item['boundary_version']
+              assert evidence['boundary_evidence_hash'] == item['boundary_hash']
+              boundary_canonical = json.dumps(boundary, ensure_ascii=False, separators=(',', ':'))
+              assert hashlib.sha256(boundary_canonical.encode()).hexdigest() == item['boundary_hash']
+
+              assert item['av_sync_version'] == 'hls-av-boundary-sync-evidence-v1'
+              assert evidence['av_sync_evidence_version'] == item['av_sync_version']
+              assert evidence['av_sync_evidence_hash'] == item['av_sync_hash']
+              av_canonical = json.dumps(av, ensure_ascii=False, separators=(',', ':'))
+              assert hashlib.sha256(av_canonical.encode()).hexdigest() == item['av_sync_hash']
+
+              for contract in (evidence, boundary, av):
+                  assert contract['seamless_allowed'] is False
+                  assert contract['discontinuity_required'] is True
+
+              current_toolchain = (evidence['ffmpeg_version'], evidence['ffprobe_version'])
+              toolchain = current_toolchain if toolchain is None else toolchain
+              assert current_toolchain == toolchain
+              summary[case_id] = {
+                  'video_origin_us': video['first_pts_micros'],
+                  'audio_origin_us': audio['first_pts_micros'],
+                  'video_spread_us': video['duration_spread_micros'],
+                  'startup_video_ms': evidence['normalized_startup_video_start_ms'],
+                  'continuation_video_ms': evidence['normalized_continuation_video_start_ms'],
+                  'av_delta_skew_us': av['boundary_delta_skew_micros'],
+              }
+
+          assert len(contract_hashes) == len(expected)
+          print(json.dumps({'toolchain': toolchain, 'summary': summary}, sort_keys=True))
+          PY
+      - name: Upload source-origin evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-source-origin-${{ github.sha }}
+          path: /tmp/nowen-transcode-source-origin/source-origin-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
