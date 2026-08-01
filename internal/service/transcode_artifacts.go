@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nowen-video/nowen-video/internal/model"
-	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
+	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
 	"gorm.io/gorm"
 )
 
@@ -31,6 +31,9 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 	if job == nil || job.ExecutionJob == nil || job.Media == nil {
 		return nil, fmt.Errorf("transcode job is incomplete")
 	}
+	if _, err := validateTimestampExecution(job.ExecutionJob, backend); err != nil {
+		return nil, fmt.Errorf("validate timestamp execution: %w", err)
+	}
 	attemptID := uuid.NewString()
 	artifactID := uuid.NewString()
 	workspace, err := s.artifactStore.PrepareWorkspace(job.ExecutionJob.ID, attemptID)
@@ -38,7 +41,11 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 		return nil, err
 	}
 
-	args := s.buildJobFFmpegArgs(job, workspace, backend)
+	args, err := s.buildJobFFmpegArgsChecked(job, workspace, backend)
+	if err != nil {
+		_ = s.artifactStore.Remove(workspace)
+		return nil, fmt.Errorf("build ffmpeg execution plan: %w", err)
+	}
 	commandJSON, _ := json.Marshal(map[string]any{
 		"path": s.cfg.App.FFmpegPath,
 		"args": redactFFmpegArgs(args),
@@ -62,20 +69,27 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 	}
 
 	artifact := &model.TranscodeArtifactRecord{
-		ID:                artifactID,
-		JobID:             job.ExecutionJob.ID,
-		AttemptID:         attemptID,
-		MediaID:           job.Media.ID,
-		Kind:              transcodeArtifactKind(job),
-		ProfileID:         job.Quality,
-		SourceFingerprint: job.ExecutionJob.SourceFingerprint,
-		PlannerVersion:    job.ExecutionJob.PlannerVersion,
-		TempPath:          workspace,
-		Status:            "staging",
-		DurationMS:        transcodeArtifactDurationMS(job),
-		SegmentDuration:   hlsTargetSegmentSeconds,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:                   artifactID,
+		JobID:                job.ExecutionJob.ID,
+		AttemptID:            attemptID,
+		MediaID:              job.Media.ID,
+		Kind:                 transcodeArtifactKind(job),
+		ProfileID:            job.Quality,
+		SourceFingerprint:    job.ExecutionJob.SourceFingerprint,
+		PlannerVersion:       job.ExecutionJob.PlannerVersion,
+		EncodingPlanVersion:  job.ExecutionJob.EncodingPlanVersion,
+		EncodingPlanHash:     job.ExecutionJob.EncodingPlanHash,
+		EncodingPlanJSON:     job.ExecutionJob.EncodingPlanJSON,
+		TimestampPlanVersion: job.ExecutionJob.TimestampPlanVersion,
+		TimestampPlanHash:    job.ExecutionJob.TimestampPlanHash,
+		TimestampPlanJSON:    job.ExecutionJob.TimestampPlanJSON,
+		TimelineOriginMS:     job.ExecutionJob.TimelineOriginMS,
+		TempPath:             workspace,
+		Status:               "staging",
+		DurationMS:           transcodeArtifactDurationMS(job),
+		SegmentDuration:      hlsTargetSegmentSeconds,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if err := s.executionRepo.CreateArtifact(artifact); err != nil {
 		_ = s.executionRepo.CompleteAttempt(
