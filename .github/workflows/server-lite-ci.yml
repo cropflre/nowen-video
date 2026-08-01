@@ -70,8 +70,8 @@ jobs:
         run: go test -race ./internal/transcode/encodingplan ./internal/transcode/attestation
       - name: Artifact lease and filesystem race tests
         run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Attestation|Lease|Shutdown'
-      - name: Artifact resolver performance baseline
-        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableHLSArtifact$' -benchtime=100x -benchmem
+      - name: Attested startup resolver performance baseline
+        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByEncodingPlan$' -benchtime=100x -benchmem
       - name: Build lite server
         run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-video-lite ./cmd/server-lite
       - name: Build full server
