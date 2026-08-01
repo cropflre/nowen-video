@@ -8,13 +8,14 @@ import "time"
 type Intent string
 
 const (
-	IntentRuntimeHLS    Intent = "runtime_hls"
-	IntentStartupHLS    Intent = "startup_hls"
-	IntentPreprocessHLS Intent = "preprocess_hls"
-	IntentRemuxStream   Intent = "remux_stream"
-	IntentSmartRemux    Intent = "smart_remux"
-	IntentVideoSegment  Intent = "ondemand_video_segment"
-	IntentAudioSegment  Intent = "ondemand_audio_segment"
+	IntentRuntimeHLS             Intent = "runtime_hls"
+	IntentStartupHLS             Intent = "startup_hls"
+	IntentStartupContinuationHLS Intent = "startup_continuation_hls"
+	IntentPreprocessHLS          Intent = "preprocess_hls"
+	IntentRemuxStream            Intent = "remux_stream"
+	IntentSmartRemux             Intent = "smart_remux"
+	IntentVideoSegment           Intent = "ondemand_video_segment"
+	IntentAudioSegment           Intent = "ondemand_audio_segment"
 )
 
 // Status is the persisted lifecycle of a media processing job.
