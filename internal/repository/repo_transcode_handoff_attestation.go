@@ -8,6 +8,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const handoffTimelineSchemaV2 = "startup-handoff-timeline-v2"
+
 func (r *TranscodeExecutionRepo) UpsertHandoffAttestation(record *model.TranscodeHandoffAttestationRecord) error {
 	if r == nil || r.db == nil || record == nil {
 		return gorm.ErrInvalidData
@@ -18,6 +20,12 @@ func (r *TranscodeExecutionRepo) UpsertHandoffAttestation(record *model.Transcod
 		record.StartupAttestationVersion == "" || record.StartupAttestationHash == "" ||
 		record.ContinuationAttestationVersion == "" || record.ContinuationAttestationHash == "" ||
 		record.Status == "" || record.DecisionReason == "" || record.EvaluatedAt.IsZero() {
+		return gorm.ErrInvalidData
+	}
+	if record.SchemaVersion == handoffTimelineSchemaV2 &&
+		(record.TimestampPlanVersion == "" || record.TimestampPlanHash == "" ||
+			record.StartupTimelineOriginMS < 0 || record.ContinuationTimelineOriginMS <= record.StartupTimelineOriginMS ||
+			record.ExpectedBoundaryMS != record.ContinuationTimelineOriginMS) {
 		return gorm.ErrInvalidData
 	}
 	return r.db.Clauses(clause.OnConflict{
@@ -31,6 +39,11 @@ func (r *TranscodeExecutionRepo) UpsertHandoffAttestation(record *model.Transcod
 			"profile_id",
 			"encoding_plan_version",
 			"encoding_plan_hash",
+			"timestamp_plan_version",
+			"timestamp_plan_hash",
+			"startup_timeline_origin_ms",
+			"continuation_timeline_origin_ms",
+			"expected_boundary_ms",
 			"startup_attestation_version",
 			"startup_attestation_hash",
 			"continuation_attestation_version",
