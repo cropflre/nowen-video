@@ -11,10 +11,12 @@ on:
       - 'internal/service/transcode_startup.go'
       - 'internal/service/transcode_timestamp_plan.go'
       - 'internal/transcode/attestation/**'
+      - 'internal/transcode/boundaryevidence/**'
       - 'internal/transcode/certification/**'
       - 'internal/transcode/encodingplan/**'
       - 'internal/transcode/timeline/**'
       - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_BOUNDARY_EVIDENCE.md'
       - 'docs/TRANSCODE_FIXTURE_CERTIFICATION.md'
       - '.github/workflows/transcode-fixture-cert.yml'
   pull_request:
@@ -25,10 +27,12 @@ on:
       - 'internal/service/transcode_startup.go'
       - 'internal/service/transcode_timestamp_plan.go'
       - 'internal/transcode/attestation/**'
+      - 'internal/transcode/boundaryevidence/**'
       - 'internal/transcode/certification/**'
       - 'internal/transcode/encodingplan/**'
       - 'internal/transcode/timeline/**'
       - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_BOUNDARY_EVIDENCE.md'
       - 'docs/TRANSCODE_FIXTURE_CERTIFICATION.md'
       - '.github/workflows/transcode-fixture-cert.yml'
   workflow_dispatch:
@@ -41,10 +45,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  overlap-attribution:
-    name: CFR overlap attribution matrix
+  real-media-certification:
+    name: Overlap and packet-boundary matrices
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -56,31 +60,38 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Verify fixture contracts
-        run: go test ./internal/transcode/certification ./internal/transcode/timestampplan
+        run: |
+          go test ./internal/service/ffmpeg
+          go test ./internal/transcode/boundaryevidence
+          go test ./internal/transcode/certification ./internal/transcode/timestampplan
       - name: Build certification command
         run: go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
-      - name: Produce real-media matrix evidence
+      - name: Produce real-media overlap matrix
         run: |
           mkdir -p /tmp/nowen-transcode-certification
           /tmp/nowen-transcode-fixture-cert \
             -all \
             -output /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
-          cat /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
-      - name: Verify matrix identities, evidence and fail-closed policy
+      - name: Produce real-media packet boundary matrix
+        run: |
+          /tmp/nowen-transcode-fixture-cert \
+            -boundary-matrix \
+            -output /tmp/nowen-transcode-certification/boundary-placement-matrix-v1.json
+      - name: Verify matrix identities, packet evidence and fail-closed policy
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          path = Path('/tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json')
-          matrix = json.loads(path.read_text())
-          assert matrix['schema_version'] == 'ffmpeg-handoff-fixture-matrix-v1'
+          root = Path('/tmp/nowen-transcode-certification')
+          overlap = json.loads((root / 'cfr-overlap-attribution-matrix-v1.json').read_text())
+          assert overlap['schema_version'] == 'ffmpeg-handoff-fixture-matrix-v1'
 
           control_id = 'cfr-h264-aac-48k-software-v1'
           production_48k_id = 'cfr-h264-aac-48k-software-zerolatency-v1'
           production_44k1_id = 'cfr-h264-aac-44k1-software-zerolatency-v1'
           required = {control_id, production_48k_id, production_44k1_id}
-          reports = {report['fixture_id']: report for report in matrix['reports']}
+          reports = {report['fixture_id']: report for report in overlap['reports']}
           assert set(reports) == required
 
           for fixture_id, report in reports.items():
@@ -89,7 +100,6 @@ jobs:
               assert report['handoff']['seamless_allowed'] is False
               assert report['handoff']['discontinuity_required'] is True
               assert report['handoff']['status'] in {'aligned', 'gap', 'overlap', 'mixed'}
-
               handoff = report['handoff']
               for stream, presentation_key, decode_key in (
                   ('video', 'video_presentation_delta_micros', 'video_decode_delta_micros'),
@@ -101,27 +111,103 @@ jobs:
                   assert handoff[presentation_key] == evidence['presentation_delta_micros']
                   assert handoff[decode_key] == evidence['decode_delta_micros']
 
-          assert reports[control_id]['fixture']['audio_sample_rate'] == 48000
-          assert reports[production_48k_id]['fixture']['audio_sample_rate'] == 48000
-          assert reports[production_44k1_id]['fixture']['audio_sample_rate'] == 44100
-
           control = reports[control_id]['handoff']
           production_48k = reports[production_48k_id]['handoff']
           assert abs(production_48k['video_presentation_delta_micros']) < abs(control['video_presentation_delta_micros'])
           assert abs(production_48k['video_decode_delta_micros']) < abs(control['video_decode_delta_micros'])
           assert abs(production_48k['audio_presentation_delta_micros']) < abs(control['audio_presentation_delta_micros'])
 
-          comparisons = {item['name']: item for item in matrix['comparisons']}
+          comparisons = {item['name']: item for item in overlap['comparisons']}
           assert set(comparisons) == {
               'x264_zerolatency_effect_48k',
               'aac_sample_rate_effect_zerolatency',
           }
-          zero_latency = comparisons['x264_zerolatency_effect_48k']
-          assert zero_latency['video_presentation_delta_change_micros'] > 0
-          assert zero_latency['video_decode_delta_change_micros'] > 0
-          assert zero_latency['audio_presentation_delta_change_micros'] > 0
-          sample_rate = comparisons['aac_sample_rate_effect_zerolatency']
-          assert sample_rate['audio_presentation_delta_change_micros'] != 0
+          assert comparisons['x264_zerolatency_effect_48k']['video_presentation_delta_change_micros'] > 0
+          assert comparisons['x264_zerolatency_effect_48k']['video_decode_delta_change_micros'] > 0
+          assert comparisons['x264_zerolatency_effect_48k']['audio_presentation_delta_change_micros'] > 0
+          assert comparisons['aac_sample_rate_effect_zerolatency']['audio_presentation_delta_change_micros'] != 0
+
+          boundary = json.loads((root / 'boundary-placement-matrix-v1.json').read_text())
+          assert boundary['schema_version'] == 'ffmpeg-boundary-placement-matrix-v1'
+          expected = {
+              'boundary-48k-keyframe-v1': 30_000_000,
+              'boundary-48k-video-before-v1': 29_966_667,
+              'boundary-48k-video-after-v1': 30_033_333,
+              'boundary-48k-audio-before-v1': 29_978_667,
+              'boundary-48k-audio-after-v1': 30_021_333,
+              'boundary-44k1-keyframe-v1': 30_000_000,
+              'boundary-44k1-audio-before-v1': 29_976_780,
+              'boundary-44k1-audio-after-v1': 30_023_220,
+          }
+          assert [item['case']['id'] for item in boundary['cases']] == list(expected)
+          hashes = set()
+          toolchain = None
+          summaries = {}
+          allowed_status = {
+              'aligned',
+              'single_packet_gap',
+              'multi_packet_gap',
+              'single_packet_overlap',
+              'multi_packet_overlap',
+          }
+          for item in boundary['cases']:
+              case = item['case']
+              evidence = item['evidence']
+              case_id = case['id']
+              assert case['expected_boundary_micros'] == expected[case_id]
+              assert case['expected_boundary_micros'] == case['reference_boundary_micros'] + case['offset_micros']
+              assert item['contract_version'] == 'hls-boundary-packet-evidence-v1'
+              assert item['contract_hash'] not in hashes
+              hashes.add(item['contract_hash'])
+              assert evidence['schema_version'] == 'hls-boundary-packet-evidence-v1'
+              assert evidence['case_id'] == case_id
+              assert evidence['fixture_id'] == case['fixture_id']
+              assert evidence['expected_boundary_micros'] == expected[case_id]
+              assert evidence['seamless_allowed'] is False
+              assert evidence['discontinuity_required'] is True
+              assert evidence['encoding_plan_version'] == 'hls-encoding-plan-v1'
+              assert evidence['timestamp_plan_version'] == 'hls-timestamp-normalization-v1'
+              assert evidence['startup_attestation_version'] == 'hls-produced-media-attestation-v1'
+              assert evidence['continuation_attestation_version'] == 'hls-produced-media-attestation-v1'
+              current_toolchain = (evidence['ffmpeg_version'], evidence['ffprobe_version'])
+              toolchain = current_toolchain if toolchain is None else toolchain
+              assert current_toolchain == toolchain
+
+              for kind in ('video', 'audio'):
+                  stream = evidence[kind]
+                  startup = stream['startup']
+                  continuation = stream['continuation']
+                  assert stream['kind'] == kind
+                  assert stream['status'] in allowed_status
+                  assert stream['presentation_delta_ticks'] == continuation['earliest_pts'] - startup['latest_end_pts']
+                  assert stream['decode_delta_ticks'] == continuation['first_dts'] - startup['last_end_dts']
+                  assert stream['nominal_packet_duration_ticks'] > 0
+                  assert stream['nominal_packet_duration_micros'] > 0
+                  assert stream['tolerance_micros'] > 0
+                  assert startup['position'] == 'tail'
+                  assert continuation['position'] == 'head'
+                  assert 1 <= len(startup['packets']) <= 6
+                  assert 1 <= len(continuation['packets']) <= 6
+                  assert startup['packet_count'] >= len(startup['packets'])
+                  assert continuation['packet_count'] >= len(continuation['packets'])
+                  assert startup['packets'][0]['ordinal'] == startup['packet_count'] - len(startup['packets'])
+                  assert continuation['packets'][0]['ordinal'] == 0
+                  for packet in startup['packets'] + continuation['packets']:
+                      assert packet['duration'] > 0
+                      assert packet['duration_micros'] > 0
+
+              audio_delay = evidence['audio']['audio_delay']
+              assert 1023 <= audio_delay['nominal_packet_samples'] <= 1025
+              assert isinstance(audio_delay['side_data_observed'], bool)
+              summaries[case_id] = {
+                  'video_status': evidence['video']['status'],
+                  'video_delta_us': evidence['video']['presentation_delta_micros'],
+                  'video_units_milli': evidence['video']['boundary_units_milli'],
+                  'audio_status': evidence['audio']['status'],
+                  'audio_delta_us': evidence['audio']['presentation_delta_micros'],
+                  'audio_delta_samples': audio_delay['boundary_delta_samples'],
+                  'side_data_observed': audio_delay['side_data_observed'],
+              }
 
           print(json.dumps({
               fixture_id: {
@@ -132,11 +218,14 @@ jobs:
               for fixture_id, report in reports.items()
           }, sort_keys=True))
           print(json.dumps(comparisons, sort_keys=True))
+          print(json.dumps(summaries, sort_keys=True))
           PY
-      - name: Upload certification matrix
+      - name: Upload certification matrices
         uses: actions/upload-artifact@v4
         with:
-          name: transcode-fixture-overlap-matrix-${{ github.sha }}
-          path: /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
+          name: transcode-fixture-certification-${{ github.sha }}
+          path: |
+            /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
+            /tmp/nowen-transcode-certification/boundary-placement-matrix-v1.json
           if-no-files-found: error
           retention-days: 14
