@@ -108,6 +108,7 @@ jobs:
               outliers = [bucket for bucket in histogram if bucket['count'] < threshold]
               assert timeline['significant_delta_count'] == len(significant)
               assert timeline['outlier_delta_count'] == sum(bucket['count'] for bucket in outliers)
+              assert timeline['near_zero_delta_count'] == sum(bucket['count'] for bucket in histogram if bucket['delta_micros'] < 1000)
               dominant = sorted(histogram, key=lambda bucket: (-bucket['count'], bucket['delta_ticks']))[0]
               assert timeline['dominant_delta_ticks'] == dominant['delta_ticks']
               assert timeline['dominant_delta_micros'] == dominant['delta_micros']
@@ -144,20 +145,24 @@ jobs:
               assert evidence['av_sync_evidence_hash'] == source_report['av_sync_hash']
 
               source = evidence['source_timeline']
+              source_startup = evidence['source_startup_timeline']
+              source_continuation = evidence['source_continuation_timeline']
               startup = evidence['startup_timeline']
               continuation = evidence['continuation_timeline']
               startup_map = evidence['startup_mapping']
               continuation_map = evidence['continuation_mapping']
-              assert source['frame_count'] == startup_map['input_frames'] + continuation_map['input_frames']
+              assert source['frame_count'] == source_startup['frame_count'] + source_continuation['frame_count']
+              assert source_startup['frame_count'] == startup_map['input_frames']
+              assert source_continuation['frame_count'] == continuation_map['input_frames']
               assert startup['frame_count'] == startup_map['output_frames']
               assert continuation['frame_count'] == continuation_map['output_frames']
-              for timeline in (source, startup, continuation):
+              for timeline in (source, source_startup, source_continuation, startup, continuation):
                   validate_timeline(timeline)
 
               is_vfr = mode == 'vfr'
               assert source['material_variable_duration'] is is_vfr
-              assert startup['material_variable_duration'] is is_vfr
-              assert continuation['material_variable_duration'] is False
+              assert source_startup['material_variable_duration'] is is_vfr
+              assert source_continuation['material_variable_duration'] is False
               assert evidence['expected_startup_material_variable'] is is_vfr
               assert evidence['expected_continuation_material_variable'] is False
 
@@ -170,15 +175,22 @@ jobs:
                   assert mapping['status'] == 'aligned'
 
               if is_vfr:
-                  assert startup['variable_duration'] is True
-                  assert continuation['variable_duration'] is True
-                  assert startup['outlier_delta_count'] > 0
-                  assert continuation['outlier_delta_count'] > 0
-                  assert evidence['preservation_status'] == 'preserved_with_cadence_outliers'
+                  assert startup['material_variable_duration'] is True
+                  assert continuation['material_variable_duration'] is True
+                  assert source_startup['near_zero_delta_count'] == 0
+                  assert source_continuation['near_zero_delta_count'] == 0
+                  assert startup['near_zero_delta_count'] == 60
+                  assert continuation['near_zero_delta_count'] == 60
+                  assert startup['outlier_delta_count'] == 0
+                  assert continuation['outlier_delta_count'] == 0
+                  assert evidence['preservation_status'] == 'changed'
               else:
-                  assert source['variable_duration'] is False
-                  assert startup['variable_duration'] is False
-                  assert continuation['variable_duration'] is False
+                  assert startup['material_variable_duration'] is False
+                  assert continuation['material_variable_duration'] is False
+                  assert source_startup['near_zero_delta_count'] == 0
+                  assert source_continuation['near_zero_delta_count'] == 0
+                  assert startup['near_zero_delta_count'] == 0
+                  assert continuation['near_zero_delta_count'] == 0
                   assert startup['outlier_delta_count'] == 0
                   assert continuation['outlier_delta_count'] == 0
                   assert evidence['preservation_status'] == 'preserved_exact'
@@ -191,14 +203,16 @@ jobs:
               assert current_toolchain == toolchain
               summary[case_id] = {
                   'source_frames': source['frame_count'],
+                  'source_startup_histogram': source_startup['delta_histogram'],
+                  'source_continuation_histogram': source_continuation['delta_histogram'],
                   'startup_in': startup_map['input_frames'],
                   'startup_out': startup_map['output_frames'],
                   'startup_histogram': startup['delta_histogram'],
-                  'startup_outliers': startup['outlier_delta_count'],
+                  'startup_near_zero': startup['near_zero_delta_count'],
                   'continuation_in': continuation_map['input_frames'],
                   'continuation_out': continuation_map['output_frames'],
                   'continuation_histogram': continuation['delta_histogram'],
-                  'continuation_outliers': continuation['outlier_delta_count'],
+                  'continuation_near_zero': continuation['near_zero_delta_count'],
                   'preservation': evidence['preservation_status'],
               }
 
