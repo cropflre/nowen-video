@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"errors"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -9,8 +8,9 @@ import (
 )
 
 // FindPublishedArtifactByEncodingPlan resolves an immutable Artifact only when
-// its persisted output compatibility identity matches exactly. Historical rows
-// with blank Encoding Plan fields are intentionally excluded.
+// both its declarative Encoding Plan and observed produced-media attestation
+// match the formal publication contract. Historical unattested rows are kept
+// for rollback and diagnostics but are intentionally excluded.
 func (r *TranscodeExecutionRepo) FindPublishedArtifactByEncodingPlan(
 	mediaID,
 	profileID,
@@ -24,9 +24,10 @@ func (r *TranscodeExecutionRepo) FindPublishedArtifactByEncodingPlan(
 		return nil, gorm.ErrRecordNotFound
 	}
 	var artifact model.TranscodeArtifactRecord
-	err := r.db.Where(
+	result := r.db.Where(
 		`media_id = ? AND profile_id = ? AND source_fingerprint = ? AND planner_version = ?
-		AND kind = ? AND encoding_plan_version = ? AND encoding_plan_hash = ? AND status = ?`,
+		AND kind = ? AND encoding_plan_version = ? AND encoding_plan_hash = ? AND status = ?
+		AND attestation_status = ? AND attestation_version <> '' AND attestation_hash <> '' AND attestation_json <> ''`,
 		mediaID,
 		profileID,
 		sourceFingerprint,
@@ -35,18 +36,23 @@ func (r *TranscodeExecutionRepo) FindPublishedArtifactByEncodingPlan(
 		encodingPlanVersion,
 		encodingPlanHash,
 		"published",
+		"verified",
 	).
 		Order("published_at DESC, created_at DESC").
-		First(&artifact).Error
-	if err != nil {
-		return nil, err
+		Limit(1).
+		Find(&artifact)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &artifact, nil
 }
 
-// FindReadableArtifactByEncodingPlan resolves either the Lease-valid current
-// Attempt Artifact or the newest immutable published Artifact for one complete
-// media, planner and output-compatibility identity.
+// FindReadableArtifactByEncodingPlan resolves either a Lease-valid current
+// Attempt with provisional/verified first-segment evidence or the newest fully
+// verified immutable Artifact. Unattested staging output is never readable.
 func (r *TranscodeExecutionRepo) FindReadableArtifactByEncodingPlan(
 	mediaID,
 	profileID,
@@ -61,12 +67,13 @@ func (r *TranscodeExecutionRepo) FindReadableArtifactByEncodingPlan(
 		return nil, gorm.ErrRecordNotFound
 	}
 	var active model.TranscodeArtifactRecord
-	activeErr := r.db.Table("transcode_artifacts AS a").
+	activeResult := r.db.Table("transcode_artifacts AS a").
 		Select("a.*").
 		Joins("JOIN transcode_jobs AS j ON j.id = a.job_id").
 		Where(
 			`a.media_id = ? AND a.profile_id = ? AND a.source_fingerprint = ? AND a.planner_version = ?
 			AND a.kind = ? AND a.encoding_plan_version = ? AND a.encoding_plan_hash = ? AND a.status IN ?
+			AND a.attestation_status IN ? AND a.attestation_version <> '' AND a.attestation_hash <> '' AND a.attestation_json <> ''
 			AND a.attempt_id = j.current_attempt_id
 			AND j.encoding_plan_version = a.encoding_plan_version
 			AND j.encoding_plan_hash = a.encoding_plan_hash
@@ -81,17 +88,19 @@ func (r *TranscodeExecutionRepo) FindReadableArtifactByEncodingPlan(
 			encodingPlanVersion,
 			encodingPlanHash,
 			[]string{"staging", "publishing"},
+			[]string{"provisional", "verified"},
 			"running",
 			[]string{"claimed", "running"},
 			now,
 		).
 		Order("a.created_at DESC").
-		First(&active).Error
-	if activeErr == nil {
-		return &active, nil
+		Limit(1).
+		Find(&active)
+	if activeResult.Error != nil {
+		return nil, activeResult.Error
 	}
-	if !errors.Is(activeErr, gorm.ErrRecordNotFound) {
-		return nil, activeErr
+	if activeResult.RowsAffected == 1 {
+		return &active, nil
 	}
 	return r.FindPublishedArtifactByEncodingPlan(
 		mediaID,
