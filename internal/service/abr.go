@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/nowen-video/nowen-video/internal/config"
+	transcodeprofile "github.com/nowen-video/nowen-video/internal/transcode/profile"
 	"go.uber.org/zap"
 )
 
@@ -22,26 +23,11 @@ type ABRService struct {
 	hwAccel  string
 }
 
-// ABRProfile ABR 配置文件
-type ABRProfile struct {
-	Name         string `json:"name"`
-	Width        int    `json:"width"`
-	Height       int    `json:"height"`
-	VideoBitrate string `json:"video_bitrate"`
-	AudioBitrate string `json:"audio_bitrate"`
-	MaxBitrate   string `json:"max_bitrate"`
-	BufSize      string `json:"buf_size"`
-}
+// ABRProfile remains as a compatibility alias for preprocess and API callers.
+// The ordered ladder and bitrate policies live in internal/transcode/profile.
+type ABRProfile = transcodeprofile.EncodingProfile
 
-// ABR 质量阶梯
-var abrProfiles = []ABRProfile{
-	{Name: "360p", Width: 640, Height: 360, VideoBitrate: "800k", AudioBitrate: "96k", MaxBitrate: "1200k", BufSize: "1600k"},
-	{Name: "480p", Width: 854, Height: 480, VideoBitrate: "1400k", AudioBitrate: "128k", MaxBitrate: "2100k", BufSize: "2800k"},
-	{Name: "720p", Width: 1280, Height: 720, VideoBitrate: "2800k", AudioBitrate: "128k", MaxBitrate: "4200k", BufSize: "5600k"},
-	{Name: "1080p", Width: 1920, Height: 1080, VideoBitrate: "5000k", AudioBitrate: "192k", MaxBitrate: "7500k", BufSize: "10000k"},
-	{Name: "2K", Width: 2560, Height: 1440, VideoBitrate: "10000k", AudioBitrate: "192k", MaxBitrate: "15000k", BufSize: "20000k"},
-	{Name: "4K", Width: 3840, Height: 2160, VideoBitrate: "20000k", AudioBitrate: "256k", MaxBitrate: "30000k", BufSize: "40000k"},
-}
+var abrProfiles = transcodeprofile.PersistentProfiles()
 
 // GPUInfo GPU 信息
 type GPUInfo struct {
@@ -163,14 +149,10 @@ func (s *ABRService) GetGPUInfo() *GPUInfo {
 // GetABRStatus 获取 ABR 状态
 func (s *ABRService) GetABRStatus() *ABRStatus {
 	gpu := s.GetGPUInfo()
-	profileNames := make([]string, len(abrProfiles))
-	for i, p := range abrProfiles {
-		profileNames[i] = p.Name
-	}
 	return &ABRStatus{
 		Enabled:    true,
 		GPU:        *gpu,
 		MaxStreams: gpu.MaxStreams,
-		Profiles:   profileNames,
+		Profiles:   transcodeprofile.Names(),
 	}
 }
