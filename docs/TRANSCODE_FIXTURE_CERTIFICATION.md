@@ -125,6 +125,50 @@ Comparison values are candidate deltas minus baseline deltas. They describe meas
 
 This makes a one-frame video overlap distinguishable from AAC priming or mux-offset behavior without re-running FFprobe manually.
 
+Historical `ffmpeg-handoff-fixture-report-v1` artifacts remain immutable evidence. They are not rewritten into v2. New certification commands emit v2 because v2 contains the raw boundary projection needed for attribution.
+
+## Registry integrity gate
+
+Schema validation and certification authority are separate operations:
+
+- `Report.Validate` checks whether an existing v2 report is structurally readable;
+- `ValidateCertifiedReport` additionally requires the complete Fixture metadata to match the immutable in-code registry;
+- the CLI and matrix builder use the registry-backed gate before issuing JSON.
+
+This preserves historical report readability while preventing a report with a changed description, sample rate, Tune policy, or control classification from being reissued as certified evidence.
+
+## Observed overlap-attribution matrix
+
+The pull-request matrix executed on Ubuntu 24.04 with FFmpeg/FFprobe 6.1.1. The measured 30-second boundary evidence was:
+
+| Fixture | Video PTS | Video DTS | Audio PTS/DTS | Result |
+|---|---:|---:|---:|---|
+| historical 48 kHz control | -33.333 ms | -66.667 ms | -104.000 ms | overlap |
+| production zerolatency 48 kHz | -21.333 ms | -21.333 ms | -58.667 ms | overlap |
+| production zerolatency 44.1 kHz | -23.222 ms | -23.222 ms | -46.622 ms | overlap |
+
+Controlled changes were:
+
+```text
+x264 zerolatency at 48 kHz
+  video PTS change   = +12.000 ms
+  video DTS change   = +45.334 ms
+  audio PTS/DTS      = +45.333 ms
+
+audio sample rate, zerolatency output
+  48 kHz -> 44.1 kHz audio PTS/DTS change = +12.045 ms
+  accompanying video change               = -1.889 ms
+```
+
+The matrix supports the following limited conclusions:
+
+1. `zerolatency` substantially removes B-frame decode reordering from the production output, because video DTS moved from `-66.667 ms` to `-21.333 ms`.
+2. It does not remove the whole boundary overlap; the production video path still overlaps by about `21–23 ms` in this fixture.
+3. Audio overlap changes with both encoder/mux boundary behavior and sample rate. The evidence does not justify treating AAC priming as one fixed constant.
+4. All three relations remain outside the current alignment tolerances, so the bridge stays fail-closed.
+
+These values are a reproducible baseline for this FFmpeg build and fixture definition. CI verifies identities, arithmetic consistency, fail-closed policy, and the direction of the controlled zerolatency improvement; it intentionally does not hard-code every measured microsecond across future FFmpeg versions.
+
 ## Production-shape execution
 
 Startup uses the bounded VOD projection from the server. Continuation seeks to the Job-owned 30-second origin and runs to source EOF using the EVENT/append-list shape.
@@ -168,12 +212,13 @@ go run ./cmd/transcode-fixture-cert \
 
 `.github/workflows/transcode-fixture-cert.yml` runs the complete matrix for relevant branch and pull-request changes. The workflow:
 
-1. verifies Go fixture and timestamp contracts;
+1. verifies Go fixture, registry-integrity, and timestamp contracts;
 2. builds the certification CLI;
 3. produces all real-media fixtures;
-4. validates fixture identities and fail-closed policy;
-5. prints the measured comparison deltas;
-6. uploads the matrix JSON as a 14-day workflow artifact.
+4. validates fixture identities, nested PTS/DTS arithmetic, sample-rate identities, and fail-closed policy;
+5. verifies that production `zerolatency` reduces the absolute control overlap without hard-coding exact future FFmpeg values;
+6. prints the measured comparison deltas;
+7. uploads the matrix JSON as a 14-day workflow artifact.
 
 The Server Lite CI remains responsible for the full Go, Web, Docker, migration, race, and performance matrix.
 
@@ -181,6 +226,8 @@ The Server Lite CI remains responsible for the full Go, Web, Docker, migration, 
 
 The next fixtures should add, without weakening the current contract:
 
+- exact boundary placement around the previous packet end and next packet start;
+- AAC priming, padding, and encoder-delay metadata where the container exposes it;
 - variable-frame-rate sources;
 - open-GOP and longer B-frame chains;
 - non-zero source timestamps;
