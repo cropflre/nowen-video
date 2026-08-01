@@ -8,6 +8,7 @@ on:
     paths:
       - 'cmd/server-lite/**'
       - 'cmd/server/**'
+      - 'cmd/transcode-fixture-cert/**'
       - 'internal/service/lite.go'
       - 'internal/service/task_center.go'
       - 'internal/service/task_center_test.go'
@@ -62,7 +63,9 @@ jobs:
       - name: Encoding plan value-object contract
         run: go test ./internal/transcode/encodingplan
       - name: Timestamp normalization value-object contract
-        run: go test ./internal/transcode/timestampplan -run 'Plan|TimestampPolicy'
+        run: go test ./internal/transcode/timestampplan -run 'Plan|TimestampPolicy|ApplyFFmpeg'
+      - name: Fixture certification report contract
+        run: go test ./internal/transcode/certification
       - name: Install FFmpeg fixture tools
         run: |
           sudo apt-get update -qq
@@ -71,6 +74,32 @@ jobs:
         env:
           NOWEN_REQUIRE_FFMPEG_TIMESTAMP_FIXTURE: '1'
         run: go test ./internal/transcode/timestampplan -run '^TestFFmpegCopyTSStartAtZeroPreservesContinuationOrigin$' -count=1 -v
+      - name: End-to-end fixture certification report
+        run: |
+          go run ./cmd/transcode-fixture-cert -output /tmp/transcode-certification.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/transcode-certification.json')
+          if not path.is_file() or path.stat().st_size == 0:
+              raise SystemExit('fixture certification report was not created')
+          report = json.loads(path.read_text())
+          assert report['schema_version'] == 'transcode-fixture-certification-v1'
+          assert report['fixture_id'] == 'software-cfr-h264-aac-30fps-48khz-v1'
+          assert report['startup']['timeline_origin_ms'] == 0
+          assert report['continuation']['timeline_origin_ms'] == 4000
+          assert report['handoff']['seamless_allowed'] is False
+          assert report['handoff']['discontinuity_required'] is True
+          assert report['handoff']['status'] in {'aligned', 'gap', 'overlap', 'mixed'}
+          print(json.dumps({
+              'fixture_id': report['fixture_id'],
+              'status': report['handoff']['status'],
+              'decision_reason': report['handoff']['decision_reason'],
+              'video_delta_us': report['handoff']['contract']['video']['presentation_delta_micros'],
+              'audio_delta_us': report['handoff']['contract']['audio']['presentation_delta_micros'],
+          }, sort_keys=True))
+          PY
       - name: Produced media attestation contract
         run: go test ./internal/transcode/attestation
       - name: Timeline continuity contract
@@ -89,6 +118,8 @@ jobs:
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByExecutionContract$' -benchtime=100x -benchmem
       - name: Handoff contract lookup performance baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindHandoffAttestation$' -benchtime=100x -benchmem
+      - name: Build fixture certification CLI
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
       - name: Build lite server
         run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-video-lite ./cmd/server-lite
       - name: Build full server
