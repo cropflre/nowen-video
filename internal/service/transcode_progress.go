@@ -117,9 +117,20 @@ func (s *TranscodeService) finalizeFailed(job *TranscodeJob, result transcodeexe
 }
 
 func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
-	now := time.Now()
-	if !s.persistJobTerminal(job, "completed", now) {
+	published, publishErr := s.publishCurrentHLSArtifact(job)
+	if publishErr != nil {
+		s.finalizeFailed(job, transcodeexecutor.Result{Err: fmt.Errorf("发布转码 Artifact 失败: %w", publishErr)})
 		return
+	}
+	if !published {
+		// Lease ownership changed while the old Worker was publishing. The new
+		// owner remains authoritative and this stale result must stay invisible.
+		return
+	}
+
+	now := time.Now()
+	if job.CurrentArtifact != nil && job.CurrentArtifact.PublishedAt != nil {
+		now = *job.CurrentArtifact.PublishedAt
 	}
 	job.taskMu.Lock()
 	job.Task.Status = "done"
@@ -129,9 +140,8 @@ func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
 	err := s.repo.Update(job.Task)
 	job.taskMu.Unlock()
 	if err != nil {
-		s.logger.Warnf("持久化转码完成状态失败 task=%s: %v", job.Task.ID, err)
+		s.logger.Warnf("持久化转码完成兼容投影失败 task=%s: %v", job.Task.ID, err)
 	}
-	s.publishHLSArtifact(job)
 	s.broadcastTranscodeEvent(EventTranscodeCompleted, &TranscodeProgressData{
 		TaskID:   job.Task.ID,
 		MediaID:  job.Media.ID,
