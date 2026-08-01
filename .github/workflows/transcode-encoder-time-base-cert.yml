@@ -18,7 +18,7 @@ on:
       - 'internal/transcode/timebasecandidate/**'
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_CANDIDATES.md'
-      - '.github/scripts/verify_encoder_time_base.py'
+      - '.github/scripts/verify_encoder_time_base*.py'
       - '.github/workflows/transcode-encoder-time-base-cert.yml'
   pull_request:
     paths:
@@ -35,7 +35,7 @@ on:
       - 'internal/transcode/timebasecandidate/**'
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_CANDIDATES.md'
-      - '.github/scripts/verify_encoder_time_base.py'
+      - '.github/scripts/verify_encoder_time_base*.py'
       - '.github/workflows/transcode-encoder-time-base-cert.yml'
   workflow_dispatch:
 
@@ -76,6 +76,8 @@ jobs:
       - name: Verify repeated cadence, decoded frames and A/V variance
         run: |
           python3 .github/scripts/verify_encoder_time_base.py \
+            /tmp/nowen-transcode-encoder-time-base/encoder-time-base-candidate-matrix-v1.json
+          python3 .github/scripts/verify_encoder_time_base_baseline.py \
             /tmp/nowen-transcode-encoder-time-base/encoder-time-base-candidate-matrix-v1.json
       - name: Upload encoder time-base candidate evidence
         if: always()
