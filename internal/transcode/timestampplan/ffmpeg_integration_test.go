@@ -43,16 +43,32 @@ func TestFFmpegCopyTSStartAtZeroPreservesContinuationOrigin(t *testing.T) {
 	if err := os.MkdirAll(continuationDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// Production Startup is bounded with -t. Production Continuation is not:
+	// it seeks to the Job origin and runs to source EOF. Keeping the fixture
+	// identical matters because -t is evaluated against copied timestamps.
 	runNormalizedFixture(t, ffmpeg, source, startupDir, 0, 4)
-	runNormalizedFixture(t, ffmpeg, source, continuationDir, 4, 4)
+	runNormalizedFixture(t, ffmpeg, source, continuationDir, 4, 0)
 
-	startupSegment := firstPlaylistSegment(t, filepath.Join(startupDir, "stream.m3u8"))
-	continuationSegment := firstPlaylistSegment(t, filepath.Join(continuationDir, "stream.m3u8"))
-	startupVideo := firstPacketTime(t, ffprobe, startupSegment, "v:0")
-	continuationVideo := firstPacketTime(t, ffprobe, continuationSegment, "v:0")
-	startupAudio := firstPacketTime(t, ffprobe, startupSegment, "a:0")
-	continuationAudio := firstPacketTime(t, ffprobe, continuationSegment, "a:0")
+	startupManifest := filepath.Join(startupDir, "stream.m3u8")
+	continuationManifest := filepath.Join(continuationDir, "stream.m3u8")
+	startupSegment := firstPlaylistSegment(t, startupManifest)
+	continuationSegment := firstPlaylistSegment(t, continuationManifest)
+	startupVideo := firstPacketTime(t, ffprobe, startupSegment, startupManifest, "v:0")
+	continuationVideo := firstPacketTime(t, ffprobe, continuationSegment, continuationManifest, "v:0")
+	startupAudio := firstPacketTime(t, ffprobe, startupSegment, startupManifest, "a:0")
+	continuationAudio := firstPacketTime(t, ffprobe, continuationSegment, continuationManifest, "a:0")
 
+	videoDelta := continuationVideo - startupVideo
+	audioDelta := continuationAudio - startupAudio
+	t.Logf(
+		"measured packet origins: startup_video=%.6fs continuation_video=%.6fs video_delta=%.6fs startup_audio=%.6fs continuation_audio=%.6fs audio_delta=%.6fs",
+		startupVideo,
+		continuationVideo,
+		videoDelta,
+		startupAudio,
+		continuationAudio,
+		audioDelta,
+	)
 	assertOriginDelta(t, "video", startupVideo, continuationVideo, 4)
 	assertOriginDelta(t, "audio", startupAudio, continuationAudio, 4)
 	if continuationVideo < 4 || continuationAudio < 4 {
@@ -78,7 +94,11 @@ func runNormalizedFixture(t *testing.T, ffmpeg, source, outputDir string, startS
 		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
 		"-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
 		"-c:a", "aac", "-ar", "48000", "-ac", "2",
-		"-t", strconv.Itoa(durationSeconds),
+	)
+	if durationSeconds > 0 {
+		args = append(args, "-t", strconv.Itoa(durationSeconds))
+	}
+	args = append(args,
 		"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
 		"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
 		"-hls_segment_filename", filepath.Join(outputDir, "seg%04d.ts"),
@@ -117,7 +137,7 @@ func firstPlaylistSegment(t *testing.T, manifest string) string {
 	return ""
 }
 
-func firstPacketTime(t *testing.T, ffprobe, segment, streamSelector string) float64 {
+func firstPacketTime(t *testing.T, ffprobe, segment, manifest, streamSelector string) float64 {
 	t.Helper()
 	command := exec.Command(
 		ffprobe,
@@ -128,9 +148,24 @@ func firstPacketTime(t *testing.T, ffprobe, segment, streamSelector string) floa
 		"-of", "json",
 		segment,
 	)
-	output, err := command.Output()
+	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("ffprobe %s %s: %v", streamSelector, segment, err)
+		manifestContent, _ := os.ReadFile(manifest)
+		info, statErr := os.Stat(segment)
+		size := int64(-1)
+		if statErr == nil {
+			size = info.Size()
+		}
+		t.Fatalf(
+			"ffprobe %s %s failed: %v\nsegment_size=%d stat_error=%v\nmanifest=%s\nffprobe_output=%s",
+			streamSelector,
+			segment,
+			err,
+			size,
+			statErr,
+			string(manifestContent),
+			string(output),
+		)
 	}
 	var payload struct {
 		Packets []struct {
