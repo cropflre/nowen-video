@@ -100,6 +100,7 @@ type Manifest struct {
 	SpecVersion           string          `json:"spec_version"`
 	SpecHash              string          `json:"spec_hash"`
 	GeneratorVersion      string          `json:"generator_version"`
+	GenerationRepeatCount int             `json:"generation_repeat_count"`
 	FFmpegVersion         string          `json:"ffmpeg_version"`
 	FFprobeVersion        string          `json:"ffprobe_version"`
 	Assets                []AssetEvidence `json:"assets"`
@@ -108,28 +109,40 @@ type Manifest struct {
 }
 
 type AssetEvidence struct {
-	CaseID       string        `json:"case_id"`
-	RelativePath string        `json:"relative_path"`
-	SHA256       string        `json:"sha256"`
-	SizeBytes    int64         `json:"size_bytes"`
-	Probe        ProbeEvidence `json:"probe"`
+	CaseID        string        `json:"case_id"`
+	RelativePath  string        `json:"relative_path"`
+	CommandSHA256 string        `json:"command_sha256"`
+	SHA256        string        `json:"sha256"`
+	RepeatSHA256  []string      `json:"repeat_sha256"`
+	SizeBytes     int64         `json:"size_bytes"`
+	Probe         ProbeEvidence `json:"probe"`
 }
 
 type ProbeEvidence struct {
-	Container        string     `json:"container"`
-	DurationMicros   int64      `json:"duration_micros"`
-	StartMicros      int64      `json:"start_micros"`
-	VideoCodec       string     `json:"video_codec"`
-	PixelFormat      string     `json:"pixel_format"`
-	Width            int        `json:"width"`
-	Height           int        `json:"height"`
-	FrameRateMode    string     `json:"frame_rate_mode"`
-	ObservedRates    []Rational `json:"observed_rates"`
-	VideoTimeBase    Rational   `json:"video_time_base"`
-	AudioCodec       string     `json:"audio_codec"`
-	AudioSampleRate  int        `json:"audio_sample_rate"`
-	AudioChannels    int        `json:"audio_channels"`
-	AudioTrackCount  int        `json:"audio_track_count"`
-	AudioTimeBase    Rational   `json:"audio_time_base"`
-	HasBFrameReorder bool       `json:"has_b_frame_reorder"`
+	Container                   string     `json:"container"`
+	DurationMicros              int64      `json:"duration_micros"`
+	StartMicros                 int64      `json:"start_micros"`
+	VideoCodec                  string     `json:"video_codec"`
+	VideoProfile                string     `json:"video_profile"`
+	PixelFormat                 string     `json:"pixel_format"`
+	Width                       int        `json:"width"`
+	Height                      int        `json:"height"`
+	ColorPrimaries              string     `json:"color_primaries"`
+	ColorTransfer               string     `json:"color_transfer"`
+	ColorMatrix                 string     `json:"color_matrix"`
+	FrameRateMode               string     `json:"frame_rate_mode"`
+	ObservedRates               []Rational `json:"observed_rates"`
+	VideoTimeBase               Rational   `json:"video_time_base"`
+	FrameCount                  int        `json:"frame_count"`
+	KeyFrameCount               int        `json:"key_frame_count"`
+	MaxKeyFrameInterval         int        `json:"max_key_frame_interval"`
+	MaxPresentationReorderDepth int        `json:"max_presentation_reorder_depth"`
+	MaxCompositionOffsetMicros  int64      `json:"max_composition_offset_micros"`
+	AudioCodec                  string     `json:"audio_codec"`
+	AudioSampleRate             int        `json:"audio_sample_rate"`
+	AudioChannels               int        `json:"audio_channels"`
+	AudioTrackCount             int        `json:"audio_track_count"`
+	AudioTimeBase               Rational   `json:"audio_time_base"`
+	HasBFrameReorder            bool       `json:"has_b_frame_reorder"`
+	HasEditList                 bool       `json:"has_edit_list"`
 }
