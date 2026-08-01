@@ -23,7 +23,7 @@ encoder-time-base-avtb-v1 = 1/1000000
 encoder-time-base-90k-v1  = 1/90000
 ```
 
-That matrix intentionally used the production zero-latency software profile. A zero-latency profile does not exercise B-frame reordering, where packets are submitted to the decoder in DTS order but displayed in PTS order.
+That matrix intentionally uses the production zero-latency software profile. A zero-latency profile does not exercise B-frame reordering, where packets are submitted to the decoder in DTS order but displayed in PTS order.
 
 This phase removes the zero-latency tune only inside the certification command and adds deterministic closed-GOP B-frame policies. It then binds packet-order evidence back to the complete base candidate evidence for every run.
 
@@ -98,13 +98,25 @@ Each reorder run embeds the complete Encoder Time-Base Candidate run evidence, i
 - normalized Startup and Continuation command hashes;
 - complete PTS cadence evidence;
 - source-to-output frame mappings;
-- decoded-frame fingerprints;
+- exact decoded-pixel frame fingerprints;
 - Produced-media Attestation;
 - Boundary Packet Evidence;
 - A/V Boundary Sync Evidence;
 - fail-closed discontinuity policy.
 
 The reorder layer cannot pass by validating DTS alone. Its packet count must equal the corresponding base cadence frame count, and the base candidate run must independently remain valid.
+
+## Presentation-order and packet-order separation
+
+MPEG-TS packets are emitted in decode order when B-frames are enabled. PTS therefore moves backward inside the packet sequence even when the presentation timeline is valid.
+
+The certification pipeline keeps both views:
+
+- PTS cadence evidence is built in presentation order by sorting the reorder-only packet set by PTS;
+- packet-order evidence retains the original demux/decode order and validates DTS monotonicity, PTS inversions, composition delay, and reorder depth;
+- the generic Output Cadence pipeline keeps its existing behavior and is not globally relaxed.
+
+This prevents a valid B-frame packet sequence from being misclassified as a broken presentation timeline without hiding decode-order defects.
 
 ## Packet-order evidence
 
@@ -124,6 +136,22 @@ For Startup and Continuation, the contract records:
 
 The evidence is derived from FFprobe packet output for the generated HLS manifest.
 
+## Exact pixels and perceptual frame identity
+
+Two independently encoded lossy H.264 candidates can reconstruct slightly different pixels even when they retain the same source frame identity and presentation order. The contract therefore keeps two separate gates:
+
+1. **Exact decoded-pixel sequence** — FFmpeg `framemd5` with SHA-256. Every candidate must reproduce the same exact sequence across its three repeats.
+2. **Perceptual frame sequence** — every decoded frame is represented by a deterministic 128-bit aHash+dHash signature. Cross-candidate comparison is performed frame by frame at the same presentation index.
+
+The perceptual gate requires:
+
+- equal frame counts;
+- one-to-one frame-index comparison;
+- maximum Hamming distance no greater than `8/128` bits;
+- complete repeated-run stability inside each candidate.
+
+It does not replace exact hashes. Exact hashes remain evidence and remain mandatory for repeat stability. The perceptual sequence only prevents independent lossy encodes from being falsely rejected solely because reconstructed pixels are not byte-identical.
+
 ## Required invariants
 
 A run fails when any of the following is true:
@@ -134,8 +162,11 @@ A run fails when any of the following is true:
 - no adjacent PTS inversion is observed in decode order;
 - maximum presentation reorder depth is zero;
 - packet-order count differs from base PTS cadence frame count;
-- base PTS cadence contains near-zero, duplicate, or non-monotonic PTS;
+- presentation-order PTS contains near-zero, duplicate, or non-monotonic values;
 - decoded output contains adjacent duplicate frames;
+- exact decoded-pixel sequence changes between repeats of the same candidate;
+- perceptual frame sequence changes between repeats of the same candidate;
+- candidate perceptual frame distance exceeds the contract threshold;
 - Boundary or A/V evidence becomes invalid;
 - nested evidence attempts to authorize seamless playback.
 
@@ -146,6 +177,8 @@ Each case/candidate cell runs exactly three times.
 A candidate is stable only when:
 
 - base frame, cadence, Boundary, and A/V evidence is stable;
+- exact decoded-pixel sequences are stable across repeats;
+- perceptual frame sequences are stable across repeats;
 - reordered packet counts have zero variance;
 - maximum reorder depth has zero variance;
 - maximum composition offsets have zero variance;
@@ -154,13 +187,52 @@ A candidate is stable only when:
 - DTS is strictly monotonic in all windows;
 - B-frame reordering is observed in all windows.
 
-AVTB and 90 kHz must be equivalent for:
+AVTB and 90 kHz must be semantically equivalent for:
 
-- the complete base candidate comparison;
-- Startup packet-order evidence;
-- Continuation packet-order evidence.
+- frame mapping and presentation cadence;
+- Boundary and A/V evidence;
+- Startup and Continuation packet-order evidence;
+- Startup and Continuation perceptual frame sequences.
 
-A difference in either PTS-level or DTS-level evidence fails the case.
+Exact cross-candidate pixel hashes are retained in the report but are not used as the sole semantic-equivalence criterion for independent lossy encodes.
+
+## FFmpeg 6.1.1 exact baseline
+
+The Ubuntu 24.04 reference run uses:
+
+```text
+ffmpeg version 6.1.1-3ubuntu5
+ffprobe version 6.1.1-3ubuntu5
+```
+
+Reference contract hash:
+
+```text
+cfc8da4f17a096d0d2cc69ffea474ca5ed72b90c8b11f37387f3810ffcba2961
+```
+
+All six cases passed with:
+
+- zero duplicate or non-monotonic DTS packets;
+- stable reorder counts, reorder depth, composition offsets, cadence, Boundary, and A/V metrics;
+- exact perceptual frame matches for every compared frame;
+- maximum observed perceptual Hamming distance `0/128` bits;
+- `seamless_allowed = false`;
+- `discontinuity_required = true`.
+
+Exact cross-candidate decoded pixels differed in seven windows:
+
+```text
+reorder-cfr-30000-1001-b3-origin-zero-v1 / Startup
+reorder-cfr-30-b3-origin-positive-5s-v1 / Startup
+reorder-cfr-30-b3-origin-positive-5s-v1 / Continuation
+reorder-cfr-30-b3-origin-negative-2s-v1 / Startup
+reorder-cfr-30-b3-origin-negative-2s-v1 / Continuation
+reorder-cfr-30-b3-long-gop-origin-zero-v1 / Startup
+reorder-cfr-30-b3-long-gop-origin-zero-v1 / Continuation
+```
+
+Those windows still had frame-for-frame identical perceptual signatures, identical PTS cadence, identical DTS packet-order evidence, and identical Boundary/A/V evidence. The exact differences remain visible in the base comparison rather than being discarded.
 
 ## CLI
 
@@ -194,10 +266,16 @@ Dedicated workflow:
 .github/workflows/transcode-encoder-time-base-reorder-cert.yml
 ```
 
-Semantic verifier:
+Cross-version semantic verifier:
 
 ```text
 .github/scripts/verify_encoder_time_base_reorder.py
+```
+
+Ubuntu 24.04 / FFmpeg 6.1.1 exact baseline verifier:
+
+```text
+.github/scripts/verify_encoder_time_base_reorder_baseline.py
 ```
 
 The workflow:
@@ -207,10 +285,11 @@ The workflow:
 3. produces all six cases, two candidates, and three repeats;
 4. verifies strict DTS and observed B-frame reordering;
 5. verifies packet-order histogram arithmetic;
-6. verifies base PTS cadence and decoded-frame preservation;
-7. verifies Boundary and A/V fail-closed policy;
-8. verifies repeated-run stability and cross-candidate equivalence;
-9. uploads `encoder-time-base-reorder-matrix-v1.json` as a CI artifact.
+6. verifies presentation cadence and per-frame perceptual identity;
+7. verifies exact per-candidate repeat stability;
+8. verifies Boundary and A/V fail-closed policy;
+9. runs the FFmpeg 6.1.1 exact numerical baseline lock;
+10. uploads `encoder-time-base-reorder-matrix-v1.json` as a CI artifact.
 
 ## Production non-claims
 
@@ -228,7 +307,9 @@ This phase does not prove:
 
 ## Next production gate
 
-The next gate is representative real-media fixture certification. It must bind real demuxer and container behavior to:
+The next gate is a separately versioned **Real Media Corpus v1**. It must not overload the existing synthetic `FixtureSpec`. The corpus needs its own immutable source metadata for container, codecs, CFR/VFR policy, timestamp origin, edit-list behavior, GOP/reorder structure, audio layout, color metadata, and source digest.
+
+It must bind real demuxer and container behavior to:
 
 - Timestamp Plan;
 - Encoder Time-Base Candidate Evidence;
