@@ -1,0 +1,83 @@
+name: Transcode Encoder Time-Base Reorder Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-encoder-time-base-reorder-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/encoder_time_base_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
+      - '.github/scripts/verify_encoder_time_base_reorder.py'
+      - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-encoder-time-base-reorder-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/encoder_time_base_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
+      - '.github/scripts/verify_encoder_time_base_reorder.py'
+      - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-encoder-time-base-reorder-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reorder-certification:
+    name: Certify B-frame DTS reorder and A/V boundaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify reorder contracts
+        run: |
+          go test ./internal/transcode/reordercandidate
+          go test ./internal/transcode/timebasecandidate ./internal/transcode/outputcadence
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-encoder-time-base-reorder-cert ./cmd/transcode-encoder-time-base-reorder-cert
+      - name: Produce B-frame reorder matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-encoder-time-base-reorder
+          /tmp/nowen-transcode-encoder-time-base-reorder-cert \
+            -output /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
+      - name: Verify strict DTS, reorder variance, cadence and A/V policy
+        run: |
+          python3 .github/scripts/verify_encoder_time_base_reorder.py \
+            /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
+      - name: Upload encoder time-base reorder evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-encoder-time-base-reorder-${{ github.sha }}
+          path: /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
