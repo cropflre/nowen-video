@@ -19,27 +19,6 @@ on:
       - 'internal/transcode/reordercandidate/**'
       - 'internal/transcode/timebasecandidate/**'
       - 'internal/transcode/timestampplan/**'
-      - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
-      - '.github/scripts/verify_encoder_time_base_reorder.py'
-      - '.github/scripts/verify_encoder_time_base_reorder_exact.py'
-      - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
-  pull_request:
-    paths:
-      - 'cmd/transcode-encoder-time-base-reorder-cert/**'
-      - 'internal/service/ffmpeg/**'
-      - 'internal/transcode/attestation/**'
-      - 'internal/transcode/avsync/**'
-      - 'internal/transcode/boundaryevidence/**'
-      - 'internal/transcode/certification/boundary_*.go'
-      - 'internal/transcode/certification/encoder_time_base_*.go'
-      - 'internal/transcode/certification/reorder_cadence_*.go'
-      - 'internal/transcode/certification/reorder_perceptual_*.go'
-      - 'internal/transcode/certification/source_origin_cadence_*.go'
-      - 'internal/transcode/outputcadence/**'
-      - 'internal/transcode/reordercandidate/**'
-      - 'internal/transcode/timebasecandidate/**'
-      - 'internal/transcode/timestampplan/**'
-      - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
       - '.github/scripts/verify_encoder_time_base_reorder.py'
       - '.github/scripts/verify_encoder_time_base_reorder_exact.py'
       - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
@@ -50,7 +29,7 @@ permissions:
 
 concurrency:
   group: transcode-encoder-time-base-reorder-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   reorder-certification:
