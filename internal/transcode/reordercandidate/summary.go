@@ -10,12 +10,15 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 	continuationDepth := make([]int64, 0, len(runs))
 	startupOffset := make([]int64, 0, len(runs))
 	continuationOffset := make([]int64, 0, len(runs))
-	startupSignature := ""
-	continuationSignature := ""
+	startupPacketSignature := ""
+	continuationPacketSignature := ""
+	startupPerceptualSignature := ""
+	continuationPerceptualSignature := ""
 	summary := CandidateSummary{
-		PacketOrderStable: len(runs) == RepeatCount,
-		StrictDTS: len(runs) == RepeatCount,
-		ReorderObserved: len(runs) == RepeatCount,
+		PacketOrderStable:        len(runs) == RepeatCount,
+		PerceptualSequenceStable: len(runs) == RepeatCount,
+		StrictDTS:                len(runs) == RepeatCount,
+		ReorderObserved:          len(runs) == RepeatCount,
 	}
 	for _, run := range runs {
 		baseRuns = append(baseRuns, run.Base)
@@ -25,13 +28,19 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 		continuationDepth = append(continuationDepth, int64(run.ContinuationPacketOrder.MaxPresentationReorderDepth))
 		startupOffset = append(startupOffset, run.StartupPacketOrder.MaxCompositionOffsetMicros)
 		continuationOffset = append(continuationOffset, run.ContinuationPacketOrder.MaxCompositionOffsetMicros)
-		startupCurrent := PacketOrderSignature(run.StartupPacketOrder)
-		continuationCurrent := PacketOrderSignature(run.ContinuationPacketOrder)
-		if startupSignature == "" {
-			startupSignature = startupCurrent
-			continuationSignature = continuationCurrent
+		startupPacketCurrent := PacketOrderSignature(run.StartupPacketOrder)
+		continuationPacketCurrent := PacketOrderSignature(run.ContinuationPacketOrder)
+		if startupPacketSignature == "" {
+			startupPacketSignature = startupPacketCurrent
+			continuationPacketSignature = continuationPacketCurrent
+			startupPerceptualSignature = run.StartupPerceptualSequence.SequenceSHA256
+			continuationPerceptualSignature = run.ContinuationPerceptualSequence.SequenceSHA256
 		} else {
-			summary.PacketOrderStable = summary.PacketOrderStable && startupCurrent == startupSignature && continuationCurrent == continuationSignature
+			summary.PacketOrderStable = summary.PacketOrderStable &&
+				startupPacketCurrent == startupPacketSignature && continuationPacketCurrent == continuationPacketSignature
+			summary.PerceptualSequenceStable = summary.PerceptualSequenceStable &&
+				run.StartupPerceptualSequence.SequenceSHA256 == startupPerceptualSignature &&
+				run.ContinuationPerceptualSequence.SequenceSHA256 == continuationPerceptualSignature
 		}
 		summary.StrictDTS = summary.StrictDTS &&
 			run.StartupPacketOrder.DTSNonMonotonicCount == 0 && run.StartupPacketOrder.DTSDuplicateCount == 0 &&
@@ -47,7 +56,7 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 	summary.ContinuationMaxReorderDepth = metricRange(continuationDepth)
 	summary.StartupMaxCompositionOffsetMicros = metricRange(startupOffset)
 	summary.ContinuationMaxCompositionOffsetMicros = metricRange(continuationOffset)
-	summary.Stable = summary.Base.Stable && summary.PacketOrderStable && summary.StrictDTS && summary.ReorderObserved &&
+	summary.Stable = summary.Base.Stable && summary.PacketOrderStable && summary.PerceptualSequenceStable && summary.StrictDTS && summary.ReorderObserved &&
 		summary.StartupReorderedPacketCount.Span <= PacketVarianceTolerance &&
 		summary.ContinuationReorderedPacketCount.Span <= PacketVarianceTolerance &&
 		summary.StartupMaxReorderDepth.Span <= PacketVarianceTolerance &&
@@ -61,18 +70,27 @@ func BuildCandidateComparison(a, b CandidateEvidence) CandidateComparison {
 	leftBase := baseCandidate(a)
 	rightBase := baseCandidate(b)
 	comparison := CandidateComparison{Base: transcodetimebase.BuildCandidateComparison(leftBase, rightBase)}
+	comparison.SemanticBaseEquivalent = comparison.Base.FrameMappingEquivalent && comparison.Base.CadenceEquivalent && comparison.Base.AVSyncWithinTolerance
 	if len(a.Runs) != RepeatCount || len(b.Runs) != RepeatCount {
 		return comparison
 	}
 	comparison.StartupPacketOrderEquivalent = true
 	comparison.ContinuationPacketOrderEquivalent = true
+	comparison.StartupPerceptualComparison = BuildPerceptualFrameComparison(a.Runs[0].StartupPerceptualSequence, b.Runs[0].StartupPerceptualSequence)
+	comparison.ContinuationPerceptualComparison = BuildPerceptualFrameComparison(a.Runs[0].ContinuationPerceptualSequence, b.Runs[0].ContinuationPerceptualSequence)
 	for index := range a.Runs {
 		comparison.StartupPacketOrderEquivalent = comparison.StartupPacketOrderEquivalent &&
 			PacketOrderSignature(a.Runs[index].StartupPacketOrder) == PacketOrderSignature(b.Runs[index].StartupPacketOrder)
 		comparison.ContinuationPacketOrderEquivalent = comparison.ContinuationPacketOrderEquivalent &&
 			PacketOrderSignature(a.Runs[index].ContinuationPacketOrder) == PacketOrderSignature(b.Runs[index].ContinuationPacketOrder)
+		comparison.StartupPerceptualComparison.Equivalent = comparison.StartupPerceptualComparison.Equivalent &&
+			BuildPerceptualFrameComparison(a.Runs[index].StartupPerceptualSequence, b.Runs[index].StartupPerceptualSequence) == comparison.StartupPerceptualComparison
+		comparison.ContinuationPerceptualComparison.Equivalent = comparison.ContinuationPerceptualComparison.Equivalent &&
+			BuildPerceptualFrameComparison(a.Runs[index].ContinuationPerceptualSequence, b.Runs[index].ContinuationPerceptualSequence) == comparison.ContinuationPerceptualComparison
 	}
-	comparison.Equivalent = comparison.Base.Equivalent && comparison.StartupPacketOrderEquivalent && comparison.ContinuationPacketOrderEquivalent
+	comparison.Equivalent = comparison.SemanticBaseEquivalent &&
+		comparison.StartupPerceptualComparison.Equivalent && comparison.ContinuationPerceptualComparison.Equivalent &&
+		comparison.StartupPacketOrderEquivalent && comparison.ContinuationPacketOrderEquivalent
 	return comparison
 }
 
@@ -82,8 +100,8 @@ func baseCandidate(candidate CandidateEvidence) transcodetimebase.CandidateEvide
 		runs = append(runs, run.Base)
 	}
 	return transcodetimebase.CandidateEvidence{
-		Spec: candidate.Spec,
-		Runs: runs,
+		Spec:    candidate.Spec,
+		Runs:    runs,
 		Summary: transcodetimebase.BuildCandidateSummary(runs),
 	}
 }
