@@ -132,6 +132,23 @@ func TestBoundaryProbeCapturesPacketWindowsAndSideData(t *testing.T) {
 	}
 }
 
+func TestBuildBoundaryVideoUsesPacketTimingInsteadOfContainerAverageRate(t *testing.T) {
+	startup := probeStreamEvidence("seg0014.ts", 0, 3000, 8, 0)
+	continuation := probeStreamEvidence("seg0015.ts", 21_000, 3000, 8, 0)
+	startup.FrameRateMilli = 30_000
+	continuation.FrameRateMilli = 29_970
+	evidence, err := buildBoundaryStream(transcodeboundary.StreamVideo, startup, continuation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.FrameRateMilli != 30_000 {
+		t.Fatalf("packet-derived video rate = %d, want 30000", evidence.FrameRateMilli)
+	}
+	if err := evidenceForContract(evidence).Validate(); err != nil {
+		t.Fatalf("packet-derived video evidence is not self-validating: %v", err)
+	}
+}
+
 func TestBuildBoundaryStreamProjectsAACSamples(t *testing.T) {
 	startup := probeStreamEvidence("seg0014.ts", 0, 1920, 8, 48_000)
 	continuation := probeStreamEvidence("seg0015.ts", 13_440, 1920, 8, 48_000)
@@ -179,4 +196,29 @@ func probeStreamEvidence(name string, firstPTS, duration int64, count, sampleRat
 		SampleRate:  sampleRate,
 		Packets:     packets,
 	}
+}
+
+func evidenceForContract(video transcodeboundary.StreamEvidence) transcodeboundary.Contract {
+	contract := transcodeboundary.Contract{
+		SchemaVersion:                   transcodeboundary.SchemaVersion,
+		CaseID:                         "test-case",
+		FixtureID:                      FixtureCFR48KZeroLatency,
+		ExpectedBoundaryMicros:         30_000_000,
+		FFmpegVersion:                  "ffmpeg test",
+		FFprobeVersion:                 "ffprobe test",
+		EncodingPlanVersion:            "hls-encoding-plan-v1",
+		EncodingPlanHash:               "encoding",
+		TimestampPlanVersion:           "hls-timestamp-normalization-v1",
+		TimestampPlanHash:              "timestamp",
+		StartupAttestationVersion:      "hls-produced-media-attestation-v1",
+		StartupAttestationHash:         "startup",
+		ContinuationAttestationVersion: "hls-produced-media-attestation-v1",
+		ContinuationAttestationHash:    "continuation",
+		Video:                          video,
+		DiscontinuityRequired:          true,
+	}
+	audioStartup := probeStreamEvidence("seg0014.ts", 0, 1920, 8, 48_000)
+	audioContinuation := probeStreamEvidence("seg0015.ts", 13_440, 1920, 8, 48_000)
+	contract.Audio, _ = buildBoundaryStream(transcodeboundary.StreamAudio, audioStartup, audioContinuation)
+	return contract
 }
