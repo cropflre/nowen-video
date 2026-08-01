@@ -35,6 +35,38 @@ FFprobe execution through single-flight. The shared execution has its own
 20-second timeout. A caller may stop waiting without cancelling work required by
 another caller.
 
+## Scan-completion warmup
+
+Lite and Full subscribe to the existing `scan_completed` lifecycle event through
+an in-process observer owned by the WebSocket Hub. The observer does not perform
+media work; it only submits the completed library ID to a bounded warmup queue.
+
+The warmup service provides:
+
+- two Probe workers
+- a 16-library bounded queue
+- per-library deduplication while queued or running
+- stable ID-based pagination with 64 media rows per page
+- synchronization of legacy `media` technical summary columns only
+- queue, run, media and failure counters under `probe_warmup`
+- automatic shutdown when the durable transcode scheduler closes
+
+The warmup uses the same persistent Probe service, source fingerprint and
+single-flight group as runtime HLS. It generates technical metadata only; it
+does not create Startup Stream or full-video transcode artifacts.
+
+## Playback planning
+
+Playback planning performs a non-blocking fresh-cache lookup. It never starts
+FFprobe on the request path. When a fresh record exists, Direct Play, zero-copy
+Remux and Smart Remux are recomputed from the authoritative video codec and
+default audio track. The response also includes a normalized technical snapshot
+for diagnostics.
+
+A cache miss keeps the compatibility summary behavior. If HLS is selected, the
+claimed transcode Worker performs the cold Probe before constructing FFmpeg
+arguments.
+
 ## Normalized fields
 
 The first video stream contributes:
@@ -86,10 +118,21 @@ transcoding logs the failure and uses compatibility parameters. Failures,
 executions, cache hits and cache misses are exposed in the existing transcode
 statistics response under `media_probe`.
 
+A single media failure during scan warmup is counted and logged but does not
+abort the rest of the library. Unsupported resolver-specific sources are
+counted as skipped.
+
 ## Migration sequence
 
+Completed:
+
 1. Runtime HLS consumes the persistent Probe record.
-2. Scanner writes media summaries by applying the same Probe record.
-3. Playback Planner consumes audio/video capabilities from Probe.
-4. Preprocess and Startup Stream use the same record and source fingerprint.
-5. The legacy FFprobe parser in `scanner.go` is deleted after all callers move.
+2. Playback Planner consumes a fresh cached Probe without adding request latency.
+3. Scan completion warms the Probe cache and synchronizes legacy technical summaries.
+
+Remaining:
+
+1. Preprocess consumes the same Probe record and source fingerprint.
+2. Startup Stream generation consumes Probe and the immutable Artifact Store.
+3. Resolver-specific source identities cover `.strm`, WebDAV and remote storage.
+4. The legacy FFprobe parser in `scanner.go` is deleted after all callers move.
