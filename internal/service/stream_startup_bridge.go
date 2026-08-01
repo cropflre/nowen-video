@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,12 +12,16 @@ import (
 	"gorm.io/gorm"
 )
 
+const startupBridgeProfilePrefix = "startup-"
+const startupBridgeSegmentPrefix = "startup__"
+const startupContinuationSegmentPrefix = "continuation__"
+
 // StartupBridgeInfo is safe for API responses. It intentionally excludes
 // artifact filesystem paths and internal Job identifiers.
 type StartupBridgeInfo struct {
-	Available  bool   `json:"available"`
-	ProfileID  string `json:"profile_id,omitempty"`
-	DurationMS int64  `json:"duration_ms,omitempty"`
+	Available   bool   `json:"available"`
+	ProfileID   string `json:"profile_id,omitempty"`
+	DurationMS  int64  `json:"duration_ms,omitempty"`
 	PlaylistURL string `json:"playlist_url,omitempty"`
 }
 
@@ -81,8 +84,11 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 		return "", gorm.ErrRecordNotFound
 	}
 	startupPlaylist, err := readHLSPlaylist(startup.ManifestPath)
-	if err != nil || len(startupPlaylist.Segments) == 0 {
+	if err != nil {
 		return "", fmt.Errorf("read startup playlist: %w", err)
+	}
+	if len(startupPlaylist.Segments) == 0 {
+		return "", fmt.Errorf("startup playlist contains no segments")
 	}
 
 	// Submission is idempotent. A transient queue/database error does not hide
@@ -115,8 +121,7 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 }
 
 func (s *StreamService) ResolveStartupBridgeSegment(mediaID, profileID, segment string) (*StartupBridgeFile, error) {
-	media, startup, err := s.resolveStartupDescriptor(mediaID, profileID)
-	_ = media
+	_, startup, err := s.resolveStartupDescriptor(mediaID, profileID)
 	if err != nil {
 		return nil, err
 	}
@@ -263,30 +268,56 @@ func buildStartupBridgePlaylist(
 	return builder.String()
 }
 
+func startupVirtualProfile(profileID string) string {
+	return startupBridgeProfilePrefix + profileID
+}
+
+func parseStartupVirtualProfile(quality string) (string, bool) {
+	if !strings.HasPrefix(quality, startupBridgeProfilePrefix) {
+		return "", false
+	}
+	profileID := strings.TrimPrefix(quality, startupBridgeProfilePrefix)
+	if profileID == "" || profileID != filepath.Base(profileID) {
+		return "", false
+	}
+	return profileID, true
+}
+
 func startupBridgePlaylistURL(mediaID, profileID string) string {
-	return fmt.Sprintf(
-		"/api/stream/%s/startup/%s/bridge.m3u8",
-		url.PathEscape(mediaID),
-		url.PathEscape(profileID),
-	)
+	return fmt.Sprintf("/api/stream/%s/%s/stream.m3u8", mediaID, startupVirtualProfile(profileID))
 }
 
 func startupBridgeSegmentURL(mediaID, profileID, segment string) string {
 	return fmt.Sprintf(
-		"/api/stream/%s/startup/%s/segments/%s",
-		url.PathEscape(mediaID),
-		url.PathEscape(profileID),
-		url.PathEscape(segment),
+		"/api/stream/%s/%s/%s%s",
+		mediaID,
+		startupVirtualProfile(profileID),
+		startupBridgeSegmentPrefix,
+		segment,
 	)
 }
 
 func startupContinuationSegmentURL(mediaID, profileID, segment string) string {
 	return fmt.Sprintf(
-		"/api/stream/%s/startup/%s/continuation/%s",
-		url.PathEscape(mediaID),
-		url.PathEscape(profileID),
-		url.PathEscape(segment),
+		"/api/stream/%s/%s/%s%s",
+		mediaID,
+		startupVirtualProfile(profileID),
+		startupContinuationSegmentPrefix,
+		segment,
 	)
+}
+
+func parseStartupBridgeSegment(segment string) (source string, actual string, ok bool) {
+	switch {
+	case strings.HasPrefix(segment, startupBridgeSegmentPrefix):
+		actual = strings.TrimPrefix(segment, startupBridgeSegmentPrefix)
+		return "startup", actual, actual != ""
+	case strings.HasPrefix(segment, startupContinuationSegmentPrefix):
+		actual = strings.TrimPrefix(segment, startupContinuationSegmentPrefix)
+		return "continuation", actual, actual != ""
+	default:
+		return "", "", false
+	}
 }
 
 func safeHLSSegmentPath(directory, segment string) (string, error) {
