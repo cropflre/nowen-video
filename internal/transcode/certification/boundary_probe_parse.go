@@ -148,16 +148,30 @@ func (d boundaryProbeDocument) evidence(name string) (boundaryProbeSegment, erro
 }
 
 func (d boundaryProbeDocument) streamEvidence(stream boundaryProbeStream) (boundaryProbeStreamEvidence, error) {
-	packets := make([]boundaryProbePacketEvidence, 0, len(d.Packets))
+	selected := make([]boundaryProbePacket, 0, len(d.Packets))
 	for _, packet := range d.Packets {
-		if packet.StreamIndex != stream.Index {
-			continue
+		if packet.StreamIndex == stream.Index {
+			selected = append(selected, packet)
 		}
+	}
+	if len(selected) == 0 {
+		return boundaryProbeStreamEvidence{}, fmt.Errorf("no packets found")
+	}
+
+	packets := make([]boundaryProbePacketEvidence, 0, len(selected))
+	for index, packet := range selected {
 		pts, ptsOK := packet.PTS.int64Value()
 		dts, dtsOK := packet.DTS.int64Value()
+		if !ptsOK || !dtsOK {
+			return boundaryProbeStreamEvidence{}, fmt.Errorf("packet timestamps are unavailable")
+		}
 		duration, durationOK := packet.Duration.int64Value()
-		if !ptsOK || !dtsOK || !durationOK || duration <= 0 {
-			return boundaryProbeStreamEvidence{}, fmt.Errorf("packet timestamps or duration are unavailable")
+		if !durationOK || duration <= 0 {
+			var err error
+			duration, err = inferTerminalBoundaryPacketDuration(selected, index)
+			if err != nil {
+				return boundaryProbeStreamEvidence{}, err
+			}
 		}
 		sideData := make([]transcodeboundary.PacketSideData, 0, len(packet.SideData))
 		for _, raw := range packet.SideData {
@@ -180,9 +194,7 @@ func (d boundaryProbeDocument) streamEvidence(stream boundaryProbeStream) (bound
 			SideData: sideData,
 		})
 	}
-	if len(packets) == 0 {
-		return boundaryProbeStreamEvidence{}, fmt.Errorf("no packets found")
-	}
+
 	sampleRate, _ := strconv.Atoi(stream.SampleRate)
 	rate := stream.AverageRate
 	if rate == "" || rate == "0/0" {
@@ -194,4 +206,24 @@ func (d boundaryProbeDocument) streamEvidence(stream boundaryProbeStream) (bound
 		FrameRateMilli: boundaryRationalMilli(rate),
 		Packets:        packets,
 	}, nil
+}
+
+// inferTerminalBoundaryPacketDuration handles a narrow MPEG-TS demuxer behavior:
+// FFprobe can omit duration for the final packet while still reporting complete,
+// strictly ordered DTS values. Only that terminal packet is eligible for
+// inference, and its duration is derived from the immediately preceding DTS
+// delta. Missing duration anywhere else remains a hard certification failure.
+func inferTerminalBoundaryPacketDuration(packets []boundaryProbePacket, index int) (int64, error) {
+	if index != len(packets)-1 {
+		return 0, fmt.Errorf("packet duration is unavailable before stream tail")
+	}
+	if index == 0 {
+		return 0, fmt.Errorf("terminal packet duration cannot be inferred without a preceding packet")
+	}
+	previousDTS, previousOK := packets[index-1].DTS.int64Value()
+	currentDTS, currentOK := packets[index].DTS.int64Value()
+	if !previousOK || !currentOK || currentDTS <= previousDTS {
+		return 0, fmt.Errorf("terminal packet duration cannot be inferred from DTS")
+	}
+	return currentDTS - previousDTS, nil
 }
