@@ -66,7 +66,7 @@ jobs:
             -all \
             -output /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
           cat /tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json
-      - name: Verify matrix identities and fail-closed policy
+      - name: Verify matrix identities, evidence and fail-closed policy
         run: |
           python3 - <<'PY'
           import json
@@ -75,23 +75,54 @@ jobs:
           path = Path('/tmp/nowen-transcode-certification/cfr-overlap-attribution-matrix-v1.json')
           matrix = json.loads(path.read_text())
           assert matrix['schema_version'] == 'ffmpeg-handoff-fixture-matrix-v1'
-          required = {
-              'cfr-h264-aac-48k-software-v1',
-              'cfr-h264-aac-48k-software-zerolatency-v1',
-              'cfr-h264-aac-44k1-software-zerolatency-v1',
-          }
+
+          control_id = 'cfr-h264-aac-48k-software-v1'
+          production_48k_id = 'cfr-h264-aac-48k-software-zerolatency-v1'
+          production_44k1_id = 'cfr-h264-aac-44k1-software-zerolatency-v1'
+          required = {control_id, production_48k_id, production_44k1_id}
           reports = {report['fixture_id']: report for report in matrix['reports']}
           assert set(reports) == required
-          for report in reports.values():
+
+          for fixture_id, report in reports.items():
               assert report['schema_version'] == 'ffmpeg-handoff-fixture-report-v2'
+              assert report['fixture']['id'] == fixture_id
               assert report['handoff']['seamless_allowed'] is False
               assert report['handoff']['discontinuity_required'] is True
               assert report['handoff']['status'] in {'aligned', 'gap', 'overlap', 'mixed'}
+
+              handoff = report['handoff']
+              for stream, presentation_key, decode_key in (
+                  ('video', 'video_presentation_delta_micros', 'video_decode_delta_micros'),
+                  ('audio', 'audio_presentation_delta_micros', 'audio_decode_delta_micros'),
+              ):
+                  evidence = handoff[stream]
+                  assert evidence['presentation_delta_ticks'] == evidence['continuation_first_pts'] - evidence['startup_end_pts']
+                  assert evidence['decode_delta_ticks'] == evidence['continuation_first_dts'] - evidence['startup_end_dts']
+                  assert handoff[presentation_key] == evidence['presentation_delta_micros']
+                  assert handoff[decode_key] == evidence['decode_delta_micros']
+
+          assert reports[control_id]['fixture']['audio_sample_rate'] == 48000
+          assert reports[production_48k_id]['fixture']['audio_sample_rate'] == 48000
+          assert reports[production_44k1_id]['fixture']['audio_sample_rate'] == 44100
+
+          control = reports[control_id]['handoff']
+          production_48k = reports[production_48k_id]['handoff']
+          assert abs(production_48k['video_presentation_delta_micros']) < abs(control['video_presentation_delta_micros'])
+          assert abs(production_48k['video_decode_delta_micros']) < abs(control['video_decode_delta_micros'])
+          assert abs(production_48k['audio_presentation_delta_micros']) < abs(control['audio_presentation_delta_micros'])
+
           comparisons = {item['name']: item for item in matrix['comparisons']}
           assert set(comparisons) == {
               'x264_zerolatency_effect_48k',
               'aac_sample_rate_effect_zerolatency',
           }
+          zero_latency = comparisons['x264_zerolatency_effect_48k']
+          assert zero_latency['video_presentation_delta_change_micros'] > 0
+          assert zero_latency['video_decode_delta_change_micros'] > 0
+          assert zero_latency['audio_presentation_delta_change_micros'] > 0
+          sample_rate = comparisons['aac_sample_rate_effect_zerolatency']
+          assert sample_rate['audio_presentation_delta_change_micros'] != 0
+
           print(json.dumps({
               fixture_id: {
                   'status': report['handoff']['status'],
