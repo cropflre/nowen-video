@@ -21,6 +21,9 @@ func (s *TranscodeService) attachProbeWarmup(hub *WSHub) {
 			s.logger,
 			s.jobs.Done(),
 		)
+		warmup.SetOnProbed(func(media, probe interfaceMediaProbeRecord) (bool, error) {
+			return false, nil
+		})
 		s.probeWarmup = warmup
 
 		unsubscribe := hub.SubscribeInternal(EventScanCompleted, func(event WSEvent) {
