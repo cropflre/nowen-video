@@ -5,7 +5,7 @@ import type {
 } from '@/types'
 import api from './client'
 
-export type PlaybackMethod = 'direct' | 'remux' | 'smart_remux' | 'transcode'
+export type PlaybackMethod = 'direct' | 'remux' | 'smart_remux' | 'startup_stream' | 'transcode'
 
 export interface PlaybackClientCapabilities {
   user_agent?: string
@@ -14,6 +14,14 @@ export interface PlaybackClientCapabilities {
   supports_hevc: boolean
   force_transcode: boolean
   max_bitrate?: number
+}
+
+export interface PlaybackStartupStream {
+  profile_id: string
+  duration_ms: number
+  playlist_url: string
+  continuation_mode: 'event_bridge_v1' | string
+  discontinuity_at_handoff: boolean
 }
 
 export interface PlaybackPlan {
@@ -26,6 +34,7 @@ export interface PlaybackPlan {
   fallback_method?: PlaybackMethod
   fallback_url?: string
   client_capabilities: PlaybackClientCapabilities
+  startup_stream?: PlaybackStartupStream
 }
 
 type PlannedMediaPlayInfo = MediaPlayInfo & {
@@ -141,7 +150,13 @@ export const streamApi = {
 
   getMasterUrl: (mediaId: string) => {
     const plan = playbackPlanCache.get(mediaId)
-    return withToken(plan?.method === 'transcode' ? plan.url : `/api/stream/${mediaId}/master.m3u8`)
+    const plannedHls = plan?.method === 'transcode' || plan?.method === 'startup_stream'
+    return withToken(plannedHls ? plan.url : `/api/stream/${mediaId}/master.m3u8`)
+  },
+
+  getPlaybackFallbackUrl: (mediaId: string) => {
+    const fallback = playbackPlanCache.get(mediaId)?.fallback_url
+    return fallback ? withToken(fallback) : ''
   },
 
   getDirectUrl: (mediaId: string) => {
