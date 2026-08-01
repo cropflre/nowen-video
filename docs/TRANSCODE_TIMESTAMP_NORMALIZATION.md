@@ -156,6 +156,34 @@ near 1.4 seconds is rejected as a reset timeline. A rejected Artifact cannot:
 The final packet-to-packet relation is still evaluated separately by
 `startup-handoff-timeline-v2`.
 
+## Measured software fixture
+
+Server Lite CI installs the Ubuntu 24.04 FFmpeg 6.1.1 package and executes a
+required real-media fixture. The test generates an eight-second H.264/AAC source,
+encodes a bounded 0-4 second Startup HLS Artifact, then encodes a production-like
+Continuation from an input seek at four seconds to source EOF.
+
+The measured first-packet timestamps on the accepted fixture were:
+
+```text
+startup video       1.421333 s
+continuation video  5.400000 s
+video delta         3.978667 s
+
+startup audio       1.400000 s
+continuation audio  5.378667 s
+audio delta         3.978667 s
+```
+
+The result proves that the four-second seek relationship survives the separate
+FFmpeg execution for both streams. It also demonstrates that MPEG-TS still has a
+roughly 1.4-second mux-origin delay. The implementation therefore verifies the
+relative Job-owned origin rather than pretending that the first packet must be
+exactly zero or exactly the seek value.
+
+This is one deterministic software fixture, not a complete media or backend
+certification matrix.
+
 ## Migration and rollback
 
 Migration is additive:
@@ -197,6 +225,7 @@ Required automated coverage:
 - policy mutation changes identity;
 - v1 rejects hardware backend certification;
 - generated FFmpeg option ordering;
+- required real FFmpeg/ffprobe origin-preservation fixture;
 - Job origin must equal seek start;
 - normalized first-packet evidence accepted;
 - reset Continuation evidence rejected;
