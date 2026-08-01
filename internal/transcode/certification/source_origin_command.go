@@ -11,29 +11,40 @@ import (
 	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
 )
 
-func sourceOriginSourceArgs(output string, spec SourceOriginCaseSpec) []string {
+// sourceOriginInputGraph is both the FFprobe evidence source and the FFmpeg HLS
+// input. Using the same lavfi graph avoids an intermediate container silently
+// shifting or rejecting negative timestamps.
+func sourceOriginInputGraph(spec SourceOriginCaseSpec) string {
 	offset := sourceOriginOffsetExpression(spec.SourceOffsetMicros)
-	base := []string{"-hide_banner", "-loglevel", "error", "-y", "-copyts"}
 	if spec.SourceMode == transcodesourceorigin.ModeVFR {
-		base = append(base,
-			"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=24:duration=20", fixtureWidth, fixtureHeight),
-			"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=30:duration=20", fixtureWidth, fixtureHeight),
-			"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=1000:sample_rate=%d:duration=%d", spec.AudioSampleRate, sourceOriginDurationSeconds),
-			"-filter_complex", fmt.Sprintf("[0:v]settb=AVTB[v0];[1:v]settb=AVTB[v1];[v0][v1]concat=n=2:v=1:a=0,setpts=%s[v];[2:a]asettb=1/%d,asetpts=%s[a]", offset, spec.AudioSampleRate, offset),
-		)
-	} else {
-		base = append(base,
-			"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%s:duration=%d", fixtureWidth, fixtureHeight, sourceOriginRateExpression(spec), sourceOriginDurationSeconds),
-			"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=1000:sample_rate=%d:duration=%d", spec.AudioSampleRate, sourceOriginDurationSeconds),
-			"-filter_complex", fmt.Sprintf("[0:v]settb=AVTB,setpts=%s[v];[1:a]asettb=1/%d,asetpts=%s[a]", offset, spec.AudioSampleRate, offset),
+		return fmt.Sprintf(
+			"testsrc2=size=%dx%d:rate=24:duration=20,settb=AVTB[v0];"+
+				"testsrc2=size=%dx%d:rate=30:duration=20,settb=AVTB[v1];"+
+				"[v0][v1]concat=n=2:v=1:a=0,setpts=%s[out0];"+
+				"sine=frequency=1000:sample_rate=%d:duration=%d,asettb=1/%d,asetpts=%s[out1]",
+			fixtureWidth,
+			fixtureHeight,
+			fixtureWidth,
+			fixtureHeight,
+			offset,
+			spec.AudioSampleRate,
+			sourceOriginDurationSeconds,
+			spec.AudioSampleRate,
+			offset,
 		)
 	}
-	return append(base,
-		"-map", "[v]", "-map", "[a]",
-		"-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
-		"-g", fmt.Sprint(spec.GOPSize), "-keyint_min", fmt.Sprint(spec.GOPSize), "-sc_threshold", "0",
-		"-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", fmt.Sprint(spec.AudioSampleRate),
-		"-fps_mode:v", "passthrough", "-avoid_negative_ts", "disabled", "-f", "nut", output,
+	return fmt.Sprintf(
+		"testsrc2=size=%dx%d:rate=%s:duration=%d,settb=AVTB,setpts=%s[out0];"+
+			"sine=frequency=1000:sample_rate=%d:duration=%d,asettb=1/%d,asetpts=%s[out1]",
+		fixtureWidth,
+		fixtureHeight,
+		sourceOriginRateExpression(spec),
+		sourceOriginDurationSeconds,
+		offset,
+		spec.AudioSampleRate,
+		sourceOriginDurationSeconds,
+		spec.AudioSampleRate,
+		offset,
 	)
 }
 
@@ -60,7 +71,7 @@ func produceSourceOriginHLS(
 	ffmpegPath,
 	workDir,
 	name,
-	sourcePath string,
+	sourceGraph string,
 	timestampPlan transcodetimestamp.Plan,
 	spec SourceOriginCaseSpec,
 	startMicros,
@@ -70,7 +81,7 @@ func produceSourceOriginHLS(
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return "", fmt.Errorf("create source origin %s directory: %w", name, err)
 	}
-	args, err := sourceOriginHLSArgs(sourcePath, directory, timestampPlan, spec, startMicros, durationMicros)
+	args, err := sourceOriginHLSArgs(sourceGraph, directory, timestampPlan, spec, startMicros, durationMicros)
 	if err != nil {
 		return "", fmt.Errorf("build source origin %s command: %w", name, err)
 	}
@@ -81,7 +92,7 @@ func produceSourceOriginHLS(
 }
 
 func sourceOriginHLSArgs(
-	sourcePath,
+	sourceGraph,
 	outputDir string,
 	timestampPlan transcodetimestamp.Plan,
 	spec SourceOriginCaseSpec,
@@ -89,9 +100,10 @@ func sourceOriginHLSArgs(
 	durationMicros int64,
 ) ([]string, error) {
 	args := serviceffmpeg.BuildHLSArgs(serviceffmpeg.BuildOptions{
-		InputPath: sourcePath,
-		OutputDir: outputDir,
-		HWAccel:   serviceffmpeg.HWAccelNone,
+		InputPath:  sourceGraph,
+		OutputDir:  outputDir,
+		ExtraInput: []string{"-f", "lavfi"},
+		HWAccel:    serviceffmpeg.HWAccelNone,
 		Profile: serviceffmpeg.Profile{
 			Width:        fixtureWidth,
 			Height:       fixtureHeight,
