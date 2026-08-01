@@ -12,6 +12,8 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
+const artifactPublishResolveRetryDelay = 5 * time.Millisecond
+
 // GetArtifactSegmentPlaylist is the Artifact-aware runtime HLS entry. It never
 // captures a mutable physical path across Job submission: every read resolves
 // the current Lease-valid staging Artifact or immutable published version.
@@ -50,19 +52,27 @@ func (s *StreamService) GetArtifactSegmentPlaylist(mediaID, quality string) (str
 }
 
 func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality string) (string, error) {
-	outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
-	if err != nil {
-		return "", err
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
+		if err != nil {
+			lastErr = err
+		} else {
+			manifestPath := filepath.Join(outputDir, "stream.m3u8")
+			content, readErr := os.ReadFile(manifestPath)
+			if readErr == nil {
+				if !strings.Contains(string(content), ".ts") {
+					return "", fmt.Errorf("HLS Artifact 尚未包含已完成分片")
+				}
+				return string(content), nil
+			}
+			lastErr = readErr
+		}
+		if attempt == 0 {
+			time.Sleep(artifactPublishResolveRetryDelay)
+		}
 	}
-	manifestPath := filepath.Join(outputDir, "stream.m3u8")
-	content, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return "", err
-	}
-	if !strings.Contains(string(content), ".ts") {
-		return "", fmt.Errorf("HLS Artifact 尚未包含已完成分片")
-	}
-	return string(content), nil
+	return "", lastErr
 }
 
 // ServeArtifactSegment resolves the Artifact for every request. A segment from
@@ -82,14 +92,10 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 	if segment == "" || filepath.Base(segment) != segment || strings.ContainsAny(segment, `/\\`) {
 		return fmt.Errorf("无效的分片名: %s", segment)
 	}
-	outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
+
+	segmentPath, outputDir, info, err := s.resolveArtifactFile(media, quality, segment)
 	if err != nil {
-		return err
-	}
-	segmentPath := filepath.Join(outputDir, segment)
-	info, err := os.Stat(segmentPath)
-	if err != nil {
-		return fmt.Errorf("分片文件不存在: %s", segment)
+		return fmt.Errorf("分片文件不存在: %s: %w", segment, err)
 	}
 	if info.IsDir() || info.Size() <= 0 {
 		return fmt.Errorf("分片文件无效: %s", segment)
@@ -104,4 +110,25 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 	}
 	http.ServeFile(w, r, segmentPath)
 	return nil
+}
+
+func (s *StreamService) resolveArtifactFile(media *model.Media, quality, name string) (string, string, os.FileInfo, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
+		if err != nil {
+			lastErr = err
+		} else {
+			path := filepath.Join(outputDir, name)
+			info, statErr := os.Stat(path)
+			if statErr == nil {
+				return path, outputDir, info, nil
+			}
+			lastErr = statErr
+		}
+		if attempt == 0 {
+			time.Sleep(artifactPublishResolveRetryDelay)
+		}
+	}
+	return "", "", nil, lastErr
 }
