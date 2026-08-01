@@ -144,6 +144,9 @@ func (s *TranscodeService) cleanupArtifactRecord(artifact *model.TranscodeArtifa
 		}
 		removed++
 	}
+	if err := s.executionRepo.DeleteHandoffAttestationsForArtifact(artifact.ID, time.Now()); err != nil {
+		return removed, err
+	}
 	if err := s.executionRepo.DeleteArtifactByID(artifact.ID); err != nil {
 		return removed, err
 	}
