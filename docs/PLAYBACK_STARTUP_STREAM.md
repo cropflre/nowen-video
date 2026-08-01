@@ -18,13 +18,19 @@ Current Job planners:
 
 ```text
 startup-hls-v2
-startup-continuation-hls-v2
+startup-continuation-hls-v3
 ```
 
 Current output compatibility schema:
 
 ```text
 hls-encoding-plan-v1
+```
+
+Current produced-media evidence schema:
+
+```text
+hls-produced-media-attestation-v1
 ```
 
 ## Decision boundary
@@ -38,7 +44,10 @@ are true:
    Encoding Plan hash are complete.
 4. Its persisted Encoding Plan exactly matches the plan rebuilt from the current
    authoritative Probe and shared profile catalog.
-5. The request does not carry a per-request `max_bitrate` cap.
+5. The Artifact carries a complete, identity-verified Produced-media
+   Attestation with `attestation_status = verified`.
+6. ffprobe-observed output matches the persisted Encoding Plan.
+7. The request does not carry a per-request `max_bitrate` cap.
 
 When a bitrate cap is present, Runtime HLS remains authoritative because a
 previously encoded immutable Startup Artifact cannot be retroactively capped.
@@ -73,12 +82,17 @@ Example:
 ```
 
 The client must treat `url` as the only primary playback URL. It must not build
-Artifact paths, Job IDs, Attempt IDs, or continuation URLs itself.
+Artifact paths, Job IDs, Attempt IDs, continuation URLs, or attestation state
+itself.
 
-`encoding_plan_version` and `encoding_plan_hash` are read-only diagnostics for
-incident correlation. Clients must not use them to reproduce server planning or
-make their own compatibility decision. Canonical Encoding Plan JSON remains
-inside the server boundary.
+`encoding_plan_version` and `encoding_plan_hash` remain read-only diagnostics
+for incident correlation. Clients must not use them to reproduce server
+planning or make their own compatibility decision.
+
+Attestation JSON, packet timestamps, filesystem paths, ffprobe output, Job IDs,
+Attempt IDs, Artifact IDs, and Lease tokens remain inside the server boundary.
+The external schema intentionally does not depend on provisional attestation
+state while that protocol is still evolving.
 
 ## Encoding Plan fencing
 
@@ -86,8 +100,7 @@ Startup and Continuation are separate durable Jobs, so their ordinary
 `PlanHash` values are expected to differ. The first covers the bounded startup
 range and the second covers the remaining timeline.
 
-Both Jobs must nevertheless persist the same immutable output compatibility
-identity:
+Both Jobs must persist the same immutable output compatibility identity:
 
 ```text
 encoding_plan_version
@@ -102,23 +115,44 @@ excludes start offset, duration, priority, Worker, Lease, Attempt, paths, and
 hardware backend.
 
 Every Attempt Artifact inherits these fields from its owning Job before FFmpeg
-starts. The repository resolver filters on plan version and hash before an
-Artifact becomes a readable candidate. The service additionally verifies the
-canonical JSON when it is present on both sides.
-
-A missing or mismatched plan is handled as not bridge-eligible. It is never
-appended optimistically.
+starts. A missing or mismatched plan is handled as not bridge-eligible. It is
+never appended optimistically.
 
 Full details are defined in `docs/TRANSCODE_ENCODING_PLAN.md`.
+
+## Produced-media Attestation
+
+The declared Encoding Plan is not sufficient evidence that a hardware or
+software encoder actually emitted compatible media.
+
+Before an immutable Startup or Continuation Artifact may be published, the
+server runs ffprobe against the first and last MPEG-TS segments and records:
+
+- actual video Codec, Profile, Level, dimensions, Pixel Format, colors, frame
+  rate, and Time Base;
+- actual audio Codec, channel count, sample rate, and Time Base;
+- first and last PTS/DTS packet checkpoints;
+- the last packet end timestamp and millisecond bounds.
+
+A planned Artifact can enter `publishing` only when its Attestation is
+`verified`. This rule is enforced both in the service and again in the database
+publish transaction.
+
+A live Continuation remains invisible until its first materialized segment has
+a Lease-valid `provisional` Attestation. The final publication path replaces
+that provisional proof with a complete verified proof.
+
+Full details are defined in
+`docs/TRANSCODE_PRODUCED_MEDIA_ATTESTATION.md`.
 
 ## EVENT bridge
 
 The bridge is a server-generated, authenticated EVENT playlist:
 
 ```text
-immutable Startup Artifact segments
+immutable verified Startup Artifact segments
   -> EXT-X-DISCONTINUITY
-  -> Lease-valid, Encoding-Plan-matched Startup Continuation segments
+  -> Lease-valid, attested and stream-compatible Continuation segments
 ```
 
 The bridge itself stores no media files and never copies or mutates either
@@ -139,27 +173,44 @@ Segment URLs use the existing authenticated stream route with a virtual profile:
 The HTTP Adapter parses this virtual namespace and delegates file resolution to
 the Artifact Store. It does not access a shared mutable media/profile directory.
 
+## Actual stream compatibility
+
+Before the bridge appends Continuation segments, it compares the verified
+Startup tail evidence with the Continuation first-segment evidence.
+
+The following must match:
+
+- Encoding Plan version and hash
+- video Codec and Time Base
+- dimensions and Pixel Format
+- color primaries, transfer, and matrix
+- audio Codec and Time Base
+- channel count and sample rate
+
+This is stronger than comparing declared plans, but it still does not prove
+that timestamps are continuous across independently started FFmpeg processes.
+
 ## Migration and rollback
 
-The v2 Startup planners do not delete or rewrite v1 Artifacts. Database changes
-are additive and old rows remain available for historical inspection and normal
-retention cleanup.
+Database changes are additive. Existing Artifact rows and files are not deleted
+or rewritten.
 
 Upgrade behavior:
 
-- existing Job plan fields are copied into old Artifact rows when available;
-- historical Startup/Continuation rows without an Encoding Plan remain stored;
-- v1 Planner Version rows or blank-plan rows are not eligible for the v2 Bridge;
-- the next normal warm-up creates a v2 Startup Artifact with a current Encoding
-  Plan;
+- historical rows keep blank Attestation fields;
+- no Attestation is fabricated from old metadata or directory existence;
+- historical Startup/Continuation Artifacts without verified evidence remain
+  stored but are excluded from the new Resolver;
+- `startup-continuation-hls-v3` prevents continuation-v2 output from being
+  confused with the attested execution contract;
+- the next normal warm-up or playback submission generates a new Artifact;
 - no shared directory or compatibility copy is introduced.
 
 Rollback behavior:
 
 - an older binary ignores the additive columns;
 - files and historical rows are preserved;
-- the v2 Planner Version prevents a newer binary from confusing old and new
-  output identities after a later re-upgrade.
+- a later re-upgrade again excludes unattested rows from the current bridge.
 
 ## Fallback
 
@@ -174,46 +225,53 @@ remains a separate client hardening task.
 
 ## Timeline honesty
 
-`discontinuity_at_handoff=true` remains intentional. The current implementation
-provides one stable URL, one append-only playlist, and a persisted shared output
-contract, but it does not claim sample-perfect timestamp continuity yet.
+`discontinuity_at_handoff=true` remains intentional.
+
+The current implementation proves actual stream identity and records packet
+checkpoints, but does not yet define the legal relationship between the Startup
+last packet and Continuation first packet. In particular, independent FFmpeg
+processes may reset or offset timestamps differently.
 
 Before this field can become `false`, the following must be verified on every
 encoding backend:
 
 - video PTS/DTS origin and alignment at the startup boundary;
-- audio priming and encoder-delay alignment;
-- exact selected source tracks and channel layout;
-- actual codec profile, level, pixel format, color metadata, and time base;
+- MPEG-TS timestamp wrap and offset rules;
+- audio priming, encoder delay, and padding;
 - keyframe and segment-boundary checkpoint alignment;
+- actual Sample Description compatibility;
 - browser, ExoPlayer, mpv, Emby, and Infuse behavior without decoder reset.
 
-The Encoding Plan is a declared compatibility contract. A later phase must also
-attest that produced media conforms to that declaration before the explicit HLS
-discontinuity can be removed.
+Produced-media Attestation is evidence collection and output-contract
+verification. It is not yet Timeline Continuity Attestation.
 
 ## Failure and recovery
 
-- A stale Lease cannot expose continuation segments.
+- A stale Lease cannot attach provisional or verified evidence.
 - A superseded Attempt cannot publish into the bridge.
 - Source fingerprint, Planner Version, Encoding Plan version, or Encoding Plan
   hash changes invalidate reuse.
-- A canonical plan mismatch hides the candidate even when its shorter hash
-  lookup matched.
+- A missing or malformed Attestation hides the candidate.
+- An unsafe Manifest URI or ffprobe failure prevents publication.
+- A Codec, Pixel Format, color, channel, sample-rate, or Time Base mismatch
+  prevents bridge append.
 - A missing Startup Artifact makes the Planner return normal `transcode`.
 - A database or Artifact Store failure is returned as an infrastructure error;
   it is not silently converted into On-demand playback.
 - Service restart reconstructs readability from Job, Attempt, Lease, Artifact,
-  and Encoding Plan state rather than directory existence.
+  Encoding Plan, and Attestation state rather than directory existence.
 
 ## Verification
 
 Required automated coverage:
 
-- deterministic canonical Encoding Plan JSON and SHA-256 identity;
-- compatibility-field hash changes;
-- Job-to-Artifact plan inheritance and additive migration backfill;
-- repository rejection of mismatched active and published Artifacts;
+- deterministic Encoding Plan and Attestation canonical JSON/SHA-256 identity;
+- fake-ffprobe first/last segment extraction;
+- unsafe Manifest URI rejection;
+- observed output mismatch rejection;
+- Job-to-Artifact plan inheritance and additive migration;
+- repository rejection of unattested active and published Artifacts;
+- Lease-fenced provisional and final proof persistence;
 - Startup Planner projection and Runtime HLS fallback;
 - bitrate-cap exclusion;
 - virtual route parsing and path rejection;
@@ -221,15 +279,13 @@ Required automated coverage:
 - exactly one declared handoff discontinuity;
 - open EVENT playlist while continuation is pending;
 - End List only after continuation completes;
-- safe version/hash decoding in Web/PC and Android;
 - Go full-package and race tests;
 - Lite and Full server build and Docker persistent-volume restart smoke tests.
 
 ## Next phase
 
-The next formal phase is produced-media attestation and timestamp checkpointing.
-It must record and verify actual output codec/profile/level, stream time bases,
-first/last PTS/DTS, AAC priming information, and segment boundary checkpoints.
-Only after the declared Encoding Plan and produced-media attestation agree on
-all supported backends and clients may the handoff discontinuity be considered
-for removal.
+The next formal phase is Timeline Continuity Attestation. It must define and
+verify the mathematical timestamp relationship between Startup and Continuation,
+including audio priming and encoder delay. Only after that proof succeeds across
+all supported backends and clients may removal of `EXT-X-DISCONTINUITY` be
+considered.
