@@ -47,6 +47,51 @@ func TestFrameMappingProjection(t *testing.T) {
 	}
 }
 
+func TestTimelineSeparatesRareOutlierFromMaterialCadence(t *testing.T) {
+	pts := make([]int64, 0, 101)
+	current := int64(0)
+	pts = append(pts, current)
+	for index := 0; index < 100; index++ {
+		delta := int64(33_333)
+		if index == 50 {
+			delta = 11
+		}
+		current += delta
+		pts = append(pts, current)
+	}
+	evidence, err := NewTimelineEvidence(TimelineStartup, "1/1000000", 0, 4_000_000, pts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !evidence.VariableDuration || evidence.MaterialVariableDuration {
+		t.Fatalf("rare outlier classification = raw:%t material:%t", evidence.VariableDuration, evidence.MaterialVariableDuration)
+	}
+	if evidence.OutlierDeltaCount != 1 || evidence.SignificantDeltaCount != 1 || evidence.DominantDeltaMicros != 33_333 {
+		t.Fatalf("unexpected outlier evidence: %+v", evidence)
+	}
+}
+
+func TestTimelineRecognizesMaterialVFR(t *testing.T) {
+	pts := make([]int64, 0, 101)
+	current := int64(0)
+	pts = append(pts, current)
+	for index := 0; index < 100; index++ {
+		if index < 50 {
+			current += 41_667
+		} else {
+			current += 33_333
+		}
+		pts = append(pts, current)
+	}
+	evidence, err := NewTimelineEvidence(TimelineStartup, "1/1000000", 0, 4_000_000, pts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !evidence.VariableDuration || !evidence.MaterialVariableDuration || evidence.OutlierDeltaCount != 0 {
+		t.Fatalf("material VFR classification is invalid: %+v", evidence)
+	}
+}
+
 func TestContractRejectsContentDuplicateClaim(t *testing.T) {
 	contract := validContract()
 	contract.ContentDuplicateClassification = "no_duplicates"
@@ -88,12 +133,13 @@ func validContract() Contract {
 }
 
 func timeline(kind string, start, end int64, count int) TimelineEvidence {
-	return TimelineEvidence{
-		Kind: kind, TimeBase: "1/1000000", WindowStartMicros: start, WindowEndMicros: end,
-		FrameCount: count, FirstPTS: start, LastPTS: end - 33_333,
-		FirstPTSMicros: start, LastPTSMicros: end - 33_333,
-		MinDeltaTicks: 33_333, MaxDeltaTicks: 33_334,
-		MinDeltaMicros: 33_333, MaxDeltaMicros: 33_334,
-		DurationSpreadMicros: 1, DistinctDeltas: 2,
+	pts := make([]int64, count)
+	for index := range pts {
+		pts[index] = start + int64(index)*33_333
 	}
+	evidence, err := NewTimelineEvidence(kind, "1/1000000", start, end, pts)
+	if err != nil {
+		panic(err)
+	}
+	return evidence
 }
