@@ -14,9 +14,6 @@ func buildBoundaryStream(kind string, startup, continuation boundaryProbeStreamE
 	if startup.TimeBase == "" || startup.TimeBase != continuation.TimeBase {
 		return transcodeboundary.StreamEvidence{}, fmt.Errorf("stream time base mismatch")
 	}
-	if kind == transcodeboundary.StreamVideo && (startup.FrameRateMilli <= 0 || startup.FrameRateMilli != continuation.FrameRateMilli) {
-		return transcodeboundary.StreamEvidence{}, fmt.Errorf("video frame rate mismatch")
-	}
 	if kind == transcodeboundary.StreamAudio && (startup.SampleRate <= 0 || startup.SampleRate != continuation.SampleRate) {
 		return transcodeboundary.StreamEvidence{}, fmt.Errorf("audio sample rate mismatch")
 	}
@@ -46,12 +43,19 @@ func buildBoundaryStream(kind string, startup, continuation boundaryProbeStreamE
 	if err != nil {
 		return transcodeboundary.StreamEvidence{}, err
 	}
+	frameRateMilli := 0
+	if kind == transcodeboundary.StreamVideo {
+		frameRateMilli, err = transcodeboundary.FrameRateMilliFromPacketDuration(nominalTicks, startup.TimeBase)
+		if err != nil {
+			return transcodeboundary.StreamEvidence{}, err
+		}
+	}
 	tolerance := transcodeboundary.ToleranceMicros(nominalMicros)
 	evidence := transcodeboundary.StreamEvidence{
 		Kind:                        kind,
 		TimeBase:                    startup.TimeBase,
 		SampleRate:                  startup.SampleRate,
-		FrameRateMilli:              startup.FrameRateMilli,
+		FrameRateMilli:              frameRateMilli,
 		Startup:                     startupWindow,
 		Continuation:                continuationWindow,
 		PresentationDeltaTicks:      presentationTicks,
