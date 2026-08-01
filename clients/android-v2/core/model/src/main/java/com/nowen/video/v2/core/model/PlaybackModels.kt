@@ -20,6 +20,8 @@ data class PlaybackStartupStream(
     @SerialName("playlist_url") val playlistUrl: String = "",
     @SerialName("continuation_mode") val continuationMode: String = "",
     @SerialName("discontinuity_at_handoff") val discontinuityAtHandoff: Boolean = false,
+    @SerialName("encoding_plan_version") val encodingPlanVersion: String = "",
+    @SerialName("encoding_plan_hash") val encodingPlanHash: String = "",
 )
 
 @Serializable
