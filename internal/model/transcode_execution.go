@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -106,9 +107,31 @@ type TranscodeArtifactRecord struct {
 }
 
 func (TranscodeArtifactRecord) TableName() string { return "transcode_artifacts" }
-func (a *TranscodeArtifactRecord) BeforeCreate(*gorm.DB) error {
+func (a *TranscodeArtifactRecord) BeforeCreate(tx *gorm.DB) error {
 	if a.ID == "" {
 		a.ID = uuid.NewString()
+	}
+	if a.JobID == "" || (a.EncodingPlanVersion != "" && a.EncodingPlanHash != "" && a.EncodingPlanJSON != "") {
+		return nil
+	}
+	var job TranscodeJobRecord
+	err := tx.Select("encoding_plan_version", "encoding_plan_hash", "encoding_plan_json").
+		First(&job, "id = ?", a.JobID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Historical legacy imports intentionally use synthetic Job IDs.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if a.EncodingPlanVersion == "" {
+		a.EncodingPlanVersion = job.EncodingPlanVersion
+	}
+	if a.EncodingPlanHash == "" {
+		a.EncodingPlanHash = job.EncodingPlanHash
+	}
+	if a.EncodingPlanJSON == "" {
+		a.EncodingPlanJSON = job.EncodingPlanJSON
 	}
 	return nil
 }
