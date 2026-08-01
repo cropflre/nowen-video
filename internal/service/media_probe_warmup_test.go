@@ -128,3 +128,27 @@ func TestMediaProbeWarmupSubmitIsDeduplicatedAndObservable(t *testing.T) {
 		t.Fatalf("closed warmup accepted new work: submitted=%v err=%v", submitted, err)
 	}
 }
+
+func TestMediaProbeWarmupStopsWithParentScheduler(t *testing.T) {
+	parentDone := make(chan struct{})
+	repo := &fakeProbeWarmupRepo{}
+	provider := &fakeProbeWarmupProvider{calls: make(map[string]int)}
+	service := NewMediaProbeWarmupService(repo, provider, nil, parentDone)
+
+	close(parentDone)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && !service.closed.Load() {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !service.closed.Load() {
+		t.Fatal("parent scheduler close did not stop probe warmup")
+	}
+	if submitted, err := service.SubmitLibrary("library-after-close"); err == nil || submitted {
+		t.Fatalf("warmup accepted work after parent close: submitted=%v err=%v", submitted, err)
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := service.Shutdown(shutdownCtx); err != nil {
+		t.Fatal(err)
+	}
+}
