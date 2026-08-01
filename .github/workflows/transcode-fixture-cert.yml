@@ -1,0 +1,74 @@
+name: Transcode Fixture Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/service/transcode_quality.go'
+      - 'internal/service/transcode_startup.go'
+      - 'internal/service/transcode_timestamp_plan.go'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/certification/**'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timeline/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_FIXTURE_CERTIFICATION.md'
+      - '.github/workflows/transcode-fixture-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/service/transcode_quality.go'
+      - 'internal/service/transcode_startup.go'
+      - 'internal/service/transcode_timestamp_plan.go'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/certification/**'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timeline/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_FIXTURE_CERTIFICATION.md'
+      - '.github/workflows/transcode-fixture-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-fixture-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cfr-software:
+    name: CFR H.264 AAC 48k software
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify fixture contracts
+        run: go test ./internal/transcode/certification ./internal/transcode/timestampplan
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
+      - name: Produce real-media evidence
+        run: |
+          mkdir -p /tmp/nowen-transcode-certification
+          /tmp/nowen-transcode-fixture-cert \
+            -output /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
+          cat /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
+      - name: Upload certification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-fixture-cfr-software-${{ github.sha }}
+          path: /tmp/nowen-transcode-certification/cfr-h264-aac-48k-software-v1.json
+          if-no-files-found: error
+          retention-days: 14
