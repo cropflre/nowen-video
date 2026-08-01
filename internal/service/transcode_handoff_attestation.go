@@ -15,7 +15,7 @@ var startupHandoffAttestationGroup singleflight.Group
 
 // StartupHandoffDecision is server-internal bridge policy. It is intentionally
 // narrower than the canonical timeline contract and exposes no packet details
-// to clients. Schema v1 always requires an HLS discontinuity.
+// to clients. Schema v2 still always requires an HLS discontinuity.
 type StartupHandoffDecision struct {
 	SchemaVersion         string
 	ContractHash          string
@@ -46,8 +46,18 @@ func (s *TranscodeService) evaluateStartupHandoff(
 ) (*StartupHandoffDecision, error) {
 	if s == nil || s.executionRepo == nil || startup == nil || continuation == nil ||
 		startup.ArtifactID == "" || continuation.ID == "" || startup.MediaID == "" ||
-		startup.ProfileID == "" {
+		startup.ProfileID == "" || startup.TimestampPlanVersion == "" || startup.TimestampPlanHash == "" {
 		return nil, fmt.Errorf("startup handoff inputs are incomplete")
+	}
+	if !sameTimestampPlan(
+		startup.TimestampPlanVersion,
+		startup.TimestampPlanHash,
+		startup.TimestampPlanJSON,
+		continuation.TimestampPlanVersion,
+		continuation.TimestampPlanHash,
+		continuation.TimestampPlanJSON,
+	) {
+		return nil, fmt.Errorf("startup handoff timestamp plan mismatch")
 	}
 
 	key := startup.ArtifactID + "|" + continuation.ID
@@ -59,6 +69,10 @@ func (s *TranscodeService) evaluateStartupHandoff(
 		); findErr == nil {
 			contract, decodeErr := decodeHandoffContract(existing)
 			if decodeErr == nil &&
+				contract.TimestampPlanVersion == startup.TimestampPlanVersion &&
+				contract.TimestampPlanHash == startup.TimestampPlanHash &&
+				contract.StartupTimelineOriginMS == startup.TimelineOriginMS &&
+				contract.ContinuationTimelineOriginMS == continuation.TimelineOriginMS &&
 				contract.StartupAttestationVersion == startup.AttestationVersion &&
 				contract.StartupAttestationHash == startup.AttestationHash &&
 				contract.ContinuationAttestationVersion == continuation.AttestationVersion &&
@@ -84,6 +98,11 @@ func (s *TranscodeService) evaluateStartupHandoff(
 			continuationEvidence,
 			continuation.AttestationVersion,
 			continuation.AttestationHash,
+			startup.TimestampPlanVersion,
+			startup.TimestampPlanHash,
+			startup.TimelineOriginMS,
+			continuation.TimelineOriginMS,
+			continuation.TimelineOriginMS,
 		)
 		if evaluateErr != nil {
 			return nil, fmt.Errorf("evaluate startup handoff timeline: %w", evaluateErr)
@@ -101,6 +120,11 @@ func (s *TranscodeService) evaluateStartupHandoff(
 			SchemaVersion:                  version,
 			EncodingPlanVersion:            contract.EncodingPlanVersion,
 			EncodingPlanHash:               contract.EncodingPlanHash,
+			TimestampPlanVersion:           contract.TimestampPlanVersion,
+			TimestampPlanHash:              contract.TimestampPlanHash,
+			StartupTimelineOriginMS:        contract.StartupTimelineOriginMS,
+			ContinuationTimelineOriginMS:   contract.ContinuationTimelineOriginMS,
+			ExpectedBoundaryMS:             contract.ExpectedBoundaryMS,
 			StartupAttestationVersion:      contract.StartupAttestationVersion,
 			StartupAttestationHash:         contract.StartupAttestationHash,
 			ContinuationAttestationVersion: contract.ContinuationAttestationVersion,
@@ -150,7 +174,11 @@ func decodeHandoffContract(record *model.TranscodeHandoffAttestationRecord) (tra
 		return transcodetimeline.Contract{}, fmt.Errorf("handoff attestation identity is invalid")
 	}
 	if record.Status != contract.Status || record.SeamlessAllowed != contract.SeamlessAllowed ||
-		record.DiscontinuityRequired != contract.DiscontinuityRequired || record.DecisionReason != contract.DecisionReason {
+		record.DiscontinuityRequired != contract.DiscontinuityRequired || record.DecisionReason != contract.DecisionReason ||
+		record.TimestampPlanVersion != contract.TimestampPlanVersion || record.TimestampPlanHash != contract.TimestampPlanHash ||
+		record.StartupTimelineOriginMS != contract.StartupTimelineOriginMS ||
+		record.ContinuationTimelineOriginMS != contract.ContinuationTimelineOriginMS ||
+		record.ExpectedBoundaryMS != contract.ExpectedBoundaryMS {
 		return transcodetimeline.Contract{}, fmt.Errorf("handoff attestation projection is invalid")
 	}
 	return contract, nil
