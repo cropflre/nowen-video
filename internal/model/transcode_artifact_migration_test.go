@@ -19,13 +19,16 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 		t.Fatal(err)
 	}
 	job := &TranscodeJobRecord{
-		MediaID:           "media-migration",
-		Intent:            "runtime_hls",
-		ProfileID:         "1080p",
-		Status:            "completed",
-		DesiredState:      "running",
-		SourceFingerprint: "source-fingerprint",
-		PlannerVersion:    "runtime-hls-v2",
+		MediaID:             "media-migration",
+		Intent:              "runtime_hls",
+		ProfileID:           "1080p",
+		Status:              "completed",
+		DesiredState:        "running",
+		SourceFingerprint:   "source-fingerprint",
+		PlannerVersion:      "runtime-hls-v2",
+		EncodingPlanVersion: "hls-encoding-plan-v1",
+		EncodingPlanHash:    "encoding-plan-hash",
+		EncodingPlanJSON:    `{"schema_version":"hls-encoding-plan-v1"}`,
 	}
 	if err := db.Create(job).Error; err != nil {
 		t.Fatal(err)
@@ -42,7 +45,7 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 	}
 
 	// Re-running the migration represents an upgrade from the schema where
-	// Artifact identity lived only on transcode_jobs.
+	// Artifact identity and Encoding Plan lived only on transcode_jobs.
 	if err := AutoMigrateTranscodeExecution(db); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +55,9 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 	}
 	if stored.MediaID != job.MediaID || stored.SourceFingerprint != job.SourceFingerprint || stored.PlannerVersion != job.PlannerVersion {
 		t.Fatalf("artifact identity was not backfilled: %+v", stored)
+	}
+	if stored.EncodingPlanVersion != job.EncodingPlanVersion || stored.EncodingPlanHash != job.EncodingPlanHash || stored.EncodingPlanJSON != job.EncodingPlanJSON {
+		t.Fatalf("artifact encoding plan was not backfilled: %+v", stored)
 	}
 	var jobCount int64
 	var attemptCount int64
