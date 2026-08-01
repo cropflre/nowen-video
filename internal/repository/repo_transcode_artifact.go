@@ -112,8 +112,8 @@ func (r *TranscodeExecutionRepo) FindPublishedHLSArtifact(
 }
 
 // PrepareArtifactPublish fences the filesystem rename behind the current Job
-// Lease and Attempt. It writes the immutable target path but does not expose the
-// Artifact as published yet.
+// Lease, Attempt and produced-media proof. Jobs without an Encoding Plan keep
+// the legacy runtime path; planned output must have final verified evidence.
 func (r *TranscodeExecutionRepo) PrepareArtifactPublish(
 	jobID,
 	attemptID,
@@ -126,6 +126,14 @@ func (r *TranscodeExecutionRepo) PrepareArtifactPublish(
 	result := r.db.Model(&model.TranscodeArtifactRecord{}).
 		Where(
 			`id = ? AND job_id = ? AND attempt_id = ? AND status = ?
+			AND (
+				encoding_plan_hash = '' OR (
+					attestation_status = 'verified'
+					AND attestation_version <> ''
+					AND attestation_hash <> ''
+					AND attestation_json <> ''
+				)
+			)
 			AND EXISTS (
 				SELECT 1 FROM transcode_jobs
 				WHERE transcode_jobs.id = transcode_artifacts.job_id
@@ -157,8 +165,8 @@ func (r *TranscodeExecutionRepo) PrepareArtifactPublish(
 }
 
 // CommitArtifactPublishAndCompleteJob is the single database commit point for
-// Artifact visibility and Job completion. Any ownership change rolls back the
-// transaction, leaving a filesystem orphan that is not returned by Resolver.
+// Artifact visibility and Job completion. Any ownership or proof change rolls
+// back the transaction, leaving a filesystem orphan that Resolver cannot read.
 func (r *TranscodeExecutionRepo) CommitArtifactPublishAndCompleteJob(
 	jobID,
 	attemptID,
@@ -173,6 +181,14 @@ func (r *TranscodeExecutionRepo) CommitArtifactPublishAndCompleteJob(
 		artifactResult := tx.Model(&model.TranscodeArtifactRecord{}).
 			Where(
 				`id = ? AND job_id = ? AND attempt_id = ? AND status = ?
+				AND (
+					encoding_plan_hash = '' OR (
+						attestation_status = 'verified'
+						AND attestation_version <> ''
+						AND attestation_hash <> ''
+						AND attestation_json <> ''
+					)
+				)
 				AND EXISTS (
 					SELECT 1 FROM transcode_jobs
 					WHERE transcode_jobs.id = transcode_artifacts.job_id
