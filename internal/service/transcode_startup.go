@@ -87,12 +87,14 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 	if probe.SourceFingerprint != "" {
 		fingerprint = probe.SourceFingerprint
 	}
-	if artifact, findErr := s.executionRepo.FindPublishedArtifact(
+	if artifact, findErr := s.executionRepo.FindPublishedArtifactByEncodingPlan(
 		media.ID,
 		quality,
 		fingerprint,
 		startupStreamPlannerVersion,
 		startupStreamArtifactKind,
+		encodingIdentity.Version,
+		encodingIdentity.Hash,
 	); findErr == nil && artifact != nil && artifact.ManifestPath != "" && sameEncodingPlan(
 		artifact.EncodingPlanVersion,
 		artifact.EncodingPlanHash,
