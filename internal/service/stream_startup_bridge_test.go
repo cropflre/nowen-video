@@ -22,8 +22,15 @@ func TestBuildStartupBridgePlaylistOrdersStartupBeforeContinuation(t *testing.T)
 		},
 		EndList: true,
 	}
+	handoff := &StartupHandoffDecision{
+		SchemaVersion:         "startup-handoff-timeline-v1",
+		Status:                "aligned",
+		SeamlessAllowed:       false,
+		DiscontinuityRequired: true,
+		DecisionReason:        "client_certification_pending",
+	}
 
-	playlist := buildStartupBridgePlaylist("media", "720p", startup, continuation)
+	playlist := buildStartupBridgePlaylist("media", "720p", startup, continuation, handoff)
 	startupIndex := strings.Index(playlist, "startup__seg0000.ts")
 	continuationIndex := strings.Index(playlist, "continuation__seg0015.ts")
 	if startupIndex < 0 || continuationIndex < 0 || startupIndex >= continuationIndex {
@@ -37,13 +44,46 @@ func TestBuildStartupBridgePlaylistOrdersStartupBeforeContinuation(t *testing.T)
 	}
 }
 
+func TestBuildStartupBridgePlaylistFailsClosedWithoutCertifiedHandoff(t *testing.T) {
+	startup := hlsPlaylistSnapshot{
+		TargetDuration: 2,
+		Segments:       []hlsPlaylistSegment{{Duration: "#EXTINF:2.000,", URI: "seg0000.ts"}},
+	}
+	continuation := &hlsPlaylistSnapshot{
+		TargetDuration: 2,
+		Segments:       []hlsPlaylistSegment{{Duration: "#EXTINF:2.000,", URI: "seg0015.ts"}},
+	}
+	for name, handoff := range map[string]*StartupHandoffDecision{
+		"missing": nil,
+		"aligned-but-uncertified": {
+			SchemaVersion:         "startup-handoff-timeline-v1",
+			Status:                "aligned",
+			SeamlessAllowed:       false,
+			DiscontinuityRequired: true,
+		},
+		"malformed-permission": {
+			SchemaVersion:         "future",
+			Status:                "aligned",
+			SeamlessAllowed:       false,
+			DiscontinuityRequired: false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			playlist := buildStartupBridgePlaylist("media", "720p", startup, continuation, handoff)
+			if strings.Count(playlist, "#EXT-X-DISCONTINUITY") != 1 {
+				t.Fatalf("uncertified bridge removed discontinuity:\n%s", playlist)
+			}
+		})
+	}
+}
+
 func TestBuildStartupBridgePlaylistStaysOpenUntilContinuationCompletes(t *testing.T) {
 	startup := hlsPlaylistSnapshot{
 		TargetDuration: 2,
 		Segments: []hlsPlaylistSegment{{Duration: "#EXTINF:2.000,", URI: "seg0000.ts"}},
 		EndList: true,
 	}
-	playlist := buildStartupBridgePlaylist("media", "720p", startup, nil)
+	playlist := buildStartupBridgePlaylist("media", "720p", startup, nil, nil)
 	if strings.Contains(playlist, "#EXT-X-ENDLIST") {
 		t.Fatalf("bridge must remain reloadable while continuation is pending:\n%s", playlist)
 	}
