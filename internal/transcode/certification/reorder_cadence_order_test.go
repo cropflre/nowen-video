@@ -10,7 +10,11 @@ func TestOrderCadencePointsForReorderEvidence(t *testing.T) {
 		{Ticks: 6_000, Micros: 66_667},
 	}
 	pts := []int64{0, 9_000, 3_000, 6_000}
-	orderedTicks, orderedPoints := orderCadencePointsForEvidence("reorder_case_candidate_run_01_startup", pts, points)
+	orderedTicks, orderedPoints := orderCadencePointsForEvidence(
+		"candidate_reorder-cfr-24-b2-origin-zero-v1_encoder-time-base-avtb-v1_run_01_startup",
+		pts,
+		points,
+	)
 	want := []int64{0, 3_000, 6_000, 9_000}
 	for index := range want {
 		if orderedTicks[index] != want[index] || orderedPoints[index].Ticks != want[index] {
@@ -25,7 +29,11 @@ func TestOrderCadencePointsForReorderEvidence(t *testing.T) {
 func TestOrderCadencePointsKeepsExistingEvidenceOrder(t *testing.T) {
 	points := []outputCadencePoint{{Ticks: 9_000}, {Ticks: 3_000}}
 	pts := []int64{9_000, 3_000}
-	orderedTicks, orderedPoints := orderCadencePointsForEvidence("output_startup", pts, points)
+	orderedTicks, orderedPoints := orderCadencePointsForEvidence(
+		"candidate-cfr-24-origin-zero_encoder-time-base-avtb-v1_run_01_startup",
+		pts,
+		points,
+	)
 	if orderedTicks[0] != 9_000 || orderedPoints[0].Ticks != 9_000 {
 		t.Fatal("existing cadence contract order changed")
 	}
