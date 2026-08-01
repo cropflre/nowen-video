@@ -27,7 +27,7 @@ on:
       - 'internal/model/migrate_lite.go'
       - 'internal/model/transcode_execution.go'
       - 'internal/model/transcode_handoff*.go'
-      - 'internal/model/transcode_artifact_migration_test.go'
+      - 'internal/model/transcode_*migration_test.go'
       - 'internal/repository/repo_transcode*.go'
       - 'internal/transcode/**'
       - 'internal/middleware/security.go'
@@ -61,20 +61,24 @@ jobs:
         run: go test ./...
       - name: Encoding plan value-object contract
         run: go test ./internal/transcode/encodingplan
+      - name: Timestamp normalization value-object contract
+        run: go test ./internal/transcode/timestampplan
       - name: Produced media attestation contract
         run: go test ./internal/transcode/attestation
       - name: Timeline continuity contract
         run: go test ./internal/transcode/timeline
-      - name: Plan, attestation persistence and resolver contract
-        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Attestation|Startup|Handoff|Timeline'
+      - name: Execution plan, migration, attestation and resolver contract
+        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Timestamp|Attestation|Startup|Handoff|Timeline'
       - name: Startup stream planner and bridge contract
-        run: go test ./internal/service -run 'Startup|Playback|Attestation|Handoff|Timeline'
+        run: go test ./internal/service -run 'Startup|Playback|EncodingPlan|Timestamp|Attestation|Handoff|Timeline'
       - name: Plan and attestation race verification
-        run: go test -race ./internal/transcode/encodingplan ./internal/transcode/attestation ./internal/transcode/timeline
+        run: go test -race ./internal/transcode/encodingplan ./internal/transcode/timestampplan ./internal/transcode/attestation ./internal/transcode/timeline
       - name: Artifact lease and filesystem race tests
-        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Attestation|Handoff|Timeline|Lease|Shutdown'
-      - name: Attested startup resolver performance baseline
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Timestamp|Attestation|Handoff|Timeline|Lease|Shutdown'
+      - name: Previous attested resolver performance baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByEncodingPlan$' -benchtime=100x -benchmem
+      - name: Timestamp-fenced resolver performance baseline
+        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByExecutionContract$' -benchtime=100x -benchmem
       - name: Handoff contract lookup performance baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindHandoffAttestation$' -benchtime=100x -benchmem
       - name: Build lite server
