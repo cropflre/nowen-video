@@ -43,19 +43,6 @@ func (s *TranscodeService) Shutdown(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// FenceForProcessExit is the non-blocking process-exit path used by the Full
-// server signal hook. It stops new database Claims first, then atomically
-// returns every locally owned Lease to queued before cancelling old contexts.
-// The existing Full HTTP shutdown can then complete without leaving tasks
-// unavailable until their Lease timeout.
-func (s *TranscodeService) FenceForProcessExit() {
-	if s == nil || s.jobs == nil {
-		return
-	}
-	s.jobs.Close()
-	s.releaseLocalLeasesForShutdown()
-}
-
 func (s *TranscodeService) removeQueuedLocalJob(job *TranscodeJob) {
 	if job == nil || job.Task == nil {
 		return
