@@ -74,7 +74,7 @@ audio_pts_shift_micros = 64000
 it merges:
 
 ```text
--vf scale=640:360,setpts=PTS+0.033333/TB
+-vf scale=320:180,setpts=PTS+0.033333/TB
 -af asetpts=PTS+0.064000/TB
 ```
 
@@ -118,6 +118,56 @@ FFmpeg and FFprobe versions
 ```
 
 The zero-shift plans intentionally share one plan hash across 48 kHz and 44.1 kHz because the execution policy is identical. Their evidence hashes remain distinct because the produced media and fixture identities differ.
+
+## Measured Ubuntu 24.04 / FFmpeg 6.1.1 evidence
+
+The dedicated CI matrix produced the following presentation-boundary evidence:
+
+| Case | Video result | Video delta | Audio result | Audio delta |
+| --- | --- | ---: | --- | ---: |
+| `shape-48k-baseline-v1` | single-packet overlap | -21.333 ms | multi-packet overlap | -58.667 ms / -2816 samples |
+| `shape-48k-common-video-frame-v1` | single-packet gap | +12.000 ms | multi-packet overlap | -25.356 ms / -1217 samples |
+| `shape-48k-common-aac-two-v1` | single-packet gap | +12.000 ms | single-packet overlap | -16.000 ms / -768 samples |
+| `shape-48k-common-aac-three-v1` | multi-packet gap | +45.333 ms | single-packet gap | +5.333 ms / +256 samples |
+| `shape-48k-per-stream-v1` | single-packet gap | +12.000 ms | single-packet gap | +5.333 ms / +256 samples |
+| `shape-44k1-baseline-v1` | single-packet overlap | -23.222 ms | multi-packet overlap | -46.622 ms / -2056 samples |
+| `shape-44k1-common-aac-two-v1` | single-packet gap | +10.111 ms | aligned | -0.178 ms / -8 samples |
+| `shape-44k1-per-stream-v1` | single-packet gap | +10.111 ms | aligned | -0.178 ms / -8 samples |
+
+The measurements establish several useful facts:
+
+1. Timestamp shaping predictably moves produced packet boundaries; the negative baseline is not immutable muxer noise.
+2. A common 48 kHz shift of one video frame does not resolve the AAC overlap.
+3. A common 48 kHz shift of three AAC access units over-corrects video to a larger multi-packet gap.
+4. The 48 kHz per-stream candidate yields small positive gaps for both streams, but it changes their relative boundary placement and therefore still requires A/V sync and client certification.
+5. At 44.1 kHz, two AAC access units reduce the measured audio boundary to eight overlapping samples while video becomes a small positive gap.
+6. The equal and per-stream 44.1 kHz candidates produce the same packet result in this fixture, showing encoder/muxer quantization can collapse distinct requested shifts into the same materialized boundary.
+
+None of these results selects a production winner. A small positive gap is not automatically safer than a small overlap, and packet-level alignment is not equivalent to decoder continuity or gapless playback.
+
+CI run:
+
+```text
+Transcode Timestamp Execution Certification #6
+Run ID: 30692387724
+Artifact ID: 8816120517
+Artifact ZIP SHA-256: a7e8962068e94e418ab04a591cbc4447dc8ffadaf4b418f6886eafabc736c3fc
+```
+
+## Certified backend scheduling
+
+Timestamp-normalized Startup and Continuation Jobs already require the software backend under `hls-timestamp-normalization-v1`.
+
+The Worker now calls `preferredAttemptBackend(job)` before creating an Attempt or workspace. Therefore:
+
+```text
+certified timestamp Job + detected QSV/NVENC/VAAPI
+  -> software Attempt #N directly
+```
+
+It no longer creates an impossible hardware Attempt #N followed by software Attempt #N+1. Runtime Jobs without a timestamp certification contract retain the detected hardware candidate and existing hardware-to-software fallback.
+
+This scheduling correction does not adopt Timestamp Execution Plan v2. It only makes the already-deployed v1 backend certification authoritative before durable Attempt creation.
 
 ## CLI
 
