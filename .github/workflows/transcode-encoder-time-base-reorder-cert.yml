@@ -21,6 +21,7 @@ on:
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
       - '.github/scripts/verify_encoder_time_base_reorder.py'
+      - '.github/scripts/verify_encoder_time_base_reorder_baseline.py'
       - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
   pull_request:
     paths:
@@ -40,6 +41,7 @@ on:
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
       - '.github/scripts/verify_encoder_time_base_reorder.py'
+      - '.github/scripts/verify_encoder_time_base_reorder_baseline.py'
       - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
   workflow_dispatch:
 
@@ -80,6 +82,10 @@ jobs:
       - name: Verify strict DTS, reorder variance, cadence, perceptual frames and A/V policy
         run: |
           python3 .github/scripts/verify_encoder_time_base_reorder.py \
+            /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
+      - name: Verify FFmpeg 6.1.1 exact reorder baseline
+        run: |
+          python3 .github/scripts/verify_encoder_time_base_reorder_baseline.py \
             /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
       - name: Upload encoder time-base reorder evidence
         if: always()
