@@ -16,6 +16,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
+	transcodeartifactstore "github.com/nowen-video/nowen-video/internal/transcode/artifactstore"
 	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
 	transcodegovernor "github.com/nowen-video/nowen-video/internal/transcode/governor"
 	transcodeprobe "github.com/nowen-video/nowen-video/internal/transcode/probe"
@@ -48,6 +49,7 @@ type TranscodeService struct {
 
 	executionRuntime *transcoderuntime.Runtime
 	mediaProbe       *transcodeprobe.Service
+	artifactStore    *transcodeartifactstore.Store
 
 	throttleSuspendSeconds atomic.Uint64
 	throttleSuspendCount   atomic.Uint64
@@ -59,11 +61,13 @@ type TranscodeService struct {
 }
 
 type TranscodeJob struct {
-	Task         *model.TranscodeTask
-	ExecutionJob *model.TranscodeJobRecord
-	Media        *model.Media
-	Probe        *model.MediaProbeRecord
-	Quality      string
+	Task            *model.TranscodeTask
+	ExecutionJob    *model.TranscodeJobRecord
+	CurrentAttempt  *model.TranscodeAttemptRecord
+	CurrentArtifact *model.TranscodeArtifactRecord
+	Media           *model.Media
+	Probe           *model.MediaProbeRecord
+	Quality         string
 
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -152,6 +156,10 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 	if err != nil {
 		panic(fmt.Sprintf("initialize media probe service: %v", err))
 	}
+	artifactStore, err := transcodeartifactstore.New(filepath.Join(cfg.Cache.CacheDir, "transcode"))
+	if err != nil {
+		panic(fmt.Sprintf("initialize transcode artifact store: %v", err))
+	}
 	service := &TranscodeService{
 		repo:                   repo,
 		executionRepo:          executionRepo,
@@ -165,6 +173,7 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		leaseRecoveryInterval:  defaultTranscodeLeaseRecoveryInterval,
 		executionRuntime:       transcoderuntime.Default(),
 		mediaProbe:             mediaProbe,
+		artifactStore:          artifactStore,
 		diskUsageTTL:           30 * time.Second,
 	}
 
@@ -247,8 +256,7 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 	}
 	if startOffset == 0 {
 		if task, err := s.repo.FindByMediaAndQuality(media.ID, quality); err == nil {
-			m3u8Path := filepath.Join(s.GetOutputDir(media.ID, quality), "stream.m3u8")
-			if _, statErr := os.Stat(m3u8Path); statErr == nil {
+			if s.hasPublishedHLSArtifact(media, quality) {
 				return task, nil
 			}
 		}
@@ -267,9 +275,6 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 	}
 
 	outputDir := s.GetOutputDir(media.ID, quality)
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建转码目录失败: %w", err)
-	}
 	task := &model.TranscodeTask{
 		MediaID:    media.ID,
 		Quality:    quality,
@@ -304,6 +309,8 @@ func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, qualit
 	return nil, fmt.Errorf("转码队列已满或服务正在关闭")
 }
 
+// WaitForFirstSegment is retained for legacy callers. New playback paths use
+// WaitForFirstSegmentForMedia so Artifact resolution includes source identity.
 func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, quality string) error {
 	m3u8Path := filepath.Join(s.GetOutputDir(mediaID, quality), "stream.m3u8")
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -420,14 +427,8 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		s.finalizeFailed(job, transcodeexecutor.Result{Err: fmt.Errorf("读取下一 Attempt 编号失败: %w", err)})
 		return
 	}
-	if nextAttempt > 1 {
-		s.cleanAttemptOutput(job.Task.OutputDir)
-	}
 
-	backend := s.hwAccel
-	if backend == "" {
-		backend = ffmpeg.HWAccelNone
-	}
+	backend := normalizeAttemptBackend(s.hwAccel)
 	result := s.runAttempt(job, backend, nextAttempt)
 	if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 		s.finalizeCancelled(job)
@@ -436,7 +437,6 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 
 	if result.Err != nil && backend != ffmpeg.HWAccelNone {
 		s.logger.Warnf("硬件转码失败 backend=%s media=%s: %v，切换独立软件 Attempt", backend, job.Media.ID, result.Err)
-		s.cleanAttemptOutput(job.Task.OutputDir)
 		result = s.runAttempt(job, ffmpeg.HWAccelNone, nextAttempt+1)
 		if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 			s.finalizeCancelled(job)
@@ -456,20 +456,13 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string, attempt
 		kind = transcodegovernor.KindHardwareTranscode
 	}
 
-	args := s.buildFFmpegArgsForBackendWithProbe(
-		job.Media,
-		job.Probe,
-		job.Media.FilePath,
-		job.Task.OutputDir,
-		job.Quality,
-		job.startOffset,
-		backend,
-	)
-	attempt, err := s.createAttempt(job, attemptNumber, backend, args)
+	execution, err := s.prepareAttemptExecution(job, attemptNumber, backend)
 	if err != nil {
-		return transcodeexecutor.Result{Err: fmt.Errorf("创建 Attempt 记录失败: %w", err)}
+		return transcodeexecutor.Result{Err: fmt.Errorf("创建 Attempt 工作区失败: %w", err)}
 	}
-	s.logger.Debugf("FFmpeg attempt=%d backend=%s command=%s %s", attemptNumber, backend, s.cfg.App.FFmpegPath, strings.Join(redactFFmpegArgs(args), " "))
+	attempt := execution.Attempt
+	args := execution.Args
+	s.logger.Debugf("FFmpeg attempt=%d backend=%s workspace=%s command=%s %s", attemptNumber, backend, execution.Workspace, s.cfg.App.FFmpegPath, strings.Join(redactFFmpegArgs(args), " "))
 	result := s.executionRuntime.Run(job.ctx, kind, transcodeexecutor.Command{
 		Path:       s.cfg.App.FFmpegPath,
 		Args:       args,
@@ -497,18 +490,6 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string, attempt
 	})
 	job.setProcess(nil)
 	s.completeAttempt(attempt, result)
+	s.completeAttemptArtifact(job, execution, result)
 	return result
-}
-
-func (s *TranscodeService) cleanAttemptOutput(outputDir string) {
-	entries, err := os.ReadDir(outputDir)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(outputDir, entry.Name())); err != nil {
-			s.logger.Warnf("清理失败 Attempt 产物失败 path=%s: %v", entry.Name(), err)
-		}
-	}
-	s.InvalidateCacheDiskUsage()
 }
