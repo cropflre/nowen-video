@@ -63,6 +63,10 @@ jobs:
         run: go test ./internal/transcode/encodingplan
       - name: Timestamp normalization value-object contract
         run: go test ./internal/transcode/timestampplan -run 'Plan|TimestampPolicy'
+      - name: Install FFmpeg fixture tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Real FFmpeg timestamp-origin fixture
         env:
           NOWEN_REQUIRE_FFMPEG_TIMESTAMP_FIXTURE: '1'
