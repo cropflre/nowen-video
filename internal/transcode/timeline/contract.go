@@ -12,7 +12,7 @@ import (
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
 )
 
-const SchemaVersion = "startup-handoff-timeline-v1"
+const SchemaVersion = "startup-handoff-timeline-v2"
 
 const (
 	StatusAligned = "aligned"
@@ -29,14 +29,18 @@ const (
 )
 
 // Contract is immutable evidence for the boundary between a published Startup
-// Artifact and one current Continuation Artifact. It proves the packet-level
-// relation that was observed; it does not grant permission to remove the HLS
-// discontinuity. Version v1 deliberately keeps seamless playback disabled until
-// browser, native HLS, ExoPlayer, mpv, Emby and Infuse certification exists.
+// Artifact and one current Continuation Artifact. It binds observed packet
+// relations to the shared Timestamp Plan and each Job-owned timeline origin.
+// Version v2 still does not grant permission to remove the HLS discontinuity.
 type Contract struct {
 	SchemaVersion                  string         `json:"schema_version"`
 	EncodingPlanVersion            string         `json:"encoding_plan_version"`
 	EncodingPlanHash               string         `json:"encoding_plan_hash"`
+	TimestampPlanVersion           string         `json:"timestamp_plan_version"`
+	TimestampPlanHash              string         `json:"timestamp_plan_hash"`
+	StartupTimelineOriginMS        int64          `json:"startup_timeline_origin_ms"`
+	ContinuationTimelineOriginMS   int64          `json:"continuation_timeline_origin_ms"`
+	ExpectedBoundaryMS             int64          `json:"expected_boundary_ms"`
 	StartupAttestationVersion      string         `json:"startup_attestation_version"`
 	StartupAttestationHash         string         `json:"startup_attestation_hash"`
 	ContinuationAttestationVersion string         `json:"continuation_attestation_version"`
@@ -72,10 +76,18 @@ func Evaluate(
 	startupHash string,
 	continuation transcodeattestation.Attestation,
 	continuationVersion,
-	continuationHash string,
+	continuationHash,
+	timestampPlanVersion,
+	timestampPlanHash string,
+	startupTimelineOriginMS,
+	continuationTimelineOriginMS,
+	expectedBoundaryMS int64,
 ) (Contract, error) {
 	if startupVersion == "" || startupHash == "" || continuationVersion == "" || continuationHash == "" {
 		return Contract{}, fmt.Errorf("produced-media attestation identities are required")
+	}
+	if timestampPlanVersion == "" || timestampPlanHash == "" {
+		return Contract{}, fmt.Errorf("timestamp plan identity is required")
 	}
 	if err := transcodeattestation.BridgeCompatible(startup, continuation); err != nil {
 		return Contract{}, err
@@ -103,6 +115,11 @@ func Evaluate(
 		SchemaVersion:                  SchemaVersion,
 		EncodingPlanVersion:            startup.EncodingPlanVersion,
 		EncodingPlanHash:               startup.EncodingPlanHash,
+		TimestampPlanVersion:           timestampPlanVersion,
+		TimestampPlanHash:              timestampPlanHash,
+		StartupTimelineOriginMS:        startupTimelineOriginMS,
+		ContinuationTimelineOriginMS:   continuationTimelineOriginMS,
+		ExpectedBoundaryMS:             expectedBoundaryMS,
 		StartupAttestationVersion:      startupVersion,
 		StartupAttestationHash:         startupHash,
 		ContinuationAttestationVersion: continuationVersion,
@@ -125,9 +142,16 @@ func (c Contract) Validate() error {
 		return fmt.Errorf("unsupported timeline contract schema %q", c.SchemaVersion)
 	}
 	if c.EncodingPlanVersion == "" || c.EncodingPlanHash == "" ||
+		c.TimestampPlanVersion == "" || c.TimestampPlanHash == "" ||
 		c.StartupAttestationVersion == "" || c.StartupAttestationHash == "" ||
 		c.ContinuationAttestationVersion == "" || c.ContinuationAttestationHash == "" {
 		return fmt.Errorf("timeline contract identities are incomplete")
+	}
+	if c.StartupTimelineOriginMS < 0 || c.ContinuationTimelineOriginMS <= c.StartupTimelineOriginMS {
+		return fmt.Errorf("timeline origins are invalid")
+	}
+	if c.ExpectedBoundaryMS != c.ContinuationTimelineOriginMS {
+		return fmt.Errorf("expected boundary must equal continuation origin")
 	}
 	if err := c.Video.Validate(); err != nil {
 		return fmt.Errorf("video relation: %w", err)
@@ -141,10 +165,10 @@ func (c Contract) Validate() error {
 	if c.DecisionReason != decisionReason(c.Status) {
 		return fmt.Errorf("timeline decision reason is invalid")
 	}
-	// This is the safety property of schema v1. A future certified protocol must
+	// This is the safety property of schema v2. A future certified protocol must
 	// use a new schema rather than silently changing the meaning of this record.
 	if c.SeamlessAllowed || !c.DiscontinuityRequired {
-		return fmt.Errorf("timeline contract v1 cannot authorize seamless handoff")
+		return fmt.Errorf("timeline contract v2 cannot authorize seamless handoff")
 	}
 	return nil
 }
