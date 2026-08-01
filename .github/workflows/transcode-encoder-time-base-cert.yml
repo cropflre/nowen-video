@@ -1,0 +1,87 @@
+name: Transcode Encoder Time-Base Candidate Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-encoder-time-base-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/encoder_time_base_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_probe.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_ENCODER_TIME_BASE_CANDIDATES.md'
+      - '.github/scripts/verify_encoder_time_base.py'
+      - '.github/workflows/transcode-encoder-time-base-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-encoder-time-base-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/encoder_time_base_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_probe.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_ENCODER_TIME_BASE_CANDIDATES.md'
+      - '.github/scripts/verify_encoder_time_base.py'
+      - '.github/workflows/transcode-encoder-time-base-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-encoder-time-base-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  encoder-time-base-candidates:
+    name: Certify encoder time-base candidates and repeated-run variance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify candidate contracts
+        run: |
+          go test ./internal/transcode/timebasecandidate
+          go test ./internal/transcode/outputcadence ./internal/transcode/avsync ./internal/transcode/boundaryevidence
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-encoder-time-base-cert ./cmd/transcode-encoder-time-base-cert
+      - name: Produce encoder time-base candidate matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-encoder-time-base
+          /tmp/nowen-transcode-encoder-time-base-cert \
+            -output /tmp/nowen-transcode-encoder-time-base/encoder-time-base-candidate-matrix-v1.json
+      - name: Verify repeated cadence, decoded frames and A/V variance
+        run: |
+          python3 .github/scripts/verify_encoder_time_base.py \
+            /tmp/nowen-transcode-encoder-time-base/encoder-time-base-candidate-matrix-v1.json
+      - name: Upload encoder time-base candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-encoder-time-base-${{ github.sha }}
+          path: /tmp/nowen-transcode-encoder-time-base/encoder-time-base-candidate-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
