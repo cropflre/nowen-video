@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	startupStreamPlannerVersion = "startup-hls-v1"
+	startupStreamPlannerVersion = "startup-hls-v2"
 	startupStreamArtifactKind   = "startup_hls"
 	startupStreamDurationMS     = int64(30_000)
 	startupStreamPriority       = 10
@@ -51,7 +51,7 @@ func startupStreamProfile(probe *model.MediaProbeRecord) string {
 	return profiles[len(profiles)-1]
 }
 
-func startupStreamActiveKey(media *model.Media, probe *model.MediaProbeRecord, quality string) string {
+func startupStreamActiveKey(media *model.Media, probe *model.MediaProbeRecord, quality, encodingPlanHash string) string {
 	fingerprint := transcodeSourceFingerprint(media)
 	if probe != nil && probe.SourceFingerprint != "" {
 		fingerprint = probe.SourceFingerprint
@@ -63,6 +63,7 @@ func startupStreamActiveKey(media *model.Media, probe *model.MediaProbeRecord, q
 		fmt.Sprintf("%d", startupStreamDurationMS),
 		fingerprint,
 		startupStreamPlannerVersion,
+		encodingPlanHash,
 	}, "|"))
 }
 
@@ -78,17 +79,28 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		return nil, gorm.ErrRecordNotFound
 	}
 	quality := startupStreamProfile(probe)
+	encodingIdentity, err := startupEncodingIdentity(probe, quality)
+	if err != nil {
+		return nil, fmt.Errorf("build startup encoding plan: %w", err)
+	}
 	fingerprint := transcodeSourceFingerprint(media)
 	if probe.SourceFingerprint != "" {
 		fingerprint = probe.SourceFingerprint
 	}
-	if artifact, err := s.executionRepo.FindPublishedArtifact(
+	if artifact, findErr := s.executionRepo.FindPublishedArtifact(
 		media.ID,
 		quality,
 		fingerprint,
 		startupStreamPlannerVersion,
 		startupStreamArtifactKind,
-	); err == nil && artifact != nil && artifact.ManifestPath != "" {
+	); findErr == nil && artifact != nil && artifact.ManifestPath != "" && sameEncodingPlan(
+		artifact.EncodingPlanVersion,
+		artifact.EncodingPlanHash,
+		artifact.EncodingPlanJSON,
+		encodingIdentity.Version,
+		encodingIdentity.Hash,
+		encodingIdentity.Canonical,
+	) {
 		if _, statErr := os.Stat(artifact.ManifestPath); statErr == nil {
 			if task, taskErr := s.repo.FindByID(dereferenceString(artifactLegacyTaskID(s, artifact.JobID))); taskErr == nil {
 				return task, nil
@@ -105,8 +117,8 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		}
 	}
 
-	activeKey := startupStreamActiveKey(media, probe, quality)
-	if active, err := s.executionRepo.FindActiveByKey(activeKey); err == nil && active.LegacyTaskID != nil {
+	activeKey := startupStreamActiveKey(media, probe, quality, encodingIdentity.Hash)
+	if active, findErr := s.executionRepo.FindActiveByKey(activeKey); findErr == nil && active.LegacyTaskID != nil {
 		if task, taskErr := s.repo.FindByID(*active.LegacyTaskID); taskErr == nil {
 			return task, nil
 		}
@@ -118,8 +130,8 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 	s.submitMu.Lock()
 	defer s.submitMu.Unlock()
 	// Recheck under the submission mutex to close concurrent scan/playback
-	// submissions for the same source identity.
-	if active, err := s.executionRepo.FindActiveByKey(activeKey); err == nil && active.LegacyTaskID != nil {
+	// submissions for the same source identity and Encoding Plan.
+	if active, findErr := s.executionRepo.FindActiveByKey(activeKey); findErr == nil && active.LegacyTaskID != nil {
 		if task, taskErr := s.repo.FindByID(*active.LegacyTaskID); taskErr == nil {
 			return task, nil
 		}
@@ -143,25 +155,29 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		quality,
 		fmt.Sprintf("%d", startupStreamDurationMS),
 		normalizeAttemptBackend(s.hwAccel),
+		encodingIdentity.Hash,
 	}, "|"))
 	now := time.Now()
 	record := &model.TranscodeJobRecord{
-		LegacyTaskID:      &legacyID,
-		MediaID:           media.ID,
-		Intent:            string(transcodedomain.IntentStartupHLS),
-		ProfileID:         quality,
-		AudioTrack:        -1,
-		StartMS:           0,
-		DurationMS:        startupStreamDurationMS,
-		Priority:          startupStreamPriority,
-		Status:            "queued",
-		DesiredState:      "running",
-		ActiveKey:         &activeKey,
-		SourceFingerprint: fingerprint,
-		PlanHash:          planHash,
-		PlannerVersion:    startupStreamPlannerVersion,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		LegacyTaskID:        &legacyID,
+		MediaID:             media.ID,
+		Intent:              string(transcodedomain.IntentStartupHLS),
+		ProfileID:           quality,
+		AudioTrack:          -1,
+		StartMS:             0,
+		DurationMS:          startupStreamDurationMS,
+		Priority:            startupStreamPriority,
+		Status:              "queued",
+		DesiredState:        "running",
+		ActiveKey:           &activeKey,
+		SourceFingerprint:   fingerprint,
+		PlanHash:            planHash,
+		PlannerVersion:      startupStreamPlannerVersion,
+		EncodingPlanVersion: encodingIdentity.Version,
+		EncodingPlanHash:    encodingIdentity.Hash,
+		EncodingPlanJSON:    encodingIdentity.Canonical,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	if err := s.executionRepo.CreateJob(record); err != nil {
 		_ = s.repo.DeleteByID(task.ID)
@@ -177,7 +193,14 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		return nil, fmt.Errorf("transcode queue is full or shutting down")
 	}
 	if s.logger != nil {
-		s.logger.Infof("已提交 Startup Stream job=%s media=%s profile=%s duration=%dms", record.ID, media.ID, quality, startupStreamDurationMS)
+		s.logger.Infof(
+			"已提交 Startup Stream job=%s media=%s profile=%s duration=%dms encoding_plan=%s",
+			record.ID,
+			media.ID,
+			quality,
+			startupStreamDurationMS,
+			encodingIdentity.Hash,
+		)
 	}
 	return task, nil
 }
