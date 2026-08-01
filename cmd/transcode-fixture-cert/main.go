@@ -13,23 +13,30 @@ import (
 
 func main() {
 	var (
-		outputPath   = flag.String("output", "-", "JSON report path, or - for stdout")
-		fixtureID    = flag.String("fixture", transcodecertification.DefaultFixtureID, "fixture ID to certify")
-		allFixtures  = flag.Bool("all", false, "run the complete overlap-attribution fixture matrix")
-		listFixtures = flag.Bool("list", false, "list supported fixture IDs")
-		workDir      = flag.String("work-dir", "", "fixture workspace; temporary by default")
-		keepWork     = flag.Bool("keep-work-dir", false, "keep an automatically created fixture workspace")
-		ffmpegPath   = flag.String("ffmpeg", "", "ffmpeg executable; resolved from PATH by default")
-		ffprobePath  = flag.String("ffprobe", "", "ffprobe executable; resolved from PATH by default")
-		timeout      = flag.Duration("timeout", 10*time.Minute, "maximum certification runtime")
+		outputPath     = flag.String("output", "-", "JSON report path, or - for stdout")
+		fixtureID      = flag.String("fixture", transcodecertification.DefaultFixtureID, "fixture ID to certify")
+		allFixtures    = flag.Bool("all", false, "run the complete overlap-attribution fixture matrix")
+		boundaryMatrix = flag.Bool("boundary-matrix", false, "run the packet-level boundary placement matrix")
+		listFixtures   = flag.Bool("list", false, "list supported fixture and boundary case IDs")
+		workDir        = flag.String("work-dir", "", "fixture workspace; temporary by default")
+		keepWork       = flag.Bool("keep-work-dir", false, "keep an automatically created fixture workspace")
+		ffmpegPath     = flag.String("ffmpeg", "", "ffmpeg executable; resolved from PATH by default")
+		ffprobePath    = flag.String("ffprobe", "", "ffprobe executable; resolved from PATH by default")
+		timeout        = flag.Duration("timeout", 15*time.Minute, "maximum certification runtime")
 	)
 	flag.Parse()
 
 	if *listFixtures {
 		for _, spec := range transcodecertification.AvailableFixtures() {
-			fmt.Printf("%s\t%s\n", spec.ID, spec.Description)
+			fmt.Printf("fixture\t%s\t%s\n", spec.ID, spec.Description)
+		}
+		for _, spec := range transcodecertification.AvailableBoundaryCases() {
+			fmt.Printf("boundary\t%s\t%s\n", spec.ID, spec.Description)
 		}
 		return
+	}
+	if *allFixtures && *boundaryMatrix {
+		fatalf("-all and -boundary-matrix are mutually exclusive")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -43,7 +50,39 @@ func main() {
 	}
 
 	var content []byte
-	if *allFixtures {
+	switch {
+	case *boundaryMatrix:
+		matrix, err := transcodecertification.RunBoundaryMatrix(ctx, config)
+		if err != nil {
+			fatalf("boundary matrix certification failed: %v", err)
+		}
+		content, err = transcodecertification.MarshalBoundaryMatrixReport(matrix)
+		if err != nil {
+			fatalf("encode boundary matrix: %v", err)
+		}
+		for _, report := range matrix.Cases {
+			audioDelay := report.Evidence.Audio.AudioDelay
+			var audioDeltaSamples int64
+			var sideDataObserved bool
+			if audioDelay != nil {
+				audioDeltaSamples = audioDelay.BoundaryDeltaSamples
+				sideDataObserved = audioDelay.SideDataObserved
+			}
+			fmt.Fprintf(
+				os.Stderr,
+				"case=%s boundary_us=%d video_status=%s video_delta_us=%d audio_status=%s audio_delta_us=%d audio_delta_samples=%d side_data_observed=%t discontinuity_required=%t\n",
+				report.Case.ID,
+				report.Case.ExpectedBoundaryMicros,
+				report.Evidence.Video.Status,
+				report.Evidence.Video.PresentationDeltaMicros,
+				report.Evidence.Audio.Status,
+				report.Evidence.Audio.PresentationDeltaMicros,
+				audioDeltaSamples,
+				sideDataObserved,
+				report.Evidence.DiscontinuityRequired,
+			)
+		}
+	case *allFixtures:
 		matrix, err := transcodecertification.RunMatrix(ctx, config)
 		if err != nil {
 			fatalf("fixture matrix certification failed: %v", err)
@@ -72,7 +111,7 @@ func main() {
 				comparison.AudioPresentationDeltaChangeMicros,
 			)
 		}
-	} else {
+	default:
 		report, err := transcodecertification.Run(ctx, config)
 		if err != nil {
 			fatalf("fixture certification failed: %v", err)
