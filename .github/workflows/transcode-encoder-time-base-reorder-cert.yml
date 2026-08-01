@@ -48,7 +48,7 @@ permissions:
 
 concurrency:
   group: transcode-encoder-time-base-reorder-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   reorder-certification:
