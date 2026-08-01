@@ -13,17 +13,18 @@ import (
 
 func main() {
 	var (
-		outputPath     = flag.String("output", "-", "JSON report path, or - for stdout")
-		fixtureID      = flag.String("fixture", transcodecertification.DefaultFixtureID, "fixture ID to certify")
-		allFixtures    = flag.Bool("all", false, "run the complete overlap-attribution fixture matrix")
-		boundaryMatrix = flag.Bool("boundary-matrix", false, "run the packet-level boundary placement matrix")
-		shapingMatrix  = flag.Bool("shaping-matrix", false, "run timestamp execution v2 shaping candidates")
-		listFixtures   = flag.Bool("list", false, "list supported fixture, boundary, and shaping case IDs")
-		workDir        = flag.String("work-dir", "", "fixture workspace; temporary by default")
-		keepWork       = flag.Bool("keep-work-dir", false, "keep an automatically created fixture workspace")
-		ffmpegPath     = flag.String("ffmpeg", "", "ffmpeg executable; resolved from PATH by default")
-		ffprobePath    = flag.String("ffprobe", "", "ffprobe executable; resolved from PATH by default")
-		timeout        = flag.Duration("timeout", 15*time.Minute, "maximum certification runtime")
+		outputPath          = flag.String("output", "-", "JSON report path, or - for stdout")
+		fixtureID           = flag.String("fixture", transcodecertification.DefaultFixtureID, "fixture ID to certify")
+		allFixtures         = flag.Bool("all", false, "run the complete overlap-attribution fixture matrix")
+		boundaryMatrix      = flag.Bool("boundary-matrix", false, "run the packet-level boundary placement matrix")
+		shapingMatrix       = flag.Bool("shaping-matrix", false, "run timestamp execution v2 shaping candidates")
+		avSyncVarianceMatrix = flag.Bool("av-sync-variance-matrix", false, "run repeated A/V boundary sync variance certification")
+		listFixtures        = flag.Bool("list", false, "list supported fixture, boundary, shaping, and A/V sync case IDs")
+		workDir             = flag.String("work-dir", "", "fixture workspace; temporary by default")
+		keepWork            = flag.Bool("keep-work-dir", false, "keep an automatically created fixture workspace")
+		ffmpegPath          = flag.String("ffmpeg", "", "ffmpeg executable; resolved from PATH by default")
+		ffprobePath         = flag.String("ffprobe", "", "ffprobe executable; resolved from PATH by default")
+		timeout             = flag.Duration("timeout", 15*time.Minute, "maximum certification runtime")
 	)
 	flag.Parse()
 
@@ -37,16 +38,19 @@ func main() {
 		for _, spec := range transcodecertification.AvailableShapingCases() {
 			fmt.Printf("shaping\t%s\t%s\n", spec.ID, spec.Description)
 		}
+		for _, spec := range transcodecertification.AvailableAVSyncVarianceCases() {
+			fmt.Printf("av-sync-variance\t%s\t%s\n", spec.ID, spec.Description)
+		}
 		return
 	}
 	selectedMatrices := 0
-	for _, selected := range []bool{*allFixtures, *boundaryMatrix, *shapingMatrix} {
+	for _, selected := range []bool{*allFixtures, *boundaryMatrix, *shapingMatrix, *avSyncVarianceMatrix} {
 		if selected {
 			selectedMatrices++
 		}
 	}
 	if selectedMatrices > 1 {
-		fatalf("-all, -boundary-matrix, and -shaping-matrix are mutually exclusive")
+		fatalf("-all, -boundary-matrix, -shaping-matrix, and -av-sync-variance-matrix are mutually exclusive")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -61,6 +65,39 @@ func main() {
 
 	var content []byte
 	switch {
+	case *avSyncVarianceMatrix:
+		matrix, err := transcodecertification.RunAVSyncVarianceMatrix(ctx, config)
+		if err != nil {
+			fatalf("A/V sync variance certification failed: %v", err)
+		}
+		content, err = transcodecertification.MarshalAVSyncVarianceMatrixReport(matrix)
+		if err != nil {
+			fatalf("encode A/V sync variance matrix: %v", err)
+		}
+		for _, report := range matrix.Cases {
+			fmt.Fprintf(
+				os.Stderr,
+				"case=%s repeats=%d stable=%t max_span_us=%d startup_skew_us=%d continuation_skew_us=%d boundary_delta_skew_us=%d discontinuity_required=%t\n",
+				report.Case.ID,
+				report.Summary.RepeatCount,
+				report.Summary.Stable,
+				report.Summary.MaxObservedSpanMicros,
+				report.Summary.StartupEndSkewMicros.MaxMicros,
+				report.Summary.ContinuationStartSkewMicros.MaxMicros,
+				report.Summary.BoundaryDeltaSkewMicros.MaxMicros,
+				report.Runs[0].AVSync.DiscontinuityRequired,
+			)
+		}
+		for _, comparison := range matrix.Comparisons {
+			fmt.Fprintf(
+				os.Stderr,
+				"comparison=%s baseline_abs_delta_skew_us=%d candidate_abs_delta_skew_us=%d improvement_us=%d\n",
+				comparison.Name,
+				comparison.BaselineMaxAbsDeltaSkewMicros,
+				comparison.CandidateMaxAbsDeltaSkewMicros,
+				comparison.DeltaSkewImprovementMicros,
+			)
+		}
 	case *shapingMatrix:
 		matrix, err := transcodecertification.RunShapingMatrix(ctx, config)
 		if err != nil {
