@@ -18,6 +18,7 @@ const (
 	RepeatCount                   = 3
 	VarianceToleranceMicros       = int64(1)
 	CrossCandidateToleranceMicros = int64(1_000)
+	BoundaryFrameTolerance        = 1
 	CandidateAVTB                 = "encoder-time-base-avtb-v1"
 	Candidate90K                  = "encoder-time-base-90k-v1"
 )
@@ -86,6 +87,8 @@ type CandidateSummary struct {
 	BoundaryDeltaSkewMicros             MetricRange `json:"boundary_delta_skew_micros"`
 	SkewTransitionMicros                MetricRange `json:"skew_transition_micros"`
 	ProjectionResidualMicros            MetricRange `json:"projection_residual_micros"`
+	MaximumAbsoluteFrameCountDelta      int         `json:"maximum_absolute_frame_count_delta"`
+	BoundaryFrameToleranceUsed          bool        `json:"boundary_frame_tolerance_used"`
 	SequenceStable                      bool        `json:"sequence_stable"`
 	CadenceStable                       bool        `json:"cadence_stable"`
 	AVSyncStable                        bool        `json:"av_sync_stable"`
@@ -126,6 +129,7 @@ type Contract struct {
 	RepeatCount                   int            `json:"repeat_count"`
 	VarianceToleranceMicros       int64          `json:"variance_tolerance_micros"`
 	CrossCandidateToleranceMicros int64          `json:"cross_candidate_tolerance_micros"`
+	BoundaryFrameTolerance        int            `json:"boundary_frame_tolerance"`
 	Cases                         []CaseEvidence `json:"cases"`
 	SeamlessAllowed               bool           `json:"seamless_allowed"`
 	DiscontinuityRequired         bool           `json:"discontinuity_required"`
