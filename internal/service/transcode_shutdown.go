@@ -10,7 +10,7 @@ const defaultTranscodeShutdownCleanupTimeout = 5 * time.Second
 // Shutdown stops accepting local queue deliveries and waits for already claimed
 // jobs. If the caller deadline expires, owned leases are atomically returned to
 // queued before their old contexts are cancelled, allowing the next process to
-// resume them without accepting a stale terminal write.
+// resume them without accepting a stale terminal write or readable workspace.
 func (s *TranscodeService) Shutdown(ctx context.Context) error {
 	if s == nil || s.jobs == nil {
 		return nil
@@ -74,6 +74,12 @@ func (s *TranscodeService) releaseLocalLeasesForShutdown() {
 			}
 		}
 		if released {
+			s.abandonJobArtifacts(
+				job,
+				"shutdown_requeue",
+				"Job was requeued after graceful shutdown deadline",
+				now,
+			)
 			s.markJobQueuedForRecovery(job)
 			s.logger.Infof("服务关闭已重新排队转码 Job job=%s worker=%s", job.ExecutionJob.ID, job.workerID)
 		}
