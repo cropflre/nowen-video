@@ -53,6 +53,15 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 		boundarySkew = append(boundarySkew, run.AVSync.BoundaryDeltaSkewMicros)
 		skewTransition = append(skewTransition, run.AVSync.SkewTransitionMicros)
 		projectionResidual = append(projectionResidual, run.AVSync.ProjectionResidualMicros)
+		for _, mapping := range []transcodeoutputcadence.FrameMapping{run.StartupMapping, run.ContinuationMapping} {
+			delta := mapping.FrameCountDelta
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta > summary.MaximumAbsoluteFrameCountDelta {
+				summary.MaximumAbsoluteFrameCountDelta = delta
+			}
+		}
 		startupSig := timelineSignature(run.StartupTimeline)
 		continuationSig := timelineSignature(run.ContinuationTimeline)
 		if startupSequence == "" {
@@ -64,7 +73,7 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 			summary.SequenceStable = summary.SequenceStable && run.StartupFingerprint.SequenceSHA256 == startupSequence && run.ContinuationFingerprint.SequenceSHA256 == continuationSequence
 			summary.CadenceStable = summary.CadenceStable && startupSig == startupTimelineSignature && continuationSig == continuationTimelineSignature
 		}
-		if run.StartupMapping.Status != transcodeoutputcadence.MappingAligned || run.ContinuationMapping.Status != transcodeoutputcadence.MappingAligned ||
+		if !mappingAccepted(run.StartupMapping) || !mappingAccepted(run.ContinuationMapping) ||
 			run.StartupTimeline.NearZeroDeltaCount != 0 || run.ContinuationTimeline.NearZeroDeltaCount != 0 ||
 			run.StartupTimeline.DuplicatePTSCount != 0 || run.ContinuationTimeline.DuplicatePTSCount != 0 ||
 			run.StartupTimeline.NonMonotonicPTSCount != 0 || run.ContinuationTimeline.NonMonotonicPTSCount != 0 ||
@@ -72,6 +81,7 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 			summary.AllPreserved = false
 		}
 	}
+	summary.BoundaryFrameToleranceUsed = summary.MaximumAbsoluteFrameCountDelta > 0
 	summary.StartupFrameCount = metricRange(startupFrames)
 	summary.ContinuationFrameCount = metricRange(continuationFrames)
 	summary.StartupDominantDeltaMicros = metricRange(startupDominant)
@@ -141,11 +151,21 @@ func BuildCandidateComparison(a, b CandidateEvidence) CandidateComparison {
 func runPreserved(r RunEvidence, sourceStartup, sourceContinuation transcodeoutputcadence.TimelineEvidence) bool {
 	return candidateCadencePreserved(sourceStartup, r.StartupTimeline) &&
 		candidateCadencePreserved(sourceContinuation, r.ContinuationTimeline) &&
-		r.StartupMapping.Status == transcodeoutputcadence.MappingAligned && r.ContinuationMapping.Status == transcodeoutputcadence.MappingAligned &&
+		mappingAccepted(r.StartupMapping) && mappingAccepted(r.ContinuationMapping) &&
 		r.StartupTimeline.NearZeroDeltaCount == 0 && r.ContinuationTimeline.NearZeroDeltaCount == 0 &&
 		r.StartupTimeline.DuplicatePTSCount == 0 && r.ContinuationTimeline.DuplicatePTSCount == 0 &&
 		r.StartupTimeline.NonMonotonicPTSCount == 0 && r.ContinuationTimeline.NonMonotonicPTSCount == 0 &&
 		r.StartupFingerprint.AdjacentDuplicateCount == 0 && r.ContinuationFingerprint.AdjacentDuplicateCount == 0
+}
+
+func mappingAccepted(mapping transcodeoutputcadence.FrameMapping) bool {
+	if mapping.CountTolerance != BoundaryFrameTolerance {
+		return false
+	}
+	if mapping.FrameCountDelta < -BoundaryFrameTolerance || mapping.FrameCountDelta > BoundaryFrameTolerance {
+		return false
+	}
+	return mapping.Status == transcodeoutputcadence.MappingAligned || mapping.Status == transcodeoutputcadence.MappingWithinTolerance
 }
 
 func candidateCadencePreserved(source, output transcodeoutputcadence.TimelineEvidence) bool {
