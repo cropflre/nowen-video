@@ -8,25 +8,10 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
+	transcodeprofile "github.com/nowen-video/nowen-video/internal/transcode/profile"
 )
 
 const hlsTargetSegmentSeconds = 2
-
-var qualityPresets = map[string]QualityConfig{
-	"360p":  {Width: 640, Height: 360, VideoBitrate: "800k", AudioBitrate: "96k"},
-	"480p":  {Width: 854, Height: 480, VideoBitrate: "1500k", AudioBitrate: "128k"},
-	"720p":  {Width: 1280, Height: 720, VideoBitrate: "3000k", AudioBitrate: "128k"},
-	"1080p": {Width: 1920, Height: 1080, VideoBitrate: "6000k", AudioBitrate: "192k"},
-	"2K":    {Width: 2560, Height: 1440, VideoBitrate: "12000k", AudioBitrate: "192k"},
-	"4K":    {Width: 3840, Height: 2160, VideoBitrate: "25000k", AudioBitrate: "256k"},
-}
-
-type QualityConfig struct {
-	Width        int
-	Height       int
-	VideoBitrate string
-	AudioBitrate string
-}
 
 func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
 	return filepath.Join(s.cfg.Cache.CacheDir, "transcode", mediaID, quality)
@@ -60,9 +45,9 @@ func (s *TranscodeService) buildFFmpegArgsForBackendWithProbe(
 	startOffset float64,
 	backend string,
 ) []string {
-	qc, ok := qualityPresets[quality]
+	qc, ok := transcodeprofile.Runtime(quality)
 	if !ok {
-		qc = qualityPresets["720p"]
+		qc, _ = transcodeprofile.Runtime("720p")
 	}
 
 	var videoFilter string
@@ -89,7 +74,7 @@ func (s *TranscodeService) buildFFmpegArgsForBackendWithProbe(
 		InputPath:             inputPath,
 		OutputDir:             outputDir,
 		HWAccel:               backend,
-		Profile:               ffmpeg.Profile{Width: qc.Width, Height: qc.Height, VideoBitrate: qc.VideoBitrate, AudioBitrate: qc.AudioBitrate},
+		Profile:               ffmpeg.Profile{Width: qc.Width, Height: qc.Height, VideoBitrate: qc.VideoBitrate, AudioBitrate: qc.AudioBitrate, MaxBitrate: qc.MaxBitrate, BufSize: qc.BufSize},
 		VAAPIDevice:           s.cfg.App.VAAPIDevice,
 		X264Preset:            "ultrafast",
 		QSVPreset:             "ultrafast",
@@ -125,27 +110,14 @@ func withMachineProgress(args []string) []string {
 }
 
 func (s *TranscodeService) GetAvailableQualities(media *model.Media) []string {
+	if media == nil {
+		return []string{"360p", "480p", "720p", "1080p"}
+	}
 	origHeight := parseResolutionHeight(media.Resolution)
 	if origHeight <= 0 {
 		return []string{"360p", "480p", "720p", "1080p"}
 	}
-	ordered := []struct {
-		name   string
-		height int
-	}{
-		{"360p", 360},
-		{"480p", 480},
-		{"720p", 720},
-		{"1080p", 1080},
-		{"2K", 1440},
-		{"4K", 2160},
-	}
-	available := make([]string, 0, len(ordered))
-	for _, candidate := range ordered {
-		if candidate.height <= origHeight {
-			available = append(available, candidate.name)
-		}
-	}
+	available := transcodeprofile.NamesUpToHeight(origHeight)
 	if len(available) == 0 {
 		return []string{"360p"}
 	}
