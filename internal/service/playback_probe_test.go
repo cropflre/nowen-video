@@ -36,3 +36,42 @@ func TestPlaybackTechnicalFromProbeUsesDefaultAudioAndPreservesDiagnostics(t *te
 		t.Fatalf("all audio codecs must remain visible for diagnostics: %+v", technical.AudioCodecs)
 	}
 }
+
+func TestApplyProbeRecomputesDirectAndRemuxCapabilities(t *testing.T) {
+	probe := &model.MediaProbeRecord{VideoCodec: "h264", DurationMS: 90000}
+	if err := probe.SetAudioStreams([]model.MediaProbeAudioStream{{Codec: "aac", Default: true}}); err != nil {
+		t.Fatal(err)
+	}
+	info := &MediaPlayInfo{FileExt: ".mp4", VideoCodec: "unknown", AudioCodec: "unknown"}
+	applyProbeToPlaybackInfo("media-1", info, probe)
+	if !info.CanDirectPlay || info.CanRemux || info.DirectPlayURL == "" {
+		t.Fatalf("fresh probe did not enable direct play: %+v", info)
+	}
+	if info.Duration != 90 {
+		t.Fatalf("duration was not refreshed: %f", info.Duration)
+	}
+
+	info = &MediaPlayInfo{FileExt: ".mkv"}
+	applyProbeToPlaybackInfo("media-1", info, probe)
+	if info.CanDirectPlay || !info.CanRemux || info.RemuxURL == "" {
+		t.Fatalf("fresh probe did not enable zero-copy remux: %+v", info)
+	}
+}
+
+func TestApplyProbeSelectsSmartRemuxForIncompatibleDefaultAudio(t *testing.T) {
+	probe := &model.MediaProbeRecord{VideoCodec: "h264"}
+	if err := probe.SetAudioStreams([]model.MediaProbeAudioStream{
+		{Codec: "aac"},
+		{Codec: "truehd", Default: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	info := &MediaPlayInfo{FileExt: ".mkv"}
+	applyProbeToPlaybackInfo("media-1", info, probe)
+	if info.CanRemux {
+		t.Fatalf("TrueHD default audio must not use zero-copy remux: %+v", info)
+	}
+	if !canSmartRemuxInfo(info, PlaybackClientCapabilities{SupportsRemux: true}) {
+		t.Fatalf("H.264 + TrueHD should use smart remux: %+v", info)
+	}
+}
