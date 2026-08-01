@@ -62,7 +62,11 @@ jobs:
       - name: Encoding plan value-object contract
         run: go test ./internal/transcode/encodingplan
       - name: Timestamp normalization value-object contract
-        run: go test ./internal/transcode/timestampplan
+        run: go test ./internal/transcode/timestampplan -run 'Plan|TimestampPolicy'
+      - name: Real FFmpeg timestamp-origin fixture
+        env:
+          NOWEN_REQUIRE_FFMPEG_TIMESTAMP_FIXTURE: '1'
+        run: go test ./internal/transcode/timestampplan -run '^TestFFmpegCopyTSStartAtZeroPreservesContinuationOrigin$' -count=1 -v
       - name: Produced media attestation contract
         run: go test ./internal/transcode/attestation
       - name: Timeline continuity contract
