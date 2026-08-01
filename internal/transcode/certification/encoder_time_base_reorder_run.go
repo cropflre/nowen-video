@@ -76,8 +76,8 @@ func RunEncoderTimeBaseReorderMatrix(ctx context.Context, config Config) (Encode
 				runs = append(runs, run)
 			}
 			candidate := transcodereorder.CandidateEvidence{
-				Spec: candidateSpec,
-				Runs: runs,
+				Spec:    candidateSpec,
+				Runs:    runs,
 				Summary: transcodereorder.BuildCandidateSummary(runs),
 			}
 			if err := candidate.Validate(caseSpec, sourceStartup, sourceContinuation); err != nil {
@@ -86,11 +86,11 @@ func RunEncoderTimeBaseReorderMatrix(ctx context.Context, config Config) (Encode
 			candidates = append(candidates, candidate)
 		}
 		caseEvidence := transcodereorder.CaseEvidence{
-			Case: caseSpec,
-			SourceStartupTimeline: sourceStartup,
+			Case:                       caseSpec,
+			SourceStartupTimeline:      sourceStartup,
 			SourceContinuationTimeline: sourceContinuation,
-			Candidates: candidates,
-			Comparison: transcodereorder.BuildCandidateComparison(candidates[0], candidates[1]),
+			Candidates:                 candidates,
+			Comparison:                 transcodereorder.BuildCandidateComparison(candidates[0], candidates[1]),
 		}
 		if err := caseEvidence.Validate(); err != nil {
 			return EncoderTimeBaseReorderMatrixReport{}, err
@@ -99,23 +99,24 @@ func RunEncoderTimeBaseReorderMatrix(ctx context.Context, config Config) (Encode
 	}
 
 	contract := transcodereorder.Contract{
-		SchemaVersion: transcodereorder.SchemaVersion,
-		FFmpegVersion: ffmpegVersion,
-		FFprobeVersion: ffprobeVersion,
-		RepeatCount: transcodereorder.RepeatCount,
-		PacketVarianceTicks: transcodereorder.PacketVarianceTolerance,
-		Cases: cases,
-		DiscontinuityRequired: true,
+		SchemaVersion:                transcodereorder.SchemaVersion,
+		FFmpegVersion:                ffmpegVersion,
+		FFprobeVersion:               ffprobeVersion,
+		RepeatCount:                  transcodereorder.RepeatCount,
+		PacketVarianceTicks:          transcodereorder.PacketVarianceTolerance,
+		PerceptualMaxHammingDistance: transcodereorder.PerceptualMaxHammingDistance,
+		Cases:                        cases,
+		DiscontinuityRequired:        true,
 	}
 	version, hash, _, err := transcodereorder.Identity(contract)
 	if err != nil {
 		return EncoderTimeBaseReorderMatrixReport{}, err
 	}
 	report := EncoderTimeBaseReorderMatrixReport{
-		SchemaVersion: EncoderTimeBaseReorderMatrixSchemaVersion,
+		SchemaVersion:   EncoderTimeBaseReorderMatrixSchemaVersion,
 		ContractVersion: version,
-		ContractHash: hash,
-		Evidence: contract,
+		ContractHash:    hash,
+		Evidence:        contract,
 	}
 	if err := report.Validate(); err != nil {
 		return EncoderTimeBaseReorderMatrixReport{}, err
@@ -156,21 +157,21 @@ func runEncoderTimeBaseReorderCandidate(
 	}
 	verifier := transcodeattestation.Verifier{FFprobePath: ffprobePath}
 	startupAttestation, err := verifier.Verify(ctx, transcodeattestation.VerifyRequest{
-		ManifestPath: startup.Manifest,
+		ManifestPath:        startup.Manifest,
 		EncodingPlanVersion: encodingVersion,
-		EncodingPlanHash: encodingHash,
-		EncodingPlanJSON: encodingJSON,
-		Scope: transcodeattestation.ScopeComplete,
+		EncodingPlanHash:    encodingHash,
+		EncodingPlanJSON:    encodingJSON,
+		Scope:               transcodeattestation.ScopeComplete,
 	})
 	if err != nil {
 		return transcodereorder.RunEvidence{}, fmt.Errorf("verify reorder startup: %w", err)
 	}
 	continuationAttestation, err := verifier.Verify(ctx, transcodeattestation.VerifyRequest{
-		ManifestPath: continuation.Manifest,
+		ManifestPath:        continuation.Manifest,
 		EncodingPlanVersion: encodingVersion,
-		EncodingPlanHash: encodingHash,
-		EncodingPlanJSON: encodingJSON,
-		Scope: transcodeattestation.ScopeComplete,
+		EncodingPlanHash:    encodingHash,
+		EncodingPlanJSON:    encodingJSON,
+		Scope:               transcodeattestation.ScopeComplete,
 	})
 	if err != nil {
 		return transcodereorder.RunEvidence{}, fmt.Errorf("verify reorder continuation: %w", err)
@@ -193,24 +194,24 @@ func runEncoderTimeBaseReorderCandidate(
 
 	boundary, err := probeBoundaryContract(ctx, ffprobePath, boundaryContractRequest{
 		Case: BoundaryCaseSpec{
-			ID: transcodetimebase.BoundaryCaseID(caseSpec.Base.ID, candidateSpec.ID, ordinal),
-			Description: caseSpec.Base.Description + " / " + candidateSpec.Description + " / B-frame reorder",
-			FixtureID: "fixture-" + caseSpec.Base.ID,
+			ID:                     transcodetimebase.BoundaryCaseID(caseSpec.Base.ID, candidateSpec.ID, ordinal),
+			Description:            caseSpec.Base.Description + " / " + candidateSpec.Description + " / B-frame reorder",
+			FixtureID:              "fixture-" + caseSpec.Base.ID,
 			ExpectedBoundaryMicros: caseSpec.Base.ExpectedBoundaryMicros,
 		},
-		Fixture: FixtureSpec{ID: "fixture-" + caseSpec.Base.ID},
-		StartupManifest: startup.Manifest,
-		ContinuationManifest: continuation.Manifest,
-		FFmpegVersion: ffmpegVersion,
-		FFprobeVersion: ffprobeVersion,
-		EncodingPlanVersion: encodingVersion,
-		EncodingPlanHash: encodingHash,
-		TimestampPlanVersion: timestampVersion,
-		TimestampPlanHash: timestampHash,
-		StartupAttestationVersion: startupAttestationVersion,
-		StartupAttestationHash: startupAttestationHash,
+		Fixture:                       FixtureSpec{ID: "fixture-" + caseSpec.Base.ID},
+		StartupManifest:               startup.Manifest,
+		ContinuationManifest:          continuation.Manifest,
+		FFmpegVersion:                 ffmpegVersion,
+		FFprobeVersion:                ffprobeVersion,
+		EncodingPlanVersion:           encodingVersion,
+		EncodingPlanHash:              encodingHash,
+		TimestampPlanVersion:          timestampVersion,
+		TimestampPlanHash:             timestampHash,
+		StartupAttestationVersion:     startupAttestationVersion,
+		StartupAttestationHash:        startupAttestationHash,
 		ContinuationAttestationVersion: continuationAttestationVersion,
-		ContinuationAttestationHash: continuationAttestationHash,
+		ContinuationAttestationHash:    continuationAttestationHash,
 	})
 	if err != nil {
 		return transcodereorder.RunEvidence{}, err
@@ -244,6 +245,14 @@ func runEncoderTimeBaseReorderCandidate(
 	if err != nil {
 		return transcodereorder.RunEvidence{}, err
 	}
+	startupPerceptual, err := probePerceptualFrameSequence(ctx, ffmpegPath, startup.Manifest)
+	if err != nil {
+		return transcodereorder.RunEvidence{}, err
+	}
+	continuationPerceptual, err := probePerceptualFrameSequence(ctx, ffmpegPath, continuation.Manifest)
+	if err != nil {
+		return transcodereorder.RunEvidence{}, err
+	}
 	startupOrder, err := probeEncoderTimeBasePacketOrder(ctx, ffprobePath, startup.Manifest, transcodereorder.PacketKind(caseSpec.Base.ID, candidateSpec.ID, ordinal, "startup"))
 	if err != nil {
 		return transcodereorder.RunEvidence{}, err
@@ -254,27 +263,29 @@ func runEncoderTimeBaseReorderCandidate(
 	}
 
 	base := transcodetimebase.RunEvidence{
-		Ordinal: ordinal,
-		StartupCommandHash: hashNormalizedArgs(startup.Args, matrixWorkDir),
-		ContinuationCommandHash: hashNormalizedArgs(continuation.Args, matrixWorkDir),
-		StartupTimeline: startupTimeline,
-		ContinuationTimeline: continuationTimeline,
-		StartupMapping: transcodeoutputcadence.NewFrameMapping(sourceStartup.FrameCount, startupTimeline.FrameCount),
-		ContinuationMapping: transcodeoutputcadence.NewFrameMapping(sourceContinuation.FrameCount, continuationTimeline.FrameCount),
-		StartupFingerprint: startupFingerprint,
-		ContinuationFingerprint: continuationFingerprint,
-		BoundaryVersion: boundaryVersion,
-		BoundaryHash: boundaryHash,
-		Boundary: boundary,
-		AVSyncVersion: avSyncVersion,
-		AVSyncHash: avSyncHash,
-		AVSync: avSync,
+		Ordinal:                  ordinal,
+		StartupCommandHash:       hashNormalizedArgs(startup.Args, matrixWorkDir),
+		ContinuationCommandHash:  hashNormalizedArgs(continuation.Args, matrixWorkDir),
+		StartupTimeline:          startupTimeline,
+		ContinuationTimeline:     continuationTimeline,
+		StartupMapping:           transcodeoutputcadence.NewFrameMapping(sourceStartup.FrameCount, startupTimeline.FrameCount),
+		ContinuationMapping:      transcodeoutputcadence.NewFrameMapping(sourceContinuation.FrameCount, continuationTimeline.FrameCount),
+		StartupFingerprint:       startupFingerprint,
+		ContinuationFingerprint:  continuationFingerprint,
+		BoundaryVersion:          boundaryVersion,
+		BoundaryHash:             boundaryHash,
+		Boundary:                 boundary,
+		AVSyncVersion:            avSyncVersion,
+		AVSyncHash:               avSyncHash,
+		AVSync:                   avSync,
 	}
 	run := transcodereorder.RunEvidence{
-		Ordinal: ordinal,
-		Base: base,
-		StartupPacketOrder: startupOrder,
-		ContinuationPacketOrder: continuationOrder,
+		Ordinal:                        ordinal,
+		Base:                           base,
+		StartupPacketOrder:             startupOrder,
+		ContinuationPacketOrder:        continuationOrder,
+		StartupPerceptualSequence:      startupPerceptual,
+		ContinuationPerceptualSequence: continuationPerceptual,
 	}
 	if err := run.Validate(caseSpec, candidateSpec, sourceStartup, sourceContinuation, ordinal); err != nil {
 		return transcodereorder.RunEvidence{}, err
