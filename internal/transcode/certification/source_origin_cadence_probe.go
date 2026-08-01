@@ -196,6 +196,7 @@ func probeVideoCadenceTimeline(
 		ptsTicks = append(ptsTicks, pts)
 		points = append(points, outputCadencePoint{Ticks: pts, Micros: micros})
 	}
+	ptsTicks, points = orderCadencePointsForEvidence(kind, ptsTicks, points)
 	evidence, err := transcodeoutputcadence.NewTimelineEvidence(
 		kind,
 		stream.TimeBase,
