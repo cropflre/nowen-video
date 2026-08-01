@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	serviceffmpeg "github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	transcodesourceorigin "github.com/nowen-video/nowen-video/internal/transcode/sourceorigin"
@@ -124,18 +123,4 @@ func sourceOriginHLSArgs(
 		}
 	}
 	return transcodetimestamp.ApplyFFmpeg(args, timestampPlan)
-}
-
-func abs64Certification(value int64) int64 {
-	if value < 0 {
-		return -value
-	}
-	return value
-}
-
-func validateSourceOriginOutputPath(path string) error {
-	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("source origin output path is required")
-	}
-	return nil
 }
