@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	transcodetimeline "github.com/nowen-video/nowen-video/internal/transcode/timeline"
 	"gorm.io/gorm"
 )
 
@@ -277,11 +278,14 @@ func buildStartupBridgePlaylist(
 	return builder.String()
 }
 
-// Missing or malformed policy always fails closed. Timeline schema v1 also
-// requires SeamlessAllowed=false, so this cannot remove the boundary until a
-// future certified contract version is introduced deliberately.
+// Missing, unsupported or uncertified policy always fails closed. Timeline
+// schema v1 also requires SeamlessAllowed=false, so it cannot remove the
+// boundary. A future certified schema must be added here deliberately.
 func startupHandoffRequiresDiscontinuity(handoff *StartupHandoffDecision) bool {
-	return handoff == nil || handoff.DiscontinuityRequired || !handoff.SeamlessAllowed
+	return handoff == nil ||
+		handoff.SchemaVersion != transcodetimeline.SchemaVersion ||
+		handoff.DiscontinuityRequired ||
+		!handoff.SeamlessAllowed
 }
 
 func startupVirtualProfile(profileID string) string {
