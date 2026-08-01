@@ -9,6 +9,7 @@ type Intent string
 
 const (
 	IntentRuntimeHLS    Intent = "runtime_hls"
+	IntentStartupHLS    Intent = "startup_hls"
 	IntentPreprocessHLS Intent = "preprocess_hls"
 	IntentRemuxStream   Intent = "remux_stream"
 	IntentSmartRemux    Intent = "smart_remux"
@@ -50,6 +51,7 @@ type Job struct {
 	ProfileID         string
 	AudioTrack        int
 	StartMS           int64
+	DurationMS        int64
 	Priority          int
 	Status            Status
 	DesiredState      DesiredState
