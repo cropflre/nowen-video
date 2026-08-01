@@ -168,7 +168,7 @@ func (d boundaryProbeDocument) streamEvidence(stream boundaryProbeStream) (bound
 		duration, durationOK := packet.Duration.int64Value()
 		if !durationOK || duration <= 0 {
 			var err error
-			duration, err = inferTerminalBoundaryPacketDuration(selected, index)
+			duration, err = inferBoundaryPacketDuration(selected, index)
 			if err != nil {
 				return boundaryProbeStreamEvidence{}, err
 			}
@@ -208,22 +208,32 @@ func (d boundaryProbeDocument) streamEvidence(stream boundaryProbeStream) (bound
 	}, nil
 }
 
-// inferTerminalBoundaryPacketDuration handles a narrow MPEG-TS demuxer behavior:
-// FFprobe can omit duration for the final packet while still reporting complete,
-// strictly ordered DTS values. Only that terminal packet is eligible for
-// inference, and its duration is derived from the immediately preceding DTS
-// delta. Missing duration anywhere else remains a hard certification failure.
-func inferTerminalBoundaryPacketDuration(packets []boundaryProbePacket, index int) (int64, error) {
-	if index != len(packets)-1 {
-		return 0, fmt.Errorf("packet duration is unavailable before stream tail")
+// inferBoundaryPacketDuration handles a narrow MPEG-TS demuxer behavior:
+// FFprobe 6.1 can omit duration on video packets while still exposing complete
+// decode timestamps. An interior packet is derived from the next strictly
+// increasing DTS; the terminal packet uses the preceding DTS interval. A
+// packet without a provable positive adjacent interval remains a hard failure.
+func inferBoundaryPacketDuration(packets []boundaryProbePacket, index int) (int64, error) {
+	if index < 0 || index >= len(packets) {
+		return 0, fmt.Errorf("packet duration inference index is invalid")
+	}
+	currentDTS, currentOK := packets[index].DTS.int64Value()
+	if !currentOK {
+		return 0, fmt.Errorf("packet duration cannot be inferred without DTS")
+	}
+	if index+1 < len(packets) {
+		nextDTS, nextOK := packets[index+1].DTS.int64Value()
+		if nextOK && nextDTS > currentDTS {
+			return nextDTS - currentDTS, nil
+		}
+		return 0, fmt.Errorf("packet duration cannot be inferred from following DTS")
 	}
 	if index == 0 {
-		return 0, fmt.Errorf("terminal packet duration cannot be inferred without a preceding packet")
+		return 0, fmt.Errorf("single packet duration cannot be inferred")
 	}
 	previousDTS, previousOK := packets[index-1].DTS.int64Value()
-	currentDTS, currentOK := packets[index].DTS.int64Value()
-	if !previousOK || !currentOK || currentDTS <= previousDTS {
-		return 0, fmt.Errorf("terminal packet duration cannot be inferred from DTS")
+	if !previousOK || currentDTS <= previousDTS {
+		return 0, fmt.Errorf("terminal packet duration cannot be inferred from preceding DTS")
 	}
 	return currentDTS - previousDTS, nil
 }
