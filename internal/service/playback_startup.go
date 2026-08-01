@@ -47,7 +47,10 @@ func (s *StreamService) chooseTranscodeOrStartup(
 	if !startupStreamCanBePlanned(startup) {
 		return chooseTranscode(plan, hlsURL, transcodeReasonCode, transcodeReason), nil
 	}
+	return applyStartupStreamPlan(plan, hlsURL, startup), nil
+}
 
+func applyStartupStreamPlan(plan *PlaybackPlan, hlsURL string, startup *StartupBridgeInfo) *PlaybackPlan {
 	plan.Method = PlaybackMethodStartupStream
 	plan.URL = startup.PlaylistURL
 	plan.ReasonCode = "startup_artifact_ready"
@@ -62,7 +65,7 @@ func (s *StreamService) chooseTranscodeOrStartup(
 		ContinuationMode:       StartupContinuationModeEventBridge,
 		DiscontinuityAtHandoff: true,
 	}
-	return plan, nil
+	return plan
 }
 
 func startupStreamCanBePlanned(startup *StartupBridgeInfo) bool {
