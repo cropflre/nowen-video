@@ -13,12 +13,15 @@ on:
       - 'internal/service/task_center_test.go'
       - 'internal/service/playback_planner.go'
       - 'internal/service/playback_planner_test.go'
+      - 'internal/service/playback_startup*.go'
+      - 'internal/service/stream_startup_bridge*.go'
       - 'internal/service/transcode*.go'
       - 'internal/service/stream_artifacts.go'
       - 'internal/service/ondemand.go'
       - 'internal/handler/lite.go'
       - 'internal/handler/handler.go'
       - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/stream_startup_bridge.go'
       - 'internal/handler/task_center.go'
       - 'internal/handler/playback_plan.go'
       - 'internal/model/migrate_lite.go'
@@ -30,7 +33,9 @@ on:
       - 'internal/middleware/**/*_test.go'
       - 'internal/serverprofile/**'
       - 'docs/TRANSCODE_*.md'
+      - 'docs/PLAYBACK_*.md'
       - 'web/**'
+      - 'clients/android-v2/**'
       - 'Dockerfile'
       - 'Dockerfile.full'
       - 'Makefile'
@@ -53,6 +58,8 @@ jobs:
         run: go mod download
       - name: Test Go packages
         run: go test ./...
+      - name: Startup stream planner and bridge contract
+        run: go test ./internal/service -run 'Startup|Playback'
       - name: Artifact lease and filesystem race tests
         run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|Lease|Shutdown'
       - name: Artifact resolver performance baseline
