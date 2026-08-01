@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
@@ -97,40 +96,17 @@ func (s *TranscodeService) preferredAttemptBackend(job *TranscodeJob) string {
 }
 
 func applyTimestampNormalization(args []string, plan transcodetimestamp.Plan) []string {
-	if len(args) == 0 {
+	normalized, err := transcodetimestamp.ApplyFFmpeg(args, plan)
+	if err != nil {
+		// The checked execution path validates the persisted plan and receives a
+		// complete BuildHLSArgs vector before this adapter is called. Returning nil
+		// keeps malformed direct test callers fail closed without duplicating the
+		// canonical command policy in the service package.
 		return nil
 	}
-	result := make([]string, 0, len(args)+6)
-	if args[0] == "-y" {
-		result = append(result, args[0], "-copyts", "-start_at_zero")
-		args = args[1:]
-	} else {
-		result = append(result, "-copyts", "-start_at_zero")
-	}
-	if len(args) == 0 {
-		return result
-	}
-	result = append(result, args[:len(args)-1]...)
-	result = append(result,
-		"-avoid_negative_ts", plan.AvoidNegativeTS,
-		"-fps_mode", plan.FPSMode,
-	)
-	result = append(result, args[len(args)-1])
-	return result
+	return normalized
 }
 
 func timestampPlanCommandSummary(args []string) string {
-	interesting := make([]string, 0, 8)
-	for index := 0; index < len(args); index++ {
-		switch args[index] {
-		case "-copyts", "-start_at_zero":
-			interesting = append(interesting, args[index])
-		case "-ss", "-avoid_negative_ts", "-fps_mode":
-			if index+1 < len(args) {
-				interesting = append(interesting, args[index], args[index+1])
-				index++
-			}
-		}
-	}
-	return strings.Join(interesting, " ")
+	return transcodetimestamp.CommandSummary(args)
 }
