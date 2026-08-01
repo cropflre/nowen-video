@@ -116,6 +116,12 @@ func (r RunEvidence) Validate(caseSpec CaseSpec, candidate transcodetimebase.Can
 		r.ContinuationPacketOrder.PacketCount != r.Base.ContinuationTimeline.FrameCount {
 		return fmt.Errorf("packet-order counts do not match cadence evidence")
 	}
+	if err := r.StartupPerceptualSequence.Validate(r.Base.StartupTimeline.FrameCount); err != nil {
+		return fmt.Errorf("startup perceptual sequence: %w", err)
+	}
+	if err := r.ContinuationPerceptualSequence.Validate(r.Base.ContinuationTimeline.FrameCount); err != nil {
+		return fmt.Errorf("continuation perceptual sequence: %w", err)
+	}
 	return nil
 }
 
