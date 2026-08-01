@@ -13,7 +13,7 @@ type Handlers struct {
 	Library        *LibraryHandler
 	Media          *MediaHandler
 	Series         *SeriesHandler
-	Stream         *StreamHandler
+	Stream         *ArtifactStreamHandler
 	User           *UserHandler
 	Admin          *AdminHandler
 	Subtitle       *SubtitleHandler
@@ -73,8 +73,12 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Library: &LibraryHandler{libService: services.Library, permSvc: services.Permission, logger: logger},
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, mediaPersonRepo: repos.MediaPerson, logger: logger},
-		Stream:  &StreamHandler{streamService: services.Stream, transcodeService: services.Transcode, logger: logger},
-		User:    &UserHandler{userService: services.User, authService: services.Auth, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
+		Stream: NewArtifactStreamHandler(&StreamHandler{
+			streamService:    services.Stream,
+			transcodeService: services.Transcode,
+			logger:           logger,
+		}),
+		User: &UserHandler{userService: services.User, authService: services.Auth, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
 		Admin: &AdminHandler{
 			userService:       services.User,
 			authService:       services.Auth,
