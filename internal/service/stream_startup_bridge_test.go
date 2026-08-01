@@ -61,10 +61,10 @@ func TestBuildStartupBridgePlaylistFailsClosedWithoutCertifiedHandoff(t *testing
 			SeamlessAllowed:       false,
 			DiscontinuityRequired: true,
 		},
-		"malformed-permission": {
+		"unknown-seamless-schema": {
 			SchemaVersion:         "future",
 			Status:                "aligned",
-			SeamlessAllowed:       false,
+			SeamlessAllowed:       true,
 			DiscontinuityRequired: false,
 		},
 	} {
