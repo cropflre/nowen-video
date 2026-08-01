@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,13 +37,15 @@ func (h *PlaybackPlanHandler) GetInfo(c *gin.Context) {
 
 	info, err := h.stream.GetMediaPlayInfo(mediaID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	plan, err := h.stream.PlanPlaybackWithInfo(mediaID, info, h.clientCapabilities(c))
 	if err != nil {
-		h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		if h.logger != nil {
+			h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
+		}
+		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 
@@ -62,11 +65,20 @@ func (h *PlaybackPlanHandler) Get(c *gin.Context) {
 
 	plan, err := h.stream.PlanPlayback(mediaID, h.clientCapabilities(c))
 	if err != nil {
-		h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		if h.logger != nil {
+			h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
+		}
+		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": plan})
+}
+
+func playbackPlanErrorStatus(err error) int {
+	if errors.Is(err, service.ErrMediaNotFound) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }
 
 func (h *PlaybackPlanHandler) clientCapabilities(c *gin.Context) service.PlaybackClientCapabilities {
