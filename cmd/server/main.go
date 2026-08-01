@@ -1067,6 +1067,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	signal.Stop(quit)
 	sugar.Info("正在关闭服务器...")
 
 	// 停止 UDP 服务发现
@@ -1077,6 +1078,23 @@ func main() {
 	// 停止 mDNS 服务发现
 	mdnsService.Stop()
 
+	// 先停止接收新请求，避免转码队列关闭期间仍有新任务提交。
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := srv.Shutdown(httpCtx); err != nil {
+		sugar.Warnf("HTTP 服务优雅关闭超时: %v", err)
+	}
+	httpCancel()
+
+	// Full 与 Lite 使用同一套持久队列关闭协议：已 Claim 的任务最多等待
+	// 30 秒，超时后先原子释放本机 Lease 回 queued，再取消旧 Context。
+	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if services != nil && services.Transcode != nil {
+		if err := services.Transcode.Shutdown(transcodeCtx); err != nil {
+			sugar.Warnf("转码服务关闭超时，未完成任务已重新排队: %v", err)
+		}
+	}
+	transcodeCancel()
+
 	// 停止扫描后处理 worker（避免正在 AI 识别 / DB 写入时被中断造成数据不一致）
 	if services != nil && services.ScanPostProcess != nil {
 		services.ScanPostProcess.Stop()
@@ -1084,14 +1102,6 @@ func main() {
 
 	// 停止 Python 番号刮削微服务子进程
 	pythonLauncher.Stop()
-
-	// 设置 30 秒超时用于优雅关闭
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		sugar.Fatalf("服务器强制关闭: %v", err)
-	}
 
 	sugar.Info("服务器已优雅关闭")
 }
