@@ -30,8 +30,34 @@ func runtimeQualityPresetMap() map[string]QualityConfig {
 	return presets
 }
 
-func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
+// GetLegacyOutputDir is the bounded migration path used only for importing
+// historical shared media/profile outputs. New Attempts must never write here.
+func (s *TranscodeService) GetLegacyOutputDir(mediaID, quality string) string {
 	return filepath.Join(s.cfg.Cache.CacheDir, "transcode", mediaID, quality)
+}
+
+// GetOnDemandOutputDir keeps request-driven auxiliary segments outside both
+// immutable published Artifacts and runtime Attempt workspaces.
+func (s *TranscodeService) GetOnDemandOutputDir(mediaID, quality string) string {
+	return filepath.Join(s.cfg.Cache.CacheDir, "transcode", "ondemand", mediaID, quality)
+}
+
+// GetOutputDir is retained as the public HLS read Adapter used by the existing
+// StreamService. It resolves the current Artifact from the database; only when
+// no Artifact exists does it return the historical migration directory.
+func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
+	legacy := s.GetLegacyOutputDir(mediaID, quality)
+	if s == nil || s.repo == nil || s.repo.DB() == nil {
+		return legacy
+	}
+	var media model.Media
+	if err := s.repo.DB().First(&media, "id = ?", mediaID).Error; err != nil {
+		return legacy
+	}
+	if resolved, err := s.ResolveHLSOutputDir(&media, quality); err == nil && resolved != "" {
+		return resolved
+	}
+	return legacy
 }
 
 // buildFFmpegArgs remains as a compatibility wrapper for existing tests and
