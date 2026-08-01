@@ -38,15 +38,7 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 		return nil, err
 	}
 
-	args := s.buildFFmpegArgsForBackendWithProbe(
-		job.Media,
-		job.Probe,
-		job.Media.FilePath,
-		workspace,
-		job.Quality,
-		job.startOffset,
-		backend,
-	)
+	args := s.buildJobFFmpegArgs(job, workspace, backend)
 	commandJSON, _ := json.Marshal(map[string]any{
 		"path": s.cfg.App.FFmpegPath,
 		"args": redactFFmpegArgs(args),
@@ -74,13 +66,13 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 		JobID:             job.ExecutionJob.ID,
 		AttemptID:         attemptID,
 		MediaID:           job.Media.ID,
-		Kind:              "hls_variant",
+		Kind:              transcodeArtifactKind(job),
 		ProfileID:         job.Quality,
 		SourceFingerprint: job.ExecutionJob.SourceFingerprint,
 		PlannerVersion:    job.ExecutionJob.PlannerVersion,
 		TempPath:          workspace,
 		Status:            "staging",
-		DurationMS:        int64(job.Media.Duration * 1000),
+		DurationMS:        transcodeArtifactDurationMS(job),
 		SegmentDuration:   hlsTargetSegmentSeconds,
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -230,7 +222,7 @@ func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, e
 		job.CurrentArtifact.ID,
 		job.leaseToken,
 		validation.SizeBytes,
-		int64(job.Media.Duration*1000),
+		transcodeArtifactDurationMS(job),
 		completedAt,
 	)
 	if err != nil {
