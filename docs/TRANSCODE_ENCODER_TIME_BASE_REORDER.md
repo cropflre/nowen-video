@@ -1,0 +1,240 @@
+# Encoder Time-Base Reorder Certification
+
+## Status
+
+This phase extends Encoder Time-Base Candidate Evidence with deterministic B-frame decode-order and presentation-order certification.
+
+It is certification-only. It does not modify the production FFmpeg builder, persisted transcode jobs, Startup or Continuation execution, HLS playlists, playback planning, or client behavior.
+
+The production safety policy remains fail-closed:
+
+```text
+seamless_allowed = false
+discontinuity_required = true
+#EXT-X-DISCONTINUITY = mandatory
+```
+
+## Why this phase exists
+
+The base encoder time-base matrix proves PTS cadence, decoded-frame preservation, Boundary evidence, and A/V evidence for the two explicit candidates:
+
+```text
+encoder-time-base-avtb-v1 = 1/1000000
+encoder-time-base-90k-v1  = 1/90000
+```
+
+That matrix intentionally used the production zero-latency software profile. A zero-latency profile does not exercise B-frame reordering, where packets are submitted to the decoder in DTS order but displayed in PTS order.
+
+This phase removes the zero-latency tune only inside the certification command and adds deterministic closed-GOP B-frame policies. It then binds packet-order evidence back to the complete base candidate evidence for every run.
+
+## Evidence schemas
+
+Contract schema:
+
+```text
+encoder-time-base-reorder-evidence-v1
+```
+
+Matrix schema:
+
+```text
+ffmpeg-encoder-time-base-reorder-matrix-v1
+```
+
+Canonical contract JSON is identified by SHA-256.
+
+## Candidate policies
+
+The matrix keeps the same two explicit encoder time-base candidates:
+
+| Candidate | FFmpeg option |
+|---|---|
+| AVTB | `-enc_time_base:v:0 1/1000000` |
+| MPEG-TS clock | `-enc_time_base:v:0 1/90000` |
+
+Both candidates use the same Timestamp Plan, output cadence policy, HLS transport, codec profile, GOP policy, and source case. Only the explicit encoder time base differs.
+
+## B-frame policy
+
+Every case uses deterministic software H.264 reordering:
+
+```text
+b-adapt = 0
+b-pyramid = none
+open-gop = 0
+scenecut = 0
+```
+
+The case registry explicitly binds:
+
+- B-frame count;
+- reference-frame count;
+- GOP size;
+- source frame-rate policy;
+- source timestamp origin;
+- Startup and Continuation boundary.
+
+Adaptive B-frame placement and open GOPs are outside v1 because they would make repeated packet-order comparison dependent on encoder heuristics.
+
+## Case matrix
+
+Each source is 40 seconds long with a 30-second Startup/Continuation boundary and 48 kHz audio.
+
+| Case | Source | Reorder policy | Purpose |
+|---|---|---|---|
+| `reorder-cfr-24-b2-origin-zero-v1` | CFR 24 fps | 2 B-frames, 3 refs, 48-frame GOP | baseline cinematic cadence |
+| `reorder-cfr-30000-1001-b3-origin-zero-v1` | CFR 30000/1001 fps | 3 B-frames, 4 refs, 60-frame GOP | rational broadcast cadence |
+| `reorder-vfr-24-30-b3-origin-zero-v1` | VFR 24 → 30 fps | 3 B-frames, 4 refs, 60-frame GOP | variable input cadence |
+| `reorder-cfr-30-b3-origin-positive-5s-v1` | CFR 30 fps, +5 s origin | 3 B-frames, 4 refs, 60-frame GOP | positive source origin |
+| `reorder-cfr-30-b3-origin-negative-2s-v1` | CFR 30 fps, -2 s origin | 3 B-frames, 4 refs, 60-frame GOP | negative source origin |
+| `reorder-cfr-30-b3-long-gop-origin-zero-v1` | CFR 30 fps | 3 B-frames, 4 refs, 300-frame GOP | ten-second GOP behavior |
+
+Every case runs both candidates three times. Startup and Continuation are independently produced and verified.
+
+## Bound base evidence
+
+Each reorder run embeds the complete Encoder Time-Base Candidate run evidence, including:
+
+- normalized Startup and Continuation command hashes;
+- complete PTS cadence evidence;
+- source-to-output frame mappings;
+- decoded-frame fingerprints;
+- Produced-media Attestation;
+- Boundary Packet Evidence;
+- A/V Boundary Sync Evidence;
+- fail-closed discontinuity policy.
+
+The reorder layer cannot pass by validating DTS alone. Its packet count must equal the corresponding base cadence frame count, and the base candidate run must independently remain valid.
+
+## Packet-order evidence
+
+For Startup and Continuation, the contract records:
+
+- time base and packet count;
+- first and last PTS/DTS in ticks and microseconds;
+- minimum and maximum composition offset (`PTS - DTS`);
+- packets whose PTS is before, equal to, or after DTS;
+- reordered packet count;
+- adjacent PTS inversion count in decode order;
+- duplicate DTS count;
+- non-monotonic DTS count;
+- maximum presentation reorder depth;
+- complete positive DTS-delta histogram;
+- complete composition-offset histogram.
+
+The evidence is derived from FFprobe packet output for the generated HLS manifest.
+
+## Required invariants
+
+A run fails when any of the following is true:
+
+- DTS contains a duplicate value;
+- DTS decreases or remains equal between adjacent decode-order packets;
+- no packet has a non-zero composition offset;
+- no adjacent PTS inversion is observed in decode order;
+- maximum presentation reorder depth is zero;
+- packet-order count differs from base PTS cadence frame count;
+- base PTS cadence contains near-zero, duplicate, or non-monotonic PTS;
+- decoded output contains adjacent duplicate frames;
+- Boundary or A/V evidence becomes invalid;
+- nested evidence attempts to authorize seamless playback.
+
+## Repeat and comparison policy
+
+Each case/candidate cell runs exactly three times.
+
+A candidate is stable only when:
+
+- base frame, cadence, Boundary, and A/V evidence is stable;
+- reordered packet counts have zero variance;
+- maximum reorder depth has zero variance;
+- maximum composition offsets have zero variance;
+- complete Startup packet-order evidence is identical across repeats;
+- complete Continuation packet-order evidence is identical across repeats;
+- DTS is strictly monotonic in all windows;
+- B-frame reordering is observed in all windows.
+
+AVTB and 90 kHz must be equivalent for:
+
+- the complete base candidate comparison;
+- Startup packet-order evidence;
+- Continuation packet-order evidence.
+
+A difference in either PTS-level or DTS-level evidence fails the case.
+
+## CLI
+
+List registered cases and candidates:
+
+```bash
+go run ./cmd/transcode-encoder-time-base-reorder-cert -list
+```
+
+Run the complete matrix:
+
+```bash
+go run ./cmd/transcode-encoder-time-base-reorder-cert \
+  -output encoder-time-base-reorder-matrix-v1.json
+```
+
+Keep the diagnostic workspace:
+
+```bash
+go run ./cmd/transcode-encoder-time-base-reorder-cert \
+  -work-dir /tmp/nowen-encoder-time-base-reorder \
+  -keep-work-dir \
+  -output /tmp/nowen-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
+```
+
+## CI
+
+Dedicated workflow:
+
+```text
+.github/workflows/transcode-encoder-time-base-reorder-cert.yml
+```
+
+Semantic verifier:
+
+```text
+.github/scripts/verify_encoder_time_base_reorder.py
+```
+
+The workflow:
+
+1. runs the Go reorder, base candidate, output cadence, and certification tests;
+2. builds the standalone certification command;
+3. produces all six cases, two candidates, and three repeats;
+4. verifies strict DTS and observed B-frame reordering;
+5. verifies packet-order histogram arithmetic;
+6. verifies base PTS cadence and decoded-frame preservation;
+7. verifies Boundary and A/V fail-closed policy;
+8. verifies repeated-run stability and cross-candidate equivalence;
+9. uploads `encoder-time-base-reorder-matrix-v1.json` as a CI artifact.
+
+## Production non-claims
+
+This phase does not prove:
+
+- representative real-file demuxer behavior;
+- hardware encoder reorder behavior;
+- HEVC, AV1, interlaced, HDR, edit-list, or discontinuous-source behavior;
+- open-GOP or adaptive B-frame behavior;
+- long-duration DTS or A/V drift behavior;
+- Web, PC, Android, Emby, or Infuse playback acceptance;
+- safe seamless Startup-to-Continuation handoff;
+- safe removal of `#EXT-X-DISCONTINUITY`;
+- that either candidate should be enabled in production.
+
+## Next production gate
+
+The next gate is representative real-media fixture certification. It must bind real demuxer and container behavior to:
+
+- Timestamp Plan;
+- Encoder Time-Base Candidate Evidence;
+- Encoder Time-Base Reorder Evidence;
+- Produced-media Attestation;
+- Boundary Packet Evidence;
+- A/V Boundary Sync Evidence.
+
+Production selection remains deferred until real-media, hardware, long-duration, client-acceptance, rollout, fallback, and rollback gates all pass.
