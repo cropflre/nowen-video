@@ -104,6 +104,8 @@ jobs:
                   'startup_end_skew_micros',
                   'continuation_start_skew_micros',
                   'boundary_delta_skew_micros',
+                  'skew_transition_micros',
+                  'projection_residual_micros',
               ):
                   metric = summary[field]
                   assert metric['span_micros'] == metric['max_micros'] - metric['min_micros']
@@ -142,7 +144,9 @@ jobs:
                   assert av['startup_end_skew_micros'] == av['startup_audio_end_micros'] - av['startup_video_end_micros']
                   assert av['continuation_start_skew_micros'] == av['continuation_audio_start_micros'] - av['continuation_video_start_micros']
                   assert av['boundary_delta_skew_micros'] == av['audio_boundary_delta_micros'] - av['video_boundary_delta_micros']
-                  assert av['continuation_start_skew_micros'] - av['startup_end_skew_micros'] == av['boundary_delta_skew_micros']
+                  assert av['skew_transition_micros'] == av['continuation_start_skew_micros'] - av['startup_end_skew_micros']
+                  assert av['projection_residual_micros'] == av['skew_transition_micros'] - av['boundary_delta_skew_micros']
+                  assert abs(av['projection_residual_micros']) <= 2
                   assert av['max_absolute_skew_micros'] == max(abs(av['startup_end_skew_micros']), abs(av['continuation_start_skew_micros']))
                   av_canonical = json.dumps(av, ensure_ascii=False, separators=(',', ':'))
                   av_hash = hashlib.sha256(av_canonical.encode()).hexdigest()
@@ -156,6 +160,8 @@ jobs:
                   'startup_skew_us': summary['startup_end_skew_micros']['max_micros'],
                   'continuation_skew_us': summary['continuation_start_skew_micros']['max_micros'],
                   'delta_skew_us': summary['boundary_delta_skew_micros']['max_micros'],
+                  'skew_transition_us': summary['skew_transition_micros']['max_micros'],
+                  'projection_residual_us': summary['projection_residual_micros']['max_micros'],
                   'max_span_us': summary['max_observed_span_micros'],
               }
 
