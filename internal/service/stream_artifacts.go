@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,9 +11,12 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	"gorm.io/gorm"
 )
 
 const artifactPublishResolveRetryDelay = 5 * time.Millisecond
+
+var ErrArtifactNotReady = errors.New("transcode artifact is not ready")
 
 // GetArtifactSegmentPlaylist is the Artifact-aware runtime HLS entry. It never
 // captures a mutable physical path across Job submission: every read resolves
@@ -34,6 +38,8 @@ func (s *StreamService) GetArtifactSegmentPlaylist(mediaID, quality string) (str
 
 	if content, readErr := s.readResolvedHLSManifest(media, quality); readErr == nil {
 		return content, nil
+	} else if !errors.Is(readErr, ErrArtifactNotReady) {
+		return "", fmt.Errorf("读取转码 Artifact 失败: %w", readErr)
 	}
 	if _, err := s.transcoder.StartTranscode(media, quality); err != nil {
 		return "", fmt.Errorf("启动转码失败: %w", err)
@@ -44,6 +50,8 @@ func (s *StreamService) GetArtifactSegmentPlaylist(mediaID, quality string) (str
 	if err := s.transcoder.WaitForFirstSegmentForMedia(ctx, media, quality); err == nil {
 		if content, readErr := s.readResolvedHLSManifest(media, quality); readErr == nil {
 			return content, nil
+		} else if !errors.Is(readErr, ErrArtifactNotReady) {
+			return "", fmt.Errorf("读取首片 Artifact 失败: %w", readErr)
 		}
 	}
 
@@ -62,15 +70,20 @@ func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality stri
 			content, readErr := os.ReadFile(manifestPath)
 			if readErr == nil {
 				if !strings.Contains(string(content), ".ts") {
-					return "", fmt.Errorf("HLS Artifact 尚未包含已完成分片")
+					return "", ErrArtifactNotReady
 				}
 				return string(content), nil
 			}
 			lastErr = readErr
 		}
-		if attempt == 0 {
+		if attempt == 0 && artifactReadinessError(lastErr) {
 			time.Sleep(artifactPublishResolveRetryDelay)
+			continue
 		}
+		break
+	}
+	if artifactReadinessError(lastErr) {
+		return "", ErrArtifactNotReady
 	}
 	return "", lastErr
 }
@@ -95,10 +108,10 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 
 	segmentPath, outputDir, info, err := s.resolveArtifactFile(media, quality, segment)
 	if err != nil {
-		return fmt.Errorf("分片文件不存在: %s: %w", segment, err)
+		return err
 	}
 	if info.IsDir() || info.Size() <= 0 {
-		return fmt.Errorf("分片文件无效: %s", segment)
+		return ErrArtifactNotReady
 	}
 	if filepath.Ext(segment) == ".ts" {
 		w.Header().Set("Content-Type", "video/mp2t")
@@ -126,9 +139,21 @@ func (s *StreamService) resolveArtifactFile(media *model.Media, quality, name st
 			}
 			lastErr = statErr
 		}
-		if attempt == 0 {
+		if attempt == 0 && artifactReadinessError(lastErr) {
 			time.Sleep(artifactPublishResolveRetryDelay)
+			continue
 		}
+		break
+	}
+	if artifactReadinessError(lastErr) {
+		return "", "", nil, ErrArtifactNotReady
 	}
 	return "", "", nil, lastErr
+}
+
+func artifactReadinessError(err error) bool {
+	return err == nil ||
+		errors.Is(err, ErrArtifactNotReady) ||
+		errors.Is(err, gorm.ErrRecordNotFound) ||
+		errors.Is(err, os.ErrNotExist)
 }
