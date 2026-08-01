@@ -151,10 +151,10 @@ func RunVFRIsolationMatrix(ctx context.Context, config Config) (VFRIsolationMatr
 		return VFRIsolationMatrixReport{}, err
 	}
 	report := VFRIsolationMatrixReport{
-		SchemaVersion: VFRIsolationMatrixSchemaVersion,
+		SchemaVersion:   VFRIsolationMatrixSchemaVersion,
 		ContractVersion: contractVersion,
-		ContractHash: contractHash,
-		Evidence: contract,
+		ContractHash:    contractHash,
+		Evidence:        contract,
 	}
 	if err := report.Validate(); err != nil {
 		return VFRIsolationMatrixReport{}, err
@@ -193,7 +193,7 @@ func produceVFRIsolationEncoded(
 	case "hls-mpegts":
 		args = replaceOutputOption(baseArgs, "-fps_mode", variantSpec.FPSMode)
 		if variantSpec.EncoderTimeBase != "auto" {
-			args = insertBeforeOutput(args, "-enc_time_base:v:0", variantSpec.EncoderTimeBase)
+			args = insertIsolationBeforeOutput(args, "-enc_time_base:v:0", variantSpec.EncoderTimeBase)
 		}
 		outputPath = filepath.Join(directory, "stream.m3u8")
 	case "matroska":
@@ -283,10 +283,10 @@ func replaceOutputOption(args []string, option, value string) []string {
 			return result
 		}
 	}
-	return insertBeforeOutput(result, option, value)
+	return insertIsolationBeforeOutput(result, option, value)
 }
 
-func insertBeforeOutput(args []string, values ...string) []string {
+func insertIsolationBeforeOutput(args []string, values ...string) []string {
 	if len(args) == 0 {
 		return append([]string(nil), values...)
 	}
