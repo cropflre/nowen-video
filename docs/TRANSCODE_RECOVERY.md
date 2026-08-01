@@ -23,7 +23,7 @@ claimed / running
   -> queued
 
 claimed / running
-  -> Lite graceful shutdown deadline
+  -> graceful shutdown deadline
   -> queued
 ```
 
@@ -132,18 +132,20 @@ Attempt 3: software running
 
 重新执行前会清理上一次未完成的输出目录，避免旧分片和新 Timeline 混合。
 
-## Lite 优雅关闭
+## Lite / Full 优雅关闭
 
-`cmd/server-lite` 收到 `SIGINT` 或 `SIGTERM` 后按以下顺序执行：
+`cmd/server-lite` 与 `cmd/server` 收到 `SIGINT` 或 `SIGTERM` 后都使用同一套转码关闭协议：
 
-1. 停止 mDNS。
-2. 停止 HTTP 接收新请求。
+1. 停止服务发现广播。
+2. 停止 HTTP 接收新请求，避免关闭队列后仍提交新转码任务。
 3. 关闭本机任务交付堆。
 4. 未被 Worker Claim 的任务从本地堆移除，但数据库继续保持 `queued`。
 5. 最多等待 30 秒，让已 Claim 的任务正常完成。
 6. 超时后，使用当前 Lease Token 将本机任务原子释放回 `queued`。
 7. Lease 释放成功后才取消旧 Context。
 8. 旧 Worker 即使延迟返回，也因 Lease Token 不匹配而无法提交 Job 终态。
+
+Full 入口随后继续关闭扫描后处理 Worker 与 Python 番号子进程。转码关闭不再依赖额外的进程信号监听器，避免在 30 秒宽限期开始前提前释放 Lease。
 
 关闭超时不会把任务伪装成 `cancelled` 或 `failed`。
 
@@ -172,7 +174,6 @@ Attempt 3: software running
 - 运行中 FFmpeg 强制抢占。
 - 基于 HLS 可续跑点的断点续转。
 - 完全取消本地交付堆、由 Worker 直接 ClaimNextJob。
-- Full 入口的关闭时序接线。
 - 跨节点公平性与租约配置管理页面。
 
 运行中抢占必须先具备产物隔离、明确续跑点和 Timeline 校验，不能简单杀进程后宣称已完成抢占。
