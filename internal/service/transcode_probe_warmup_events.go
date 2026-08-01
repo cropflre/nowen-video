@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 )
 
@@ -21,8 +22,12 @@ func (s *TranscodeService) attachProbeWarmup(hub *WSHub) {
 			s.logger,
 			s.jobs.Done(),
 		)
-		warmup.SetOnProbed(func(media, probe interfaceMediaProbeRecord) (bool, error) {
-			return false, nil
+		warmup.SetOnProbed(func(media *model.Media, probe *model.MediaProbeRecord) (bool, error) {
+			if !StartupStreamEligible(media, probe) {
+				return false, nil
+			}
+			_, err := s.SubmitStartupStream(media, probe)
+			return err == nil, err
 		})
 		s.probeWarmup = warmup
 
