@@ -89,6 +89,37 @@ jobs:
           ]
           assert [item['case']['id'] for item in matrix['cases']] == [item[0] for item in expected]
 
+          def validate_timeline(timeline):
+              histogram = timeline['delta_histogram']
+              assert histogram
+              assert [bucket['delta_ticks'] for bucket in histogram] == sorted(bucket['delta_ticks'] for bucket in histogram)
+              assert len({bucket['delta_ticks'] for bucket in histogram}) == len(histogram)
+              positive = timeline['frame_count'] - 1 - timeline['duplicate_pts_count'] - timeline['non_monotonic_pts_count']
+              assert sum(bucket['count'] for bucket in histogram) == positive
+              assert timeline['distinct_deltas'] == len(histogram)
+              assert timeline['min_delta_ticks'] == histogram[0]['delta_ticks']
+              assert timeline['max_delta_ticks'] == histogram[-1]['delta_ticks']
+              assert timeline['min_delta_micros'] == histogram[0]['delta_micros']
+              assert timeline['max_delta_micros'] == histogram[-1]['delta_micros']
+              assert timeline['duration_spread_micros'] == timeline['max_delta_micros'] - timeline['min_delta_micros']
+              threshold = max(2, (positive + 99) // 100)
+              assert timeline['significant_bucket_minimum_count'] == threshold
+              significant = [bucket for bucket in histogram if bucket['count'] >= threshold]
+              outliers = [bucket for bucket in histogram if bucket['count'] < threshold]
+              assert timeline['significant_delta_count'] == len(significant)
+              assert timeline['outlier_delta_count'] == sum(bucket['count'] for bucket in outliers)
+              dominant = sorted(histogram, key=lambda bucket: (-bucket['count'], bucket['delta_ticks']))[0]
+              assert timeline['dominant_delta_ticks'] == dominant['delta_ticks']
+              assert timeline['dominant_delta_micros'] == dominant['delta_micros']
+              assert timeline['dominant_delta_count'] == dominant['count']
+              significant_variable = (
+                  len(significant) >= 2 and
+                  significant[-1]['delta_micros'] - significant[0]['delta_micros'] >= 5000
+              )
+              assert timeline['material_variable_duration'] is significant_variable
+              assert timeline['duplicate_pts_count'] == 0
+              assert timeline['non_monotonic_pts_count'] == 0
+
           hashes = set()
           toolchain = None
           summary = {}
@@ -121,19 +152,36 @@ jobs:
               assert startup['frame_count'] == startup_map['output_frames']
               assert continuation['frame_count'] == continuation_map['output_frames']
               for timeline in (source, startup, continuation):
-                  assert timeline['duration_spread_micros'] == timeline['max_delta_micros'] - timeline['min_delta_micros']
-                  assert timeline['duplicate_pts_count'] == 0
-                  assert timeline['non_monotonic_pts_count'] == 0
-              assert source['variable_duration'] is (mode == 'vfr')
-              assert startup['variable_duration'] is (mode == 'vfr')
-              assert continuation['variable_duration'] is False
+                  validate_timeline(timeline)
+
+              is_vfr = mode == 'vfr'
+              assert source['material_variable_duration'] is is_vfr
+              assert startup['material_variable_duration'] is is_vfr
+              assert continuation['material_variable_duration'] is False
+              assert evidence['expected_startup_material_variable'] is is_vfr
+              assert evidence['expected_continuation_material_variable'] is False
 
               for mapping in (startup_map, continuation_map):
                   delta = mapping['output_frames'] - mapping['input_frames']
-                  assert mapping['frame_count_delta'] == delta
-                  assert mapping['projected_duplicate_frames'] == max(delta, 0)
-                  assert mapping['projected_dropped_frames'] == max(-delta, 0)
+                  assert mapping['frame_count_delta'] == delta == 0
+                  assert mapping['projected_duplicate_frames'] == 0
+                  assert mapping['projected_dropped_frames'] == 0
                   assert mapping['count_tolerance'] == 1
+                  assert mapping['status'] == 'aligned'
+
+              if is_vfr:
+                  assert startup['variable_duration'] is True
+                  assert continuation['variable_duration'] is True
+                  assert startup['outlier_delta_count'] > 0
+                  assert continuation['outlier_delta_count'] > 0
+                  assert evidence['preservation_status'] == 'preserved_with_cadence_outliers'
+              else:
+                  assert source['variable_duration'] is False
+                  assert startup['variable_duration'] is False
+                  assert continuation['variable_duration'] is False
+                  assert startup['outlier_delta_count'] == 0
+                  assert continuation['outlier_delta_count'] == 0
+                  assert evidence['preservation_status'] == 'preserved_exact'
 
               assert evidence['content_duplicate_classification'] == 'not_measured'
               assert evidence['seamless_allowed'] is False
@@ -145,14 +193,12 @@ jobs:
                   'source_frames': source['frame_count'],
                   'startup_in': startup_map['input_frames'],
                   'startup_out': startup_map['output_frames'],
-                  'startup_delta': startup_map['frame_count_delta'],
-                  'startup_min_us': startup['min_delta_micros'],
-                  'startup_max_us': startup['max_delta_micros'],
+                  'startup_histogram': startup['delta_histogram'],
+                  'startup_outliers': startup['outlier_delta_count'],
                   'continuation_in': continuation_map['input_frames'],
                   'continuation_out': continuation_map['output_frames'],
-                  'continuation_delta': continuation_map['frame_count_delta'],
-                  'continuation_min_us': continuation['min_delta_micros'],
-                  'continuation_max_us': continuation['max_delta_micros'],
+                  'continuation_histogram': continuation['delta_histogram'],
+                  'continuation_outliers': continuation['outlier_delta_count'],
                   'preservation': evidence['preservation_status'],
               }
 
@@ -160,6 +206,7 @@ jobs:
           print(json.dumps({'toolchain': toolchain, 'summary': summary}, sort_keys=True))
           PY
       - name: Upload output-cadence evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: transcode-output-cadence-${{ github.sha }}
