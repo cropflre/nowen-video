@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	PlaybackMethodDirect     = "direct"
-	PlaybackMethodRemux      = "remux"
-	PlaybackMethodSmartRemux = "smart_remux"
-	PlaybackMethodTranscode  = "transcode"
+	PlaybackMethodDirect        = "direct"
+	PlaybackMethodRemux         = "remux"
+	PlaybackMethodSmartRemux    = "smart_remux"
+	PlaybackMethodStartupStream = "startup_stream"
+	PlaybackMethodTranscode     = "transcode"
 )
 
 type PlaybackClientCapabilities struct {
@@ -48,7 +49,7 @@ type PlaybackPlan struct {
 	FallbackURL       string                     `json:"fallback_url,omitempty"`
 	Capabilities      PlaybackClientCapabilities `json:"client_capabilities"`
 	SourceTechnical   *PlaybackSourceTechnical   `json:"source_technical,omitempty"`
-	StartupBridge     *StartupBridgeInfo         `json:"startup_bridge,omitempty"`
+	StartupStream     *PlaybackStartupStream     `json:"startup_stream,omitempty"`
 }
 
 func (s *StreamService) DefaultPlaybackClientCapabilities(userAgent string) PlaybackClientCapabilities {
@@ -98,20 +99,10 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		hlsURL = appendQuery(hlsURL, "maxBitrate", strconv.Itoa(caps.MaxBitrate))
 	}
 
-	var startupBridge *StartupBridgeInfo
-	compatibleHLSURL := hlsURL
-	if bridge, bridgeErr := s.GetStartupBridgeInfo(mediaID); bridgeErr == nil && bridge != nil && bridge.Available {
-		startupBridge = bridge
-		compatibleHLSURL = bridge.PlaylistURL
-	} else if bridgeErr != nil && s.logger != nil {
-		s.logger.Warnf("读取 Startup Bridge 失败 media=%s: %v", mediaID, bridgeErr)
-	}
-
 	plan := &PlaybackPlan{
 		MediaID:         mediaID,
 		Capabilities:    caps,
 		SourceTechnical: sourceTechnical,
-		StartupBridge:   startupBridge,
 	}
 	if info.IsSTRM {
 		plan.Method = PlaybackMethodDirect
@@ -121,10 +112,10 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		return plan, nil
 	}
 	if caps.ForceTranscode {
-		return chooseTranscode(plan, compatibleHLSURL, "client_forced_transcode", "客户端要求使用兼容转码"), nil
+		return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, "client_forced_transcode", "客户端要求使用兼容转码")
 	}
 	if !info.PreferDirectPlay {
-		return chooseTranscode(plan, compatibleHLSURL, "system_prefers_transcode", "系统设置要求优先使用兼容转码"), nil
+		return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, "system_prefers_transcode", "系统设置要求优先使用兼容转码")
 	}
 
 	hevcSource := isHEVCCodec(info.VideoCodec)
@@ -135,7 +126,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.ReasonCode = "native_direct_play"
 		plan.Reason = "容器与音视频编码均受客户端原生支持"
 		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = compatibleHLSURL
+		plan.FallbackURL = hlsURL
 		return plan, nil
 	}
 
@@ -146,7 +137,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.ReasonCode = "container_remux"
 		plan.Reason = "编码兼容，仅转换容器，音视频均直接复制"
 		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = compatibleHLSURL
+		plan.FallbackURL = hlsURL
 		return plan, nil
 	}
 
@@ -160,7 +151,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.Reason = "视频编码可直接复制，仅将不兼容音频转换为 AAC"
 		plan.RequiresTranscode = true
 		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = compatibleHLSURL
+		plan.FallbackURL = hlsURL
 		return plan, nil
 	}
 
@@ -176,7 +167,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		reasonCode = "client_remux_disabled"
 		reason = "客户端不支持 fragmented MP4 Remux"
 	}
-	return chooseTranscode(plan, compatibleHLSURL, reasonCode, reason), nil
+	return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, reasonCode, reason)
 }
 
 func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.MediaProbeRecord) *PlaybackSourceTechnical {
