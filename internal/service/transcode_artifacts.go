@@ -148,9 +148,9 @@ func (s *TranscodeService) completeAttemptArtifact(job *TranscodeJob, execution 
 	}
 }
 
-// publishCurrentHLSArtifact validates, prepares, atomically renames and commits
-// one immutable HLS Artifact. Job completion happens in the same database
-// transaction as Artifact visibility.
+// publishCurrentHLSArtifact validates, attests, prepares, atomically renames and
+// commits one immutable HLS Artifact. Job completion happens in the same
+// database transaction as Artifact visibility.
 func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, error) {
 	if s == nil || s.artifactStore == nil || s.executionRepo == nil {
 		return false, fmt.Errorf("transcode artifact store is unavailable")
@@ -171,6 +171,19 @@ func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, e
 			time.Now(),
 		)
 		return false, fmt.Errorf("validate hls artifact: %w", err)
+	}
+	if err := s.attestOwnedArtifactForPublish(job); err != nil {
+		_, _ = s.executionRepo.MarkOwnedArtifactTerminal(
+			job.ExecutionJob.ID,
+			job.CurrentAttempt.ID,
+			job.CurrentArtifact.ID,
+			job.leaseToken,
+			"failed",
+			"artifact_attestation_failed",
+			err.Error(),
+			time.Now(),
+		)
+		return false, fmt.Errorf("attest hls artifact: %w", err)
 	}
 
 	publishedDir, err := s.artifactStore.PublishedDir(job.Media.ID, job.Quality, job.CurrentArtifact.ID)
