@@ -77,7 +77,7 @@ func main() {
 		if err != nil {
 			fatalf("fixture certification failed: %v", err)
 		}
-		content, err = transcodecertification.MarshalReport(report)
+		content, err = transcodecertification.MarshalCertifiedReport(report)
 		if err != nil {
 			fatalf("encode fixture report: %v", err)
 		}
