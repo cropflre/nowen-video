@@ -10,9 +10,9 @@ func TestReplaceOutputOptionUsesLastOutputPolicy(t *testing.T) {
 	}
 }
 
-func TestInsertBeforeOutput(t *testing.T) {
+func TestInsertIsolationBeforeOutput(t *testing.T) {
 	args := []string{"-y", "-f", "hls", "out.m3u8"}
-	got := insertBeforeOutput(args, "-enc_time_base:v:0", "1/90000")
+	got := insertIsolationBeforeOutput(args, "-enc_time_base:v:0", "1/90000")
 	want := []string{"-y", "-f", "hls", "-enc_time_base:v:0", "1/90000", "out.m3u8"}
 	if len(got) != len(want) {
 		t.Fatalf("unexpected length: %v", got)
