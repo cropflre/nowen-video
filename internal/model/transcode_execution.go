@@ -15,6 +15,7 @@ type TranscodeJobRecord struct {
 	ProfileID         string     `json:"profile_id" gorm:"type:text"`
 	AudioTrack        int        `json:"audio_track" gorm:"default:-1"`
 	StartMS           int64      `json:"start_ms"`
+	DurationMS        int64      `json:"duration_ms"`
 	Priority          int        `json:"priority" gorm:"index;default:0"`
 	Status            string     `json:"status" gorm:"index;type:text;not null"`
 	DesiredState      string     `json:"desired_state" gorm:"index;type:text;not null"`
