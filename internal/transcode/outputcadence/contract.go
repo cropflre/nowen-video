@@ -17,89 +17,96 @@ import (
 const SchemaVersion = "hls-output-cadence-evidence-v1"
 
 const (
-	TimelineSource       = "source"
-	TimelineStartup      = "startup"
-	TimelineContinuation = "continuation"
+	TimelineSource             = "source_full"
+	TimelineSourceStartup      = "source_startup"
+	TimelineSourceContinuation = "source_continuation"
+	TimelineStartup            = "output_startup"
+	TimelineContinuation       = "output_continuation"
 
 	MappingAligned             = "aligned"
 	MappingWithinTolerance     = "within_tolerance"
 	MappingDuplicateProjection = "duplicate_projection"
 	MappingDropProjection      = "drop_projection"
 
-	PreservationExact                = "preserved_exact"
-	PreservationWithCadenceOutliers  = "preserved_with_cadence_outliers"
-	PreservationWithCountTolerance   = "preserved_with_count_tolerance"
-	PreservationChanged              = "changed"
+	PreservationExact               = "preserved_exact"
+	PreservationWithCadenceOutliers = "preserved_with_cadence_outliers"
+	PreservationWithCountTolerance  = "preserved_with_count_tolerance"
+	PreservationChanged             = "changed"
 
 	ContentDuplicateNotMeasured = "not_measured"
 
-	FrameCountTolerance             = 1
+	FrameCountTolerance                = 1
 	SignificantDeltaPercentDenominator = 100
-	MinimumSignificantDeltaCount    = 2
+	MinimumSignificantDeltaCount       = 2
+	NearZeroDeltaThresholdMicros       = 1_000
+	CadenceDeltaToleranceMicros        = 1_000
 )
 
-// Contract records full produced-video cadence and source-to-output frame-count
+// Contract records complete source/output video cadence and frame-count
 // projections. Frame-count deltas are diagnostic projections only; v1 does not
 // claim content-level duplicate-frame detection and cannot authorize seamless HLS.
 type Contract struct {
-	SchemaVersion                   string           `json:"schema_version"`
-	CaseID                         string           `json:"case_id"`
-	FixtureID                      string           `json:"fixture_id"`
-	SourceMode                     string           `json:"source_mode"`
-	DeclaredFrameRateNumerator     int64            `json:"declared_frame_rate_numerator"`
-	DeclaredFrameRateDenominator   int64            `json:"declared_frame_rate_denominator"`
-	DeclaredFrameRateMilli         int              `json:"declared_frame_rate_milli"`
-	ExpectedBoundaryMicros         int64            `json:"expected_boundary_micros"`
-	ExpectedStartupMaterialVariable bool            `json:"expected_startup_material_variable"`
-	ExpectedContinuationMaterialVariable bool       `json:"expected_continuation_material_variable"`
-	FFmpegVersion                  string           `json:"ffmpeg_version"`
-	FFprobeVersion                 string           `json:"ffprobe_version"`
-	SourceOriginVersion            string           `json:"source_origin_version"`
-	SourceOriginHash               string           `json:"source_origin_hash"`
-	TimestampPlanVersion           string           `json:"timestamp_plan_version"`
-	TimestampPlanHash              string           `json:"timestamp_plan_hash"`
-	BoundaryEvidenceVersion        string           `json:"boundary_evidence_version"`
-	BoundaryEvidenceHash           string           `json:"boundary_evidence_hash"`
-	AVSyncEvidenceVersion          string           `json:"av_sync_evidence_version"`
-	AVSyncEvidenceHash             string           `json:"av_sync_evidence_hash"`
-	SourceTimeline                 TimelineEvidence `json:"source_timeline"`
-	StartupTimeline                TimelineEvidence `json:"startup_timeline"`
-	ContinuationTimeline           TimelineEvidence `json:"continuation_timeline"`
-	StartupMapping                 FrameMapping     `json:"startup_mapping"`
-	ContinuationMapping            FrameMapping     `json:"continuation_mapping"`
-	PreservationStatus             string           `json:"preservation_status"`
-	ContentDuplicateClassification string           `json:"content_duplicate_classification"`
-	SeamlessAllowed                bool             `json:"seamless_allowed"`
-	DiscontinuityRequired          bool             `json:"discontinuity_required"`
+	SchemaVersion                              string           `json:"schema_version"`
+	CaseID                                    string           `json:"case_id"`
+	FixtureID                                 string           `json:"fixture_id"`
+	SourceMode                                string           `json:"source_mode"`
+	DeclaredFrameRateNumerator                int64            `json:"declared_frame_rate_numerator"`
+	DeclaredFrameRateDenominator              int64            `json:"declared_frame_rate_denominator"`
+	DeclaredFrameRateMilli                    int              `json:"declared_frame_rate_milli"`
+	ExpectedBoundaryMicros                    int64            `json:"expected_boundary_micros"`
+	ExpectedStartupMaterialVariable           bool             `json:"expected_startup_material_variable"`
+	ExpectedContinuationMaterialVariable      bool             `json:"expected_continuation_material_variable"`
+	FFmpegVersion                             string           `json:"ffmpeg_version"`
+	FFprobeVersion                            string           `json:"ffprobe_version"`
+	SourceOriginVersion                       string           `json:"source_origin_version"`
+	SourceOriginHash                          string           `json:"source_origin_hash"`
+	TimestampPlanVersion                      string           `json:"timestamp_plan_version"`
+	TimestampPlanHash                         string           `json:"timestamp_plan_hash"`
+	BoundaryEvidenceVersion                   string           `json:"boundary_evidence_version"`
+	BoundaryEvidenceHash                      string           `json:"boundary_evidence_hash"`
+	AVSyncEvidenceVersion                     string           `json:"av_sync_evidence_version"`
+	AVSyncEvidenceHash                        string           `json:"av_sync_evidence_hash"`
+	SourceTimeline                            TimelineEvidence `json:"source_timeline"`
+	SourceStartupTimeline                     TimelineEvidence `json:"source_startup_timeline"`
+	SourceContinuationTimeline                TimelineEvidence `json:"source_continuation_timeline"`
+	StartupTimeline                           TimelineEvidence `json:"startup_timeline"`
+	ContinuationTimeline                      TimelineEvidence `json:"continuation_timeline"`
+	StartupMapping                            FrameMapping     `json:"startup_mapping"`
+	ContinuationMapping                       FrameMapping     `json:"continuation_mapping"`
+	PreservationStatus                        string           `json:"preservation_status"`
+	ContentDuplicateClassification            string           `json:"content_duplicate_classification"`
+	SeamlessAllowed                           bool             `json:"seamless_allowed"`
+	DiscontinuityRequired                     bool             `json:"discontinuity_required"`
 }
 
 type TimelineEvidence struct {
-	Kind                           string        `json:"kind"`
-	TimeBase                       string        `json:"time_base"`
-	WindowStartMicros              int64         `json:"window_start_micros"`
-	WindowEndMicros                int64         `json:"window_end_micros"`
-	FrameCount                     int           `json:"frame_count"`
-	FirstPTS                       int64         `json:"first_pts"`
-	LastPTS                        int64         `json:"last_pts"`
-	FirstPTSMicros                 int64         `json:"first_pts_micros"`
-	LastPTSMicros                  int64         `json:"last_pts_micros"`
-	MinDeltaTicks                  int64         `json:"min_delta_ticks"`
-	MaxDeltaTicks                  int64         `json:"max_delta_ticks"`
-	MinDeltaMicros                 int64         `json:"min_delta_micros"`
-	MaxDeltaMicros                 int64         `json:"max_delta_micros"`
-	DurationSpreadMicros           int64         `json:"duration_spread_micros"`
-	DistinctDeltas                 int           `json:"distinct_deltas"`
-	VariableDuration               bool          `json:"variable_duration"`
-	SignificantBucketMinimumCount  int           `json:"significant_bucket_minimum_count"`
-	SignificantDeltaCount          int           `json:"significant_delta_count"`
-	OutlierDeltaCount              int           `json:"outlier_delta_count"`
-	DominantDeltaTicks             int64         `json:"dominant_delta_ticks"`
-	DominantDeltaMicros            int64         `json:"dominant_delta_micros"`
-	DominantDeltaCount             int           `json:"dominant_delta_count"`
-	MaterialVariableDuration       bool          `json:"material_variable_duration"`
-	DeltaHistogram                 []DeltaBucket `json:"delta_histogram"`
-	DuplicatePTSCount              int           `json:"duplicate_pts_count"`
-	NonMonotonicPTSCount           int           `json:"non_monotonic_pts_count"`
+	Kind                          string        `json:"kind"`
+	TimeBase                      string        `json:"time_base"`
+	WindowStartMicros             int64         `json:"window_start_micros"`
+	WindowEndMicros               int64         `json:"window_end_micros"`
+	FrameCount                    int           `json:"frame_count"`
+	FirstPTS                      int64         `json:"first_pts"`
+	LastPTS                       int64         `json:"last_pts"`
+	FirstPTSMicros                int64         `json:"first_pts_micros"`
+	LastPTSMicros                 int64         `json:"last_pts_micros"`
+	MinDeltaTicks                 int64         `json:"min_delta_ticks"`
+	MaxDeltaTicks                 int64         `json:"max_delta_ticks"`
+	MinDeltaMicros                int64         `json:"min_delta_micros"`
+	MaxDeltaMicros                int64         `json:"max_delta_micros"`
+	DurationSpreadMicros          int64         `json:"duration_spread_micros"`
+	DistinctDeltas                int           `json:"distinct_deltas"`
+	VariableDuration              bool          `json:"variable_duration"`
+	SignificantBucketMinimumCount int           `json:"significant_bucket_minimum_count"`
+	SignificantDeltaCount         int           `json:"significant_delta_count"`
+	OutlierDeltaCount             int           `json:"outlier_delta_count"`
+	NearZeroDeltaCount            int           `json:"near_zero_delta_count"`
+	DominantDeltaTicks            int64         `json:"dominant_delta_ticks"`
+	DominantDeltaMicros           int64         `json:"dominant_delta_micros"`
+	DominantDeltaCount            int           `json:"dominant_delta_count"`
+	MaterialVariableDuration      bool          `json:"material_variable_duration"`
+	DeltaHistogram                []DeltaBucket `json:"delta_histogram"`
+	DuplicatePTSCount             int           `json:"duplicate_pts_count"`
+	NonMonotonicPTSCount          int           `json:"non_monotonic_pts_count"`
 }
 
 type DeltaBucket struct {
@@ -156,14 +163,16 @@ func (c Contract) Validate() error {
 	if c.AVSyncEvidenceVersion != transcodeavsync.SchemaVersion || !isSHA256(c.AVSyncEvidenceHash) {
 		return fmt.Errorf("A/V sync evidence identity is invalid")
 	}
-	if err := c.SourceTimeline.validate(TimelineSource); err != nil {
-		return fmt.Errorf("source timeline: %w", err)
-	}
-	if err := c.StartupTimeline.validate(TimelineStartup); err != nil {
-		return fmt.Errorf("startup timeline: %w", err)
-	}
-	if err := c.ContinuationTimeline.validate(TimelineContinuation); err != nil {
-		return fmt.Errorf("continuation timeline: %w", err)
+	for kind, timeline := range map[string]TimelineEvidence{
+		TimelineSource: c.SourceTimeline,
+		TimelineSourceStartup: c.SourceStartupTimeline,
+		TimelineSourceContinuation: c.SourceContinuationTimeline,
+		TimelineStartup: c.StartupTimeline,
+		TimelineContinuation: c.ContinuationTimeline,
+	} {
+		if err := timeline.validate(kind); err != nil {
+			return fmt.Errorf("%s timeline: %w", kind, err)
+		}
 	}
 	if err := c.StartupMapping.validate(); err != nil {
 		return fmt.Errorf("startup mapping: %w", err)
@@ -171,11 +180,14 @@ func (c Contract) Validate() error {
 	if err := c.ContinuationMapping.validate(); err != nil {
 		return fmt.Errorf("continuation mapping: %w", err)
 	}
-	if c.StartupMapping.OutputFrames != c.StartupTimeline.FrameCount || c.ContinuationMapping.OutputFrames != c.ContinuationTimeline.FrameCount {
-		return fmt.Errorf("output frame mapping does not match produced timelines")
+	if c.StartupMapping.InputFrames != c.SourceStartupTimeline.FrameCount ||
+		c.ContinuationMapping.InputFrames != c.SourceContinuationTimeline.FrameCount ||
+		c.StartupMapping.OutputFrames != c.StartupTimeline.FrameCount ||
+		c.ContinuationMapping.OutputFrames != c.ContinuationTimeline.FrameCount ||
+		c.SourceTimeline.FrameCount != c.SourceStartupTimeline.FrameCount+c.SourceContinuationTimeline.FrameCount {
+		return fmt.Errorf("source/output frame mapping does not match timeline evidence")
 	}
-	wantStatus := preservationFor(c)
-	if c.PreservationStatus != wantStatus {
+	if c.PreservationStatus != preservationFor(c) {
 		return fmt.Errorf("output cadence preservation status is inconsistent")
 	}
 	if c.ContentDuplicateClassification != ContentDuplicateNotMeasured {
@@ -215,6 +227,7 @@ func (t TimelineEvidence) validate(expectedKind string) error {
 	dominantTicks := int64(0)
 	dominantCount := 0
 	totalCount := 0
+	nearZeroCount := 0
 	previousTicks := int64(0)
 	for index, bucket := range t.DeltaHistogram {
 		if bucket.DeltaTicks <= 0 || bucket.Count <= 0 {
@@ -234,6 +247,9 @@ func (t TimelineEvidence) validate(expectedKind string) error {
 		if bucket.Count > dominantCount || (bucket.Count == dominantCount && (dominantTicks == 0 || bucket.DeltaTicks < dominantTicks)) {
 			dominantTicks = bucket.DeltaTicks
 			dominantCount = bucket.Count
+		}
+		if bucket.DeltaMicros < NearZeroDeltaThresholdMicros {
+			nearZeroCount += bucket.Count
 		}
 		totalCount += bucket.Count
 		previousTicks = bucket.DeltaTicks
@@ -255,7 +271,7 @@ func (t TimelineEvidence) validate(expectedKind string) error {
 	}
 	if t.MinDeltaTicks != minimumTicks || t.MaxDeltaTicks != maximumTicks ||
 		t.MinDeltaMicros != minimumMicros || t.MaxDeltaMicros != maximumMicros ||
-		t.DistinctDeltas != len(t.DeltaHistogram) ||
+		t.DistinctDeltas != len(t.DeltaHistogram) || t.NearZeroDeltaCount != nearZeroCount ||
 		t.DominantDeltaTicks != dominantTicks || t.DominantDeltaMicros != dominantMicros || t.DominantDeltaCount != dominantCount {
 		return fmt.Errorf("timeline cadence summary is inconsistent")
 	}
@@ -333,17 +349,22 @@ func PreservationFor(c Contract) string {
 }
 
 func preservationFor(c Contract) string {
-	cadenceMatches := c.StartupTimeline.MaterialVariableDuration == c.ExpectedStartupMaterialVariable &&
-		c.ContinuationTimeline.MaterialVariableDuration == c.ExpectedContinuationMaterialVariable &&
-		c.SourceTimeline.MaterialVariableDuration == (c.SourceMode == transcodesourceorigin.ModeVFR)
-	cleanPTS := c.SourceTimeline.DuplicatePTSCount == 0 && c.SourceTimeline.NonMonotonicPTSCount == 0 &&
-		c.StartupTimeline.DuplicatePTSCount == 0 && c.StartupTimeline.NonMonotonicPTSCount == 0 &&
-		c.ContinuationTimeline.DuplicatePTSCount == 0 && c.ContinuationTimeline.NonMonotonicPTSCount == 0
+	sourcePolicyMatches := c.SourceTimeline.MaterialVariableDuration == (c.SourceMode == transcodesourceorigin.ModeVFR) &&
+		c.SourceStartupTimeline.MaterialVariableDuration == c.ExpectedStartupMaterialVariable &&
+		c.SourceContinuationTimeline.MaterialVariableDuration == c.ExpectedContinuationMaterialVariable
+	outputCadenceMatches := c.StartupTimeline.MaterialVariableDuration == c.SourceStartupTimeline.MaterialVariableDuration &&
+		c.ContinuationTimeline.MaterialVariableDuration == c.SourceContinuationTimeline.MaterialVariableDuration &&
+		abs64(c.StartupTimeline.DominantDeltaMicros-c.SourceStartupTimeline.DominantDeltaMicros) <= CadenceDeltaToleranceMicros &&
+		abs64(c.ContinuationTimeline.DominantDeltaMicros-c.SourceContinuationTimeline.DominantDeltaMicros) <= CadenceDeltaToleranceMicros
+	introducedNearZero := c.StartupTimeline.NearZeroDeltaCount > c.SourceStartupTimeline.NearZeroDeltaCount ||
+		c.ContinuationTimeline.NearZeroDeltaCount > c.SourceContinuationTimeline.NearZeroDeltaCount
+	cleanPTS := timelinePTSIsClean(c.SourceTimeline) && timelinePTSIsClean(c.SourceStartupTimeline) &&
+		timelinePTSIsClean(c.SourceContinuationTimeline) && timelinePTSIsClean(c.StartupTimeline) && timelinePTSIsClean(c.ContinuationTimeline)
 	withinTolerance := absInt(c.StartupMapping.FrameCountDelta) <= FrameCountTolerance &&
 		absInt(c.ContinuationMapping.FrameCountDelta) <= FrameCountTolerance
 	exactCount := c.StartupMapping.FrameCountDelta == 0 && c.ContinuationMapping.FrameCountDelta == 0
 	outputOutliers := c.StartupTimeline.OutlierDeltaCount+c.ContinuationTimeline.OutlierDeltaCount > 0
-	if !cadenceMatches || !cleanPTS || !withinTolerance {
+	if !sourcePolicyMatches || !outputCadenceMatches || introducedNearZero || !cleanPTS || !withinTolerance {
 		return PreservationChanged
 	}
 	if outputOutliers {
@@ -353,6 +374,10 @@ func preservationFor(c Contract) string {
 		return PreservationExact
 	}
 	return PreservationWithCountTolerance
+}
+
+func timelinePTSIsClean(t TimelineEvidence) bool {
+	return t.DuplicatePTSCount == 0 && t.NonMonotonicPTSCount == 0
 }
 
 func significantBucketMinimumCount(positiveDeltaCount int) int {
@@ -392,6 +417,13 @@ func isSHA256(value string) bool {
 }
 
 func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+func abs64(value int64) int64 {
 	if value < 0 {
 		return -value
 	}
