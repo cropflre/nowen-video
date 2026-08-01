@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -15,6 +16,8 @@ const (
 	artifactAttestationProvisional = "provisional"
 	artifactAttestationVerified    = "verified"
 )
+
+var liveArtifactAttestationMu sync.Mutex
 
 func requiresProducedMediaAttestation(artifact *model.TranscodeArtifactRecord) bool {
 	return artifact != nil && artifact.EncodingPlanVersion != "" && artifact.EncodingPlanHash != "" && artifact.EncodingPlanJSON != ""
@@ -77,8 +80,8 @@ func (s *TranscodeService) ensureProvisionalArtifactAttestation(artifact *model.
 		return fmt.Errorf("artifact is not ready for provisional attestation")
 	}
 
-	s.attestationMu.Lock()
-	defer s.attestationMu.Unlock()
+	liveArtifactAttestationMu.Lock()
+	defer liveArtifactAttestationMu.Unlock()
 	// Another playlist request may have completed the gate while this caller was
 	// waiting. Re-read the row before starting a second ffprobe process.
 	current, err := s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
