@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	startupStreamPlannerVersion = "startup-hls-v2"
+	startupStreamPlannerVersion = "startup-hls-v3"
 	startupStreamArtifactKind   = "startup_hls"
 	startupStreamDurationMS     = int64(30_000)
 	startupStreamPriority       = 10
@@ -51,7 +51,13 @@ func startupStreamProfile(probe *model.MediaProbeRecord) string {
 	return profiles[len(profiles)-1]
 }
 
-func startupStreamActiveKey(media *model.Media, probe *model.MediaProbeRecord, quality, encodingPlanHash string) string {
+func startupStreamActiveKey(
+	media *model.Media,
+	probe *model.MediaProbeRecord,
+	quality,
+	encodingPlanHash,
+	timestampPlanHash string,
+) string {
 	fingerprint := transcodeSourceFingerprint(media)
 	if probe != nil && probe.SourceFingerprint != "" {
 		fingerprint = probe.SourceFingerprint
@@ -64,6 +70,7 @@ func startupStreamActiveKey(media *model.Media, probe *model.MediaProbeRecord, q
 		fingerprint,
 		startupStreamPlannerVersion,
 		encodingPlanHash,
+		timestampPlanHash,
 	}, "|"))
 }
 
@@ -83,11 +90,15 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 	if err != nil {
 		return nil, fmt.Errorf("build startup encoding plan: %w", err)
 	}
+	timestampIdentity, err := startupTimestampIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("build startup timestamp plan: %w", err)
+	}
 	fingerprint := transcodeSourceFingerprint(media)
 	if probe.SourceFingerprint != "" {
 		fingerprint = probe.SourceFingerprint
 	}
-	if artifact, findErr := s.executionRepo.FindPublishedArtifactByEncodingPlan(
+	if artifact, findErr := s.executionRepo.FindPublishedArtifactByExecutionContract(
 		media.ID,
 		quality,
 		fingerprint,
@@ -95,6 +106,9 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		startupStreamArtifactKind,
 		encodingIdentity.Version,
 		encodingIdentity.Hash,
+		timestampIdentity.Version,
+		timestampIdentity.Hash,
+		0,
 	); findErr == nil && artifact != nil && artifact.ManifestPath != "" && sameEncodingPlan(
 		artifact.EncodingPlanVersion,
 		artifact.EncodingPlanHash,
@@ -102,6 +116,13 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		encodingIdentity.Version,
 		encodingIdentity.Hash,
 		encodingIdentity.Canonical,
+	) && sameTimestampPlan(
+		artifact.TimestampPlanVersion,
+		artifact.TimestampPlanHash,
+		artifact.TimestampPlanJSON,
+		timestampIdentity.Version,
+		timestampIdentity.Hash,
+		timestampIdentity.Canonical,
 	) {
 		if _, statErr := os.Stat(artifact.ManifestPath); statErr == nil {
 			if task, taskErr := s.repo.FindByID(dereferenceString(artifactLegacyTaskID(s, artifact.JobID))); taskErr == nil {
@@ -119,7 +140,7 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		}
 	}
 
-	activeKey := startupStreamActiveKey(media, probe, quality, encodingIdentity.Hash)
+	activeKey := startupStreamActiveKey(media, probe, quality, encodingIdentity.Hash, timestampIdentity.Hash)
 	if active, findErr := s.executionRepo.FindActiveByKey(activeKey); findErr == nil && active.LegacyTaskID != nil {
 		if task, taskErr := s.repo.FindByID(*active.LegacyTaskID); taskErr == nil {
 			return task, nil
@@ -132,7 +153,7 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 	s.submitMu.Lock()
 	defer s.submitMu.Unlock()
 	// Recheck under the submission mutex to close concurrent scan/playback
-	// submissions for the same source identity and Encoding Plan.
+	// submissions for the same source and complete execution contract.
 	if active, findErr := s.executionRepo.FindActiveByKey(activeKey); findErr == nil && active.LegacyTaskID != nil {
 		if task, taskErr := s.repo.FindByID(*active.LegacyTaskID); taskErr == nil {
 			return task, nil
@@ -156,30 +177,36 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 		startupStreamPlannerVersion,
 		quality,
 		fmt.Sprintf("%d", startupStreamDurationMS),
-		normalizeAttemptBackend(s.hwAccel),
+		"none",
 		encodingIdentity.Hash,
+		timestampIdentity.Hash,
+		"0",
 	}, "|"))
 	now := time.Now()
 	record := &model.TranscodeJobRecord{
-		LegacyTaskID:        &legacyID,
-		MediaID:             media.ID,
-		Intent:              string(transcodedomain.IntentStartupHLS),
-		ProfileID:           quality,
-		AudioTrack:          -1,
-		StartMS:             0,
-		DurationMS:          startupStreamDurationMS,
-		Priority:            startupStreamPriority,
-		Status:              "queued",
-		DesiredState:        "running",
-		ActiveKey:           &activeKey,
-		SourceFingerprint:   fingerprint,
-		PlanHash:            planHash,
-		PlannerVersion:      startupStreamPlannerVersion,
-		EncodingPlanVersion: encodingIdentity.Version,
-		EncodingPlanHash:    encodingIdentity.Hash,
-		EncodingPlanJSON:    encodingIdentity.Canonical,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		LegacyTaskID:         &legacyID,
+		MediaID:              media.ID,
+		Intent:               string(transcodedomain.IntentStartupHLS),
+		ProfileID:            quality,
+		AudioTrack:           -1,
+		StartMS:              0,
+		DurationMS:           startupStreamDurationMS,
+		Priority:             startupStreamPriority,
+		Status:               "queued",
+		DesiredState:         "running",
+		ActiveKey:            &activeKey,
+		SourceFingerprint:    fingerprint,
+		PlanHash:             planHash,
+		PlannerVersion:       startupStreamPlannerVersion,
+		EncodingPlanVersion:  encodingIdentity.Version,
+		EncodingPlanHash:     encodingIdentity.Hash,
+		EncodingPlanJSON:     encodingIdentity.Canonical,
+		TimestampPlanVersion: timestampIdentity.Version,
+		TimestampPlanHash:    timestampIdentity.Hash,
+		TimestampPlanJSON:    timestampIdentity.Canonical,
+		TimelineOriginMS:     0,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 	if err := s.executionRepo.CreateJob(record); err != nil {
 		_ = s.repo.DeleteByID(task.ID)
@@ -196,12 +223,13 @@ func (s *TranscodeService) SubmitStartupStream(media *model.Media, probe *model.
 	}
 	if s.logger != nil {
 		s.logger.Infof(
-			"已提交 Startup Stream job=%s media=%s profile=%s duration=%dms encoding_plan=%s",
+			"已提交 Startup Stream job=%s media=%s profile=%s duration=%dms encoding_plan=%s timestamp_plan=%s origin=0ms",
 			record.ID,
 			media.ID,
 			quality,
 			startupStreamDurationMS,
 			encodingIdentity.Hash,
+			timestampIdentity.Hash,
 		)
 	}
 	return task, nil
