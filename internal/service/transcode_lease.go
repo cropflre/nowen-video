@@ -65,6 +65,12 @@ func (s *TranscodeService) leaseHeartbeatLoop(job *TranscodeJob) {
 
 func (s *TranscodeService) recoverPendingTasks() {
 	now := time.Now()
+	if abandoned, reconcileErr := s.executionRepo.AbandonUnownedArtifacts(now); reconcileErr != nil {
+		s.logger.Warnf("启动时对账转码 Artifact 所有权失败: %v", reconcileErr)
+	} else if abandoned > 0 {
+		s.logger.Infof("启动时已隔离 %d 个失去有效 Lease 的转码 Artifact", abandoned)
+	}
+
 	activeJobs, err := s.executionRepo.ListActiveJobs()
 	if err != nil {
 		s.logger.Warnf("读取待恢复转码 Job 失败: %v", err)
