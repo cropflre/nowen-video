@@ -33,6 +33,12 @@ Current produced-media evidence schema:
 hls-produced-media-attestation-v1
 ```
 
+Current handoff timeline schema:
+
+```text
+startup-handoff-timeline-v1
+```
+
 ## Decision boundary
 
 The Playback Planner may select `startup_stream` only when all of the following
@@ -91,8 +97,8 @@ planning or make their own compatibility decision.
 
 Attestation JSON, packet timestamps, filesystem paths, ffprobe output, Job IDs,
 Attempt IDs, Artifact IDs, and Lease tokens remain inside the server boundary.
-The external schema intentionally does not depend on provisional attestation
-state while that protocol is still evolving.
+The external schema intentionally does not depend on provisional attestation or
+handoff evaluation state while those protocols evolve.
 
 ## Encoding Plan fencing
 
@@ -151,7 +157,7 @@ The bridge is a server-generated, authenticated EVENT playlist:
 
 ```text
 immutable verified Startup Artifact segments
-  -> EXT-X-DISCONTINUITY
+  -> contract-governed EXT-X-DISCONTINUITY
   -> Lease-valid, attested and stream-compatible Continuation segments
 ```
 
@@ -187,8 +193,62 @@ The following must match:
 - audio Codec and Time Base
 - channel count and sample rate
 
-This is stronger than comparing declared plans, but it still does not prove
-that timestamps are continuous across independently started FFmpeg processes.
+This is stronger than comparing declared plans, but it still does not by itself
+prove that timestamps are continuous across independently started FFmpeg
+processes.
+
+## Timeline Continuity Attestation
+
+The server now builds an immutable packet-boundary contract for every readable
+Startup/Continuation Artifact pair.
+
+For video and audio independently it records:
+
+```text
+startup final packet end PTS
+continuation first PTS
+presentation delta
+startup derived end DTS
+continuation first DTS
+decode delta
+stream time base
+tolerance
+```
+
+The result is classified as:
+
+```text
+aligned
+gap
+overlap
+mixed
+```
+
+The contract is persisted in `transcode_handoff_attestations` and identified by:
+
+```text
+startup_artifact_id
+continuation_artifact_id
+startup-handoff-timeline-v1
+```
+
+A normal EVENT playlist reload reuses the stored contract. If the Continuation
+changes from a provisional to a verified Produced-media Attestation, the same
+handoff row is reevaluated and updated rather than duplicated.
+
+Schema v1 has a hard safety invariant:
+
+```text
+seamless_allowed = false
+discontinuity_required = true
+```
+
+Therefore even a mathematically `aligned` boundary retains
+`#EXT-X-DISCONTINUITY` with `decision_reason=client_certification_pending`.
+Missing, malformed, stale or unreadable handoff state also fails closed.
+
+Full details are defined in
+`docs/TRANSCODE_TIMELINE_CONTINUITY.md`.
 
 ## Migration and rollback
 
@@ -197,20 +257,26 @@ or rewritten.
 
 Upgrade behavior:
 
-- historical rows keep blank Attestation fields;
-- no Attestation is fabricated from old metadata or directory existence;
+- historical rows keep blank Produced-media Attestation fields;
+- no Produced-media or handoff Attestation is fabricated from old metadata or
+  directory existence;
 - historical Startup/Continuation Artifacts without verified evidence remain
-  stored but are excluded from the new Resolver;
+  stored but are excluded from the current Resolver;
 - `startup-continuation-hls-v3` prevents continuation-v2 output from being
   confused with the attested execution contract;
-- the next normal warm-up or playback submission generates a new Artifact;
+- `transcode_handoff_attestations` is created empty and populated only from
+  current verified evidence;
+- the next normal warm-up or playback submission generates current Artifacts;
 - no shared directory or compatibility copy is introduced.
 
 Rollback behavior:
 
-- an older binary ignores the additive columns;
+- an older binary ignores the additive columns and handoff table;
 - files and historical rows are preserved;
-- a later re-upgrade again excludes unattested rows from the current bridge.
+- a later re-upgrade reevaluates the boundary from persisted Artifact evidence.
+
+Artifact retention cleanup removes handoff rows that reference the deleted
+Startup or Continuation Artifact.
 
 ## Fallback
 
@@ -227,23 +293,28 @@ remains a separate client hardening task.
 
 `discontinuity_at_handoff=true` remains intentional.
 
-The current implementation proves actual stream identity and records packet
-checkpoints, but does not yet define the legal relationship between the Startup
-last packet and Continuation first packet. In particular, independent FFmpeg
-processes may reset or offset timestamps differently.
+The current implementation proves actual stream identity and now records the
+mathematical packet relationship between the Startup tail and Continuation
+head. It still does not normalize timestamps across independently started
+FFmpeg processes or certify decoder behavior without reset.
 
-Before this field can become `false`, the following must be verified on every
-encoding backend:
+The current Continuation path uses input-side seeking in a separate process, so
+its timestamps may restart near the muxer origin. The expected evidence on many
+backends is therefore `overlap`, not alignment.
 
-- video PTS/DTS origin and alignment at the startup boundary;
-- MPEG-TS timestamp wrap and offset rules;
-- audio priming, encoder delay, and padding;
+Before a future contract can authorize `discontinuity_at_handoff=false`, the
+following must be completed:
+
+- versioned FFmpeg timestamp-origin and offset policy;
+- video PTS/DTS normalization at the startup boundary;
+- MPEG-TS timestamp wrap and mux-delay rules;
+- audio priming, encoder delay, and padding evidence;
 - keyframe and segment-boundary checkpoint alignment;
 - actual Sample Description compatibility;
-- browser, ExoPlayer, mpv, Emby, and Infuse behavior without decoder reset.
+- browser, ExoPlayer, mpv, Emby, and Infuse fixture certification without
+  decoder reset.
 
-Produced-media Attestation is evidence collection and output-contract
-verification. It is not yet Timeline Continuity Attestation.
+Packet arithmetic is evidence, not permission.
 
 ## Failure and recovery
 
@@ -251,41 +322,55 @@ verification. It is not yet Timeline Continuity Attestation.
 - A superseded Attempt cannot publish into the bridge.
 - Source fingerprint, Planner Version, Encoding Plan version, or Encoding Plan
   hash changes invalidate reuse.
-- A missing or malformed Attestation hides the candidate.
+- A missing or malformed Produced-media Attestation hides the candidate.
 - An unsafe Manifest URI or ffprobe failure prevents publication.
 - A Codec, Pixel Format, color, channel, sample-rate, or Time Base mismatch
   prevents bridge append.
+- A missing or malformed handoff contract keeps the HLS discontinuity.
+- A changed Continuation Attestation hash invalidates the cached handoff
+  projection and triggers reevaluation.
 - A missing Startup Artifact makes the Planner return normal `transcode`.
 - A database or Artifact Store failure is returned as an infrastructure error;
   it is not silently converted into On-demand playback.
 - Service restart reconstructs readability from Job, Attempt, Lease, Artifact,
-  Encoding Plan, and Attestation state rather than directory existence.
+  Encoding Plan, Produced-media Attestation, and handoff contract state rather
+  than directory existence.
 
 ## Verification
 
 Required automated coverage:
 
-- deterministic Encoding Plan and Attestation canonical JSON/SHA-256 identity;
+- deterministic Encoding Plan, Produced-media Attestation, and handoff contract
+  canonical JSON/SHA-256 identity;
 - fake-ffprobe first/last segment extraction;
 - unsafe Manifest URI rejection;
 - observed output mismatch rejection;
+- aligned, gap, overlap, and mixed timestamp classification;
+- schema v1 cannot authorize seamless playback;
 - Job-to-Artifact plan inheritance and additive migration;
+- handoff table migration and provisional-to-verified deterministic upsert;
 - repository rejection of unattested active and published Artifacts;
 - Lease-fenced provisional and final proof persistence;
 - Startup Planner projection and Runtime HLS fallback;
 - bitrate-cap exclusion;
 - virtual route parsing and path rejection;
 - Startup-before-continuation ordering;
-- exactly one declared handoff discontinuity;
+- exactly one contract-governed handoff discontinuity;
+- missing handoff policy fails closed;
 - open EVENT playlist while continuation is pending;
 - End List only after continuation completes;
-- Go full-package and race tests;
+- value-object and repository race tests;
+- Artifact Resolver and handoff lookup performance baselines;
+- Go full-package tests;
 - Lite and Full server build and Docker persistent-volume restart smoke tests.
 
 ## Next phase
 
-The next formal phase is Timeline Continuity Attestation. It must define and
-verify the mathematical timestamp relationship between Startup and Continuation,
-including audio priming and encoder delay. Only after that proof succeeds across
-all supported backends and clients may removal of `EXT-X-DISCONTINUITY` be
-considered.
+The next formal phase is versioned FFmpeg timestamp normalization. It must make
+Startup and Continuation emit a deliberate shared timestamp origin across every
+supported software and hardware backend, while retaining the current
+contract-governed discontinuity path as rollback.
+
+Only after normalized output repeatedly produces aligned evidence can the
+cross-client fixture certification phase begin. Discontinuity removal requires a
+new contract schema; it cannot be enabled by changing a boolean in v1.
