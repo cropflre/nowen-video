@@ -10,14 +10,16 @@ const (
 )
 
 // PlaybackStartupStream is the client-safe startup-stream contract embedded in
-// PlaybackPlan. It intentionally exposes no filesystem paths, Job IDs, Attempt
-// IDs, Lease tokens, or Artifact IDs.
+// PlaybackPlan. It intentionally exposes no filesystem paths, canonical plan
+// JSON, Job IDs, Attempt IDs, Lease tokens, or Artifact IDs.
 type PlaybackStartupStream struct {
 	ProfileID              string `json:"profile_id"`
 	DurationMS             int64  `json:"duration_ms"`
 	PlaylistURL            string `json:"playlist_url"`
 	ContinuationMode       string `json:"continuation_mode"`
 	DiscontinuityAtHandoff bool   `json:"discontinuity_at_handoff"`
+	EncodingPlanVersion    string `json:"encoding_plan_version"`
+	EncodingPlanHash       string `json:"encoding_plan_hash"`
 }
 
 // chooseTranscodeOrStartup is the only transition from a normal transcode
@@ -64,6 +66,8 @@ func applyStartupStreamPlan(plan *PlaybackPlan, hlsURL string, startup *StartupB
 		PlaylistURL:            startup.PlaylistURL,
 		ContinuationMode:       StartupContinuationModeEventBridge,
 		DiscontinuityAtHandoff: true,
+		EncodingPlanVersion:    startup.EncodingPlanVersion,
+		EncodingPlanHash:       startup.EncodingPlanHash,
 	}
 	return plan
 }
@@ -73,5 +77,7 @@ func startupStreamCanBePlanned(startup *StartupBridgeInfo) bool {
 		startup.Available &&
 		startup.ProfileID != "" &&
 		startup.DurationMS > 0 &&
-		startup.PlaylistURL != ""
+		startup.PlaylistURL != "" &&
+		startup.EncodingPlanVersion != "" &&
+		startup.EncodingPlanHash != ""
 }
