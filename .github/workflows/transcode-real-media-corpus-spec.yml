@@ -24,7 +24,7 @@ permissions:
 
 concurrency:
   group: transcode-real-media-corpus-spec-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   corpus-spec:
