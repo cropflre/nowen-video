@@ -1,0 +1,156 @@
+name: Transcode VFR Layer Isolation Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-vfr-isolation-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'internal/transcode/vfrisolation/**'
+      - 'docs/TRANSCODE_VFR_LAYER_ISOLATION.md'
+      - '.github/scripts/verify_vfr_isolation.py'
+      - '.github/workflows/transcode-vfr-isolation-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-vfr-isolation-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'internal/transcode/vfrisolation/**'
+      - 'docs/TRANSCODE_VFR_LAYER_ISOLATION.md'
+      - '.github/scripts/verify_vfr_isolation.py'
+      - '.github/workflows/transcode-vfr-isolation-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-vfr-isolation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vfr-layer-isolation:
+    name: Isolate VFR encoder and muxer timing layers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify isolation contracts
+        run: |
+          go test ./internal/transcode/vfrisolation
+          go test ./internal/transcode/outputcadence ./internal/transcode/sourceorigin ./internal/transcode/timestampplan
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-vfr-isolation-cert ./cmd/transcode-vfr-isolation-cert
+      - name: Produce VFR layer-isolation matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-vfr-isolation
+          /tmp/nowen-transcode-vfr-isolation-cert \
+            -output /tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json
+      - name: Verify evidence identity, decoded fingerprints and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json')
+          report = json.loads(path.read_text())
+          assert report['schema_version'] == 'ffmpeg-vfr-layer-isolation-matrix-v1'
+          assert report['contract_version'] == 'vfr-layer-isolation-evidence-v1'
+          evidence = report['evidence']
+          canonical = json.dumps(evidence, ensure_ascii=False, separators=(',', ':'))
+          assert hashlib.sha256(canonical.encode()).hexdigest() == report['contract_hash']
+          assert evidence['case_id'] == 'source-vfr-24-30-origin-zero-v1'
+          assert evidence['baseline_output_cadence_version'] == 'hls-output-cadence-evidence-v1'
+          assert evidence['seamless_allowed'] is False
+          assert evidence['discontinuity_required'] is True
+
+          expected_ids = [
+              'production-hls-v1',
+              'fps-mode-vfr-hls-v1',
+              'fps-mode-cfr-hls-v1',
+              'encoder-time-base-avtb-hls-v1',
+              'encoder-time-base-90k-hls-v1',
+              'matroska-default-v1',
+              'matroska-avtb-v1',
+              'matroska-remux-mpegts-v1',
+              'matroska-remux-hls-v1',
+          ]
+          variants = evidence['variants']
+          assert [item['spec']['id'] for item in variants] == expected_ids
+          source = evidence['source_timeline']
+          assert source['frame_count'] == 300
+          assert source['near_zero_delta_count'] == 0
+          assert source['duplicate_pts_count'] == 0
+          assert source['non_monotonic_pts_count'] == 0
+
+          by_id = {}
+          for variant in variants:
+              spec = variant['spec']
+              timeline = variant['timeline']
+              mapping = variant['mapping']
+              fingerprint = variant['fingerprint']
+              assert len(variant['command_hash']) == 64
+              assert timeline['frame_count'] == fingerprint['frame_count']
+              assert mapping['input_frames'] == source['frame_count']
+              assert mapping['output_frames'] == timeline['frame_count']
+              assert mapping['frame_count_delta'] == timeline['frame_count'] - source['frame_count']
+              assert 0 < fingerprint['unique_frame_count'] <= fingerprint['frame_count']
+              assert 0 <= fingerprint['adjacent_duplicate_count'] < fingerprint['frame_count']
+              for key in ('sequence_sha256', 'first_frame_sha256', 'last_frame_sha256'):
+                  assert len(fingerprint[key]) == 64
+              assert timeline['duplicate_pts_count'] >= 0
+              assert timeline['non_monotonic_pts_count'] >= 0
+              by_id[spec['id']] = variant
+
+          for copy_id in ('matroska-remux-mpegts-v1', 'matroska-remux-hls-v1'):
+              variant = by_id[copy_id]
+              parent = by_id[variant['spec']['parent_variant_id']]
+              assert variant['sequence_reference'] == 'parent'
+              assert variant['sequence_matches_reference'] is True
+              assert variant['fingerprint']['sequence_sha256'] == parent['fingerprint']['sequence_sha256']
+              assert variant['fingerprint']['frame_count'] == parent['fingerprint']['frame_count']
+
+          print(json.dumps({
+              item['spec']['id']: {
+                  'frames': item['timeline']['frame_count'],
+                  'dominant_us': item['timeline']['dominant_delta_micros'],
+                  'near_zero': item['timeline']['near_zero_delta_count'],
+                  'adjacent_duplicates': item['fingerprint']['adjacent_duplicate_count'],
+                  'unique_frames': item['fingerprint']['unique_frame_count'],
+                  'classification': item['cadence_classification'],
+                  'sequence_matches_reference': item['sequence_matches_reference'],
+                  'histogram': item['timeline']['delta_histogram'],
+              }
+              for item in variants
+          }, sort_keys=True))
+          PY
+      - name: Upload VFR layer-isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-vfr-layer-isolation-${{ github.sha }}
+          path: /tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
