@@ -75,20 +75,26 @@ jobs:
           matrix = json.loads(path.read_text())
           assert matrix['schema_version'] == 'ffmpeg-source-origin-matrix-v1'
           expected = [
-              ('source-cfr-24-origin-zero-v1', 'cfr', 24000, 0),
-              ('source-cfr-25-origin-zero-v1', 'cfr', 25000, 0),
-              ('source-cfr-30000-1001-origin-zero-v1', 'cfr', 29970, 0),
-              ('source-vfr-24-30-origin-zero-v1', 'vfr', 27000, 0),
-              ('source-cfr-30-origin-positive-5s-v1', 'cfr', 30000, 5000000),
-              ('source-cfr-30-origin-negative-2s-v1', 'cfr', 30000, -2000000),
+              # case, mode, declared rate, source offset, source min/max frame duration,
+              # packet-derived produced boundary rate, normalized continuation video start.
+              ('source-cfr-24-origin-zero-v1', 'cfr', 24000, 0, 41666, 41667, 24000, 31400),
+              ('source-cfr-25-origin-zero-v1', 'cfr', 25000, 0, 40000, 40000, 25000, 31400),
+              ('source-cfr-30000-1001-origin-zero-v1', 'cfr', 29970, 0, 33366, 33367, 29970, 31430),
+              ('source-vfr-24-30-origin-zero-v1', 'vfr', 27000, 0, 33333, 41667, 24000, 31400),
+              ('source-cfr-30-origin-positive-5s-v1', 'cfr', 30000, 5000000, 33333, 33334, 30000, 31400),
+              ('source-cfr-30-origin-negative-2s-v1', 'cfr', 30000, -2000000, 33333, 33334, 30000, 31400),
           ]
           assert len(matrix['cases']) == len(expected)
           assert [item['case']['id'] for item in matrix['cases']] == [item[0] for item in expected]
 
           toolchain = None
           contract_hashes = set()
+          boundary_hashes = set()
+          av_hashes = set()
           summary = {}
-          for item, (case_id, mode, rate_milli, offset_us) in zip(matrix['cases'], expected):
+          for item, expected_case in zip(matrix['cases'], expected):
+              (case_id, mode, rate_milli, offset_us, source_min_us, source_max_us,
+               produced_rate_milli, continuation_video_ms) = expected_case
               case = item['case']
               evidence = item['evidence']
               boundary = item['boundary']
@@ -102,25 +108,29 @@ jobs:
               assert evidence['source_offset_micros'] == offset_us
               assert evidence['origin_tolerance_micros'] == 100000
               assert evidence['expected_boundary_micros'] == 30000000
-              assert abs(evidence['source_video']['first_pts_micros'] - offset_us) <= 100000
-              assert abs(evidence['source_audio']['first_pts_micros'] - offset_us) <= 100000
+              assert evidence['source_video']['first_pts_micros'] == offset_us
+              assert evidence['source_audio']['first_pts_micros'] == offset_us
 
               video = evidence['source_video']
               audio = evidence['source_audio']
-              assert video['duration_spread_micros'] == video['max_packet_duration_micros'] - video['min_packet_duration_micros']
-              assert audio['duration_spread_micros'] == audio['max_packet_duration_micros'] - audio['min_packet_duration_micros']
+              assert video['min_packet_duration_micros'] == source_min_us
+              assert video['max_packet_duration_micros'] == source_max_us
+              assert video['duration_spread_micros'] == source_max_us - source_min_us
+              assert audio['min_packet_duration_micros'] == 21333
+              assert audio['max_packet_duration_micros'] == 21333
+              assert audio['duration_spread_micros'] == 0
               if mode == 'vfr':
                   assert video['variable_duration'] is True
-                  assert video['duration_spread_micros'] >= 5000
+                  assert video['duration_spread_micros'] == 8334
               else:
                   assert video['variable_duration'] is False
-                  assert video['duration_spread_micros'] < 5000
+                  assert video['duration_spread_micros'] <= 1
               assert audio['variable_duration'] is False
 
-              assert -250 <= evidence['normalized_startup_video_start_ms'] <= 3000
-              assert -250 <= evidence['normalized_startup_audio_start_ms'] <= 3000
-              assert 29750 <= evidence['normalized_continuation_video_start_ms'] <= 33000
-              assert 29750 <= evidence['normalized_continuation_audio_start_ms'] <= 33000
+              assert evidence['normalized_startup_video_start_ms'] == 1421
+              assert evidence['normalized_startup_audio_start_ms'] == 1400
+              assert evidence['normalized_continuation_video_start_ms'] == continuation_video_ms
+              assert evidence['normalized_continuation_audio_start_ms'] == 31379
 
               assert item['contract_version'] == 'hls-source-origin-evidence-v1'
               assert evidence['schema_version'] == item['contract_version']
@@ -133,12 +143,21 @@ jobs:
               assert evidence['boundary_evidence_hash'] == item['boundary_hash']
               boundary_canonical = json.dumps(boundary, ensure_ascii=False, separators=(',', ':'))
               assert hashlib.sha256(boundary_canonical.encode()).hexdigest() == item['boundary_hash']
+              boundary_hashes.add(item['boundary_hash'])
+              assert boundary['video']['frame_rate_milli'] == produced_rate_milli
+              assert boundary['video']['status'] == 'single_packet_overlap'
+              assert boundary['video']['presentation_delta_micros'] == -21333
+              assert boundary['audio']['status'] == 'multi_packet_overlap'
+              assert boundary['audio']['presentation_delta_micros'] == -58667
 
               assert item['av_sync_version'] == 'hls-av-boundary-sync-evidence-v1'
               assert evidence['av_sync_evidence_version'] == item['av_sync_version']
               assert evidence['av_sync_evidence_hash'] == item['av_sync_hash']
               av_canonical = json.dumps(av, ensure_ascii=False, separators=(',', ':'))
               assert hashlib.sha256(av_canonical.encode()).hexdigest() == item['av_sync_hash']
+              av_hashes.add(item['av_sync_hash'])
+              assert av['boundary_delta_skew_micros'] == -37334
+              assert av['projection_residual_micros'] == 1
 
               for contract in (evidence, boundary, av):
                   assert contract['seamless_allowed'] is False
@@ -150,13 +169,17 @@ jobs:
               summary[case_id] = {
                   'video_origin_us': video['first_pts_micros'],
                   'audio_origin_us': audio['first_pts_micros'],
-                  'video_spread_us': video['duration_spread_micros'],
+                  'source_video_min_us': source_min_us,
+                  'source_video_max_us': source_max_us,
+                  'produced_boundary_rate_milli': produced_rate_milli,
                   'startup_video_ms': evidence['normalized_startup_video_start_ms'],
                   'continuation_video_ms': evidence['normalized_continuation_video_start_ms'],
                   'av_delta_skew_us': av['boundary_delta_skew_micros'],
               }
 
           assert len(contract_hashes) == len(expected)
+          assert len(boundary_hashes) == len(expected)
+          assert len(av_hashes) == len(expected)
           print(json.dumps({'toolchain': toolchain, 'summary': summary}, sort_keys=True))
           PY
       - name: Upload source-origin evidence
