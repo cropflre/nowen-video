@@ -40,6 +40,26 @@ func (s *TranscodeService) buildFFmpegArgs(media *model.Media, inputPath, output
 }
 
 func (s *TranscodeService) buildFFmpegArgsForBackend(media *model.Media, inputPath, outputDir, quality string, startOffset float64, backend string) []string {
+	return s.buildFFmpegArgsForBackendWithProbe(
+		media,
+		s.probeMediaForPlan(media),
+		inputPath,
+		outputDir,
+		quality,
+		startOffset,
+		backend,
+	)
+}
+
+func (s *TranscodeService) buildFFmpegArgsForBackendWithProbe(
+	media *model.Media,
+	probe *model.MediaProbeRecord,
+	inputPath,
+	outputDir,
+	quality string,
+	startOffset float64,
+	backend string,
+) []string {
 	qc, ok := qualityPresets[quality]
 	if !ok {
 		qc = qualityPresets["720p"]
@@ -47,7 +67,7 @@ func (s *TranscodeService) buildFFmpegArgsForBackend(media *model.Media, inputPa
 
 	var videoFilter string
 	if backend == ffmpeg.HWAccelNone || backend == "" {
-		videoFilter = s.buildFFmpegHDRTonemapFilter(media, qc.Width, qc.Height)
+		videoFilter = buildSoftwareVideoFilter(probe, qc.Width, qc.Height)
 	}
 
 	startNumber := 0
@@ -58,6 +78,11 @@ func (s *TranscodeService) buildFFmpegArgsForBackend(media *model.Media, inputPa
 	qsvGlobalQuality := 0
 	if backend == ffmpeg.HWAccelQSV {
 		qsvGlobalQuality = 23
+	}
+
+	gopSize := hlsTargetSegmentSeconds * 25
+	if probe != nil {
+		gopSize = probe.GOPSize(hlsTargetSegmentSeconds)
 	}
 
 	args := ffmpeg.BuildHLSArgs(ffmpeg.BuildOptions{
@@ -82,7 +107,7 @@ func (s *TranscodeService) buildFFmpegArgsForBackend(media *model.Media, inputPa
 		StartNumber:           startNumber,
 		ForceKeyFrames:        true,
 		StartOffsetSec:        startOffset,
-		GOPSize:               hlsTargetSegmentSeconds * 25,
+		GOPSize:               gopSize,
 		SkipVAAPIRateLimits:   true,
 	})
 	return withMachineProgress(args)
@@ -151,17 +176,34 @@ func parseResolutionHeight(resolution string) int {
 	}
 }
 
-func (s *TranscodeService) buildFFmpegHDRTonemapFilter(media *model.Media, width, height int) string {
-	codec := strings.ToLower(media.VideoCodec)
-	isHDR := codec == "hevc" || codec == "h265" || codec == "vp9" || codec == "av1"
-	if !isHDR {
-		return fmt.Sprintf("scale=%d:%d", width, height)
-	}
+func fitScaleFilter(width, height int) string {
 	return fmt.Sprintf(
-		"zscale=t=linear:npl=100,format=gbrpf32le,"+
-			"tonemap=hable:desat=0,"+
-			"zscale=p=bt709:t=bt709:m=bt709:r=tv,"+
-			"format=yuv420p,scale=%d:%d",
-		width, height,
+		"scale=%d:%d:force_original_aspect_ratio=decrease,"+
+			"pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1",
+		width,
+		height,
+		width,
+		height,
 	)
+}
+
+func buildSoftwareVideoFilter(probe *model.MediaProbeRecord, width, height int) string {
+	fit := fitScaleFilter(width, height)
+	if probe == nil || !probe.HDR {
+		return fit
+	}
+	// HDR is determined from transfer characteristics or explicit mastering /
+	// content-light / Dolby Vision side data. Codec names alone never enable
+	// tone mapping, so ordinary SDR HEVC is not unnecessarily transformed.
+	return "zscale=t=linear:npl=100,format=gbrpf32le," +
+		"tonemap=hable:desat=0," +
+		"zscale=p=bt709:t=bt709:m=bt709:r=tv," +
+		"format=yuv420p," + fit
+}
+
+// Kept for source compatibility with older tests and adapters. The Media
+// summary does not contain reliable HDR metadata, therefore this method now
+// returns the safe SDR fit filter instead of guessing from the codec.
+func (s *TranscodeService) buildFFmpegHDRTonemapFilter(_ *model.Media, width, height int) string {
+	return buildSoftwareVideoFilter(nil, width, height)
 }
