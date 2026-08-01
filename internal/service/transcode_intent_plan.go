@@ -25,10 +25,17 @@ func (s *TranscodeService) buildJobFFmpegArgs(job *TranscodeJob, outputDir, back
 }
 
 func transcodeArtifactKind(job *TranscodeJob) string {
-	if job != nil && job.ExecutionJob != nil && job.ExecutionJob.Intent == string(transcodedomain.IntentStartupHLS) {
-		return startupStreamArtifactKind
+	if job == nil || job.ExecutionJob == nil {
+		return "hls_variant"
 	}
-	return "hls_variant"
+	switch transcodedomain.Intent(job.ExecutionJob.Intent) {
+	case transcodedomain.IntentStartupHLS:
+		return startupStreamArtifactKind
+	case transcodedomain.IntentStartupContinuationHLS:
+		return startupContinuationArtifactKind
+	default:
+		return "hls_variant"
+	}
 }
 
 func transcodeArtifactDurationMS(job *TranscodeJob) int64 {
@@ -52,7 +59,9 @@ func supportedTranscodeIntent(record *model.TranscodeJobRecord) bool {
 		return false
 	}
 	switch transcodedomain.Intent(record.Intent) {
-	case transcodedomain.IntentRuntimeHLS, transcodedomain.IntentStartupHLS:
+	case transcodedomain.IntentRuntimeHLS,
+		transcodedomain.IntentStartupHLS,
+		transcodedomain.IntentStartupContinuationHLS:
 		return true
 	default:
 		return false
