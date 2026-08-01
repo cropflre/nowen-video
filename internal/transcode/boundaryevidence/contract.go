@@ -401,6 +401,12 @@ func FrameRateMilliFromPacketDuration(ticks int64, timeBase string) (int, error)
 	return value, nil
 }
 
+func IsAudioDelaySideData(sideData PacketSideData) bool {
+	typeName := strings.ToLower(strings.TrimSpace(sideData.Type))
+	return sideData.SkipSamples != 0 || sideData.DiscardPadding != 0 ||
+		strings.Contains(typeName, "skip samples") || strings.Contains(typeName, "discard padding")
+}
+
 func parseTimeBase(value string) (int64, int64, error) {
 	parts := strings.Split(strings.TrimSpace(value), "/")
 	if len(parts) != 2 {
@@ -427,6 +433,9 @@ func signedRatioMilli(value, unit int64) int64 {
 func aggregateSideData(packets []PacketEvidence) (skipSamples, discardPadding int64, observed bool) {
 	for _, packet := range packets {
 		for _, sideData := range packet.SideData {
+			if !IsAudioDelaySideData(sideData) {
+				continue
+			}
 			observed = true
 			skipSamples += sideData.SkipSamples
 			discardPadding += sideData.DiscardPadding
