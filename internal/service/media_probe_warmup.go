@@ -49,10 +49,11 @@ type MediaProbeWarmupService struct {
 	provider mediaProbeProvider
 	logger   *zap.SugaredLogger
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	queue  chan string
-	wg     sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+	stopOnce sync.Once
+	queue    chan string
+	wg       sync.WaitGroup
 
 	mu      sync.Mutex
 	pending map[string]struct{}
@@ -71,6 +72,7 @@ func NewMediaProbeWarmupService(
 	repo mediaProbeWarmupRepository,
 	provider mediaProbeProvider,
 	logger *zap.SugaredLogger,
+	parentDone ...<-chan struct{},
 ) *MediaProbeWarmupService {
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &MediaProbeWarmupService{
@@ -85,6 +87,15 @@ func NewMediaProbeWarmupService(
 	for index := 0; index < defaultProbeWarmupWorkers; index++ {
 		service.wg.Add(1)
 		go service.worker(index)
+	}
+	if len(parentDone) > 0 && parentDone[0] != nil {
+		go func(done <-chan struct{}) {
+			select {
+			case <-done:
+				service.stop()
+			case <-service.ctx.Done():
+			}
+		}(parentDone[0])
 	}
 	return service
 }
@@ -224,10 +235,10 @@ func (s *MediaProbeWarmupService) Stats() MediaProbeWarmupStats {
 }
 
 func (s *MediaProbeWarmupService) Shutdown(ctx context.Context) error {
-	if s == nil || s.closed.Swap(true) {
+	if s == nil {
 		return nil
 	}
-	s.cancel()
+	s.stop()
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
@@ -242,6 +253,16 @@ func (s *MediaProbeWarmupService) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (s *MediaProbeWarmupService) stop() {
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		s.closed.Store(true)
+		s.cancel()
+	})
 }
 
 func (s *MediaProbeWarmupService) removePending(libraryID string) {
