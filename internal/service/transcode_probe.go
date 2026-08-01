@@ -26,6 +26,20 @@ func (s *TranscodeService) probeMediaForPlan(media *model.Media) *model.MediaPro
 	return record
 }
 
+// GetCachedMediaProbe is a non-blocking lookup for playback planning. It never
+// launches FFprobe and only returns metadata matching the current source
+// fingerprint and parser version.
+func (s *TranscodeService) GetCachedMediaProbe(media *model.Media) *model.MediaProbeRecord {
+	if s == nil || s.mediaProbe == nil || media == nil {
+		return nil
+	}
+	record, err := s.mediaProbe.Cached(media)
+	if err != nil {
+		return nil
+	}
+	return record
+}
+
 func (s *TranscodeService) GetMediaProbeStats() transcodeprobe.Stats {
 	if s == nil || s.mediaProbe == nil {
 		return transcodeprobe.Stats{}
