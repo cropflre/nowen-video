@@ -59,7 +59,7 @@ func BuildMatrixReport(reports []Report) (MatrixReport, error) {
 	byID := make(map[string]Report, len(reports))
 	ordered := make([]Report, 0, len(RequiredMatrixFixtureIDs()))
 	for _, report := range reports {
-		if err := report.Validate(); err != nil {
+		if err := ValidateCertifiedReport(report); err != nil {
 			return MatrixReport{}, fmt.Errorf("validate fixture %s: %w", report.FixtureID, err)
 		}
 		if _, exists := byID[report.FixtureID]; exists {
@@ -97,7 +97,7 @@ func (m MatrixReport) Validate() error {
 	}
 	byID := make(map[string]Report, len(m.Reports))
 	for _, report := range m.Reports {
-		if err := report.Validate(); err != nil {
+		if err := ValidateCertifiedReport(report); err != nil {
 			return err
 		}
 		if _, exists := byID[report.FixtureID]; exists {
