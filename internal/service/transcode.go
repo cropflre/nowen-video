@@ -49,6 +49,8 @@ type TranscodeService struct {
 
 	executionRuntime *transcoderuntime.Runtime
 	mediaProbe       *transcodeprobe.Service
+	probeWarmup      *MediaProbeWarmupService
+	probeWarmupOnce  sync.Once
 	artifactStore    *transcodeartifactstore.Store
 
 	throttleSuspendSeconds atomic.Uint64
@@ -195,7 +197,11 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 	return service
 }
 
-func (s *TranscodeService) SetWSHub(hub *WSHub)                         { s.wsHub = hub }
+func (s *TranscodeService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
+	s.attachProbeWarmup(hub)
+}
+
 func (s *TranscodeService) GetHWAccelInfo() string                      { return s.hwAccel }
 func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return s.executionRuntime }
 
