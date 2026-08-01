@@ -152,7 +152,6 @@ func (c *WSClient) writePump() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// Hub关闭了channel
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -163,7 +162,6 @@ func (c *WSClient) writePump() {
 			}
 			w.Write(message)
 
-			// 批量发送队列中的消息
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
@@ -183,9 +181,13 @@ func (c *WSClient) writePump() {
 	}
 }
 
+// WSInternalObserver receives an in-process lifecycle event. Observers must be
+// non-blocking; they should enqueue durable/background work instead of doing
+// media processing on the broadcaster goroutine.
+type WSInternalObserver func(WSEvent)
+
 // ==================== WebSocket Hub ====================
 
-// WSHub WebSocket连接管理中心
 type WSHub struct {
 	clients    map[*WSClient]bool
 	broadcast  chan []byte
@@ -193,9 +195,12 @@ type WSHub struct {
 	unregister chan *WSClient
 	mu         sync.RWMutex
 	logger     *zap.SugaredLogger
+
+	observerMu  sync.RWMutex
+	observers   map[string]map[uint64]WSInternalObserver
+	observerSeq uint64
 }
 
-// NewWSHub 创建WebSocket Hub
 func NewWSHub(logger *zap.SugaredLogger) *WSHub {
 	return &WSHub{
 		clients:    make(map[*WSClient]bool),
@@ -203,10 +208,10 @@ func NewWSHub(logger *zap.SugaredLogger) *WSHub {
 		register:   make(chan *WSClient),
 		unregister: make(chan *WSClient),
 		logger:     logger,
+		observers:  make(map[string]map[uint64]WSInternalObserver),
 	}
 }
 
-// Run 启动Hub（在goroutine中运行）
 func (h *WSHub) Run() {
 	for {
 		select {
@@ -214,7 +219,9 @@ func (h *WSHub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			h.logger.Debugf("WebSocket客户端连接，当前在线: %d", len(h.clients))
+			if h.logger != nil {
+				h.logger.Debugf("WebSocket客户端连接，当前在线: %d", len(h.clients))
+			}
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -223,23 +230,22 @@ func (h *WSHub) Run() {
 				close(client.send)
 			}
 			h.mu.Unlock()
-			h.logger.Debugf("WebSocket客户端断开，当前在线: %d", len(h.clients))
+			if h.logger != nil {
+				h.logger.Debugf("WebSocket客户端断开，当前在线: %d", len(h.clients))
+			}
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
-			// 收集发送失败的客户端，避免在读锁下执行写操作
 			var staleClients []*WSClient
 			for client := range h.clients {
 				select {
 				case client.send <- message:
 				default:
-					// 发送缓冲满，标记为待清理
 					staleClients = append(staleClients, client)
 				}
 			}
 			h.mu.RUnlock()
 
-			// 在写锁下清理失效客户端
 			if len(staleClients) > 0 {
 				h.mu.Lock()
 				for _, client := range staleClients {
@@ -254,47 +260,100 @@ func (h *WSHub) Run() {
 	}
 }
 
-// BroadcastEvent 广播事件到所有连接的客户端。扫描、刮削和转码生命周期
-// 会同时产生一个标准 task_updated 信封；原模块事件继续保留给旧页面使用。
+// SubscribeInternal registers an in-process observer for one exact event type.
+// The returned function is idempotent and removes the observer.
+func (h *WSHub) SubscribeInternal(eventType string, observer WSInternalObserver) func() {
+	if h == nil || eventType == "" || observer == nil {
+		return func() {}
+	}
+	h.observerMu.Lock()
+	h.observerSeq++
+	id := h.observerSeq
+	if h.observers[eventType] == nil {
+		h.observers[eventType] = make(map[uint64]WSInternalObserver)
+	}
+	h.observers[eventType][id] = observer
+	h.observerMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			h.observerMu.Lock()
+			if listeners := h.observers[eventType]; listeners != nil {
+				delete(listeners, id)
+				if len(listeners) == 0 {
+					delete(h.observers, eventType)
+				}
+			}
+			h.observerMu.Unlock()
+		})
+	}
+}
+
+// BroadcastEvent broadcasts to external clients and synchronously notifies
+// internal non-blocking observers. Task lifecycle mapping remains a second
+// event with the same timestamp.
 func (h *WSHub) BroadcastEvent(eventType string, data interface{}) {
 	timestamp := time.Now().UnixMilli()
-	h.enqueueEvent(WSEvent{
-		Type:      eventType,
-		Data:      data,
-		Timestamp: timestamp,
-	})
+	h.publishEvent(WSEvent{Type: eventType, Data: data, Timestamp: timestamp})
 
 	if update, ok := taskLifecycleUpdateForEvent(eventType, data); ok {
-		h.enqueueEvent(WSEvent{
-			Type:      EventTaskUpdated,
-			Data:      update,
-			Timestamp: timestamp,
-		})
+		h.publishEvent(WSEvent{Type: EventTaskUpdated, Data: update, Timestamp: timestamp})
+	}
+}
+
+func (h *WSHub) publishEvent(event WSEvent) {
+	h.dispatchInternal(event)
+	h.enqueueEvent(event)
+}
+
+func (h *WSHub) dispatchInternal(event WSEvent) {
+	if h == nil {
+		return
+	}
+	h.observerMu.RLock()
+	listeners := h.observers[event.Type]
+	snapshot := make([]WSInternalObserver, 0, len(listeners))
+	for _, observer := range listeners {
+		snapshot = append(snapshot, observer)
+	}
+	h.observerMu.RUnlock()
+	for _, observer := range snapshot {
+		func(callback WSInternalObserver) {
+			defer func() {
+				if recovered := recover(); recovered != nil && h.logger != nil {
+					h.logger.Errorf("内部事件订阅者 panic event=%s: %v", event.Type, recovered)
+				}
+			}()
+			callback(event)
+		}(observer)
 	}
 }
 
 func (h *WSHub) enqueueEvent(event WSEvent) {
 	msg, err := json.Marshal(event)
 	if err != nil {
-		h.logger.Warnf("序列化WebSocket事件失败: %v", err)
+		if h.logger != nil {
+			h.logger.Warnf("序列化WebSocket事件失败: %v", err)
+		}
 		return
 	}
 
 	select {
 	case h.broadcast <- msg:
 	default:
-		h.logger.Warn("WebSocket广播通道已满，丢弃事件")
+		if h.logger != nil {
+			h.logger.Warn("WebSocket广播通道已满，丢弃事件")
+		}
 	}
 }
 
-// ClientCount 获取当前连接的客户端数量
 func (h *WSHub) ClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients)
 }
 
-// RegisterClient 注册新的WebSocket客户端连接
 func (h *WSHub) RegisterClient(conn *websocket.Conn, userID string) {
 	client := &WSClient{
 		hub:    h,
@@ -304,8 +363,6 @@ func (h *WSHub) RegisterClient(conn *websocket.Conn, userID string) {
 	}
 
 	h.register <- client
-
-	// 启动读写协程
 	go client.writePump()
 	go client.readPump()
 }
