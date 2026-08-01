@@ -13,8 +13,8 @@ func candidateRunPreservationError(r RunEvidence, sourceStartup, sourceContinuat
 	if !candidateCadencePreserved(sourceContinuation, r.ContinuationTimeline) {
 		return fmt.Errorf("continuation cadence changed: source={%s} output={%s}", timelineDiagnostic(sourceContinuation), timelineDiagnostic(r.ContinuationTimeline))
 	}
-	if r.StartupMapping.Status != transcodeoutputcadence.MappingAligned || r.ContinuationMapping.Status != transcodeoutputcadence.MappingAligned {
-		return fmt.Errorf("frame mapping changed: startup=%+v continuation=%+v", r.StartupMapping, r.ContinuationMapping)
+	if !mappingAccepted(r.StartupMapping) || !mappingAccepted(r.ContinuationMapping) {
+		return fmt.Errorf("frame mapping exceeds rational-boundary tolerance: startup=%+v continuation=%+v", r.StartupMapping, r.ContinuationMapping)
 	}
 	if r.StartupTimeline.NearZeroDeltaCount != 0 || r.ContinuationTimeline.NearZeroDeltaCount != 0 {
 		return fmt.Errorf("near-zero PTS detected: startup=%d continuation=%d", r.StartupTimeline.NearZeroDeltaCount, r.ContinuationTimeline.NearZeroDeltaCount)
