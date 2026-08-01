@@ -31,7 +31,7 @@ func (r *TranscodeExecutionRepo) FindReadableHLSArtifact(
 	now time.Time,
 ) (*model.TranscodeArtifactRecord, error) {
 	var active model.TranscodeArtifactRecord
-	activeErr := r.db.Table("transcode_artifacts AS a").
+	activeResult := r.db.Table("transcode_artifacts AS a").
 		Select("a.*").
 		Joins("JOIN transcode_jobs AS j ON j.id = a.job_id").
 		Where(
@@ -52,16 +52,17 @@ func (r *TranscodeExecutionRepo) FindReadableHLSArtifact(
 			now,
 		).
 		Order("a.created_at DESC").
-		First(&active).Error
-	if activeErr == nil {
-		return &active, nil
+		Limit(1).
+		Find(&active)
+	if activeResult.Error != nil {
+		return nil, activeResult.Error
 	}
-	if !errors.Is(activeErr, gorm.ErrRecordNotFound) {
-		return nil, activeErr
+	if activeResult.RowsAffected == 1 {
+		return &active, nil
 	}
 
 	var published model.TranscodeArtifactRecord
-	publishedErr := r.db.Where(
+	publishedResult := r.db.Where(
 		"media_id = ? AND profile_id = ? AND source_fingerprint = ? AND planner_version = ? AND kind = ? AND status = ?",
 		mediaID,
 		profileID,
@@ -71,9 +72,13 @@ func (r *TranscodeExecutionRepo) FindReadableHLSArtifact(
 		"published",
 	).
 		Order("published_at DESC, created_at DESC").
-		First(&published).Error
-	if publishedErr != nil {
-		return nil, publishedErr
+		Limit(1).
+		Find(&published)
+	if publishedResult.Error != nil {
+		return nil, publishedResult.Error
+	}
+	if publishedResult.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &published, nil
 }
@@ -85,7 +90,7 @@ func (r *TranscodeExecutionRepo) FindPublishedHLSArtifact(
 	plannerVersion string,
 ) (*model.TranscodeArtifactRecord, error) {
 	var artifact model.TranscodeArtifactRecord
-	err := r.db.Where(
+	result := r.db.Where(
 		"media_id = ? AND profile_id = ? AND source_fingerprint = ? AND planner_version = ? AND kind = ? AND status = ?",
 		mediaID,
 		profileID,
@@ -95,9 +100,13 @@ func (r *TranscodeExecutionRepo) FindPublishedHLSArtifact(
 		"published",
 	).
 		Order("published_at DESC, created_at DESC").
-		First(&artifact).Error
-	if err != nil {
-		return nil, err
+		Limit(1).
+		Find(&artifact)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &artifact, nil
 }
