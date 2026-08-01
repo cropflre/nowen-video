@@ -85,7 +85,7 @@ func (s *StreamService) ServeOnDemandSegment(mediaID, quality, segName string, w
 	if err != nil {
 		return fmt.Errorf("无效的分片名 %s: %w", segName, err)
 	}
-	outputDir := filepath.Join(s.transcoder.GetOutputDir(mediaID, quality), "ondemand")
+	outputDir := s.transcoder.GetOnDemandOutputDir(mediaID, quality)
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
 	}
