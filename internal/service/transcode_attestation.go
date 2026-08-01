@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 	artifactAttestationVerified    = "verified"
 )
 
-var liveArtifactAttestationMu sync.Mutex
+var liveArtifactAttestationGroup singleflight.Group
 
 func requiresProducedMediaAttestation(artifact *model.TranscodeArtifactRecord) bool {
 	return artifact != nil && artifact.EncodingPlanVersion != "" && artifact.EncodingPlanHash != "" && artifact.EncodingPlanJSON != ""
@@ -80,55 +80,65 @@ func (s *TranscodeService) ensureProvisionalArtifactAttestation(artifact *model.
 		return fmt.Errorf("artifact is not ready for provisional attestation")
 	}
 
-	liveArtifactAttestationMu.Lock()
-	defer liveArtifactAttestationMu.Unlock()
-	// Another playlist request may have completed the gate while this caller was
-	// waiting. Re-read the row before starting a second ffprobe process.
-	current, err := s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
-		artifact.MediaID,
-		artifact.ProfileID,
-		artifact.SourceFingerprint,
-		artifact.PlannerVersion,
-		artifact.Kind,
-		artifact.EncodingPlanVersion,
-		artifact.EncodingPlanHash,
-		time.Now(),
-	)
-	if err != nil {
-		return err
-	}
-	if current.AttestationStatus == artifactAttestationProvisional || current.AttestationStatus == artifactAttestationVerified {
-		*artifact = *current
-		_, err := decodeArtifactAttestation(artifact)
-		return err
-	}
+	resolved, err, _ := liveArtifactAttestationGroup.Do(artifact.ID, func() (any, error) {
+		// Another playlist request may have completed the gate before this call
+		// acquired the per-Artifact singleflight slot. Re-read the authoritative
+		// row before starting ffprobe.
+		current, findErr := s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
+			artifact.MediaID,
+			artifact.ProfileID,
+			artifact.SourceFingerprint,
+			artifact.PlannerVersion,
+			artifact.Kind,
+			artifact.EncodingPlanVersion,
+			artifact.EncodingPlanHash,
+			time.Now(),
+		)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if current.AttestationStatus == artifactAttestationProvisional || current.AttestationStatus == artifactAttestationVerified {
+			if _, decodeErr := decodeArtifactAttestation(current); decodeErr != nil {
+				return nil, decodeErr
+			}
+			return current, nil
+		}
 
-	manifestPath := filepath.Join(current.TempPath, "stream.m3u8")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	value, version, hash, canonical, err := s.verifyArtifactAttestation(ctx, current, manifestPath, transcodeattestation.ScopeFirstSegment)
+		manifestPath := filepath.Join(current.TempPath, "stream.m3u8")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		value, version, hash, canonical, verifyErr := s.verifyArtifactAttestation(ctx, current, manifestPath, transcodeattestation.ScopeFirstSegment)
+		if verifyErr != nil {
+			return nil, verifyErr
+		}
+		startMS, endMS := attestationTimelineBounds(value)
+		attestedAt := time.Now()
+		stored, storeErr := s.executionRepo.RecordCurrentArtifactAttestation(
+			current.ID,
+			version,
+			artifactAttestationProvisional,
+			hash,
+			canonical,
+			startMS,
+			endMS,
+			attestedAt,
+		)
+		if storeErr != nil {
+			return nil, fmt.Errorf("persist provisional artifact attestation: %w", storeErr)
+		}
+		if !stored {
+			return nil, fmt.Errorf("artifact lost readiness ownership before attestation")
+		}
+		applyArtifactAttestation(current, version, artifactAttestationProvisional, hash, canonical, startMS, endMS, attestedAt)
+		return current, nil
+	})
 	if err != nil {
 		return err
 	}
-	startMS, endMS := attestationTimelineBounds(value)
-	attestedAt := time.Now()
-	stored, err := s.executionRepo.RecordCurrentArtifactAttestation(
-		current.ID,
-		version,
-		artifactAttestationProvisional,
-		hash,
-		canonical,
-		startMS,
-		endMS,
-		attestedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("persist provisional artifact attestation: %w", err)
+	current, ok := resolved.(*model.TranscodeArtifactRecord)
+	if !ok || current == nil {
+		return fmt.Errorf("artifact attestation returned an invalid result")
 	}
-	if !stored {
-		return fmt.Errorf("artifact lost readiness ownership before attestation")
-	}
-	applyArtifactAttestation(current, version, artifactAttestationProvisional, hash, canonical, startMS, endMS, attestedAt)
 	*artifact = *current
 	return nil
 }
