@@ -14,6 +14,15 @@ data class PlaybackClientCapabilities(
 )
 
 @Serializable
+data class PlaybackStartupStream(
+    @SerialName("profile_id") val profileId: String = "",
+    @SerialName("duration_ms") val durationMs: Long = 0,
+    @SerialName("playlist_url") val playlistUrl: String = "",
+    @SerialName("continuation_mode") val continuationMode: String = "",
+    @SerialName("discontinuity_at_handoff") val discontinuityAtHandoff: Boolean = false,
+)
+
+@Serializable
 data class PlaybackPlan(
     @SerialName("media_id") val mediaId: String = "",
     val method: String = "",
@@ -24,12 +33,14 @@ data class PlaybackPlan(
     @SerialName("fallback_method") val fallbackMethod: String = "",
     @SerialName("fallback_url") val fallbackUrl: String = "",
     @SerialName("client_capabilities") val clientCapabilities: PlaybackClientCapabilities = PlaybackClientCapabilities(),
+    @SerialName("startup_stream") val startupStream: PlaybackStartupStream? = null,
 ) {
     val methodLabel: String
         get() = when (method.lowercase()) {
             "direct" -> "直接播放"
             "remux" -> "无损封装转换"
             "smart_remux" -> "视频直通·音频兼容转换"
+            "startup_stream" -> "启动流秒开"
             "transcode" -> "兼容转码"
             else -> "自动选择"
         }
