@@ -88,6 +88,13 @@ type TranscodeArtifactRecord struct {
 	EncodingPlanVersion string     `json:"encoding_plan_version" gorm:"type:text"`
 	EncodingPlanHash    string     `json:"encoding_plan_hash" gorm:"index;type:text"`
 	EncodingPlanJSON    string     `json:"encoding_plan_json" gorm:"type:text"`
+	AttestationVersion  string     `json:"attestation_version" gorm:"type:text"`
+	AttestationStatus   string     `json:"attestation_status" gorm:"index;type:text"`
+	AttestationHash     string     `json:"attestation_hash" gorm:"index;type:text"`
+	AttestationJSON     string     `json:"attestation_json" gorm:"type:text"`
+	TimelineStartMS     int64      `json:"timeline_start_ms"`
+	TimelineEndMS       int64      `json:"timeline_end_ms"`
+	AttestedAt          *time.Time `json:"attested_at" gorm:"index"`
 	Path                string     `json:"path" gorm:"type:text"`
 	TempPath            string     `json:"temp_path" gorm:"type:text"`
 	ManifestPath        string     `json:"manifest_path" gorm:"type:text"`
@@ -146,9 +153,9 @@ func AutoMigrateTranscodeExecution(db *gorm.DB) error {
 		return err
 	}
 	// Existing artifact rows were created before identity and Encoding Plan
-	// fields were stored on the artifact itself. Backfill from the owning Job
-	// without deleting or rewriting historical task/output data. The correlated
-	// update is supported by both SQLite and PostgreSQL.
+	// fields were stored on the artifact itself. Backfill only declarative plan
+	// identity from the owning Job. Produced-media attestation fields are never
+	// backfilled because historical output was not observed by the verifier.
 	return db.Exec(`
 		UPDATE transcode_artifacts
 		SET
