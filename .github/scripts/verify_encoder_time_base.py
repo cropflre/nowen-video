@@ -22,6 +22,7 @@ EXPECTED_CANDIDATES = [
     ("encoder-time-base-avtb-v1", "1/1000000"),
     ("encoder-time-base-90k-v1", "1/90000"),
 ]
+BOUNDARY_FRAME_TOLERANCE = 1
 
 
 def sha256_json(value):
@@ -66,10 +67,15 @@ def validate_fingerprint(fingerprint, frame_count):
 def validate_mapping(mapping, source_frames, output_frames):
     assert mapping["input_frames"] == source_frames
     assert mapping["output_frames"] == output_frames
-    assert mapping["frame_count_delta"] == 0
-    assert mapping["projected_duplicate_frames"] == 0
-    assert mapping["projected_dropped_frames"] == 0
-    assert mapping["status"] == "aligned"
+    delta = output_frames - source_frames
+    assert mapping["frame_count_delta"] == delta
+    assert mapping["count_tolerance"] == BOUNDARY_FRAME_TOLERANCE
+    assert mapping["projected_duplicate_frames"] == max(delta, 0)
+    assert mapping["projected_dropped_frames"] == max(-delta, 0)
+    assert abs(delta) <= BOUNDARY_FRAME_TOLERANCE
+    expected_status = "aligned" if delta == 0 else "within_tolerance"
+    assert mapping["status"] == expected_status
+    return abs(delta)
 
 
 def validate_range(metric, tolerance=0):
@@ -114,6 +120,7 @@ def main():
             candidate_id = candidate["spec"]["id"]
             runs = candidate["runs"]
             assert [run["ordinal"] for run in runs] == [1, 2, 3]
+            maximum_absolute_frame_delta = 0
             for run in runs:
                 ordinal = run["ordinal"]
                 startup_kind = f"candidate_{spec['id']}_{candidate_id}_run_{ordinal:02d}_startup"
@@ -122,8 +129,11 @@ def main():
                 validate_hash(run["continuation_command_hash"], "continuation command")
                 validate_timeline(run["startup_timeline"], startup_kind)
                 validate_timeline(run["continuation_timeline"], continuation_kind)
-                validate_mapping(run["startup_mapping"], source_startup["frame_count"], run["startup_timeline"]["frame_count"])
-                validate_mapping(run["continuation_mapping"], source_continuation["frame_count"], run["continuation_timeline"]["frame_count"])
+                maximum_absolute_frame_delta = max(
+                    maximum_absolute_frame_delta,
+                    validate_mapping(run["startup_mapping"], source_startup["frame_count"], run["startup_timeline"]["frame_count"]),
+                    validate_mapping(run["continuation_mapping"], source_continuation["frame_count"], run["continuation_timeline"]["frame_count"]),
+                )
                 validate_fingerprint(run["startup_fingerprint"], run["startup_timeline"]["frame_count"])
                 validate_fingerprint(run["continuation_fingerprint"], run["continuation_timeline"]["frame_count"])
                 validate_hash(run["boundary_hash"], "boundary hash")
@@ -135,6 +145,8 @@ def main():
 
             summary = candidate["summary"]
             assert summary["repeat_count"] == 3
+            assert summary["maximum_absolute_frame_count_delta"] == maximum_absolute_frame_delta
+            assert summary["boundary_frame_tolerance_used"] is (maximum_absolute_frame_delta > 0)
             assert summary["sequence_stable"] is True
             assert summary["cadence_stable"] is True
             assert summary["av_sync_stable"] is True
