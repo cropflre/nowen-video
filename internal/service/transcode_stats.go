@@ -12,6 +12,7 @@ import (
 
 type TranscodeStatistics struct {
 	StatusCounts         map[string]int64               `json:"status_counts"`
+	ArtifactStatusCounts map[string]int64               `json:"artifact_status_counts"`
 	RunningCount         int                            `json:"running_count"`
 	ActiveWorkers        int                            `json:"active_workers"`
 	MaxWorkers           int                            `json:"max_workers"`
@@ -25,6 +26,7 @@ type TranscodeStatistics struct {
 	ProbeWarmup          MediaProbeWarmupStats          `json:"probe_warmup"`
 	DiskUsageBytes       int64                          `json:"disk_usage_bytes"`
 	DiskUsageDir         string                         `json:"disk_usage_dir"`
+	ArtifactStoreRoot    string                         `json:"artifact_store_root"`
 	ResourceCapacity     map[transcodegovernor.Kind]int `json:"resource_capacity,omitempty"`
 	ResourceInUse        map[transcodegovernor.Kind]int `json:"resource_in_use,omitempty"`
 }
@@ -47,6 +49,13 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 	if counts == nil {
 		counts = map[string]int64{}
 	}
+	artifactCounts, artifactErr := s.executionRepo.ArtifactStatusCounts()
+	if artifactErr != nil {
+		s.logger.Debugf("读取转码 Artifact 状态统计失败: %v", artifactErr)
+	}
+	if artifactCounts == nil {
+		artifactCounts = map[string]int64{}
+	}
 	active := 0
 	s.mu.RLock()
 	for _, job := range s.running {
@@ -60,8 +69,13 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		s.logger.Debugf("读取持久化转码队列深度失败: %v", err)
 	}
 	snapshot := s.executionRuntime.Snapshot()
+	artifactRoot := ""
+	if s.artifactStore != nil {
+		artifactRoot = s.artifactStore.Root()
+	}
 	return TranscodeStatistics{
 		StatusCounts:         counts,
+		ArtifactStatusCounts: artifactCounts,
 		RunningCount:         active,
 		ActiveWorkers:        active,
 		MaxWorkers:           s.workerCount,
@@ -75,6 +89,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		ProbeWarmup:          s.GetMediaProbeWarmupStats(),
 		DiskUsageBytes:       s.GetCacheDiskUsage(),
 		DiskUsageDir:         filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
+		ArtifactStoreRoot:    artifactRoot,
 		ResourceCapacity:     snapshot.Capacity,
 		ResourceInUse:        snapshot.InUse,
 	}
