@@ -434,7 +434,7 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 		return
 	}
 
-	backend := normalizeAttemptBackend(s.hwAccel)
+	backend := s.preferredAttemptBackend(job)
 	result := s.runAttempt(job, backend, nextAttempt)
 	if result.Cancelled || result.TimedOut || job.CancellationRequested() {
 		s.finalizeCancelled(job)
