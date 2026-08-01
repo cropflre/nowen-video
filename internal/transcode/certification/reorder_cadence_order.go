@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const reorderCadenceKindPrefix = "reorder_"
+const reorderCadenceKindPrefix = "candidate_reorder-"
 
 // orderCadencePointsForEvidence keeps the legacy packet-order behavior for
 // existing cadence contracts. Reorder certification uses presentation order:
