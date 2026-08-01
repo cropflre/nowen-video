@@ -13,6 +13,7 @@ on:
       - 'internal/transcode/certification/boundary_*.go'
       - 'internal/transcode/certification/encoder_time_base_*.go'
       - 'internal/transcode/certification/reorder_cadence_*.go'
+      - 'internal/transcode/certification/reorder_perceptual_*.go'
       - 'internal/transcode/certification/source_origin_cadence_*.go'
       - 'internal/transcode/outputcadence/**'
       - 'internal/transcode/reordercandidate/**'
@@ -31,6 +32,7 @@ on:
       - 'internal/transcode/certification/boundary_*.go'
       - 'internal/transcode/certification/encoder_time_base_*.go'
       - 'internal/transcode/certification/reorder_cadence_*.go'
+      - 'internal/transcode/certification/reorder_perceptual_*.go'
       - 'internal/transcode/certification/source_origin_cadence_*.go'
       - 'internal/transcode/outputcadence/**'
       - 'internal/transcode/reordercandidate/**'
@@ -46,7 +48,7 @@ permissions:
 
 concurrency:
   group: transcode-encoder-time-base-reorder-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   reorder-certification:
@@ -75,7 +77,7 @@ jobs:
           mkdir -p /tmp/nowen-transcode-encoder-time-base-reorder
           /tmp/nowen-transcode-encoder-time-base-reorder-cert \
             -output /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
-      - name: Verify strict DTS, reorder variance, cadence and A/V policy
+      - name: Verify strict DTS, reorder variance, cadence, perceptual frames and A/V policy
         run: |
           python3 .github/scripts/verify_encoder_time_base_reorder.py \
             /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
