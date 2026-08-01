@@ -3,10 +3,8 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -110,11 +108,15 @@ func (s *TranscodeService) persistCancellation(job *TranscodeJob, requestedAt ti
 }
 
 // persistJobTerminal returns false when this worker no longer owns the lease.
-// Callers must not update the legacy projection or publish artifacts in that
-// case, otherwise a stale worker could overwrite timeout recovery.
+// Completion is committed through Artifact Store; this method handles only
+// cancellation and failure terminal states.
 func (s *TranscodeService) persistJobTerminal(job *TranscodeJob, status string, completedAt time.Time) bool {
 	if s.executionRepo == nil || job == nil || job.ExecutionJob == nil {
 		return true
+	}
+	if status == "completed" {
+		s.logger.Errorf("拒绝绕过 Artifact Store 提交 completed Job job=%s", job.ExecutionJob.ID)
+		return false
 	}
 	if job.leaseToken != "" {
 		completed, err := s.executionRepo.CompleteLeasedJob(job.ExecutionJob.ID, job.leaseToken, status, completedAt)
@@ -133,36 +135,6 @@ func (s *TranscodeService) persistJobTerminal(job *TranscodeJob, status string, 
 		return false
 	}
 	return true
-}
-
-func (s *TranscodeService) createAttempt(job *TranscodeJob, requestedNumber int, backend string, args []string) (*model.TranscodeAttemptRecord, error) {
-	if s.executionRepo == nil || job == nil || job.ExecutionJob == nil {
-		return nil, nil
-	}
-	nextNumber, err := s.executionRepo.NextAttemptNumber(job.ExecutionJob.ID)
-	if err != nil {
-		return nil, fmt.Errorf("读取下一个 Attempt 编号失败: %w", err)
-	}
-	if requestedNumber > nextNumber {
-		nextNumber = requestedNumber
-	}
-	commandJSON, _ := json.Marshal(map[string]any{
-		"path": s.cfg.App.FFmpegPath,
-		"args": redactFFmpegArgs(args),
-	})
-	attempt := &model.TranscodeAttemptRecord{
-		JobID:       job.ExecutionJob.ID,
-		Number:      nextNumber,
-		Backend:     backend,
-		Status:      "preparing",
-		CommandJSON: string(commandJSON),
-		ExitCode:    -1,
-	}
-	if err := s.executionRepo.CreateAttempt(attempt); err != nil {
-		return nil, err
-	}
-	job.ExecutionJob.CurrentAttemptID = attempt.ID
-	return attempt, nil
 }
 
 func (s *TranscodeService) markAttemptStarted(job *TranscodeJob, attempt *model.TranscodeAttemptRecord, pid int, startedAt time.Time) {
@@ -184,7 +156,10 @@ func (s *TranscodeService) markAttemptStarted(job *TranscodeJob, attempt *model.
 	if !running {
 		s.logger.Warnf("Job Lease 已失效，拒绝进入运行态 job=%s worker=%s", job.ExecutionJob.ID, job.workerID)
 		job.RequestCancel()
+		return
 	}
+	job.ExecutionJob.Status = "running"
+	job.ExecutionJob.CurrentAttemptID = attempt.ID
 }
 
 func (s *TranscodeService) touchAttempt(attempt *model.TranscodeAttemptRecord, at time.Time) {
@@ -227,33 +202,6 @@ func (s *TranscodeService) completeAttempt(attempt *model.TranscodeAttemptRecord
 		completedAt,
 	); err != nil {
 		s.logger.Warnf("完成 Attempt 记录失败 attempt=%s: %v", attempt.ID, err)
-	}
-}
-
-func (s *TranscodeService) publishHLSArtifact(job *TranscodeJob) {
-	if s.executionRepo == nil || job == nil || job.ExecutionJob == nil {
-		return
-	}
-	masterPath := filepath.Join(job.Task.OutputDir, "stream.m3u8")
-	info, err := os.Stat(masterPath)
-	if err != nil {
-		s.logger.Warnf("转码完成但 HLS manifest 不存在 job=%s path=%s: %v", job.ExecutionJob.ID, masterPath, err)
-		return
-	}
-	_ = s.executionRepo.DeleteArtifactByJobAndKind(job.ExecutionJob.ID, "hls_variant", job.Quality)
-	artifact := &model.TranscodeArtifactRecord{
-		JobID:           job.ExecutionJob.ID,
-		AttemptID:       job.ExecutionJob.CurrentAttemptID,
-		Kind:            "hls_variant",
-		ProfileID:       job.Quality,
-		Path:            job.Task.OutputDir,
-		Status:          "published",
-		SizeBytes:       info.Size(),
-		DurationMS:      int64(job.Media.Duration * 1000),
-		SegmentDuration: hlsTargetSegmentSeconds,
-	}
-	if err := s.executionRepo.CreateArtifact(artifact); err != nil {
-		s.logger.Warnf("记录 HLS 产物失败 job=%s: %v", job.ExecutionJob.ID, err)
 	}
 }
 
