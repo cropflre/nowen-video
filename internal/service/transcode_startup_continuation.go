@@ -49,12 +49,14 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 	if err != nil {
 		return nil, fmt.Errorf("build startup encoding plan: %w", err)
 	}
-	artifact, err := s.executionRepo.FindPublishedArtifact(
+	artifact, err := s.executionRepo.FindPublishedArtifactByEncodingPlan(
 		media.ID,
 		profileID,
 		probe.SourceFingerprint,
 		startupStreamPlannerVersion,
 		startupStreamArtifactKind,
+		encodingIdentity.Version,
+		encodingIdentity.Hash,
 	)
 	if err != nil {
 		return nil, err
@@ -153,12 +155,14 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startup.EncodingPlanHash,
 	)
 
-	if artifact, findErr := s.executionRepo.FindPublishedArtifact(
+	if artifact, findErr := s.executionRepo.FindPublishedArtifactByEncodingPlan(
 		media.ID,
 		startup.ProfileID,
 		startup.SourceFingerprint,
 		startupContinuationPlannerVersion,
 		startupContinuationArtifactKind,
+		startup.EncodingPlanVersion,
+		startup.EncodingPlanHash,
 	); findErr == nil && artifact != nil && sameEncodingPlan(
 		artifact.EncodingPlanVersion,
 		artifact.EncodingPlanHash,
@@ -285,12 +289,14 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 	if s == nil || s.executionRepo == nil || media == nil || startup == nil {
 		return nil, gorm.ErrRecordNotFound
 	}
-	artifact, err := s.executionRepo.FindReadableArtifactByKind(
+	artifact, err := s.executionRepo.FindReadableArtifactByEncodingPlan(
 		media.ID,
 		startup.ProfileID,
 		startup.SourceFingerprint,
 		startupContinuationPlannerVersion,
 		startupContinuationArtifactKind,
+		startup.EncodingPlanVersion,
+		startup.EncodingPlanHash,
 		time.Now(),
 	)
 	if err != nil {
