@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,14 +114,16 @@ func (a *TranscodeArtifactRecord) BeforeCreate(tx *gorm.DB) error {
 		return nil
 	}
 	var job TranscodeJobRecord
-	err := tx.Select("encoding_plan_version", "encoding_plan_hash", "encoding_plan_json").
-		First(&job, "id = ?", a.JobID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	result := tx.Select("encoding_plan_version", "encoding_plan_hash", "encoding_plan_json").
+		Where("id = ?", a.JobID).
+		Limit(1).
+		Find(&job)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
 		// Historical legacy imports intentionally use synthetic Job IDs.
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 	if a.EncodingPlanVersion == "" {
 		a.EncodingPlanVersion = job.EncodingPlanVersion
