@@ -25,6 +25,11 @@ func (h *ArtifactStreamHandler) Segment(c *gin.Context) {
 	quality := c.Param("quality")
 	segment := c.Param("segment")
 
+	if startupProfile, ok := service.ParseStartupBridgeProfile(quality); ok {
+		h.startupVirtualSegment(c, id, startupProfile, segment)
+		return
+	}
+
 	if segment == "stream.m3u8" {
 		playlist, err := h.streamService.GetArtifactSegmentPlaylist(id, quality)
 		if err != nil {
@@ -54,4 +59,36 @@ func (h *ArtifactStreamHandler) Segment(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
 	}
+}
+
+func (h *ArtifactStreamHandler) startupVirtualSegment(c *gin.Context, mediaID, profileID, segment string) {
+	if segment == "stream.m3u8" {
+		playlist, err := h.streamService.GetStartupBridgePlaylist(mediaID, profileID)
+		if err != nil {
+			startupBridgeError(c, err)
+			return
+		}
+		c.Header("Content-Type", "application/vnd.apple.mpegurl")
+		c.Header("Cache-Control", "no-store")
+		c.String(http.StatusOK, playlist)
+		return
+	}
+
+	source, actual, ok := service.ParseStartupBridgeSegment(segment)
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	var file *service.StartupBridgeFile
+	var err error
+	if source == "startup" {
+		file, err = h.streamService.ResolveStartupBridgeSegment(mediaID, profileID, actual)
+	} else {
+		file, err = h.streamService.ResolveStartupContinuationSegment(mediaID, profileID, actual)
+	}
+	if err != nil {
+		startupBridgeError(c, err)
+		return
+	}
+	sendStartupBridgeFile(c, file)
 }
