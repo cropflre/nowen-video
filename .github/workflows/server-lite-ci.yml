@@ -58,10 +58,12 @@ jobs:
         run: go mod download
       - name: Test Go packages
         run: go test ./...
+      - name: Encoding plan persistence and resolver contract
+        run: go test ./internal/transcode/encodingplan ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Startup'
       - name: Startup stream planner and bridge contract
         run: go test ./internal/service -run 'Startup|Playback'
       - name: Artifact lease and filesystem race tests
-        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|Lease|Shutdown'
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/transcode/encodingplan ./internal/service -run 'Artifact|EncodingPlan|Lease|Shutdown'
       - name: Artifact resolver performance baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableHLSArtifact$' -benchtime=100x -benchmem
       - name: Build lite server
