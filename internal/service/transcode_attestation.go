@@ -9,6 +9,7 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
+	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -84,16 +85,34 @@ func (s *TranscodeService) ensureProvisionalArtifactAttestation(artifact *model.
 		// Another playlist request may have completed the gate before this call
 		// acquired the per-Artifact singleflight slot. Re-read the authoritative
 		// row before starting ffprobe.
-		current, findErr := s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
-			artifact.MediaID,
-			artifact.ProfileID,
-			artifact.SourceFingerprint,
-			artifact.PlannerVersion,
-			artifact.Kind,
-			artifact.EncodingPlanVersion,
-			artifact.EncodingPlanHash,
-			time.Now(),
-		)
+		var current *model.TranscodeArtifactRecord
+		var findErr error
+		if artifact.TimestampPlanVersion != "" && artifact.TimestampPlanHash != "" {
+			current, findErr = s.executionRepo.FindActiveArtifactByExecutionContractForAttestation(
+				artifact.MediaID,
+				artifact.ProfileID,
+				artifact.SourceFingerprint,
+				artifact.PlannerVersion,
+				artifact.Kind,
+				artifact.EncodingPlanVersion,
+				artifact.EncodingPlanHash,
+				artifact.TimestampPlanVersion,
+				artifact.TimestampPlanHash,
+				artifact.TimelineOriginMS,
+				time.Now(),
+			)
+		} else {
+			current, findErr = s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
+				artifact.MediaID,
+				artifact.ProfileID,
+				artifact.SourceFingerprint,
+				artifact.PlannerVersion,
+				artifact.Kind,
+				artifact.EncodingPlanVersion,
+				artifact.EncodingPlanHash,
+				time.Now(),
+			)
+		}
 		if findErr != nil {
 			return nil, findErr
 		}
@@ -160,6 +179,9 @@ func (s *TranscodeService) verifyArtifactAttestation(
 	if err != nil {
 		return transcodeattestation.Attestation{}, "", "", "", fmt.Errorf("verify produced media: %w", err)
 	}
+	if err := verifyArtifactTimestampContract(artifact, value); err != nil {
+		return transcodeattestation.Attestation{}, "", "", "", fmt.Errorf("verify timestamp normalization: %w", err)
+	}
 	version, hash, canonical, err := transcodeattestation.Identity(value)
 	if err != nil {
 		return transcodeattestation.Attestation{}, "", "", "", err
@@ -196,7 +218,40 @@ func decodeArtifactAttestation(artifact *model.TranscodeArtifactRecord) (transco
 	); err != nil {
 		return transcodeattestation.Attestation{}, err
 	}
+	if err := verifyArtifactTimestampContract(artifact, value); err != nil {
+		return transcodeattestation.Attestation{}, err
+	}
 	return value, nil
+}
+
+func verifyArtifactTimestampContract(artifact *model.TranscodeArtifactRecord, value transcodeattestation.Attestation) error {
+	if artifact == nil {
+		return fmt.Errorf("artifact is nil")
+	}
+	if artifact.TimestampPlanVersion == "" && artifact.TimestampPlanHash == "" && artifact.TimestampPlanJSON == "" {
+		// Historical Encoding Plan v1 evidence remains decodable for rollback and
+		// migration tests, but new execution-contract resolvers never select it.
+		return nil
+	}
+	if artifact.TimestampPlanVersion == "" || artifact.TimestampPlanHash == "" || artifact.TimestampPlanJSON == "" {
+		return fmt.Errorf("artifact timestamp plan is incomplete")
+	}
+	var plan transcodetimestamp.Plan
+	if err := json.Unmarshal([]byte(artifact.TimestampPlanJSON), &plan); err != nil {
+		return fmt.Errorf("decode artifact timestamp plan: %w", err)
+	}
+	version, hash, canonical, err := transcodetimestamp.Identity(plan)
+	if err != nil {
+		return err
+	}
+	if version != artifact.TimestampPlanVersion || hash != artifact.TimestampPlanHash || canonical != artifact.TimestampPlanJSON {
+		return fmt.Errorf("artifact timestamp plan identity is invalid")
+	}
+	return plan.VerifyObservedStart(
+		artifact.TimelineOriginMS,
+		value.First.Timeline.Video.StartMS,
+		value.First.Timeline.Audio.StartMS,
+	)
 }
 
 func attestationTimelineBounds(value transcodeattestation.Attestation) (int64, int64) {
