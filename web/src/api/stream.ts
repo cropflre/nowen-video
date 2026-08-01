@@ -22,6 +22,8 @@ export interface PlaybackStartupStream {
   playlist_url: string
   continuation_mode: 'event_bridge_v1' | string
   discontinuity_at_handoff: boolean
+  encoding_plan_version: string
+  encoding_plan_hash: string
 }
 
 export interface PlaybackPlan {
