@@ -28,10 +28,10 @@ var avSyncVarianceCaseIDs = []string{
 }
 
 type AVSyncRunReport struct {
-	Ordinal       int                    `json:"ordinal"`
-	Shaping       ShapingCaseReport      `json:"shaping"`
-	AVSyncVersion string                 `json:"av_sync_version"`
-	AVSyncHash    string                 `json:"av_sync_hash"`
+	Ordinal       int                      `json:"ordinal"`
+	Shaping       ShapingCaseReport        `json:"shaping"`
+	AVSyncVersion string                   `json:"av_sync_version"`
+	AVSyncHash    string                   `json:"av_sync_hash"`
 	AVSync        transcodeavsync.Contract `json:"av_sync"`
 }
 
@@ -48,6 +48,8 @@ type AVSyncVarianceSummary struct {
 	StartupEndSkewMicros        MetricRange `json:"startup_end_skew_micros"`
 	ContinuationStartSkewMicros MetricRange `json:"continuation_start_skew_micros"`
 	BoundaryDeltaSkewMicros     MetricRange `json:"boundary_delta_skew_micros"`
+	SkewTransitionMicros        MetricRange `json:"skew_transition_micros"`
+	ProjectionResidualMicros    MetricRange `json:"projection_residual_micros"`
 	MaxObservedSpanMicros       int64       `json:"max_observed_span_micros"`
 	Stable                      bool        `json:"stable"`
 }
@@ -59,12 +61,12 @@ type AVSyncCaseVarianceReport struct {
 }
 
 type AVSyncVarianceComparison struct {
-	Name                               string `json:"name"`
-	BaselineCaseID                     string `json:"baseline_case_id"`
-	CandidateCaseID                    string `json:"candidate_case_id"`
-	BaselineMaxAbsDeltaSkewMicros      int64  `json:"baseline_max_abs_delta_skew_micros"`
-	CandidateMaxAbsDeltaSkewMicros     int64  `json:"candidate_max_abs_delta_skew_micros"`
-	DeltaSkewImprovementMicros         int64  `json:"delta_skew_improvement_micros"`
+	Name                           string `json:"name"`
+	BaselineCaseID                 string `json:"baseline_case_id"`
+	CandidateCaseID                string `json:"candidate_case_id"`
+	BaselineMaxAbsDeltaSkewMicros  int64  `json:"baseline_max_abs_delta_skew_micros"`
+	CandidateMaxAbsDeltaSkewMicros int64  `json:"candidate_max_abs_delta_skew_micros"`
+	DeltaSkewImprovementMicros     int64  `json:"delta_skew_improvement_micros"`
 }
 
 type AVSyncVarianceMatrixReport struct {
@@ -268,12 +270,16 @@ func buildAVSyncVarianceSummary(runs []AVSyncRunReport) AVSyncVarianceSummary {
 	startupSkew := make([]int64, 0, len(runs))
 	continuationSkew := make([]int64, 0, len(runs))
 	boundarySkew := make([]int64, 0, len(runs))
+	skewTransition := make([]int64, 0, len(runs))
+	projectionResidual := make([]int64, 0, len(runs))
 	for _, run := range runs {
 		videoDelta = append(videoDelta, run.AVSync.VideoBoundaryDeltaMicros)
 		audioDelta = append(audioDelta, run.AVSync.AudioBoundaryDeltaMicros)
 		startupSkew = append(startupSkew, run.AVSync.StartupEndSkewMicros)
 		continuationSkew = append(continuationSkew, run.AVSync.ContinuationStartSkewMicros)
 		boundarySkew = append(boundarySkew, run.AVSync.BoundaryDeltaSkewMicros)
+		skewTransition = append(skewTransition, run.AVSync.SkewTransitionMicros)
+		projectionResidual = append(projectionResidual, run.AVSync.ProjectionResidualMicros)
 	}
 	summary := AVSyncVarianceSummary{
 		RepeatCount:                 len(runs),
@@ -282,6 +288,8 @@ func buildAVSyncVarianceSummary(runs []AVSyncRunReport) AVSyncVarianceSummary {
 		StartupEndSkewMicros:        metricRange(startupSkew),
 		ContinuationStartSkewMicros: metricRange(continuationSkew),
 		BoundaryDeltaSkewMicros:     metricRange(boundarySkew),
+		SkewTransitionMicros:        metricRange(skewTransition),
+		ProjectionResidualMicros:    metricRange(projectionResidual),
 	}
 	summary.MaxObservedSpanMicros = max64Certification(
 		summary.VideoBoundaryDeltaMicros.SpanMicros,
@@ -289,6 +297,8 @@ func buildAVSyncVarianceSummary(runs []AVSyncRunReport) AVSyncVarianceSummary {
 		summary.StartupEndSkewMicros.SpanMicros,
 		summary.ContinuationStartSkewMicros.SpanMicros,
 		summary.BoundaryDeltaSkewMicros.SpanMicros,
+		summary.SkewTransitionMicros.SpanMicros,
+		summary.ProjectionResidualMicros.SpanMicros,
 	)
 	summary.Stable = len(runs) == AVSyncVarianceRepeatCount && summary.MaxObservedSpanMicros <= AVSyncVarianceToleranceMicros
 	return summary
