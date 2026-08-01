@@ -46,6 +46,22 @@ func TestContractRejectsAudioDelayProjectionDrift(t *testing.T) {
 	}
 }
 
+func TestContainerSideDataDoesNotCountAsEncoderDelayEvidence(t *testing.T) {
+	contract := validContract()
+	contract.Audio.Continuation.Packets[0].SideData = []PacketSideData{{Type: "MPEGTS Stream ID"}}
+	contract.Audio.AudioDelay.ContinuationSkipSamples = 0
+	contract.Audio.AudioDelay.SideDataObserved = false
+	if err := contract.Validate(); err != nil {
+		t.Fatalf("container-only side data made contract invalid: %v", err)
+	}
+	if IsAudioDelaySideData(contract.Audio.Continuation.Packets[0].SideData[0]) {
+		t.Fatal("MPEG-TS stream identity was treated as encoder delay evidence")
+	}
+	if !IsAudioDelaySideData(PacketSideData{Type: "Skip Samples"}) {
+		t.Fatal("skip-sample side data was not recognized")
+	}
+}
+
 func TestClassifyPacketQuantization(t *testing.T) {
 	for _, test := range []struct {
 		name    string
