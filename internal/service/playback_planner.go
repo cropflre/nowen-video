@@ -27,14 +27,14 @@ type PlaybackClientCapabilities struct {
 
 type PlaybackSourceTechnical struct {
 	ProbeVersion string   `json:"probe_version"`
-	VideoCodec  string   `json:"video_codec"`
-	AudioCodecs []string `json:"audio_codecs,omitempty"`
-	Width       int      `json:"width,omitempty"`
-	Height      int      `json:"height,omitempty"`
-	FrameRate   float64  `json:"frame_rate,omitempty"`
-	PixelFormat string   `json:"pixel_format,omitempty"`
-	BitDepth    int      `json:"bit_depth,omitempty"`
-	HDR         bool     `json:"hdr"`
+	VideoCodec   string   `json:"video_codec"`
+	AudioCodecs  []string `json:"audio_codecs,omitempty"`
+	Width        int      `json:"width,omitempty"`
+	Height       int      `json:"height,omitempty"`
+	FrameRate    float64  `json:"frame_rate,omitempty"`
+	PixelFormat  string   `json:"pixel_format,omitempty"`
+	BitDepth     int      `json:"bit_depth,omitempty"`
+	HDR          bool     `json:"hdr"`
 }
 
 type PlaybackPlan struct {
@@ -81,17 +81,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	if s != nil && s.mediaRepo != nil && s.transcoder != nil {
 		if media, err := s.mediaRepo.FindByID(mediaID); err == nil {
 			if probe := s.transcoder.GetCachedMediaProbe(media); probe != nil {
-				technical, preferredAudio := playbackTechnicalFromProbe(probe)
-				sourceTechnical = technical
-				if probe.VideoCodec != "" {
-					effectiveInfo.VideoCodec = probe.VideoCodec
-				}
-				if preferredAudio != "" {
-					effectiveInfo.AudioCodec = preferredAudio
-				}
-				if probe.DurationMS > 0 {
-					effectiveInfo.Duration = float64(probe.DurationMS) / 1000
-				}
+				sourceTechnical = applyProbeToPlaybackInfo(mediaID, &effectiveInfo, probe)
 			}
 		}
 	}
@@ -174,21 +164,55 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	return chooseTranscode(plan, hlsURL, reasonCode, reason), nil
 }
 
+func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.MediaProbeRecord) *PlaybackSourceTechnical {
+	technical, preferredAudio := playbackTechnicalFromProbe(probe)
+	if info == nil || probe == nil {
+		return technical
+	}
+	if probe.VideoCodec != "" {
+		info.VideoCodec = probe.VideoCodec
+	}
+	if preferredAudio != "" {
+		info.AudioCodec = preferredAudio
+	}
+	if probe.DurationMS > 0 {
+		info.Duration = float64(probe.DurationMS) / 1000
+	}
+
+	videoCompatible := browserCompatibleVideoCodecs[strings.ToLower(strings.TrimSpace(info.VideoCodec))]
+	audioCodec := strings.ToLower(strings.TrimSpace(info.AudioCodec))
+	audioCompatible := audioCodec == "" || browserCompatibleAudioCodecs[audioCodec]
+	info.CanDirectPlay = directPlayableExts[strings.ToLower(info.FileExt)] && videoCompatible && audioCompatible
+	info.CanRemux = !info.CanDirectPlay && remuxableExts[strings.ToLower(info.FileExt)] && videoCompatible && audioCompatible
+	if info.CanDirectPlay {
+		info.DirectPlayURL = fmt.Sprintf("/api/stream/%s/direct", mediaID)
+	} else {
+		info.DirectPlayURL = ""
+	}
+	if info.CanRemux {
+		info.RemuxURL = fmt.Sprintf("/api/stream/%s/remux", mediaID)
+	} else {
+		info.RemuxURL = ""
+	}
+	return technical
+}
+
 func playbackTechnicalFromProbe(probe *model.MediaProbeRecord) (*PlaybackSourceTechnical, string) {
 	if probe == nil {
 		return nil, ""
 	}
 	technical := &PlaybackSourceTechnical{
 		ProbeVersion: probe.ProbeVersion,
-		VideoCodec:  probe.VideoCodec,
-		Width:       probe.Width,
-		Height:      probe.Height,
-		FrameRate:   probe.FrameRate(),
-		PixelFormat: probe.PixelFormat,
-		BitDepth:    probe.BitDepth,
-		HDR:         probe.HDR,
+		VideoCodec:   probe.VideoCodec,
+		Width:        probe.Width,
+		Height:       probe.Height,
+		FrameRate:    probe.FrameRate(),
+		PixelFormat:  probe.PixelFormat,
+		BitDepth:     probe.BitDepth,
+		HDR:          probe.HDR,
 	}
 	preferredAudio := ""
+	defaultAudio := ""
 	seen := make(map[string]struct{})
 	for _, stream := range probe.AudioStreams() {
 		codec := strings.ToLower(strings.TrimSpace(stream.Codec))
@@ -199,14 +223,15 @@ func playbackTechnicalFromProbe(probe *model.MediaProbeRecord) (*PlaybackSourceT
 			seen[codec] = struct{}{}
 			technical.AudioCodecs = append(technical.AudioCodecs, codec)
 		}
-		if preferredAudio == "" || stream.Default {
+		if preferredAudio == "" {
 			preferredAudio = codec
-			if stream.Default {
-				// The default track is the one copied or transcoded by the current
-				// single-audio playback paths.
-				break
-			}
 		}
+		if stream.Default && defaultAudio == "" {
+			defaultAudio = codec
+		}
+	}
+	if defaultAudio != "" {
+		preferredAudio = defaultAudio
 	}
 	return technical, preferredAudio
 }
