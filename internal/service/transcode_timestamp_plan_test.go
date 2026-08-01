@@ -69,6 +69,32 @@ func TestTimestampNormalizedAttemptRejectsHardwareBeforeExecution(t *testing.T) 
 	}
 }
 
+func TestTimestampNormalizedJobsSelectCertifiedBackendBeforeAttempt(t *testing.T) {
+	service := &TranscodeService{hwAccel: "qsv"}
+	for _, test := range []struct {
+		name    string
+		intent  transcodedomain.Intent
+		startMS int64
+	}{
+		{name: "startup", intent: transcodedomain.IntentStartupHLS, startMS: 0},
+		{name: "continuation", intent: transcodedomain.IntentStartupContinuationHLS, startMS: 30_000},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			job := &TranscodeJob{ExecutionJob: timestampExecutionJob(t, test.intent, test.startMS)}
+			if got := service.preferredAttemptBackend(job); got != "none" {
+				t.Fatalf("preferredAttemptBackend() = %q, want software backend", got)
+			}
+		})
+	}
+}
+
+func TestUnversionedRuntimeJobRetainsHardwareCandidate(t *testing.T) {
+	service := &TranscodeService{hwAccel: "qsv"}
+	if got := service.preferredAttemptBackend(&TranscodeJob{}); got != "qsv" {
+		t.Fatalf("preferredAttemptBackend() = %q, want detected hardware backend", got)
+	}
+}
+
 func TestTimestampExecutionRejectsOriginDifferentFromSeek(t *testing.T) {
 	record := timestampExecutionJob(t, transcodedomain.IntentStartupContinuationHLS, 30_000)
 	record.TimelineOriginMS = 0
