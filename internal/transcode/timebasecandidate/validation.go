@@ -134,8 +134,8 @@ func (r RunEvidence) Validate(caseSpec CaseSpec, candidate CandidateSpec, source
 	if err := validateFingerprint(r.ContinuationFingerprint, r.ContinuationTimeline.FrameCount); err != nil {
 		return fmt.Errorf("continuation fingerprint: %w", err)
 	}
-	if !runPreserved(r, sourceStartup, sourceContinuation) {
-		return fmt.Errorf("candidate run did not preserve cadence and decoded frames")
+	if err := candidateRunPreservationError(r, sourceStartup, sourceContinuation); err != nil {
+		return err
 	}
 	if err := r.Boundary.Validate(); err != nil {
 		return err
