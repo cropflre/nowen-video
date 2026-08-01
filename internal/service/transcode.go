@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
 	transcodegovernor "github.com/nowen-video/nowen-video/internal/transcode/governor"
+	transcodeprobe "github.com/nowen-video/nowen-video/internal/transcode/probe"
 	transcoderuntime "github.com/nowen-video/nowen-video/internal/transcode/runtime"
 	"go.uber.org/zap"
 )
@@ -45,6 +47,7 @@ type TranscodeService struct {
 	wsHub     *WSHub
 
 	executionRuntime *transcoderuntime.Runtime
+	mediaProbe       *transcodeprobe.Service
 
 	throttleSuspendSeconds atomic.Uint64
 	throttleSuspendCount   atomic.Uint64
@@ -59,6 +62,7 @@ type TranscodeJob struct {
 	Task         *model.TranscodeTask
 	ExecutionJob *model.TranscodeJobRecord
 	Media        *model.Media
+	Probe        *model.MediaProbeRecord
 	Quality      string
 
 	ctx        context.Context
@@ -144,6 +148,10 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		panic(fmt.Sprintf("migrate transcode execution schema: %v", err))
 	}
 	executionRepo := repository.NewTranscodeExecutionRepo(repo.DB())
+	mediaProbe, err := transcodeprobe.NewService(repo.DB(), cfg.App.FFprobePath, logger)
+	if err != nil {
+		panic(fmt.Sprintf("initialize media probe service: %v", err))
+	}
 	service := &TranscodeService{
 		repo:                   repo,
 		executionRepo:          executionRepo,
@@ -156,6 +164,7 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		leaseHeartbeatInterval: defaultTranscodeLeaseHeartbeatInterval,
 		leaseRecoveryInterval:  defaultTranscodeLeaseRecoveryInterval,
 		executionRuntime:       transcoderuntime.Default(),
+		mediaProbe:             mediaProbe,
 		diskUsageTTL:           30 * time.Second,
 	}
 
@@ -377,6 +386,22 @@ func (s *TranscodeService) processJob(job *TranscodeJob, workerID string) {
 	}
 	go s.leaseHeartbeatLoop(job)
 
+	if s.mediaProbe != nil {
+		probeRecord, probeErr := s.mediaProbe.Probe(job.ctx, job.Media)
+		if probeErr != nil {
+			if !errors.Is(probeErr, transcodeprobe.ErrUnsupportedSource) {
+				s.logger.Warnf("媒体 Probe 失败，使用兼容转码参数 media=%s: %v", job.Media.ID, probeErr)
+			}
+		} else {
+			job.Probe = probeRecord
+			transcodeprobe.ApplyToMedia(job.Media, probeRecord)
+		}
+	}
+	if job.CancellationRequested() {
+		s.finalizeCancelled(job)
+		return
+	}
+
 	if !s.markJobRunning(job) {
 		s.finalizeCancelled(job)
 		return
@@ -431,7 +456,15 @@ func (s *TranscodeService) runAttempt(job *TranscodeJob, backend string, attempt
 		kind = transcodegovernor.KindHardwareTranscode
 	}
 
-	args := s.buildFFmpegArgsForBackend(job.Media, job.Media.FilePath, job.Task.OutputDir, job.Quality, job.startOffset, backend)
+	args := s.buildFFmpegArgsForBackendWithProbe(
+		job.Media,
+		job.Probe,
+		job.Media.FilePath,
+		job.Task.OutputDir,
+		job.Quality,
+		job.startOffset,
+		backend,
+	)
 	attempt, err := s.createAttempt(job, attemptNumber, backend, args)
 	if err != nil {
 		return transcodeexecutor.Result{Err: fmt.Errorf("创建 Attempt 记录失败: %w", err)}
