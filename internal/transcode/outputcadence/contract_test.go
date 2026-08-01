@@ -66,7 +66,7 @@ func TestTimelineSeparatesRareOutlierFromMaterialCadence(t *testing.T) {
 	if !evidence.VariableDuration || evidence.MaterialVariableDuration {
 		t.Fatalf("rare outlier classification = raw:%t material:%t", evidence.VariableDuration, evidence.MaterialVariableDuration)
 	}
-	if evidence.OutlierDeltaCount != 1 || evidence.SignificantDeltaCount != 1 || evidence.DominantDeltaMicros != 33_333 {
+	if evidence.OutlierDeltaCount != 1 || evidence.NearZeroDeltaCount != 1 || evidence.SignificantDeltaCount != 1 || evidence.DominantDeltaMicros != 33_333 {
 		t.Fatalf("unexpected outlier evidence: %+v", evidence)
 	}
 }
@@ -87,8 +87,33 @@ func TestTimelineRecognizesMaterialVFR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !evidence.VariableDuration || !evidence.MaterialVariableDuration || evidence.OutlierDeltaCount != 0 {
+	if !evidence.VariableDuration || !evidence.MaterialVariableDuration || evidence.OutlierDeltaCount != 0 || evidence.NearZeroDeltaCount != 0 {
 		t.Fatalf("material VFR classification is invalid: %+v", evidence)
+	}
+}
+
+func TestPreservationRejectsIntroducedNearZeroCadence(t *testing.T) {
+	contract := validContract()
+	pts := make([]int64, 0, 301)
+	current := int64(30_000_000)
+	pts = append(pts, current)
+	for index := 0; index < 300; index++ {
+		if index < 60 {
+			current += 11
+		} else {
+			current += 41_667
+		}
+		pts = append(pts, current)
+	}
+	changed, err := NewTimelineEvidence(TimelineContinuation, "1/1000000", 30_000_000, 40_000_000, pts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract.ContinuationTimeline = changed
+	contract.ContinuationMapping = NewFrameMapping(contract.SourceContinuationTimeline.FrameCount, changed.FrameCount)
+	contract.PreservationStatus = PreservationFor(contract)
+	if contract.PreservationStatus != PreservationChanged {
+		t.Fatalf("introduced near-zero cadence status = %s", contract.PreservationStatus)
 	}
 }
 
@@ -121,6 +146,8 @@ func validContract() Contract {
 		BoundaryEvidenceVersion: transcodeboundary.SchemaVersion, BoundaryEvidenceHash: hash,
 		AVSyncEvidenceVersion: transcodeavsync.SchemaVersion, AVSyncEvidenceHash: hash,
 		SourceTimeline: timeline(TimelineSource, 0, 40_000_000, 1_200),
+		SourceStartupTimeline: timeline(TimelineSourceStartup, 0, 30_000_000, 900),
+		SourceContinuationTimeline: timeline(TimelineSourceContinuation, 30_000_000, 40_000_000, 300),
 		StartupTimeline: timeline(TimelineStartup, 0, 30_000_000, 900),
 		ContinuationTimeline: timeline(TimelineContinuation, 30_000_000, 40_000_000, 300),
 		StartupMapping: NewFrameMapping(900, 900),
