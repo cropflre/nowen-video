@@ -2,13 +2,19 @@ package service
 
 import "testing"
 
-func TestStartupStreamCanBePlanned(t *testing.T) {
-	valid := &StartupBridgeInfo{
-		Available:   true,
-		ProfileID:   "720p",
-		DurationMS:  30_000,
-		PlaylistURL: "/api/stream/media/startup-720p/stream.m3u8",
+func validStartupBridgeInfo() *StartupBridgeInfo {
+	return &StartupBridgeInfo{
+		Available:           true,
+		ProfileID:           "720p",
+		DurationMS:          30_000,
+		PlaylistURL:         "/api/stream/media/startup-720p/stream.m3u8",
+		EncodingPlanVersion: "hls-encoding-plan-v1",
+		EncodingPlanHash:    "encoding-plan-hash",
 	}
+}
+
+func TestStartupStreamCanBePlanned(t *testing.T) {
+	valid := validStartupBridgeInfo()
 	if !startupStreamCanBePlanned(valid) {
 		t.Fatal("valid startup bridge must be plannable")
 	}
@@ -16,9 +22,11 @@ func TestStartupStreamCanBePlanned(t *testing.T) {
 	cases := []*StartupBridgeInfo{
 		nil,
 		{},
-		{Available: true, DurationMS: 30_000, PlaylistURL: valid.PlaylistURL},
-		{Available: true, ProfileID: "720p", PlaylistURL: valid.PlaylistURL},
-		{Available: true, ProfileID: "720p", DurationMS: 30_000},
+		{Available: true, DurationMS: 30_000, PlaylistURL: valid.PlaylistURL, EncodingPlanVersion: valid.EncodingPlanVersion, EncodingPlanHash: valid.EncodingPlanHash},
+		{Available: true, ProfileID: "720p", PlaylistURL: valid.PlaylistURL, EncodingPlanVersion: valid.EncodingPlanVersion, EncodingPlanHash: valid.EncodingPlanHash},
+		{Available: true, ProfileID: "720p", DurationMS: 30_000, EncodingPlanVersion: valid.EncodingPlanVersion, EncodingPlanHash: valid.EncodingPlanHash},
+		{Available: true, ProfileID: "720p", DurationMS: 30_000, PlaylistURL: valid.PlaylistURL, EncodingPlanHash: valid.EncodingPlanHash},
+		{Available: true, ProfileID: "720p", DurationMS: 30_000, PlaylistURL: valid.PlaylistURL, EncodingPlanVersion: valid.EncodingPlanVersion},
 	}
 	for index, startup := range cases {
 		if startupStreamCanBePlanned(startup) {
@@ -28,12 +36,7 @@ func TestStartupStreamCanBePlanned(t *testing.T) {
 }
 
 func TestApplyStartupStreamPlan(t *testing.T) {
-	startup := &StartupBridgeInfo{
-		Available:   true,
-		ProfileID:   "720p",
-		DurationMS:  30_000,
-		PlaylistURL: "/api/stream/media/startup-720p/stream.m3u8",
-	}
+	startup := validStartupBridgeInfo()
 	plan := applyStartupStreamPlan(
 		&PlaybackPlan{MediaID: "media"},
 		"/api/stream/media/master.m3u8",
@@ -52,7 +55,9 @@ func TestApplyStartupStreamPlan(t *testing.T) {
 	if plan.StartupStream.ProfileID != "720p" ||
 		plan.StartupStream.DurationMS != 30_000 ||
 		plan.StartupStream.ContinuationMode != StartupContinuationModeEventBridge ||
-		!plan.StartupStream.DiscontinuityAtHandoff {
+		!plan.StartupStream.DiscontinuityAtHandoff ||
+		plan.StartupStream.EncodingPlanVersion != startup.EncodingPlanVersion ||
+		plan.StartupStream.EncodingPlanHash != startup.EncodingPlanHash {
 		t.Fatalf("unexpected startup metadata: %+v", plan.StartupStream)
 	}
 }
