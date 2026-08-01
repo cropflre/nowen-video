@@ -161,6 +161,9 @@ func (q *transcodePriorityQueue) releaseClaimAfterClose(record *model.TranscodeJ
 }
 
 func (q *transcodePriorityQueue) hydrateClaimedJob(record *model.TranscodeJobRecord) (*TranscodeJob, error) {
+	if !supportedTranscodeIntent(record) {
+		return nil, fmt.Errorf("unsupported transcode intent %q", record.Intent)
+	}
 	task, media, err := q.executionRepo.LoadJobPayload(record)
 	if err != nil {
 		return nil, err
