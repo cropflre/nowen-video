@@ -23,9 +23,9 @@ func TestAVSyncVarianceRegistryIsStable(t *testing.T) {
 
 func TestAVSyncVarianceSummaryDetectsDrift(t *testing.T) {
 	runs := []AVSyncRunReport{
-		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_000, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667}},
-		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_000, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667}},
-		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_002, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667}},
+		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_000, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667, SkewTransitionMicros: -6_667, ProjectionResidualMicros: 0}},
+		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_000, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667, SkewTransitionMicros: -6_667, ProjectionResidualMicros: 0}},
+		{AVSync: transcodeavsync.Contract{VideoBoundaryDeltaMicros: 12_002, AudioBoundaryDeltaMicros: 5_333, StartupEndSkewMicros: 20_000, ContinuationStartSkewMicros: 13_333, BoundaryDeltaSkewMicros: -6_667, SkewTransitionMicros: -6_667, ProjectionResidualMicros: 0}},
 	}
 	summary := buildAVSyncVarianceSummary(runs)
 	if summary.Stable {
@@ -33,6 +33,21 @@ func TestAVSyncVarianceSummaryDetectsDrift(t *testing.T) {
 	}
 	if summary.MaxObservedSpanMicros != 2 || summary.VideoBoundaryDeltaMicros.SpanMicros != 2 {
 		t.Fatalf("unexpected variance summary: %+v", summary)
+	}
+}
+
+func TestAVSyncVarianceSummaryIncludesProjectionResidual(t *testing.T) {
+	runs := []AVSyncRunReport{
+		{AVSync: transcodeavsync.Contract{ProjectionResidualMicros: -1}},
+		{AVSync: transcodeavsync.Contract{ProjectionResidualMicros: 0}},
+		{AVSync: transcodeavsync.Contract{ProjectionResidualMicros: 1}},
+	}
+	summary := buildAVSyncVarianceSummary(runs)
+	if summary.Stable {
+		t.Fatal("two-microsecond projection residual variance was accepted")
+	}
+	if summary.ProjectionResidualMicros != (MetricRange{MinMicros: -1, MaxMicros: 1, SpanMicros: 2}) {
+		t.Fatalf("unexpected projection residual range: %+v", summary.ProjectionResidualMicros)
 	}
 }
 
