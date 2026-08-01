@@ -21,6 +21,11 @@ type TranscodeHandoffAttestationRecord struct {
 	SchemaVersion                  string    `json:"schema_version" gorm:"uniqueIndex:idx_transcode_handoff_identity,priority:3;index;type:text;not null"`
 	EncodingPlanVersion            string    `json:"encoding_plan_version" gorm:"type:text;not null"`
 	EncodingPlanHash               string    `json:"encoding_plan_hash" gorm:"index;type:text;not null"`
+	TimestampPlanVersion           string    `json:"timestamp_plan_version" gorm:"type:text;not null"`
+	TimestampPlanHash              string    `json:"timestamp_plan_hash" gorm:"index;type:text;not null"`
+	StartupTimelineOriginMS        int64     `json:"startup_timeline_origin_ms" gorm:"index"`
+	ContinuationTimelineOriginMS   int64     `json:"continuation_timeline_origin_ms" gorm:"index"`
+	ExpectedBoundaryMS             int64     `json:"expected_boundary_ms" gorm:"index"`
 	StartupAttestationVersion      string    `json:"startup_attestation_version" gorm:"type:text;not null"`
 	StartupAttestationHash         string    `json:"startup_attestation_hash" gorm:"index;type:text;not null"`
 	ContinuationAttestationVersion string    `json:"continuation_attestation_version" gorm:"type:text;not null"`
