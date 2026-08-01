@@ -60,14 +60,16 @@ jobs:
         run: go test ./...
       - name: Encoding plan value-object contract
         run: go test ./internal/transcode/encodingplan
-      - name: Encoding plan persistence and resolver contract
-        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Startup'
+      - name: Produced media attestation contract
+        run: go test ./internal/transcode/attestation
+      - name: Plan, attestation persistence and resolver contract
+        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Attestation|Startup'
       - name: Startup stream planner and bridge contract
-        run: go test ./internal/service -run 'Startup|Playback'
-      - name: Encoding plan race verification
-        run: go test -race ./internal/transcode/encodingplan
+        run: go test ./internal/service -run 'Startup|Playback|Attestation'
+      - name: Plan and attestation race verification
+        run: go test -race ./internal/transcode/encodingplan ./internal/transcode/attestation
       - name: Artifact lease and filesystem race tests
-        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Lease|Shutdown'
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Attestation|Lease|Shutdown'
       - name: Artifact resolver performance baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableHLSArtifact$' -benchtime=100x -benchmem
       - name: Build lite server
