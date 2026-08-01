@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -205,22 +204,34 @@ func startupStreamOutputArgs(args []string, durationMS int64) []string {
 	if durationMS <= 0 || len(args) == 0 {
 		return args
 	}
+	// Runtime HLS is an appendable EVENT playlist. Startup HLS is a bounded,
+	// immutable VOD artifact, so remove those options rather than relying on a
+	// duplicate later option to override them.
+	body := make([]string, 0, len(args)+2)
+	for index := 0; index < len(args)-1; index++ {
+		arg := args[index]
+		if arg == "-hls_playlist_type" && index+1 < len(args)-1 {
+			index++
+			continue
+		}
+		if arg == "-hls_flags" && index+1 < len(args)-1 {
+			flags := strings.Split(args[index+1], "+")
+			kept := make([]string, 0, len(flags))
+			for _, flag := range flags {
+				if flag != "append_list" {
+					kept = append(kept, flag)
+				}
+			}
+			body = append(body, arg, strings.Join(kept, "+"))
+			index++
+			continue
+		}
+		body = append(body, arg)
+	}
 	seconds := float64(durationMS) / 1000
-	result := make([]string, 0, len(args)+4)
-	result = append(result, args[:len(args)-1]...)
-	result = append(result,
+	body = append(body,
 		"-t", fmt.Sprintf("%.3f", seconds),
 		"-hls_playlist_type", "vod",
 	)
-	result = append(result, args[len(args)-1])
-	return result
-}
-
-func startupStreamPublishedDir(s *TranscodeService, mediaID, profileID, artifactID string) (string, error) {
-	if s == nil || s.artifactStore == nil {
-		return "", fmt.Errorf("artifact store is unavailable")
-	}
-	// The immutable artifact ID keeps startup and runtime versions isolated even
-	// though they share the same profile namespace.
-	return s.artifactStore.PublishedDir(mediaID, filepath.Clean(profileID), artifactID)
+	return append(body, args[len(args)-1])
 }
