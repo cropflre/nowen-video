@@ -1,13 +1,23 @@
 package service
 
 import (
+	"fmt"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
 )
 
+// buildJobFFmpegArgs remains source-compatible for focused argument tests.
+// Attempt execution uses the checked variant so a malformed timestamp contract
+// is rejected before an FFmpeg process or Artifact workspace is created.
 func (s *TranscodeService) buildJobFFmpegArgs(job *TranscodeJob, outputDir, backend string) []string {
+	args, _ := s.buildJobFFmpegArgsChecked(job, outputDir, backend)
+	return args
+}
+
+func (s *TranscodeService) buildJobFFmpegArgsChecked(job *TranscodeJob, outputDir, backend string) ([]string, error) {
 	if job == nil || job.Media == nil {
-		return nil
+		return nil, fmt.Errorf("transcode job media is missing")
 	}
 	args := s.buildFFmpegArgsForBackendWithProbe(
 		job.Media,
@@ -18,10 +28,17 @@ func (s *TranscodeService) buildJobFFmpegArgs(job *TranscodeJob, outputDir, back
 		job.startOffset,
 		backend,
 	)
-	if job.ExecutionJob != nil && job.ExecutionJob.Intent == string(transcodedomain.IntentStartupHLS) {
-		return startupStreamOutputArgs(args, job.ExecutionJob.DurationMS)
+	if timestampNormalizationRequired(job.ExecutionJob) {
+		plan, err := validateTimestampExecution(job.ExecutionJob, backend)
+		if err != nil {
+			return nil, err
+		}
+		args = applyTimestampNormalization(args, plan)
 	}
-	return args
+	if job.ExecutionJob != nil && job.ExecutionJob.Intent == string(transcodedomain.IntentStartupHLS) {
+		args = startupStreamOutputArgs(args, job.ExecutionJob.DurationMS)
+	}
+	return args, nil
 }
 
 func transcodeArtifactKind(job *TranscodeJob) string {
