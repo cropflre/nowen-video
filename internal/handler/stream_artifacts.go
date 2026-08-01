@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/service"
 )
 
 // ArtifactStreamHandler is the formal migration Adapter for runtime HLS. It
@@ -35,11 +37,21 @@ func (h *ArtifactStreamHandler) Segment(c *gin.Context) {
 		return
 	}
 
-	if err := h.streamService.ServeArtifactSegment(id, quality, segment, c.Writer, c.Request); err == nil {
+	artifactErr := h.streamService.ServeArtifactSegment(id, quality, segment, c.Writer, c.Request)
+	if artifactErr == nil {
 		return
 	}
+	if !errors.Is(artifactErr, service.ErrArtifactNotReady) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": artifactErr.Error()})
+		return
+	}
+
+	// On-demand is a formal first-segment availability fallback, not a blanket
+	// error mask. It is attempted only when the Artifact Resolver reports that
+	// the requested immutable/live segment is not ready yet.
 	if err := h.streamService.ServeOnDemandSegment(id, quality, segment, c.Writer, c.Request); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.Header("Retry-After", "1")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
 	}
 }
