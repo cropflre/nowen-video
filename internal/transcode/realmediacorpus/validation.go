@@ -199,20 +199,11 @@ func (m Manifest) ValidateFor(spec Spec) error {
 	if len(m.Assets) != len(spec.Cases) {
 		return fmt.Errorf("real-media corpus asset count %d differs from case count %d", len(m.Assets), len(spec.Cases))
 	}
-	caseByID := make(map[string]CaseSpec, len(spec.Cases))
-	for _, caseSpec := range spec.Cases {
-		caseByID[caseSpec.ID] = caseSpec
-	}
-	seen := make(map[string]struct{}, len(m.Assets))
 	for index, asset := range m.Assets {
-		caseSpec, exists := caseByID[asset.CaseID]
-		if !exists {
-			return fmt.Errorf("manifest asset %d references unknown case %q", index, asset.CaseID)
+		caseSpec := spec.Cases[index]
+		if asset.CaseID != caseSpec.ID {
+			return fmt.Errorf("manifest asset %d is out of canonical case order: got %q want %q", index, asset.CaseID, caseSpec.ID)
 		}
-		if _, exists := seen[asset.CaseID]; exists {
-			return fmt.Errorf("manifest contains duplicate case asset %q", asset.CaseID)
-		}
-		seen[asset.CaseID] = struct{}{}
 		if err := asset.ValidateFor(caseSpec); err != nil {
 			return fmt.Errorf("validate manifest asset %d: %w", index, err)
 		}
