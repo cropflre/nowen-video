@@ -1,0 +1,169 @@
+name: Transcode Timestamp Execution Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/shaping_*.go'
+      - 'internal/transcode/certification/boundary_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timestampexecution/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_TIMESTAMP_EXECUTION_V2.md'
+      - '.github/workflows/transcode-shaping-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/shaping_*.go'
+      - 'internal/transcode/certification/boundary_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timestampexecution/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_TIMESTAMP_EXECUTION_V2.md'
+      - '.github/workflows/transcode-shaping-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-shaping-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shaping-certification:
+    name: Timestamp execution v2 shaping matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify shaping contracts
+        run: |
+          go test ./internal/transcode/timestampexecution
+          go test ./internal/transcode/boundaryevidence ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
+      - name: Produce timestamp execution shaping matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-shaping
+          /tmp/nowen-transcode-fixture-cert \
+            -shaping-matrix \
+            -output /tmp/nowen-transcode-shaping/timestamp-execution-shaping-matrix-v1.json
+      - name: Verify plan identity, packet evidence and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-shaping/timestamp-execution-shaping-matrix-v1.json')
+          matrix = json.loads(path.read_text())
+          assert matrix['schema_version'] == 'ffmpeg-boundary-shaping-matrix-v1'
+
+          expected = {
+              'shape-48k-baseline-v1': (0, 0),
+              'shape-48k-common-video-frame-v1': (33_333, 33_333),
+              'shape-48k-common-aac-two-v1': (42_667, 42_667),
+              'shape-48k-common-aac-three-v1': (64_000, 64_000),
+              'shape-48k-per-stream-v1': (33_333, 64_000),
+              'shape-44k1-baseline-v1': (0, 0),
+              'shape-44k1-common-aac-two-v1': (46_440, 46_440),
+              'shape-44k1-per-stream-v1': (33_333, 46_440),
+          }
+          assert [item['case']['id'] for item in matrix['cases']] == list(expected)
+
+          plan_hashes = set()
+          evidence_hashes = set()
+          toolchain = None
+          summaries = {}
+          allowed_status = {
+              'aligned',
+              'single_packet_gap',
+              'multi_packet_gap',
+              'single_packet_overlap',
+              'multi_packet_overlap',
+          }
+          for item in matrix['cases']:
+              case = item['case']
+              case_id = case['id']
+              evidence = item['evidence']
+              plan = json.loads(item['plan_json'])
+              video_shift, audio_shift = expected[case_id]
+
+              assert case['expected_boundary_micros'] == 30_000_000
+              assert case['video_pts_shift_micros'] == video_shift
+              assert case['audio_pts_shift_micros'] == audio_shift
+              assert item['plan_version'] == 'hls-timestamp-execution-plan-v2'
+              assert item['plan_hash'] not in plan_hashes or (video_shift, audio_shift) == (0, 0)
+              plan_hashes.add(item['plan_hash'])
+              assert plan['schema_version'] == item['plan_version']
+              assert plan['strategy'] == 'continuation_pts_shift'
+              assert plan['seek_precision'] == 'microseconds'
+              assert plan['video_pts_shift_micros'] == video_shift
+              assert plan['audio_pts_shift_micros'] == audio_shift
+              assert plan['certified_backends'] == ['none']
+              assert plan['certification_only'] is True
+              assert plan['seamless_allowed'] is False
+              assert plan['discontinuity_required'] is True
+              assert plan['base_timestamp_plan_version'] == 'hls-timestamp-normalization-v1'
+              assert len(plan['base_timestamp_plan_hash']) == 64
+
+              assert item['evidence_version'] == 'hls-boundary-packet-evidence-v1'
+              assert item['evidence_hash'] not in evidence_hashes
+              evidence_hashes.add(item['evidence_hash'])
+              assert evidence['case_id'] == case_id
+              assert evidence['fixture_id'] == case['fixture_id']
+              assert evidence['expected_boundary_micros'] == 30_000_000
+              assert evidence['seamless_allowed'] is False
+              assert evidence['discontinuity_required'] is True
+              current_toolchain = (evidence['ffmpeg_version'], evidence['ffprobe_version'])
+              toolchain = current_toolchain if toolchain is None else toolchain
+              assert current_toolchain == toolchain
+
+              for kind in ('video', 'audio'):
+                  stream = evidence[kind]
+                  startup = stream['startup']
+                  continuation = stream['continuation']
+                  assert stream['status'] in allowed_status
+                  assert stream['presentation_delta_ticks'] == continuation['earliest_pts'] - startup['latest_end_pts']
+                  assert stream['decode_delta_ticks'] == continuation['first_dts'] - startup['last_end_dts']
+                  assert stream['nominal_packet_duration_ticks'] > 0
+                  assert 1 <= len(startup['packets']) <= 6
+                  assert 1 <= len(continuation['packets']) <= 6
+
+              audio_delay = evidence['audio']['audio_delay']
+              assert 1023 <= audio_delay['nominal_packet_samples'] <= 1025
+              summaries[case_id] = {
+                  'video_status': evidence['video']['status'],
+                  'video_delta_us': evidence['video']['presentation_delta_micros'],
+                  'audio_status': evidence['audio']['status'],
+                  'audio_delta_us': evidence['audio']['presentation_delta_micros'],
+                  'audio_delta_samples': audio_delay['boundary_delta_samples'],
+              }
+
+          assert len(plan_hashes) == 7
+          assert len(evidence_hashes) == len(expected)
+          print(json.dumps(summaries, sort_keys=True))
+          PY
+      - name: Upload timestamp execution evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-timestamp-execution-${{ github.sha }}
+          path: /tmp/nowen-transcode-shaping/timestamp-execution-shaping-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
