@@ -1,0 +1,168 @@
+name: Transcode Output Cadence Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-output-cadence-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_OUTPUT_CADENCE.md'
+      - '.github/workflows/transcode-output-cadence-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-output-cadence-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_OUTPUT_CADENCE.md'
+      - '.github/workflows/transcode-output-cadence-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-output-cadence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  output-cadence-certification:
+    name: Full output cadence and frame-count projection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify output-cadence contracts
+        run: |
+          go test ./internal/transcode/outputcadence
+          go test ./internal/transcode/sourceorigin ./internal/transcode/boundaryevidence ./internal/transcode/avsync
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-output-cadence-cert ./cmd/transcode-output-cadence-cert
+      - name: Produce full output-cadence matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-output-cadence
+          /tmp/nowen-transcode-output-cadence-cert \
+            -output /tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json
+      - name: Verify timeline arithmetic, evidence identity and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json')
+          matrix = json.loads(path.read_text())
+          assert matrix['schema_version'] == 'ffmpeg-output-cadence-matrix-v1'
+          expected = [
+              ('source-cfr-24-origin-zero-v1', 'cfr'),
+              ('source-cfr-25-origin-zero-v1', 'cfr'),
+              ('source-cfr-30000-1001-origin-zero-v1', 'cfr'),
+              ('source-vfr-24-30-origin-zero-v1', 'vfr'),
+              ('source-cfr-30-origin-positive-5s-v1', 'cfr'),
+              ('source-cfr-30-origin-negative-2s-v1', 'cfr'),
+          ]
+          assert [item['case']['id'] for item in matrix['cases']] == [item[0] for item in expected]
+
+          hashes = set()
+          toolchain = None
+          summary = {}
+          for item, (case_id, mode) in zip(matrix['cases'], expected):
+              evidence = item['evidence']
+              source_report = item['source_origin']
+              source_evidence = source_report['evidence']
+
+              assert item['contract_version'] == 'hls-output-cadence-evidence-v1'
+              assert evidence['schema_version'] == item['contract_version']
+              assert evidence['case_id'] == case_id
+              assert evidence['source_mode'] == mode
+              canonical = json.dumps(evidence, ensure_ascii=False, separators=(',', ':'))
+              assert hashlib.sha256(canonical.encode()).hexdigest() == item['contract_hash']
+              hashes.add(item['contract_hash'])
+
+              source_canonical = json.dumps(source_evidence, ensure_ascii=False, separators=(',', ':'))
+              assert hashlib.sha256(source_canonical.encode()).hexdigest() == source_report['contract_hash']
+              assert evidence['source_origin_version'] == source_report['contract_version']
+              assert evidence['source_origin_hash'] == source_report['contract_hash']
+              assert evidence['boundary_evidence_hash'] == source_report['boundary_hash']
+              assert evidence['av_sync_evidence_hash'] == source_report['av_sync_hash']
+
+              source = evidence['source_timeline']
+              startup = evidence['startup_timeline']
+              continuation = evidence['continuation_timeline']
+              startup_map = evidence['startup_mapping']
+              continuation_map = evidence['continuation_mapping']
+              assert source['frame_count'] == startup_map['input_frames'] + continuation_map['input_frames']
+              assert startup['frame_count'] == startup_map['output_frames']
+              assert continuation['frame_count'] == continuation_map['output_frames']
+              for timeline in (source, startup, continuation):
+                  assert timeline['duration_spread_micros'] == timeline['max_delta_micros'] - timeline['min_delta_micros']
+                  assert timeline['duplicate_pts_count'] == 0
+                  assert timeline['non_monotonic_pts_count'] == 0
+              assert source['variable_duration'] is (mode == 'vfr')
+              assert startup['variable_duration'] is (mode == 'vfr')
+              assert continuation['variable_duration'] is False
+
+              for mapping in (startup_map, continuation_map):
+                  delta = mapping['output_frames'] - mapping['input_frames']
+                  assert mapping['frame_count_delta'] == delta
+                  assert mapping['projected_duplicate_frames'] == max(delta, 0)
+                  assert mapping['projected_dropped_frames'] == max(-delta, 0)
+                  assert mapping['count_tolerance'] == 1
+
+              assert evidence['content_duplicate_classification'] == 'not_measured'
+              assert evidence['seamless_allowed'] is False
+              assert evidence['discontinuity_required'] is True
+              current_toolchain = (evidence['ffmpeg_version'], evidence['ffprobe_version'])
+              toolchain = current_toolchain if toolchain is None else toolchain
+              assert current_toolchain == toolchain
+              summary[case_id] = {
+                  'source_frames': source['frame_count'],
+                  'startup_in': startup_map['input_frames'],
+                  'startup_out': startup_map['output_frames'],
+                  'startup_delta': startup_map['frame_count_delta'],
+                  'startup_min_us': startup['min_delta_micros'],
+                  'startup_max_us': startup['max_delta_micros'],
+                  'continuation_in': continuation_map['input_frames'],
+                  'continuation_out': continuation_map['output_frames'],
+                  'continuation_delta': continuation_map['frame_count_delta'],
+                  'continuation_min_us': continuation['min_delta_micros'],
+                  'continuation_max_us': continuation['max_delta_micros'],
+                  'preservation': evidence['preservation_status'],
+              }
+
+          assert len(hashes) == len(expected)
+          print(json.dumps({'toolchain': toolchain, 'summary': summary}, sort_keys=True))
+          PY
+      - name: Upload output-cadence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-output-cadence-${{ github.sha }}
+          path: /tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14
