@@ -9,7 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.T) {
+func openArtifactMigrationDB(t *testing.T) *gorm.DB {
+	t.Helper()
 	dsn := fmt.Sprintf("file:artifact-migration-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -18,7 +19,11 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 	if err := AutoMigrateTranscodeExecution(db); err != nil {
 		t.Fatal(err)
 	}
-	job := &TranscodeJobRecord{
+	return db
+}
+
+func encodingPlanMigrationJob() *TranscodeJobRecord {
+	return &TranscodeJobRecord{
 		MediaID:             "media-migration",
 		Intent:              "runtime_hls",
 		ProfileID:           "1080p",
@@ -30,6 +35,31 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 		EncodingPlanHash:    "encoding-plan-hash",
 		EncodingPlanJSON:    `{"schema_version":"hls-encoding-plan-v1"}`,
 	}
+}
+
+func TestArtifactCreateInheritsEncodingPlanFromJob(t *testing.T) {
+	db := openArtifactMigrationDB(t)
+	job := encodingPlanMigrationJob()
+	if err := db.Create(job).Error; err != nil {
+		t.Fatal(err)
+	}
+	artifact := &TranscodeArtifactRecord{
+		JobID:     job.ID,
+		Kind:      "hls_variant",
+		ProfileID: "1080p",
+		Status:    "staging",
+	}
+	if err := db.Create(artifact).Error; err != nil {
+		t.Fatal(err)
+	}
+	if artifact.EncodingPlanVersion != job.EncodingPlanVersion || artifact.EncodingPlanHash != job.EncodingPlanHash || artifact.EncodingPlanJSON != job.EncodingPlanJSON {
+		t.Fatalf("artifact did not inherit job encoding plan: %+v", artifact)
+	}
+}
+
+func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.T) {
+	db := openArtifactMigrationDB(t)
+	job := encodingPlanMigrationJob()
 	if err := db.Create(job).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -40,12 +70,11 @@ func TestArtifactMigrationBackfillsJobIdentityWithoutDeletingHistory(t *testing.
 		Path:      "/cache/legacy/media/1080p",
 		Status:    "published",
 	}
-	if err := db.Create(artifact).Error; err != nil {
+	// Skip the new create hook to simulate a row written by the previous schema.
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(artifact).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	// Re-running the migration represents an upgrade from the schema where
-	// Artifact identity and Encoding Plan lived only on transcode_jobs.
 	if err := AutoMigrateTranscodeExecution(db); err != nil {
 		t.Fatal(err)
 	}
