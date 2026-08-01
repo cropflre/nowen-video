@@ -1,0 +1,60 @@
+name: Transcode Real Media Corpus Spec
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-real-media-corpus-spec/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'docs/TRANSCODE_REAL_MEDIA_CORPUS.md'
+      - '.github/scripts/verify_real_media_corpus_spec.py'
+      - '.github/workflows/transcode-real-media-corpus-spec.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-real-media-corpus-spec/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'docs/TRANSCODE_REAL_MEDIA_CORPUS.md'
+      - '.github/scripts/verify_real_media_corpus_spec.py'
+      - '.github/workflows/transcode-real-media-corpus-spec.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-real-media-corpus-spec-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus-spec:
+    name: Validate immutable file-backed corpus intent
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify corpus contracts
+        run: go test ./internal/transcode/realmediacorpus
+      - name: Build corpus spec command
+        run: go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-spec ./cmd/transcode-real-media-corpus-spec
+      - name: Produce canonical corpus spec
+        run: |
+          mkdir -p /tmp/nowen-transcode-real-media-corpus
+          /tmp/nowen-transcode-real-media-corpus-spec \
+            -output /tmp/nowen-transcode-real-media-corpus/real-media-corpus-spec-v1.json
+      - name: Verify corpus coverage and safety policy
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_spec.py \
+            /tmp/nowen-transcode-real-media-corpus/real-media-corpus-spec-v1.json
+      - name: Upload corpus spec evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-real-media-corpus-spec-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus/real-media-corpus-spec-v1.json
+          if-no-files-found: error
+          retention-days: 14
