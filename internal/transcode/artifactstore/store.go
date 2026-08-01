@@ -29,10 +29,17 @@ func New(root string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve artifact store root: %w", err)
 	}
-	if err := os.MkdirAll(absolute, 0o755); err != nil {
-		return nil, fmt.Errorf("create artifact store root: %w", err)
+	absolute = filepath.Clean(absolute)
+	for _, path := range []string{
+		absolute,
+		filepath.Join(absolute, "workspaces"),
+		filepath.Join(absolute, "artifacts"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return nil, fmt.Errorf("create artifact store namespace %s: %w", path, err)
+		}
 	}
-	return &Store{root: filepath.Clean(absolute)}, nil
+	return &Store{root: absolute}, nil
 }
 
 func (s *Store) Root() string {
