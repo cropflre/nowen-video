@@ -8,20 +8,21 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
 	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
 	"gorm.io/gorm"
 )
 
 const (
-	startupContinuationPlannerVersion = "startup-continuation-hls-v2"
+	startupContinuationPlannerVersion = "startup-continuation-hls-v3"
 	startupContinuationArtifactKind   = "startup_continuation_hls"
 	startupContinuationPriority       = 95
 )
 
 // StartupStreamDescriptor is the immutable, source-matched startup artifact
 // that may be exposed to playback planning. Filesystem paths and canonical plan
-// JSON are intentionally kept inside the service boundary; API clients receive
-// authenticated URLs plus only safe plan diagnostics.
+// or attestation JSON are intentionally kept inside the service boundary; API
+// clients receive authenticated URLs plus safe identity diagnostics only.
 type StartupStreamDescriptor struct {
 	MediaID             string
 	ProfileID           string
@@ -33,6 +34,11 @@ type StartupStreamDescriptor struct {
 	EncodingPlanVersion string
 	EncodingPlanHash    string
 	EncodingPlanJSON    string
+	AttestationVersion  string
+	AttestationHash     string
+	AttestationJSON     string
+	TimelineStartMS     int64
+	TimelineEndMS       int64
 	Probe               *model.MediaProbeRecord
 }
 
@@ -71,6 +77,9 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 	) {
 		return nil, gorm.ErrRecordNotFound
 	}
+	if _, err := decodeArtifactAttestation(artifact); err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	manifestPath := artifact.ManifestPath
 	if manifestPath == "" && artifact.Path != "" {
 		manifestPath = filepath.Join(artifact.Path, "stream.m3u8")
@@ -96,6 +105,11 @@ func (s *TranscodeService) ResolvePublishedStartupStream(media *model.Media) (*S
 		EncodingPlanVersion: encodingIdentity.Version,
 		EncodingPlanHash:    encodingIdentity.Hash,
 		EncodingPlanJSON:    encodingIdentity.Canonical,
+		AttestationVersion:  artifact.AttestationVersion,
+		AttestationHash:     artifact.AttestationHash,
+		AttestationJSON:     artifact.AttestationJSON,
+		TimelineStartMS:     artifact.TimelineStartMS,
+		TimelineEndMS:       artifact.TimelineEndMS,
 		Probe:               probe,
 	}, nil
 }
@@ -125,6 +139,9 @@ func (s *TranscodeService) SubmitStartupContinuation(
 	}
 	if startup.MediaID != media.ID || startup.ProfileID == "" || startup.SourceFingerprint == "" || startup.Probe == nil {
 		return nil, fmt.Errorf("startup descriptor does not match media")
+	}
+	if _, err := decodeStartupDescriptorAttestation(startup); err != nil {
+		return nil, fmt.Errorf("startup descriptor attestation is invalid: %w", err)
 	}
 	expectedIdentity, err := startupEncodingIdentity(startup.Probe, startup.ProfileID)
 	if err != nil {
@@ -171,9 +188,13 @@ func (s *TranscodeService) SubmitStartupContinuation(
 		startup.EncodingPlanHash,
 		startup.EncodingPlanJSON,
 	) {
-		if artifact.ManifestPath != "" {
-			if _, statErr := os.Stat(artifact.ManifestPath); statErr == nil {
-				return completedCompatibilityTask(media, startup.ProfileID, artifact, startupContinuationPriority), nil
+		if continuationEvidence, evidenceErr := decodeArtifactAttestation(artifact); evidenceErr == nil {
+			if startupEvidence, startupErr := decodeStartupDescriptorAttestation(startup); startupErr == nil && transcodeattestation.BridgeCompatible(startupEvidence, continuationEvidence) == nil {
+				if artifact.ManifestPath != "" {
+					if _, statErr := os.Stat(artifact.ManifestPath); statErr == nil {
+						return completedCompatibilityTask(media, startup.ProfileID, artifact, startupContinuationPriority), nil
+					}
+				}
 			}
 		}
 	}
@@ -300,7 +321,25 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 		time.Now(),
 	)
 	if err != nil {
-		return nil, err
+		if !errorsIsRecordNotFound(err) {
+			return nil, err
+		}
+		artifact, err = s.executionRepo.FindActiveArtifactByEncodingPlanForAttestation(
+			media.ID,
+			startup.ProfileID,
+			startup.SourceFingerprint,
+			startupContinuationPlannerVersion,
+			startupContinuationArtifactKind,
+			startup.EncodingPlanVersion,
+			startup.EncodingPlanHash,
+			time.Now(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.ensureProvisionalArtifactAttestation(artifact); err != nil {
+			return nil, err
+		}
 	}
 	if !sameEncodingPlan(
 		artifact.EncodingPlanVersion,
@@ -312,5 +351,37 @@ func (s *TranscodeService) ResolveReadableStartupContinuation(
 	) {
 		return nil, gorm.ErrRecordNotFound
 	}
+	startupEvidence, err := decodeStartupDescriptorAttestation(startup)
+	if err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	continuationEvidence, err := decodeArtifactAttestation(artifact)
+	if err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if err := transcodeattestation.BridgeCompatible(startupEvidence, continuationEvidence); err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	return artifact, nil
+}
+
+func decodeStartupDescriptorAttestation(startup *StartupStreamDescriptor) (transcodeattestation.Attestation, error) {
+	if startup == nil {
+		return transcodeattestation.Attestation{}, fmt.Errorf("startup descriptor is nil")
+	}
+	return decodeArtifactAttestation(&model.TranscodeArtifactRecord{
+		EncodingPlanVersion: startup.EncodingPlanVersion,
+		EncodingPlanHash:    startup.EncodingPlanHash,
+		EncodingPlanJSON:    startup.EncodingPlanJSON,
+		AttestationVersion:  startup.AttestationVersion,
+		AttestationStatus:   artifactAttestationVerified,
+		AttestationHash:     startup.AttestationHash,
+		AttestationJSON:     startup.AttestationJSON,
+		TimelineStartMS:     startup.TimelineStartMS,
+		TimelineEndMS:       startup.TimelineEndMS,
+	})
+}
+
+func errorsIsRecordNotFound(err error) bool {
+	return err == gorm.ErrRecordNotFound
 }
