@@ -75,19 +75,16 @@ func RunSourceOriginCase(ctx context.Context, config Config, caseID string) (Sou
 		return SourceOriginCaseReport{}, fmt.Errorf("source origin timestamp plan identity: %w", err)
 	}
 
-	sourcePath := filepath.Join(workDir, "source.nut")
-	if err := runCommand(ctx, ffmpegPath, sourceOriginSourceArgs(sourcePath, spec)...); err != nil {
-		return SourceOriginCaseReport{}, fmt.Errorf("generate source origin fixture: %w", err)
-	}
-	sourceVideo, sourceAudio, err := probeSourceOrigin(ctx, ffprobePath, sourcePath)
+	sourceGraph := sourceOriginInputGraph(spec)
+	sourceVideo, sourceAudio, err := probeSourceOrigin(ctx, ffprobePath, sourceGraph)
 	if err != nil {
 		return SourceOriginCaseReport{}, err
 	}
-	startupManifest, err := produceSourceOriginHLS(ctx, ffmpegPath, workDir, "startup", sourcePath, timestampPlan, spec, 0, spec.ExpectedBoundaryMicros)
+	startupManifest, err := produceSourceOriginHLS(ctx, ffmpegPath, workDir, "startup", sourceGraph, timestampPlan, spec, 0, spec.ExpectedBoundaryMicros)
 	if err != nil {
 		return SourceOriginCaseReport{}, err
 	}
-	continuationManifest, err := produceSourceOriginHLS(ctx, ffmpegPath, workDir, "continuation", sourcePath, timestampPlan, spec, spec.ExpectedBoundaryMicros, 0)
+	continuationManifest, err := produceSourceOriginHLS(ctx, ffmpegPath, workDir, "continuation", sourceGraph, timestampPlan, spec, spec.ExpectedBoundaryMicros, 0)
 	if err != nil {
 		return SourceOriginCaseReport{}, err
 	}
