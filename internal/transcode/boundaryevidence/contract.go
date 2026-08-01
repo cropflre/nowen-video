@@ -196,6 +196,12 @@ func (s StreamEvidence) validate(expectedKind string) error {
 	if s.NominalPacketDurationMicros != nominalMicros {
 		return fmt.Errorf("nominal packet duration projection is inconsistent")
 	}
+	if expectedKind == StreamVideo {
+		frameRateMilli, err := FrameRateMilliFromPacketDuration(s.NominalPacketDurationTicks, s.TimeBase)
+		if err != nil || s.FrameRateMilli != frameRateMilli {
+			return fmt.Errorf("video frame rate projection is inconsistent")
+		}
+	}
 	if s.ToleranceMicros != toleranceMicros(nominalMicros) {
 		return fmt.Errorf("boundary tolerance is inconsistent")
 	}
@@ -378,6 +384,21 @@ func TicksToSamples(ticks int64, timeBase string, sampleRate int) (int64, error)
 		return 0, err
 	}
 	return int64(math.Round(float64(ticks) * float64(numerator) * float64(sampleRate) / float64(denominator))), nil
+}
+
+func FrameRateMilliFromPacketDuration(ticks int64, timeBase string) (int, error) {
+	if ticks <= 0 {
+		return 0, fmt.Errorf("packet duration must be positive")
+	}
+	numerator, denominator, err := parseTimeBase(timeBase)
+	if err != nil {
+		return 0, err
+	}
+	value := int(math.Round(float64(denominator) * 1000 / (float64(numerator) * float64(ticks))))
+	if value <= 0 {
+		return 0, fmt.Errorf("packet-derived frame rate is invalid")
+	}
+	return value, nil
 }
 
 func parseTimeBase(value string) (int64, int64, error) {
