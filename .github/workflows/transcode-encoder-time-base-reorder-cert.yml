@@ -21,7 +21,7 @@ on:
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
       - '.github/scripts/verify_encoder_time_base_reorder.py'
-      - '.github/scripts/verify_encoder_time_base_reorder_baseline.py'
+      - '.github/scripts/verify_encoder_time_base_reorder_exact.py'
       - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
   pull_request:
     paths:
@@ -41,7 +41,7 @@ on:
       - 'internal/transcode/timestampplan/**'
       - 'docs/TRANSCODE_ENCODER_TIME_BASE_REORDER.md'
       - '.github/scripts/verify_encoder_time_base_reorder.py'
-      - '.github/scripts/verify_encoder_time_base_reorder_baseline.py'
+      - '.github/scripts/verify_encoder_time_base_reorder_exact.py'
       - '.github/workflows/transcode-encoder-time-base-reorder-cert.yml'
   workflow_dispatch:
 
@@ -83,9 +83,9 @@ jobs:
         run: |
           python3 .github/scripts/verify_encoder_time_base_reorder.py \
             /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
-      - name: Verify FFmpeg 6.1.1 exact reorder baseline
+      - name: Verify FFmpeg 6.1.1 exact semantic baseline
         run: |
-          python3 .github/scripts/verify_encoder_time_base_reorder_baseline.py \
+          python3 .github/scripts/verify_encoder_time_base_reorder_exact.py \
             /tmp/nowen-transcode-encoder-time-base-reorder/encoder-time-base-reorder-matrix-v1.json
       - name: Upload encoder time-base reorder evidence
         if: always()
