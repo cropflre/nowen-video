@@ -183,6 +183,9 @@ func medianPacketDuration(groups ...[]boundaryProbePacketEvidence) int64 {
 func boundarySideDataTotals(packets []transcodeboundary.PacketEvidence) (skipSamples, discardPadding int64, observed bool) {
 	for _, packet := range packets {
 		for _, sideData := range packet.SideData {
+			if !transcodeboundary.IsAudioDelaySideData(sideData) {
+				continue
+			}
 			observed = true
 			skipSamples += sideData.SkipSamples
 			discardPadding += sideData.DiscardPadding
