@@ -7,6 +7,7 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodegovernor "github.com/nowen-video/nowen-video/internal/transcode/governor"
+	transcodeprobe "github.com/nowen-video/nowen-video/internal/transcode/probe"
 )
 
 type TranscodeStatistics struct {
@@ -20,6 +21,7 @@ type TranscodeStatistics struct {
 	QueuePollMS          int64                          `json:"queue_poll_ms"`
 	LeaseDurationSeconds int64                          `json:"lease_duration_seconds"`
 	HWAccel              string                         `json:"hw_accel"`
+	MediaProbe           transcodeprobe.Stats           `json:"media_probe"`
 	DiskUsageBytes       int64                          `json:"disk_usage_bytes"`
 	DiskUsageDir         string                         `json:"disk_usage_dir"`
 	ResourceCapacity     map[transcodegovernor.Kind]int `json:"resource_capacity,omitempty"`
@@ -68,6 +70,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		QueuePollMS:          s.jobs.PollInterval().Milliseconds(),
 		LeaseDurationSeconds: int64(s.leaseDuration / time.Second),
 		HWAccel:              s.hwAccel,
+		MediaProbe:           s.GetMediaProbeStats(),
 		DiskUsageBytes:       s.GetCacheDiskUsage(),
 		DiskUsageDir:         filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
 		ResourceCapacity:     snapshot.Capacity,
