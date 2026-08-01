@@ -13,6 +13,23 @@ import (
 
 const hlsTargetSegmentSeconds = 2
 
+// QualityConfig and qualityPresets remain as source-compatible adapters for
+// legacy stream/on-demand code. Values are derived from the shared profile
+// catalog, so there is still only one hard-coded quality authority.
+type QualityConfig = transcodeprofile.EncodingProfile
+
+var qualityPresets = runtimeQualityPresetMap()
+
+func runtimeQualityPresetMap() map[string]QualityConfig {
+	presets := make(map[string]QualityConfig)
+	for _, name := range transcodeprofile.Names() {
+		if preset, ok := transcodeprofile.Runtime(name); ok {
+			presets[name] = preset
+		}
+	}
+	return presets
+}
+
 func (s *TranscodeService) GetOutputDir(mediaID, quality string) string {
 	return filepath.Join(s.cfg.Cache.CacheDir, "transcode", mediaID, quality)
 }
