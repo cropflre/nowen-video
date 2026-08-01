@@ -17,6 +17,11 @@ type outputCadenceProbeInput struct {
 	Lavfi bool
 }
 
+type outputCadencePoint struct {
+	Ticks  int64
+	Micros int64
+}
+
 func probeOutputCadenceContract(
 	ctx context.Context,
 	ffprobePath,
@@ -35,7 +40,7 @@ func probeOutputCadenceContract(
 	avSyncVersion,
 	avSyncHash string,
 ) (transcodeoutputcadence.Contract, error) {
-	sourceTimeline, sourcePTS, err := probeVideoCadenceTimeline(
+	sourceTimeline, sourcePoints, err := probeVideoCadenceTimeline(
 		ctx,
 		ffprobePath,
 		outputCadenceProbeInput{Path: sourceGraph, Lavfi: true},
@@ -69,49 +74,71 @@ func probeOutputCadenceContract(
 		return transcodeoutputcadence.Contract{}, fmt.Errorf("probe continuation output-cadence timeline: %w", err)
 	}
 
-	startupInputFrames := 0
-	continuationInputFrames := 0
-	for _, ptsMicros := range sourcePTS {
-		relative := ptsMicros - spec.SourceOffsetMicros
+	sourceStartupTicks := make([]int64, 0, len(sourcePoints))
+	sourceContinuationTicks := make([]int64, 0, len(sourcePoints))
+	for _, point := range sourcePoints {
+		relative := point.Micros - spec.SourceOffsetMicros
 		switch {
 		case relative >= 0 && relative < spec.ExpectedBoundaryMicros:
-			startupInputFrames++
+			sourceStartupTicks = append(sourceStartupTicks, point.Ticks)
 		case relative >= spec.ExpectedBoundaryMicros && relative < int64(sourceOriginDurationSeconds)*1_000_000:
-			continuationInputFrames++
+			sourceContinuationTicks = append(sourceContinuationTicks, point.Ticks)
 		}
 	}
-	if startupInputFrames == 0 || continuationInputFrames == 0 {
-		return transcodeoutputcadence.Contract{}, fmt.Errorf("source frame windows are incomplete: startup=%d continuation=%d", startupInputFrames, continuationInputFrames)
+	if len(sourceStartupTicks) < 2 || len(sourceContinuationTicks) < 2 {
+		return transcodeoutputcadence.Contract{}, fmt.Errorf("source cadence windows are incomplete: startup=%d continuation=%d", len(sourceStartupTicks), len(sourceContinuationTicks))
+	}
+	sourceStartupTimeline, err := transcodeoutputcadence.NewTimelineEvidence(
+		transcodeoutputcadence.TimelineSourceStartup,
+		sourceTimeline.TimeBase,
+		spec.SourceOffsetMicros,
+		spec.SourceOffsetMicros+spec.ExpectedBoundaryMicros,
+		sourceStartupTicks,
+	)
+	if err != nil {
+		return transcodeoutputcadence.Contract{}, fmt.Errorf("build source startup cadence: %w", err)
+	}
+	sourceContinuationTimeline, err := transcodeoutputcadence.NewTimelineEvidence(
+		transcodeoutputcadence.TimelineSourceContinuation,
+		sourceTimeline.TimeBase,
+		spec.SourceOffsetMicros+spec.ExpectedBoundaryMicros,
+		spec.SourceOffsetMicros+int64(sourceOriginDurationSeconds)*1_000_000,
+		sourceContinuationTicks,
+	)
+	if err != nil {
+		return transcodeoutputcadence.Contract{}, fmt.Errorf("build source continuation cadence: %w", err)
 	}
 
 	contract := transcodeoutputcadence.Contract{
-		SchemaVersion:                         transcodeoutputcadence.SchemaVersion,
-		CaseID:                               spec.ID,
-		FixtureID:                            spec.FixtureID,
-		SourceMode:                           spec.SourceMode,
-		DeclaredFrameRateNumerator:           spec.DeclaredFrameRateNumerator,
-		DeclaredFrameRateDenominator:         spec.DeclaredFrameRateDenominator,
-		DeclaredFrameRateMilli:               spec.DeclaredFrameRateMilli(),
-		ExpectedBoundaryMicros:               spec.ExpectedBoundaryMicros,
-		ExpectedStartupMaterialVariable:      spec.SourceMode == transcodesourceorigin.ModeVFR,
+		SchemaVersion:                          transcodeoutputcadence.SchemaVersion,
+		CaseID:                                spec.ID,
+		FixtureID:                             spec.FixtureID,
+		SourceMode:                            spec.SourceMode,
+		DeclaredFrameRateNumerator:            spec.DeclaredFrameRateNumerator,
+		DeclaredFrameRateDenominator:          spec.DeclaredFrameRateDenominator,
+		DeclaredFrameRateMilli:                spec.DeclaredFrameRateMilli(),
+		ExpectedBoundaryMicros:                spec.ExpectedBoundaryMicros,
+		ExpectedStartupMaterialVariable:       spec.SourceMode == transcodesourceorigin.ModeVFR,
 		ExpectedContinuationMaterialVariable: false,
-		FFmpegVersion:                        ffmpegVersion,
-		FFprobeVersion:                       ffprobeVersion,
-		SourceOriginVersion:                  sourceOriginVersion,
-		SourceOriginHash:                     sourceOriginHash,
-		TimestampPlanVersion:                 timestampVersion,
-		TimestampPlanHash:                    timestampHash,
-		BoundaryEvidenceVersion:              boundaryVersion,
-		BoundaryEvidenceHash:                 boundaryHash,
-		AVSyncEvidenceVersion:                avSyncVersion,
-		AVSyncEvidenceHash:                   avSyncHash,
-		SourceTimeline:                       sourceTimeline,
-		StartupTimeline:                      startupTimeline,
-		ContinuationTimeline:                 continuationTimeline,
-		StartupMapping:                       transcodeoutputcadence.NewFrameMapping(startupInputFrames, startupTimeline.FrameCount),
-		ContinuationMapping:                  transcodeoutputcadence.NewFrameMapping(continuationInputFrames, continuationTimeline.FrameCount),
-		ContentDuplicateClassification:       transcodeoutputcadence.ContentDuplicateNotMeasured,
-		DiscontinuityRequired:                true,
+		FFmpegVersion:                         ffmpegVersion,
+		FFprobeVersion:                        ffprobeVersion,
+		SourceOriginVersion:                   sourceOriginVersion,
+		SourceOriginHash:                      sourceOriginHash,
+		TimestampPlanVersion:                  timestampVersion,
+		TimestampPlanHash:                     timestampHash,
+		BoundaryEvidenceVersion:               boundaryVersion,
+		BoundaryEvidenceHash:                  boundaryHash,
+		AVSyncEvidenceVersion:                 avSyncVersion,
+		AVSyncEvidenceHash:                    avSyncHash,
+		SourceTimeline:                        sourceTimeline,
+		SourceStartupTimeline:                 sourceStartupTimeline,
+		SourceContinuationTimeline:            sourceContinuationTimeline,
+		StartupTimeline:                       startupTimeline,
+		ContinuationTimeline:                  continuationTimeline,
+		StartupMapping:                        transcodeoutputcadence.NewFrameMapping(sourceStartupTimeline.FrameCount, startupTimeline.FrameCount),
+		ContinuationMapping:                   transcodeoutputcadence.NewFrameMapping(sourceContinuationTimeline.FrameCount, continuationTimeline.FrameCount),
+		ContentDuplicateClassification:        transcodeoutputcadence.ContentDuplicateNotMeasured,
+		DiscontinuityRequired:                 true,
 	}
 	contract.PreservationStatus = transcodeoutputcadence.PreservationFor(contract)
 	if err := contract.Validate(); err != nil {
@@ -127,7 +154,7 @@ func probeVideoCadenceTimeline(
 	kind string,
 	windowStartMicros,
 	windowEndMicros int64,
-) (transcodeoutputcadence.TimelineEvidence, []int64, error) {
+) (transcodeoutputcadence.TimelineEvidence, []outputCadencePoint, error) {
 	args := []string{"-v", "error"}
 	if input.Lavfi {
 		args = append(args, "-f", "lavfi")
@@ -153,7 +180,7 @@ func probeVideoCadenceTimeline(
 		return transcodeoutputcadence.TimelineEvidence{}, nil, fmt.Errorf("cadence probe has no video stream")
 	}
 	ptsTicks := make([]int64, 0, len(document.Packets))
-	ptsMicros := make([]int64, 0, len(document.Packets))
+	points := make([]outputCadencePoint, 0, len(document.Packets))
 	for _, packet := range document.Packets {
 		if packet.StreamIndex != stream.Index {
 			continue
@@ -167,7 +194,7 @@ func probeVideoCadenceTimeline(
 			return transcodeoutputcadence.TimelineEvidence{}, nil, err
 		}
 		ptsTicks = append(ptsTicks, pts)
-		ptsMicros = append(ptsMicros, micros)
+		points = append(points, outputCadencePoint{Ticks: pts, Micros: micros})
 	}
 	evidence, err := transcodeoutputcadence.NewTimelineEvidence(
 		kind,
@@ -179,5 +206,5 @@ func probeVideoCadenceTimeline(
 	if err != nil {
 		return transcodeoutputcadence.TimelineEvidence{}, nil, err
 	}
-	return evidence, ptsMicros, nil
+	return evidence, points, nil
 }
