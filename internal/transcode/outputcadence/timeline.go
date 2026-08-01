@@ -59,6 +59,7 @@ func NewTimelineEvidence(
 	dominantMicros := int64(0)
 	dominantCount := 0
 	positiveDeltaCount := 0
+	nearZeroCount := 0
 	for _, ticks := range deltaTicks {
 		micros, err := transcodeboundary.TicksToMicros(ticks, timeBase)
 		if err != nil {
@@ -67,6 +68,9 @@ func NewTimelineEvidence(
 		count := counts[ticks]
 		histogram = append(histogram, DeltaBucket{DeltaTicks: ticks, DeltaMicros: micros, Count: count})
 		positiveDeltaCount += count
+		if micros < NearZeroDeltaThresholdMicros {
+			nearZeroCount += count
+		}
 		if count > dominantCount || (count == dominantCount && (dominantTicks == 0 || ticks < dominantTicks)) {
 			dominantTicks = ticks
 			dominantMicros = micros
@@ -115,6 +119,7 @@ func NewTimelineEvidence(
 		SignificantBucketMinimumCount: threshold,
 		SignificantDeltaCount: significantCount,
 		OutlierDeltaCount: outlierCount,
+		NearZeroDeltaCount: nearZeroCount,
 		DominantDeltaTicks: dominantTicks,
 		DominantDeltaMicros: dominantMicros,
 		DominantDeltaCount: dominantCount,
