@@ -49,6 +49,12 @@ func (s *TranscodeService) leaseHeartbeatLoop(job *TranscodeJob) {
 				continue
 			}
 			if !renewed {
+				s.abandonJobArtifacts(
+					job,
+					"lease_lost",
+					"Worker failed to renew the current Job Lease",
+					now,
+				)
 				s.logger.Warnf("转码 Lease 已失效，终止旧 Worker job=%s worker=%s", job.ExecutionJob.ID, job.workerID)
 				job.RequestCancel()
 				return
@@ -78,6 +84,7 @@ func (s *TranscodeService) recoverPendingTasks() {
 					continue
 				}
 				if completed {
+					s.abandonAttemptArtifacts(job.CurrentAttemptID, "queued_cancelled", "Queued Job was cancelled during startup recovery", now)
 					s.updateRecoveredLegacyTask(job, "cancelled", "", now)
 					recovered++
 				}
@@ -93,6 +100,7 @@ func (s *TranscodeService) recoverPendingTasks() {
 						s.logger.Warnf("确认无租约取消 Job 失败 job=%s: %v", job.ID, completeErr)
 						continue
 					}
+					s.abandonAttemptArtifacts(job.CurrentAttemptID, "cancelled_without_lease", "Cancelled Job had no valid Lease during startup recovery", now)
 					s.updateRecoveredLegacyTask(job, "cancelled", "", now)
 					recovered++
 					continue
@@ -112,6 +120,7 @@ func (s *TranscodeService) recoverPendingTasks() {
 					continue
 				}
 				if requeued {
+					s.abandonAttemptArtifacts(job.CurrentAttemptID, "unleased_requeue", "Job was requeued without a valid Lease during startup recovery", now)
 					s.updateRecoveredLegacyTask(job, "queued", "", now)
 					queued++
 				}
@@ -126,6 +135,7 @@ func (s *TranscodeService) recoverPendingTasks() {
 				s.logger.Warnf("回收未知状态 Job 失败 job=%s status=%s: %v", job.ID, job.Status, err)
 				continue
 			}
+			s.abandonAttemptArtifacts(job.CurrentAttemptID, "unknown_job_state", "Job had an unknown state during startup recovery", now)
 			s.updateRecoveredLegacyTask(job, "failed", "服务重启时发现未知执行状态", now)
 			recovered++
 		}
@@ -191,6 +201,7 @@ func (s *TranscodeService) recoverExpiredLease(job *model.TranscodeJobRecord, no
 		if !completed {
 			return false
 		}
+		s.abandonAttemptArtifacts(job.CurrentAttemptID, "lease_expired_cancelled", "Cancelled Job Lease expired", now)
 		s.updateRecoveredLegacyTask(job, "cancelled", "", now)
 		s.logger.Warnf("已确认过期取消 Job job=%s worker=%s", job.ID, job.WorkerID)
 		return true
@@ -204,6 +215,7 @@ func (s *TranscodeService) recoverExpiredLease(job *model.TranscodeJobRecord, no
 	if !requeued {
 		return false
 	}
+	s.abandonAttemptArtifacts(job.CurrentAttemptID, "lease_expired_requeue", "Job Lease expired and work was requeued", now)
 	s.updateRecoveredLegacyTask(job, "queued", "", now)
 	s.jobs.Notify()
 	s.logger.Warnf("Worker Lease 已过期，任务重新排队 job=%s worker=%s", job.ID, job.WorkerID)
