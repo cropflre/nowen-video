@@ -129,7 +129,6 @@ type Contract struct {
 	RepeatCount                   int            `json:"repeat_count"`
 	VarianceToleranceMicros       int64          `json:"variance_tolerance_micros"`
 	CrossCandidateToleranceMicros int64          `json:"cross_candidate_tolerance_micros"`
-	BoundaryFrameTolerance        int            `json:"boundary_frame_tolerance"`
 	Cases                         []CaseEvidence `json:"cases"`
 	SeamlessAllowed               bool           `json:"seamless_allowed"`
 	DiscontinuityRequired         bool           `json:"discontinuity_required"`
