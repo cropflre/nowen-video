@@ -1,6 +1,7 @@
 package certification
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestShapingContinuationCommandUsesMicrosecondPTSOffsets(t *testing.T) {
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"-copyts -start_at_zero -ss 30.00",
-		"-vf scale=640:360,setpts=PTS+0.033333/TB",
+		fmt.Sprintf("-vf scale=%d:%d,setpts=PTS+0.033333/TB", fixtureWidth, fixtureHeight),
 		"-af asetpts=PTS+0.064000/TB",
 	} {
 		if !strings.Contains(joined, want) {
