@@ -64,7 +64,11 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 			summary.SequenceStable = summary.SequenceStable && run.StartupFingerprint.SequenceSHA256 == startupSequence && run.ContinuationFingerprint.SequenceSHA256 == continuationSequence
 			summary.CadenceStable = summary.CadenceStable && startupSig == startupTimelineSignature && continuationSig == continuationTimelineSignature
 		}
-		if !runPreserved(run, run.StartupTimeline, run.ContinuationTimeline) {
+		if run.StartupMapping.Status != transcodeoutputcadence.MappingAligned || run.ContinuationMapping.Status != transcodeoutputcadence.MappingAligned ||
+			run.StartupTimeline.NearZeroDeltaCount != 0 || run.ContinuationTimeline.NearZeroDeltaCount != 0 ||
+			run.StartupTimeline.DuplicatePTSCount != 0 || run.ContinuationTimeline.DuplicatePTSCount != 0 ||
+			run.StartupTimeline.NonMonotonicPTSCount != 0 || run.ContinuationTimeline.NonMonotonicPTSCount != 0 ||
+			run.StartupFingerprint.AdjacentDuplicateCount != 0 || run.ContinuationFingerprint.AdjacentDuplicateCount != 0 {
 			summary.AllPreserved = false
 		}
 	}
@@ -135,13 +139,44 @@ func BuildCandidateComparison(a, b CandidateEvidence) CandidateComparison {
 }
 
 func runPreserved(r RunEvidence, sourceStartup, sourceContinuation transcodeoutputcadence.TimelineEvidence) bool {
-	return transcodevfrisolation.CadenceClassification(sourceStartup, r.StartupTimeline, r.StartupMapping) == transcodevfrisolation.ClassificationPreserved &&
-		transcodevfrisolation.CadenceClassification(sourceContinuation, r.ContinuationTimeline, r.ContinuationMapping) == transcodevfrisolation.ClassificationPreserved &&
+	return candidateCadencePreserved(sourceStartup, r.StartupTimeline) &&
+		candidateCadencePreserved(sourceContinuation, r.ContinuationTimeline) &&
 		r.StartupMapping.Status == transcodeoutputcadence.MappingAligned && r.ContinuationMapping.Status == transcodeoutputcadence.MappingAligned &&
 		r.StartupTimeline.NearZeroDeltaCount == 0 && r.ContinuationTimeline.NearZeroDeltaCount == 0 &&
 		r.StartupTimeline.DuplicatePTSCount == 0 && r.ContinuationTimeline.DuplicatePTSCount == 0 &&
 		r.StartupTimeline.NonMonotonicPTSCount == 0 && r.ContinuationTimeline.NonMonotonicPTSCount == 0 &&
 		r.StartupFingerprint.AdjacentDuplicateCount == 0 && r.ContinuationFingerprint.AdjacentDuplicateCount == 0
+}
+
+func candidateCadencePreserved(source, output transcodeoutputcadence.TimelineEvidence) bool {
+	if source.MaterialVariableDuration != output.MaterialVariableDuration {
+		return false
+	}
+	if !source.MaterialVariableDuration {
+		return abs64(source.DominantDeltaMicros-output.DominantDeltaMicros) <= transcodeoutputcadence.CadenceDeltaToleranceMicros
+	}
+	sourceMin, sourceMax, sourceOK := significantCadenceBounds(source)
+	outputMin, outputMax, outputOK := significantCadenceBounds(output)
+	return sourceOK && outputOK &&
+		abs64(sourceMin-outputMin) <= transcodeoutputcadence.CadenceDeltaToleranceMicros &&
+		abs64(sourceMax-outputMax) <= transcodeoutputcadence.CadenceDeltaToleranceMicros
+}
+
+func significantCadenceBounds(t transcodeoutputcadence.TimelineEvidence) (int64, int64, bool) {
+	minimum := int64(0)
+	maximum := int64(0)
+	found := false
+	for _, bucket := range t.DeltaHistogram {
+		if bucket.Count < t.SignificantBucketMinimumCount {
+			continue
+		}
+		if !found {
+			minimum = bucket.DeltaMicros
+		}
+		maximum = bucket.DeltaMicros
+		found = true
+	}
+	return minimum, maximum, found
 }
 
 func validateFingerprint(f transcodevfrisolation.FrameFingerprint, frameCount int) error {
