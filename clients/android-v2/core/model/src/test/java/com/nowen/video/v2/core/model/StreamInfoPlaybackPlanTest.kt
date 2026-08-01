@@ -50,6 +50,8 @@ class StreamInfoPlaybackPlanTest {
                     playlistUrl = bridge,
                     continuationMode = "event_bridge_v1",
                     discontinuityAtHandoff = true,
+                    encodingPlanVersion = "hls-encoding-plan-v1",
+                    encodingPlanHash = "encoding-plan-hash",
                 ),
             ),
         )
@@ -59,6 +61,8 @@ class StreamInfoPlaybackPlanTest {
         assertEquals("startup_stream", stream.playbackMethod)
         assertEquals("启动流秒开", stream.playbackMethodLabel)
         assertTrue(stream.playbackPlan?.startupStream?.discontinuityAtHandoff == true)
+        assertEquals("hls-encoding-plan-v1", stream.playbackPlan?.startupStream?.encodingPlanVersion)
+        assertEquals("encoding-plan-hash", stream.playbackPlan?.startupStream?.encodingPlanHash)
     }
 
     @Test
