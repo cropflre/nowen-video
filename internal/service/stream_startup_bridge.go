@@ -17,12 +17,14 @@ const startupBridgeSegmentPrefix = "startup__"
 const startupContinuationSegmentPrefix = "continuation__"
 
 // StartupBridgeInfo is safe for API responses. It intentionally excludes
-// artifact filesystem paths and internal Job identifiers.
+// artifact filesystem paths, canonical plan JSON and internal Job identifiers.
 type StartupBridgeInfo struct {
-	Available   bool   `json:"available"`
-	ProfileID   string `json:"profile_id,omitempty"`
-	DurationMS  int64  `json:"duration_ms,omitempty"`
-	PlaylistURL string `json:"playlist_url,omitempty"`
+	Available           bool   `json:"available"`
+	ProfileID           string `json:"profile_id,omitempty"`
+	DurationMS          int64  `json:"duration_ms,omitempty"`
+	PlaylistURL         string `json:"playlist_url,omitempty"`
+	EncodingPlanVersion string `json:"encoding_plan_version,omitempty"`
+	EncodingPlanHash    string `json:"encoding_plan_hash,omitempty"`
 }
 
 type StartupBridgeFile struct {
@@ -57,10 +59,12 @@ func (s *StreamService) GetStartupBridgeInfo(mediaID string) (*StartupBridgeInfo
 		return nil, err
 	}
 	return &StartupBridgeInfo{
-		Available:   true,
-		ProfileID:   startup.ProfileID,
-		DurationMS:  startup.DurationMS,
-		PlaylistURL: startupBridgePlaylistURL(media.ID, startup.ProfileID),
+		Available:           true,
+		ProfileID:           startup.ProfileID,
+		DurationMS:          startup.DurationMS,
+		PlaylistURL:         startupBridgePlaylistURL(media.ID, startup.ProfileID),
+		EncodingPlanVersion: startup.EncodingPlanVersion,
+		EncodingPlanHash:    startup.EncodingPlanHash,
 	}, nil
 }
 
