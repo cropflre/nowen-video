@@ -189,7 +189,7 @@ func (h *recoveryHarness) prepareAttempt(job *model.TranscodeJobRecord, ordinal 
 	if err != nil {
 		return nil, err
 	}
-	args = insertIsolationBeforeOutput(args, "-progress", "pipe:2", "-nostats")
+	args = insertRecoveryArgsBeforeOutput(args, "-progress", "pipe:2", "-nostats")
 	commandJSON, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -221,4 +221,15 @@ func (h *recoveryHarness) prepareAttempt(job *model.TranscodeJobRecord, ordinal 
 	}
 	h.transition("running", "running", ordinal, ordinal, "staging", fmt.Sprintf("Attempt %d owns isolated workspace", ordinal))
 	return &recoveryAttempt{Ordinal: ordinal, Record: attempt, Artifact: artifact, Workspace: workspace, Args: args}, nil
+}
+
+func insertRecoveryArgsBeforeOutput(args []string, extras ...string) []string {
+	if len(args) == 0 {
+		return append([]string(nil), extras...)
+	}
+	result := make([]string, 0, len(args)+len(extras))
+	result = append(result, args[:len(args)-1]...)
+	result = append(result, extras...)
+	result = append(result, args[len(args)-1])
+	return result
 }

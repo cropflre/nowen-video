@@ -66,10 +66,25 @@ func RunRecoveryStressScenario(ctx context.Context, config RecoveryStressConfig,
 	if !ok {
 		return RecoveryStressScenarioReport{}, fmt.Errorf("recovery stress profile %s is unavailable", recoveryStressProfileID)
 	}
-	caseSpec, asset, ok := longDurationProfileSource(spec, manifest, profile.SourceCaseID)
-	if !ok {
+	caseIndex := -1
+	for index := range spec.Cases {
+		if spec.Cases[index].ID == profile.SourceCaseID {
+			caseIndex = index
+			break
+		}
+	}
+	assetIndex := -1
+	for index := range manifest.Assets {
+		if manifest.Assets[index].CaseID == profile.SourceCaseID {
+			assetIndex = index
+			break
+		}
+	}
+	if caseIndex < 0 || assetIndex < 0 {
 		return RecoveryStressScenarioReport{}, fmt.Errorf("recovery stress source %s is missing", profile.SourceCaseID)
 	}
+	caseSpec := spec.Cases[caseIndex]
+	asset := manifest.Assets[assetIndex]
 	reorderSpec, err := transcodecandidate.CaseSpecFor(caseSpec, asset)
 	if err != nil {
 		return RecoveryStressScenarioReport{}, err
@@ -78,11 +93,11 @@ func RunRecoveryStressScenario(ctx context.Context, config RecoveryStressConfig,
 	if !ok {
 		return RecoveryStressScenarioReport{}, fmt.Errorf("canonical AVTB candidate is unavailable")
 	}
-	ffmpegPath, err := resolveExecutable(config.FFmpegPath, "ffmpeg")
+	ffmpegPath, err := resolveExecutable(config.Config.FFmpegPath, "ffmpeg")
 	if err != nil {
 		return RecoveryStressScenarioReport{}, err
 	}
-	ffprobePath, err := resolveExecutable(config.FFprobePath, "ffprobe")
+	ffprobePath, err := resolveExecutable(config.Config.FFprobePath, "ffprobe")
 	if err != nil {
 		return RecoveryStressScenarioReport{}, err
 	}
