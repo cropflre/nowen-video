@@ -67,11 +67,19 @@ func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {
 }
 
 func BuildCandidateComparison(a, b CandidateEvidence) CandidateComparison {
+	return buildCandidateComparison(a, b, 0)
+}
+
+func BuildCandidateComparisonWithPacketTolerance(a, b CandidateEvidence, toleranceTicks int64) CandidateComparison {
+	return buildCandidateComparison(a, b, toleranceTicks)
+}
+
+func buildCandidateComparison(a, b CandidateEvidence, toleranceTicks int64) CandidateComparison {
 	leftBase := baseCandidate(a)
 	rightBase := baseCandidate(b)
 	comparison := CandidateComparison{Base: transcodetimebase.BuildCandidateComparison(leftBase, rightBase)}
 	comparison.SemanticBaseEquivalent = comparison.Base.FrameMappingEquivalent && comparison.Base.CadenceEquivalent && comparison.Base.AVSyncWithinTolerance
-	if len(a.Runs) != RepeatCount || len(b.Runs) != RepeatCount {
+	if toleranceTicks < 0 || len(a.Runs) != RepeatCount || len(b.Runs) != RepeatCount {
 		return comparison
 	}
 	comparison.StartupPacketOrderEquivalent = true
@@ -80,9 +88,9 @@ func BuildCandidateComparison(a, b CandidateEvidence) CandidateComparison {
 	comparison.ContinuationPerceptualComparison = BuildPerceptualFrameComparison(a.Runs[0].ContinuationPerceptualSequence, b.Runs[0].ContinuationPerceptualSequence)
 	for index := range a.Runs {
 		comparison.StartupPacketOrderEquivalent = comparison.StartupPacketOrderEquivalent &&
-			PacketOrderSignature(a.Runs[index].StartupPacketOrder) == PacketOrderSignature(b.Runs[index].StartupPacketOrder)
+			PacketOrderEquivalentWithinTicks(a.Runs[index].StartupPacketOrder, b.Runs[index].StartupPacketOrder, toleranceTicks)
 		comparison.ContinuationPacketOrderEquivalent = comparison.ContinuationPacketOrderEquivalent &&
-			PacketOrderSignature(a.Runs[index].ContinuationPacketOrder) == PacketOrderSignature(b.Runs[index].ContinuationPacketOrder)
+			PacketOrderEquivalentWithinTicks(a.Runs[index].ContinuationPacketOrder, b.Runs[index].ContinuationPacketOrder, toleranceTicks)
 		comparison.StartupPerceptualComparison.Equivalent = comparison.StartupPerceptualComparison.Equivalent &&
 			BuildPerceptualFrameComparison(a.Runs[index].StartupPerceptualSequence, b.Runs[index].StartupPerceptualSequence) == comparison.StartupPerceptualComparison
 		comparison.ContinuationPerceptualComparison.Equivalent = comparison.ContinuationPerceptualComparison.Equivalent &&
