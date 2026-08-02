@@ -28,14 +28,11 @@ func BuildCaseEvidence(index int, caseSpec transcodecorpus.CaseSpec, asset trans
 		return CaseEvidence{}, err
 	}
 	base := BaseEvidence(evidence)
-	if err := base.Validate(); err != nil {
-		return CaseEvidence{}, err
-	}
-	assetHash, err := canonicalHash(asset)
+	baseVersion, baseHash, _, err := transcodetimebase.SemanticCaseIdentity(base)
 	if err != nil {
 		return CaseEvidence{}, err
 	}
-	baseHash, err := canonicalHash(base)
+	assetHash, err := canonicalHash(asset)
 	if err != nil {
 		return CaseEvidence{}, err
 	}
@@ -62,7 +59,7 @@ func BuildCaseEvidence(index int, caseSpec transcodecorpus.CaseSpec, asset trans
 			Hash:    boundary.TimestampPlanHash,
 		},
 		TimeBaseCandidate: EvidenceIdentity{
-			Version: transcodetimebase.SchemaVersion,
+			Version: baseVersion,
 			Hash:    baseHash,
 		},
 		ReorderCandidate: EvidenceIdentity{
