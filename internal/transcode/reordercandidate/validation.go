@@ -28,6 +28,17 @@ func (c Contract) Validate() error {
 }
 
 func (c CaseEvidence) Validate() error {
+	return c.validateWithPacketTolerance(0)
+}
+
+func (c CaseEvidence) ValidateWithPacketTolerance(toleranceTicks int64) error {
+	return c.validateWithPacketTolerance(toleranceTicks)
+}
+
+func (c CaseEvidence) validateWithPacketTolerance(toleranceTicks int64) error {
+	if toleranceTicks < 0 {
+		return fmt.Errorf("packet-order comparison tolerance cannot be negative")
+	}
 	if err := c.Case.Validate(); err != nil {
 		return err
 	}
@@ -52,7 +63,7 @@ func (c CaseEvidence) Validate() error {
 			return err
 		}
 	}
-	want := BuildCandidateComparison(c.Candidates[0], c.Candidates[1])
+	want := BuildCandidateComparisonWithPacketTolerance(c.Candidates[0], c.Candidates[1], toleranceTicks)
 	if c.Comparison != want {
 		return fmt.Errorf("reorder candidate comparison is inconsistent")
 	}
@@ -96,7 +107,7 @@ func (r RunEvidence) Validate(caseSpec CaseSpec, candidate transcodetimebase.Can
 		return fmt.Errorf("base candidate evidence: %w", err)
 	}
 	for window, evidence := range map[string]PacketOrderEvidence{
-		"startup": r.StartupPacketOrder,
+		"startup":      r.StartupPacketOrder,
 		"continuation": r.ContinuationPacketOrder,
 	} {
 		if evidence.Kind != PacketKind(caseSpec.Base.ID, candidate.ID, ordinal, window) {
