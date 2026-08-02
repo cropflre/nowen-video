@@ -43,8 +43,13 @@ jobs:
         run: |
           go test ./internal/transcode/realmediacorpus
           go test ./internal/transcode/corpusgenerator
+          go test ./internal/transcode/timebasecandidate
+          go test ./internal/transcode/reordercandidate
           go test ./internal/transcode/realmediacandidate
           go test ./internal/transcode/certification
+          python3 -m py_compile \
+            .github/scripts/verify_real_media_candidate.py \
+            .github/scripts/verify_real_media_packet_tolerance.py
       - name: Build corpus and candidate commands
         run: |
           go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
