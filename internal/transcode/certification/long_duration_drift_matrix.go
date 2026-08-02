@@ -2,11 +2,8 @@ package certification
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"path/filepath"
 
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
@@ -14,6 +11,7 @@ import (
 	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
 	transcodeencoding "github.com/nowen-video/nowen-video/internal/transcode/encodingplan"
 	transcodelongdrift "github.com/nowen-video/nowen-video/internal/transcode/longdrift"
+	transcodereorder "github.com/nowen-video/nowen-video/internal/transcode/reordercandidate"
 	transcodetimebase "github.com/nowen-video/nowen-video/internal/transcode/timebasecandidate"
 	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
 )
@@ -40,8 +38,8 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		ctx = context.Background()
 	}
 	root, spec, manifest, manifestVersion, manifestHash, err := loadRealMediaCorpus(RealMediaCandidateConfig{
-		Config: config.Config,
-		CorpusRoot: config.CorpusRoot,
+		Config:       config.Config,
+		CorpusRoot:   config.CorpusRoot,
 		ManifestPath: config.ManifestPath,
 	})
 	if err != nil {
@@ -78,10 +76,6 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		return LongDurationDriftMatrixReport{}, err
 	}
 	timestampPlan := transcodetimestamp.Default()
-	timestampVersion, timestampHash, _, err := transcodetimestamp.Identity(timestampPlan)
-	if err != nil {
-		return LongDurationDriftMatrixReport{}, err
-	}
 	candidateEvidence := make([]transcodelongdrift.CandidateEvidence, 0, 2)
 	for _, candidateSpec := range AvailableEncoderTimeBaseCandidates() {
 		runs := make([]transcodelongdrift.RunEvidence, 0, transcodelongdrift.RepeatCount)
@@ -95,8 +89,6 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 				workDir,
 				sourcePath,
 				timestampPlan,
-				timestampVersion,
-				timestampHash,
 				reorderSpec,
 				candidateSpec,
 				ordinal,
@@ -107,10 +99,10 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 			runs = append(runs, run)
 		}
 		candidate := transcodelongdrift.CandidateEvidence{
-			ID: candidateSpec.ID,
+			ID:              candidateSpec.ID,
 			EncoderTimeBase: candidateSpec.EncoderTimeBase,
-			Runs: runs,
-			Summary: transcodelongdrift.BuildCandidateSummary(runs),
+			Runs:            runs,
+			Summary:         transcodelongdrift.BuildCandidateSummary(runs),
 		}
 		if err := candidate.Validate(); err != nil {
 			return LongDurationDriftMatrixReport{}, err
@@ -126,47 +118,47 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		return LongDurationDriftMatrixReport{}, err
 	}
 	contract := transcodelongdrift.Contract{
-		SchemaVersion: transcodelongdrift.SchemaVersion,
-		SpecVersion: specVersion,
-		SpecHash: specHash,
-		ManifestVersion: manifestVersion,
-		ManifestHash: manifestHash,
-		SourceGeneratorVersion: manifest.GeneratorVersion,
-		SourceFFmpegVersion: manifest.FFmpegVersion,
-		SourceFFprobeVersion: manifest.FFprobeVersion,
-		CertificationFFmpegVersion: ffmpegVersion,
-		CertificationFFprobeVersion: ffprobeVersion,
+		SchemaVersion:                 transcodelongdrift.SchemaVersion,
+		SpecVersion:                   specVersion,
+		SpecHash:                      specHash,
+		ManifestVersion:               manifestVersion,
+		ManifestHash:                  manifestHash,
+		SourceGeneratorVersion:        manifest.GeneratorVersion,
+		SourceFFmpegVersion:           manifest.FFmpegVersion,
+		SourceFFprobeVersion:          manifest.FFprobeVersion,
+		CertificationFFmpegVersion:    ffmpegVersion,
+		CertificationFFprobeVersion:   ffprobeVersion,
 		Source: transcodelongdrift.SourceIdentity{
-			CaseID: asset.CaseID,
-			RelativePath: asset.RelativePath,
-			SHA256: asset.SHA256,
-			SizeBytes: asset.SizeBytes,
+			CaseID:            asset.CaseID,
+			RelativePath:      asset.RelativePath,
+			SHA256:            asset.SHA256,
+			SizeBytes:         asset.SizeBytes,
 			AssetEvidenceHash: assetHash,
 		},
-		DurationMicros: transcodelongdrift.DurationMicros,
-		CheckpointIntervalMicros: transcodelongdrift.CheckpointMicros,
-		RepeatCount: transcodelongdrift.RepeatCount,
-		StartToleranceMicros: transcodelongdrift.StartToleranceMicros,
-		EndToleranceMicros: transcodelongdrift.EndToleranceMicros,
-		CheckpointToleranceMicros: transcodelongdrift.CheckpointToleranceMicros,
-		AVSkewToleranceMicros: transcodelongdrift.AVSkewToleranceMicros,
+		DurationMicros:                transcodelongdrift.DurationMicros,
+		CheckpointIntervalMicros:      transcodelongdrift.CheckpointMicros,
+		RepeatCount:                   transcodelongdrift.RepeatCount,
+		StartToleranceMicros:          transcodelongdrift.StartToleranceMicros,
+		EndToleranceMicros:            transcodelongdrift.EndToleranceMicros,
+		CheckpointToleranceMicros:     transcodelongdrift.CheckpointToleranceMicros,
+		AVSkewToleranceMicros:         transcodelongdrift.AVSkewToleranceMicros,
 		RepeatVarianceToleranceMicros: transcodelongdrift.RepeatVarianceToleranceMicros,
 		CrossCandidateToleranceMicros: transcodelongdrift.CrossCandidateToleranceMicros,
-		Candidates: candidateEvidence,
-		Comparison: transcodelongdrift.BuildCandidateComparison(candidateEvidence[0], candidateEvidence[1]),
-		DiscontinuityRequired: true,
+		Candidates:                    candidateEvidence,
+		Comparison:                    transcodelongdrift.BuildCandidateComparison(candidateEvidence[0], candidateEvidence[1]),
+		DiscontinuityRequired:         true,
 	}
 	version, hash, _, err := transcodelongdrift.Identity(contract, spec, manifest)
 	if err != nil {
 		return LongDurationDriftMatrixReport{}, err
 	}
 	report := LongDurationDriftMatrixReport{
-		SchemaVersion: LongDurationDriftMatrixSchemaVersion,
-		Spec: spec,
-		Manifest: manifest,
+		SchemaVersion:   LongDurationDriftMatrixSchemaVersion,
+		Spec:            spec,
+		Manifest:        manifest,
 		ContractVersion: version,
-		ContractHash: hash,
-		Evidence: contract,
+		ContractHash:    hash,
+		Evidence:        contract,
 	}
 	if err := report.Validate(); err != nil {
 		return LongDurationDriftMatrixReport{}, err
@@ -182,29 +174,15 @@ func runLongDurationDriftCandidate(
 	workDir,
 	sourcePath string,
 	timestampPlan transcodetimestamp.Plan,
-	timestampVersion,
-	timestampHash string,
-	caseSpec interface{ Validate() error },
+	caseSpec transcodereorder.CaseSpec,
 	candidateSpec transcodetimebase.CandidateSpec,
 	ordinal int,
 ) (transcodelongdrift.RunEvidence, error) {
-	reorderSpec, ok := caseSpec.(interface {
-		Validate() error
-	})
-	if !ok || reorderSpec == nil {
-		return transcodelongdrift.RunEvidence{}, fmt.Errorf("long-duration reorder case is invalid")
-	}
-	_ = timestampVersion
-	_ = timestampHash
-	concrete, ok := any(caseSpec).(transcodeReorderCaseSpec)
-	if !ok {
-		return transcodelongdrift.RunEvidence{}, fmt.Errorf("long-duration reorder case type is invalid")
-	}
-	produced, err := produceLongDurationDriftCandidate(ctx, ffmpegPath, runDir, sourcePath, timestampPlan, concrete.value, candidateSpec)
+	produced, err := produceLongDurationDriftCandidate(ctx, ffmpegPath, runDir, sourcePath, timestampPlan, caseSpec, candidateSpec)
 	if err != nil {
 		return transcodelongdrift.RunEvidence{}, err
 	}
-	productionSpec := realMediaSourceOriginSpec(concrete.value)
+	productionSpec := realMediaSourceOriginSpec(caseSpec)
 	encodingPlan := encoderTimeBaseEncodingPlan(productionSpec, candidateSpec)
 	encodingPlan.ProfileID = "long-duration-drift-180p-" + candidateSpec.ID
 	encodingVersion, encodingHash, encodingJSON, err := transcodeencoding.Identity(encodingPlan)
@@ -212,11 +190,11 @@ func runLongDurationDriftCandidate(
 		return transcodelongdrift.RunEvidence{}, err
 	}
 	attestation, err := (transcodeattestation.Verifier{FFprobePath: ffprobePath}).Verify(ctx, transcodeattestation.VerifyRequest{
-		ManifestPath: produced.Manifest,
+		ManifestPath:        produced.Manifest,
 		EncodingPlanVersion: encodingVersion,
-		EncodingPlanHash: encodingHash,
-		EncodingPlanJSON: encodingJSON,
-		Scope: transcodeattestation.ScopeComplete,
+		EncodingPlanHash:    encodingHash,
+		EncodingPlanJSON:    encodingJSON,
+		Scope:               transcodeattestation.ScopeComplete,
 	})
 	if err != nil {
 		return transcodelongdrift.RunEvidence{}, fmt.Errorf("verify long-duration output: %w", err)
@@ -241,29 +219,21 @@ func runLongDurationDriftCandidate(
 		return transcodelongdrift.RunEvidence{}, err
 	}
 	run := transcodelongdrift.RunEvidence{
-		Ordinal: ordinal,
-		CommandHash: hashRealMediaArgs(produced.Args, workDir, sourcePath),
-		ManifestSHA256: manifestHash,
+		Ordinal:            ordinal,
+		CommandHash:        hashRealMediaArgs(produced.Args, workDir, sourcePath),
+		ManifestSHA256:     manifestHash,
 		AttestationVersion: attestationVersion,
-		AttestationHash: attestationHash,
-		SegmentCount: attestation.SegmentCount,
-		Video: video,
-		Audio: audio,
-		FinalAVSkewMicros: video.EndMicros-audio.EndMicros,
+		AttestationHash:    attestationHash,
+		SegmentCount:       attestation.SegmentCount,
+		Video:              video,
+		Audio:              audio,
+		FinalAVSkewMicros:  video.EndMicros - audio.EndMicros,
 	}
 	if err := run.Validate(ordinal); err != nil {
 		return transcodelongdrift.RunEvidence{}, err
 	}
 	return run, nil
 }
-
-// transcodeReorderCaseSpec is a narrow local wrapper used to keep the runner's
-// public surface independent from the synthetic candidate registry.
-type transcodeReorderCaseSpec struct {
-	value interfaceReorderCaseSpec
-}
-
-type interfaceReorderCaseSpec = struct{}
 
 func longDurationSource(spec transcodecorpus.Spec, manifest transcodecorpus.Manifest) (transcodecorpus.CaseSpec, transcodecorpus.AssetEvidence, bool) {
 	assets := make(map[string]transcodecorpus.AssetEvidence, len(manifest.Assets))
@@ -305,13 +275,4 @@ func MarshalLongDurationDriftMatrixReport(report LongDurationDriftMatrixReport) 
 		return nil, err
 	}
 	return append(content, '\n'), nil
-}
-
-func reportSHA256(content []byte) string {
-	digest := sha256.Sum256(content)
-	return hex.EncodeToString(digest[:])
-}
-
-func roundedMillis(value int64) int64 {
-	return int64(math.Round(float64(value) / 1_000))
 }
