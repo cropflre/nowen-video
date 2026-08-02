@@ -1,6 +1,7 @@
 package realmediacandidate
 
 import (
+	"encoding/json"
 	"fmt"
 
 	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
@@ -15,6 +16,19 @@ const (
 	PacketOrderComparisonToleranceTicks = int64(1)
 	DecodedFrameComparisonPolicy        = "perceptual_frame_sequence_v1"
 )
+
+type DecodedFramePolicy string
+
+func (p DecodedFramePolicy) Effective() string {
+	if p == "" {
+		return DecodedFrameComparisonPolicy
+	}
+	return string(p)
+}
+
+func (p DecodedFramePolicy) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.Effective())
+}
 
 type EvidenceIdentity struct {
 	Version string `json:"version"`
@@ -40,22 +54,22 @@ type CaseEvidence struct {
 }
 
 type Contract struct {
-	SchemaVersion                       string         `json:"schema_version"`
-	SpecVersion                         string         `json:"spec_version"`
-	SpecHash                            string         `json:"spec_hash"`
-	ManifestVersion                     string         `json:"manifest_version"`
-	ManifestHash                        string         `json:"manifest_hash"`
-	SourceGeneratorVersion              string         `json:"source_generator_version"`
-	SourceFFmpegVersion                 string         `json:"source_ffmpeg_version"`
-	SourceFFprobeVersion                string         `json:"source_ffprobe_version"`
-	CertificationFFmpegVersion          string         `json:"certification_ffmpeg_version"`
-	CertificationFFprobeVersion         string         `json:"certification_ffprobe_version"`
-	RepeatCount                         int            `json:"repeat_count"`
-	PacketOrderComparisonToleranceTicks int64          `json:"packet_order_comparison_tolerance_ticks"`
-	DecodedFrameComparisonPolicy        string         `json:"decoded_frame_comparison_policy"`
-	Cases                               []CaseEvidence `json:"cases"`
-	SeamlessAllowed                     bool           `json:"seamless_allowed"`
-	DiscontinuityRequired               bool           `json:"discontinuity_required"`
+	SchemaVersion                       string             `json:"schema_version"`
+	SpecVersion                         string             `json:"spec_version"`
+	SpecHash                            string             `json:"spec_hash"`
+	ManifestVersion                     string             `json:"manifest_version"`
+	ManifestHash                        string             `json:"manifest_hash"`
+	SourceGeneratorVersion              string             `json:"source_generator_version"`
+	SourceFFmpegVersion                 string             `json:"source_ffmpeg_version"`
+	SourceFFprobeVersion                string             `json:"source_ffprobe_version"`
+	CertificationFFmpegVersion          string             `json:"certification_ffmpeg_version"`
+	CertificationFFprobeVersion         string             `json:"certification_ffprobe_version"`
+	RepeatCount                         int                `json:"repeat_count"`
+	PacketOrderComparisonToleranceTicks int64              `json:"packet_order_comparison_tolerance_ticks"`
+	DecodedFrameComparisonPolicy        DecodedFramePolicy `json:"decoded_frame_comparison_policy"`
+	Cases                               []CaseEvidence     `json:"cases"`
+	SeamlessAllowed                     bool               `json:"seamless_allowed"`
+	DiscontinuityRequired               bool               `json:"discontinuity_required"`
 }
 
 func CaseSpecFor(caseSpec transcodecorpus.CaseSpec, asset transcodecorpus.AssetEvidence) (transcodereorder.CaseSpec, error) {
