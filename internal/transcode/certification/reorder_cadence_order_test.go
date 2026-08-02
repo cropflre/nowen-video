@@ -10,6 +10,10 @@ func TestOrderCadencePointsForRealMediaEvidence(t *testing.T) {
 	assertPresentationOrder(t, "candidate_real-mp4-h264-aac-cfr-24000-1001-v1_encoder-time-base-avtb-v1_run_01_startup")
 }
 
+func TestOrderCadencePointsForRealMediaSourceEvidence(t *testing.T) {
+	assertPresentationOrder(t, "real_media_source_full_real-mp4-h264-aac-cfr-24000-1001-v1")
+}
+
 func TestOrderCadencePointsKeepsExistingEvidenceOrder(t *testing.T) {
 	points := []outputCadencePoint{{Ticks: 9_000}, {Ticks: 3_000}}
 	pts := []int64{9_000, 3_000}
