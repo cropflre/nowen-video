@@ -46,7 +46,7 @@ func (c Contract) ValidateFor(spec transcodecorpus.Spec, manifest transcodecorpu
 	}
 	if c.RepeatCount != RepeatCount ||
 		c.PacketOrderComparisonToleranceTicks != PacketOrderComparisonToleranceTicks ||
-		c.DecodedFrameComparisonPolicy != DecodedFrameComparisonPolicy {
+		c.DecodedFrameComparisonPolicy.Effective() != DecodedFrameComparisonPolicy {
 		return fmt.Errorf("real-media candidate repeat or comparison policy is invalid")
 	}
 	if len(c.Cases) != len(spec.Cases) || len(c.Cases) != len(manifest.Assets) {
