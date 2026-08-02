@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   generate-corpus:
-    name: Generate deterministic MP4, Matroska and MPEG-TS corpus
+    name: Build adapters and generate immutable corpus
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -38,12 +38,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Verify corpus domain and generator contracts
+      - name: Verify corpus and candidate adapter contracts
         run: |
           go test ./internal/transcode/realmediacorpus
           go test ./internal/transcode/corpusgenerator
-      - name: Build corpus generator command
-        run: go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go test ./internal/transcode/realmediacandidate
+          go test ./internal/transcode/certification
+      - name: Build corpus and candidate commands
+        run: |
+          go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go build -trimpath -o /tmp/nowen-transcode-real-media-candidate-cert ./cmd/transcode-real-media-candidate-cert
       - name: Generate deterministic file-backed corpus
         run: |
           rm -rf /tmp/nowen-transcode-real-media-corpus-v1
@@ -82,10 +86,6 @@ jobs:
         with:
           name: transcode-real-media-corpus-${{ github.sha }}
           path: /tmp/nowen-transcode-real-media-corpus-v1
-      - name: Verify candidate domain and adapter contracts
-        run: |
-          go test ./internal/transcode/realmediacandidate
-          go test ./internal/transcode/certification
       - name: Build real media candidate command
         run: go build -trimpath -o /tmp/nowen-transcode-real-media-candidate-cert ./cmd/transcode-real-media-candidate-cert
       - name: Run file-backed candidate certification
