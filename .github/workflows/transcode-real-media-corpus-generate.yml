@@ -13,6 +13,7 @@ on:
       - 'internal/transcode/certification/real_media_candidate_*.go'
       - '.github/scripts/verify_real_media_corpus_manifest.py'
       - '.github/scripts/verify_real_media_candidate.py'
+      - '.github/scripts/verify_real_media_packet_tolerance.py'
       - '.github/workflows/transcode-real-media-corpus-generate.yml'
   workflow_dispatch:
 
@@ -97,6 +98,8 @@ jobs:
       - name: Verify bound candidate evidence graph
         run: |
           python3 .github/scripts/verify_real_media_candidate.py \
+            /tmp/real-media-corpus-candidate-v1.json
+          python3 .github/scripts/verify_real_media_packet_tolerance.py \
             /tmp/real-media-corpus-candidate-v1.json
           du -h /tmp/real-media-corpus-candidate-v1.json
       - name: Upload candidate certification report
