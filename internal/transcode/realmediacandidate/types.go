@@ -9,7 +9,10 @@ import (
 	transcodetimebase "github.com/nowen-video/nowen-video/internal/transcode/timebasecandidate"
 )
 
-const SchemaVersion = "real-media-corpus-candidate-evidence-v1"
+const (
+	SchemaVersion = "real-media-corpus-candidate-evidence-v1"
+	RepeatCount   = transcodereorder.RepeatCount
+)
 
 type EvidenceIdentity struct {
 	Version string `json:"version"`
@@ -17,38 +20,38 @@ type EvidenceIdentity struct {
 }
 
 type SourceIdentity struct {
-	AssetIndex       int    `json:"asset_index"`
-	CaseID           string `json:"case_id"`
-	RelativePath     string `json:"relative_path"`
-	SHA256           string `json:"sha256"`
-	SizeBytes        int64  `json:"size_bytes"`
+	AssetIndex        int    `json:"asset_index"`
+	CaseID            string `json:"case_id"`
+	RelativePath      string `json:"relative_path"`
+	SHA256            string `json:"sha256"`
+	SizeBytes         int64  `json:"size_bytes"`
 	AssetEvidenceHash string `json:"asset_evidence_hash"`
 }
 
 type CaseEvidence struct {
-	Source                SourceIdentity                    `json:"source"`
-	RequiredEvidence      []string                          `json:"required_evidence"`
-	TimestampPlan         EvidenceIdentity                  `json:"timestamp_plan"`
-	TimeBaseCandidate     EvidenceIdentity                  `json:"time_base_candidate"`
-	ReorderCandidate      EvidenceIdentity                  `json:"reorder_candidate"`
-	Evidence              transcodereorder.CaseEvidence     `json:"evidence"`
+	Source            SourceIdentity                `json:"source"`
+	RequiredEvidence  []string                      `json:"required_evidence"`
+	TimestampPlan     EvidenceIdentity              `json:"timestamp_plan"`
+	TimeBaseCandidate EvidenceIdentity              `json:"time_base_candidate"`
+	ReorderCandidate  EvidenceIdentity              `json:"reorder_candidate"`
+	Evidence          transcodereorder.CaseEvidence `json:"evidence"`
 }
 
 type Contract struct {
-	SchemaVersion                string         `json:"schema_version"`
-	SpecVersion                  string         `json:"spec_version"`
-	SpecHash                     string         `json:"spec_hash"`
-	ManifestVersion              string         `json:"manifest_version"`
-	ManifestHash                 string         `json:"manifest_hash"`
-	SourceGeneratorVersion       string         `json:"source_generator_version"`
-	SourceFFmpegVersion          string         `json:"source_ffmpeg_version"`
-	SourceFFprobeVersion         string         `json:"source_ffprobe_version"`
-	CertificationFFmpegVersion   string         `json:"certification_ffmpeg_version"`
-	CertificationFFprobeVersion  string         `json:"certification_ffprobe_version"`
-	RepeatCount                  int            `json:"repeat_count"`
-	Cases                        []CaseEvidence `json:"cases"`
-	SeamlessAllowed              bool           `json:"seamless_allowed"`
-	DiscontinuityRequired        bool           `json:"discontinuity_required"`
+	SchemaVersion               string         `json:"schema_version"`
+	SpecVersion                 string         `json:"spec_version"`
+	SpecHash                    string         `json:"spec_hash"`
+	ManifestVersion             string         `json:"manifest_version"`
+	ManifestHash                string         `json:"manifest_hash"`
+	SourceGeneratorVersion      string         `json:"source_generator_version"`
+	SourceFFmpegVersion         string         `json:"source_ffmpeg_version"`
+	SourceFFprobeVersion        string         `json:"source_ffprobe_version"`
+	CertificationFFmpegVersion  string         `json:"certification_ffmpeg_version"`
+	CertificationFFprobeVersion string         `json:"certification_ffprobe_version"`
+	RepeatCount                 int            `json:"repeat_count"`
+	Cases                       []CaseEvidence `json:"cases"`
+	SeamlessAllowed             bool           `json:"seamless_allowed"`
+	DiscontinuityRequired       bool           `json:"discontinuity_required"`
 }
 
 func CaseSpecFor(caseSpec transcodecorpus.CaseSpec, asset transcodecorpus.AssetEvidence) (transcodereorder.CaseSpec, error) {
