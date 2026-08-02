@@ -44,8 +44,8 @@ func (c Contract) ValidateFor(spec transcodecorpus.Spec, manifest transcodecorpu
 	if c.SourceGeneratorVersion != manifest.GeneratorVersion || c.SourceFFmpegVersion != manifest.FFmpegVersion || c.SourceFFprobeVersion != manifest.FFprobeVersion {
 		return fmt.Errorf("real-media candidate source toolchain differs from manifest")
 	}
-	if c.RepeatCount != transcodereorder.RepeatCount {
-		return fmt.Errorf("real-media candidate repeat policy is invalid")
+	if c.RepeatCount != RepeatCount || c.PacketOrderComparisonToleranceTicks != PacketOrderComparisonToleranceTicks {
+		return fmt.Errorf("real-media candidate repeat or packet quantization policy is invalid")
 	}
 	if len(c.Cases) != len(spec.Cases) || len(c.Cases) != len(manifest.Assets) {
 		return fmt.Errorf("real-media candidate matrix is incomplete")
@@ -91,7 +91,7 @@ func (c CaseEvidence) ValidateFor(index int, caseSpec transcodecorpus.CaseSpec, 
 	if c.Evidence.Case != expectedCase {
 		return fmt.Errorf("candidate case policy differs from corpus source")
 	}
-	if err := c.Evidence.Validate(); err != nil {
+	if err := c.Evidence.ValidateWithPacketTolerance(PacketOrderComparisonToleranceTicks); err != nil {
 		return err
 	}
 	base := BaseEvidence(c.Evidence)
