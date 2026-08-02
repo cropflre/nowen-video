@@ -46,13 +46,13 @@ func TokenHash(token string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func findAsset(manifest transcodecorpus.Manifest, caseID string) (transcodecorpus.Asset, bool) {
+func findAsset(manifest transcodecorpus.Manifest, caseID string) (transcodecorpus.AssetEvidence, bool) {
 	for _, asset := range manifest.Assets {
 		if asset.CaseID == caseID {
 			return asset, true
 		}
 	}
-	return transcodecorpus.Asset{}, false
+	return transcodecorpus.AssetEvidence{}, false
 }
 
 func isSHA256(value string) bool {
