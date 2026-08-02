@@ -24,7 +24,7 @@ func Identity(contract Contract, spec transcodecorpus.Spec, manifest transcodeco
 }
 
 func BuildCaseEvidence(index int, caseSpec transcodecorpus.CaseSpec, asset transcodecorpus.AssetEvidence, evidence transcodereorder.CaseEvidence) (CaseEvidence, error) {
-	if err := evidence.Validate(); err != nil {
+	if err := evidence.ValidateWithPacketTolerance(PacketOrderComparisonToleranceTicks); err != nil {
 		return CaseEvidence{}, err
 	}
 	base := BaseEvidence(evidence)
