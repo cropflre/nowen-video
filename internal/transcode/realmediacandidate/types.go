@@ -13,6 +13,7 @@ const (
 	SchemaVersion                       = "real-media-corpus-candidate-evidence-v1"
 	RepeatCount                         = transcodereorder.RepeatCount
 	PacketOrderComparisonToleranceTicks = int64(1)
+	DecodedFrameComparisonPolicy        = "perceptual_frame_sequence_v1"
 )
 
 type EvidenceIdentity struct {
@@ -51,6 +52,7 @@ type Contract struct {
 	CertificationFFprobeVersion         string         `json:"certification_ffprobe_version"`
 	RepeatCount                         int            `json:"repeat_count"`
 	PacketOrderComparisonToleranceTicks int64          `json:"packet_order_comparison_tolerance_ticks"`
+	DecodedFrameComparisonPolicy        string         `json:"decoded_frame_comparison_policy"`
 	Cases                               []CaseEvidence `json:"cases"`
 	SeamlessAllowed                     bool           `json:"seamless_allowed"`
 	DiscontinuityRequired               bool           `json:"discontinuity_required"`
