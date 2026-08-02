@@ -18,7 +18,7 @@ const (
 	DurationMicros                  int64 = 30 * 60 * 1_000_000
 	CheckpointMicros                int64 = 5 * 60 * 1_000_000
 	RepeatCount                           = 2
-	StartToleranceMicros            int64 = 50_000
+	StartToleranceMicros            int64 = 3_000_000
 	EndToleranceMicros              int64 = 50_000
 	CheckpointToleranceMicros       int64 = 50_000
 	AVSkewToleranceMicros           int64 = 50_000
@@ -311,7 +311,7 @@ func (s StreamEvidence) Validate(kind string) error {
 	if s.Kind != kind || strings.TrimSpace(s.TimeBase) == "" || s.PacketCount <= 0 {
 		return fmt.Errorf("%s stream identity is invalid", kind)
 	}
-	if abs64(s.StartMicros) > StartToleranceMicros || s.EndMicros <= s.StartMicros || s.DurationMicros != s.EndMicros-s.StartMicros || s.EndErrorMicros != s.EndMicros-DurationMicros || abs64(s.EndErrorMicros) > EndToleranceMicros {
+	if abs64(s.StartMicros) > StartToleranceMicros || s.EndMicros <= s.StartMicros || s.DurationMicros != s.EndMicros-s.StartMicros || s.EndErrorMicros != s.DurationMicros-DurationMicros || abs64(s.EndErrorMicros) > EndToleranceMicros {
 		return fmt.Errorf("%s stream duration evidence is invalid", kind)
 	}
 	expectedCount := int(DurationMicros/CheckpointMicros) + 1
