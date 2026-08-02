@@ -5,7 +5,12 @@ on:
     paths:
       - 'cmd/transcode-long-duration-profile-cert/**'
       - 'cmd/transcode-real-media-corpus-generate/**'
-      - 'internal/transcode/longdrift/**'
+      - 'internal/transcode/longdrift/contract.go'
+      - 'internal/transcode/longdrift/contract_test.go'
+      - 'internal/transcode/longdrift/policy.go'
+      - 'internal/transcode/longdrift/policy_test.go'
+      - 'internal/transcode/longdrift/profile_matrix.go'
+      - 'internal/transcode/longdrift/profile_matrix_test.go'
       - 'internal/transcode/corpusgenerator/**'
       - 'internal/transcode/realmediacorpus/**'
       - 'internal/transcode/realmediacandidate/**'
