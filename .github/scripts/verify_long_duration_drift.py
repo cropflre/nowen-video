@@ -30,7 +30,7 @@ def validate_stream(stream, kind, evidence):
     assert stream["packet_count"] > 0
     assert abs(stream["start_micros"]) <= evidence["start_tolerance_micros"]
     assert stream["duration_micros"] == stream["end_micros"] - stream["start_micros"]
-    assert stream["end_error_micros"] == stream["end_micros"] - DURATION_US
+    assert stream["end_error_micros"] == stream["duration_micros"] - DURATION_US
     assert abs(stream["end_error_micros"]) <= evidence["end_tolerance_micros"]
     checkpoints = stream["checkpoints"]
     assert len(checkpoints) == DURATION_US // CHECKPOINT_US + 1
