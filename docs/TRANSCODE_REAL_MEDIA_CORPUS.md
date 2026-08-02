@@ -62,7 +62,7 @@ The canonical Spec JSON is hashed with SHA-256. Case ordering is part of the ide
 Current Spec SHA-256:
 
 ```text
-ae9623f20d401c1f6cf985a5d687939f7a3a9fd3b59869fc9f27f719f22267fc
+ae9623f2c051868115a926b3a5cf881fbb58cc3408ff82a52ace1905332267fc
 ```
 
 ## Manifest contract
