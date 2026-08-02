@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	SchemaVersion = "real-media-corpus-candidate-evidence-v1"
-	RepeatCount   = transcodereorder.RepeatCount
+	SchemaVersion                       = "real-media-corpus-candidate-evidence-v1"
+	RepeatCount                         = transcodereorder.RepeatCount
+	PacketOrderComparisonToleranceTicks = int64(1)
 )
 
 type EvidenceIdentity struct {
@@ -38,20 +39,21 @@ type CaseEvidence struct {
 }
 
 type Contract struct {
-	SchemaVersion               string         `json:"schema_version"`
-	SpecVersion                 string         `json:"spec_version"`
-	SpecHash                    string         `json:"spec_hash"`
-	ManifestVersion             string         `json:"manifest_version"`
-	ManifestHash                string         `json:"manifest_hash"`
-	SourceGeneratorVersion      string         `json:"source_generator_version"`
-	SourceFFmpegVersion         string         `json:"source_ffmpeg_version"`
-	SourceFFprobeVersion        string         `json:"source_ffprobe_version"`
-	CertificationFFmpegVersion  string         `json:"certification_ffmpeg_version"`
-	CertificationFFprobeVersion string         `json:"certification_ffprobe_version"`
-	RepeatCount                 int            `json:"repeat_count"`
-	Cases                       []CaseEvidence `json:"cases"`
-	SeamlessAllowed             bool           `json:"seamless_allowed"`
-	DiscontinuityRequired       bool           `json:"discontinuity_required"`
+	SchemaVersion                       string         `json:"schema_version"`
+	SpecVersion                         string         `json:"spec_version"`
+	SpecHash                            string         `json:"spec_hash"`
+	ManifestVersion                     string         `json:"manifest_version"`
+	ManifestHash                        string         `json:"manifest_hash"`
+	SourceGeneratorVersion              string         `json:"source_generator_version"`
+	SourceFFmpegVersion                 string         `json:"source_ffmpeg_version"`
+	SourceFFprobeVersion                string         `json:"source_ffprobe_version"`
+	CertificationFFmpegVersion          string         `json:"certification_ffmpeg_version"`
+	CertificationFFprobeVersion         string         `json:"certification_ffprobe_version"`
+	RepeatCount                         int            `json:"repeat_count"`
+	PacketOrderComparisonToleranceTicks int64          `json:"packet_order_comparison_tolerance_ticks"`
+	Cases                               []CaseEvidence `json:"cases"`
+	SeamlessAllowed                     bool           `json:"seamless_allowed"`
+	DiscontinuityRequired               bool           `json:"discontinuity_required"`
 }
 
 func CaseSpecFor(caseSpec transcodecorpus.CaseSpec, asset transcodecorpus.AssetEvidence) (transcodereorder.CaseSpec, error) {
