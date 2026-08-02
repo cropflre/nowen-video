@@ -5,18 +5,26 @@ import (
 	"strings"
 )
 
-const reorderCadenceKindPrefix = "candidate_reorder-"
+const (
+	reorderCadenceKindPrefix   = "candidate_reorder-"
+	realMediaCadenceKindPrefix = "candidate_real-"
+)
 
 // orderCadencePointsForEvidence keeps the legacy packet-order behavior for
 // existing cadence contracts. Reorder certification uses presentation order:
 // packet PTS is sorted while the independent PacketOrderEvidence retains the
 // original demux/decode order for DTS and B-frame reorder validation.
+//
+// Real Media Corpus v1 cases all declare deterministic B-frame reordering and
+// therefore use the same presentation-order cadence treatment even though
+// their stable case IDs begin with "real-" rather than "reorder-".
 func orderCadencePointsForEvidence(
 	kind string,
 	ptsTicks []int64,
 	points []outputCadencePoint,
 ) ([]int64, []outputCadencePoint) {
-	if !strings.HasPrefix(kind, reorderCadenceKindPrefix) {
+	if !strings.HasPrefix(kind, reorderCadenceKindPrefix) &&
+		!strings.HasPrefix(kind, realMediaCadenceKindPrefix) {
 		return ptsTicks, points
 	}
 	ordered := append([]outputCadencePoint(nil), points...)
