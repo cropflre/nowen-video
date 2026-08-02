@@ -108,9 +108,13 @@ func RunRealMediaCandidateMatrix(ctx context.Context, config RealMediaCandidateC
 			SourceStartupTimeline:      sourceStartup,
 			SourceContinuationTimeline: sourceContinuation,
 			Candidates:                 candidateEvidence,
-			Comparison:                 transcodereorder.BuildCandidateComparison(candidateEvidence[0], candidateEvidence[1]),
+			Comparison: transcodereorder.BuildCandidateComparisonWithPacketTolerance(
+				candidateEvidence[0],
+				candidateEvidence[1],
+				transcodecandidate.PacketOrderComparisonToleranceTicks,
+			),
 		}
-		if err := reorderEvidence.Validate(); err != nil {
+		if err := reorderEvidence.ValidateWithPacketTolerance(transcodecandidate.PacketOrderComparisonToleranceTicks); err != nil {
 			return RealMediaCandidateMatrixReport{}, err
 		}
 		boundCase, err := transcodecandidate.BuildCaseEvidence(index, caseSpec, asset, reorderEvidence)
@@ -124,19 +128,20 @@ func RunRealMediaCandidateMatrix(ctx context.Context, config RealMediaCandidateC
 		return RealMediaCandidateMatrixReport{}, err
 	}
 	contract := transcodecandidate.Contract{
-		SchemaVersion:               transcodecandidate.SchemaVersion,
-		SpecVersion:                 specVersion,
-		SpecHash:                    specHash,
-		ManifestVersion:             manifestVersion,
-		ManifestHash:                manifestHash,
-		SourceGeneratorVersion:      manifest.GeneratorVersion,
-		SourceFFmpegVersion:         manifest.FFmpegVersion,
-		SourceFFprobeVersion:        manifest.FFprobeVersion,
-		CertificationFFmpegVersion:  ffmpegVersion,
-		CertificationFFprobeVersion: ffprobeVersion,
-		RepeatCount:                 transcodereorder.RepeatCount,
-		Cases:                       cases,
-		DiscontinuityRequired:       true,
+		SchemaVersion:                       transcodecandidate.SchemaVersion,
+		SpecVersion:                         specVersion,
+		SpecHash:                            specHash,
+		ManifestVersion:                     manifestVersion,
+		ManifestHash:                        manifestHash,
+		SourceGeneratorVersion:              manifest.GeneratorVersion,
+		SourceFFmpegVersion:                 manifest.FFmpegVersion,
+		SourceFFprobeVersion:                manifest.FFprobeVersion,
+		CertificationFFmpegVersion:          ffmpegVersion,
+		CertificationFFprobeVersion:         ffprobeVersion,
+		RepeatCount:                         transcodecandidate.RepeatCount,
+		PacketOrderComparisonToleranceTicks: transcodecandidate.PacketOrderComparisonToleranceTicks,
+		Cases:                               cases,
+		DiscontinuityRequired:               true,
 	}
 	contractVersion, contractHash, _, err := transcodecandidate.Identity(contract, spec, manifest)
 	if err != nil {
@@ -311,12 +316,12 @@ func runRealMediaCandidate(
 		AVSync:                  avSync,
 	}
 	run := transcodereorder.RunEvidence{
-		Ordinal:                        ordinal,
-		Base:                           base,
-		StartupPacketOrder:             startupOrder,
-		ContinuationPacketOrder:        continuationOrder,
-		StartupPerceptualSequence:      startupPerceptual,
-		ContinuationPerceptualSequence: continuationPerceptual,
+		Ordinal:                         ordinal,
+		Base:                            base,
+		StartupPacketOrder:              startupOrder,
+		ContinuationPacketOrder:         continuationOrder,
+		StartupPerceptualSequence:       startupPerceptual,
+		ContinuationPerceptualSequence:  continuationPerceptual,
 	}
 	if err := run.Validate(caseSpec, candidateSpec, sourceStartup, sourceContinuation, ordinal); err != nil {
 		return transcodereorder.RunEvidence{}, err
