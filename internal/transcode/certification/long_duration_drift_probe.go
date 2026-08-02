@@ -33,6 +33,20 @@ type longDriftPoint struct {
 }
 
 func probeLongDriftStream(ctx context.Context, ffprobePath, manifestPath, selector, kind string) (transcodelongdrift.StreamEvidence, error) {
+	return probeLongDriftStreamForPolicy(ctx, ffprobePath, manifestPath, selector, kind, transcodelongdrift.DefaultPolicy())
+}
+
+func probeLongDriftStreamForPolicy(
+	ctx context.Context,
+	ffprobePath,
+	manifestPath,
+	selector,
+	kind string,
+	policy transcodelongdrift.Policy,
+) (transcodelongdrift.StreamEvidence, error) {
+	if err := policy.Validate(); err != nil {
+		return transcodelongdrift.StreamEvidence{}, err
+	}
 	command := exec.CommandContext(
 		ctx,
 		ffprobePath,
@@ -64,10 +78,22 @@ func probeLongDriftStream(ctx context.Context, ffprobePath, manifestPath, select
 		duration, _ := packet.Duration.int64Value()
 		points = append(points, longDriftPoint{PTSTicks: pts, DurationTicks: duration})
 	}
-	return buildLongDriftStreamEvidence(kind, document.Streams[0].TimeBase, points)
+	return buildLongDriftStreamEvidenceForPolicy(kind, document.Streams[0].TimeBase, points, policy)
 }
 
 func buildLongDriftStreamEvidence(kind, timeBase string, points []longDriftPoint) (transcodelongdrift.StreamEvidence, error) {
+	return buildLongDriftStreamEvidenceForPolicy(kind, timeBase, points, transcodelongdrift.DefaultPolicy())
+}
+
+func buildLongDriftStreamEvidenceForPolicy(
+	kind,
+	timeBase string,
+	points []longDriftPoint,
+	policy transcodelongdrift.Policy,
+) (transcodelongdrift.StreamEvidence, error) {
+	if err := policy.Validate(); err != nil {
+		return transcodelongdrift.StreamEvidence{}, err
+	}
 	if len(points) < 3 {
 		return transcodelongdrift.StreamEvidence{}, fmt.Errorf("long-duration %s stream has %d packets", kind, len(points))
 	}
@@ -106,10 +132,10 @@ func buildLongDriftStreamEvidence(kind, timeBase string, points []longDriftPoint
 		normalizedPresentation[index] = value - startMicros
 	}
 	durationMicros := endMicros - startMicros
-	checkpoints := make([]transcodelongdrift.CheckpointEvidence, 0, len(transcodelongdrift.CheckpointTargets()))
-	for _, target := range transcodelongdrift.CheckpointTargets() {
+	checkpoints := make([]transcodelongdrift.CheckpointEvidence, 0, len(transcodelongdrift.CheckpointTargetsForPolicy(policy)))
+	for _, target := range transcodelongdrift.CheckpointTargetsForPolicy(policy) {
 		observed := nearestPresentationMicros(normalizedPresentation, target)
-		if target == transcodelongdrift.DurationMicros {
+		if target == policy.DurationMicros {
 			observed = durationMicros
 		}
 		checkpoints = append(checkpoints, transcodelongdrift.CheckpointEvidence{
@@ -125,7 +151,7 @@ func buildLongDriftStreamEvidence(kind, timeBase string, points []longDriftPoint
 		StartMicros:    startMicros,
 		EndMicros:      endMicros,
 		DurationMicros: durationMicros,
-		EndErrorMicros: durationMicros - transcodelongdrift.DurationMicros,
+		EndErrorMicros: durationMicros - policy.DurationMicros,
 		Checkpoints:    checkpoints,
 	}, nil
 }
