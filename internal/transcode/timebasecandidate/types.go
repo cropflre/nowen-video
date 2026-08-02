@@ -151,7 +151,7 @@ func (s CaseSpec) Validate() error {
 	} else if s.SecondaryFrameRateNumerator <= 0 || s.SecondaryFrameRateDenominator <= 0 {
 		return fmt.Errorf("VFR case requires a secondary frame rate")
 	}
-	if s.AudioSampleRate != 48_000 || s.ExpectedBoundaryMicros <= 0 || s.DurationMicros <= s.ExpectedBoundaryMicros {
+	if (s.AudioSampleRate != 44_100 && s.AudioSampleRate != 48_000) || s.ExpectedBoundaryMicros <= 0 || s.DurationMicros <= s.ExpectedBoundaryMicros {
 		return fmt.Errorf("case media policy is invalid")
 	}
 	return nil
