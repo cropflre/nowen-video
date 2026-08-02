@@ -101,27 +101,32 @@ func buildLongDriftStreamEvidence(kind, timeBase string, points []longDriftPoint
 		}
 	}
 	startMicros := presentation[0]
+	normalizedPresentation := make([]int64, len(presentation))
+	for index, value := range presentation {
+		normalizedPresentation[index] = value - startMicros
+	}
+	durationMicros := endMicros - startMicros
 	checkpoints := make([]transcodelongdrift.CheckpointEvidence, 0, len(transcodelongdrift.CheckpointTargets()))
 	for _, target := range transcodelongdrift.CheckpointTargets() {
-		observed := nearestPresentationMicros(presentation, target)
+		observed := nearestPresentationMicros(normalizedPresentation, target)
 		if target == transcodelongdrift.DurationMicros {
-			observed = endMicros
+			observed = durationMicros
 		}
 		checkpoints = append(checkpoints, transcodelongdrift.CheckpointEvidence{
-			TargetMicros: target,
+			TargetMicros:       target,
 			PresentationMicros: observed,
-			ErrorMicros: observed - target,
+			ErrorMicros:        observed - target,
 		})
 	}
 	return transcodelongdrift.StreamEvidence{
-		Kind: kind,
-		TimeBase: timeBase,
-		PacketCount: len(points),
-		StartMicros: startMicros,
-		EndMicros: endMicros,
-		DurationMicros: endMicros - startMicros,
-		EndErrorMicros: endMicros - transcodelongdrift.DurationMicros,
-		Checkpoints: checkpoints,
+		Kind:           kind,
+		TimeBase:       timeBase,
+		PacketCount:    len(points),
+		StartMicros:    startMicros,
+		EndMicros:      endMicros,
+		DurationMicros: durationMicros,
+		EndErrorMicros: durationMicros - transcodelongdrift.DurationMicros,
+		Checkpoints:    checkpoints,
 	}, nil
 }
 
