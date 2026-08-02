@@ -47,7 +47,7 @@ func TestLongDurationDriftHLSArgsScopeStreamLoopToInput(t *testing.T) {
 	if !containsArgPair(args, "-enc_time_base:v:0", candidate.EncoderTimeBase) {
 		t.Fatalf("explicit encoder time base is missing: %v", args)
 	}
-	if !containsArgPair(args, "-t", "1800.000000") {
+	if !containsArgPair(args, "-t", "1800.00") {
 		t.Fatalf("30-minute output bound is missing: %v", args)
 	}
 }
