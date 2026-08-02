@@ -76,6 +76,10 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		return LongDurationDriftMatrixReport{}, err
 	}
 	timestampPlan := transcodetimestamp.Default()
+	timestampVersion, timestampHash, _, err := transcodetimestamp.Identity(timestampPlan)
+	if err != nil {
+		return LongDurationDriftMatrixReport{}, err
+	}
 	candidateEvidence := make([]transcodelongdrift.CandidateEvidence, 0, 2)
 	for _, candidateSpec := range AvailableEncoderTimeBaseCandidates() {
 		runs := make([]transcodelongdrift.RunEvidence, 0, transcodelongdrift.RepeatCount)
@@ -128,6 +132,8 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		SourceFFprobeVersion:          manifest.FFprobeVersion,
 		CertificationFFmpegVersion:    ffmpegVersion,
 		CertificationFFprobeVersion:   ffprobeVersion,
+		TimestampPlanVersion:          timestampVersion,
+		TimestampPlanHash:             timestampHash,
 		Source: transcodelongdrift.SourceIdentity{
 			CaseID:            asset.CaseID,
 			RelativePath:      asset.RelativePath,
@@ -189,7 +195,8 @@ func runLongDurationDriftCandidate(
 	if err != nil {
 		return transcodelongdrift.RunEvidence{}, err
 	}
-	attestation, err := (transcodeattestation.Verifier{FFprobePath: ffprobePath}).Verify(ctx, transcodeattestation.VerifyRequest{
+	verifier := transcodeattestation.Verifier{FFprobePath: ffprobePath}
+	attestation, err := verifier.Verify(ctx, transcodeattestation.VerifyRequest{
 		ManifestPath:        produced.Manifest,
 		EncodingPlanVersion: encodingVersion,
 		EncodingPlanHash:    encodingHash,
