@@ -45,6 +45,7 @@ func longDurationDriftHLSArgs(
 	args := serviceffmpeg.BuildHLSArgs(serviceffmpeg.BuildOptions{
 		InputPath: sourcePath,
 		OutputDir: outputDir,
+		ExtraInput: []string{"-stream_loop", "-1"},
 		HWAccel: serviceffmpeg.HWAccelNone,
 		Profile: serviceffmpeg.Profile{
 			Width: fixtureWidth,
@@ -67,7 +68,6 @@ func longDurationDriftHLSArgs(
 		ForceKeyFrames: true,
 		GOPSize: caseSpec.Base.GOPSize,
 	})
-	args = insertBeforeInput(args, sourcePath, "-stream_loop", "-1")
 	var err error
 	args, err = asBoundedStartupVODMicros(args, transcodelongdrift.DurationMicros)
 	if err != nil {
@@ -86,17 +86,4 @@ func longDurationDriftHLSArgs(
 		"-refs", fmt.Sprint(caseSpec.ReferenceFrames),
 		"-x264-params", x264Params,
 	), nil
-}
-
-func insertBeforeInput(args []string, sourcePath string, values ...string) []string {
-	for index := 0; index+1 < len(args); index++ {
-		if args[index] == "-i" && args[index+1] == sourcePath {
-			result := make([]string, 0, len(args)+len(values))
-			result = append(result, args[:index]...)
-			result = append(result, values...)
-			result = append(result, args[index:]...)
-			return result
-		}
-	}
-	return append([]string(nil), args...)
 }
