@@ -121,6 +121,12 @@ The contract binds:
 
 The production policy fields are part of the canonical contract identity and cannot be omitted or changed without invalidating the report.
 
+### Run-bound identity
+
+The Contract SHA-256 is intentionally bound to the concrete outputs of one certification run. Generated playlist and Produced-media Attestation identities are included in the evidence graph, so a later run receives a different Contract SHA even when its policy and measured drift metrics are identical.
+
+The stable identities are the schema, Corpus Spec and Manifest, source asset, Timestamp Plan, candidate policy, and declared limits. A Contract SHA must therefore be interpreted together with its workflow run and artifacts rather than as a global constant.
+
 ## Acceptance policy
 
 The v1 limits are explicit:
@@ -182,10 +188,11 @@ candidates_equivalent                  = true
 maximum checkpoint difference          = 0 us
 ```
 
-Canonical contract identity:
+Reference-run Contract identity:
 
 ```text
-763c1e269740f45619089b95c833e0e7abdd9420a544b7d1849e5aea27ffbf55
+workflow run = 30736702272
+contract SHA = 3c1ddb972b8c7beb77a03bf2e0d896367baa955aaddcc1125374718fc334c4f3
 ```
 
 The generated JSON report is approximately 40 KB.
@@ -227,16 +234,17 @@ The workflow has two isolated jobs:
 1. compile contracts and commands, generate the deterministic corpus, verify its Manifest and media bytes, and upload an immutable corpus artifact;
 2. download that exact artifact, execute the four long-duration transcodes, build the canonical evidence graph, independently recompute the report policy, and upload the final report.
 
-Successful run:
+Reference successful run:
 
 ```text
-workflow run ID = 30736241467
-corpus artifact = 8829682017
-report artifact = 8829787189
-retention       = 7 days
+workflow run ID        = 30736702272
+corpus artifact        = 8829876857
+report artifact        = 8829949487
+report artifact SHA-256= 4aa49b729c4cfe56ceea4f615a3a88e6d1279ae9daf36eacff1fd8d1399fdb17
+retention              = 7 days
 ```
 
-The long-duration execution and verification step completed in approximately seven minutes on the hosted runner.
+The four long-duration executions and verification completed in approximately four minutes on the hosted runner.
 
 ## What this phase proves
 
