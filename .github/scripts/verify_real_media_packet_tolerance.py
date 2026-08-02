@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 TOLERANCE_TICKS = 1
+DECODED_FRAME_POLICY = "perceptual_frame_sequence_v1"
 SCALAR_FIELDS = (
     "first_pts",
     "first_dts",
@@ -75,6 +76,7 @@ def main():
     report = json.loads(args.report.read_text())
     evidence = report["evidence"]
     assert evidence["packet_order_comparison_tolerance_ticks"] == TOLERANCE_TICKS
+    assert evidence["decoded_frame_comparison_policy"] == DECODED_FRAME_POLICY
     maximum = 0
     comparisons = 0
     for case in evidence["cases"]:
@@ -102,6 +104,7 @@ def main():
         "packet_comparisons": comparisons,
         "tolerance_ticks": TOLERANCE_TICKS,
         "maximum_observed_difference_ticks": maximum,
+        "decoded_frame_policy": DECODED_FRAME_POLICY,
     }, sort_keys=True))
 
 
