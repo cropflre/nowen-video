@@ -39,7 +39,7 @@ func main() {
 				caseSpec.BoundaryMicros,
 			)
 		}
-		fmt.Printf("repeat_count=%d\n", transcodecandidateRepeatCount())
+		fmt.Printf("repeat_count=%d\n", transcodecandidate.RepeatCount)
 		for _, candidate := range transcodecertification.AvailableEncoderTimeBaseCandidates() {
 			fmt.Printf("%s\t%s\tenc_tb=%s\n", candidate.ID, candidate.Description, candidate.EncoderTimeBase)
 		}
@@ -83,10 +83,6 @@ func main() {
 	if err := writeOutput(*outputPath, content); err != nil {
 		fatalf("write real-media candidate report: %v", err)
 	}
-}
-
-func transcodecandidateRepeatCount() int {
-	return 3
 }
 
 func writeOutput(outputPath string, content []byte) error {
