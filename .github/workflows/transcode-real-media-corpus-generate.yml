@@ -1,9 +1,7 @@
 name: Transcode Real Media Corpus Generate
 
 on:
-  push:
-    branches:
-      - refactor/server-lite-v1
+  pull_request:
     paths:
       - 'cmd/transcode-real-media-corpus-generate/**'
       - 'internal/transcode/corpusgenerator/**'
