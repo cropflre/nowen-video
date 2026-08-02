@@ -1,0 +1,214 @@
+name: Transcode Recovery Resource Stress
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/transcode-recovery-stress-cert/**'
+      - 'cmd/transcode-real-media-corpus-generate/**'
+      - 'internal/transcode/recoverystress/**'
+      - 'internal/transcode/certification/recovery_stress*.go'
+      - 'internal/transcode/certification/long_duration_drift_command.go'
+      - 'internal/transcode/certification/long_duration_drift_probe.go'
+      - 'internal/transcode/corpusgenerator/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'internal/transcode/realmediacandidate/**'
+      - 'internal/transcode/longdrift/contract.go'
+      - 'internal/transcode/longdrift/policy.go'
+      - 'internal/transcode/longdrift/profile_matrix.go'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'internal/transcode/executor/**'
+      - 'internal/transcode/runtime/**'
+      - 'internal/transcode/governor/**'
+      - 'internal/transcode/artifactstore/**'
+      - 'internal/model/transcode_execution.go'
+      - 'internal/repository/repo_transcode_execution.go'
+      - 'internal/repository/repo_transcode_artifact.go'
+      - '.github/scripts/verify_recovery_stress.py'
+      - '.github/scripts/verify_real_media_corpus_manifest.py'
+      - '.github/workflows/transcode-recovery-stress-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-recovery-stress-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect v4 fault-impacting commit
+    runs-on: ubuntu-24.04
+    outputs:
+      run_media: ${{ steps.detect.outputs.run_media }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - id: detect
+        name: Inspect latest branch commit
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.action }}" != "synchronize" ]]; then
+            echo "run_media=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          run_media=false
+          while IFS= read -r file; do
+            case "$file" in
+              cmd/transcode-recovery-stress-cert/*|cmd/transcode-real-media-corpus-generate/*|internal/transcode/recoverystress/*|internal/transcode/certification/recovery_stress*.go|internal/transcode/certification/long_duration_drift_command.go|internal/transcode/certification/long_duration_drift_probe.go|internal/transcode/corpusgenerator/*|internal/transcode/realmediacorpus/*|internal/transcode/realmediacandidate/*|internal/transcode/longdrift/contract.go|internal/transcode/longdrift/policy.go|internal/transcode/longdrift/profile_matrix.go|internal/transcode/timebasecandidate/*|internal/transcode/reordercandidate/*|internal/transcode/timestampplan/*|internal/transcode/executor/*|internal/transcode/runtime/*|internal/transcode/governor/*|internal/transcode/artifactstore/*|internal/model/transcode_execution.go|internal/repository/repo_transcode_execution.go|internal/repository/repo_transcode_artifact.go|.github/scripts/verify_recovery_stress.py|.github/scripts/verify_real_media_corpus_manifest.py)
+                run_media=true
+                break
+                ;;
+            esac
+          done < <(git diff-tree --no-commit-id --name-only -r HEAD)
+          echo "run_media=$run_media" >> "$GITHUB_OUTPUT"
+
+  generate-corpus:
+    name: Build fault adapters and immutable corpus
+    needs: changes
+    if: needs.changes.outputs.run_media == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg and fault tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg gcc util-linux
+      - name: Verify recovery contracts and commands
+        run: |
+          go test ./internal/transcode/recoverystress
+          go test ./internal/transcode/executor ./internal/transcode/runtime ./internal/transcode/governor ./internal/transcode/artifactstore
+          go test ./internal/repository
+          go test ./internal/transcode/certification
+          go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go build -trimpath -o /tmp/nowen-transcode-recovery-stress-cert ./cmd/transcode-recovery-stress-cert
+          /tmp/nowen-transcode-recovery-stress-cert -list
+          python3 -m py_compile .github/scripts/verify_recovery_stress.py
+      - name: Generate deterministic file-backed corpus
+        run: |
+          rm -rf /tmp/nowen-transcode-real-media-corpus-v1
+          /tmp/nowen-transcode-real-media-corpus-generate \
+            -output-dir /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Verify immutable corpus
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_manifest.py \
+            /tmp/nowen-transcode-real-media-corpus-v1/real-media-corpus-manifest-v1.json
+          du -sh /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Upload immutable corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-recovery-stress-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+          if-no-files-found: error
+          retention-days: 7
+
+  certify-scenario:
+    name: Certify ${{ matrix.label }}
+    needs: generate-corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - label: active segment cancellation
+            artifact: cancel-active-write
+            scenario: cancel-active-segment-write-v1
+          - label: SIGKILL Lease recovery
+            artifact: sigkill-recovery
+            scenario: sigkill-lease-requeue-restart-v1
+          - label: ENOSPC segment write
+            artifact: enospc-write
+            scenario: enospc-segment-write-v1
+          - label: one-core 512 MiB run
+            artifact: bounded-resources
+            scenario: bounded-one-core-512m-v1
+          - label: stale Lease finalize fence
+            artifact: stale-lease-fence
+            scenario: stale-lease-finalize-fence-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg and fault tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg gcc util-linux
+      - name: Download immutable corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: transcode-recovery-stress-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Build recovery stress command
+        run: go build -trimpath -o /tmp/nowen-transcode-recovery-stress-cert ./cmd/transcode-recovery-stress-cert
+      - name: Run recovery and resource scenario
+        run: |
+          mkdir -p /tmp/recovery-stress-scenarios
+          /tmp/nowen-transcode-recovery-stress-cert \
+            -corpus-root /tmp/nowen-transcode-real-media-corpus-v1 \
+            -scenario '${{ matrix.scenario }}' \
+            -output /tmp/recovery-stress-scenarios/${{ matrix.artifact }}.json \
+            -timeout 45m
+      - name: Independently verify scenario evidence
+        run: |
+          python3 .github/scripts/verify_recovery_stress.py \
+            /tmp/recovery-stress-scenarios/${{ matrix.artifact }}.json
+          du -h /tmp/recovery-stress-scenarios/${{ matrix.artifact }}.json
+      - name: Upload recovery scenario report
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-recovery-stress-scenario-${{ matrix.artifact }}-${{ github.sha }}
+          path: /tmp/recovery-stress-scenarios/${{ matrix.artifact }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  aggregate:
+    name: Aggregate five recovery stress scenarios
+    needs: certify-scenario
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download all scenario reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: transcode-recovery-stress-scenario-*-${{ github.sha }}
+          path: /tmp/recovery-stress-scenarios
+          merge-multiple: true
+      - name: Build recovery aggregation command
+        run: go build -trimpath -o /tmp/nowen-transcode-recovery-stress-cert ./cmd/transcode-recovery-stress-cert
+      - name: Aggregate scenario contracts
+        run: |
+          find /tmp/recovery-stress-scenarios -maxdepth 1 -type f -name '*.json' -print | sort
+          test "$(find /tmp/recovery-stress-scenarios -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 5
+          /tmp/nowen-transcode-recovery-stress-cert \
+            -aggregate-dir /tmp/recovery-stress-scenarios \
+            -output /tmp/recovery-resource-stress-aggregate-v4.json
+      - name: Independently verify aggregate evidence
+        run: |
+          python3 .github/scripts/verify_recovery_stress.py \
+            /tmp/recovery-resource-stress-aggregate-v4.json
+          du -h /tmp/recovery-resource-stress-aggregate-v4.json
+      - name: Upload aggregate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-recovery-stress-aggregate-${{ github.sha }}
+          path: /tmp/recovery-resource-stress-aggregate-v4.json
+          if-no-files-found: error
+          retention-days: 7
