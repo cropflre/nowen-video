@@ -44,7 +44,7 @@ def validate_stream(stream, kind, evidence):
         previous = checkpoint["presentation_micros"]
 
 
-def build_summary(runs):
+def build_summary(runs, evidence):
     max_video = 0
     max_audio = 0
     max_skew = 0
@@ -66,7 +66,18 @@ def build_summary(runs):
             run["final_av_skew_micros"],
             checkpoint_max,
         ])
-    variance = max(max(values[column] for values in metrics) - min(values[column] for values in metrics) for column in range(4))
+    variance = max(
+        max(values[column] for values in metrics) - min(values[column] for values in metrics)
+        for column in range(4)
+    )
+    stable = (
+        len(runs) == REPEATS
+        and max_video <= evidence["end_tolerance_micros"]
+        and max_audio <= evidence["end_tolerance_micros"]
+        and max_skew <= evidence["av_skew_tolerance_micros"]
+        and max_checkpoint <= evidence["checkpoint_tolerance_micros"]
+        and variance <= evidence["repeat_variance_tolerance_micros"]
+    )
     return {
         "repeat_count": len(runs),
         "maximum_absolute_video_end_error_micros": max_video,
@@ -74,7 +85,7 @@ def build_summary(runs):
         "maximum_absolute_av_skew_micros": max_skew,
         "maximum_absolute_checkpoint_error_micros": max_checkpoint,
         "maximum_repeat_metric_variance_micros": variance,
-        "stable": True,
+        "stable": stable,
     }
 
 
@@ -116,6 +127,8 @@ def main():
     assert canonical_hash(spec) == evidence["spec_hash"] == manifest["spec_hash"]
     assert canonical_hash(manifest) == evidence["manifest_hash"]
     assert canonical_hash(evidence) == report["contract_hash"]
+    assert evidence["timestamp_plan_version"] == "hls-timestamp-normalization-v1"
+    validate_sha256(evidence["timestamp_plan_hash"], "timestamp plan hash")
     assert evidence["duration_micros"] == DURATION_US
     assert evidence["checkpoint_interval_micros"] == CHECKPOINT_US
     assert evidence["repeat_count"] == REPEATS
@@ -147,7 +160,7 @@ def main():
             validate_stream(run["audio"], "audio", evidence)
             assert run["final_av_skew_micros"] == run["video"]["end_micros"] - run["audio"]["end_micros"]
             assert abs(run["final_av_skew_micros"]) <= evidence["av_skew_tolerance_micros"]
-        assert candidate["summary"] == build_summary(candidate["runs"])
+        assert candidate["summary"] == build_summary(candidate["runs"], evidence)
         assert candidate["summary"]["stable"] is True
 
     assert evidence["comparison"] == build_comparison(candidates[0], candidates[1], evidence)
@@ -159,6 +172,7 @@ def main():
         "checkpoints_per_stream": DURATION_US // CHECKPOINT_US + 1,
         "executions": len(candidates) * REPEATS,
         "contract_hash": report["contract_hash"],
+        "timestamp_plan_hash": evidence["timestamp_plan_hash"],
         "maximum_checkpoint_difference_micros": evidence["comparison"]["maximum_checkpoint_difference_micros"],
     }, sort_keys=True))
 
