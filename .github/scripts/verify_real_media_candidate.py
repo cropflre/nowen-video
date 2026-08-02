@@ -100,6 +100,8 @@ def validate_run(run, source, timestamp_identity, case_id, candidate_id, ordinal
 
     assert run["startup_perceptual_sequence"]["frame_count"] == base["startup_timeline"]["frame_count"]
     assert run["continuation_perceptual_sequence"]["frame_count"] == base["continuation_timeline"]["frame_count"]
+    validate_sha256(run["startup_perceptual_sequence"]["sequence_sha256"], "startup perceptual sequence")
+    validate_sha256(run["continuation_perceptual_sequence"]["sequence_sha256"], "continuation perceptual sequence")
 
 
 def main():
@@ -129,6 +131,8 @@ def main():
     assert evidence["certification_ffmpeg_version"]
     assert evidence["certification_ffprobe_version"]
     assert evidence["repeat_count"] == 3
+    assert evidence["packet_order_comparison_tolerance_ticks"] == 1
+    assert evidence["decoded_frame_comparison_policy"] == "perceptual_frame_sequence_v1"
     assert evidence["seamless_allowed"] is False
     assert evidence["discontinuity_required"] is True
 
@@ -164,8 +168,8 @@ def main():
 
         validate_sha256(bound["timestamp_plan"]["hash"], "timestamp plan hash")
         assert bound["timestamp_plan"]["version"] == "hls-timestamp-normalization-v1"
-        validate_sha256(bound["time_base_candidate"]["hash"], "time-base case hash")
-        assert bound["time_base_candidate"]["version"] == "encoder-time-base-candidate-evidence-v1"
+        validate_sha256(bound["time_base_candidate"]["hash"], "semantic time-base case hash")
+        assert bound["time_base_candidate"]["version"] == "encoder-time-base-semantic-candidate-evidence-v1"
         validate_sha256(bound["reorder_candidate"]["hash"], "reorder case hash")
         assert bound["reorder_candidate"]["version"] == "encoder-time-base-reorder-evidence-v1"
         assert canonical_hash(base_case_evidence(reorder)) == bound["time_base_candidate"]["hash"]
@@ -185,10 +189,16 @@ def main():
             assert candidate["summary"]["strict_dts"] is True
             assert candidate["summary"]["reorder_observed"] is True
             assert candidate["summary"]["stable"] is True
-        assert reorder["comparison"]["base"]["equivalent"] is True
+
+        base_comparison = reorder["comparison"]["base"]
+        assert base_comparison["frame_mapping_equivalent"] is True
+        assert base_comparison["cadence_equivalent"] is True
+        assert base_comparison["av_sync_within_tolerance"] is True
         assert reorder["comparison"]["semantic_base_equivalent"] is True
         assert reorder["comparison"]["startup_packet_order_equivalent"] is True
         assert reorder["comparison"]["continuation_packet_order_equivalent"] is True
+        assert reorder["comparison"]["startup_perceptual_comparison"]["equivalent"] is True
+        assert reorder["comparison"]["continuation_perceptual_comparison"]["equivalent"] is True
         assert reorder["comparison"]["equivalent"] is True
 
     print(json.dumps({
