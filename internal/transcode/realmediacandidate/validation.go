@@ -44,8 +44,10 @@ func (c Contract) ValidateFor(spec transcodecorpus.Spec, manifest transcodecorpu
 	if c.SourceGeneratorVersion != manifest.GeneratorVersion || c.SourceFFmpegVersion != manifest.FFmpegVersion || c.SourceFFprobeVersion != manifest.FFprobeVersion {
 		return fmt.Errorf("real-media candidate source toolchain differs from manifest")
 	}
-	if c.RepeatCount != RepeatCount || c.PacketOrderComparisonToleranceTicks != PacketOrderComparisonToleranceTicks {
-		return fmt.Errorf("real-media candidate repeat or packet quantization policy is invalid")
+	if c.RepeatCount != RepeatCount ||
+		c.PacketOrderComparisonToleranceTicks != PacketOrderComparisonToleranceTicks ||
+		c.DecodedFrameComparisonPolicy != DecodedFrameComparisonPolicy {
+		return fmt.Errorf("real-media candidate repeat or comparison policy is invalid")
 	}
 	if len(c.Cases) != len(spec.Cases) || len(c.Cases) != len(manifest.Assets) {
 		return fmt.Errorf("real-media candidate matrix is incomplete")
@@ -95,10 +97,7 @@ func (c CaseEvidence) ValidateFor(index int, caseSpec transcodecorpus.CaseSpec, 
 		return err
 	}
 	base := BaseEvidence(c.Evidence)
-	if err := base.Validate(); err != nil {
-		return err
-	}
-	baseHash, err := canonicalHash(base)
+	baseVersion, baseHash, _, err := transcodetimebase.SemanticCaseIdentity(base)
 	if err != nil {
 		return err
 	}
@@ -106,8 +105,8 @@ func (c CaseEvidence) ValidateFor(index int, caseSpec transcodecorpus.CaseSpec, 
 	if err != nil {
 		return err
 	}
-	if c.TimeBaseCandidate.Version != transcodetimebase.SchemaVersion || c.TimeBaseCandidate.Hash != baseHash || !isSHA256(c.TimeBaseCandidate.Hash) {
-		return fmt.Errorf("time-base candidate case identity is invalid")
+	if c.TimeBaseCandidate.Version != baseVersion || c.TimeBaseCandidate.Hash != baseHash || !isSHA256(c.TimeBaseCandidate.Hash) {
+		return fmt.Errorf("semantic time-base candidate case identity is invalid")
 	}
 	if c.ReorderCandidate.Version != transcodereorder.SchemaVersion || c.ReorderCandidate.Hash != reorderHash || !isSHA256(c.ReorderCandidate.Hash) {
 		return fmt.Errorf("reorder candidate case identity is invalid")
