@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
@@ -34,7 +35,7 @@ func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays in
 		}
 		removedDirs, removedArtifacts, cleanupErr := s.cleanupArtifactsForTask(task)
 		if cleanupErr != nil {
-			s.logger.Warnf("清理完成任务 Artifact 失败 task=%s: %v", task.ID, cleanupErr)
+			s.logger.Warnf("清理完成任务 Artifact 延期 task=%s: %v", task.ID, cleanupErr)
 			continue
 		}
 		dirsCleaned += removedDirs
@@ -52,7 +53,7 @@ func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays in
 		task := &failedStale[i]
 		removedDirs, removedArtifacts, cleanupErr := s.cleanupArtifactsForTask(task)
 		if cleanupErr != nil {
-			s.logger.Warnf("清理失败任务 Artifact 失败 task=%s: %v", task.ID, cleanupErr)
+			s.logger.Warnf("清理失败任务 Artifact 延期 task=%s: %v", task.ID, cleanupErr)
 			continue
 		}
 		dirsCleaned += removedDirs
@@ -62,33 +63,17 @@ func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays in
 		}
 	}
 
-	// Attempt terminal evidence remains in the database, but terminal Artifact
-	// files are storage cache. Remove old failed/cancelled/abandoned/superseded
-	// versions even when a historical compatibility task is no longer present.
+	// Attempt terminal evidence remains in the database, while terminal Artifact
+	// files are storage cache. Every deletion is protected by a durable cleanup
+	// Lease so concurrent servers cannot remove the same version twice. Failed
+	// NAS or network-mount operations persist their own retry schedule.
 	terminalCutoff := now.AddDate(0, 0, -failedRetainDays)
-	for {
-		artifacts, listErr := s.executionRepo.ListTerminalArtifactsBefore(terminalCutoff, 500)
-		if listErr != nil {
-			return dirsCleaned, recordsCleaned, fmt.Errorf("查询过期终态 Artifact 失败: %w", listErr)
-		}
-		if len(artifacts) == 0 {
-			break
-		}
-		removedInBatch := 0
-		for i := range artifacts {
-			removed, removeErr := s.cleanupArtifactRecord(&artifacts[i])
-			if removeErr != nil {
-				s.logger.Warnf("清理终态 Artifact 失败 artifact=%s: %v", artifacts[i].ID, removeErr)
-				continue
-			}
-			dirsCleaned += removed
-			recordsCleaned++
-			removedInBatch++
-		}
-		if removedInBatch == 0 || len(artifacts) < 500 {
-			break
-		}
+	terminalDirs, terminalRecords, terminalErr := s.cleanupTerminalArtifactBatch(terminalCutoff, now)
+	if terminalErr != nil {
+		return dirsCleaned, recordsCleaned, fmt.Errorf("清理过期终态 Artifact 失败: %w", terminalErr)
 	}
+	dirsCleaned += terminalDirs
+	recordsCleaned += terminalRecords
 
 	if dirsCleaned > 0 {
 		s.InvalidateCacheDiskUsage()
@@ -110,7 +95,7 @@ func (s *TranscodeService) cleanupArtifactsForTask(task *model.TranscodeTask) (i
 	for i := range artifacts {
 		removed, removeErr := s.cleanupArtifactRecord(&artifacts[i])
 		if removeErr != nil {
-			return removedDirs, removedRecords, removeErr
+			return removedDirs + removed, removedRecords, removeErr
 		}
 		removedDirs += removed
 		removedRecords++
@@ -129,26 +114,30 @@ func (s *TranscodeService) cleanupArtifactRecord(artifact *model.TranscodeArtifa
 	if artifact == nil {
 		return 0, nil
 	}
-	removed := 0
-	seen := make(map[string]struct{}, 2)
-	for _, path := range []string{artifact.TempPath, artifact.Path} {
-		if path == "" {
-			continue
-		}
-		if _, exists := seen[path]; exists {
-			continue
-		}
-		seen[path] = struct{}{}
-		if err := s.artifactStore.Remove(path); err != nil {
-			return removed, err
-		}
-		removed++
+	now := time.Now()
+	if err := s.executionRepo.QueueArtifactCleanup(artifact.ID, now); err != nil {
+		return 0, err
 	}
-	if err := s.executionRepo.DeleteHandoffAttestationsForArtifact(artifact.ID, time.Now()); err != nil {
-		return removed, err
+	token := uuid.NewString()
+	claimed, ok, err := s.executionRepo.ClaimArtifactCleanup(
+		artifact.ID,
+		token,
+		now,
+		now,
+		artifactCleanupLeaseDuration,
+	)
+	if err != nil {
+		return 0, err
 	}
-	if err := s.executionRepo.DeleteArtifactByID(artifact.ID); err != nil {
-		return removed, err
+	if !ok {
+		return 0, fmt.Errorf("artifact cleanup is deferred or owned elsewhere: %s", artifact.ID)
+	}
+	removed, deleted, cleanupErr := s.cleanupClaimedArtifact(claimed, token, now)
+	if cleanupErr != nil {
+		return removed, cleanupErr
+	}
+	if !deleted {
+		return removed, fmt.Errorf("artifact cleanup did not delete record: %s", artifact.ID)
 	}
 	return removed, nil
 }
