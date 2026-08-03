@@ -129,10 +129,7 @@ func (r *ProcessRunner) Run(ctx context.Context, command Command, callbacks Call
 	parseWG.Wait()
 	result.CompletedAt = time.Now()
 	result.StderrTail = parser.tail()
-	if code, line, ok := DetectFatalOutput(result.StderrTail); ok {
-		result.FatalOutputCode = code
-		result.FatalOutputLine = line
-	}
+	result.FatalOutputCode, result.FatalOutputLine = parser.fatalOutput()
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
@@ -155,11 +152,13 @@ func (r *ProcessRunner) Run(ctx context.Context, command Command, callbacks Call
 }
 
 type progressParser struct {
-	mu         sync.Mutex
-	values     map[string]string
-	stderrTail []string
-	tailLimit  int
-	onProgress func(Progress)
+	mu              sync.Mutex
+	values          map[string]string
+	stderrTail      []string
+	tailLimit       int
+	onProgress      func(Progress)
+	fatalOutputCode string
+	fatalOutputLine string
 }
 
 func newProgressParser(tailLimit int, onProgress func(Progress)) *progressParser {
@@ -179,7 +178,7 @@ func (p *progressParser) consume(reader io.Reader) {
 		if line == "" {
 			continue
 		}
-		p.appendTail(line)
+		p.observeLine(line)
 		key, value, ok := strings.Cut(line, "=")
 		if !ok {
 			continue
@@ -194,9 +193,15 @@ func (p *progressParser) consume(reader io.Reader) {
 	}
 }
 
-func (p *progressParser) appendTail(line string) {
+func (p *progressParser) observeLine(line string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.fatalOutputCode == "" {
+		if code, fatalLine, ok := DetectFatalOutput([]string{line}); ok {
+			p.fatalOutputCode = code
+			p.fatalOutputLine = fatalLine
+		}
+	}
 	if len(p.stderrTail) >= p.tailLimit {
 		copy(p.stderrTail, p.stderrTail[1:])
 		p.stderrTail[len(p.stderrTail)-1] = line
@@ -224,6 +229,12 @@ func (p *progressParser) tail() []string {
 	result := make([]string, len(p.stderrTail))
 	copy(result, p.stderrTail)
 	return result
+}
+
+func (p *progressParser) fatalOutput() (string, string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.fatalOutputCode, p.fatalOutputLine
 }
 
 func parseOutTimeMS(values map[string]string) int64 {
