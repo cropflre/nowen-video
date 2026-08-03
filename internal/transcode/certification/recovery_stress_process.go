@@ -113,6 +113,8 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		WorkspaceExists:       workspaceExists,
 		StderrSHA256:          sha256Text(result.ErrorText()),
 		StderrMarkers:         markers,
+		FatalOutputDetected:   result.FatalOutputCode != "",
+		FatalOutputCode:       result.FatalOutputCode,
 		MaxRSSBytes:           maximumRSS.Load(),
 		ElapsedMillis:         elapsed,
 		ResourceController:    control.ResourceController,
