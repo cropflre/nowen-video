@@ -1,0 +1,49 @@
+name: Transcode Multi-Job Contention Certification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'internal/transcode/executor/**'
+      - 'internal/transcode/governor/**'
+      - 'internal/transcode/runtime/**'
+      - '.github/workflows/transcode-multi-job-contention-cert.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-multi-job-contention-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    name: Real FFmpeg admission and cancellation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -n 3
+
+      - name: Governor and runtime race tests
+        run: go test -race ./internal/transcode/governor ./internal/transcode/runtime -count=1
+
+      - name: Real FFmpeg multi-job contention fixture
+        env:
+          NOWEN_REQUIRE_FFMPEG_CONTENTION_FIXTURE: '1'
+        run: go test ./internal/transcode/runtime -run '^TestFFmpeg' -count=1 -v
