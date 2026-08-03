@@ -83,6 +83,10 @@ func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality stri
 				if bindErr != nil {
 					return "", bindErr
 				}
+				// Persist a throttled access signal before returning the versioned
+				// playlist. Pressure cleanup therefore protects the full playback
+				// window, not only the currently open segment descriptor.
+				s.transcoder.TouchArtifactAccess(artifact.ID)
 				return versioned, nil
 			}
 			lastErr = readErr
@@ -176,6 +180,9 @@ func (s *StreamService) ServeArtifactSegmentVersion(mediaID, quality, artifactID
 		return ErrArtifactNotReady
 	}
 
+	if artifact != nil && artifact.ID != "" {
+		s.transcoder.TouchArtifactAccess(artifact.ID)
+	}
 	if filepath.Ext(segment) == ".ts" {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
