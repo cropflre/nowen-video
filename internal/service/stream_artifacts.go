@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,12 @@ import (
 )
 
 const artifactPublishResolveRetryDelay = 5 * time.Millisecond
+
+// HLSArtifactVersionQuery is attached to every managed HLS media URI. It pins
+// subsequent segment requests to the exact immutable/still-live Artifact that
+// supplied the playlist rather than resolving whichever version is current at
+// request time.
+const HLSArtifactVersionQuery = "artifact"
 
 var ErrArtifactNotReady = errors.New("transcode artifact is not ready")
 
@@ -62,7 +69,7 @@ func (s *StreamService) GetArtifactSegmentPlaylist(mediaID, quality string) (str
 func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality string) (string, error) {
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
+		artifact, outputDir, err := s.transcoder.resolveHLSArtifactSnapshot(media, quality)
 		if err != nil {
 			lastErr = err
 		} else {
@@ -72,7 +79,11 @@ func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality stri
 				if !strings.Contains(string(content), ".ts") {
 					return "", ErrArtifactNotReady
 				}
-				return string(content), nil
+				versioned, bindErr := bindHLSArtifactVersion(string(content), artifact.ID)
+				if bindErr != nil {
+					return "", bindErr
+				}
+				return versioned, nil
 			}
 			lastErr = readErr
 		}
@@ -88,10 +99,52 @@ func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality stri
 	return "", lastErr
 }
 
-// ServeArtifactSegment resolves the Artifact for every request. A segment from
-// an abandoned old Attempt becomes unreadable as soon as its Lease is fenced;
-// a new Worker can only expose files from its own workspace.
+// bindHLSArtifactVersion rewrites local media URI lines to include the exact
+// Artifact identity that supplied the playlist. Managed runtime HLS currently
+// emits flat MPEG-TS segment names; nested or external media URIs fail closed
+// because the authenticated segment route intentionally accepts one basename.
+func bindHLSArtifactVersion(content, artifactID string) (string, error) {
+	if strings.TrimSpace(artifactID) == "" {
+		return "", fmt.Errorf("artifact identity is required for managed HLS playlist")
+	}
+	lines := strings.Split(content, "\n")
+	for index, line := range lines {
+		carriageReturn := ""
+		if strings.HasSuffix(line, "\r") {
+			line = strings.TrimSuffix(line, "\r")
+			carriageReturn = "\r"
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			return "", fmt.Errorf("parse HLS media URI %q: %w", trimmed, err)
+		}
+		if parsed.IsAbs() || parsed.Host != "" || parsed.Path == "" || filepath.Base(parsed.Path) != parsed.Path || strings.ContainsAny(parsed.Path, `/\\`) {
+			return "", fmt.Errorf("managed HLS media URI is not a local basename: %s", trimmed)
+		}
+		query := parsed.Query()
+		query.Set(HLSArtifactVersionQuery, artifactID)
+		parsed.RawQuery = query.Encode()
+		lines[index] = parsed.String() + carriageReturn
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// ServeArtifactSegment preserves the legacy unversioned segment contract for
+// old clients. New managed playlists call ServeArtifactSegmentVersion through
+// the handler with HLSArtifactVersionQuery populated.
 func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w http.ResponseWriter, r *http.Request) error {
+	return s.ServeArtifactSegmentVersion(mediaID, quality, "", segment, w, r)
+}
+
+// ServeArtifactSegmentVersion serves either an explicit Artifact version or,
+// for rollback compatibility, the current resolved Artifact. Explicit versions
+// never fall through to another Artifact, preventing cross-version segment
+// mixing after a replacement publication.
+func (s *StreamService) ServeArtifactSegmentVersion(mediaID, quality, artifactID, segment string, w http.ResponseWriter, r *http.Request) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return ErrMediaNotFound
@@ -106,7 +159,7 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 		return fmt.Errorf("无效的分片名: %s", segment)
 	}
 
-	segmentPath, outputDir, info, err := s.resolveArtifactFile(media, quality, segment)
+	segmentPath, outputDir, artifact, info, err := s.resolveArtifactFile(media, quality, artifactID, segment)
 	if err != nil {
 		return err
 	}
@@ -116,7 +169,12 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 	if filepath.Ext(segment) == ".ts" {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
-	if strings.Contains(outputDir, string(filepath.Separator)+"artifacts"+string(filepath.Separator)) {
+	if artifact != nil && artifact.ID != "" {
+		w.Header().Set("X-Nowen-Artifact-ID", artifact.ID)
+	}
+	if artifact != nil && (artifact.Status == "published" || artifact.Status == "superseded") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if strings.Contains(outputDir, string(filepath.Separator)+"artifacts"+string(filepath.Separator)) {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
@@ -125,17 +183,24 @@ func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w
 	return nil
 }
 
-func (s *StreamService) resolveArtifactFile(media *model.Media, quality, name string) (string, string, os.FileInfo, error) {
+func (s *StreamService) resolveArtifactFile(media *model.Media, quality, artifactID, name string) (string, string, *model.TranscodeArtifactRecord, os.FileInfo, error) {
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		outputDir, err := s.transcoder.ResolveHLSOutputDir(media, quality)
+		var artifact *model.TranscodeArtifactRecord
+		var outputDir string
+		var err error
+		if artifactID != "" {
+			artifact, outputDir, err = s.transcoder.resolveHLSArtifactVersion(media, quality, artifactID)
+		} else {
+			artifact, outputDir, err = s.transcoder.resolveHLSArtifactSnapshot(media, quality)
+		}
 		if err != nil {
 			lastErr = err
 		} else {
 			path := filepath.Join(outputDir, name)
 			info, statErr := os.Stat(path)
 			if statErr == nil {
-				return path, outputDir, info, nil
+				return path, outputDir, artifact, info, nil
 			}
 			lastErr = statErr
 		}
@@ -146,9 +211,9 @@ func (s *StreamService) resolveArtifactFile(media *model.Media, quality, name st
 		break
 	}
 	if artifactReadinessError(lastErr) {
-		return "", "", nil, ErrArtifactNotReady
+		return "", "", nil, nil, ErrArtifactNotReady
 	}
-	return "", "", nil, lastErr
+	return "", "", nil, nil, lastErr
 }
 
 func artifactReadinessError(err error) bool {
