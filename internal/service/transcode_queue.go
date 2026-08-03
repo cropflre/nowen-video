@@ -61,6 +61,10 @@ func (q *transcodePriorityQueue) CanAccept() bool {
 	if q == nil || q.IsClosed() || q.executionRepo == nil {
 		return false
 	}
+	if err := transcodeQueueAdmissionError(q); err != nil {
+		q.warnf("磁盘压力下拒绝新转码任务: %v", err)
+		return false
+	}
 	depth, err := q.executionRepo.CountQueuedJobs()
 	if err != nil {
 		q.warnf("读取持久化转码队列深度失败: %v", err)
@@ -74,6 +78,10 @@ func (q *transcodePriorityQueue) CanAccept() bool {
 // capacity and wakes database-polling workers.
 func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
 	if q == nil || job == nil || job.ExecutionJob == nil || q.IsClosed() {
+		return false
+	}
+	if err := transcodeQueueAdmissionError(q); err != nil {
+		q.warnf("磁盘压力在 Job 创建后关闭队列准入 job=%s: %v", job.ExecutionJob.ID, err)
 		return false
 	}
 	depth, err := q.executionRepo.CountQueuedJobs()
@@ -111,6 +119,14 @@ func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duratio
 	for {
 		if q.IsClosed() {
 			return nil, false
+		}
+		// Existing FFmpeg processes keep their Lease and continue. Only the next
+		// database Claim is paused so queued work cannot deepen disk pressure.
+		if !transcodeQueueClaimAllowed(q) {
+			if !q.waitForWork() {
+				return nil, false
+			}
+			continue
 		}
 
 		record, claimed, err := q.executionRepo.ClaimNextQueuedJob(
