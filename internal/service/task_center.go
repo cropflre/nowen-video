@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	TaskKindScan      = "scan"
-	TaskKindScrape    = "scrape"
-	TaskKindTranscode = "transcode"
+	TaskKindScan            = "scan"
+	TaskKindScrape          = "scrape"
+	TaskKindTranscode       = "transcode"
+	TaskKindArtifactCleanup = "artifact_cleanup"
 
 	TaskStatusQueued    = "queued"
 	TaskStatusRunning   = "running"
@@ -54,12 +55,14 @@ type TaskCenterSnapshot struct {
 	Summary TaskCenterSummary `json:"summary"`
 }
 
-// TaskCenterService adapts scan phases plus persisted scrape/transcode tasks
-// into one read model. Existing execution services remain the source of truth.
+// TaskCenterService adapts scan phases plus persisted scrape/transcode/cleanup
+// work into one read model. Existing execution services remain the source of
+// truth; Artifact cleanup remains owned by transcode_artifacts.
 type TaskCenterService struct {
 	library       *LibraryService
 	transcodeRepo *repository.TranscodeRepo
 	scrapeRepo    *repository.ScrapeTaskRepo
+	executionRepo *repository.TranscodeExecutionRepo
 	logger        *zap.SugaredLogger
 }
 
@@ -69,12 +72,16 @@ func NewTaskCenterService(
 	scrapeRepo *repository.ScrapeTaskRepo,
 	logger *zap.SugaredLogger,
 ) *TaskCenterService {
-	return &TaskCenterService{
+	service := &TaskCenterService{
 		library:       library,
 		transcodeRepo: transcodeRepo,
 		scrapeRepo:    scrapeRepo,
 		logger:        logger,
 	}
+	if transcodeRepo != nil && transcodeRepo.DB() != nil {
+		service.executionRepo = repository.NewTranscodeExecutionRepo(transcodeRepo.DB())
+	}
+	return service
 }
 
 func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSnapshot, error) {
@@ -85,13 +92,26 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 		limit = 200
 	}
 
-	tasks := make([]UnifiedTask, 0, limit+8)
+	tasks := make([]UnifiedTask, 0, limit+16)
 	now := time.Now()
 
 	if s.library != nil {
 		for _, phase := range s.library.ActiveScanPhases() {
 			updated := now
 			tasks = append(tasks, scanPhaseToUnifiedTask(phase, &updated))
+		}
+	}
+
+	if s.executionRepo != nil {
+		rows, err := s.executionRepo.ListArtifactCleanupOperations(limit)
+		if err != nil {
+			return nil, fmt.Errorf("list artifact cleanup operations: %w", err)
+		}
+		for i := range rows {
+			task := artifactCleanupToUnifiedTask(&rows[i])
+			if !activeOnly || isTaskActive(task.Status) {
+				tasks = append(tasks, task)
+			}
 		}
 	}
 
@@ -126,6 +146,11 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 		rightActive := isTaskActive(tasks[j].Status)
 		if leftActive != rightActive {
 			return leftActive
+		}
+		leftCleanupFailure := tasks[i].Kind == TaskKindArtifactCleanup && tasks[i].Status == TaskStatusFailed
+		rightCleanupFailure := tasks[j].Kind == TaskKindArtifactCleanup && tasks[j].Status == TaskStatusFailed
+		if leftCleanupFailure != rightCleanupFailure {
+			return leftCleanupFailure
 		}
 		return taskSortTime(tasks[i]).After(taskSortTime(tasks[j]))
 	})
@@ -166,6 +191,80 @@ func scanPhaseToUnifiedTask(phase ScanPhaseData, updatedAt *time.Time) UnifiedTa
 		Progress:  progress,
 		SourceID:  phase.LibraryID,
 		UpdatedAt: updatedAt,
+	}
+}
+
+func artifactCleanupToUnifiedTask(artifact *model.TranscodeArtifactRecord) UnifiedTask {
+	if artifact == nil {
+		return UnifiedTask{}
+	}
+	status := TaskStatusQueued
+	switch artifact.CleanupState {
+	case repository.ArtifactCleanupClaimed:
+		status = TaskStatusRunning
+	case repository.ArtifactCleanupRetryWait, repository.ArtifactCleanupBlocked:
+		status = TaskStatusFailed
+	}
+
+	title := "转码缓存清理"
+	if artifact.MediaID != "" {
+		title += " · " + artifact.MediaID
+	}
+	subtitleParts := make([]string, 0, 3)
+	if artifact.ProfileID != "" {
+		subtitleParts = append(subtitleParts, artifact.ProfileID)
+	}
+	subtitleParts = append(subtitleParts, cleanupStateLabel(artifact.CleanupState))
+	if artifact.CleanupAttempts > 0 {
+		subtitleParts = append(subtitleParts, fmt.Sprintf("第 %d 次尝试", artifact.CleanupAttempts))
+	}
+
+	messageParts := make([]string, 0, 4)
+	if artifact.CleanupErrorCode != "" {
+		messageParts = append(messageParts, artifact.CleanupErrorCode)
+	}
+	if artifact.CleanupErrorMessage != "" {
+		messageParts = append(messageParts, artifact.CleanupErrorMessage)
+	}
+	if artifact.CleanupState == repository.ArtifactCleanupRetryWait && artifact.CleanupNextAttemptAt != nil {
+		messageParts = append(messageParts, "下次重试 "+artifact.CleanupNextAttemptAt.Format("01-02 15:04"))
+	}
+	if artifact.Path != "" {
+		messageParts = append(messageParts, artifact.Path)
+	} else if artifact.TempPath != "" {
+		messageParts = append(messageParts, artifact.TempPath)
+	}
+	if len(messageParts) == 0 {
+		messageParts = append(messageParts, "等待 Artifact 清理 Worker")
+	}
+
+	return UnifiedTask{
+		ID:        TaskKindArtifactCleanup + ":" + artifact.ID,
+		Kind:      TaskKindArtifactCleanup,
+		Status:    status,
+		Title:     title,
+		Subtitle:  strings.Join(subtitleParts, " · "),
+		Message:   strings.Join(messageParts, " · "),
+		Progress:  0,
+		SourceID:  artifact.ID,
+		CreatedAt: timePtr(artifact.CreatedAt),
+		UpdatedAt: timePtr(artifact.UpdatedAt),
+		StartedAt: artifact.CleanupClaimedAt,
+	}
+}
+
+func cleanupStateLabel(state string) string {
+	switch state {
+	case repository.ArtifactCleanupPending:
+		return "等待清理"
+	case repository.ArtifactCleanupClaimed:
+		return "正在清理"
+	case repository.ArtifactCleanupRetryWait:
+		return "等待重试"
+	case repository.ArtifactCleanupBlocked:
+		return "已阻断"
+	default:
+		return "清理状态未知"
 	}
 }
 
