@@ -53,6 +53,21 @@ func TestStderrMarkersRecognizeENOSPC(t *testing.T) {
 	}
 }
 
+func TestENOSPCPrefillLeavesBoundedHeadroom(t *testing.T) {
+	const capacity = int64(1_000_000)
+	prefill, err := enospcPrefillBytes(capacity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantHeadroom = int64(64 * 1024)
+	if prefill != capacity-wantHeadroom {
+		t.Fatalf("prefill = %d, want %d", prefill, capacity-wantHeadroom)
+	}
+	if _, err := enospcPrefillBytes(wantHeadroom); err == nil {
+		t.Fatal("enospcPrefillBytes accepted a capacity without write headroom")
+	}
+}
+
 func TestResourceLimitHelperSourceCompiles(t *testing.T) {
 	if _, err := exec.LookPath("cc"); err != nil {
 		t.Skip("C compiler is unavailable")
