@@ -68,7 +68,7 @@ func (c ScenarioContract) ValidateFor(spec transcodecorpus.Spec, manifest transc
 		if process.AttemptOrdinal != index+1 || !isSHA256(process.CommandHash) || !isSHA256(process.StderrSHA256) {
 			return fmt.Errorf("recovery stress process evidence %d is invalid", index+1)
 		}
-		if process.MaximumProgressMicros < 0 || process.TriggerObservedMicros < 0 || process.SegmentCount < 0 || process.MaxRSSBytes < 0 || process.ElapsedMillis < 0 {
+		if process.MaximumProgressMicros < 0 || process.TriggerObservedMicros < 0 || process.SegmentCount < 0 || process.MaxRSSBytes < 0 || process.ElapsedMillis < 0 || process.CPUCountLimit < 0 || process.MemoryLimitBytes < 0 {
 			return fmt.Errorf("recovery stress process metrics %d are invalid", index+1)
 		}
 	}
@@ -96,11 +96,11 @@ func (c ScenarioContract) validateScenarioOutcome() error {
 			return fmt.Errorf("sigkill recovery outcome is invalid")
 		}
 	case ScenarioENOSPCWrite:
-		if first.ExitCode == 0 || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
+		if first.ExitCode == 0 || first.FaultBackend != "tmpfs" || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
 			return fmt.Errorf("ENOSPC outcome is invalid")
 		}
 	case ScenarioBoundedResources:
-		if first.ExitCode != 0 || first.MaxRSSBytes <= 0 || first.MaxRSSBytes > c.Scenario.Limits.AddressSpaceBytes || c.Artifact.ReadableArtifactID == "" || !c.Fence.ReplacementPublishCommitted {
+		if first.ExitCode != 0 || first.ResourceController != "cgroup-v2" || first.CPUCountLimit != c.Scenario.Limits.CPUCount || first.MemoryLimitBytes != c.Scenario.Limits.MemoryMaxBytes || first.MaxRSSBytes <= 0 || first.MaxRSSBytes > c.Scenario.Limits.MemoryMaxBytes || c.Artifact.ReadableArtifactID == "" || !c.Fence.ReplacementPublishCommitted {
 			return fmt.Errorf("bounded resource outcome is invalid")
 		}
 	case ScenarioStaleLeaseFence:
