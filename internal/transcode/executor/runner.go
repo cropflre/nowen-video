@@ -16,7 +16,7 @@ import (
 
 // Progress is emitted from FFmpeg's machine-readable -progress protocol.
 type Progress struct {
-	OutTimeMS int64
+	OutTimeMS  int64
 	CurrentSec float64
 	Speed      string
 	State      string
@@ -43,13 +43,15 @@ type Callbacks struct {
 
 // Result is the complete outcome of one process attempt.
 type Result struct {
-	StartedAt   time.Time
-	CompletedAt time.Time
-	ExitCode    int
-	Cancelled   bool
-	TimedOut    bool
-	Err         error
-	StderrTail  []string
+	StartedAt       time.Time
+	CompletedAt     time.Time
+	ExitCode        int
+	Cancelled       bool
+	TimedOut        bool
+	Err             error
+	StderrTail      []string
+	FatalOutputCode string
+	FatalOutputLine string
 }
 
 func (r Result) ErrorText() string {
@@ -127,6 +129,10 @@ func (r *ProcessRunner) Run(ctx context.Context, command Command, callbacks Call
 	parseWG.Wait()
 	result.CompletedAt = time.Now()
 	result.StderrTail = parser.tail()
+	if code, line, ok := DetectFatalOutput(result.StderrTail); ok {
+		result.FatalOutputCode = code
+		result.FatalOutputLine = line
+	}
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
@@ -139,6 +145,10 @@ func (r *ProcessRunner) Run(ctx context.Context, command Command, callbacks Call
 	}
 	if waitErr != nil {
 		result.Err = waitErr
+		return result
+	}
+	if result.FatalOutputCode != "" {
+		result.Err = &FatalOutputError{Code: result.FatalOutputCode, Line: result.FatalOutputLine}
 		return result
 	}
 	return result
