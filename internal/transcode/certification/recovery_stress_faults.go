@@ -232,7 +232,25 @@ func mountENOSPCWorkspace(workspace string, capacityBytes int64) (func() error, 
 		}
 		return nil
 	}
+	prefillBytes, err := enospcPrefillBytes(capacityBytes)
+	if err != nil {
+		_ = cleanup()
+		return nil, err
+	}
+	reservePath := filepath.Join(workspace, ".nowen-enospc-reserve")
+	if err := os.WriteFile(reservePath, make([]byte, int(prefillBytes)), 0o600); err != nil {
+		_ = cleanup()
+		return nil, fmt.Errorf("prefill ENOSPC tmpfs: %w", err)
+	}
 	return cleanup, nil
+}
+
+func enospcPrefillBytes(capacityBytes int64) (int64, error) {
+	const ffmpegHeadroom = int64(64 * 1024)
+	if capacityBytes <= ffmpegHeadroom {
+		return 0, fmt.Errorf("tmpfs capacity %d does not leave fault headroom", capacityBytes)
+	}
+	return capacityBytes - ffmpegHeadroom, nil
 }
 
 const resourceLimitHelperSource = `
