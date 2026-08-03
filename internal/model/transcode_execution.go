@@ -81,43 +81,52 @@ func (a *TranscodeAttemptRecord) BeforeCreate(*gorm.DB) error {
 }
 
 type TranscodeArtifactRecord struct {
-	ID                   string     `json:"id" gorm:"primaryKey;type:text"`
-	JobID                string     `json:"job_id" gorm:"index;type:text;not null"`
-	AttemptID            string     `json:"attempt_id" gorm:"index;type:text"`
-	MediaID              string     `json:"media_id" gorm:"index:idx_transcode_artifact_resolve,priority:1;index;type:text"`
-	Kind                 string     `json:"kind" gorm:"index;type:text;not null"`
-	ProfileID            string     `json:"profile_id" gorm:"index:idx_transcode_artifact_resolve,priority:2;index;type:text"`
-	SourceFingerprint    string     `json:"source_fingerprint" gorm:"index:idx_transcode_artifact_resolve,priority:3;index;type:text"`
-	PlannerVersion       string     `json:"planner_version" gorm:"index:idx_transcode_artifact_resolve,priority:4;type:text"`
-	EncodingPlanVersion  string     `json:"encoding_plan_version" gorm:"type:text"`
-	EncodingPlanHash     string     `json:"encoding_plan_hash" gorm:"index;type:text"`
-	EncodingPlanJSON     string     `json:"encoding_plan_json" gorm:"type:text"`
-	TimestampPlanVersion string     `json:"timestamp_plan_version" gorm:"type:text"`
-	TimestampPlanHash    string     `json:"timestamp_plan_hash" gorm:"index;type:text"`
-	TimestampPlanJSON    string     `json:"timestamp_plan_json" gorm:"type:text"`
-	TimelineOriginMS     int64      `json:"timeline_origin_ms" gorm:"index"`
-	AttestationVersion   string     `json:"attestation_version" gorm:"type:text"`
-	AttestationStatus    string     `json:"attestation_status" gorm:"index;type:text"`
-	AttestationHash      string     `json:"attestation_hash" gorm:"index;type:text"`
-	AttestationJSON      string     `json:"attestation_json" gorm:"type:text"`
-	TimelineStartMS      int64      `json:"timeline_start_ms"`
-	TimelineEndMS        int64      `json:"timeline_end_ms"`
-	AttestedAt           *time.Time `json:"attested_at" gorm:"index"`
-	Path                 string     `json:"path" gorm:"type:text"`
-	TempPath             string     `json:"temp_path" gorm:"type:text"`
-	ManifestPath         string     `json:"manifest_path" gorm:"type:text"`
-	Status               string     `json:"status" gorm:"index:idx_transcode_artifact_resolve,priority:5;index;type:text;not null"`
-	MigrationSource      string     `json:"migration_source" gorm:"index;type:text"`
-	SizeBytes            int64      `json:"size_bytes"`
-	Checksum             string     `json:"checksum" gorm:"type:text"`
-	DurationMS           int64      `json:"duration_ms"`
-	SegmentDuration      int        `json:"segment_duration"`
-	PublishedAt          *time.Time `json:"published_at" gorm:"index"`
-	ExpiresAt            *time.Time `json:"expires_at" gorm:"index"`
-	ErrorCode            string     `json:"error_code" gorm:"type:text"`
-	ErrorMessage         string     `json:"error_message" gorm:"type:text"`
-	CreatedAt            time.Time  `json:"created_at" gorm:"index"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID                    string     `json:"id" gorm:"primaryKey;type:text"`
+	JobID                 string     `json:"job_id" gorm:"index;type:text;not null"`
+	AttemptID             string     `json:"attempt_id" gorm:"index;type:text"`
+	MediaID               string     `json:"media_id" gorm:"index:idx_transcode_artifact_resolve,priority:1;index;type:text"`
+	Kind                  string     `json:"kind" gorm:"index;type:text;not null"`
+	ProfileID             string     `json:"profile_id" gorm:"index:idx_transcode_artifact_resolve,priority:2;index;type:text"`
+	SourceFingerprint     string     `json:"source_fingerprint" gorm:"index:idx_transcode_artifact_resolve,priority:3;index;type:text"`
+	PlannerVersion        string     `json:"planner_version" gorm:"index:idx_transcode_artifact_resolve,priority:4;type:text"`
+	EncodingPlanVersion   string     `json:"encoding_plan_version" gorm:"type:text"`
+	EncodingPlanHash      string     `json:"encoding_plan_hash" gorm:"index;type:text"`
+	EncodingPlanJSON      string     `json:"encoding_plan_json" gorm:"type:text"`
+	TimestampPlanVersion  string     `json:"timestamp_plan_version" gorm:"type:text"`
+	TimestampPlanHash     string     `json:"timestamp_plan_hash" gorm:"index;type:text"`
+	TimestampPlanJSON     string     `json:"timestamp_plan_json" gorm:"type:text"`
+	TimelineOriginMS      int64      `json:"timeline_origin_ms" gorm:"index"`
+	AttestationVersion    string     `json:"attestation_version" gorm:"type:text"`
+	AttestationStatus     string     `json:"attestation_status" gorm:"index;type:text"`
+	AttestationHash       string     `json:"attestation_hash" gorm:"index;type:text"`
+	AttestationJSON       string     `json:"attestation_json" gorm:"type:text"`
+	TimelineStartMS       int64      `json:"timeline_start_ms"`
+	TimelineEndMS         int64      `json:"timeline_end_ms"`
+	AttestedAt            *time.Time `json:"attested_at" gorm:"index"`
+	Path                  string     `json:"path" gorm:"type:text"`
+	TempPath              string     `json:"temp_path" gorm:"type:text"`
+	ManifestPath          string     `json:"manifest_path" gorm:"type:text"`
+	Status                string     `json:"status" gorm:"index:idx_transcode_artifact_resolve,priority:5;index;type:text;not null"`
+	MigrationSource       string     `json:"migration_source" gorm:"index;type:text"`
+	SizeBytes             int64      `json:"size_bytes"`
+	Checksum              string     `json:"checksum" gorm:"type:text"`
+	DurationMS            int64      `json:"duration_ms"`
+	SegmentDuration       int        `json:"segment_duration"`
+	PublishedAt           *time.Time `json:"published_at" gorm:"index"`
+	ExpiresAt             *time.Time `json:"expires_at" gorm:"index"`
+	ErrorCode             string     `json:"error_code" gorm:"type:text"`
+	ErrorMessage          string     `json:"error_message" gorm:"type:text"`
+	CleanupState          string     `json:"cleanup_state" gorm:"index;type:text"`
+	CleanupAttempts       int        `json:"cleanup_attempts" gorm:"default:0"`
+	CleanupToken          string     `json:"cleanup_token" gorm:"index;type:text"`
+	CleanupClaimedAt      *time.Time `json:"cleanup_claimed_at"`
+	CleanupLeaseExpiresAt *time.Time `json:"cleanup_lease_expires_at" gorm:"index"`
+	CleanupNextAttemptAt  *time.Time `json:"cleanup_next_attempt_at" gorm:"index"`
+	CleanupLastAttemptAt  *time.Time `json:"cleanup_last_attempt_at"`
+	CleanupErrorCode      string     `json:"cleanup_error_code" gorm:"index;type:text"`
+	CleanupErrorMessage   string     `json:"cleanup_error_message" gorm:"type:text"`
+	CreatedAt             time.Time  `json:"created_at" gorm:"index"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 func (TranscodeArtifactRecord) TableName() string { return "transcode_artifacts" }
@@ -147,7 +156,6 @@ func (a *TranscodeArtifactRecord) BeforeCreate(tx *gorm.DB) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		// Historical legacy imports intentionally use synthetic Job IDs.
 		return nil
 	}
 	if a.EncodingPlanVersion == "" {
@@ -183,10 +191,6 @@ func AutoMigrateTranscodeExecution(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	// Existing artifact rows were created before identity and Encoding Plan
-	// fields were stored on the artifact itself. Backfill only declarative plan
-	// identities from the owning Job. Timestamp fields remain blank for old Jobs,
-	// and produced-media/handoff evidence is never fabricated.
 	return db.Exec(`
 		UPDATE transcode_artifacts
 		SET
