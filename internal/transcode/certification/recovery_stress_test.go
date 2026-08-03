@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	transcoderecovery "github.com/nowen-video/nowen-video/internal/transcode/recoverystress"
@@ -53,17 +54,25 @@ func TestStderrMarkersRecognizeENOSPC(t *testing.T) {
 	}
 }
 
-func TestENOSPCPrefillLeavesOneFilesystemBlock(t *testing.T) {
-	const capacity = int64(1_000_000)
-	prefill, err := enospcPrefillBytes(capacity)
+func TestWriteUntilENOSPCRequiresKernelError(t *testing.T) {
+	writes := 0
+	err := writeUntilENOSPC(func(block []byte) (int, error) {
+		writes++
+		if writes == 3 {
+			return 0, syscall.ENOSPC
+		}
+		return len(block), nil
+	}, make([]byte, 4096), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prefill != capacity-enospcWriteHeadroom {
-		t.Fatalf("prefill = %d, want %d", prefill, capacity-enospcWriteHeadroom)
+	if writes != 3 {
+		t.Fatalf("writes = %d, want 3", writes)
 	}
-	if _, err := enospcPrefillBytes(enospcWriteHeadroom); err == nil {
-		t.Fatal("enospcPrefillBytes accepted a capacity without write headroom")
+	if err := writeUntilENOSPC(func(block []byte) (int, error) {
+		return len(block), nil
+	}, make([]byte, 4096), 2); err == nil {
+		t.Fatal("writeUntilENOSPC passed without observing ENOSPC")
 	}
 }
 
