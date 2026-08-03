@@ -186,7 +186,7 @@ def validate_scenario_outcome(evidence):
         assert artifact["partial_workspace_quarantined"] is True
     elif scenario_id == "enospc-segment-write-v1":
         assert first["exit_code"] != 0
-        assert first["fault_backend"] == "tmpfs"
+        assert first["fault_backend"] == "dev-full-bind"
         assert "ENOSPC" in first["stderr_markers"]
         assert evidence["error_code"] == "write_enospc"
         assert artifact["readable_artifact_id"] == ""
