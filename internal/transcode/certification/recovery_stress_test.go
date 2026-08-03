@@ -53,17 +53,16 @@ func TestStderrMarkersRecognizeENOSPC(t *testing.T) {
 	}
 }
 
-func TestENOSPCPrefillLeavesBoundedHeadroom(t *testing.T) {
+func TestENOSPCPrefillLeavesOneFilesystemBlock(t *testing.T) {
 	const capacity = int64(1_000_000)
 	prefill, err := enospcPrefillBytes(capacity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wantHeadroom = int64(64 * 1024)
-	if prefill != capacity-wantHeadroom {
-		t.Fatalf("prefill = %d, want %d", prefill, capacity-wantHeadroom)
+	if prefill != capacity-enospcWriteHeadroom {
+		t.Fatalf("prefill = %d, want %d", prefill, capacity-enospcWriteHeadroom)
 	}
-	if _, err := enospcPrefillBytes(wantHeadroom); err == nil {
+	if _, err := enospcPrefillBytes(enospcWriteHeadroom); err == nil {
 		t.Fatal("enospcPrefillBytes accepted a capacity without write headroom")
 	}
 }
