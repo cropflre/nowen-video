@@ -2,6 +2,7 @@ package certification
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -14,11 +15,16 @@ import (
 )
 
 type processControl struct {
-	CancelAtMicros int64
-	KillAtMicros   int64
-	ExtraEnv       []string
-	CommandPath    string
-	CommandArgs    []string
+	CancelAtMicros     int64
+	KillAtMicros       int64
+	ExtraEnv           []string
+	CommandPath        string
+	CommandArgs        []string
+	MemoryPeakPath     string
+	ResourceController string
+	CPUCountLimit      int
+	MemoryLimitBytes   int64
+	FaultBackend       string
 }
 
 func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJobRecord, attempt *recoveryAttempt, control processControl) (transcoderecovery.ProcessEvidence, error) {
@@ -73,6 +79,13 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		},
 	})
 	close(done)
+	if control.MemoryPeakPath != "" {
+		peak, err := readMemoryPeak(control.MemoryPeakPath)
+		if err != nil {
+			return transcoderecovery.ProcessEvidence{}, fmt.Errorf("read bounded cgroup memory peak: %w", err)
+		}
+		setAtomicMaximum(&maximumRSS, peak)
+	}
 	elapsed := time.Since(startedAt).Milliseconds()
 	segments, manifestExists := inspectPartialHLS(attempt.Workspace)
 	workspaceExists := pathExists(attempt.Workspace)
@@ -97,5 +110,9 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		StderrMarkers:         markers,
 		MaxRSSBytes:           maximumRSS.Load(),
 		ElapsedMillis:         elapsed,
+		ResourceController:    control.ResourceController,
+		CPUCountLimit:         control.CPUCountLimit,
+		MemoryLimitBytes:      control.MemoryLimitBytes,
+		FaultBackend:          control.FaultBackend,
 	}, nil
 }
