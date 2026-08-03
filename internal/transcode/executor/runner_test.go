@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -57,6 +58,26 @@ func TestProcessRunnerCancellationKillsProcess(t *testing.T) {
 	}
 }
 
+func TestProcessRunnerFailsClosedOnENOSPCStderr(t *testing.T) {
+	result := NewProcessRunner().Run(context.Background(), helperCommand("enospc"), Callbacks{})
+	if result.ExitCode != 0 {
+		t.Fatalf("helper exit code = %d, want the real exit code 0", result.ExitCode)
+	}
+	if result.FatalOutputCode != FatalOutputCodeENOSPC {
+		t.Fatalf("fatal output code = %q", result.FatalOutputCode)
+	}
+	var fatal *FatalOutputError
+	if !errors.As(result.Err, &fatal) || fatal.Code != FatalOutputCodeENOSPC {
+		t.Fatalf("expected typed fatal output error, got %T %v", result.Err, result.Err)
+	}
+}
+
+func TestDetectFatalOutputIgnoresOrdinaryProgress(t *testing.T) {
+	if code, line, ok := DetectFatalOutput([]string{"progress=end", "video:123kB"}); ok {
+		t.Fatalf("ordinary output classified as fatal: code=%q line=%q", code, line)
+	}
+}
+
 func TestResultErrorTextIncludesStderr(t *testing.T) {
 	result := Result{Err: fmt.Errorf("boom"), StderrTail: []string{"line one", "line two"}}
 	text := result.ErrorText()
@@ -88,6 +109,11 @@ func TestProcessRunnerHelper(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "progress=continue")
 		fmt.Fprintln(os.Stderr, "out_time_us=3000000")
 		fmt.Fprintln(os.Stderr, "speed=2.00x")
+		fmt.Fprintln(os.Stderr, "progress=end")
+		os.Exit(0)
+	case "enospc":
+		fmt.Fprintln(os.Stderr, "[hls @ 0x1] Failed to open file 'seg0000.ts'")
+		fmt.Fprintln(os.Stderr, "av_interleaved_write_frame(): No space left on device")
 		fmt.Fprintln(os.Stderr, "progress=end")
 		os.Exit(0)
 	case "wait":
