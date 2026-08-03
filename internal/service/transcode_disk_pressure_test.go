@@ -3,11 +3,13 @@ package service
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodediskpressure "github.com/nowen-video/nowen-video/internal/transcode/diskpressure"
+	"gorm.io/gorm"
 )
 
 func TestDiskPressureGovernorReclaimsOldPublishedArtifact(t *testing.T) {
@@ -67,9 +69,7 @@ func TestDiskPressureGovernorProtectsRecentPlaybackAndBlocksAdmission(t *testing
 func createDiskPressureArtifact(
 	t *testing.T,
 	service *TranscodeService,
-	db interface {
-		Create(value interface{}) interface{ Error() error }
-	},
+	db *gorm.DB,
 	id string,
 	updatedAt time.Time,
 	size int,
@@ -83,32 +83,26 @@ func createDiskPressureArtifact(
 		t.Fatal(err)
 	}
 	payload := make([]byte, size)
-	if err := os.WriteFile(path+string(os.PathSeparator)+"seg00001.ts", payload, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(path, "seg00001.ts"), payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	publishedAt := time.Now().Add(-48 * time.Hour)
 	artifact := &model.TranscodeArtifactRecord{
-		ID: "artifact-" + id,
-		JobID: "job-" + id,
-		MediaID: "pressure-media",
-		Kind: "hls_variant",
-		ProfileID: "720p",
+		ID:                "artifact-" + id,
+		JobID:             "job-" + id,
+		MediaID:           "pressure-media",
+		Kind:              "hls_variant",
+		ProfileID:         "720p",
 		SourceFingerprint: "source",
-		PlannerVersion: "planner",
-		Status: "published",
-		Path: path,
-		SizeBytes: int64(size),
-		PublishedAt: &publishedAt,
-		CreatedAt: publishedAt,
-		UpdatedAt: updatedAt,
+		PlannerVersion:    "planner",
+		Status:            "published",
+		Path:              path,
+		SizeBytes:         int64(size),
+		PublishedAt:       &publishedAt,
+		CreatedAt:         publishedAt,
+		UpdatedAt:         updatedAt,
 	}
-	// The helper is intentionally kept local to this test file; use the concrete
-	// GORM value through a small assertion to avoid coupling production code.
-	gormDB, ok := any(db).(interface{ Create(value interface{}) *gorm.DB })
-	if !ok {
-		t.Fatal("unexpected database fixture")
-	}
-	if err := gormDB.Create(artifact).Error; err != nil {
+	if err := db.Create(artifact).Error; err != nil {
 		t.Fatal(err)
 	}
 	return artifact, path
