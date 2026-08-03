@@ -25,7 +25,7 @@ func inspectPartialHLS(workspace string) (int, bool) {
 	segments := 0
 	for _, path := range matches {
 		info, err := os.Stat(path)
-		if err == nil && !info.IsDir() && info.Size() > 0 {
+		if err == nil && info.Mode().IsRegular() && info.Size() > 0 {
 			segments++
 		}
 	}
@@ -210,91 +210,71 @@ func mountENOSPCWorkspace(workspace string, capacityBytes int64) (func() error, 
 	}
 	sudo, err := exec.LookPath("sudo")
 	if err != nil {
-		return nil, fmt.Errorf("resolve sudo for ENOSPC tmpfs: %w", err)
+		return nil, fmt.Errorf("resolve sudo for ENOSPC mount: %w", err)
 	}
 	mountPath, err := exec.LookPath("mount")
 	if err != nil {
-		return nil, fmt.Errorf("resolve mount for ENOSPC tmpfs: %w", err)
+		return nil, fmt.Errorf("resolve mount for ENOSPC backend: %w", err)
 	}
 	umountPath, err := exec.LookPath("umount")
 	if err != nil {
-		return nil, fmt.Errorf("resolve umount for ENOSPC tmpfs: %w", err)
+		return nil, fmt.Errorf("resolve umount for ENOSPC backend: %w", err)
 	}
+
 	options := fmt.Sprintf("size=%d,mode=0755,uid=%d,gid=%d", capacityBytes, os.Getuid(), os.Getgid())
 	command := exec.Command(sudo, "-n", mountPath, "-t", "tmpfs", "-o", options, "nowen-recovery-enospc", workspace)
 	combined, err := command.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("mount ENOSPC tmpfs: %w: %s", err, strings.TrimSpace(string(combined)))
 	}
-	cleanup := func() error {
-		command := exec.Command(sudo, "-n", umountPath, workspace)
-		combined, err := command.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("unmount ENOSPC tmpfs: %w: %s", err, strings.TrimSpace(string(combined)))
-		}
-		return nil
+
+	segmentPath := filepath.Join(workspace, "seg0000.ts")
+	if err := os.WriteFile(segmentPath, nil, 0o644); err != nil {
+		_ = exec.Command(sudo, "-n", umountPath, workspace).Run()
+		return nil, fmt.Errorf("precreate ENOSPC segment target: %w", err)
 	}
-	if err := fillENOSPCWorkspace(workspace, capacityBytes); err != nil {
-		_ = cleanup()
+	command = exec.Command(sudo, "-n", mountPath, "--bind", "/dev/full", segmentPath)
+	combined, err = command.CombinedOutput()
+	if err != nil {
+		_ = exec.Command(sudo, "-n", umountPath, workspace).Run()
+		return nil, fmt.Errorf("bind /dev/full over first HLS segment: %w: %s", err, strings.TrimSpace(string(combined)))
+	}
+	if err := verifyENOSPCPath(segmentPath); err != nil {
+		_ = exec.Command(sudo, "-n", umountPath, segmentPath).Run()
+		_ = exec.Command(sudo, "-n", umountPath, workspace).Run()
 		return nil, err
+	}
+
+	cleanup := func() error {
+		var cleanupErr error
+		if combined, err := exec.Command(sudo, "-n", umountPath, segmentPath).CombinedOutput(); err != nil {
+			cleanupErr = fmt.Errorf("unmount ENOSPC segment bind: %w: %s", err, strings.TrimSpace(string(combined)))
+		}
+		if combined, err := exec.Command(sudo, "-n", umountPath, workspace).CombinedOutput(); err != nil {
+			workspaceErr := fmt.Errorf("unmount ENOSPC tmpfs: %w: %s", err, strings.TrimSpace(string(combined)))
+			if cleanupErr != nil {
+				cleanupErr = errors.Join(cleanupErr, workspaceErr)
+			} else {
+				cleanupErr = workspaceErr
+			}
+		}
+		return cleanupErr
 	}
 	return cleanup, nil
 }
 
-func fillENOSPCWorkspace(workspace string, capacityBytes int64) error {
-	for _, name := range []string{"stream.m3u8", "seg0000.ts"} {
-		file, err := os.OpenFile(filepath.Join(workspace, name), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-		if err != nil {
-			return fmt.Errorf("precreate ENOSPC output %s: %w", name, err)
-		}
-		if err := file.Close(); err != nil {
-			return err
-		}
-	}
-	reserve, err := os.OpenFile(filepath.Join(workspace, ".nowen-enospc-reserve"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+func verifyENOSPCPath(path string) error {
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {
-		return fmt.Errorf("open ENOSPC reserve: %w", err)
+		return fmt.Errorf("open ENOSPC segment target: %w", err)
 	}
-	block := make([]byte, 4*1024)
-	maxWrites := int(capacityBytes/int64(len(block))) + 1024
-	writeErr := writeUntilENOSPC(reserve.Write, block, maxWrites)
-	closeErr := reserve.Close()
-	if writeErr != nil {
-		return writeErr
+	_, writeErr := file.Write([]byte{0})
+	closeErr := file.Close()
+	if !errors.Is(writeErr, syscall.ENOSPC) {
+		return fmt.Errorf("segment target write returned %v, want ENOSPC", writeErr)
 	}
 	if closeErr != nil && !errors.Is(closeErr, syscall.ENOSPC) {
-		return fmt.Errorf("close ENOSPC reserve: %w", closeErr)
-	}
-	return verifyENOSPCHeadroom(workspace)
-}
-
-func writeUntilENOSPC(write func([]byte) (int, error), block []byte, maxWrites int) error {
-	if len(block) == 0 || maxWrites <= 0 {
-		return fmt.Errorf("invalid ENOSPC fill geometry")
-	}
-	for index := 0; index < maxWrites; index++ {
-		written, err := write(block)
-		if errors.Is(err, syscall.ENOSPC) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("fill tmpfs before ENOSPC: %w", err)
-		}
-		if written != len(block) {
-			return fmt.Errorf("short tmpfs reserve write: %d of %d", written, len(block))
-		}
-	}
-	return fmt.Errorf("tmpfs did not return ENOSPC after %d writes", maxWrites)
-}
-
-func verifyENOSPCHeadroom(workspace string) error {
-	var stats syscall.Statfs_t
-	if err := syscall.Statfs(workspace, &stats); err != nil {
-		return fmt.Errorf("stat ENOSPC tmpfs: %w", err)
-	}
-	available := int64(stats.Bavail) * int64(stats.Bsize)
-	if available != 0 {
-		return fmt.Errorf("ENOSPC tmpfs still has %d available bytes", available)
+		return fmt.Errorf("close ENOSPC segment target: %w", closeErr)
 	}
 	return nil
 }
