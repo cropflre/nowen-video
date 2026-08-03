@@ -53,7 +53,7 @@ type Lease struct {
 	once     sync.Once
 }
 
-func (l *Lease) Kind() Kind             { return l.kind }
+func (l *Lease) Kind() Kind            { return l.kind }
 func (l *Lease) AcquiredAt() time.Time { return l.acquired }
 func (l *Lease) Release() {
 	if l == nil {
@@ -132,12 +132,15 @@ func (g *Governor) Acquire(ctx context.Context, kind Kind) (*Lease, error) {
 			kind:     kind,
 			acquired: time.Now(),
 			release: func() {
-				<-sem
+				// Update accounting before making the semaphore slot visible to the
+				// next waiter. Reversing this order creates a false handoff window
+				// where two leases appear active and PeakInUse can exceed capacity.
 				g.mu.Lock()
 				if g.inUse[kind] > 0 {
 					g.inUse[kind]--
 				}
 				g.mu.Unlock()
+				<-sem
 			},
 		}, nil
 	case <-ctx.Done():
