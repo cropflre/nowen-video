@@ -29,6 +29,8 @@ type TranscodeStatistics struct {
 	ArtifactStoreRoot    string                         `json:"artifact_store_root"`
 	ResourceCapacity     map[transcodegovernor.Kind]int `json:"resource_capacity,omitempty"`
 	ResourceInUse        map[transcodegovernor.Kind]int `json:"resource_in_use,omitempty"`
+	ResourceWaiting      map[transcodegovernor.Kind]int `json:"resource_waiting,omitempty"`
+	ResourcePeakInUse    map[transcodegovernor.Kind]int `json:"resource_peak_in_use,omitempty"`
 }
 
 func (s *TranscodeService) ListTasks(page, pageSize int, status string) ([]model.TranscodeTask, int64, error) {
@@ -92,6 +94,8 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		ArtifactStoreRoot:    artifactRoot,
 		ResourceCapacity:     snapshot.Capacity,
 		ResourceInUse:        snapshot.InUse,
+		ResourceWaiting:      snapshot.Waiting,
+		ResourcePeakInUse:    snapshot.PeakInUse,
 	}
 }
 
