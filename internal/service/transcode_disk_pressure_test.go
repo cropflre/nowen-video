@@ -1,0 +1,115 @@
+package service
+
+import (
+	"errors"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/nowen-video/nowen-video/internal/model"
+	transcodediskpressure "github.com/nowen-video/nowen-video/internal/transcode/diskpressure"
+)
+
+func TestDiskPressureGovernorReclaimsOldPublishedArtifact(t *testing.T) {
+	service, db := newConcurrentArtifactService(t)
+	service.cfg.Cache.MaxDiskUsageMB = 1
+	service.diskUsageTTL = time.Nanosecond
+	artifact, path := createDiskPressureArtifact(t, service, db, "pressure-old", time.Now().Add(-48*time.Hour), 2*1024*1024)
+
+	status := service.runDiskPressureGovernorTick(time.Now(), true)
+	if status.LastReclaimedRows == 0 || status.LastReclaimedBytes < artifact.SizeBytes {
+		t.Fatalf("pressure reclaim evidence missing: %+v", status)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("artifact directory survived pressure reclaim: %v", err)
+	}
+	var count int64
+	if err := db.Model(&model.TranscodeArtifactRecord{}).Where("id = ?", artifact.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("artifact metadata survived pressure cleanup: %d", count)
+	}
+}
+
+func TestDiskPressureGovernorProtectsRecentPlaybackAndBlocksAdmission(t *testing.T) {
+	service, db := newConcurrentArtifactService(t)
+	service.cfg.Cache.MaxDiskUsageMB = 1
+	service.diskUsageTTL = time.Nanosecond
+	artifact, path := createDiskPressureArtifact(t, service, db, "pressure-active", time.Now(), 2*1024*1024)
+
+	status := service.runDiskPressureGovernorTick(time.Now(), true)
+	if status.Level == transcodediskpressure.LevelNormal || !status.AdmissionBlocked || !status.QueuePaused {
+		t.Fatalf("recent artifact should keep pressure active: %+v", status)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("recently accessed artifact was removed: %v", err)
+	}
+	var stored model.TranscodeArtifactRecord
+	if err := db.First(&stored, "id = ?", artifact.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "published" || stored.CleanupState != "" {
+		t.Fatalf("recent artifact entered cleanup: %+v", stored)
+	}
+	if err := service.checkDiskPressureAdmission(); !errors.Is(err, ErrTranscodeStoragePressure) {
+		t.Fatalf("expected pressure admission rejection, got %v", err)
+	}
+
+	service.jobs = newTranscodePriorityQueue(service.executionRepo, service.repo, 10, service.logger)
+	transcodeDiskPressureOwners.Store(service.jobs, service)
+	if service.jobs.CanAccept() {
+		t.Fatal("queue accepted a new job while pressure was active")
+	}
+	service.jobs.Close()
+}
+
+func createDiskPressureArtifact(
+	t *testing.T,
+	service *TranscodeService,
+	db interface {
+		Create(value interface{}) interface{ Error() error }
+	},
+	id string,
+	updatedAt time.Time,
+	size int,
+) (*model.TranscodeArtifactRecord, string) {
+	t.Helper()
+	path, err := service.artifactStore.PublishedDir("pressure-media", "720p", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payload := make([]byte, size)
+	if err := os.WriteFile(path+string(os.PathSeparator)+"seg00001.ts", payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	publishedAt := time.Now().Add(-48 * time.Hour)
+	artifact := &model.TranscodeArtifactRecord{
+		ID: "artifact-" + id,
+		JobID: "job-" + id,
+		MediaID: "pressure-media",
+		Kind: "hls_variant",
+		ProfileID: "720p",
+		SourceFingerprint: "source",
+		PlannerVersion: "planner",
+		Status: "published",
+		Path: path,
+		SizeBytes: int64(size),
+		PublishedAt: &publishedAt,
+		CreatedAt: publishedAt,
+		UpdatedAt: updatedAt,
+	}
+	// The helper is intentionally kept local to this test file; use the concrete
+	// GORM value through a small assertion to avoid coupling production code.
+	gormDB, ok := any(db).(interface{ Create(value interface{}) *gorm.DB })
+	if !ok {
+		t.Fatal("unexpected database fixture")
+	}
+	if err := gormDB.Create(artifact).Error; err != nil {
+		t.Fatal(err)
+	}
+	return artifact, path
+}
