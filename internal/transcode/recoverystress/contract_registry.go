@@ -25,7 +25,7 @@ func AvailableScenarios() []ScenarioSpec {
 		},
 		{
 			ID:                          ScenarioENOSPCWrite,
-			Purpose:                     "inject ENOSPC into HLS segment writes and prove the failed Artifact remains unpublished and cleanup eligible",
+			Purpose:                     "exhaust a kernel tmpfs during HLS segment writes and prove the failed Artifact remains unpublished and cleanup eligible",
 			FaultKind:                   "enospc",
 			LogicalDurationMicros:       10 * 60 * 1_000_000,
 			ExpectedProcessCount:        1,
@@ -35,13 +35,13 @@ func AvailableScenarios() []ScenarioSpec {
 		},
 		{
 			ID:                          ScenarioBoundedResources,
-			Purpose:                     "complete production-shaped HLS under one allowed CPU and a 512 MiB address-space ceiling",
+			Purpose:                     "complete production-shaped HLS under a cgroup v2 one-CPU quota and 512 MiB memory ceiling",
 			FaultKind:                   "resource_limits",
 			LogicalDurationMicros:       30 * 60 * 1_000_000,
 			ExpectedProcessCount:        1,
 			ExpectedFinalJobStatus:      "completed",
 			ExpectedFinalArtifactStatus: "published",
-			Limits:                      ResourceLimits{CPUCount: 1, AddressSpaceBytes: 512 * 1024 * 1024},
+			Limits:                      ResourceLimits{CPUCount: 1, MemoryMaxBytes: 512 * 1024 * 1024},
 		},
 		{
 			ID:                          ScenarioStaleLeaseFence,
