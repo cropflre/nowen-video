@@ -107,7 +107,7 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	process, runErr := h.runAttempt(ctx, job, attempt, processControl{FaultBackend: "tmpfs"})
+	process, runErr := h.runAttempt(ctx, job, attempt, processControl{FaultBackend: "dev-full-bind"})
 	unmountErr := unmount()
 	if runErr != nil {
 		return recoveryScenarioResult{}, runErr
@@ -116,7 +116,15 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 		return recoveryScenarioResult{}, unmountErr
 	}
 	if process.ExitCode == 0 || !slicesContains(process.StderrMarkers, "ENOSPC") {
-		return recoveryScenarioResult{}, fmt.Errorf("kernel tmpfs ENOSPC did not fail the process as expected")
+		return recoveryScenarioResult{}, fmt.Errorf(
+			"kernel ENOSPC did not fail first segment write: exit=%d markers=%v segments=%d manifest=%t progress_us=%d stderr_sha256=%s",
+			process.ExitCode,
+			process.StderrMarkers,
+			process.SegmentCount,
+			process.ManifestExists,
+			process.MaximumProgressMicros,
+			process.StderrSHA256,
+		)
 	}
 	now := time.Now()
 	if updated, err := h.repo.MarkOwnedArtifactTerminal(job.ID, attempt.Record.ID, attempt.Artifact.ID, job.LeaseToken, "failed", "write_enospc", "No space left on device during segment write", now); err != nil || !updated {
@@ -129,7 +137,7 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 	if err != nil || !completed {
 		return recoveryScenarioResult{}, fmt.Errorf("complete ENOSPC recovery stress job: committed=%t err=%v", completed, err)
 	}
-	h.transition("failed", "running", 1, 1, "failed", "kernel tmpfs returned ENOSPC")
+	h.transition("failed", "running", 1, 1, "failed", "kernel /dev/full returned ENOSPC for first HLS segment")
 	artifact, finalJob, readableID, err := h.finalOutcome(job.ID, attempt.Artifact.ID)
 	if err != nil {
 		return recoveryScenarioResult{}, err
