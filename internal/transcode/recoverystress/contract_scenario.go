@@ -96,7 +96,7 @@ func (c ScenarioContract) validateScenarioOutcome() error {
 			return fmt.Errorf("sigkill recovery outcome is invalid")
 		}
 	case ScenarioENOSPCWrite:
-		if first.ExitCode == 0 || first.FaultBackend != "tmpfs" || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
+		if first.ExitCode == 0 || first.FaultBackend != "dev-full-bind" || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
 			return fmt.Errorf("ENOSPC outcome is invalid")
 		}
 	case ScenarioBoundedResources:
