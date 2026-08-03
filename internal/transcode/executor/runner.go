@@ -125,8 +125,13 @@ func (r *ProcessRunner) Run(ctx context.Context, command Command, callbacks Call
 		parser.consume(stderr)
 	}()
 
-	waitErr := cmd.Wait()
+	// StderrPipe requires the reader to drain to EOF before Wait closes the
+	// descriptor. Calling Wait first can truncate early stderr under scheduler
+	// pressure, losing fatal evidence such as ENOSPC that has already scrolled
+	// beyond the bounded tail. The child closing stderr on exit releases the
+	// parser, after which Wait safely reaps the process and records its state.
 	parseWG.Wait()
+	waitErr := cmd.Wait()
 	result.CompletedAt = time.Now()
 	result.StderrTail = parser.tail()
 	result.FatalOutputCode, result.FatalOutputLine = parser.fatalOutput()
