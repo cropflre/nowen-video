@@ -33,6 +33,8 @@ on:
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
+      - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
+      - 'docs/TRANSCODE_DISK_PRESSURE.md'
       - '.github/workflows/transcode-multi-job-contention-cert.yml'
   pull_request:
     paths:
@@ -63,6 +65,8 @@ on:
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
+      - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
+      - 'docs/TRANSCODE_DISK_PRESSURE.md'
       - '.github/workflows/transcode-multi-job-contention-cert.yml'
 
 permissions:
