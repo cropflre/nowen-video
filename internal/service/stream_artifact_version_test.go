@@ -71,6 +71,7 @@ func TestPlaylistPinsSegmentsAcrossArtifactReplacement(t *testing.T) {
 	}
 
 	// A retained Artifact may serve only files from its own immutable directory.
+	// replacement-only.ts exists in version two but not version one.
 	if err := stream.ServeArtifactSegmentVersion(media.ID, "720p", storedFirst.ID, "replacement-only.ts", httptest.NewRecorder(), request); !errors.Is(err, ErrArtifactNotReady) {
 		t.Fatalf("explicit Artifact unexpectedly fell through to another version: %v", err)
 	}
@@ -235,8 +236,10 @@ func writeReplacementHLSArtifact(t *testing.T, dir, suffix string) {
 	if err := os.WriteFile(filepath.Join(dir, "seg0000.ts"), []byte("segment-"+suffix), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "replacement-only.ts"), []byte("replacement-only-"+suffix), 0o644); err != nil {
-		t.Fatal(err)
+	if suffix == "second" {
+		if err := os.WriteFile(filepath.Join(dir, "replacement-only.ts"), []byte("replacement-only-"+suffix), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	manifest := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg0000.ts\n#EXT-X-ENDLIST\n"
 	if err := os.WriteFile(filepath.Join(dir, "stream.m3u8"), []byte(manifest), 0o644); err != nil {
