@@ -62,6 +62,7 @@ func buildRouter(
 		logger,
 	)
 	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, taskActionDispatcher, logger)
+	taskCenterHandler.SetAuditService(services.User)
 	playbackPlanHandler := handler.NewPlaybackPlanHandler(services.Stream, logger)
 
 	startMaintenanceJobs(repos, appVer)
