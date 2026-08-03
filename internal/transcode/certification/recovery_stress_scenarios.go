@@ -3,7 +3,6 @@ package certification
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	transcoderecovery "github.com/nowen-video/nowen-video/internal/transcode/recoverystress"
@@ -104,22 +103,20 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	shim, err := buildENOSPCShim(h.workDir)
+	unmount, err := mountENOSPCWorkspace(attempt.Workspace, h.scenario.Limits.ENOSPCAfterBytes)
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	process, err := h.runAttempt(ctx, job, attempt, processControl{
-		ExtraEnv: []string{
-			"LD_PRELOAD=" + shim,
-			"NOWEN_ENOSPC_PATH=" + attempt.Workspace,
-			"NOWEN_ENOSPC_AFTER_BYTES=" + strconv.FormatInt(h.scenario.Limits.ENOSPCAfterBytes, 10),
-		},
-	})
-	if err != nil {
-		return recoveryScenarioResult{}, err
+	process, runErr := h.runAttempt(ctx, job, attempt, processControl{FaultBackend: "tmpfs"})
+	unmountErr := unmount()
+	if runErr != nil {
+		return recoveryScenarioResult{}, runErr
+	}
+	if unmountErr != nil {
+		return recoveryScenarioResult{}, unmountErr
 	}
 	if process.ExitCode == 0 || !slicesContains(process.StderrMarkers, "ENOSPC") {
-		return recoveryScenarioResult{}, fmt.Errorf("ENOSPC injection did not fail the process as expected")
+		return recoveryScenarioResult{}, fmt.Errorf("kernel tmpfs ENOSPC did not fail the process as expected")
 	}
 	now := time.Now()
 	if updated, err := h.repo.MarkOwnedArtifactTerminal(job.ID, attempt.Record.ID, attempt.Artifact.ID, job.LeaseToken, "failed", "write_enospc", "No space left on device during segment write", now); err != nil || !updated {
@@ -132,7 +129,7 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 	if err != nil || !completed {
 		return recoveryScenarioResult{}, fmt.Errorf("complete ENOSPC recovery stress job: committed=%t err=%v", completed, err)
 	}
-	h.transition("failed", "running", 1, 1, "failed", "kernel write shim returned ENOSPC")
+	h.transition("failed", "running", 1, 1, "failed", "kernel tmpfs returned ENOSPC")
 	artifact, finalJob, readableID, err := h.finalOutcome(job.ID, attempt.Artifact.ID)
 	if err != nil {
 		return recoveryScenarioResult{}, err
@@ -163,11 +160,18 @@ func (h *recoveryHarness) runBoundedResources(ctx context.Context) (recoveryScen
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	commandPath, commandArgs, err := boundedCommand(h.ffmpegPath, attempt.Args, h.scenario.Limits)
+	commandPath, commandArgs, memoryPeakPath, err := boundedCommand(h.workDir, h.ffmpegPath, attempt.Args, h.scenario.Limits)
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	process, err := h.runAttempt(ctx, job, attempt, processControl{CommandPath: commandPath, CommandArgs: commandArgs})
+	process, err := h.runAttempt(ctx, job, attempt, processControl{
+		CommandPath:        commandPath,
+		CommandArgs:        commandArgs,
+		MemoryPeakPath:     memoryPeakPath,
+		ResourceController: "cgroup-v2",
+		CPUCountLimit:      h.scenario.Limits.CPUCount,
+		MemoryLimitBytes:   h.scenario.Limits.MemoryMaxBytes,
+	})
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
@@ -179,7 +183,7 @@ func (h *recoveryHarness) runBoundedResources(ctx context.Context) (recoveryScen
 		return recoveryScenarioResult{}, fmt.Errorf("publish bounded recovery stress artifact: committed=%t err=%v", committed, err)
 	}
 	process.PublishedExists = true
-	h.transition("completed", "running", 1, 1, "published", "bounded process published and completed atomically")
+	h.transition("completed", "running", 1, 1, "published", "cgroup-bounded process published and completed atomically")
 	artifact, finalJob, readableID, err := h.finalOutcome(job.ID, attempt.Artifact.ID)
 	if err != nil {
 		return recoveryScenarioResult{}, err
