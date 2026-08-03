@@ -2,11 +2,11 @@
 
 ## Status
 
-The second multi-job contention gate is implemented on `refactor/server-lite-v1`.
+The third multi-job contention gate is implemented on `refactor/server-lite-v1`.
 
-The first gate moved Resource Governor verification from simulated runners to real FFmpeg processes. The second gate extends the same certification boundary into the service persistence layer and exercises concurrent Job, Attempt, Lease, filesystem, and Artifact publication behavior.
+The first gate moved Resource Governor verification from simulated runners to real FFmpeg processes. The second gate extended certification into concurrent durable Job, Attempt, Lease, filesystem, and Artifact publication. The third gate closes the client-read boundary when the same Media/Profile receives a replacement Artifact while an older playlist is still in use.
 
-The implementation does not weaken the existing durable Job, Lease, Attempt, Artifact, attestation, or publication boundaries.
+The implementation does not weaken the existing durable Job, Lease, Attempt, Artifact, attestation, publication, or cleanup boundaries.
 
 ## Production observability
 
@@ -114,6 +114,76 @@ The fixture requires:
 - the stale Job remains queued and recoverable with no Lease token;
 - the successful Job and Artifact are not affected by the stale worker.
 
+## Replacement and client-read consistency
+
+Files:
+
+```text
+internal/repository/repo_transcode_artifact_version.go
+internal/service/transcode_artifact_version.go
+internal/service/stream_artifacts.go
+internal/handler/stream_artifacts.go
+internal/service/stream_artifact_version_test.go
+```
+
+### Previous gap
+
+Runtime HLS playlists previously returned bare segment names such as:
+
+```text
+seg0000.ts
+```
+
+Every segment request then resolved whichever Artifact was current at request time. If a replacement Artifact became published after the client downloaded the old playlist, a request for the old `seg0000.ts` could resolve the replacement directory. Depending on segment naming, this could return the wrong encode or fail because the replacement had a different segment set.
+
+### Version-pinned playlist contract
+
+Managed HLS playlists now bind every local media URI to the exact Artifact identity that supplied that playlist:
+
+```text
+seg0000.ts?artifact=<artifact-id>
+```
+
+The segment service resolves that explicit identity and permits only:
+
+- a `staging` or `publishing` Artifact whose current Attempt still owns a live Job Lease;
+- the immutable current `published` Artifact;
+- an immutable `superseded` Artifact retained for clients holding an older playlist.
+
+The resolver verifies Artifact ID, Media ID, profile, source fingerprint, planner version, kind, lifecycle state, and—when applicable—current Job Lease ownership.
+
+### Fail-closed behavior
+
+A versioned request never falls through to:
+
+- the current replacement Artifact;
+- a different Artifact with the same segment basename;
+- on-demand segment generation;
+- an abandoned workspace.
+
+If the exact requested version has expired or has already been cleaned, the HTTP Adapter returns `410 Gone` with `artifact_version_unavailable`. Legacy playlists without the version query retain the previous current-version/on-demand compatibility path.
+
+Published and retained superseded segments use immutable cache headers and expose `X-Nowen-Artifact-ID` for diagnostics.
+
+### Retention boundary
+
+Publishing a replacement changes the previous row to `superseded` but does not remove its immutable directory. Terminal cleanup selects superseded versions only after the configured failed/terminal retention cutoff, which defaults to seven days. This allows existing clients to complete the exact version referenced by their playlist without preventing bounded storage cleanup.
+
+### Certification fixture
+
+Two sequential Jobs publish the same Media/Profile and intentionally use the same segment basename with different bytes.
+
+The fixture requires:
+
+- playlist one contains Artifact one’s identity;
+- playlist two contains only Artifact two’s identity;
+- Artifact one becomes `superseded` after publication two;
+- the old versioned URL still returns Artifact one’s bytes;
+- the new versioned URL returns Artifact two’s bytes;
+- a filename present only in Artifact two cannot be read through Artifact one’s identity;
+- the freshly superseded row is not returned by cleanup queries using an older retention cutoff;
+- nested and external playlist media URIs fail closed rather than bypassing the authenticated single-segment route.
+
 ## CI gate
 
 Workflow:
@@ -122,19 +192,20 @@ Workflow:
 .github/workflows/transcode-multi-job-contention-cert.yml
 ```
 
-The workflow runs when the execution schema, Lease/Artifact repositories, service publication path, Artifact store, executor, Governor, Runtime, or contention workflow changes. It performs:
+The workflow runs when the execution schema, Lease/Artifact repositories, stream Handler, service publication/read path, Artifact store, executor, Governor, Runtime, or contention workflow changes. It performs:
 
 1. Governor and Runtime race tests;
 2. concurrent service-level Job and Artifact publication under the race detector;
-3. Repository Claim, Lease, and Artifact fence tests under the race detector;
-4. installation and identity output for the runner FFmpeg binary;
-5. real FFmpeg serialization and cancelled-waiter fixtures.
+3. same-Media replacement and version-pinned client-read tests under the race detector;
+4. Repository Claim, Lease, and Artifact fence tests under the race detector;
+5. installation and identity output for the runner FFmpeg binary;
+6. real FFmpeg serialization and cancelled-waiter fixtures.
 
 The workflow is also available through `workflow_dispatch`.
 
 ## Current boundary
 
-This gate certifies process admission and independent service-level Artifact publication on an Ubuntu hosted runner with file-backed SQLite. It does not yet certify:
+This gate certifies process admission, independent publication, same-Media replacement, and retained-version client reads on an Ubuntu hosted runner with file-backed SQLite. It does not yet certify:
 
 - aggregate CPU and memory ceilings across multiple admitted jobs;
 - hardware and software jobs contending at the same time;
@@ -142,7 +213,7 @@ This gate certifies process admission and independent service-level Artifact pub
 - network-mounted output directories;
 - OOM kill and memory-pressure recovery;
 - host reboot during a concurrent durable commit;
-- concurrent replacement of the same Media/Profile Artifact version;
-- replacement of a published Artifact while clients are reading it.
+- cleanup retry when an Artifact directory is busy or temporarily unavailable;
+- client reads that remain open while cleanup removes a version after its retention window.
 
-Those remain subsequent evidence gates. Until they pass, concurrency capacity must remain conservative and Artifact publication must continue to fail closed.
+Those remain subsequent evidence gates. Until they pass, concurrency capacity must remain conservative and Artifact publication/read selection must continue to fail closed.
