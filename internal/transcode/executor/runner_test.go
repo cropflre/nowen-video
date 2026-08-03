@@ -58,13 +58,16 @@ func TestProcessRunnerCancellationKillsProcess(t *testing.T) {
 	}
 }
 
-func TestProcessRunnerFailsClosedOnENOSPCStderr(t *testing.T) {
+func TestProcessRunnerFailsClosedOnENOSPCStderrBeyondTail(t *testing.T) {
 	result := NewProcessRunner().Run(context.Background(), helperCommand("enospc"), Callbacks{})
 	if result.ExitCode != 0 {
 		t.Fatalf("helper exit code = %d, want the real exit code 0", result.ExitCode)
 	}
 	if result.FatalOutputCode != FatalOutputCodeENOSPC {
 		t.Fatalf("fatal output code = %q", result.FatalOutputCode)
+	}
+	if strings.Contains(strings.Join(result.StderrTail, "\n"), "No space left on device") {
+		t.Fatal("test did not evict ENOSPC from bounded stderr tail")
 	}
 	var fatal *FatalOutputError
 	if !errors.As(result.Err, &fatal) || fatal.Code != FatalOutputCodeENOSPC {
@@ -114,6 +117,9 @@ func TestProcessRunnerHelper(t *testing.T) {
 	case "enospc":
 		fmt.Fprintln(os.Stderr, "[hls @ 0x1] Failed to open file 'seg0000.ts'")
 		fmt.Fprintln(os.Stderr, "av_interleaved_write_frame(): No space left on device")
+		for index := 0; index < 50; index++ {
+			fmt.Fprintf(os.Stderr, "diagnostic line %d\n", index)
+		}
 		fmt.Fprintln(os.Stderr, "progress=end")
 		os.Exit(0)
 	case "wait":
