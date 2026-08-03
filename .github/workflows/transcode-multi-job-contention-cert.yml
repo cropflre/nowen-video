@@ -17,14 +17,19 @@ on:
       - 'internal/service/transcode_artifact_version.go'
       - 'internal/service/transcode_attestation.go'
       - 'internal/service/transcode_cleanup*.go'
+      - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_lease.go'
+      - 'internal/service/transcode_queue.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
       - 'internal/service/transcode_stats.go'
       - 'internal/service/stream_artifacts.go'
+      - 'internal/service/stream_startup_bridge.go'
       - 'internal/service/stream_artifact_version_test.go'
       - 'cmd/server-lite/router.go'
       - 'web/src/api/tasks.ts'
       - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
+      - 'internal/transcode/diskpressure/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
@@ -42,14 +47,19 @@ on:
       - 'internal/service/transcode_artifact_version.go'
       - 'internal/service/transcode_attestation.go'
       - 'internal/service/transcode_cleanup*.go'
+      - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_lease.go'
+      - 'internal/service/transcode_queue.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
       - 'internal/service/transcode_stats.go'
       - 'internal/service/stream_artifacts.go'
+      - 'internal/service/stream_startup_bridge.go'
       - 'internal/service/stream_artifact_version_test.go'
       - 'cmd/server-lite/router.go'
       - 'web/src/api/tasks.ts'
       - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
+      - 'internal/transcode/diskpressure/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
@@ -81,14 +91,14 @@ jobs:
       - name: Download modules
         run: go mod download
 
-      - name: Governor and runtime race tests
-        run: go test -race ./internal/transcode/governor ./internal/transcode/runtime -count=1
+      - name: Governor, disk pressure and runtime race tests
+        run: go test -race ./internal/transcode/governor ./internal/transcode/diskpressure ./internal/transcode/runtime -count=1
 
-      - name: Publication, cleanup recovery and operator task actions
-        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestTask)' -count=1 -v
+      - name: Publication, cleanup, pressure and operator task actions
+        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestDiskPressure|TestTask)' -count=1 -v
 
-      - name: Repository Lease, Artifact and cleanup fences
-        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup' -count=1 -v
+      - name: Repository Lease, Artifact, cleanup and pressure fences
+        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup|Pressure' -count=1 -v
 
       - name: Install FFmpeg
         run: |
