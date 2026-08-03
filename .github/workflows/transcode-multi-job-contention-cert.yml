@@ -17,6 +17,19 @@ on:
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
       - '.github/workflows/transcode-multi-job-contention-cert.yml'
+  pull_request:
+    paths:
+      - 'internal/model/transcode_execution.go'
+      - 'internal/repository/repo_transcode_artifact*.go'
+      - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/service/transcode_artifacts.go'
+      - 'internal/service/transcode_attestation.go'
+      - 'internal/service/transcode_concurrent_artifact_test.go'
+      - 'internal/transcode/artifactstore/**'
+      - 'internal/transcode/executor/**'
+      - 'internal/transcode/governor/**'
+      - 'internal/transcode/runtime/**'
+      - '.github/workflows/transcode-multi-job-contention-cert.yml'
 
 permissions:
   contents: read
