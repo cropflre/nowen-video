@@ -13,13 +13,20 @@ import (
 // TaskCenterHandler exposes the unified Lite task view and delegates supported
 // lifecycle operations to the existing module-specific services.
 type TaskCenterHandler struct {
-	service *service.TaskCenterService
-	actions *service.TaskActionDispatcher
-	logger  *zap.SugaredLogger
+	service      *service.TaskCenterService
+	actions      *service.TaskActionDispatcher
+	auditService *service.UserService
+	logger       *zap.SugaredLogger
 }
 
 func NewTaskCenterHandler(taskService *service.TaskCenterService, actions *service.TaskActionDispatcher, logger *zap.SugaredLogger) *TaskCenterHandler {
 	return &TaskCenterHandler{service: taskService, actions: actions, logger: logger}
+}
+
+// SetAuditService keeps the Task Center constructor stable while allowing Lite
+// and future profiles to opt into the same administrator audit trail.
+func (h *TaskCenterHandler) SetAuditService(userService *service.UserService) {
+	h.auditService = userService
 }
 
 type taskCenterItem struct {
@@ -28,7 +35,7 @@ type taskCenterItem struct {
 }
 
 type taskCenterListResponse struct {
-	Tasks   []taskCenterItem          `json:"tasks"`
+	Tasks   []taskCenterItem           `json:"tasks"`
 	Summary service.TaskCenterSummary `json:"summary"`
 }
 
@@ -77,6 +84,20 @@ func (h *TaskCenterHandler) Action(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "任务操作失败", "code": "task_action_failed"})
 		}
 		return
+	}
+
+	if h.auditService != nil {
+		username, _ := c.Get("username")
+		operator, _ := username.(string)
+		h.auditService.Audit(
+			actor,
+			operator,
+			"task."+result.Kind+"."+result.Action,
+			result.Kind,
+			result.SourceID,
+			result.Message,
+			c.ClientIP(),
+		)
 	}
 	c.JSON(http.StatusAccepted, gin.H{"data": result})
 }
