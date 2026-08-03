@@ -10,16 +10,20 @@ on:
       - 'internal/repository/repo_transcode_artifact*.go'
       - 'internal/repository/repo_transcode_execution*.go'
       - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/task_center.go'
+      - 'internal/service/task_actions*.go'
+      - 'internal/service/task_center*.go'
       - 'internal/service/transcode_artifacts.go'
       - 'internal/service/transcode_artifact_version.go'
       - 'internal/service/transcode_attestation.go'
-      - 'internal/service/transcode_cleanup.go'
-      - 'internal/service/transcode_cleanup_state.go'
-      - 'internal/service/transcode_cleanup_state_test.go'
+      - 'internal/service/transcode_cleanup*.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
       - 'internal/service/transcode_stats.go'
       - 'internal/service/stream_artifacts.go'
       - 'internal/service/stream_artifact_version_test.go'
+      - 'cmd/server-lite/router.go'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
@@ -31,16 +35,20 @@ on:
       - 'internal/repository/repo_transcode_artifact*.go'
       - 'internal/repository/repo_transcode_execution*.go'
       - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/task_center.go'
+      - 'internal/service/task_actions*.go'
+      - 'internal/service/task_center*.go'
       - 'internal/service/transcode_artifacts.go'
       - 'internal/service/transcode_artifact_version.go'
       - 'internal/service/transcode_attestation.go'
-      - 'internal/service/transcode_cleanup.go'
-      - 'internal/service/transcode_cleanup_state.go'
-      - 'internal/service/transcode_cleanup_state_test.go'
+      - 'internal/service/transcode_cleanup*.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
       - 'internal/service/transcode_stats.go'
       - 'internal/service/stream_artifacts.go'
       - 'internal/service/stream_artifact_version_test.go'
+      - 'cmd/server-lite/router.go'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
@@ -76,8 +84,8 @@ jobs:
       - name: Governor and runtime race tests
         run: go test -race ./internal/transcode/governor ./internal/transcode/runtime -count=1
 
-      - name: Concurrent publication, replacement and cleanup recovery
-        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup)' -count=1 -v
+      - name: Publication, cleanup recovery and operator task actions
+        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestTask)' -count=1 -v
 
       - name: Repository Lease, Artifact and cleanup fences
         run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup' -count=1 -v
