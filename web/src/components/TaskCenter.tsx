@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Ban, CheckCircle2, CircleAlert, Clock3, Database, Film, Loader2, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
+import { Activity, Ban, CheckCircle2, CircleAlert, Clock3, Database, Film, HardDrive, Loader2, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
 import { taskCenterApi } from '@/api'
 import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskAction, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -12,20 +12,23 @@ const kindLabel: Record<UnifiedTaskKind, string> = {
   scan: '媒体库扫描',
   scrape: '元数据刮削',
   transcode: '视频转码',
+  artifact_cleanup: '转码缓存清理',
 }
 
 const statusLabel: Record<UnifiedTaskStatus, string> = {
   queued: '等待中',
   running: '进行中',
   completed: '已完成',
-  failed: '失败',
+  failed: '需要处理',
   cancelled: '已取消',
 }
 
 function taskIcon(kind: UnifiedTaskKind, status: UnifiedTaskStatus) {
+  if (kind === 'artifact_cleanup' && status === 'failed') return <CircleAlert size={17} />
   if (status === 'failed') return <XCircle size={17} />
   if (status === 'completed') return <CheckCircle2 size={17} />
   if (status === 'queued') return <Clock3 size={17} />
+  if (kind === 'artifact_cleanup') return <HardDrive size={17} />
   if (kind === 'scan') return <Database size={17} />
   if (kind === 'transcode') return <Film size={17} />
   return <Loader2 size={17} className="animate-spin" />
@@ -53,6 +56,16 @@ function formatTime(value?: string) {
   }).format(date)
 }
 
+function taskRequestError(requestError: unknown, fallback: string) {
+  if (typeof requestError === 'object' && requestError !== null) {
+    const response = (requestError as { response?: { data?: { error?: unknown } } }).response
+    if (typeof response?.data?.error === 'string' && response.data.error.trim() !== '') {
+      return response.data.error
+    }
+  }
+  return requestError instanceof Error ? requestError.message : fallback
+}
+
 function TaskRow({
   task,
   actionLoading,
@@ -63,11 +76,18 @@ function TaskRow({
   onAction: (task: UnifiedTask, action: UnifiedTaskAction) => void
 }) {
   const active = task.status === 'queued' || task.status === 'running'
+  const cleanupTask = task.kind === 'artifact_cleanup'
   const time = formatTime(task.updated_at || task.started_at || task.created_at)
   const actions = task.actions || []
 
   return (
-    <div className="rounded-xl border p-3" style={{ borderColor: 'var(--border-default)', background: 'var(--card-bg)' }}>
+    <div
+      className="rounded-xl border p-3"
+      style={{
+        borderColor: cleanupTask && task.status === 'failed' ? 'rgba(220,38,38,.28)' : 'var(--border-default)',
+        background: cleanupTask && task.status === 'failed' ? 'rgba(220,38,38,.04)' : 'var(--card-bg)',
+      }}
+    >
       <div className="flex items-start gap-3">
         <div
           className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
@@ -91,7 +111,7 @@ function TaskRow({
           {active && (
             <div className="mt-3">
               <div className="mb-1 flex items-center justify-between text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                <span className="truncate pr-3">{task.message || '处理中'}</span>
+                <span className={cleanupTask ? 'min-w-0 break-all pr-3' : 'truncate pr-3'}>{task.message || '处理中'}</span>
                 <span>{Math.round(task.progress)}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--nav-hover-bg)' }}>
@@ -104,10 +124,16 @@ function TaskRow({
           )}
 
           {!active && (task.message || time) && (
-            <div className="mt-2 flex items-center justify-between gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <span className="truncate">{task.message}</span>
+            <div className="mt-2 flex items-start justify-between gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              <span className={cleanupTask ? 'min-w-0 break-all' : 'truncate'}>{task.message}</span>
               <span className="shrink-0">{time}</span>
             </div>
+          )}
+
+          {cleanupTask && task.status === 'failed' && (
+            <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
+              修复挂载、权限或路径配置后再重试。操作仍会经过 Cleanup Lease 与路径安全校验。
+            </p>
           )}
 
           {actions.length > 0 && (
@@ -121,7 +147,7 @@ function TaskRow({
                   style={{ borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
                 >
                   {actionLoading === `${task.id}:retry` ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                  重试
+                  {cleanupTask ? '立即重试' : '重试'}
                 </button>
               )}
               {actions.includes('cancel') && (
@@ -182,7 +208,7 @@ export default function TaskCenter() {
         try {
           await performRefresh()
         } catch (requestError) {
-          setError(requestError instanceof Error ? requestError.message : '无法读取任务状态')
+          setError(taskRequestError(requestError, '无法读取任务状态'))
         }
       } while (refreshQueuedRef.current)
     })()
@@ -216,7 +242,7 @@ export default function TaskCenter() {
       await taskCenterApi.action(task.kind, sourceID, action)
       await refresh(true)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '任务操作失败')
+      setError(taskRequestError(requestError, '任务操作失败'))
     } finally {
       setActionLoading(null)
     }
@@ -244,6 +270,11 @@ export default function TaskCenter() {
 
   const tasks = snapshot?.tasks || []
   const activeCount = snapshot?.summary.active || 0
+  const cleanupIssueCount = useMemo(
+    () => tasks.filter((task) => task.kind === 'artifact_cleanup' && task.status === 'failed').length,
+    [tasks],
+  )
+  const badgeCount = activeCount + cleanupIssueCount
   const activeTasks = useMemo(() => tasks.filter((task) => task.status === 'queued' || task.status === 'running'), [tasks])
   const recentTasks = useMemo(() => tasks.filter((task) => task.status !== 'queued' && task.status !== 'running'), [tasks])
 
@@ -259,14 +290,23 @@ export default function TaskCenter() {
         type="button"
         onClick={() => setOpen(true)}
         className="fixed right-4 top-14 z-40 flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium shadow-lg backdrop-blur md:right-6"
-        style={{ borderColor: 'var(--border-default)', background: 'var(--card-bg)', color: 'var(--text-secondary)' }}
-        aria-label="打开任务中心"
+        style={{
+          borderColor: cleanupIssueCount > 0 ? 'rgba(220,38,38,.35)' : 'var(--border-default)',
+          background: 'var(--card-bg)',
+          color: cleanupIssueCount > 0 ? '#DC2626' : 'var(--text-secondary)',
+        }}
+        aria-label={cleanupIssueCount > 0 ? `打开任务中心，${cleanupIssueCount} 个缓存清理问题` : '打开任务中心'}
       >
-        <Activity size={18} className={activeCount > 0 ? 'animate-pulse text-neon' : ''} />
+        {cleanupIssueCount > 0
+          ? <CircleAlert size={18} className="animate-pulse" />
+          : <Activity size={18} className={activeCount > 0 ? 'animate-pulse text-neon' : ''} />}
         <span className="hidden sm:inline">任务</span>
-        {activeCount > 0 && (
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white" style={{ background: 'var(--neon-blue)' }}>
-            {activeCount > 99 ? '99+' : activeCount}
+        {badgeCount > 0 && (
+          <span
+            className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
+            style={{ background: cleanupIssueCount > 0 ? '#DC2626' : 'var(--neon-blue)' }}
+          >
+            {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         )}
       </button>
@@ -278,10 +318,15 @@ export default function TaskCenter() {
             <header className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
               <div>
                 <div className="flex items-center gap-2">
-                  <Activity size={19} className="text-neon" />
+                  {cleanupIssueCount > 0 ? <CircleAlert size={19} style={{ color: '#DC2626' }} /> : <Activity size={19} className="text-neon" />}
                   <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>任务中心</h2>
+                  {cleanupIssueCount > 0 && (
+                    <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: 'rgba(220,38,38,.08)', color: '#DC2626' }}>
+                      {cleanupIssueCount} 个清理问题
+                    </span>
+                  )}
                 </div>
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削和转码统一进度与安全操作</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削、转码和缓存清理统一进度与安全操作</p>
               </div>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-50" style={{ color: 'var(--text-secondary)' }} aria-label="刷新任务">
@@ -307,7 +352,7 @@ export default function TaskCenter() {
                 <div className="flex min-h-60 flex-col items-center justify-center text-center">
                   <CheckCircle2 size={34} className="mb-3 text-green-500" />
                   <p className="font-medium" style={{ color: 'var(--text-primary)' }}>当前没有后台任务</p>
-                  <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>扫描媒体库或开始播放转码后会显示在这里。</p>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>扫描媒体库、开始转码或触发缓存清理后会显示在这里。</p>
                 </div>
               ) : (
                 <div className="space-y-5">
@@ -322,7 +367,7 @@ export default function TaskCenter() {
                   )}
                   {recentTasks.length > 0 && (
                     <section>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>最近任务</h3>
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>最近任务与待处理问题</h3>
                       <div className="space-y-2">{recentTasks.map(renderTask)}</div>
                     </section>
                   )}
