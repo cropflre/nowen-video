@@ -6,6 +6,13 @@ on:
     branches:
       - refactor/server-lite-v1
     paths:
+      - 'internal/model/transcode_execution.go'
+      - 'internal/repository/repo_transcode_artifact*.go'
+      - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/service/transcode_artifacts.go'
+      - 'internal/service/transcode_attestation.go'
+      - 'internal/service/transcode_concurrent_artifact_test.go'
+      - 'internal/transcode/artifactstore/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
@@ -20,9 +27,9 @@ concurrency:
 
 jobs:
   certify:
-    name: Real FFmpeg admission and cancellation
+    name: Real process and artifact contention
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -34,14 +41,23 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Download modules
+        run: go mod download
+
+      - name: Governor and runtime race tests
+        run: go test -race ./internal/transcode/governor ./internal/transcode/runtime -count=1
+
+      - name: Concurrent Job and Artifact publication
+        run: go test -race ./internal/service -run '^TestConcurrent' -count=1 -v
+
+      - name: Repository Lease and Artifact fences
+        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim' -count=1
+
       - name: Install FFmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -n 3
-
-      - name: Governor and runtime race tests
-        run: go test -race ./internal/transcode/governor ./internal/transcode/runtime -count=1
 
       - name: Real FFmpeg multi-job contention fixture
         env:
