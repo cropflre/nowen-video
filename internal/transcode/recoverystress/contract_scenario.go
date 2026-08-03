@@ -71,6 +71,9 @@ func (c ScenarioContract) ValidateFor(spec transcodecorpus.Spec, manifest transc
 		if process.MaximumProgressMicros < 0 || process.TriggerObservedMicros < 0 || process.SegmentCount < 0 || process.MaxRSSBytes < 0 || process.ElapsedMillis < 0 || process.CPUCountLimit < 0 || process.MemoryLimitBytes < 0 {
 			return fmt.Errorf("recovery stress process metrics %d are invalid", index+1)
 		}
+		if process.FatalOutputDetected != (strings.TrimSpace(process.FatalOutputCode) != "") {
+			return fmt.Errorf("recovery stress process fatal-output evidence %d is inconsistent", index+1)
+		}
 	}
 	if c.Artifact.FinalJobStatus != c.Scenario.ExpectedFinalJobStatus || c.Artifact.FinalArtifactStatus != c.Scenario.ExpectedFinalArtifactStatus {
 		return fmt.Errorf("recovery stress final state differs from scenario contract")
@@ -86,25 +89,28 @@ func (c ScenarioContract) ValidateFor(spec transcodecorpus.Spec, manifest transc
 
 func (c ScenarioContract) validateScenarioOutcome() error {
 	first := c.Processes[0]
+	requireClean := func(process ProcessEvidence) bool {
+		return !process.FatalOutputDetected && process.FatalOutputCode == ""
+	}
 	switch c.Scenario.ID {
 	case ScenarioCancelActiveWrite:
-		if !first.Cancelled || first.TriggerObservedMicros < c.Scenario.TriggerMicros || first.SegmentCount <= 0 || c.Artifact.ReadableArtifactID != "" || !c.Artifact.PartialWorkspaceQuarantined || !c.Artifact.CleanupEligible {
+		if !requireClean(first) || !first.Cancelled || first.TriggerObservedMicros < c.Scenario.TriggerMicros || first.SegmentCount <= 0 || c.Artifact.ReadableArtifactID != "" || !c.Artifact.PartialWorkspaceQuarantined || !c.Artifact.CleanupEligible {
 			return fmt.Errorf("cancel-active-write outcome is invalid")
 		}
 	case ScenarioSIGKILLRecovery:
-		if first.Signal != "SIGKILL" || first.ExitCode == 0 || c.Processes[1].ExitCode != 0 || !c.Fence.LeaseExpiredRequeued || !c.Fence.OldPrepareRejected || !c.Fence.OldCommitRejected || !c.Fence.ReplacementLeaseDifferent || !c.Fence.ReplacementPublishCommitted || c.Artifact.ReadableArtifactID == "" || !c.Artifact.PartialWorkspaceQuarantined {
+		if !requireClean(first) || !requireClean(c.Processes[1]) || first.Signal != "SIGKILL" || first.ExitCode == 0 || c.Processes[1].ExitCode != 0 || !c.Fence.LeaseExpiredRequeued || !c.Fence.OldPrepareRejected || !c.Fence.OldCommitRejected || !c.Fence.ReplacementLeaseDifferent || !c.Fence.ReplacementPublishCommitted || c.Artifact.ReadableArtifactID == "" || !c.Artifact.PartialWorkspaceQuarantined {
 			return fmt.Errorf("sigkill recovery outcome is invalid")
 		}
 	case ScenarioENOSPCWrite:
-		if first.ExitCode == 0 || first.FaultBackend != "dev-full-bind" || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
+		if !first.FatalOutputDetected || first.FatalOutputCode != "write_enospc" || first.FaultBackend != "dev-full-bind" || c.ErrorCode != "write_enospc" || !slices.Contains(first.StderrMarkers, "ENOSPC") || c.Artifact.ReadableArtifactID != "" || !c.Artifact.CleanupEligible {
 			return fmt.Errorf("ENOSPC outcome is invalid")
 		}
 	case ScenarioBoundedResources:
-		if first.ExitCode != 0 || first.ResourceController != "cgroup-v2" || first.CPUCountLimit != c.Scenario.Limits.CPUCount || first.MemoryLimitBytes != c.Scenario.Limits.MemoryMaxBytes || first.MaxRSSBytes <= 0 || first.MaxRSSBytes > c.Scenario.Limits.MemoryMaxBytes || c.Artifact.ReadableArtifactID == "" || !c.Fence.ReplacementPublishCommitted {
+		if !requireClean(first) || first.ExitCode != 0 || first.ResourceController != "cgroup-v2" || first.CPUCountLimit != c.Scenario.Limits.CPUCount || first.MemoryLimitBytes != c.Scenario.Limits.MemoryMaxBytes || first.MaxRSSBytes <= 0 || first.MaxRSSBytes > c.Scenario.Limits.MemoryMaxBytes || c.Artifact.ReadableArtifactID == "" || !c.Fence.ReplacementPublishCommitted {
 			return fmt.Errorf("bounded resource outcome is invalid")
 		}
 	case ScenarioStaleLeaseFence:
-		if first.ExitCode != 0 || c.Processes[1].ExitCode != 0 || !c.Fence.LeaseExpiredRequeued || !c.Fence.OldPrepareRejected || !c.Fence.OldCommitRejected || !c.Fence.ReplacementLeaseDifferent || !c.Fence.ReplacementPublishCommitted || c.Artifact.ReadableArtifactID == "" || !c.Artifact.PartialWorkspaceQuarantined {
+		if !requireClean(first) || !requireClean(c.Processes[1]) || first.ExitCode != 0 || c.Processes[1].ExitCode != 0 || !c.Fence.LeaseExpiredRequeued || !c.Fence.OldPrepareRejected || !c.Fence.OldCommitRejected || !c.Fence.ReplacementLeaseDifferent || !c.Fence.ReplacementPublishCommitted || c.Artifact.ReadableArtifactID == "" || !c.Artifact.PartialWorkspaceQuarantined {
 			return fmt.Errorf("stale lease fence outcome is invalid")
 		}
 	default:
