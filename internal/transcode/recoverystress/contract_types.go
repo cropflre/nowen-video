@@ -1,6 +1,10 @@
 package recoverystress
 
-import transcodelongdrift "github.com/nowen-video/nowen-video/internal/transcode/longdrift"
+import (
+	"encoding/json"
+
+	transcodelongdrift "github.com/nowen-video/nowen-video/internal/transcode/longdrift"
+)
 
 const (
 	ScenarioSchemaVersion  = "transcode-recovery-resource-scenario-evidence-v4"
@@ -18,6 +22,22 @@ type ResourceLimits struct {
 	AddressSpaceBytes int64 `json:"address_space_bytes"`
 	MemoryMaxBytes    int64 `json:"-"`
 	ENOSPCAfterBytes  int64 `json:"enospc_after_bytes"`
+}
+
+func (r *ResourceLimits) UnmarshalJSON(content []byte) error {
+	var decoded struct {
+		CPUCount          int   `json:"cpu_count"`
+		AddressSpaceBytes int64 `json:"address_space_bytes"`
+		ENOSPCAfterBytes  int64 `json:"enospc_after_bytes"`
+	}
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		return err
+	}
+	r.CPUCount = decoded.CPUCount
+	r.AddressSpaceBytes = decoded.AddressSpaceBytes
+	r.MemoryMaxBytes = decoded.AddressSpaceBytes
+	r.ENOSPCAfterBytes = decoded.ENOSPCAfterBytes
+	return nil
 }
 
 type ScenarioSpec struct {
