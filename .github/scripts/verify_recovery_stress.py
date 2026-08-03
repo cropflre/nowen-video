@@ -116,6 +116,10 @@ def validate_process(process, ordinal):
     assert process["segment_count"] >= 0
     assert process["max_rss_bytes"] >= 0
     assert process["elapsed_millis"] >= 0
+    assert process["cpu_count_limit"] >= 0
+    assert process["memory_limit_bytes"] >= 0
+    assert isinstance(process["resource_controller"], str)
+    assert isinstance(process["fault_backend"], str)
     assert isinstance(process["stderr_markers"], list)
 
 
@@ -182,12 +186,16 @@ def validate_scenario_outcome(evidence):
         assert artifact["partial_workspace_quarantined"] is True
     elif scenario_id == "enospc-segment-write-v1":
         assert first["exit_code"] != 0
+        assert first["fault_backend"] == "tmpfs"
         assert "ENOSPC" in first["stderr_markers"]
         assert evidence["error_code"] == "write_enospc"
         assert artifact["readable_artifact_id"] == ""
         assert artifact["cleanup_eligible"] is True
     elif scenario_id == "bounded-one-core-512m-v1":
         assert first["exit_code"] == 0
+        assert first["resource_controller"] == "cgroup-v2"
+        assert first["cpu_count_limit"] == scenario["limits"]["cpu_count"]
+        assert first["memory_limit_bytes"] == scenario["limits"]["address_space_bytes"]
         assert 0 < first["max_rss_bytes"] <= scenario["limits"]["address_space_bytes"]
         assert fence["replacement_publish_committed"] is True
         assert artifact["readable_artifact_id"]
