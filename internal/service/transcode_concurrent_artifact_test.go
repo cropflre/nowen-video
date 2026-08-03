@@ -146,15 +146,14 @@ func createConcurrentArtifactFixture(t *testing.T, service *TranscodeService, db
 		t.Fatal(err)
 	}
 	media := &model.Media{
-		ID:          "media-" + suffix,
-		Title:       "Concurrent " + suffix,
-		FilePath:    mediaPath,
-		Duration:    4,
-		Resolution:  "720p",
-		VideoCodec:  "h264",
-		AudioCodec:  "aac",
-		Container:   "mkv",
-		MediaType:   "movie",
+		ID:         "media-" + suffix,
+		Title:      "Concurrent " + suffix,
+		FilePath:   mediaPath,
+		Duration:   4,
+		Resolution: "720p",
+		VideoCodec: "h264",
+		AudioCodec: "aac",
+		MediaType:  "movie",
 	}
 	if err := db.Create(media).Error; err != nil {
 		t.Fatal(err)
