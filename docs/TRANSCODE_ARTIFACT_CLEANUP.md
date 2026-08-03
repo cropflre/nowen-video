@@ -2,9 +2,9 @@
 
 ## Status
 
-The first durable Artifact cleanup protocol is implemented on `refactor/server-lite-v1`.
+The durable Artifact cleanup protocol and its first administrator recovery surface are implemented on `refactor/server-lite-v1`.
 
-Artifact publication and playback are immutable/versioned. Cleanup is therefore a separate lifecycle with its own ownership, retry schedule, error evidence, and observability. A cleanup failure must never silently delete metadata, expose a partially removed version, or cause multiple server instances to remove the same Artifact concurrently.
+Artifact publication and playback are immutable/versioned. Cleanup is therefore a separate lifecycle with its own ownership, retry schedule, error evidence, observability, and operator contract. A cleanup failure must never silently delete metadata, expose a partially removed version, or cause multiple server instances to remove the same Artifact concurrently.
 
 ## Cleanup lifecycle
 
@@ -112,6 +112,42 @@ Managed HLS segment responses open the segment file before sending response head
 
 This protects an active segment transfer without keeping retired Artifact versions indefinitely. New requests to an expired or removed explicit Artifact version continue to fail closed.
 
+## Operator task contract
+
+Cleanup work is projected into the existing Lite Task Center as a formal task kind:
+
+```text
+artifact_cleanup
+```
+
+State projection:
+
+```text
+pending     -> queued
+claimed     -> running
+retry_wait  -> failed / operator retry available
+blocked     -> failed / operator retry available
+```
+
+The Task Center exposes the Artifact ID, media/profile identity, cleanup attempt count, durable error code and message, next automatic retry time, and the tracked path. Blocked cleanup is sorted before ordinary terminal task history and contributes to the red Task Center problem badge.
+
+The operator action reuses the existing endpoint:
+
+```text
+POST /api/admin/tasks/artifact_cleanup/:artifactId/retry
+```
+
+The action does not force-delete data and does not clear a live Cleanup Lease. It only:
+
+1. atomically changes a `blocked` or `retry_wait` row to `pending`;
+2. clears stale error and Lease fields while preserving attempt evidence;
+3. makes the work immediately eligible;
+4. enters the normal Cleanup Lease and Artifact Store validation path.
+
+If the underlying mount, permission, or invariant problem remains, the new attempt persists fresh `retry_wait` or `blocked` evidence. A `pending` or live `claimed` operation returns a task-action conflict rather than allowing an operator to steal ownership.
+
+Every accepted action writes the normal administrator audit record with actor, action, task kind, Artifact ID, result message, and client IP. The Task Center broadcasts `task_updated` after acceptance and refreshes the durable result.
+
 ## Observability
 
 The transcode statistics response includes:
@@ -124,7 +160,7 @@ Operators can distinguish pending, currently claimed, retrying, and blocked clea
 
 ## Certification
 
-The multi-job contention workflow runs the cleanup tests under the race detector:
+The multi-job contention workflow runs the cleanup and Task Center tests under the race detector:
 
 ```text
 .github/workflows/transcode-multi-job-contention-cert.yml
@@ -140,7 +176,12 @@ The gate certifies:
 - busy storage recovery;
 - invariant failure classification;
 - capped backoff;
+- operator requeue preserving attempt evidence;
+- live Cleanup Lease protection;
+- cleanup task projection and action policy;
 - versioned read consistency and real FFmpeg contention.
+
+Server Lite CI additionally certifies the typed Web task contract, production build, Lite/Full server builds, and persistent-volume container startup.
 
 ## Remaining boundary
 
@@ -149,7 +190,6 @@ This phase does not yet certify:
 - real NFS/SMB fault injection on a NAS runner;
 - host reboot during the filesystem-delete/database-delete boundary;
 - cleanup throughput limits for millions of Artifact rows;
-- administrative retry/unblock operations for `blocked` rows;
 - disk-pressure-triggered retention shortening;
 - distributed cleanup scheduling across multiple simultaneously active servers.
 
