@@ -16,6 +16,7 @@ const (
 type ResourceLimits struct {
 	CPUCount          int   `json:"cpu_count"`
 	AddressSpaceBytes int64 `json:"address_space_bytes"`
+	MemoryMaxBytes    int64 `json:"memory_max_bytes"`
 	ENOSPCAfterBytes  int64 `json:"enospc_after_bytes"`
 }
 
@@ -59,6 +60,10 @@ type ProcessEvidence struct {
 	StderrMarkers         []string `json:"stderr_markers"`
 	MaxRSSBytes           int64    `json:"max_rss_bytes"`
 	ElapsedMillis         int64    `json:"elapsed_millis"`
+	ResourceController    string   `json:"resource_controller"`
+	CPUCountLimit         int      `json:"cpu_count_limit"`
+	MemoryLimitBytes      int64    `json:"memory_limit_bytes"`
+	FaultBackend          string   `json:"fault_backend"`
 }
 
 type LeaseFenceEvidence struct {
