@@ -39,9 +39,17 @@ type scrapeTaskLookup interface {
 	FindByID(id string) (*model.ScrapeTask, error)
 }
 
+type artifactCleanupLookup interface {
+	FindArtifactCleanupOperation(id string) (*model.TranscodeArtifactRecord, error)
+}
+
 type transcodeTaskActions interface {
 	CancelTranscode(taskID string) error
 	RetryTask(taskID string, mediaResolver func(mediaID string) (*model.Media, error)) error
+}
+
+type artifactCleanupActions interface {
+	RetryArtifactCleanup(artifactID string) error
 }
 
 type scrapeTaskActions interface {
@@ -50,8 +58,10 @@ type scrapeTaskActions interface {
 
 type TaskActionDispatcher struct {
 	transcode       transcodeTaskActions
+	artifactCleanup artifactCleanupActions
 	scrape          scrapeTaskActions
 	transcodeLookup transcodeTaskLookup
+	artifactLookup  artifactCleanupLookup
 	scrapeLookup    scrapeTaskLookup
 	mediaResolver   func(mediaID string) (*model.Media, error)
 	wsHub           *WSHub
@@ -71,7 +81,7 @@ func NewTaskActionDispatcher(
 	if mediaRepo != nil {
 		resolver = mediaRepo.FindByID
 	}
-	return &TaskActionDispatcher{
+	dispatcher := &TaskActionDispatcher{
 		transcode:       transcode,
 		scrape:          scrape,
 		transcodeLookup: transcodeRepo,
@@ -80,6 +90,13 @@ func NewTaskActionDispatcher(
 		wsHub:           wsHub,
 		logger:          logger,
 	}
+	if transcode != nil {
+		dispatcher.artifactCleanup = transcode
+	}
+	if transcodeRepo != nil && transcodeRepo.DB() != nil {
+		dispatcher.artifactLookup = repository.NewTranscodeExecutionRepo(transcodeRepo.DB())
+	}
+	return dispatcher
 }
 
 // AvailableTaskActions is shared by the API and dispatcher. Queued transcode
@@ -101,6 +118,10 @@ func AvailableTaskActions(kind, status string) []string {
 		if normalizedStatus == TaskStatusFailed || normalizedStatus == TaskStatusCancelled {
 			return []string{TaskActionRetry}
 		}
+	case TaskKindArtifactCleanup:
+		if normalizedStatus == TaskStatusFailed {
+			return []string{TaskActionRetry}
+		}
 	}
 	return []string{}
 }
@@ -119,6 +140,8 @@ func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*
 		err = d.executeTranscode(sourceID, action)
 	case TaskKindScrape:
 		err = d.executeScrape(sourceID, action, userID)
+	case TaskKindArtifactCleanup:
+		err = d.executeArtifactCleanup(sourceID, action)
 	case TaskKindScan:
 		err = fmt.Errorf("%w: scan tasks do not expose lifecycle controls", ErrTaskActionUnsupported)
 	default:
@@ -176,6 +199,29 @@ func (d *TaskActionDispatcher) executeTranscode(sourceID, action string) error {
 	return nil
 }
 
+func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string) error {
+	if d.artifactLookup == nil || d.artifactCleanup == nil {
+		return fmt.Errorf("Artifact 清理执行器不可用")
+	}
+	artifact, err := d.artifactLookup.FindArtifactCleanupOperation(sourceID)
+	if err != nil || artifact == nil {
+		return fmt.Errorf("%w: artifact cleanup %s", ErrTaskNotFound, sourceID)
+	}
+	if action != TaskActionRetry {
+		return fmt.Errorf("%w: artifact cleanup action=%s", ErrTaskActionUnsupported, action)
+	}
+	if artifact.CleanupState != repository.ArtifactCleanupBlocked && artifact.CleanupState != repository.ArtifactCleanupRetryWait {
+		return fmt.Errorf("%w: artifact cleanup state=%s action=%s", ErrTaskActionConflict, artifact.CleanupState, action)
+	}
+	if err := d.artifactCleanup.RetryArtifactCleanup(sourceID); err != nil {
+		if errors.Is(err, ErrArtifactCleanupNotRetryable) {
+			return fmt.Errorf("%w: artifact cleanup state changed", ErrTaskActionConflict)
+		}
+		return fmt.Errorf("重试 Artifact 清理失败: %w", err)
+	}
+	return nil
+}
+
 func (d *TaskActionDispatcher) executeScrape(sourceID, action, userID string) error {
 	if d.scrapeLookup == nil || d.scrape == nil {
 		return fmt.Errorf("刮削任务执行器不可用")
@@ -213,10 +259,14 @@ func taskActionMessage(kind, action string) string {
 	case TaskActionCancel:
 		return "取消请求已提交"
 	case TaskActionRetry:
-		if kind == TaskKindScrape {
+		switch kind {
+		case TaskKindScrape:
 			return "刮削任务已重新提交"
+		case TaskKindArtifactCleanup:
+			return "Artifact 清理已重新执行"
+		default:
+			return "转码任务已重新提交"
 		}
-		return "转码任务已重新提交"
 	default:
 		return "任务操作已提交"
 	}
