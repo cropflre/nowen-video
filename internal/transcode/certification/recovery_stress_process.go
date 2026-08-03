@@ -37,7 +37,7 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		commandArgs = append([]string(nil), control.CommandArgs...)
 	}
 	stderrTail := 200
-	if control.FaultBackend == "tmpfs" {
+	if control.FaultBackend != "" {
 		commandArgs = insertRecoveryArgsBeforeOutput(commandArgs, "-xerror")
 		stderrTail = 2000
 	}
