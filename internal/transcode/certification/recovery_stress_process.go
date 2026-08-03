@@ -36,6 +36,11 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		commandPath = control.CommandPath
 		commandArgs = append([]string(nil), control.CommandArgs...)
 	}
+	stderrTail := 200
+	if control.FaultBackend == "tmpfs" {
+		commandArgs = insertRecoveryArgsBeforeOutput(commandArgs, "-xerror")
+		stderrTail = 2000
+	}
 	var (
 		process       *os.Process
 		triggerOnce   sync.Once
@@ -49,7 +54,7 @@ func (h *recoveryHarness) runAttempt(ctx context.Context, job *model.TranscodeJo
 		Path:       commandPath,
 		Args:       commandArgs,
 		Env:        control.ExtraEnv,
-		StderrTail: 200,
+		StderrTail: stderrTail,
 	}, executor.Callbacks{
 		OnStarted: func(started *os.Process) {
 			process = started
