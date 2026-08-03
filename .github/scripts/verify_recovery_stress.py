@@ -10,6 +10,7 @@ SCENARIO_SCHEMA = "transcode-recovery-resource-scenario-evidence-v4"
 AGGREGATE_SCHEMA = "transcode-recovery-resource-aggregate-evidence-v4"
 TIMESTAMP_VERSION = "hls-timestamp-normalization-v1"
 SOURCE_PROFILE_CASE = "real-mp4-h264-aac-cfr-30-aac-44100-v1"
+FATAL_OUTPUT_ENOSPC = "write_enospc"
 
 SCENARIOS = [
     {
@@ -121,6 +122,14 @@ def validate_process(process, ordinal):
     assert isinstance(process["resource_controller"], str)
     assert isinstance(process["fault_backend"], str)
     assert isinstance(process["stderr_markers"], list)
+    assert isinstance(process["fatal_output_detected"], bool)
+    assert isinstance(process["fatal_output_code"], str)
+    assert process["fatal_output_detected"] == bool(process["fatal_output_code"])
+
+
+def assert_clean_process(process):
+    assert process["fatal_output_detected"] is False
+    assert process["fatal_output_code"] == ""
 
 
 def validate_common(evidence, spec, manifest):
@@ -167,6 +176,7 @@ def validate_scenario_outcome(evidence):
     artifact = evidence["artifact"]
 
     if scenario_id == "cancel-active-segment-write-v1":
+        assert_clean_process(first)
         assert first["cancelled"] is True
         assert first["trigger_observed_micros"] >= scenario["trigger_micros"]
         assert first["segment_count"] > 0
@@ -174,6 +184,8 @@ def validate_scenario_outcome(evidence):
         assert artifact["partial_workspace_quarantined"] is True
         assert artifact["cleanup_eligible"] is True
     elif scenario_id == "sigkill-lease-requeue-restart-v1":
+        assert_clean_process(first)
+        assert_clean_process(processes[1])
         assert first["signal"] == "SIGKILL"
         assert first["exit_code"] != 0
         assert processes[1]["exit_code"] == 0
@@ -185,13 +197,15 @@ def validate_scenario_outcome(evidence):
         assert artifact["readable_artifact_id"]
         assert artifact["partial_workspace_quarantined"] is True
     elif scenario_id == "enospc-segment-write-v1":
-        assert first["exit_code"] != 0
+        assert first["fatal_output_detected"] is True
+        assert first["fatal_output_code"] == FATAL_OUTPUT_ENOSPC
         assert first["fault_backend"] == "dev-full-bind"
         assert "ENOSPC" in first["stderr_markers"]
-        assert evidence["error_code"] == "write_enospc"
+        assert evidence["error_code"] == FATAL_OUTPUT_ENOSPC
         assert artifact["readable_artifact_id"] == ""
         assert artifact["cleanup_eligible"] is True
     elif scenario_id == "bounded-one-core-512m-v1":
+        assert_clean_process(first)
         assert first["exit_code"] == 0
         assert first["resource_controller"] == "cgroup-v2"
         assert first["cpu_count_limit"] == scenario["limits"]["cpu_count"]
@@ -200,6 +214,8 @@ def validate_scenario_outcome(evidence):
         assert fence["replacement_publish_committed"] is True
         assert artifact["readable_artifact_id"]
     elif scenario_id == "stale-lease-finalize-fence-v1":
+        assert_clean_process(first)
+        assert_clean_process(processes[1])
         assert first["exit_code"] == 0
         assert processes[1]["exit_code"] == 0
         assert fence["lease_expired_requeued"] is True
