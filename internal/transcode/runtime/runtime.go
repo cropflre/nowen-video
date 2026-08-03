@@ -44,7 +44,12 @@ func (r *Runtime) Run(ctx context.Context, kind governor.Kind, command executor.
 
 func (r *Runtime) Snapshot() governor.Snapshot {
 	if r == nil || r.governor == nil {
-		return governor.Snapshot{Capacity: map[governor.Kind]int{}, InUse: map[governor.Kind]int{}}
+		return governor.Snapshot{
+			Capacity:  map[governor.Kind]int{},
+			InUse:     map[governor.Kind]int{},
+			Waiting:   map[governor.Kind]int{},
+			PeakInUse: map[governor.Kind]int{},
+		}
 	}
 	return r.governor.Snapshot()
 }
