@@ -64,6 +64,11 @@ func (s *TranscodeService) leaseHeartbeatLoop(job *TranscodeJob) {
 }
 
 func (s *TranscodeService) recoverPendingTasks() {
+	// Register the queue owner and sample storage before workers can claim the
+	// first recovered Job. Existing running evidence is preserved; only new
+	// claims and submissions are gated when pressure is active.
+	s.initializeDiskPressureGovernor()
+
 	now := time.Now()
 	if abandoned, reconcileErr := s.executionRepo.AbandonUnownedArtifacts(now); reconcileErr != nil {
 		s.logger.Warnf("启动时对账转码 Artifact 所有权失败: %v", reconcileErr)
@@ -182,6 +187,10 @@ func (s *TranscodeService) leaseRecoveryLoop() {
 			if s.jobs.IsClosed() {
 				return
 			}
+			// Disk pressure evaluation is internally throttled to 30 seconds. It
+			// shares this lifecycle loop so Lite and Full start and stop the same
+			// governance process without an additional unowned goroutine.
+			s.runDiskPressureGovernorTick(now, false)
 			expired, err := s.executionRepo.ListExpiredLeases(now)
 			if err != nil {
 				s.logger.Warnf("扫描过期转码 Lease 失败: %v", err)
