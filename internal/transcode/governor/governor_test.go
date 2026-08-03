@@ -69,7 +69,7 @@ func TestGovernorReportsContentionWithoutOversubscription(t *testing.T) {
 		secondLease <- lease
 	}()
 
-	waitForGovernorSnapshot(t, time.Second, func(snapshot Snapshot) bool {
+	waitForGovernorSnapshot(t, g, time.Second, func(snapshot Snapshot) bool {
 		return snapshot.InUse[KindSoftwareTranscode] == 1 &&
 			snapshot.Waiting[KindSoftwareTranscode] == 1 &&
 			snapshot.PeakInUse[KindSoftwareTranscode] == 1
@@ -118,7 +118,7 @@ func TestGovernorCancellationRemovesWaitingAdmission(t *testing.T) {
 		result <- acquireErr
 	}()
 
-	waitForGovernorSnapshot(t, time.Second, func(snapshot Snapshot) bool {
+	waitForGovernorSnapshot(t, g, time.Second, func(snapshot Snapshot) bool {
 		return snapshot.Waiting[KindOnDemand] == 1
 	})
 	cancel()
@@ -154,24 +154,14 @@ func TestLeaseReleaseIsIdempotent(t *testing.T) {
 	next.Release()
 }
 
-func waitForGovernorSnapshot(t *testing.T, timeout time.Duration, predicate func(Snapshot) bool) {
+func waitForGovernorSnapshot(t *testing.T, g *Governor, timeout time.Duration, predicate func(Snapshot) bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if predicateSnapshot := predicate; predicateSnapshot != nil && predicateSnapshot(gSnapshotForTest(t)) {
+		if predicate(g.Snapshot()) {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("governor snapshot did not reach expected state")
-}
-
-var governorUnderTest *Governor
-
-func gSnapshotForTest(t *testing.T) Snapshot {
-	t.Helper()
-	if governorUnderTest == nil {
-		return Snapshot{}
-	}
-	return governorUnderTest.Snapshot()
+	t.Fatalf("governor snapshot did not reach expected state: %+v", g.Snapshot())
 }
