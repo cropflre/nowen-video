@@ -16,6 +16,7 @@ const (
 type ResourceLimits struct {
 	CPUCount          int   `json:"cpu_count"`
 	AddressSpaceBytes int64 `json:"address_space_bytes"`
+	MemoryMaxBytes    int64 `json:"-"`
 	ENOSPCAfterBytes  int64 `json:"enospc_after_bytes"`
 }
 
