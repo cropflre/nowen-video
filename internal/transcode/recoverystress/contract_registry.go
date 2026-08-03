@@ -41,7 +41,11 @@ func AvailableScenarios() []ScenarioSpec {
 			ExpectedProcessCount:        1,
 			ExpectedFinalJobStatus:      "completed",
 			ExpectedFinalArtifactStatus: "published",
-			Limits:                      ResourceLimits{CPUCount: 1, AddressSpaceBytes: 512 * 1024 * 1024},
+			Limits: ResourceLimits{
+				CPUCount:          1,
+				AddressSpaceBytes: 512 * 1024 * 1024,
+				MemoryMaxBytes:    512 * 1024 * 1024,
+			},
 		},
 		{
 			ID:                          ScenarioStaleLeaseFence,
