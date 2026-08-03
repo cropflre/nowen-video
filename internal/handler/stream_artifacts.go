@@ -42,18 +42,36 @@ func (h *ArtifactStreamHandler) Segment(c *gin.Context) {
 		return
 	}
 
-	artifactErr := h.streamService.ServeArtifactSegment(id, quality, segment, c.Writer, c.Request)
+	artifactID := c.Query(service.HLSArtifactVersionQuery)
+	artifactErr := h.streamService.ServeArtifactSegmentVersion(id, quality, artifactID, segment, c.Writer, c.Request)
 	if artifactErr == nil {
 		return
 	}
+
+	// A versioned playlist is an immutable read contract. When that exact
+	// retained Artifact is unavailable, never fall through to on-demand or the
+	// current version: doing so could mix segments from different encodes.
+	if artifactID != "" {
+		c.Header("Cache-Control", "no-store")
+		if errors.Is(artifactErr, service.ErrArtifactNotReady) {
+			c.JSON(http.StatusGone, gin.H{
+				"error":       "artifact version is no longer available",
+				"error_code":  "artifact_version_unavailable",
+				"artifact_id": artifactID,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": artifactErr.Error()})
+		return
+	}
+
 	if !errors.Is(artifactErr, service.ErrArtifactNotReady) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": artifactErr.Error()})
 		return
 	}
 
-	// On-demand is a formal first-segment availability fallback, not a blanket
-	// error mask. It is attempted only when the Artifact Resolver reports that
-	// the requested immutable/live segment is not ready yet.
+	// On-demand is a formal first-segment availability fallback for legacy
+	// unversioned requests only, not a blanket error mask.
 	if err := h.streamService.ServeOnDemandSegment(id, quality, segment, c.Writer, c.Request); err != nil {
 		c.Header("Retry-After", "1")
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
