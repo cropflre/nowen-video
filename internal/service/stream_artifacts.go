@@ -99,10 +99,6 @@ func (s *StreamService) readResolvedHLSManifest(media *model.Media, quality stri
 	return "", lastErr
 }
 
-// bindHLSArtifactVersion rewrites local media URI lines to include the exact
-// Artifact identity that supplied the playlist. Managed runtime HLS currently
-// emits flat MPEG-TS segment names; nested or external media URIs fail closed
-// because the authenticated segment route intentionally accepts one basename.
 func bindHLSArtifactVersion(content, artifactID string) (string, error) {
 	if strings.TrimSpace(artifactID) == "" {
 		return "", fmt.Errorf("artifact identity is required for managed HLS playlist")
@@ -133,17 +129,10 @@ func bindHLSArtifactVersion(content, artifactID string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// ServeArtifactSegment preserves the legacy unversioned segment contract for
-// old clients. New managed playlists call ServeArtifactSegmentVersion through
-// the handler with HLSArtifactVersionQuery populated.
 func (s *StreamService) ServeArtifactSegment(mediaID, quality, segment string, w http.ResponseWriter, r *http.Request) error {
 	return s.ServeArtifactSegmentVersion(mediaID, quality, "", segment, w, r)
 }
 
-// ServeArtifactSegmentVersion serves either an explicit Artifact version or,
-// for rollback compatibility, the current resolved Artifact. Explicit versions
-// never fall through to another Artifact, preventing cross-version segment
-// mixing after a replacement publication.
 func (s *StreamService) ServeArtifactSegmentVersion(mediaID, quality, artifactID, segment string, w http.ResponseWriter, r *http.Request) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
@@ -166,6 +155,27 @@ func (s *StreamService) ServeArtifactSegmentVersion(mediaID, quality, artifactID
 	if info.IsDir() || info.Size() <= 0 {
 		return ErrArtifactNotReady
 	}
+
+	// Open the file before sending headers. On Unix an already-open descriptor
+	// remains readable if retention cleanup unlinks the path; on Windows and
+	// mounts that reject deletion of an open file, cleanup persists a busy retry.
+	// Either behavior protects an in-flight response from a partial transfer.
+	file, openErr := os.Open(segmentPath)
+	if openErr != nil {
+		if artifactReadinessError(openErr) {
+			return ErrArtifactNotReady
+		}
+		return openErr
+	}
+	defer file.Close()
+	openedInfo, statErr := file.Stat()
+	if statErr != nil {
+		return statErr
+	}
+	if openedInfo.IsDir() || openedInfo.Size() <= 0 {
+		return ErrArtifactNotReady
+	}
+
 	if filepath.Ext(segment) == ".ts" {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
@@ -179,7 +189,7 @@ func (s *StreamService) ServeArtifactSegmentVersion(mediaID, quality, artifactID
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
-	http.ServeFile(w, r, segmentPath)
+	http.ServeContent(w, r, segment, openedInfo.ModTime(), file)
 	return nil
 }
 
