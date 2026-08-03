@@ -1,6 +1,7 @@
 package recoverystress
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -26,6 +27,27 @@ func TestAvailableScenariosAreCanonical(t *testing.T) {
 		if found, ok := LookupScenario(id); !ok || found != scenarios[index] {
 			t.Fatalf("lookup scenario %s did not return canonical value", id)
 		}
+	}
+}
+
+func TestBoundedScenarioRestoresInternalMemoryLimitAfterJSON(t *testing.T) {
+	expected, ok := LookupScenario(ScenarioBoundedResources)
+	if !ok {
+		t.Fatal("bounded scenario missing")
+	}
+	content, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded ScenarioSpec
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded != expected {
+		t.Fatalf("decoded bounded scenario differs:\n got: %#v\nwant: %#v", decoded, expected)
+	}
+	if decoded.Limits.MemoryMaxBytes != decoded.Limits.AddressSpaceBytes || decoded.Limits.MemoryMaxBytes <= 0 {
+		t.Fatalf("internal memory limit = %d, address-space field = %d", decoded.Limits.MemoryMaxBytes, decoded.Limits.AddressSpaceBytes)
 	}
 }
 
