@@ -112,6 +112,12 @@ Managed HLS segment responses open the segment file before sending response head
 
 This protects an active segment transfer without keeping retired Artifact versions indefinitely. New requests to an expired or removed explicit Artifact version continue to fail closed.
 
+Disk-pressure cleanup adds a durable recent-access grace window across manifests, runtime segments, Startup Stream, and Startup Continuation. The complete policy is defined in:
+
+```text
+docs/TRANSCODE_DISK_PRESSURE.md
+```
+
 ## Operator task contract
 
 Cleanup work is projected into the existing Lite Task Center as a formal task kind:
@@ -154,13 +160,14 @@ The transcode statistics response includes:
 
 ```text
 artifact_cleanup_state_counts
+disk_pressure
 ```
 
-Operators can distinguish pending, currently claimed, retrying, and blocked cleanup work. Per-Artifact records retain attempt count, next attempt, last error code, and last error message until successful deletion.
+Operators can distinguish pending, currently claimed, retrying, and blocked cleanup work, and can inspect filesystem/store pressure, admission state, reclaim targets, and the most recent reclaim result. Per-Artifact records retain attempt count, next attempt, last error code, and last error message until successful deletion.
 
 ## Certification
 
-The multi-job contention workflow runs the cleanup and Task Center tests under the race detector:
+The multi-job contention workflow runs the cleanup, pressure, and Task Center tests under the race detector:
 
 ```text
 .github/workflows/transcode-multi-job-contention-cert.yml
@@ -179,6 +186,7 @@ The gate certifies:
 - operator requeue preserving attempt evidence;
 - live Cleanup Lease protection;
 - cleanup task projection and action policy;
+- pressure reclaim selection and active-read protection;
 - versioned read consistency and real FFmpeg contention.
 
 Server Lite CI additionally certifies the typed Web task contract, production build, Lite/Full server builds, and persistent-volume container startup.
@@ -190,7 +198,7 @@ This phase does not yet certify:
 - real NFS/SMB fault injection on a NAS runner;
 - host reboot during the filesystem-delete/database-delete boundary;
 - cleanup throughput limits for millions of Artifact rows;
-- disk-pressure-triggered retention shortening;
-- distributed cleanup scheduling across multiple simultaneously active servers.
+- distributed cleanup scheduling across multiple simultaneously active servers;
+- coordinated pressure sampling across multiple hosts sharing the same remote volume.
 
-Those remain subsequent evidence gates. Cleanup continues to fail closed and retains database evidence whenever ownership or invariants are uncertain.
+Those remain subsequent evidence gates. Cleanup continues to fail closed and retains database evidence whenever ownership, storage capacity, or invariants are uncertain.
