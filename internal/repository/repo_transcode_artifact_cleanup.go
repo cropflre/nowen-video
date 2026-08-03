@@ -22,6 +22,13 @@ var artifactCleanupTerminalStatuses = []string{
 	"expired",
 }
 
+var artifactCleanupManagedStates = []string{
+	ArtifactCleanupPending,
+	ArtifactCleanupClaimed,
+	ArtifactCleanupRetryWait,
+	ArtifactCleanupBlocked,
+}
+
 func artifactCleanupEligibilityQuery() string {
 	return `status IN ? AND (
 		(COALESCE(cleanup_state, '') = '' AND updated_at < ?)
@@ -52,6 +59,77 @@ func (r *TranscodeExecutionRepo) ListArtifactsEligibleForCleanup(cutoff, now tim
 		Limit(limit).
 		Find(&artifacts).Error
 	return artifacts, err
+}
+
+// ListArtifactCleanupOperations exposes the bounded durable cleanup work set to
+// the admin task center. Blocked work is ordered first so an invariant failure
+// cannot disappear behind a large history of normal transcode tasks.
+func (r *TranscodeExecutionRepo) ListArtifactCleanupOperations(limit int) ([]model.TranscodeArtifactRecord, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	var artifacts []model.TranscodeArtifactRecord
+	err := r.db.Where("cleanup_state IN ?", artifactCleanupManagedStates).
+		Order(`CASE cleanup_state
+			WHEN 'blocked' THEN 0
+			WHEN 'retry_wait' THEN 1
+			WHEN 'claimed' THEN 2
+			ELSE 3
+		END ASC`).
+		Order("COALESCE(cleanup_next_attempt_at, cleanup_last_attempt_at, updated_at) DESC, id ASC").
+		Limit(limit).
+		Find(&artifacts).Error
+	return artifacts, err
+}
+
+func (r *TranscodeExecutionRepo) FindArtifactCleanupOperation(artifactID string) (*model.TranscodeArtifactRecord, error) {
+	var artifact model.TranscodeArtifactRecord
+	result := r.db.Where("id = ? AND cleanup_state IN ?", artifactID, artifactCleanupManagedStates).
+		Limit(1).
+		Find(&artifact)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &artifact, nil
+}
+
+// RequeueArtifactCleanup is the only operator-facing unblock operation. It does
+// not bypass path validation or delete metadata directly: it merely clears the
+// persisted block/retry delay and makes the Artifact eligible for the normal
+// Cleanup Lease path. If the invariant is still broken, the next attempt blocks
+// again with fresh evidence.
+func (r *TranscodeExecutionRepo) RequeueArtifactCleanup(artifactID string, now time.Time) (*model.TranscodeArtifactRecord, bool, error) {
+	result := r.db.Model(&model.TranscodeArtifactRecord{}).
+		Where(
+			"id = ? AND status IN ? AND cleanup_state IN ?",
+			artifactID,
+			artifactCleanupTerminalStatuses,
+			[]string{ArtifactCleanupBlocked, ArtifactCleanupRetryWait},
+		).
+		Updates(map[string]any{
+			"cleanup_state":            ArtifactCleanupPending,
+			"cleanup_token":            "",
+			"cleanup_claimed_at":       nil,
+			"cleanup_lease_expires_at": nil,
+			"cleanup_next_attempt_at":  now,
+			"cleanup_error_code":       "",
+			"cleanup_error_message":    "",
+			"updated_at":               now,
+		})
+	if result.Error != nil || result.RowsAffected != 1 {
+		return nil, false, result.Error
+	}
+	artifact, err := r.FindArtifactCleanupOperation(artifactID)
+	if err != nil {
+		return nil, false, err
+	}
+	return artifact, true, nil
 }
 
 // QueueArtifactCleanup makes a task-owned Artifact immediately eligible without
