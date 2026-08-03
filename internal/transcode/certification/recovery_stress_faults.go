@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	transcoderecovery "github.com/nowen-video/nowen-video/internal/transcode/recoverystress"
@@ -242,15 +243,32 @@ func mountENOSPCWorkspace(workspace string, capacityBytes int64) (func() error, 
 		_ = cleanup()
 		return nil, fmt.Errorf("prefill ENOSPC tmpfs: %w", err)
 	}
+	if err := verifyENOSPCHeadroom(workspace); err != nil {
+		_ = cleanup()
+		return nil, err
+	}
 	return cleanup, nil
 }
 
+const enospcWriteHeadroom = int64(4 * 1024)
+
 func enospcPrefillBytes(capacityBytes int64) (int64, error) {
-	const ffmpegHeadroom = int64(64 * 1024)
-	if capacityBytes <= ffmpegHeadroom {
+	if capacityBytes <= enospcWriteHeadroom {
 		return 0, fmt.Errorf("tmpfs capacity %d does not leave fault headroom", capacityBytes)
 	}
-	return capacityBytes - ffmpegHeadroom, nil
+	return capacityBytes - enospcWriteHeadroom, nil
+}
+
+func verifyENOSPCHeadroom(workspace string) error {
+	var stats syscall.Statfs_t
+	if err := syscall.Statfs(workspace, &stats); err != nil {
+		return fmt.Errorf("stat ENOSPC tmpfs: %w", err)
+	}
+	available := int64(stats.Bavail) * int64(stats.Bsize)
+	if available > enospcWriteHeadroom {
+		return fmt.Errorf("ENOSPC tmpfs has %d available bytes, want at most %d", available, enospcWriteHeadroom)
+	}
+	return nil
 }
 
 const resourceLimitHelperSource = `
