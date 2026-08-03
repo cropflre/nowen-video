@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nowen-video/nowen-video/internal/transcode/executor"
 	transcoderecovery "github.com/nowen-video/nowen-video/internal/transcode/recoverystress"
 )
 
@@ -115,10 +116,12 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 	if unmountErr != nil {
 		return recoveryScenarioResult{}, unmountErr
 	}
-	if process.ExitCode == 0 || !slicesContains(process.StderrMarkers, "ENOSPC") {
+	if !process.FatalOutputDetected || process.FatalOutputCode != executor.FatalOutputCodeENOSPC || !slicesContains(process.StderrMarkers, "ENOSPC") {
 		return recoveryScenarioResult{}, fmt.Errorf(
-			"kernel ENOSPC did not fail first segment write: exit=%d markers=%v segments=%d manifest=%t progress_us=%d stderr_sha256=%s",
+			"executor did not classify kernel ENOSPC: exit=%d fatal=%t code=%q markers=%v segments=%d manifest=%t progress_us=%d stderr_sha256=%s",
 			process.ExitCode,
+			process.FatalOutputDetected,
+			process.FatalOutputCode,
 			process.StderrMarkers,
 			process.SegmentCount,
 			process.ManifestExists,
@@ -127,17 +130,17 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 		)
 	}
 	now := time.Now()
-	if updated, err := h.repo.MarkOwnedArtifactTerminal(job.ID, attempt.Record.ID, attempt.Artifact.ID, job.LeaseToken, "failed", "write_enospc", "No space left on device during segment write", now); err != nil || !updated {
+	if updated, err := h.repo.MarkOwnedArtifactTerminal(job.ID, attempt.Record.ID, attempt.Artifact.ID, job.LeaseToken, "failed", executor.FatalOutputCodeENOSPC, "No space left on device during segment write", now); err != nil || !updated {
 		return recoveryScenarioResult{}, fmt.Errorf("mark ENOSPC Artifact terminal: updated=%t err=%v", updated, err)
 	}
-	if err := h.repo.CompleteAttempt(attempt.Record.ID, "failed", process.ExitCode, "", "write_enospc", "No space left on device during segment write", now); err != nil {
+	if err := h.repo.CompleteAttempt(attempt.Record.ID, "failed", process.ExitCode, "", executor.FatalOutputCodeENOSPC, "No space left on device during segment write", now); err != nil {
 		return recoveryScenarioResult{}, err
 	}
 	completed, err := h.repo.CompleteLeasedJob(job.ID, job.LeaseToken, "failed", now)
 	if err != nil || !completed {
 		return recoveryScenarioResult{}, fmt.Errorf("complete ENOSPC recovery stress job: committed=%t err=%v", completed, err)
 	}
-	h.transition("failed", "running", 1, 1, "failed", "kernel /dev/full returned ENOSPC for first HLS segment")
+	h.transition("failed", "running", 1, 1, "failed", "executor classified kernel ENOSPC despite FFmpeg exit status")
 	artifact, finalJob, readableID, err := h.finalOutcome(job.ID, attempt.Artifact.ID)
 	if err != nil {
 		return recoveryScenarioResult{}, err
@@ -155,7 +158,7 @@ func (h *recoveryHarness) runENOSPC(ctx context.Context) (recoveryScenarioResult
 			PartialWorkspaceQuarantined: pathExists(attempt.Workspace),
 			CleanupEligible:             artifact.Status == "failed",
 		},
-		ErrorCode: "write_enospc",
+		ErrorCode: executor.FatalOutputCodeENOSPC,
 	}, nil
 }
 
@@ -183,8 +186,8 @@ func (h *recoveryHarness) runBoundedResources(ctx context.Context) (recoveryScen
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	if process.ExitCode != 0 {
-		return recoveryScenarioResult{}, fmt.Errorf("bounded recovery stress process failed with exit code %d", process.ExitCode)
+	if process.ExitCode != 0 || process.FatalOutputDetected {
+		return recoveryScenarioResult{}, fmt.Errorf("bounded recovery stress process failed: exit=%d fatal=%t code=%q", process.ExitCode, process.FatalOutputDetected, process.FatalOutputCode)
 	}
 	committed, err := h.publishAttempt(job, attempt)
 	if err != nil || !committed {
@@ -225,8 +228,8 @@ func (h *recoveryHarness) runStaleLeaseFence(ctx context.Context) (recoveryScena
 	if err != nil {
 		return recoveryScenarioResult{}, err
 	}
-	if firstProcess.ExitCode != 0 {
-		return recoveryScenarioResult{}, fmt.Errorf("stale Lease first process failed with exit code %d", firstProcess.ExitCode)
+	if firstProcess.ExitCode != 0 || firstProcess.FatalOutputDetected {
+		return recoveryScenarioResult{}, fmt.Errorf("stale Lease first process failed: exit=%d fatal=%t code=%q", firstProcess.ExitCode, firstProcess.FatalOutputDetected, firstProcess.FatalOutputCode)
 	}
 	if err := h.repo.CompleteAttempt(first.Record.ID, "completed", 0, "", "", "", time.Now()); err != nil {
 		return recoveryScenarioResult{}, err
