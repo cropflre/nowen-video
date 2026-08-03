@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	transcoderecovery "github.com/nowen-video/nowen-video/internal/transcode/recoverystress"
@@ -30,7 +29,7 @@ func TestRecoveryCommandHashNormalizesEphemeralPaths(t *testing.T) {
 	}
 }
 
-func TestInspectPartialHLSCountsOnlyNonEmptySegments(t *testing.T) {
+func TestInspectPartialHLSCountsOnlyNonEmptyRegularSegments(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "stream.m3u8"), []byte("#EXTM3U\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -54,25 +53,12 @@ func TestStderrMarkersRecognizeENOSPC(t *testing.T) {
 	}
 }
 
-func TestWriteUntilENOSPCRequiresKernelError(t *testing.T) {
-	writes := 0
-	err := writeUntilENOSPC(func(block []byte) (int, error) {
-		writes++
-		if writes == 3 {
-			return 0, syscall.ENOSPC
-		}
-		return len(block), nil
-	}, make([]byte, 4096), 10)
-	if err != nil {
+func TestVerifyENOSPCPathUsesKernelDevice(t *testing.T) {
+	if _, err := os.Stat("/dev/full"); err != nil {
+		t.Skip("/dev/full is unavailable")
+	}
+	if err := verifyENOSPCPath("/dev/full"); err != nil {
 		t.Fatal(err)
-	}
-	if writes != 3 {
-		t.Fatalf("writes = %d, want 3", writes)
-	}
-	if err := writeUntilENOSPC(func(block []byte) (int, error) {
-		return len(block), nil
-	}, make([]byte, 4096), 2); err == nil {
-		t.Fatal("writeUntilENOSPC passed without observing ENOSPC")
 	}
 }
 
