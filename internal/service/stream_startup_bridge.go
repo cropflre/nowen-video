@@ -59,6 +59,7 @@ func (s *StreamService) GetStartupBridgeInfo(mediaID string) (*StartupBridgeInfo
 		}
 		return nil, err
 	}
+	s.transcoder.TouchArtifactAccess(startup.ArtifactID)
 	return &StartupBridgeInfo{
 		Available:           true,
 		ProfileID:           startup.ProfileID,
@@ -88,6 +89,7 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 	if startup.ProfileID != profileID {
 		return "", gorm.ErrRecordNotFound
 	}
+	s.transcoder.TouchArtifactAccess(startup.ArtifactID)
 	startupPlaylist, err := readHLSPlaylist(startup.ManifestPath)
 	if err != nil {
 		return "", fmt.Errorf("read startup playlist: %w", err)
@@ -107,6 +109,7 @@ func (s *StreamService) GetStartupBridgePlaylist(mediaID, profileID string) (str
 	var continuation *hlsPlaylistSnapshot
 	var handoff *StartupHandoffDecision
 	if artifact, decision, resolveErr := s.transcoder.ResolveReadableStartupContinuationWithHandoff(media, startup); resolveErr == nil && artifact != nil {
+		s.transcoder.TouchArtifactAccess(artifact.ID)
 		manifestPath := artifact.ManifestPath
 		if manifestPath == "" {
 			directory := readableArtifactDirectory(artifact)
@@ -132,6 +135,7 @@ func (s *StreamService) ResolveStartupBridgeSegment(mediaID, profileID, segment 
 	if err != nil {
 		return nil, err
 	}
+	s.transcoder.TouchArtifactAccess(startup.ArtifactID)
 	path, err := safeHLSSegmentPath(startup.OutputDir, segment)
 	if err != nil {
 		return nil, err
@@ -148,6 +152,7 @@ func (s *StreamService) ResolveStartupContinuationSegment(mediaID, profileID, se
 	if err != nil {
 		return nil, err
 	}
+	s.transcoder.TouchArtifactAccess(artifact.ID)
 	directory := readableArtifactDirectory(artifact)
 	if directory == "" {
 		return nil, gorm.ErrRecordNotFound
