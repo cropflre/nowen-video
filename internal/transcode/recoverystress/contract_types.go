@@ -78,6 +78,8 @@ type ProcessEvidence struct {
 	PublishedExists       bool     `json:"published_exists"`
 	StderrSHA256          string   `json:"stderr_sha256"`
 	StderrMarkers         []string `json:"stderr_markers"`
+	FatalOutputDetected   bool     `json:"fatal_output_detected"`
+	FatalOutputCode       string   `json:"fatal_output_code"`
 	MaxRSSBytes           int64    `json:"max_rss_bytes"`
 	ElapsedMillis         int64    `json:"elapsed_millis"`
 	ResourceController    string   `json:"resource_controller"`
