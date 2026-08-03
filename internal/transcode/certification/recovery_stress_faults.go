@@ -121,22 +121,36 @@ func sampleRSS(pid int, maximum *atomic.Int64) {
 	}
 }
 
-func boundedCommand(ffmpegPath string, args []string, limits transcoderecovery.ResourceLimits) (string, []string, error) {
-	prlimit, err := exec.LookPath("prlimit")
-	if err != nil {
-		return "", nil, fmt.Errorf("resolve prlimit: %w", err)
+func boundedCommand(workDir, ffmpegPath string, args []string, limits transcoderecovery.ResourceLimits) (string, []string, string, error) {
+	if limits.CPUCount != 1 || limits.MemoryMaxBytes <= 0 {
+		return "", nil, "", fmt.Errorf("unsupported bounded resource limits: cpu=%d memory=%d", limits.CPUCount, limits.MemoryMaxBytes)
 	}
-	taskset, err := exec.LookPath("taskset")
+	sudo, err := exec.LookPath("sudo")
 	if err != nil {
-		return "", nil, fmt.Errorf("resolve taskset: %w", err)
+		return "", nil, "", fmt.Errorf("resolve sudo for cgroup helper: %w", err)
+	}
+	helper, err := buildResourceHelper(workDir)
+	if err != nil {
+		return "", nil, "", err
 	}
 	cpu, err := firstAllowedCPU()
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
-	commandArgs := []string{"--as=" + strconv.FormatInt(limits.AddressSpaceBytes, 10), "--", taskset, "-c", cpu, ffmpegPath}
+	peakPath := filepath.Join(workDir, "bounded-memory-peak.txt")
+	commandArgs := []string{
+		"-n",
+		helper,
+		strconv.FormatInt(limits.MemoryMaxBytes, 10),
+		strconv.Itoa(limits.CPUCount),
+		cpu,
+		peakPath,
+		strconv.Itoa(os.Getuid()),
+		strconv.Itoa(os.Getgid()),
+		ffmpegPath,
+	}
 	commandArgs = append(commandArgs, args...)
-	return prlimit, commandArgs, nil
+	return sudo, commandArgs, peakPath, nil
 }
 
 func firstAllowedCPU() (string, error) {
@@ -158,101 +172,220 @@ func firstAllowedCPU() (string, error) {
 	return "", fmt.Errorf("could not determine allowed CPU")
 }
 
-func buildENOSPCShim(workDir string) (string, error) {
+func readMemoryPeak(path string) (int64, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(string(content)), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("invalid cgroup memory peak %q: %w", strings.TrimSpace(string(content)), err)
+	}
+	return value, nil
+}
+
+func buildResourceHelper(workDir string) (string, error) {
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		return "", fmt.Errorf("resolve C compiler for ENOSPC shim: %w", err)
+		return "", fmt.Errorf("resolve C compiler for cgroup helper: %w", err)
 	}
-	source := filepath.Join(workDir, "enospc_write_shim.c")
-	output := filepath.Join(workDir, "enospc_write_shim.so")
-	if err := os.WriteFile(source, []byte(enospcShimSource), 0o644); err != nil {
+	source := filepath.Join(workDir, "resource_limit_helper.c")
+	output := filepath.Join(workDir, "resource_limit_helper")
+	if err := os.WriteFile(source, []byte(resourceLimitHelperSource), 0o644); err != nil {
 		return "", err
 	}
-	command := exec.Command(cc, "-shared", "-fPIC", "-O2", "-std=c11", "-o", output, source, "-ldl")
+	command := exec.Command(cc, "-O2", "-std=c11", "-Wall", "-Wextra", "-o", output, source)
 	combined, err := command.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("build ENOSPC shim: %w: %s", err, strings.TrimSpace(string(combined)))
+		return "", fmt.Errorf("build cgroup helper: %w: %s", err, strings.TrimSpace(string(combined)))
 	}
 	return output, nil
 }
 
-const enospcShimSource = `
+func mountENOSPCWorkspace(workspace string, capacityBytes int64) (func() error, error) {
+	if capacityBytes <= 0 {
+		return nil, fmt.Errorf("invalid tmpfs capacity %d", capacityBytes)
+	}
+	sudo, err := exec.LookPath("sudo")
+	if err != nil {
+		return nil, fmt.Errorf("resolve sudo for ENOSPC tmpfs: %w", err)
+	}
+	mountPath, err := exec.LookPath("mount")
+	if err != nil {
+		return nil, fmt.Errorf("resolve mount for ENOSPC tmpfs: %w", err)
+	}
+	umountPath, err := exec.LookPath("umount")
+	if err != nil {
+		return nil, fmt.Errorf("resolve umount for ENOSPC tmpfs: %w", err)
+	}
+	options := fmt.Sprintf("size=%d,mode=0755,uid=%d,gid=%d", capacityBytes, os.Getuid(), os.Getgid())
+	command := exec.Command(sudo, "-n", mountPath, "-t", "tmpfs", "-o", options, "nowen-recovery-enospc", workspace)
+	combined, err := command.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("mount ENOSPC tmpfs: %w: %s", err, strings.TrimSpace(string(combined)))
+	}
+	cleanup := func() error {
+		command := exec.Command(sudo, "-n", umountPath, workspace)
+		combined, err := command.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("unmount ENOSPC tmpfs: %w: %s", err, strings.TrimSpace(string(combined)))
+		}
+		return nil
+	}
+	return cleanup, nil
+}
+
+const resourceLimitHelperSource = `
 #define _GNU_SOURCE
-#include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
-#include <stdatomic.h>
+#include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/uio.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
-static ssize_t (*real_write_fn)(int, const void *, size_t);
-static ssize_t (*real_writev_fn)(int, const struct iovec *, int);
-static ssize_t (*real_pwrite_fn)(int, const void *, size_t, off_t);
-static ssize_t (*real_pwritev_fn)(int, const struct iovec *, int, off_t);
-static _Atomic long long written_bytes = 0;
-static long long limit_bytes = -1;
-static char target_prefix[PATH_MAX];
-
-__attribute__((constructor)) static void init_shim(void) {
-    real_write_fn = dlsym(RTLD_NEXT, "write");
-    real_writev_fn = dlsym(RTLD_NEXT, "writev");
-    real_pwrite_fn = dlsym(RTLD_NEXT, "pwrite");
-    real_pwritev_fn = dlsym(RTLD_NEXT, "pwritev");
-    const char *limit = getenv("NOWEN_ENOSPC_AFTER_BYTES");
-    const char *prefix = getenv("NOWEN_ENOSPC_PATH");
-    if (limit) limit_bytes = atoll(limit);
-    if (prefix) snprintf(target_prefix, sizeof(target_prefix), "%s", prefix);
+static int write_value(const char *path, const char *value) {
+    int fd = open(path, O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    size_t length = strlen(value);
+    ssize_t written = write(fd, value, length);
+    int saved = errno;
+    close(fd);
+    errno = saved;
+    return written == (ssize_t)length ? 0 : -1;
 }
 
-static int target_fd(int fd) {
-    if (limit_bytes < 0 || target_prefix[0] == '\0') return 0;
-    char link_path[64];
-    char resolved[PATH_MAX];
-    snprintf(link_path, sizeof(link_path), "/proc/self/fd/%d", fd);
-    ssize_t length = readlink(link_path, resolved, sizeof(resolved) - 1);
-    if (length <= 0) return 0;
-    resolved[length] = '\0';
-    return strncmp(resolved, target_prefix, strlen(target_prefix)) == 0;
+static long long read_peak(const char *path) {
+    char buffer[128];
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    ssize_t length = read(fd, buffer, sizeof(buffer) - 1);
+    int saved = errno;
+    close(fd);
+    errno = saved;
+    if (length <= 0) return -1;
+    buffer[length] = '\0';
+    return atoll(buffer);
 }
 
-static int exhaust(int fd, size_t count) {
-    if (!target_fd(fd)) return 0;
-    long long before = atomic_fetch_add(&written_bytes, (long long)count);
-    if (before + (long long)count <= limit_bytes) return 0;
-    errno = ENOSPC;
-    return 1;
+static int write_peak_file(const char *path, long long peak, uid_t uid, gid_t gid) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd < 0) return -1;
+    char buffer[128];
+    int length = snprintf(buffer, sizeof(buffer), "%lld\n", peak);
+    if (write(fd, buffer, (size_t)length) != length) {
+        int saved = errno;
+        close(fd);
+        errno = saved;
+        return -1;
+    }
+    if (fchown(fd, uid, gid) != 0) {
+        int saved = errno;
+        close(fd);
+        errno = saved;
+        return -1;
+    }
+    return close(fd);
 }
 
-ssize_t write(int fd, const void *buffer, size_t count) {
-    if (!real_write_fn) real_write_fn = dlsym(RTLD_NEXT, "write");
-    if (exhaust(fd, count)) return -1;
-    return real_write_fn(fd, buffer, count);
-}
+int main(int argc, char **argv) {
+    if (argc < 9) {
+        fprintf(stderr, "usage: helper memory_bytes cpu_count cpu peak_path uid gid command [args...]\n");
+        return 125;
+    }
+    long long memory_max = atoll(argv[1]);
+    int cpu_count = atoi(argv[2]);
+    int cpu = atoi(argv[3]);
+    const char *peak_path = argv[4];
+    uid_t uid = (uid_t)strtoul(argv[5], NULL, 10);
+    gid_t gid = (gid_t)strtoul(argv[6], NULL, 10);
+    if (memory_max <= 0 || cpu_count != 1 || cpu < 0) {
+        fprintf(stderr, "invalid cgroup limits\n");
+        return 125;
+    }
 
-ssize_t writev(int fd, const struct iovec *iov, int iovcnt) {
-    if (!real_writev_fn) real_writev_fn = dlsym(RTLD_NEXT, "writev");
-    size_t count = 0;
-    for (int i = 0; i < iovcnt; ++i) count += iov[i].iov_len;
-    if (exhaust(fd, count)) return -1;
-    return real_writev_fn(fd, iov, iovcnt);
-}
+    char cgroup[PATH_MAX];
+    snprintf(cgroup, sizeof(cgroup), "/sys/fs/cgroup/nowen-recovery-%ld", (long)getpid());
+    if (mkdir(cgroup, 0755) != 0) {
+        perror("mkdir recovery cgroup");
+        return 125;
+    }
 
-ssize_t pwrite(int fd, const void *buffer, size_t count, off_t offset) {
-    if (!real_pwrite_fn) real_pwrite_fn = dlsym(RTLD_NEXT, "pwrite");
-    if (exhaust(fd, count)) return -1;
-    return real_pwrite_fn(fd, buffer, count, offset);
-}
+    char path[PATH_MAX];
+    char value[128];
+    snprintf(path, sizeof(path), "%s/memory.max", cgroup);
+    snprintf(value, sizeof(value), "%lld", memory_max);
+    if (write_value(path, value) != 0) {
+        perror("write memory.max");
+        rmdir(cgroup);
+        return 125;
+    }
+    snprintf(path, sizeof(path), "%s/memory.swap.max", cgroup);
+    if (access(path, W_OK) == 0 && write_value(path, "0") != 0) {
+        perror("write memory.swap.max");
+        rmdir(cgroup);
+        return 125;
+    }
+    snprintf(path, sizeof(path), "%s/cpu.max", cgroup);
+    if (write_value(path, "100000 100000") != 0) {
+        perror("write cpu.max");
+        rmdir(cgroup);
+        return 125;
+    }
 
-ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
-    if (!real_pwritev_fn) real_pwritev_fn = dlsym(RTLD_NEXT, "pwritev");
-    size_t count = 0;
-    for (int i = 0; i < iovcnt; ++i) count += iov[i].iov_len;
-    if (exhaust(fd, count)) return -1;
-    return real_pwritev_fn(fd, iov, iovcnt, offset);
+    pid_t child = fork();
+    if (child < 0) {
+        perror("fork");
+        rmdir(cgroup);
+        return 125;
+    }
+    if (child == 0) {
+        char pid_value[64];
+        snprintf(path, sizeof(path), "%s/cgroup.procs", cgroup);
+        snprintf(pid_value, sizeof(pid_value), "%ld", (long)getpid());
+        if (write_value(path, pid_value) != 0) {
+            perror("join recovery cgroup");
+            _exit(125);
+        }
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CPU_SET(cpu, &set);
+        if (sched_setaffinity(0, sizeof(set), &set) != 0) {
+            perror("set CPU affinity");
+            _exit(125);
+        }
+        if (setgroups(0, NULL) != 0 || setgid(gid) != 0 || setuid(uid) != 0) {
+            perror("drop helper privileges");
+            _exit(125);
+        }
+        execv(argv[7], &argv[7]);
+        perror("exec bounded command");
+        _exit(127);
+    }
+
+    int status = 0;
+    if (waitpid(child, &status, 0) < 0) {
+        perror("waitpid");
+        status = 125 << 8;
+    }
+    snprintf(path, sizeof(path), "%s/memory.peak", cgroup);
+    long long peak = read_peak(path);
+    if (peak <= 0 || write_peak_file(peak_path, peak, uid, gid) != 0) {
+        perror("record memory.peak");
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) status = 125 << 8;
+    }
+    if (rmdir(cgroup) != 0) perror("remove recovery cgroup");
+
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return 125;
 }
 `
 
