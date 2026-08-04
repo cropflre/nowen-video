@@ -16,7 +16,7 @@ import (
 )
 
 type PlaybackSessionHandler struct {
-	sessions  *service.PlaybackSessionService
+	sessions   *service.PlaybackSessionService
 	permission *service.PermissionService
 	mediaRepo  *repository.MediaRepo
 	logger     *zap.SugaredLogger
@@ -80,6 +80,12 @@ func (h *PlaybackSessionHandler) Heartbeat(c *gin.Context) {
 	if err != nil {
 		h.writeError(c, err)
 		return
+	}
+	if err := h.sessions.ReconcilePlaybackThrottle(c.Param("sessionID")); err != nil {
+		h.logger.Debugw("reconcile playback throttle after heartbeat failed",
+			"session_id", c.Param("sessionID"),
+			"error", err,
+		)
 	}
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
