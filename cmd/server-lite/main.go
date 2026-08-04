@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +29,9 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
+	}
+	if err := applyRuntimePortOverride(cfg); err != nil {
+		log.Fatalf("应用运行端口失败: %v", err)
 	}
 
 	logger, _ := zap.NewProduction()
@@ -91,6 +96,32 @@ func main() {
 	transcodeCancel()
 
 	sugar.Info("nowen-video lite 已优雅关闭")
+}
+
+// applyRuntimePortOverride restores the documented precedence for development
+// launchers. Fragment files are currently merged through viper.Set, which can
+// otherwise mask NOWEN_APP_PORT with config/app.yaml's static port.
+func applyRuntimePortOverride(cfg *config.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("配置不能为空")
+	}
+
+	source := "NOWEN_APP_PORT"
+	raw := strings.TrimSpace(os.Getenv(source))
+	if raw == "" {
+		source = "SERVER_PORT"
+		raw = strings.TrimSpace(os.Getenv(source))
+	}
+	if raw == "" {
+		return nil
+	}
+
+	port, err := strconv.Atoi(raw)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("%s 必须是 1-65535 之间的整数，当前值: %q", source, raw)
+	}
+	cfg.App.Port = port
+	return nil
 }
 
 func openDatabase(cfg *config.Config, logger *zap.SugaredLogger) *gorm.DB {
