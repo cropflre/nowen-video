@@ -56,12 +56,10 @@ func AutoMigrateTranscodeStorageReservation(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	now := time.Now()
-	return db.FirstOrCreate(
-		&TranscodeStorageLedgerRecord{},
-		TranscodeStorageLedgerRecord{
-			ID:        TranscodeStorageLedgerArtifactStore,
-			UpdatedAt: now,
-		},
-	).Error
+	ledger := TranscodeStorageLedgerRecord{
+		ID:        TranscodeStorageLedgerArtifactStore,
+		UpdatedAt: time.Now(),
+	}
+	return db.Where("id = ?", TranscodeStorageLedgerArtifactStore).
+		FirstOrCreate(&ledger).Error
 }
