@@ -28,6 +28,7 @@ type TranscodeStatistics struct {
 	DiskUsageBytes             int64                             `json:"disk_usage_bytes"`
 	DiskUsageDir               string                            `json:"disk_usage_dir"`
 	ArtifactStoreRoot          string                            `json:"artifact_store_root"`
+	StorageHealth              TranscodeStorageHealthStatus      `json:"storage_health"`
 	DiskPressure               TranscodeDiskPressureStatus       `json:"disk_pressure"`
 	StorageReservation         TranscodeStorageReservationStatus `json:"storage_reservation"`
 	ResourceCapacity           map[transcodegovernor.Kind]int    `json:"resource_capacity,omitempty"`
@@ -85,6 +86,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 	if s.artifactStore != nil {
 		artifactRoot = s.artifactStore.Root()
 	}
+	health := s.GetStorageHealthStatus()
 	pressure := s.GetDiskPressureStatus()
 	reservation := s.GetStorageReservationStatus()
 	return TranscodeStatistics{
@@ -105,6 +107,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		DiskUsageBytes:             s.GetCacheDiskUsage(),
 		DiskUsageDir:               filepath.Join(s.cfg.Cache.CacheDir, "transcode"),
 		ArtifactStoreRoot:          artifactRoot,
+		StorageHealth:              health,
 		DiskPressure:               pressure,
 		StorageReservation:         reservation,
 		ResourceCapacity:           snapshot.Capacity,
