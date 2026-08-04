@@ -6,42 +6,30 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
-	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
 )
 
-func TestStartupIntentUsesDedicatedArtifactIdentityAndDuration(t *testing.T) {
+func TestDurableArtifactPlanHasNoStartupSpecialCase(t *testing.T) {
 	job := &TranscodeJob{
-		Media:   &model.Media{ID: "media-startup", FilePath: "/media/movie.mkv", Duration: 7200},
+		Media:   &model.Media{ID: "media-history", FilePath: "/media/movie.mkv", Duration: 7200},
 		Quality: "720p",
 		ExecutionJob: &model.TranscodeJobRecord{
-			Intent:         string(transcodedomain.IntentStartupHLS),
-			DurationMS:     startupStreamDurationMS,
-			PlannerVersion: startupStreamPlannerVersion,
+			Intent:     "startup_hls",
+			DurationMS: 30_000,
 		},
 	}
-	if got := transcodeArtifactKind(job); got != startupStreamArtifactKind {
-		t.Fatalf("startup job used runtime artifact kind: %s", got)
+	if got := transcodeArtifactKind(job); got != "hls_variant" {
+		t.Fatalf("durable executor retained a startup artifact kind: %s", got)
 	}
-	if got := transcodeArtifactDurationMS(job); got != startupStreamDurationMS {
-		t.Fatalf("startup artifact duration mismatch: %d", got)
+	if got := transcodeArtifactDurationMS(job); got != 30_000 {
+		t.Fatalf("historical execution duration projection changed: %d", got)
 	}
-}
 
-func TestStartupIntentBuildsBoundedVODOutputPlan(t *testing.T) {
 	service := &TranscodeService{cfg: &config.Config{}}
-	job := &TranscodeJob{
-		Media:   &model.Media{ID: "media-startup", FilePath: "/media/movie.mkv", Duration: 7200},
-		Quality: "720p",
-		ExecutionJob: &model.TranscodeJobRecord{
-			Intent:     string(transcodedomain.IntentStartupHLS),
-			DurationMS: startupStreamDurationMS,
-		},
-	}
 	args := service.buildJobFFmpegArgs(job, "/cache/workspaces/job/attempt/hls", "none")
 	joined := strings.Join(args, " ")
-	for _, expected := range []string{"-t 30.000", "-hls_playlist_type vod"} {
-		if !strings.Contains(joined, expected) {
-			t.Fatalf("startup output plan missing %q: %s", expected, joined)
+	for _, forbidden := range []string{"-t 30.000", "-hls_playlist_type vod"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("startup output semantics remain in durable executor: %s", joined)
 		}
 	}
 }
