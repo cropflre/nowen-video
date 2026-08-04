@@ -444,6 +444,8 @@ func (r *Runner) buildArgs(runtimeView playbacksession.GenerationRuntime, reques
 		ListSize:        r.cfg.PlaylistWindow,
 		DeleteThreshold: r.cfg.DeleteThreshold,
 		SegmentPattern:  "seg_%06d.ts",
+		MapAudioTrack:   true,
+		AudioTrack:      runtimeView.Snapshot.AudioTrack,
 	})
 	return withMachineProgress(args), nil
 }
