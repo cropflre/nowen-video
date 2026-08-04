@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -378,7 +379,7 @@ func (s *PlaybackSessionService) openGenerationFile(
 		lease.Release()
 		return nil, err
 	}
-	info, err := filepathStat(path)
+	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		lease.Release()
 		if err != nil {
@@ -479,10 +480,4 @@ func ensurePlaybackChildPath(root, path string) error {
 		return fmt.Errorf("playback path escapes generation directory")
 	}
 	return nil
-}
-
-var filepathStat = func(path string) (interface {
-	Mode() interface{ IsRegular() bool }
-}, error) {
-	return nil, fmt.Errorf("uninitialized file stat adapter for %s", path)
 }
