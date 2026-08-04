@@ -2,8 +2,14 @@ package session
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/nowen-video/nowen-video/internal/transcode/processcontrol"
+)
+
+var (
+	suspendGenerationProcess = func(process *os.Process) error { return processcontrol.Suspend(process) }
+	resumeGenerationProcess  = func(process *os.Process) error { return processcontrol.Resume(process) }
 )
 
 // ReconcileThrottle applies the bounded lead window for the current generation.
@@ -45,7 +51,7 @@ func (m *Manager) ReconcileThrottle(sessionID string) error {
 	lowMS := m.cfg.AheadLowWatermark.Milliseconds()
 	switch {
 	case !generation.suspended && generation.aheadMS >= highMS:
-		if err := processcontrol.Suspend(generation.process); err != nil {
+		if err := suspendGenerationProcess(generation.process); err != nil {
 			return fmt.Errorf("suspend playback transcode process: %w", err)
 		}
 		generation.suspended = true
@@ -56,7 +62,7 @@ func (m *Manager) ReconcileThrottle(sessionID string) error {
 			"ahead_ms", generation.aheadMS,
 		)
 	case generation.suspended && generation.aheadMS <= lowMS:
-		if err := processcontrol.Resume(generation.process); err != nil {
+		if err := resumeGenerationProcess(generation.process); err != nil {
 			return fmt.Errorf("resume playback transcode process: %w", err)
 		}
 		generation.suspended = false
@@ -77,7 +83,7 @@ func (g *Generation) resumeIfSuspended() error {
 		g.suspended = false
 		return nil
 	}
-	if err := processcontrol.Resume(g.process); err != nil {
+	if err := resumeGenerationProcess(g.process); err != nil {
 		return err
 	}
 	g.suspended = false
