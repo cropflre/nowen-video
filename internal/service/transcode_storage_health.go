@@ -143,7 +143,10 @@ func (s *TranscodeService) runStorageHealthTick(now time.Time, force bool) Trans
 		status.Writable = probe.Writable
 		status.ProbeLatencyMS = probe.Latency.Milliseconds()
 		status.LastSuccessfulAt = now
-		if recovered, recoverErr := s.executionRepo.RecoverStorageIncidents(storageHealthProbeOperation, now); recoverErr != nil {
+		// The successful full write/fsync/rename/remove probe is the recovery
+		// authority for both periodic probe incidents and immediate failures
+		// raised by workspace preparation, publication or cleanup.
+		if recovered, recoverErr := s.executionRepo.RecoverStorageIncidents("", now); recoverErr != nil {
 			status.LastError = recoverErr.Error()
 		} else if recovered > 0 && s.logger != nil {
 			s.logger.Infof("Artifact Store 写探针恢复，已关闭 %d 条存储故障 Incident", recovered)
