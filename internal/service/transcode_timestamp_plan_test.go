@@ -7,35 +7,22 @@ import (
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
-	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
+	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
 )
 
-func timestampExecutionJob(t *testing.T, intent transcodedomain.Intent, startMS int64) *model.TranscodeJobRecord {
-	t.Helper()
-	identity, err := startupTimestampIdentity()
-	if err != nil {
-		t.Fatal(err)
+func TestDurableRuntimeJobDoesNotApplyStartupTimestampPolicy(t *testing.T) {
+	service := &TranscodeService{cfg: &config.Config{}, hwAccel: "qsv"}
+	record := &model.TranscodeJobRecord{
+		Intent:               "startup_continuation_hls",
+		PlannerVersion:       "startup-continuation-hls-v4",
+		StartMS:              30_000,
+		TimelineOriginMS:     30_000,
+		TimestampPlanVersion: "historical",
+		TimestampPlanHash:    "historical",
+		TimestampPlanJSON:    "{}",
 	}
-	planner := startupStreamPlannerVersion
-	if intent == transcodedomain.IntentStartupContinuationHLS {
-		planner = startupContinuationPlannerVersion
-	}
-	return &model.TranscodeJobRecord{
-		Intent:               string(intent),
-		PlannerVersion:       planner,
-		StartMS:              startMS,
-		TimelineOriginMS:     startMS,
-		TimestampPlanVersion: identity.Version,
-		TimestampPlanHash:    identity.Hash,
-		TimestampPlanJSON:    identity.Canonical,
-	}
-}
-
-func TestTimestampNormalizedContinuationFFmpegArgs(t *testing.T) {
-	service := &TranscodeService{cfg: &config.Config{}}
-	record := timestampExecutionJob(t, transcodedomain.IntentStartupContinuationHLS, 30_000)
 	job := &TranscodeJob{
-		Media:        &model.Media{ID: "media-timestamp", FilePath: "/media/movie.mkv", Duration: 7200},
+		Media:        &model.Media{ID: "media-history", FilePath: "/media/movie.mkv", Duration: 7200},
 		Quality:      "720p",
 		startOffset:  30,
 		ExecutionJob: record,
@@ -45,73 +32,29 @@ func TestTimestampNormalizedContinuationFFmpegArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, expected := range []string{
-		"-y -copyts -start_at_zero -ss 30.00",
-		"-avoid_negative_ts disabled",
-		"-fps_mode passthrough",
-	} {
-		if !strings.Contains(joined, expected) {
-			t.Fatalf("timestamp plan missing %q: %s", expected, joined)
+	for _, forbidden := range []string{"-copyts", "-start_at_zero", "-avoid_negative_ts disabled"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("retired startup timestamp policy remains in durable args: %s", joined)
 		}
 	}
-	if strings.Index(joined, "-copyts") > strings.Index(joined, "-i /media/movie.mkv") {
-		t.Fatalf("copyts must be a global/input policy: %s", joined)
+	if timestampNormalizationRequired(record) {
+		t.Fatal("retired runtime job still requests timestamp normalization")
+	}
+	if got := service.preferredAttemptBackend(job); got != "qsv" {
+		t.Fatalf("historical runtime record changed backend selection: %q", got)
 	}
 }
 
-func TestTimestampNormalizedAttemptRejectsHardwareBeforeExecution(t *testing.T) {
-	record := timestampExecutionJob(t, transcodedomain.IntentStartupHLS, 0)
-	if _, err := validateTimestampExecution(record, "qsv"); err == nil {
-		t.Fatal("timestamp-normalized startup accepted uncertified hardware backend")
-	}
-	if _, err := validateTimestampExecution(record, "none"); err != nil {
-		t.Fatalf("software backend rejected: %v", err)
-	}
-}
-
-func TestTimestampNormalizedJobsSelectCertifiedBackendBeforeAttempt(t *testing.T) {
-	service := &TranscodeService{hwAccel: "qsv"}
-	for _, test := range []struct {
-		name    string
-		intent  transcodedomain.Intent
-		startMS int64
-	}{
-		{name: "startup", intent: transcodedomain.IntentStartupHLS, startMS: 0},
-		{name: "continuation", intent: transcodedomain.IntentStartupContinuationHLS, startMS: 30_000},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			job := &TranscodeJob{ExecutionJob: timestampExecutionJob(t, test.intent, test.startMS)}
-			if got := service.preferredAttemptBackend(job); got != "none" {
-				t.Fatalf("preferredAttemptBackend() = %q, want software backend", got)
-			}
-		})
-	}
-}
-
-func TestUnversionedRuntimeJobRetainsHardwareCandidate(t *testing.T) {
-	service := &TranscodeService{hwAccel: "qsv"}
-	if got := service.preferredAttemptBackend(&TranscodeJob{}); got != "qsv" {
-		t.Fatalf("preferredAttemptBackend() = %q, want detected hardware backend", got)
-	}
-}
-
-func TestTimestampExecutionRejectsOriginDifferentFromSeek(t *testing.T) {
-	record := timestampExecutionJob(t, transcodedomain.IntentStartupContinuationHLS, 30_000)
-	record.TimelineOriginMS = 0
-	if _, err := validateTimestampExecution(record, "none"); err == nil {
-		t.Fatal("continuation origin different from job seek was accepted")
-	}
-}
-
-func TestArtifactTimestampAttestationRejectsResetContinuation(t *testing.T) {
-	identity, err := startupTimestampIdentity()
+func TestArtifactTimestampAttestationStillValidatesHistoricalEvidence(t *testing.T) {
+	plan := transcodetimestamp.Default()
+	version, hash, canonical, err := transcodetimestamp.Identity(plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	artifact := &model.TranscodeArtifactRecord{
-		TimestampPlanVersion: identity.Version,
-		TimestampPlanHash:    identity.Hash,
-		TimestampPlanJSON:    identity.Canonical,
+		TimestampPlanVersion: version,
+		TimestampPlanHash:    hash,
+		TimestampPlanJSON:    canonical,
 		TimelineOriginMS:     30_000,
 	}
 	value := transcodeattestation.Attestation{
@@ -123,11 +66,11 @@ func TestArtifactTimestampAttestationRejectsResetContinuation(t *testing.T) {
 		},
 	}
 	if err := verifyArtifactTimestampContract(artifact, value); err != nil {
-		t.Fatalf("normalized continuation evidence rejected: %v", err)
+		t.Fatalf("historical normalized evidence rejected: %v", err)
 	}
 	value.First.Timeline.Video.StartMS = 1400
 	value.First.Timeline.Audio.StartMS = 1379
 	if err := verifyArtifactTimestampContract(artifact, value); err == nil {
-		t.Fatal("reset continuation evidence was accepted")
+		t.Fatal("reset historical evidence was accepted")
 	}
 }
