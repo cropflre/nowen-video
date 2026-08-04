@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import VideoPlayer from '@/components/VideoPlayer'
+import SessionVideoPlayer from '@/components/SessionVideoPlayer'
 import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
@@ -229,6 +230,11 @@ export default function PlayerPage() {
           ? (playInfo.can_remux ? streamApi.getRemuxUrl(id) : streamApi.getDirectUrl(id))
           : streamApi.getMasterUrl(id)
 
+  const requiresSessionTranscode =
+    mode === 'hls' &&
+    !isPreprocessed &&
+    (remuxFailed || streamApi.requiresPlaybackSession(id))
+
   // 构建播放标题（剧集显示 S01E02 格式）
   const playerTitle = media.media_type === 'episode'
     ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
@@ -344,6 +350,19 @@ export default function PlayerPage() {
           onNext={nextEpisode ? handleNext : undefined}
           nextTitle={nextTitle}
           onFallback={handleWebCodecsFallback}
+        />
+      ) : requiresSessionTranscode ? (
+        <SessionVideoPlayer
+          fallbackSrc={src}
+          mediaId={id}
+          title={playerTitle}
+          knownDuration={playInfo.duration}
+          startPosition={switchPosition}
+          spriteVttUrl={playInfo.sprite_vtt_url ? streamApi.withTokenUrl(playInfo.sprite_vtt_url) : undefined}
+          onPreprocessReady={handlePreprocessReady}
+          onBack={handleBack}
+          onNext={nextEpisode ? handleNext : undefined}
+          nextTitle={nextTitle}
         />
       ) : (
         <VideoPlayer
