@@ -15,6 +15,7 @@ type transcodeStorageObservationState struct {
 	attemptID     string
 	lastSampledAt time.Time
 	observedBytes int64
+	sampling      bool
 }
 
 var transcodeStorageObservationStates sync.Map
@@ -43,6 +44,40 @@ func currentStorageObservationTarget(job *TranscodeJob) (string, string) {
 		workspace = job.CurrentArtifact.TempPath
 	}
 	return job.CurrentAttempt.ID, workspace
+}
+
+// scheduleJobStorageObservation never blocks the FFmpeg progress parser. At
+// most one filesystem/store scan may be active per Job, and the interval is
+// reserved before launching the goroutine so high-frequency progress events do
+// not accumulate waiting goroutines.
+func (s *TranscodeService) scheduleJobStorageObservation(job *TranscodeJob, now time.Time) {
+	attemptID, workspace := currentStorageObservationTarget(job)
+	if s == nil || attemptID == "" || workspace == "" {
+		return
+	}
+	state := storageObservationState(job)
+	state.mu.Lock()
+	if state.attemptID != attemptID {
+		state.attemptID = attemptID
+		state.lastSampledAt = time.Time{}
+		state.observedBytes = 0
+	}
+	if state.sampling || (!state.lastSampledAt.IsZero() && now.Sub(state.lastSampledAt) < transcodeStorageObservationInterval) {
+		state.mu.Unlock()
+		return
+	}
+	state.sampling = true
+	state.lastSampledAt = now
+	state.mu.Unlock()
+
+	go func() {
+		defer func() {
+			state.mu.Lock()
+			state.sampling = false
+			state.mu.Unlock()
+		}()
+		s.observeJobStorageReservation(job, now, true)
+	}()
 }
 
 // observeJobStorageReservation refunds only materialized bytes that are already
