@@ -42,6 +42,15 @@ func taskLifecycleUpdateForEvent(eventType string, data interface{}) (*TaskLifec
 	case EventTranscodeFailed:
 		update.Kind = TaskKindTranscode
 		update.Status = TaskStatusFailed
+	case EventStorageHealthUpdated:
+		update.Kind = TaskKindStorageIncident
+		update.Status = TaskStatusFailed
+		if status, ok := data.(TranscodeStorageHealthStatus); ok && status.State == "healthy" {
+			update.Status = TaskStatusCompleted
+		}
+		if status, ok := data.(*TranscodeStorageHealthStatus); ok && status != nil && status.State == "healthy" {
+			update.Status = TaskStatusCompleted
+		}
 	default:
 		return nil, false
 	}
@@ -68,7 +77,14 @@ func taskLifecycleSourceID(data interface{}) string {
 		return value.TaskID
 	case TranscodeProgressData:
 		return value.TaskID
+	case *TranscodeStorageHealthStatus:
+		if value != nil {
+			return value.IncidentID
+		}
+	case TranscodeStorageHealthStatus:
+		return value.IncidentID
 	default:
 		return ""
 	}
+	return ""
 }
