@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	playbacksession "github.com/nowen-video/nowen-video/internal/playback/session"
@@ -22,19 +21,19 @@ import (
 )
 
 const (
-	defaultSegmentDuration      = 2
-	defaultPlaylistWindow       = 30
-	defaultDeleteThreshold      = 10
-	defaultFirstSegmentTimeout  = 12 * time.Second
-	defaultHardwareStartBudget  = 4 * time.Second
-	defaultFirstSegmentPoll     = 50 * time.Millisecond
-	defaultX264Preset           = "veryfast"
-	defaultQSVPreset            = "faster"
+	defaultSegmentDuration     = 2
+	defaultPlaylistWindow      = 30
+	defaultDeleteThreshold     = 10
+	defaultFirstSegmentTimeout = 12 * time.Second
+	defaultHardwareStartBudget = 4 * time.Second
+	defaultFirstSegmentPoll    = 50 * time.Millisecond
+	defaultX264Preset          = "veryfast"
+	defaultQSVPreset           = "faster"
 )
 
 type Config struct {
-	FFmpegPath string
-	HWAccel    string
+	FFmpegPath  string
+	HWAccel     string
 	VAAPIDevice string
 	Threads     int
 
@@ -92,10 +91,10 @@ type StartRequest struct {
 }
 
 type ReadyResult struct {
-	Session   playbacksession.SessionSnapshot
+	Session    playbacksession.SessionSnapshot
 	Generation playbacksession.GenerationSnapshot
-	StartupMS int64
-	Err       error
+	StartupMS  int64
+	Err        error
 }
 
 type Execution struct {
@@ -113,7 +112,10 @@ func (e *Execution) WaitReady(ctx context.Context) (ReadyResult, error) {
 		ctx = context.Background()
 	}
 	select {
-	case result := <-e.ready:
+	case result, ok := <-e.ready:
+		if !ok {
+			return ReadyResult{}, errors.New("playback readiness result is unavailable")
+		}
 		return result, result.Err
 	case <-ctx.Done():
 		return ReadyResult{}, ctx.Err()
@@ -218,8 +220,28 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 		backends = append(backends, ffmpeg.HWAccelNone)
 	}
 
+	var readyMu sync.Mutex
+	readyPublished := false
+	publishReady := func() error {
+		readyMu.Lock()
+		defer readyMu.Unlock()
+		if readyPublished {
+			return nil
+		}
+		if err := r.publishReady(request, execution, startedAt); err != nil {
+			return err
+		}
+		readyPublished = true
+		return nil
+	}
+	isReady := func() bool {
+		readyMu.Lock()
+		defer readyMu.Unlock()
+		return readyPublished
+	}
+
 	var finalResult transcodeexecutor.Result
-	readyPublished := atomic.Bool{}
+	var lastWatchErr error
 	for attemptIndex, backend := range backends {
 		if runtimeView.Context.Err() != nil {
 			finalResult = transcodeexecutor.Result{Err: runtimeView.Context.Err(), Cancelled: true}
@@ -227,6 +249,7 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 		}
 		if time.Now().After(deadline) {
 			finalResult = transcodeexecutor.Result{Err: context.DeadlineExceeded, TimedOut: true}
+			lastWatchErr = context.DeadlineExceeded
 			break
 		}
 		if attemptIndex > 0 {
@@ -244,14 +267,15 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 				attemptDeadline = hardwareDeadline
 			}
 		}
-		attemptCtx, cancelAttempt := context.WithDeadline(runtimeView.Context, attemptDeadline)
+		attemptCtx, cancelAttempt := context.WithCancel(runtimeView.Context)
+		watchCtx, cancelWatch := context.WithDeadline(runtimeView.Context, attemptDeadline)
 		watchDone := make(chan error, 1)
 		go func() {
-			err := r.waitForFirstSegment(attemptCtx, runtimeView.OutputDir)
-			if err == nil && readyPublished.CompareAndSwap(false, true) {
-				err = r.publishReady(request, execution, startedAt)
+			err := r.waitForFirstSegment(watchCtx, runtimeView.OutputDir)
+			if err == nil {
+				err = publishReady()
 			}
-			if err != nil && errors.Is(err, context.DeadlineExceeded) {
+			if err != nil {
 				cancelAttempt()
 			}
 			watchDone <- err
@@ -260,7 +284,8 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 		args, err := r.buildArgs(runtimeView, request, backend)
 		if err != nil {
 			cancelAttempt()
-			<-watchDone
+			cancelWatch()
+			lastWatchErr = <-watchDone
 			finalResult = transcodeexecutor.Result{Err: err}
 			break
 		}
@@ -285,24 +310,31 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 			},
 		})
 		cancelAttempt()
-		watchErr := <-watchDone
+		cancelWatch()
+		lastWatchErr = <-watchDone
 
-		if !readyPublished.Load() {
+		if !isReady() {
 			if available, availableErr := firstSegmentAvailable(runtimeView.OutputDir); availableErr == nil && available {
-				if readyPublished.CompareAndSwap(false, true) {
-					_ = r.publishReady(request, execution, startedAt)
+				if err := publishReady(); err != nil && finalResult.Err == nil {
+					finalResult.Err = err
 				}
 			}
 		}
-		if readyPublished.Load() {
+		if isReady() {
 			if finalResult.Err == nil {
 				_ = r.sessions.MarkGenerationCompleted(request.SessionID, request.GenerationID)
-			} else if !finalResult.Cancelled || runtimeView.Context.Err() == nil {
+			} else if runtimeView.Context.Err() == nil {
 				_ = r.sessions.MarkGenerationFailed(request.SessionID, request.GenerationID, "ffmpeg_failed", finalResult.ErrorText())
 			}
 			break
 		}
 
+		if lastWatchErr != nil && !errors.Is(lastWatchErr, context.Canceled) && !errors.Is(lastWatchErr, context.DeadlineExceeded) {
+			if finalResult.Err == nil {
+				finalResult.Err = lastWatchErr
+			}
+			break
+		}
 		canFallback := backend != ffmpeg.HWAccelNone && runtimeView.Context.Err() == nil && time.Now().Before(deadline)
 		if canFallback {
 			r.logger.Warnw("playback hardware startup failed; falling back to software",
@@ -310,22 +342,25 @@ func (r *Runner) run(runtimeView playbacksession.GenerationRuntime, request Star
 				"generation_id", request.GenerationID,
 				"backend", backend,
 				"error", finalResult.ErrorText(),
-				"watch_error", watchErr,
+				"watch_error", lastWatchErr,
 			)
 			continue
 		}
 		break
 	}
 
-	if !readyPublished.Load() {
+	if !isReady() {
 		errorCode := "ffmpeg_failed"
-		if finalResult.TimedOut || errors.Is(finalResult.Err, context.DeadlineExceeded) {
+		if finalResult.TimedOut || errors.Is(finalResult.Err, context.DeadlineExceeded) || errors.Is(lastWatchErr, context.DeadlineExceeded) {
 			errorCode = "first_segment_timeout"
 		}
-		if finalResult.Cancelled || errors.Is(finalResult.Err, context.Canceled) {
+		if runtimeView.Context.Err() != nil || (finalResult.Cancelled && !errors.Is(lastWatchErr, context.DeadlineExceeded)) {
 			errorCode = "session_cancelled"
 		}
 		message := finalResult.ErrorText()
+		if message == "" && lastWatchErr != nil {
+			message = lastWatchErr.Error()
+		}
 		if message == "" {
 			message = errorCode
 		}
