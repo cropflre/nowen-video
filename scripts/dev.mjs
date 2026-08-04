@@ -43,15 +43,27 @@ function parseArguments(argv) {
   return result
 }
 
-function canListen(port) {
+function canBind(port, host, ipv6Only = false) {
   return new Promise((resolve) => {
     const server = net.createServer()
     server.unref()
-    server.once('error', () => resolve(false))
-    server.listen({ port, host: '::', exclusive: true }, () => {
+    server.once('error', (error) => {
+      // 某些系统完全禁用 IPv6，此时只要 IPv4 可绑定即可继续。
+      if (host === '::' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) {
+        resolve(true)
+        return
+      }
+      resolve(false)
+    })
+    server.listen({ port, host, ipv6Only, exclusive: true }, () => {
       server.close(() => resolve(true))
     })
   })
+}
+
+async function canListen(port) {
+  if (!(await canBind(port, '0.0.0.0'))) return false
+  return canBind(port, '::', true)
 }
 
 async function findFreePort(preferredPort, excludedPorts = new Set(), maxAttempts = 200) {
