@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   LoginLog,
 } from '@/types'
+import { toAbsolutePlaybackPosition } from '@/playback/sessionRuntime'
 
 // ==================== 用户 ====================
 export const userApi = {
@@ -19,7 +20,10 @@ export const userApi = {
     api.get<{ data: LoginLog[] }>('/users/me/login-logs'),
 
   updateProgress: (mediaId: string, position: number, duration: number) =>
-    api.put(`/users/me/progress/${mediaId}`, { position, duration }),
+    api.put(`/users/me/progress/${mediaId}`, {
+      position: toAbsolutePlaybackPosition(mediaId, position),
+      duration,
+    }),
 
   favorites: (page = 1, size = 20) =>
     api.get<PaginatedResponse<Favorite>>('/users/me/favorites', { params: { page, size } }),
