@@ -114,6 +114,7 @@ func startupStreamOutputArgs(args []string, durationMS int64) []string {
 				if flag != "append_list" {
 					kept = append(kept, flag)
 				}
+			}
 			body = append(body, arg, strings.Join(kept, "+"))
 			index++
 			continue
