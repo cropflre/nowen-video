@@ -11,21 +11,21 @@ import (
 )
 
 const (
-	transcodePressureEvaluationInterval = 30 * time.Second
-	transcodePressureAccessGrace        = 15 * time.Minute
-	transcodePressurePublishedGrace     = 24 * time.Hour
+	transcodePressureEvaluationInterval  = 30 * time.Second
+	transcodePressureAccessGrace         = 15 * time.Minute
+	transcodePressurePublishedGrace      = 24 * time.Hour
 	transcodePressureAccessWriteInterval = 30 * time.Second
-	transcodePressureMaxReclaimBatches  = 4
+	transcodePressureMaxReclaimBatches   = 4
 )
 
 var ErrTranscodeStoragePressure = errors.New("transcode artifact store is under disk pressure")
 
 type TranscodeDiskPressureStatus struct {
 	transcodediskpressure.Snapshot
-	LastError           string    `json:"last_error,omitempty"`
-	LastReclaimAt       time.Time `json:"last_reclaim_at,omitempty"`
-	LastReclaimedBytes  int64     `json:"last_reclaimed_bytes"`
-	LastReclaimedRows   int       `json:"last_reclaimed_rows"`
+	LastError          string    `json:"last_error,omitempty"`
+	LastReclaimAt      time.Time `json:"last_reclaim_at,omitempty"`
+	LastReclaimedBytes int64     `json:"last_reclaimed_bytes"`
+	LastReclaimedRows  int       `json:"last_reclaimed_rows"`
 }
 
 type artifactAccessTouch struct {
@@ -64,6 +64,9 @@ func (s *TranscodeService) initializeDiskPressureGovernor() {
 		return
 	}
 	transcodeDiskPressureOwners.Store(s.jobs, s)
+	if err := s.initializeStorageReservations(); err != nil {
+		panic(fmt.Sprintf("initialize transcode storage reservations: %v", err))
+	}
 	s.runDiskPressureGovernorTick(time.Now(), true)
 }
 
