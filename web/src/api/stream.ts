@@ -1,5 +1,6 @@
 import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
+import { getPlaybackSessionRuntime } from '@/playback/sessionRuntime'
 import type {
   MediaPlayInfo,
 } from '@/types'
@@ -211,16 +212,6 @@ export const streamApi = {
       },
     })
 
-    // Playback Session routes are wired into Lite first. Resolve the server
-    // profile before consuming an embedded plan so Full continues using its
-    // existing runtime HLS path until it receives the same lifecycle wiring.
-    try {
-      await useServerProfileStore.getState().load()
-    } catch {
-      // Capability loading is best-effort; an unknown profile fails closed to
-      // the legacy playback path rather than calling a potentially absent API.
-    }
-
     const embeddedPlan = response.data.data.playback_plan
     if (embeddedPlan) {
       playbackPlanCache.set(mediaId, embeddedPlan)
@@ -229,6 +220,7 @@ export const streamApi = {
     }
 
     try {
+      await useServerProfileStore.getState().load()
       if (useServerProfileStore.getState().manifest?.profile !== 'lite') {
         playbackPlanCache.delete(mediaId)
         return response
@@ -274,7 +266,6 @@ export const streamApi = {
   getCachedPlaybackPlan: (mediaId: string) => playbackPlanCache.get(mediaId),
 
   requiresPlaybackSession: (mediaId: string) => {
-    if (useServerProfileStore.getState().manifest?.profile !== 'lite') return false
     const plan = playbackPlanCache.get(mediaId)
     return Boolean(plan?.method === 'transcode' && plan.session_required && plan.session_template)
   },
@@ -328,13 +319,27 @@ export const streamApi = {
     return withToken(plannedRemux ? plan.url : `/api/stream/${mediaId}/remux`)
   },
 
-  reportPlayback: (mediaId: string, position: number) =>
-    api.post(`/stream/${mediaId}/playback`, null, {
+  reportPlayback: (mediaId: string, position: number) => {
+    if (getPlaybackSessionRuntime(mediaId)) {
+      return Promise.resolve({ data: { session_managed: true } })
+    }
+    return api.post(`/stream/${mediaId}/playback`, null, {
       params: { position: position.toFixed(2) },
-    }),
+    })
+  },
 
-  reportBandwidth: (mediaId: string, bitrate: number) =>
-    api.post<{
+  reportBandwidth: (mediaId: string, bitrate: number) => {
+    if (getPlaybackSessionRuntime(mediaId)) {
+      return Promise.resolve({
+        data: {
+          ok: true,
+          session_managed: true,
+          reported_bitrate: Math.round(bitrate),
+          recommended_max: Math.round(bitrate),
+        },
+      })
+    }
+    return api.post<{
       ok: boolean
       reported_bitrate: number
       recommended_max: number
@@ -347,10 +352,27 @@ export const streamApi = {
         transcoded_pos: number
         ahead_seconds: number
       }
-    }>(`/stream/${mediaId}/bandwidth`, null, { params: { bitrate: Math.round(bitrate) } }),
+    }>(`/stream/${mediaId}/bandwidth`, null, { params: { bitrate: Math.round(bitrate) } })
+  },
 
-  getThrottleStatus: (mediaId: string) =>
-    api.get<{
+  getThrottleStatus: (mediaId: string) => {
+    const runtime = getPlaybackSessionRuntime(mediaId)
+    if (runtime) {
+      return Promise.resolve({
+        data: {
+          data: {
+            media_id: mediaId,
+            running: true,
+            active_qualities: null,
+            suspended_count: 0,
+            playback_pos: runtime.offsetSeconds,
+            transcoded_pos: runtime.offsetSeconds,
+            ahead_seconds: 0,
+          },
+        },
+      })
+    }
+    return api.get<{
       data: {
         media_id: string
         running: boolean
@@ -360,7 +382,8 @@ export const streamApi = {
         transcoded_pos: number
         ahead_seconds: number
       }
-    }>(`/stream/${mediaId}/throttle`),
+    }>(`/stream/${mediaId}/throttle`)
+  },
 
   checkSTRM: (mediaId: string) =>
     api.get<{
