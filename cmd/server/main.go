@@ -95,6 +95,10 @@ func main() {
 	repos := repository.NewRepositories(db)
 	services := service.NewServices(repos, cfg, sugar)
 	handlers := handler.NewHandlers(services, repos, cfg, sugar)
+	playbackRuntime, err := newFullPlaybackRuntime(cfg, services, repos, sugar)
+	if err != nil {
+		sugar.Fatalf("初始化临时播放会话服务失败: %v", err)
+	}
 
 	// 确保首次运行时创建管理员账号
 	if err := services.User.EnsureAdminExists(); err != nil {
@@ -316,6 +320,7 @@ func main() {
 		api.POST("/stream/:id/bandwidth", guardByMediaID, handlers.Stream.Bandwidth)
 		// 节流/转码状态快照（供前端播放器 Settings 菜单可视化）
 		api.GET("/stream/:id/throttle", guardByMediaID, handlers.Stream.ThrottleStatus)
+		playbackRuntime.Register(api, guardByMediaID)
 
 		// STRM 远程流专用端点
 		api.GET("/stream/:id/strm-seg", guardByMediaID, handlers.Stream.STRMSegment) // HLS 分片/子 playlist/key 代理
@@ -1084,6 +1089,15 @@ func main() {
 		sugar.Warnf("HTTP 服务优雅关闭超时: %v", err)
 	}
 	httpCancel()
+
+	// Runtime playback is ephemeral. Full and Lite now use the same ordering:
+	// stop HTTP, cancel playback FFmpeg, drain readers, remove temporary files,
+	// then fence or requeue durable background transcode Jobs.
+	playbackCtx, playbackCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := playbackRuntime.Shutdown(playbackCtx); err != nil {
+		sugar.Warnf("播放会话清理超时: %v", err)
+	}
+	playbackCancel()
 
 	// Full 与 Lite 使用同一套持久队列关闭协议：已 Claim 的任务最多等待
 	// 30 秒，超时后先原子释放本机 Lease 回 queued，再取消旧 Context。
