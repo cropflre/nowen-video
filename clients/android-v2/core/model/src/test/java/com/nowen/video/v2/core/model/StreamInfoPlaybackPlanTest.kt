@@ -1,6 +1,7 @@
 package com.nowen.video.v2.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,6 +28,42 @@ class StreamInfoPlaybackPlanTest {
         assertEquals("remux", stream.playbackMethod)
         assertEquals("无损封装转换", stream.playbackMethodLabel)
         assertEquals("container_remux", stream.playbackReasonCode)
+    }
+
+    @Test
+    fun runtimeTranscodeRequiresEphemeralSessionEvenWhenPlanUrlIsBlank() {
+        val plan = PlaybackPlan(
+            mediaId = "media",
+            method = "transcode",
+            requiresTranscode = true,
+            sessionRequired = true,
+            sessionTemplate = PlaybackSessionTemplate(
+                createUrl = "/api/playback/sessions",
+                profileId = "1080p",
+                maxBitrate = 12_000_000,
+            ),
+        )
+        val stream = StreamInfo(
+            hlsUrl = "/api/stream/media/master.m3u8",
+            playbackPlan = plan,
+        )
+
+        assertTrue(plan.requiresEphemeralSession)
+        assertEquals("1080p", plan.sessionTemplate?.profileId)
+        assertEquals(12_000_000, plan.sessionTemplate?.maxBitrate)
+        // Legacy URL remains available only for older clients. Android V2 must
+        // branch on requiresEphemeralSession before reading preferredUrl.
+        assertEquals("/api/stream/media/master.m3u8", stream.preferredUrl)
+    }
+
+    @Test
+    fun directPlanNeverCreatesPlaybackSession() {
+        assertFalse(
+            PlaybackPlan(
+                method = "direct",
+                sessionRequired = true,
+            ).requiresEphemeralSession,
+        )
     }
 
     @Test
