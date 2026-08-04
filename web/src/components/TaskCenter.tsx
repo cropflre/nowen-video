@@ -13,6 +13,7 @@ const kindLabel: Record<UnifiedTaskKind, string> = {
   scrape: '元数据刮削',
   transcode: '视频转码',
   artifact_cleanup: '转码缓存清理',
+  storage_incident: '转码存储告警',
 }
 
 const statusLabel: Record<UnifiedTaskStatus, string> = {
@@ -24,6 +25,7 @@ const statusLabel: Record<UnifiedTaskStatus, string> = {
 }
 
 function taskIcon(kind: UnifiedTaskKind, status: UnifiedTaskStatus) {
+  if (kind === 'storage_incident') return <CircleAlert size={17} />
   if (kind === 'artifact_cleanup' && status === 'failed') return <CircleAlert size={17} />
   if (status === 'failed') return <XCircle size={17} />
   if (status === 'completed') return <CheckCircle2 size={17} />
@@ -77,6 +79,8 @@ function TaskRow({
 }) {
   const active = task.status === 'queued' || task.status === 'running'
   const cleanupTask = task.kind === 'artifact_cleanup'
+  const storageIncident = task.kind === 'storage_incident'
+  const operationalIssue = (cleanupTask || storageIncident) && task.status === 'failed'
   const time = formatTime(task.updated_at || task.started_at || task.created_at)
   const actions = task.actions || []
 
@@ -84,8 +88,8 @@ function TaskRow({
     <div
       className="rounded-xl border p-3"
       style={{
-        borderColor: cleanupTask && task.status === 'failed' ? 'rgba(220,38,38,.28)' : 'var(--border-default)',
-        background: cleanupTask && task.status === 'failed' ? 'rgba(220,38,38,.04)' : 'var(--card-bg)',
+        borderColor: operationalIssue ? 'rgba(220,38,38,.28)' : 'var(--border-default)',
+        background: operationalIssue ? 'rgba(220,38,38,.04)' : 'var(--card-bg)',
       }}
     >
       <div className="flex items-start gap-3">
@@ -111,7 +115,7 @@ function TaskRow({
           {active && (
             <div className="mt-3">
               <div className="mb-1 flex items-center justify-between text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                <span className={cleanupTask ? 'min-w-0 break-all pr-3' : 'truncate pr-3'}>{task.message || '处理中'}</span>
+                <span className={cleanupTask || storageIncident ? 'min-w-0 break-all pr-3' : 'truncate pr-3'}>{task.message || '处理中'}</span>
                 <span>{Math.round(task.progress)}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--nav-hover-bg)' }}>
@@ -125,7 +129,7 @@ function TaskRow({
 
           {!active && (task.message || time) && (
             <div className="mt-2 flex items-start justify-between gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <span className={cleanupTask ? 'min-w-0 break-all' : 'truncate'}>{task.message}</span>
+              <span className={cleanupTask || storageIncident ? 'min-w-0 break-all' : 'truncate'}>{task.message}</span>
               <span className="shrink-0">{time}</span>
             </div>
           )}
@@ -133,6 +137,12 @@ function TaskRow({
           {cleanupTask && task.status === 'failed' && (
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
               修复挂载、权限或路径配置后再重试。操作仍会经过 Cleanup Lease 与路径安全校验。
+            </p>
+          )}
+
+          {storageIncident && (
+            <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
+              新转码 Claim 已暂停，正在运行的任务保持原 Lease。系统会持续执行真实写探针，确认存储恢复后自动解除告警。
             </p>
           )}
 
@@ -274,7 +284,12 @@ export default function TaskCenter() {
     () => tasks.filter((task) => task.kind === 'artifact_cleanup' && task.status === 'failed').length,
     [tasks],
   )
-  const badgeCount = activeCount + cleanupIssueCount
+  const storageIssueCount = useMemo(
+    () => tasks.filter((task) => task.kind === 'storage_incident' && task.status === 'failed').length,
+    [tasks],
+  )
+  const operationalIssueCount = cleanupIssueCount + storageIssueCount
+  const badgeCount = activeCount + operationalIssueCount
   const activeTasks = useMemo(() => tasks.filter((task) => task.status === 'queued' || task.status === 'running'), [tasks])
   const recentTasks = useMemo(() => tasks.filter((task) => task.status !== 'queued' && task.status !== 'running'), [tasks])
 
@@ -284,6 +299,10 @@ export default function TaskCenter() {
     <TaskRow key={task.id} task={task} actionLoading={actionLoading} onAction={handleAction} />
   )
 
+  const issueLabel = storageIssueCount > 0
+    ? `${storageIssueCount} 个存储故障`
+    : `${cleanupIssueCount} 个清理问题`
+
   return (
     <>
       <button
@@ -291,20 +310,20 @@ export default function TaskCenter() {
         onClick={() => setOpen(true)}
         className="fixed right-4 top-14 z-40 flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium shadow-lg backdrop-blur md:right-6"
         style={{
-          borderColor: cleanupIssueCount > 0 ? 'rgba(220,38,38,.35)' : 'var(--border-default)',
+          borderColor: operationalIssueCount > 0 ? 'rgba(220,38,38,.35)' : 'var(--border-default)',
           background: 'var(--card-bg)',
-          color: cleanupIssueCount > 0 ? '#DC2626' : 'var(--text-secondary)',
+          color: operationalIssueCount > 0 ? '#DC2626' : 'var(--text-secondary)',
         }}
-        aria-label={cleanupIssueCount > 0 ? `打开任务中心，${cleanupIssueCount} 个缓存清理问题` : '打开任务中心'}
+        aria-label={operationalIssueCount > 0 ? `打开任务中心，${issueLabel}` : '打开任务中心'}
       >
-        {cleanupIssueCount > 0
+        {operationalIssueCount > 0
           ? <CircleAlert size={18} className="animate-pulse" />
           : <Activity size={18} className={activeCount > 0 ? 'animate-pulse text-neon' : ''} />}
         <span className="hidden sm:inline">任务</span>
         {badgeCount > 0 && (
           <span
             className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
-            style={{ background: cleanupIssueCount > 0 ? '#DC2626' : 'var(--neon-blue)' }}
+            style={{ background: operationalIssueCount > 0 ? '#DC2626' : 'var(--neon-blue)' }}
           >
             {badgeCount > 99 ? '99+' : badgeCount}
           </span>
@@ -318,15 +337,15 @@ export default function TaskCenter() {
             <header className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
               <div>
                 <div className="flex items-center gap-2">
-                  {cleanupIssueCount > 0 ? <CircleAlert size={19} style={{ color: '#DC2626' }} /> : <Activity size={19} className="text-neon" />}
+                  {operationalIssueCount > 0 ? <CircleAlert size={19} style={{ color: '#DC2626' }} /> : <Activity size={19} className="text-neon" />}
                   <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>任务中心</h2>
-                  {cleanupIssueCount > 0 && (
+                  {operationalIssueCount > 0 && (
                     <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: 'rgba(220,38,38,.08)', color: '#DC2626' }}>
-                      {cleanupIssueCount} 个清理问题
+                      {issueLabel}
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削、转码和缓存清理统一进度与安全操作</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削、转码、缓存清理和存储告警统一展示</p>
               </div>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-50" style={{ color: 'var(--text-secondary)' }} aria-label="刷新任务">
@@ -352,7 +371,7 @@ export default function TaskCenter() {
                 <div className="flex min-h-60 flex-col items-center justify-center text-center">
                   <CheckCircle2 size={34} className="mb-3 text-green-500" />
                   <p className="font-medium" style={{ color: 'var(--text-primary)' }}>当前没有后台任务</p>
-                  <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>扫描媒体库、开始转码或触发缓存清理后会显示在这里。</p>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>扫描媒体库、开始转码或出现存储问题后会显示在这里。</p>
                 </div>
               ) : (
                 <div className="space-y-5">
