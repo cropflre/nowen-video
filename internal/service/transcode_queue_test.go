@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,11 +36,13 @@ func newDatabaseQueueTestContext(t *testing.T, capacity int) *databaseQueueTestC
 	}
 	repos := repository.NewRepositories(db)
 	executionRepo := repository.NewTranscodeExecutionRepo(db)
+	queue := newTranscodePriorityQueue(executionRepo, repos.Transcode, capacity, zap.NewNop().Sugar())
+	queue.pollInterval = 10 * time.Millisecond
 	return &databaseQueueTestContext{
 		db:            db,
 		legacyRepo:    repos.Transcode,
 		executionRepo: executionRepo,
-		queue:         newTranscodePriorityQueue(executionRepo, repos.Transcode, capacity, zap.NewNop().Sugar()),
+		queue:         queue,
 	}
 }
 
@@ -92,74 +95,100 @@ func (c *databaseQueueTestContext) createJob(t *testing.T, id string, priority i
 	return record
 }
 
-func TestDatabaseTranscodeQueueClaimsPriorityThenFIFO(t *testing.T) {
+func TestDatabaseTranscodeQueueRejectsRetiredRuntimePayload(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
-	base := time.Date(2026, 7, 31, 13, 0, 0, 0, time.UTC)
-	ctx.createJob(t, "background", TranscodePriorityBackground, base)
-	ctx.createJob(t, "interactive-later", TranscodePriorityInteractive, base.Add(2*time.Second))
-	ctx.createJob(t, "interactive-first", TranscodePriorityInteractive, base.Add(time.Second))
-	ctx.createJob(t, "retry", TranscodePriorityRetry, base.Add(3*time.Second))
-
-	for index, expected := range []string{"task-interactive-first", "task-interactive-later", "task-retry", "task-background"} {
-		job, ok := ctx.queue.Pop(fmt.Sprintf("worker-%d", index), time.Minute)
-		if !ok || job == nil || job.Task.ID != expected {
-			t.Fatalf("claim[%d] expected %s, got %+v", index, expected, job)
-		}
-		if job.leaseToken == "" || job.ExecutionJob.Status != "claimed" {
-			t.Fatalf("claimed job has no durable ownership: %+v", job.ExecutionJob)
-		}
+	record := ctx.createJob(t, "retired", TranscodePriorityInteractive, time.Now())
+	claimed, ok, err := ctx.executionRepo.ClaimJob(record.ID, "worker", time.Now(), time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim retired fixture: ok=%v err=%v", ok, err)
+	}
+	job, hydrateErr := ctx.queue.hydrateClaimedJob(claimed)
+	if job != nil || hydrateErr == nil || !strings.Contains(hydrateErr.Error(), "unsupported transcode intent") {
+		t.Fatalf("retired runtime payload was hydrated job=%+v err=%v", job, hydrateErr)
 	}
 }
 
-func TestDatabaseTranscodeQueueRestoresWithoutLocalPush(t *testing.T) {
+func TestDatabaseTranscodeQueueTerminalizesRetiredRuntimeRows(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
-	record := ctx.createJob(t, "restart", TranscodePriorityInteractive, time.Now())
+	record := ctx.createJob(t, "terminalize", TranscodePriorityInteractive, time.Now())
 
-	// A fresh queue has no process-local delivery state, but it must still find
-	// the durable row immediately.
-	restarted := newTranscodePriorityQueue(ctx.executionRepo, ctx.legacyRepo, 10, zap.NewNop().Sugar())
-	job, ok := restarted.Pop("restart-worker", time.Minute)
-	if !ok || job == nil || job.ExecutionJob.ID != record.ID {
-		t.Fatalf("durable job was not restored: %+v", job)
-	}
-	if job.Media.ID != record.MediaID || job.Task.ID != *record.LegacyTaskID {
-		t.Fatalf("durable payload was not reconstructed: job=%+v", job)
-	}
-}
+	result := make(chan bool, 1)
+	go func() {
+		job, ok := ctx.queue.Pop("retirement-worker", time.Minute)
+		result <- ok || job != nil
+	}()
 
-func TestDatabaseTranscodeQueueSkipsInvalidPayload(t *testing.T) {
-	ctx := newDatabaseQueueTestContext(t, 10)
-	base := time.Now()
-	missingTaskID := "missing-task"
-	invalidKey := "invalid-key"
-	invalid := &model.TranscodeJobRecord{
-		ID:           "job-invalid",
-		LegacyTaskID: &missingTaskID,
-		MediaID:      "missing-media",
-		Intent:       "runtime_hls",
-		ProfileID:    "720p",
-		Priority:     TranscodePriorityInteractive,
-		Status:       "queued",
-		DesiredState: "running",
-		ActiveKey:    &invalidKey,
-		CreatedAt:    base,
-		UpdatedAt:    base,
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		stored, err := ctx.executionRepo.FindJobByID(record.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.Status == "failed" {
+			if stored.ActiveKey != nil {
+				t.Fatalf("failed retired job retained active key: %+v", stored)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("retired job was not terminalized: %+v", stored)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if err := ctx.executionRepo.CreateJob(invalid); err != nil {
-		t.Fatal(err)
-	}
-	valid := ctx.createJob(t, "valid-after-invalid", TranscodePriorityBackground, base.Add(time.Second))
 
-	job, ok := ctx.queue.Pop("worker", time.Minute)
-	if !ok || job == nil || job.ExecutionJob.ID != valid.ID {
-		t.Fatalf("invalid payload blocked durable queue: %+v", job)
+	ctx.queue.Close()
+	select {
+	case returnedWork := <-result:
+		if returnedWork {
+			t.Fatal("retired queue returned executable work")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retired queue worker did not stop after close")
 	}
-	stored, err := ctx.executionRepo.FindJobByID(invalid.ID)
+
+	task, err := ctx.legacyRepo.FindByID(*record.LegacyTaskID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != "failed" || stored.ActiveKey != nil {
-		t.Fatalf("invalid durable payload was not terminalized: %+v", stored)
+	if task.Status != "failed" || !strings.Contains(task.Error, "unsupported transcode intent") {
+		t.Fatalf("legacy task projection was not terminalized: %+v", task)
+	}
+}
+
+func TestDatabaseTranscodeQueueFreshInstanceDoesNotRestoreRetiredRows(t *testing.T) {
+	ctx := newDatabaseQueueTestContext(t, 10)
+	record := ctx.createJob(t, "restart", TranscodePriorityInteractive, time.Now())
+	restarted := newTranscodePriorityQueue(ctx.executionRepo, ctx.legacyRepo, 10, zap.NewNop().Sugar())
+	restarted.pollInterval = 10 * time.Millisecond
+
+	result := make(chan bool, 1)
+	go func() {
+		job, ok := restarted.Pop("restart-worker", time.Minute)
+		result <- ok || job != nil
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		stored, err := ctx.executionRepo.FindJobByID(record.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.Status == "failed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fresh queue attempted to preserve retired row: %+v", stored)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	restarted.Close()
+	select {
+	case returnedWork := <-result:
+		if returnedWork {
+			t.Fatal("fresh queue restored retired runtime work")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fresh retired queue did not stop")
 	}
 }
 
@@ -187,13 +216,13 @@ func TestDatabaseTranscodeQueueCapacityAndClose(t *testing.T) {
 func TestDatabaseTranscodeQueueReleasesClaimWhenClosed(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
 	record := ctx.createJob(t, "shutdown-race", TranscodePriorityInteractive, time.Now())
-	job, ok := ctx.queue.Pop("shutdown-worker", time.Minute)
-	if !ok || job == nil {
-		t.Fatal("worker did not claim shutdown test job")
+	claimed, ok, err := ctx.executionRepo.ClaimJob(record.ID, "shutdown-worker", time.Now(), time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("worker did not claim shutdown test job: ok=%v err=%v", ok, err)
 	}
 
 	ctx.queue.Close()
-	ctx.queue.releaseClaimAfterClose(job.ExecutionJob)
+	ctx.queue.releaseClaimAfterClose(claimed)
 	stored, err := ctx.executionRepo.FindJobByID(record.ID)
 	if err != nil {
 		t.Fatal(err)
