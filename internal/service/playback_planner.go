@@ -38,6 +38,16 @@ type PlaybackSourceTechnical struct {
 	HDR          bool     `json:"hdr"`
 }
 
+// PlaybackSessionTemplate is a client-safe instruction for creating an
+// ephemeral transcode session. It carries no Job, Lease, Attempt, Artifact, or
+// filesystem identity. Profile "auto" is resolved by the server when the
+// session is created.
+type PlaybackSessionTemplate struct {
+	CreateURL  string `json:"create_url"`
+	ProfileID  string `json:"profile_id"`
+	MaxBitrate int    `json:"max_bitrate,omitempty"`
+}
+
 type PlaybackPlan struct {
 	MediaID           string                     `json:"media_id"`
 	Method            string                     `json:"method"`
@@ -45,6 +55,8 @@ type PlaybackPlan struct {
 	ReasonCode        string                     `json:"reason_code"`
 	Reason            string                     `json:"reason"`
 	RequiresTranscode bool                       `json:"requires_transcode"`
+	SessionRequired   bool                       `json:"session_required"`
+	SessionTemplate   *PlaybackSessionTemplate   `json:"session_template,omitempty"`
 	FallbackMethod    string                     `json:"fallback_method,omitempty"`
 	FallbackURL       string                     `json:"fallback_url,omitempty"`
 	Capabilities      PlaybackClientCapabilities `json:"client_capabilities"`
@@ -125,8 +137,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.URL = directURL
 		plan.ReasonCode = "native_direct_play"
 		plan.Reason = "容器与音视频编码均受客户端原生支持"
-		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = hlsURL
+		applyTranscodeFallback(plan, hlsURL)
 		return plan, nil
 	}
 
@@ -136,8 +147,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.URL = remuxURL
 		plan.ReasonCode = "container_remux"
 		plan.Reason = "编码兼容，仅转换容器，音视频均直接复制"
-		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = hlsURL
+		applyTranscodeFallback(plan, hlsURL)
 		return plan, nil
 	}
 
@@ -150,8 +160,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.ReasonCode = "audio_transcode_only"
 		plan.Reason = "视频编码可直接复制，仅将不兼容音频转换为 AAC"
 		plan.RequiresTranscode = true
-		plan.FallbackMethod = PlaybackMethodTranscode
-		plan.FallbackURL = hlsURL
+		applyTranscodeFallback(plan, hlsURL)
 		return plan, nil
 	}
 
@@ -260,11 +269,31 @@ func smartRemuxVideoCodec(codec string) bool {
 
 func chooseTranscode(plan *PlaybackPlan, hlsURL, reasonCode, reason string) *PlaybackPlan {
 	plan.Method = PlaybackMethodTranscode
-	plan.URL = hlsURL
+	plan.URL = hlsURL // temporary legacy adapter for clients not migrated yet
 	plan.ReasonCode = reasonCode
 	plan.Reason = reason
 	plan.RequiresTranscode = true
+	plan.SessionRequired = true
+	plan.SessionTemplate = newPlaybackSessionTemplate(plan)
 	return plan
+}
+
+func applyTranscodeFallback(plan *PlaybackPlan, hlsURL string) {
+	plan.FallbackMethod = PlaybackMethodTranscode
+	plan.FallbackURL = hlsURL // temporary legacy adapter
+	plan.SessionTemplate = newPlaybackSessionTemplate(plan)
+}
+
+func newPlaybackSessionTemplate(plan *PlaybackPlan) *PlaybackSessionTemplate {
+	maxBitrate := 0
+	if plan != nil {
+		maxBitrate = plan.Capabilities.MaxBitrate
+	}
+	return &PlaybackSessionTemplate{
+		CreateURL:  "/api/playback/sessions",
+		ProfileID:  "auto",
+		MaxBitrate: maxBitrate,
+	}
 }
 
 func isHEVCCodec(codec string) bool {
