@@ -1,7 +1,6 @@
 package emby
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -11,12 +10,8 @@ import (
 
 // ==================== Video 流接口 ====================
 //
-// Infuse / Emby 客户端真正发起播放时会对下列 URL 发 GET（或 HEAD）请求：
-//
-//   GET /emby/Videos/{itemId}/stream
-//   GET /emby/Videos/{itemId}/stream.{container}
-//   GET /emby/Videos/{itemId}/master.m3u8
-//   GET /emby/Videos/{itemId}/hls1/main/{segment}.ts
+// Direct/Remux remain request-scoped. Full video transcoding is available only
+// through the PlaySessionId -> PlaybackSession mapping created by master.m3u8.
 
 func (h *Handler) StreamVideoHandler(c *gin.Context) {
 	embyID := c.Param("id")
@@ -99,97 +94,58 @@ func (h *Handler) HLSMasterHandler(c *gin.Context) {
 		return
 	}
 
-	// Full runtime HLS is ephemeral and strictly bound to the external Emby
-	// PlaySessionId. The returned master contains one current Generation; seek
-	// or profile changes create a new Generation instead of sharing media-level
-	// output directories between clients.
-	if runtime := h.playbackSessionRuntime(); runtime != nil {
-		externalID, startPositionMS, hasStart, maxBitrate := parseEmbyPlaybackRequest(c)
-		mapping, err := runtime.ensure(
-			c.Request.Context(),
-			c.GetString("user_id"),
-			uuid,
-			externalID,
-			startPositionMS,
-			hasStart,
-			maxBitrate,
-		)
-		if err != nil {
-			h.logger.Warnf("[emby] playback session start failed media=%s err=%v", uuid, err)
-			c.JSON(http.StatusBadGateway, gin.H{"Error": "Runtime transcode unavailable"})
-			return
-		}
-		c.Header("Content-Type", "application/vnd.apple.mpegurl")
-		c.Header("Cache-Control", "private, no-store")
-		c.Header("Pragma", "no-cache")
-		c.String(http.StatusOK, buildEmbySessionMaster(c, embyID, mapping))
+	runtime := h.playbackSessionRuntime()
+	if runtime == nil {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"Error":     "Playback session runtime unavailable",
+			"ErrorCode": "playback_session_runtime_unavailable",
+		})
 		return
 	}
 
-	// Compatibility fallback for deployments that have not mounted the new
-	// PlaybackSessionService yet.
-	maxBitrate := 0
-	if value := c.Query("maxBitrate"); value != "" {
-		maxBitrate = atoiSafe(value)
-	}
-	playlist, err := h.stream.GetMasterPlaylistFiltered(uuid, maxBitrate)
+	externalID, startPositionMS, hasStart, maxBitrate := parseEmbyPlaybackRequest(c)
+	mapping, err := runtime.ensure(
+		c.Request.Context(),
+		c.GetString("user_id"),
+		uuid,
+		externalID,
+		startPositionMS,
+		hasStart,
+		maxBitrate,
+	)
 	if err != nil {
-		h.logger.Warnf("[emby] master playlist failed media=%s err=%v", uuid, err)
-		c.JSON(http.StatusNotFound, gin.H{"Error": "HLS not available"})
+		h.logger.Warnf("[emby] playback session start failed media=%s err=%v", uuid, err)
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusBadGateway, gin.H{
+			"Error":     "Runtime transcode unavailable",
+			"ErrorCode": "playback_session_start_failed",
+		})
 		return
 	}
-	playlist = rewriteMasterForEmby(playlist, embyID)
 	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "no-cache")
-	c.String(http.StatusOK, playlist)
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Pragma", "no-cache")
+	c.String(http.StatusOK, buildEmbySessionMaster(c, embyID, mapping))
 }
 
-func rewriteMasterForEmby(playlist, embyID string) string {
-	lines := strings.Split(playlist, "\n")
-	for index, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "/api/stream/") && strings.HasSuffix(line, "/stream.m3u8") {
-			parts := strings.Split(line, "/")
-			if len(parts) >= 6 {
-				quality := parts[4]
-				lines[index] = fmt.Sprintf("/emby/Videos/%s/hls1/%s/main.m3u8", embyID, quality)
-			}
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
+// The old quality-scoped routes are retained only so cached client URLs receive
+// a deterministic retirement response. They never resolve shared directories,
+// persistent runtime Artifacts, or on-demand segments.
 func (h *Handler) HLSPlaylistHandler(c *gin.Context) {
-	embyID := c.Param("id")
-	uuid := h.idMap.Resolve(embyID)
-	if uuid == "" {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Item not found"})
-		return
-	}
-	quality := c.Param("quality")
-	playlist, err := h.stream.GetSegmentPlaylist(uuid, quality)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Quality not available"})
-		return
-	}
-	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "no-cache")
-	c.String(http.StatusOK, playlist)
+	writeEmbyPlaybackSessionRequired(c, "legacy_quality_playlist_retired")
 }
 
 func (h *Handler) HLSSegmentHandler(c *gin.Context) {
-	embyID := c.Param("id")
-	uuid := h.idMap.Resolve(embyID)
-	if uuid == "" {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Item not found"})
-		return
-	}
-	quality := c.Param("quality")
-	segment := c.Param("segment")
-	if err := h.stream.ServeSegment(uuid, quality, segment, c.Writer, c.Request); err != nil {
-		h.logger.Warnf("[emby] segment failed media=%s seg=%s err=%v", uuid, segment, err)
-		if !c.Writer.Written() {
-			c.JSON(http.StatusNotFound, gin.H{"Error": fmt.Sprintf("Segment failed: %v", err)})
-		}
-	}
+	writeEmbyPlaybackSessionRequired(c, "legacy_quality_segment_retired")
+}
+
+func writeEmbyPlaybackSessionRequired(c *gin.Context, reason string) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	c.JSON(http.StatusGone, gin.H{
+		"Error":     "Runtime transcoding requires PlaySessionId-bound HLS",
+		"ErrorCode": "playback_session_required",
+		"Reason":    reason,
+	})
 }
