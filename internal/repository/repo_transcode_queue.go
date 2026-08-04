@@ -16,16 +16,12 @@ func (r *TranscodeExecutionRepo) CountQueuedJobs() (int64, error) {
 	return count, err
 }
 
-// ClaimNextQueuedJob selects the highest-priority durable candidate and then
-// uses ClaimJob's conditional UPDATE as the ownership boundary. Multiple
-// server processes may observe the same candidate, but only one can acquire its
-// Lease; losers continue to the next ordered row.
-func (r *TranscodeExecutionRepo) ClaimNextQueuedJob(workerID string, now time.Time, leaseDuration time.Duration, scanLimit int) (*model.TranscodeJobRecord, bool, error) {
+func (r *TranscodeExecutionRepo) ListQueuedJobCandidates(now time.Time, scanLimit int) ([]string, error) {
 	if scanLimit <= 0 {
 		scanLimit = 16
 	}
 	var candidateIDs []string
-	if err := r.db.Model(&model.TranscodeJobRecord{}).
+	err := r.db.Model(&model.TranscodeJobRecord{}).
 		Where(
 			"active_key IS NOT NULL AND status = ? AND desired_state = ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?)",
 			"queued",
@@ -34,13 +30,22 @@ func (r *TranscodeExecutionRepo) ClaimNextQueuedJob(workerID string, now time.Ti
 		).
 		Order("priority DESC, created_at ASC, id ASC").
 		Limit(scanLimit).
-		Pluck("id", &candidateIDs).Error; err != nil {
+		Pluck("id", &candidateIDs).Error
+	return candidateIDs, err
+}
+
+// ClaimNextQueuedJob remains available for repository-level ownership tests.
+// Runtime workers use ListQueuedJobCandidates so the service can acquire a
+// durable storage Reservation before calling ClaimJob.
+func (r *TranscodeExecutionRepo) ClaimNextQueuedJob(workerID string, now time.Time, leaseDuration time.Duration, scanLimit int) (*model.TranscodeJobRecord, bool, error) {
+	candidateIDs, err := r.ListQueuedJobCandidates(now, scanLimit)
+	if err != nil {
 		return nil, false, err
 	}
 	for _, jobID := range candidateIDs {
-		job, claimed, err := r.ClaimJob(jobID, workerID, now, leaseDuration)
-		if err != nil {
-			return nil, false, err
+		job, claimed, claimErr := r.ClaimJob(jobID, workerID, now, leaseDuration)
+		if claimErr != nil {
+			return nil, false, claimErr
 		}
 		if claimed {
 			return job, true, nil
