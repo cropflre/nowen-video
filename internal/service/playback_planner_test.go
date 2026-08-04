@@ -26,9 +26,12 @@ func TestPlaybackPlannerAppendQuery(t *testing.T) {
 }
 
 func TestChooseTranscode(t *testing.T) {
-	plan := chooseTranscode(&PlaybackPlan{MediaID: "m1"}, "/hls", "unsupported", "需要转码")
-	if plan.Method != PlaybackMethodTranscode || plan.URL != "/hls" || !plan.RequiresTranscode {
+	plan := chooseTranscode(&PlaybackPlan{MediaID: "m1"}, "/legacy-hls", "unsupported", "需要转码")
+	if plan.Method != PlaybackMethodTranscode || !plan.RequiresTranscode || !plan.SessionRequired {
 		t.Fatalf("unexpected transcode plan: %+v", plan)
+	}
+	if plan.URL != "" || plan.SessionTemplate == nil || plan.StartupStream != nil {
+		t.Fatalf("runtime plan must expose only the session contract: %+v", plan)
 	}
 }
 
@@ -40,13 +43,16 @@ func TestPlanPlaybackWithInfoDirect(t *testing.T) {
 		PreferDirectPlay: true,
 		VideoCodec:       "h264",
 		AudioCodec:       "aac",
-		HlsURL:           "/hls",
+		HlsURL:           "/legacy-hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.Method != PlaybackMethodDirect || plan.URL != "/api/stream/m1/direct" {
 		t.Fatalf("unexpected direct plan: %+v", plan)
+	}
+	if plan.FallbackMethod != PlaybackMethodTranscode || plan.FallbackURL != "" || plan.SessionTemplate == nil {
+		t.Fatalf("direct fallback must create a playback session: %+v", plan)
 	}
 }
 
@@ -58,13 +64,16 @@ func TestPlanPlaybackWithInfoRemux(t *testing.T) {
 		PreferDirectPlay: true,
 		VideoCodec:       "h264",
 		AudioCodec:       "aac",
-		HlsURL:           "/hls",
+		HlsURL:           "/legacy-hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan.Method != PlaybackMethodRemux || plan.URL != "/api/stream/m1/remux" || plan.RequiresTranscode {
 		t.Fatalf("unexpected remux plan: %+v", plan)
+	}
+	if plan.FallbackURL != "" || plan.SessionTemplate == nil {
+		t.Fatalf("remux fallback must not expose legacy runtime HLS: %+v", plan)
 	}
 }
 
@@ -76,7 +85,7 @@ func TestPlanPlaybackWithInfoSmartRemuxesIncompatibleAudio(t *testing.T) {
 			PreferDirectPlay: true,
 			VideoCodec:       "h264",
 			AudioCodec:       codec,
-			HlsURL:           "/hls",
+			HlsURL:           "/legacy-hls",
 		}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 		if err != nil {
 			t.Fatalf("codec=%s: %v", codec, err)
@@ -94,13 +103,13 @@ func TestPlanPlaybackWithInfoDoesNotSmartRemuxUnsupportedVideo(t *testing.T) {
 		PreferDirectPlay: true,
 		VideoCodec:       "mpeg2video",
 		AudioCodec:       "dts",
-		HlsURL:           "/hls",
+		HlsURL:           "/legacy-hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Method != PlaybackMethodTranscode {
-		t.Fatalf("unsupported video must use full transcode: %+v", plan)
+	if plan.Method != PlaybackMethodTranscode || !plan.SessionRequired || plan.URL != "" {
+		t.Fatalf("unsupported video must use an ephemeral session: %+v", plan)
 	}
 }
 
@@ -113,12 +122,48 @@ func TestPlanPlaybackWithInfoRejectsUnsupportedHEVC(t *testing.T) {
 		PreferDirectPlay: true,
 		VideoCodec:       "hevc-main10",
 		AudioCodec:       "dts",
-		HlsURL:           "/hls",
+		HlsURL:           "/legacy-hls",
 	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true, SupportsHEVC: false})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Method != PlaybackMethodTranscode || plan.ReasonCode != "client_hevc_unsupported" {
+	if plan.Method != PlaybackMethodTranscode || plan.ReasonCode != "client_hevc_unsupported" || !plan.SessionRequired {
 		t.Fatalf("unexpected HEVC fallback plan: %+v", plan)
+	}
+}
+
+func TestPlanPlaybackWithInfoUsesExplicitPreprocessedArtifact(t *testing.T) {
+	stream := &StreamService{}
+	plan, err := stream.PlanPlaybackWithInfo("m1", &MediaPlayInfo{
+		MediaID:          "m1",
+		PreferDirectPlay: true,
+		VideoCodec:       "mpeg2video",
+		AudioCodec:       "dts",
+		IsPreprocessed:   true,
+		PreprocessedURL:  "/api/preprocess/media/m1/master.m3u8",
+	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Method != PlaybackMethodTranscode || plan.URL != "/api/preprocess/media/m1/master.m3u8" || plan.SessionRequired {
+		t.Fatalf("explicit preprocessing must remain a persistent playback source: %+v", plan)
+	}
+}
+
+func TestPlanPlaybackWithInfoBitrateCapBypassesPreprocessedArtifact(t *testing.T) {
+	stream := &StreamService{}
+	plan, err := stream.PlanPlaybackWithInfo("m1", &MediaPlayInfo{
+		MediaID:          "m1",
+		PreferDirectPlay: true,
+		VideoCodec:       "mpeg2video",
+		AudioCodec:       "dts",
+		IsPreprocessed:   true,
+		PreprocessedURL:  "/api/preprocess/media/m1/master.m3u8",
+	}, PlaybackClientCapabilities{SupportsDirectPlay: true, SupportsRemux: true, MaxBitrate: 1_500_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.SessionRequired || plan.URL != "" || plan.SessionTemplate == nil || plan.SessionTemplate.MaxBitrate != 1_500_000 {
+		t.Fatalf("bitrate-capped playback must use a bounded runtime session: %+v", plan)
 	}
 }
