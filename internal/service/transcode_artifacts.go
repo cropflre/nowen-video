@@ -38,6 +38,7 @@ func (s *TranscodeService) prepareAttemptExecution(job *TranscodeJob, attemptNum
 	artifactID := uuid.NewString()
 	workspace, err := s.artifactStore.PrepareWorkspace(job.ExecutionJob.ID, attemptID)
 	if err != nil {
+		s.reportStorageOperationFailure(storageOperationPrepareWorkspace, s.artifactStore.Root(), err, time.Now())
 		return nil, err
 	}
 
@@ -229,6 +230,8 @@ func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, e
 	}
 
 	if err := s.artifactStore.Publish(job.CurrentArtifact.TempPath, publishedDir); err != nil {
+		failedAt := time.Now()
+		s.reportStorageOperationFailure(storageOperationPublishArtifact, publishedDir, err, failedAt)
 		_, _ = s.executionRepo.MarkOwnedArtifactTerminal(
 			job.ExecutionJob.ID,
 			job.CurrentAttempt.ID,
@@ -237,7 +240,7 @@ func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, e
 			"failed",
 			"artifact_publish_failed",
 			err.Error(),
-			time.Now(),
+			failedAt,
 		)
 		return false, err
 	}
