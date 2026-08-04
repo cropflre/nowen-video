@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SessionHLSPlaylistHandler serves the media playlist for one immutable
-// playback Generation. A stale playlist request is redirected to the current
-// Generation, while already-issued stale segment URLs remain readable until
-// the session manager drains their Reader Leases.
+// SessionHLSPlaylistHandler serves the current immutable playback Generation.
+// Clients may continue refreshing the previous Generation URL briefly after a
+// seek; serving the current playlist at that URL avoids depending on HLS
+// redirect behavior while all emitted segment URLs remain Generation-scoped.
 func (h *Handler) SessionHLSPlaylistHandler(c *gin.Context) {
 	runtime := h.playbackSessionRuntime()
 	if runtime == nil {
@@ -33,17 +33,14 @@ func (h *Handler) SessionHLSPlaylistHandler(c *gin.Context) {
 		return
 	}
 
-	generationID, err := strconv.ParseUint(c.Param("generationID"), 10, 64)
-	if err != nil || generationID == 0 {
+	requestedGenerationID, err := strconv.ParseUint(c.Param("generationID"), 10, 64)
+	if err != nil || requestedGenerationID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": "Invalid generation id"})
 		return
 	}
+	generationID := requestedGenerationID
 	if generationID != mapping.GenerationID {
-		c.Redirect(
-			http.StatusTemporaryRedirect,
-			embySessionPlaylistURL(c, embyID, mapping.ExternalID, mapping.GenerationID),
-		)
-		return
+		generationID = mapping.GenerationID
 	}
 
 	playlist, err := runtime.openPlaylist(mapping, generationID)
