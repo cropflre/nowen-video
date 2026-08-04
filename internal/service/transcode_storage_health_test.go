@@ -2,7 +2,9 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -56,5 +58,33 @@ func TestStorageHealthPausesAdmissionAndRecoversAfterMountRestore(t *testing.T) 
 	}
 	if summary.RecoveredCount != 1 || summary.ActiveCount != 0 {
 		t.Fatalf("incident recovery history missing: %+v", summary)
+	}
+}
+
+func TestLiveStorageOperationFailureBlocksImmediatelyUntilWriteProbeRecovers(t *testing.T) {
+	service, db := newConcurrentArtifactService(t)
+	if err := model.AutoMigrateTranscodeStorageIncidents(db); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	service.runStorageHealthTick(now, true)
+	service.reportStorageOperationFailure(
+		storageOperationPublishArtifact,
+		service.artifactStore.Root(),
+		fmt.Errorf("rename artifact: %w", syscall.ENOSPC),
+		now.Add(time.Second),
+	)
+	failed := service.GetStorageHealthStatus()
+	if failed.Code != "no_space" || !failed.AdmissionBlocked || failed.Operation != storageOperationPublishArtifact || failed.IncidentID == "" {
+		t.Fatalf("live storage failure did not block immediately: %+v", failed)
+	}
+	active, err := service.executionRepo.ListActiveStorageIncidents(10)
+	if err != nil || len(active) != 1 || active[0].Operation != storageOperationPublishArtifact {
+		t.Fatalf("live operation incident evidence missing: rows=%+v err=%v", active, err)
+	}
+
+	recovered := service.runStorageHealthTick(now.Add(31*time.Second), true)
+	if recovered.State != "healthy" || recovered.AdmissionBlocked || recovered.ActiveIncidents != 0 {
+		t.Fatalf("real write probe did not recover live incident: %+v", recovered)
 	}
 }
