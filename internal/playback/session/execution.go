@@ -1,6 +1,9 @@
 package session
 
-import "context"
+import (
+	"context"
+	"os"
+)
 
 // GenerationRuntime is the process-facing view of one generation. The context
 // is owned by the session manager and is cancelled by seek replacement,
@@ -36,8 +39,11 @@ func (m *Manager) ResetGenerationAttempt(sessionID string, generationID uint64, 
 	return m.updateGeneration(sessionID, generationID, func(session *PlaybackSession, generation *Generation) {
 		now := m.now()
 		generation.backend = backend
+		generation.process = nil
 		generation.processPID = 0
 		generation.transcodedMS = 0
+		generation.aheadMS = 0
+		generation.suspended = false
 		generation.speed = ""
 		generation.errorCode = ""
 		generation.errorMessage = ""
@@ -54,6 +60,12 @@ func (m *Manager) MarkGenerationStarted(sessionID string, generationID uint64, b
 		now := m.now()
 		generation.backend = backend
 		generation.processPID = processPID
+		generation.process = nil
+		if processPID > 0 {
+			if process, err := os.FindProcess(processPID); err == nil {
+				generation.process = process
+			}
+		}
 		generation.startedAt = &now
 		generation.updatedAt = now
 		session.updatedAt = now
@@ -64,11 +76,14 @@ func (m *Manager) MarkGenerationProgress(sessionID string, generationID uint64, 
 	if transcodedMS < 0 {
 		transcodedMS = 0
 	}
-	return m.updateGeneration(sessionID, generationID, func(_ *PlaybackSession, generation *Generation) {
+	if err := m.updateGeneration(sessionID, generationID, func(_ *PlaybackSession, generation *Generation) {
 		generation.transcodedMS = transcodedMS
 		generation.speed = speed
 		generation.updatedAt = m.now()
-	})
+	}); err != nil {
+		return err
+	}
+	return m.ReconcileThrottle(sessionID)
 }
 
 func (m *Manager) MarkFirstSegmentReady(sessionID string, generationID uint64) error {
@@ -87,7 +102,9 @@ func (m *Manager) MarkFirstSegmentReady(sessionID string, generationID uint64) e
 func (m *Manager) MarkGenerationCompleted(sessionID string, generationID uint64) error {
 	return m.updateGeneration(sessionID, generationID, func(_ *PlaybackSession, generation *Generation) {
 		now := m.now()
+		generation.process = nil
 		generation.processPID = 0
+		generation.suspended = false
 		generation.completedAt = &now
 		generation.updatedAt = now
 	})
@@ -96,14 +113,26 @@ func (m *Manager) MarkGenerationCompleted(sessionID string, generationID uint64)
 func (m *Manager) MarkGenerationFailed(sessionID string, generationID uint64, errorCode, errorMessage string) error {
 	return m.updateGeneration(sessionID, generationID, func(session *PlaybackSession, generation *Generation) {
 		now := m.now()
-		generation.state = GenerationStateFailed
+		generation.process = nil
 		generation.processPID = 0
+		generation.suspended = false
 		generation.errorCode = errorCode
 		generation.errorMessage = errorMessage
 		generation.completedAt = &now
 		generation.updatedAt = now
 		generation.cancel()
 
+		// Once a timeline has been published, keep its already-materialized
+		// playlist and segments readable. The client can consume buffered media
+		// or explicitly restart a new Generation instead of being cut off by a
+		// late encoder failure.
+		published := generation.firstSegmentAt != nil && session.currentGenerationID == generationID
+		if published {
+			session.updatedAt = now
+			return
+		}
+
+		generation.state = GenerationStateFailed
 		if session.pendingGenerationID == generationID {
 			session.pendingGenerationID = 0
 		}
