@@ -7,12 +7,14 @@ import (
 )
 
 const (
-	defaultActiveTimeout     = 75 * time.Second
-	defaultPausedTimeout     = 15 * time.Minute
-	defaultSweepInterval     = 30 * time.Second
-	defaultCloseDrainTimeout = 5 * time.Second
-	defaultCleanupRetries    = 5
-	defaultCleanupRetryDelay = 200 * time.Millisecond
+	defaultActiveTimeout      = 75 * time.Second
+	defaultPausedTimeout      = 15 * time.Minute
+	defaultSweepInterval      = 30 * time.Second
+	defaultCloseDrainTimeout  = 5 * time.Second
+	defaultAheadHighWatermark = 45 * time.Second
+	defaultAheadLowWatermark  = 12 * time.Second
+	defaultCleanupRetries     = 5
+	defaultCleanupRetryDelay  = 200 * time.Millisecond
 )
 
 // Config defines the lifecycle and filesystem policy for temporary playback
@@ -21,10 +23,12 @@ const (
 type Config struct {
 	RootDir string
 
-	ActiveTimeout     time.Duration
-	PausedTimeout     time.Duration
-	SweepInterval     time.Duration
-	CloseDrainTimeout time.Duration
+	ActiveTimeout      time.Duration
+	PausedTimeout      time.Duration
+	SweepInterval      time.Duration
+	CloseDrainTimeout  time.Duration
+	AheadHighWatermark time.Duration
+	AheadLowWatermark  time.Duration
 
 	CleanupRetries    int
 	CleanupRetryDelay time.Duration
@@ -39,8 +43,10 @@ func DefaultConfig(cacheRoot string) Config {
 		PausedTimeout:     defaultPausedTimeout,
 		SweepInterval:     defaultSweepInterval,
 		CloseDrainTimeout: defaultCloseDrainTimeout,
-		CleanupRetries:    defaultCleanupRetries,
-		CleanupRetryDelay: defaultCleanupRetryDelay,
+		AheadHighWatermark: defaultAheadHighWatermark,
+		AheadLowWatermark:  defaultAheadLowWatermark,
+		CleanupRetries:     defaultCleanupRetries,
+		CleanupRetryDelay:  defaultCleanupRetryDelay,
 	}
 }
 
@@ -65,6 +71,15 @@ func (c Config) normalized() (Config, error) {
 	}
 	if c.CloseDrainTimeout <= 0 {
 		c.CloseDrainTimeout = defaultCloseDrainTimeout
+	}
+	if c.AheadHighWatermark <= 0 {
+		c.AheadHighWatermark = defaultAheadHighWatermark
+	}
+	if c.AheadLowWatermark <= 0 {
+		c.AheadLowWatermark = defaultAheadLowWatermark
+	}
+	if c.AheadLowWatermark >= c.AheadHighWatermark {
+		return Config{}, fmt.Errorf("%w: low playback watermark must be lower than high watermark", ErrInvalidRequest)
 	}
 	if c.CleanupRetries <= 0 {
 		c.CleanupRetries = defaultCleanupRetries
