@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -88,8 +89,8 @@ func TestConcurrentPublishIsolatesStaleLease(t *testing.T) {
 	if _, err := os.Stat(stale.workspace); err != nil {
 		t.Fatalf("stale workspace should remain available for cleanup: %v", err)
 	}
-	if _, err := service.ResolveHLSOutputDir(stale.job.Media, stale.job.Quality); !repository.IsNotFound(err) {
-		t.Fatalf("stale artifact remained readable: %v", err)
+	if _, err := service.ResolveHLSOutputDir(stale.job.Media, stale.job.Quality); !errors.Is(err, ErrPersistentRuntimeTranscodeRetired) {
+		t.Fatalf("runtime Artifact resolver did not remain retired: %v", err)
 	}
 
 	storedStaleJob, err := service.executionRepo.FindJobByID(stale.job.ExecutionJob.ID)
@@ -306,9 +307,8 @@ func assertConcurrentArtifactPublished(t *testing.T, service *TranscodeService, 
 	if storedJob.Status != "completed" || storedJob.ActiveKey != nil || storedJob.LeaseToken != "" || storedJob.CurrentAttemptID != "" {
 		t.Fatalf("job and artifact were not committed together: %+v", storedJob)
 	}
-	resolved, err := service.ResolveHLSOutputDir(fixture.job.Media, fixture.job.Quality)
-	if err != nil || resolved != artifact.Path {
-		t.Fatalf("published artifact not resolved: path=%s err=%v", resolved, err)
+	if _, err := service.ResolveHLSOutputDir(fixture.job.Media, fixture.job.Quality); !errors.Is(err, ErrPersistentRuntimeTranscodeRetired) {
+		t.Fatalf("published historical artifact became runtime-readable: %v", err)
 	}
 }
 
