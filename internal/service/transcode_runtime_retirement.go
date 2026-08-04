@@ -16,6 +16,8 @@ import (
 
 var ErrPersistentRuntimeTranscodeRetired = errors.New("persistent runtime transcoding has been retired; create a playback session")
 
+const retiredRuntimePlaybackIntent = "retired_runtime_playback"
+
 var retiredRuntimePlaybackIntents = []string{
 	string(transcodedomain.IntentRuntimeHLS),
 	string(transcodedomain.IntentStartupHLS),
@@ -31,17 +33,17 @@ var retiredRuntimeArtifactKinds = []string{
 }
 
 type runtimePlaybackRetirementReport struct {
-	JobsFound       int
-	JobsCancelled   int
-	JobsDeferred    int
+	JobsFound        int
+	JobsCancelled    int
+	JobsDeferred     int
 	ArtifactsDeleted int
-	AttemptsRetired int
-	TasksRetired    int
-	PathsRemoved    int
+	AttemptsRetired  int
+	TasksRetired     int
+	PathsRemoved     int
 }
 
-func (r runtimePlaybackRetirementReport) Empty() bool {
-	return r.JobsFound == 0 && r.ArtifactsDeleted == 0 && r.AttemptsRetired == 0 && r.TasksRetired == 0 && r.PathsRemoved == 0
+func (r runtimePlaybackRetirementReport) Changed() bool {
+	return r.JobsCancelled > 0 || r.ArtifactsDeleted > 0 || r.AttemptsRetired > 0 || r.TasksRetired > 0 || r.PathsRemoved > 0
 }
 
 func isRetiredRuntimePlaybackIntent(intent string) bool {
@@ -95,15 +97,15 @@ func (s *TranscodeService) retirePersistentRuntimePlayback(now time.Time) (runti
 	for index := range jobs {
 		job := &jobs[index]
 		allJobIDs = append(allJobIDs, job.ID)
-		if job.LegacyTaskID != nil && strings.TrimSpace(*job.LegacyTaskID) != "" {
-			legacyTaskIDs = append(legacyTaskIDs, strings.TrimSpace(*job.LegacyTaskID))
-		}
 		if runtimePlaybackJobHasLiveLease(job, now) {
 			liveJobIDs[job.ID] = struct{}{}
 			report.JobsDeferred++
 			continue
 		}
 		cleanupJobIDs = append(cleanupJobIDs, job.ID)
+		if job.LegacyTaskID != nil && strings.TrimSpace(*job.LegacyTaskID) != "" {
+			legacyTaskIDs = append(legacyTaskIDs, strings.TrimSpace(*job.LegacyTaskID))
+		}
 		if !runtimePlaybackJobTerminal(job.Status) {
 			cancelJobIDs = append(cancelJobIDs, job.ID)
 		}
@@ -166,8 +168,7 @@ func (s *TranscodeService) retirePersistentRuntimePlayback(now time.Time) (runti
 	}
 
 	var artifacts []model.TranscodeArtifactRecord
-	artifactQuery := db.Where("kind IN ?", retiredRuntimeArtifactKinds)
-	if err := artifactQuery.Find(&artifacts).Error; err != nil {
+	if err := db.Where("kind IN ?", retiredRuntimeArtifactKinds).Find(&artifacts).Error; err != nil {
 		return report, fmt.Errorf("list retired runtime playback artifacts: %w", err)
 	}
 	cleanupArtifacts := make([]model.TranscodeArtifactRecord, 0, len(artifacts))
@@ -289,6 +290,17 @@ func (s *TranscodeService) retirePersistentRuntimePlayback(now time.Time) (runti
 				return err
 			}
 			report.TasksRetired = len(taskIDs)
+		}
+		if len(cleanupJobIDs) > 0 {
+			if err := tx.Model(&model.TranscodeJobRecord{}).
+				Where("id IN ?", cleanupJobIDs).
+				Updates(map[string]any{
+					"intent":             retiredRuntimePlaybackIntent,
+					"current_attempt_id": "",
+					"updated_at":         now,
+				}).Error; err != nil {
+				return err
+			}
 		}
 		return nil
 	}); err != nil {
