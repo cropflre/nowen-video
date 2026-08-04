@@ -46,5 +46,8 @@ func (g *Generation) ensureProcessGate() *readerGate {
 }
 
 func (g *Generation) waitForProcessExit(ctx context.Context) error {
+	// A suspended process may not observe graceful termination on every
+	// platform. Resume first; the cancelled generation context then owns exit.
+	_ = g.resumeIfSuspended()
 	return g.ensureProcessGate().closeAndWait(ctx)
 }
