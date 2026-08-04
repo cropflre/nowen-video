@@ -2,31 +2,27 @@ package service
 
 import (
 	"errors"
-	"os"
+	"net/http/httptest"
 	"testing"
-
-	"gorm.io/gorm"
 )
 
-func TestArtifactFallbackOnlyAcceptsReadinessErrors(t *testing.T) {
-	for _, err := range []error{
-		nil,
-		ErrArtifactNotReady,
-		gorm.ErrRecordNotFound,
-		os.ErrNotExist,
-	} {
-		if !artifactReadinessError(err) {
-			t.Fatalf("readiness error was rejected: %v", err)
-		}
+func TestRuntimeArtifactServingIsRetired(t *testing.T) {
+	stream := &StreamService{}
+	if _, err := stream.GetArtifactSegmentPlaylist("media", "720p"); !errors.Is(err, ErrPersistentRuntimeTranscodeRetired) {
+		t.Fatalf("artifact playlist did not fail closed: %v", err)
 	}
 
-	for _, err := range []error{
-		errors.New("database unavailable"),
-		errors.New("permission denied"),
-		errors.New("corrupt artifact metadata"),
+	request := httptest.NewRequest("GET", "/api/stream/media/720p/seg0000.ts", nil)
+	for name, serve := range map[string]func() error{
+		"unversioned": func() error {
+			return stream.ServeArtifactSegment("media", "720p", "seg0000.ts", httptest.NewRecorder(), request)
+		},
+		"versioned": func() error {
+			return stream.ServeArtifactSegmentVersion("media", "720p", "artifact", "seg0000.ts", httptest.NewRecorder(), request)
+		},
 	} {
-		if artifactReadinessError(err) {
-			t.Fatalf("infrastructure error was masked as readiness: %v", err)
+		if err := serve(); !errors.Is(err, ErrPersistentRuntimeTranscodeRetired) {
+			t.Fatalf("%s artifact segment did not fail closed: %v", name, err)
 		}
 	}
 }
