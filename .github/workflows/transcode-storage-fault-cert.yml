@@ -1,0 +1,63 @@
+name: Transcode NAS Storage Fault Certification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'internal/model/transcode_storage_incident.go'
+      - 'internal/repository/repo_transcode_storage_incident*.go'
+      - 'internal/service/transcode_storage_health*.go'
+      - 'internal/service/transcode_storage_reservation.go'
+      - 'internal/service/transcode_stats.go'
+      - 'internal/service/task_center*.go'
+      - 'internal/service/task_lifecycle_events.go'
+      - 'internal/transcode/artifactstore/health*.go'
+      - 'internal/transcode/storagefault/**'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
+      - 'docs/TRANSCODE_NAS_STORAGE_FAULTS.md'
+      - '.github/workflows/transcode-storage-fault-cert.yml'
+  pull_request:
+    paths:
+      - 'internal/model/transcode_storage_incident.go'
+      - 'internal/repository/repo_transcode_storage_incident*.go'
+      - 'internal/service/transcode_storage_health*.go'
+      - 'internal/service/transcode_storage_reservation.go'
+      - 'internal/service/transcode_stats.go'
+      - 'internal/service/task_center*.go'
+      - 'internal/service/task_lifecycle_events.go'
+      - 'internal/transcode/artifactstore/health*.go'
+      - 'internal/transcode/storagefault/**'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
+      - 'docs/TRANSCODE_NAS_STORAGE_FAULTS.md'
+      - '.github/workflows/transcode-storage-fault-cert.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-storage-fault-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    name: Kernel and lifecycle storage faults
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Kernel fault classification and real write probes
+        run: go test -race ./internal/transcode/storagefault ./internal/transcode/artifactstore -count=1 -v
+      - name: Durable storage incident lifecycle
+        run: go test -race ./internal/repository -run 'StorageIncident' -count=1 -v
+      - name: Admission pause, recovery and Task Center projection
+        run: go test -race ./internal/service -run 'StorageHealth|StorageIncident|StorageReservation' -count=1 -v
