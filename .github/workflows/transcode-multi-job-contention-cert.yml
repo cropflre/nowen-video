@@ -7,8 +7,11 @@ on:
       - refactor/server-lite-v1
     paths:
       - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_storage_reservation.go'
       - 'internal/repository/repo_transcode_artifact*.go'
       - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/repository/repo_transcode_queue.go'
+      - 'internal/repository/repo_transcode_storage_reservation*.go'
       - 'internal/handler/stream_artifacts.go'
       - 'internal/handler/task_center.go'
       - 'internal/service/task_actions*.go'
@@ -18,6 +21,7 @@ on:
       - 'internal/service/transcode_attestation.go'
       - 'internal/service/transcode_cleanup*.go'
       - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_storage_reservation*.go'
       - 'internal/service/transcode_lease.go'
       - 'internal/service/transcode_queue.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
@@ -30,17 +34,22 @@ on:
       - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
       - 'internal/transcode/diskpressure/**'
+      - 'internal/transcode/storageestimate/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
       - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
       - 'docs/TRANSCODE_DISK_PRESSURE.md'
+      - 'docs/TRANSCODE_STORAGE_RESERVATION.md'
       - '.github/workflows/transcode-multi-job-contention-cert.yml'
   pull_request:
     paths:
       - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_storage_reservation.go'
       - 'internal/repository/repo_transcode_artifact*.go'
       - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/repository/repo_transcode_queue.go'
+      - 'internal/repository/repo_transcode_storage_reservation*.go'
       - 'internal/handler/stream_artifacts.go'
       - 'internal/handler/task_center.go'
       - 'internal/service/task_actions*.go'
@@ -50,6 +59,7 @@ on:
       - 'internal/service/transcode_attestation.go'
       - 'internal/service/transcode_cleanup*.go'
       - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_storage_reservation*.go'
       - 'internal/service/transcode_lease.go'
       - 'internal/service/transcode_queue.go'
       - 'internal/service/transcode_concurrent_artifact_test.go'
@@ -62,11 +72,13 @@ on:
       - 'web/src/components/TaskCenter.tsx'
       - 'internal/transcode/artifactstore/**'
       - 'internal/transcode/diskpressure/**'
+      - 'internal/transcode/storageestimate/**'
       - 'internal/transcode/executor/**'
       - 'internal/transcode/governor/**'
       - 'internal/transcode/runtime/**'
       - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
       - 'docs/TRANSCODE_DISK_PRESSURE.md'
+      - 'docs/TRANSCODE_STORAGE_RESERVATION.md'
       - '.github/workflows/transcode-multi-job-contention-cert.yml'
 
 permissions:
@@ -95,14 +107,14 @@ jobs:
       - name: Download modules
         run: go mod download
 
-      - name: Governor, disk pressure and runtime race tests
-        run: go test -race ./internal/transcode/governor ./internal/transcode/diskpressure ./internal/transcode/runtime -count=1
+      - name: Governor, pressure, reservation estimate and runtime race tests
+        run: go test -race ./internal/transcode/governor ./internal/transcode/diskpressure ./internal/transcode/storageestimate ./internal/transcode/runtime -count=1
 
-      - name: Publication, cleanup, pressure and operator task actions
-        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestDiskPressure|TestTask)' -count=1 -v
+      - name: Publication, cleanup, pressure, reservation and operator actions
+        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestDiskPressure|TestStorageReservation|TestTask)' -count=1 -v
 
-      - name: Repository Lease, Artifact, cleanup and pressure fences
-        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup|Pressure' -count=1 -v
+      - name: Repository Lease, Artifact, cleanup, pressure and reservation fences
+        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup|Pressure|Reservation' -count=1 -v
 
       - name: Install FFmpeg
         run: |
