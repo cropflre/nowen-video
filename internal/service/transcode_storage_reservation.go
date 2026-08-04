@@ -15,10 +15,17 @@ import (
 var ErrTranscodeStorageReservationUnavailable = errors.New("transcode storage reservation is unavailable")
 
 type TranscodeStorageReservationStatus struct {
-	ActiveCount       int64 `json:"active_count"`
-	ActiveBytes       int64 `json:"active_bytes"`
-	WaitingCount      int64 `json:"waiting_count"`
-	AvailableHeadroom int64 `json:"available_headroom_bytes"`
+	ActiveCount             int64   `json:"active_count"`
+	ActiveBytes             int64   `json:"active_bytes"`
+	ReservedBytes           int64   `json:"reserved_bytes"`
+	ObservedBytes           int64   `json:"observed_bytes"`
+	RemainingBytes          int64   `json:"remaining_bytes"`
+	WaitingCount            int64   `json:"waiting_count"`
+	AvailableHeadroom       int64   `json:"available_headroom_bytes"`
+	CalibrationSamples      int64   `json:"calibration_samples"`
+	AverageActualToEstimate float64 `json:"average_actual_to_estimate"`
+	AverageAbsoluteError    float64 `json:"average_absolute_error"`
+	UnderpredictedCount     int64   `json:"underpredicted_count"`
 }
 
 func (s *TranscodeService) initializeStorageReservations() error {
@@ -28,9 +35,17 @@ func (s *TranscodeService) initializeStorageReservations() error {
 	if err := model.AutoMigrateTranscodeStorageReservation(s.repo.DB()); err != nil {
 		return err
 	}
-	released, err := s.executionRepo.ReconcileReleasedStorageReservations(time.Now())
+	now := time.Now()
+	published, err := s.executionRepo.ReconcilePublishedStorageReservations(now)
 	if err != nil {
 		return err
+	}
+	released, err := s.executionRepo.ReconcileReleasedStorageReservations(now)
+	if err != nil {
+		return err
+	}
+	if published > 0 && s.logger != nil {
+		s.logger.Infof("启动时已补偿 %d 条已发布转码 Reservation 校准证据", published)
 	}
 	if released > 0 && s.logger != nil {
 		s.logger.Infof("启动时已释放 %d 条终态转码空间 Reservation", released)
@@ -196,12 +211,19 @@ func (s *TranscodeService) GetStorageReservationStatus() TranscodeStorageReserva
 	if summary, err := s.executionRepo.StorageReservationSummary(); err == nil {
 		status.ActiveCount = summary.ActiveCount
 		status.ActiveBytes = summary.ActiveBytes
+		status.ReservedBytes = summary.ReservedBytes
+		status.ObservedBytes = summary.ObservedBytes
+		status.RemainingBytes = summary.RemainingBytes
 		status.WaitingCount = summary.WaitingCount
+		status.CalibrationSamples = summary.CalibrationSamples
+		status.AverageActualToEstimate = summary.AverageActualToEstimate
+		status.AverageAbsoluteError = summary.AverageAbsoluteError
+		status.UnderpredictedCount = summary.UnderpredictedCount
 	} else if s.logger != nil {
 		s.logger.Debugf("读取转码空间 Reservation 统计失败: %v", err)
 	}
 	if budget, err := s.storageReservationBudget(time.Now()); err == nil {
-		status.AvailableHeadroom = budget.AvailableBytes - status.ActiveBytes
+		status.AvailableHeadroom = budget.AvailableBytes - status.RemainingBytes
 		if status.AvailableHeadroom < 0 {
 			status.AvailableHeadroom = 0
 		}
