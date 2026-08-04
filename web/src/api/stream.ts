@@ -1,5 +1,4 @@
 import { useAuthStore } from '@/stores/auth'
-import { useServerProfileStore } from '@/stores/serverProfile'
 import { getPlaybackSessionRuntime } from '@/playback/sessionRuntime'
 import type {
   MediaPlayInfo,
@@ -220,12 +219,6 @@ export const streamApi = {
     }
 
     try {
-      await useServerProfileStore.getState().load()
-      if (useServerProfileStore.getState().manifest?.profile !== 'lite') {
-        playbackPlanCache.delete(mediaId)
-        return response
-      }
-
       const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
         params: {
           supports_direct: true,
@@ -237,6 +230,7 @@ export const streamApi = {
       playbackPlanCache.set(mediaId, plan)
       response.data.data = applyPlaybackPlan(response.data.data, plan) as PlannedMediaPlayInfo
     } catch {
+      // Older servers may not expose /plan. Preserve their legacy info response.
       playbackPlanCache.delete(mediaId)
     }
 
