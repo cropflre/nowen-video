@@ -26,6 +26,12 @@ export interface PlaybackStartupStream {
   encoding_plan_hash: string
 }
 
+export interface PlaybackSessionTemplate {
+  create_url: string
+  profile_id: string
+  max_bitrate?: number
+}
+
 export interface PlaybackPlan {
   media_id: string
   method: PlaybackMethod
@@ -33,10 +39,107 @@ export interface PlaybackPlan {
   reason_code: string
   reason: string
   requires_transcode: boolean
+  session_required: boolean
+  session_template?: PlaybackSessionTemplate
   fallback_method?: PlaybackMethod
   fallback_url?: string
   client_capabilities: PlaybackClientCapabilities
   startup_stream?: PlaybackStartupStream
+}
+
+export type PlaybackSessionState =
+  | 'creating'
+  | 'starting'
+  | 'ready'
+  | 'active'
+  | 'closing'
+  | 'closed'
+  | 'failed'
+  | 'expired'
+
+export type PlaybackGenerationState =
+  | 'preparing'
+  | 'running'
+  | 'completed'
+  | 'draining'
+  | 'retired'
+  | 'failed'
+
+export interface PlaybackGenerationSnapshot {
+  id: number
+  session_id: string
+  state: PlaybackGenerationState
+  profile_id: string
+  start_position_ms: number
+  audio_track: number
+  subtitle_track: number
+  burn_subtitle: boolean
+  max_bitrate: number
+  reason?: string
+  backend?: string
+  process_pid?: number
+  transcoded_ms: number
+  speed?: string
+  error_code?: string
+  error_message?: string
+  created_at: string
+  updated_at: string
+  started_at?: string
+  first_segment_at?: string
+  completed_at?: string
+}
+
+export interface PlaybackSessionSnapshot {
+  id: string
+  user_id: string
+  media_id: string
+  state: PlaybackSessionState
+  created_at: string
+  updated_at: string
+  last_seen: string
+  paused: boolean
+  position_ms: number
+  buffered_end_ms: number
+  current_generation_id?: number
+  pending_generation_id?: number
+  close_reason?: string
+  generation?: PlaybackGenerationSnapshot
+}
+
+export interface PlaybackSessionResult {
+  session: PlaybackSessionSnapshot
+  playlist_url?: string
+  status_url: string
+  heartbeat_interval_sec: number
+  first_segment_ready: boolean
+  startup_ms?: number
+}
+
+export interface CreatePlaybackSessionRequest {
+  media_id: string
+  profile_id?: string
+  start_position_ms?: number
+  audio_track?: number
+  subtitle_track?: number
+  burn_subtitle?: boolean
+  max_bitrate?: number
+}
+
+export interface RestartPlaybackSessionRequest {
+  profile_id?: string
+  start_position_ms: number
+  audio_track?: number
+  subtitle_track?: number
+  burn_subtitle?: boolean
+  max_bitrate?: number
+  reason?: string
+}
+
+export interface PlaybackSessionHeartbeatRequest {
+  generation_id: number
+  position_ms: number
+  buffered_end_ms: number
+  paused: boolean
 }
 
 type PlannedMediaPlayInfo = MediaPlayInfo & {
@@ -91,6 +194,10 @@ function withToken(url: string): string {
   return `${url}${sep}token=${encodeURIComponent(token)}`
 }
 
+function playbackSessionEndpoint(sessionId: string, suffix = ''): string {
+  return `/playback/sessions/${encodeURIComponent(sessionId)}${suffix}`
+}
+
 export const streamApi = {
   getPlayInfo: async (mediaId: string) => {
     const supportsHEVC = browserSupportsHEVC()
@@ -133,14 +240,14 @@ export const streamApi = {
     return response
   },
 
-  getPlaybackPlan: (mediaId: string, capabilities?: {
+  getPlaybackPlan: async (mediaId: string, capabilities?: {
     supportsDirect?: boolean
     supportsRemux?: boolean
     supportsHEVC?: boolean
     forceTranscode?: boolean
     maxBitrate?: number
-  }) =>
-    api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
+  }) => {
+    const response = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
       params: {
         supports_direct: capabilities?.supportsDirect ?? true,
         supports_remux: capabilities?.supportsRemux ?? true,
@@ -148,7 +255,44 @@ export const streamApi = {
         force_transcode: capabilities?.forceTranscode,
         max_bitrate: capabilities?.maxBitrate,
       },
-    }),
+    })
+    playbackPlanCache.set(mediaId, response.data.data)
+    return response
+  },
+
+  getCachedPlaybackPlan: (mediaId: string) => playbackPlanCache.get(mediaId),
+
+  requiresPlaybackSession: (mediaId: string) => {
+    const plan = playbackPlanCache.get(mediaId)
+    return Boolean(plan?.method === 'transcode' && plan.session_required && plan.session_template)
+  },
+
+  createPlaybackSession: (request: CreatePlaybackSessionRequest) =>
+    api.post<{ data: PlaybackSessionResult }>('/playback/sessions', request),
+
+  getPlaybackSessionStatus: (sessionId: string) =>
+    api.get<{ data: PlaybackSessionResult }>(playbackSessionEndpoint(sessionId, '/status')),
+
+  restartPlaybackSession: (sessionId: string, request: RestartPlaybackSessionRequest) =>
+    api.post<{ data: PlaybackSessionResult }>(playbackSessionEndpoint(sessionId, '/restart'), request),
+
+  heartbeatPlaybackSession: (sessionId: string, request: PlaybackSessionHeartbeatRequest) =>
+    api.post<{ data: PlaybackSessionResult }>(playbackSessionEndpoint(sessionId, '/heartbeat'), request),
+
+  closePlaybackSession: (sessionId: string, reason = 'client_closed') =>
+    api.delete(playbackSessionEndpoint(sessionId), { params: { reason } }),
+
+  closePlaybackSessionKeepalive: (sessionId: string, reason = 'component_unmounted') => {
+    const token = useAuthStore.getState().token
+    const headers: Record<string, string> = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    return fetch(`/api${playbackSessionEndpoint(sessionId)}?reason=${encodeURIComponent(reason)}`, {
+      method: 'DELETE',
+      headers,
+      keepalive: true,
+      credentials: 'same-origin',
+    })
+  },
 
   getMasterUrl: (mediaId: string) => {
     const plan = playbackPlanCache.get(mediaId)
