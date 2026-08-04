@@ -22,7 +22,8 @@ const (
 
 // transcodePriorityQueue is a database-backed Priority + FIFO scheduler. The
 // channel is only a wake-up hint; transcode_jobs is the sole source of pending
-// work and ClaimNextQueuedJob is the ownership boundary across processes.
+// work. Storage Reservation is acquired before ClaimJob, and ClaimJob remains
+// the Lease ownership boundary across processes.
 type transcodePriorityQueue struct {
 	executionRepo *repository.TranscodeExecutionRepo
 	legacyRepo    *repository.TranscodeRepo
@@ -74,8 +75,10 @@ func (q *transcodePriorityQueue) CanAccept() bool {
 }
 
 // Push preserves the existing submission call shape but never stores the Job
-// pointer. The durable row has already been created; this only validates global
-// capacity and wakes database-polling workers.
+// pointer. The durable row has already been created; this validates global
+// queue capacity and wakes database-polling workers. Peak storage is reserved
+// later, immediately before the Job is claimed, so queued work does not hold
+// physical capacity indefinitely.
 func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
 	if q == nil || job == nil || job.ExecutionJob == nil || q.IsClosed() {
 		return false
@@ -120,8 +123,8 @@ func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duratio
 		if q.IsClosed() {
 			return nil, false
 		}
-		// Existing FFmpeg processes keep their Lease and continue. Only the next
-		// database Claim is paused so queued work cannot deepen disk pressure.
+		// Existing FFmpeg processes keep their Lease and Reservation. Only the
+		// next database Claim is paused so queued work cannot deepen pressure.
 		if !transcodeQueueClaimAllowed(q) {
 			if !q.waitForWork() {
 				return nil, false
@@ -129,15 +132,35 @@ func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duratio
 			continue
 		}
 
-		record, claimed, err := q.executionRepo.ClaimNextQueuedJob(
-			workerID,
-			time.Now(),
-			leaseDuration,
-			defaultTranscodeQueueScanLimit,
-		)
+		now := time.Now()
+		candidateIDs, err := q.executionRepo.ListQueuedJobCandidates(now, defaultTranscodeQueueScanLimit)
 		if err != nil {
-			q.warnf("数据库领取转码 Job 失败 worker=%s: %v", workerID, err)
-		} else if claimed {
+			q.warnf("读取转码候选 Job 失败 worker=%s: %v", workerID, err)
+			if !q.waitForWork() {
+				return nil, false
+			}
+			continue
+		}
+
+		for _, jobID := range candidateIDs {
+			reservationErr := transcodeReserveQueueCandidate(q, jobID)
+			if reservationErr != nil {
+				// Capacity shortage is an expected scheduling result. Keep the Job
+				// queued and continue scanning so a smaller candidate can proceed.
+				if !isTranscodeReservationCapacityError(reservationErr) {
+					q.warnf("获取转码空间 Reservation 失败 job=%s worker=%s: %v", jobID, workerID, reservationErr)
+				}
+				continue
+			}
+
+			record, claimed, claimErr := q.executionRepo.ClaimJob(jobID, workerID, now, leaseDuration)
+			if claimErr != nil {
+				q.warnf("数据库领取转码 Job 失败 job=%s worker=%s: %v", jobID, workerID, claimErr)
+				continue
+			}
+			if !claimed {
+				continue
+			}
 			if q.IsClosed() {
 				q.releaseClaimAfterClose(record)
 				return nil, false
@@ -152,7 +175,6 @@ func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duratio
 				return job, true
 			}
 			q.failClaimedPayload(record, hydrateErr)
-			continue
 		}
 
 		if !q.waitForWork() {
