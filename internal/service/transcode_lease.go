@@ -70,6 +70,22 @@ func (s *TranscodeService) recoverPendingTasks() {
 	s.initializeDiskPressureGovernor()
 
 	now := time.Now()
+	retirement, retirementErr := s.retirePersistentRuntimePlayback(now)
+	if retirementErr != nil {
+		s.logger.Warnf("启动时退役持久 Runtime 播放状态失败: %v", retirementErr)
+	} else if retirement.Changed() || retirement.JobsDeferred > 0 {
+		s.logger.Infof(
+			"持久 Runtime 播放退役完成 jobs=%d cancelled=%d deferred=%d artifacts=%d attempts=%d tasks=%d paths=%d",
+			retirement.JobsFound,
+			retirement.JobsCancelled,
+			retirement.JobsDeferred,
+			retirement.ArtifactsDeleted,
+			retirement.AttemptsRetired,
+			retirement.TasksRetired,
+			retirement.PathsRemoved,
+		)
+	}
+
 	if abandoned, reconcileErr := s.executionRepo.AbandonUnownedArtifacts(now); reconcileErr != nil {
 		s.logger.Warnf("启动时对账转码 Artifact 所有权失败: %v", reconcileErr)
 	} else if abandoned > 0 {
@@ -86,6 +102,9 @@ func (s *TranscodeService) recoverPendingTasks() {
 	queued := 0
 	for i := range activeJobs {
 		job := &activeJobs[i]
+		if isRetiredRuntimePlaybackIntent(job.Intent) {
+			continue
+		}
 		switch job.Status {
 		case "queued":
 			if job.DesiredState == "cancelled" {
@@ -191,12 +210,30 @@ func (s *TranscodeService) leaseRecoveryLoop() {
 			// shares this lifecycle loop so Lite and Full start and stop the same
 			// governance process without an additional unowned goroutine.
 			s.runDiskPressureGovernorTick(now, false)
+
+			retirement, retirementErr := s.retirePersistentRuntimePlayback(now)
+			if retirementErr != nil {
+				s.logger.Warnf("周期退役持久 Runtime 播放状态失败: %v", retirementErr)
+			} else if retirement.Changed() {
+				s.logger.Infof(
+					"周期退役持久 Runtime 播放状态 cancelled=%d artifacts=%d attempts=%d tasks=%d paths=%d",
+					retirement.JobsCancelled,
+					retirement.ArtifactsDeleted,
+					retirement.AttemptsRetired,
+					retirement.TasksRetired,
+					retirement.PathsRemoved,
+				)
+			}
+
 			expired, err := s.executionRepo.ListExpiredLeases(now)
 			if err != nil {
 				s.logger.Warnf("扫描过期转码 Lease 失败: %v", err)
 				continue
 			}
 			for i := range expired {
+				if isRetiredRuntimePlaybackIntent(expired[i].Intent) {
+					continue
+				}
 				s.recoverExpiredLease(&expired[i], now)
 			}
 		}
