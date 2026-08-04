@@ -74,6 +74,7 @@ func (s *TranscodeService) GetStatistics() TranscodeStatistics {
 		if job.currentProcess() != nil {
 			active++
 		}
+	}
 	s.mu.RUnlock()
 	durableQueueDepth, err := s.executionRepo.CountQueuedJobs()
 	if err != nil {
