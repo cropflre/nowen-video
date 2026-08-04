@@ -20,6 +20,7 @@ $ErrorActionPreference = "Stop"
 $ScriptRoot  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopRoot = Split-Path -Parent $ScriptRoot
 $ProjectRoot = Split-Path -Parent $DesktopRoot
+$DevWebPort = 28889
 
 function Normalize-Version([string]$Raw) {
     if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
@@ -45,11 +46,13 @@ $AppVersion = Resolve-AppVersion
 $env:NOWEN_VERSION = $AppVersion
 $env:APP_VERSION = $AppVersion
 $env:VITE_APP_VERSION = $AppVersion
+$env:WEB_PORT = "$DevWebPort"
 
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host " nowen-video Desktop dev launcher"           -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "Version: $AppVersion" -ForegroundColor DarkGray
+Write-Host "Vite port: $DevWebPort" -ForegroundColor DarkGray
 
 # Step 1: build Go sidecar if missing or forced
 $BinDir = Join-Path $DesktopRoot "bin"
@@ -81,21 +84,23 @@ if (-not (Test-Path (Join-Path $WebRoot "node_modules"))) {
     Pop-Location
 }
 
-$viteJob = Start-Job -ArgumentList $WebRoot, $AppVersion -ScriptBlock {
-    param($web, $version)
+$viteJob = Start-Job -ArgumentList $WebRoot, $AppVersion, $DevWebPort -ScriptBlock {
+    param($web, $version, $port)
     Set-Location $web
     $env:VITE_APP_VERSION = $version
-    npm run dev
+    $env:WEB_PORT = "$port"
+    npm run dev -- --port $port --strictPort
 }
 Write-Host "  Vite job started (Job ID: $($viteJob.Id))" -ForegroundColor DarkGray
 
 # wait for vite to be ready
-Write-Host "  Waiting for http://localhost:3000 ..." -ForegroundColor DarkGray
+$DevWebUrl = "http://localhost:$DevWebPort"
+Write-Host "  Waiting for $DevWebUrl ..." -ForegroundColor DarkGray
 $ready = $false
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:3000" -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
+        $resp = Invoke-WebRequest -Uri $DevWebUrl -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
         if ($resp.StatusCode -eq 200) { $ready = $true; break }
     } catch { }
 }
