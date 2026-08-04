@@ -4,22 +4,14 @@ package service
 
 import (
 	"os"
-	"syscall"
+
+	"github.com/nowen-video/nowen-video/internal/transcode/processcontrol"
 )
 
-// Unix 下通过 SIGSTOP / SIGCONT 挂起/恢复 ffmpeg 进程。
-// 注意：不能使用 SIGTSTP，该信号可被进程忽略。
-
-func suspendProcess(p *os.Process) error {
-	if p == nil {
-		return nil
-	}
-	return p.Signal(syscall.SIGSTOP)
+func suspendProcess(process *os.Process) error {
+	return processcontrol.Suspend(process)
 }
 
-func resumeProcess(p *os.Process) error {
-	if p == nil {
-		return nil
-	}
-	return p.Signal(syscall.SIGCONT)
+func resumeProcess(process *os.Process) error {
+	return processcontrol.Resume(process)
 }
