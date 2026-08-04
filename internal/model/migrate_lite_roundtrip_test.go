@@ -88,11 +88,20 @@ func seedFullProfile(t *testing.T, db *gorm.DB) {
 		ID: "legacy-library", Name: "Legacy Movies", Path: "/legacy/movies",
 		Type: "movie", CreatedAt: now, UpdatedAt: now,
 	}
+	collection := &MovieCollection{
+		ID: "legacy-collection", Name: "Legacy Collection", MediaCount: 1,
+		FileCount: 1, CreatedAt: now, UpdatedAt: now,
+	}
+	series := &Series{
+		ID: "legacy-series", LibraryID: library.ID, Title: "Legacy Series",
+		FolderPath: "/legacy/series", CreatedAt: now, UpdatedAt: now,
+	}
 	media := &Media{
 		ID: "legacy-media", LibraryID: library.ID, Title: "Legacy Movie",
 		FilePath: "/legacy/movies/movie.mkv", FileSize: 8 * 1024 * 1024 * 1024,
 		MediaType: "movie", VideoCodec: "hevc", AudioCodec: "aac",
-		Resolution: "4K", Duration: 7200, CreatedAt: now, UpdatedAt: now,
+		Resolution: "4K", Duration: 7200, CollectionID: collection.ID,
+		SeriesID: series.ID, CreatedAt: now, UpdatedAt: now,
 	}
 	history := &WatchHistory{
 		ID: "legacy-history", UserID: user.ID, MediaID: media.ID,
@@ -131,6 +140,8 @@ func seedFullProfile(t *testing.T, db *gorm.DB) {
 	// certification so an invalid fixture cannot hide a migration regression.
 	mustCreateProfileRow(t, db, "user", user)
 	mustCreateProfileRow(t, db, "library", library)
+	mustCreateProfileRow(t, db, "movie collection", collection)
+	mustCreateProfileRow(t, db, "series", series)
 	mustCreateProfileRow(t, db, "media", media)
 	mustCreateProfileRow(t, db, "watch history", history)
 	mustCreateProfileRow(t, db, "full preprocess task", preprocess)
@@ -182,12 +193,31 @@ func assertFullProfileRows(t *testing.T, db *gorm.DB) {
 		t.Fatalf("legacy user changed: %+v", user)
 	}
 
+	var collection MovieCollection
+	if err := db.First(&collection, "id=?", "legacy-collection").Error; err != nil {
+		t.Fatalf("legacy movie collection: %v", err)
+	}
+	if collection.Name != "Legacy Collection" || collection.MediaCount != 1 || collection.FileCount != 1 {
+		t.Fatalf("legacy movie collection changed: %+v", collection)
+	}
+
+	var series Series
+	if err := db.First(&series, "id=?", "legacy-series").Error; err != nil {
+		t.Fatalf("legacy series: %v", err)
+	}
+	if series.LibraryID != "legacy-library" || series.FolderPath != "/legacy/series" {
+		t.Fatalf("legacy series changed: %+v", series)
+	}
+
 	var media Media
 	if err := db.First(&media, "id=?", "legacy-media").Error; err != nil {
 		t.Fatalf("legacy media: %v", err)
 	}
 	if media.FilePath != "/legacy/movies/movie.mkv" || media.FileSize != 8*1024*1024*1024 || media.Duration != 7200 {
 		t.Fatalf("legacy media changed: %+v", media)
+	}
+	if media.CollectionID != collection.ID || media.SeriesID != series.ID {
+		t.Fatalf("legacy media relationships changed: %+v", media)
 	}
 
 	var history WatchHistory
