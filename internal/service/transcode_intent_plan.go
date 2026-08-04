@@ -71,16 +71,14 @@ func transcodeArtifactDurationMS(job *TranscodeJob) int64 {
 	return 0
 }
 
+// supportedTranscodeIntent is the final execution fence for the retired
+// persistent playback scheduler. Runtime/startup/on-demand work must execute
+// through PlaybackSessionService, which owns its process and temporary files.
+// Explicit administrator preprocessing uses PreprocessService and is not
+// hydrated through this queue.
 func supportedTranscodeIntent(record *model.TranscodeJobRecord) bool {
 	if record == nil {
 		return false
 	}
-	switch transcodedomain.Intent(record.Intent) {
-	case transcodedomain.IntentRuntimeHLS,
-		transcodedomain.IntentStartupHLS,
-		transcodedomain.IntentStartupContinuationHLS:
-		return true
-	default:
-		return false
-	}
+	return !isRetiredRuntimePlaybackIntent(record.Intent) && record.Intent != retiredRuntimePlaybackIntent
 }
