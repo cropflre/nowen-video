@@ -65,7 +65,9 @@ func TestRunnerPublishesFirstSegmentAndRunsUntilSessionClose(t *testing.T) {
 		if callbacks.OnStarted != nil {
 			callbacks.OnStarted(nil)
 		}
-		require.NoError(t, materializeFirstSegment(command))
+		if err := materializeFirstSegment(command); err != nil {
+			return transcodeexecutor.Result{Err: err}
+		}
 		if callbacks.OnProgress != nil {
 			callbacks.OnProgress(transcodeexecutor.Progress{OutTimeMS: 2_000, Speed: "2.5x", State: "continue"})
 		}
@@ -135,7 +137,9 @@ func TestRunnerFallsBackToSoftwareBeforePublishingTimeline(t *testing.T) {
 		if callbacks.OnStarted != nil {
 			callbacks.OnStarted(nil)
 		}
-		require.NoError(t, materializeFirstSegment(command))
+		if err := materializeFirstSegment(command); err != nil {
+			return transcodeexecutor.Result{Err: err}
+		}
 		<-ctx.Done()
 		return transcodeexecutor.Result{Err: ctx.Err(), Cancelled: true}
 	}
