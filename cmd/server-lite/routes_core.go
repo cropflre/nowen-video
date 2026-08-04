@@ -15,6 +15,7 @@ func registerCoreAPI(
 	services *service.Services,
 	handlers *handler.Handlers,
 	playbackPlan *handler.PlaybackPlanHandler,
+	playbackSessions *handler.PlaybackSessionHandler,
 	repos *repository.Repositories,
 	jwtMiddleware gin.HandlerFunc,
 ) {
@@ -69,6 +70,16 @@ func registerCoreAPI(
 	api.GET("/audio-track/:id/:trackIdx", guardByMediaID, handlers.Stream.AudioPlaylist)
 	api.GET("/audio-track/:id/:trackIdx/:seg", guardByMediaID, handlers.Stream.AudioSegment)
 	api.GET("/media/:id/poster", handlers.Stream.Poster)
+
+	// Runtime transcode is session-scoped. These routes never resolve a
+	// persistent Artifact and every playlist/segment read holds a Reader Lease.
+	api.POST("/playback/sessions", playbackSessions.Create)
+	api.GET("/playback/sessions/:sessionID/status", playbackSessions.Status)
+	api.POST("/playback/sessions/:sessionID/heartbeat", playbackSessions.Heartbeat)
+	api.POST("/playback/sessions/:sessionID/restart", playbackSessions.Restart)
+	api.DELETE("/playback/sessions/:sessionID", playbackSessions.Close)
+	api.GET("/playback/sessions/:sessionID/generations/:generationID/stream.m3u8", playbackSessions.Playlist)
+	api.GET("/playback/sessions/:sessionID/generations/:generationID/:file", playbackSessions.Segment)
 
 	api.GET("/media/:id/persons", handlers.Media.GetPersons)
 	api.GET("/persons/:id", handlers.Media.GetPersonDetail)
