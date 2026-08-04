@@ -1,7 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import VideoPlayer from './VideoPlayer'
 import { usePlaybackSessionSource } from '@/hooks/usePlaybackSessionSource'
+import { usePlayerStore } from '@/stores/player'
+import {
+  clearPlaybackSessionRuntime,
+  setPlaybackSessionRuntime,
+} from '@/playback/sessionRuntime'
 
 interface SessionVideoPlayerProps {
   fallbackSrc: string
@@ -29,12 +34,28 @@ export default function SessionVideoPlayer({
   spriteVttUrl,
 }: SessionVideoPlayerProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const absolutePositionRef = useRef(Math.max(0, startPosition))
   const playback = usePlaybackSessionSource({
     enabled: true,
     mediaId,
     fallbackSource: fallbackSrc,
     startPosition,
   })
+
+  useEffect(() => {
+    if (!playback.sessionId || playback.generationId <= 0) return
+    absolutePositionRef.current = playback.offsetSeconds
+    setPlaybackSessionRuntime(mediaId, {
+      sessionId: playback.sessionId,
+      generationId: playback.generationId,
+      offsetSeconds: playback.offsetSeconds,
+    })
+    usePlayerStore.getState().setCurrentTime(playback.offsetSeconds)
+
+    return () => {
+      clearPlaybackSessionRuntime(mediaId, playback.sessionId || undefined)
+    }
+  }, [mediaId, playback.sessionId, playback.generationId, playback.offsetSeconds])
 
   useEffect(() => {
     if (!playback.source || !playback.sessionId) return
@@ -44,9 +65,19 @@ export default function SessionVideoPlayer({
     let heartbeatTimer = 0
     let discoverTimer = 0
 
+    const updateAbsolutePosition = () => {
+      if (!video) return
+      const relativePosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
+      const absolutePosition = playback.offsetSeconds + relativePosition
+      absolutePositionRef.current = absolutePosition
+      // VideoPlayer owns the visible timeline store. Session playback writes the
+      // absolute media position after its relative timeupdate listener runs.
+      usePlayerStore.getState().setCurrentTime(absolutePosition)
+    }
+
     const reportHeartbeat = () => {
       if (!video) return
-      const relativePosition = Number.isFinite(video.currentTime) ? video.currentTime : 0
+      const relativePosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
       let bufferedEnd = relativePosition
       if (video.buffered.length > 0) {
         bufferedEnd = video.buffered.end(video.buffered.length - 1)
@@ -59,6 +90,7 @@ export default function SessionVideoPlayer({
     }
 
     const onEnded = () => {
+      updateAbsolutePosition()
       reportHeartbeat()
       void playback.close('playback_ended')
     }
@@ -73,8 +105,11 @@ export default function SessionVideoPlayer({
         discoverTimer = window.setTimeout(attach, 50)
         return
       }
+      video.addEventListener('timeupdate', updateAbsolutePosition)
+      video.addEventListener('loadedmetadata', updateAbsolutePosition)
       video.addEventListener('ended', onEnded)
       window.addEventListener('pagehide', onPageHide)
+      updateAbsolutePosition()
       reportHeartbeat()
       heartbeatTimer = window.setInterval(
         reportHeartbeat,
@@ -87,6 +122,8 @@ export default function SessionVideoPlayer({
       disposed = true
       clearTimeout(discoverTimer)
       clearInterval(heartbeatTimer)
+      video?.removeEventListener('timeupdate', updateAbsolutePosition)
+      video?.removeEventListener('loadedmetadata', updateAbsolutePosition)
       video?.removeEventListener('ended', onEnded)
       window.removeEventListener('pagehide', onPageHide)
     }
@@ -99,6 +136,78 @@ export default function SessionVideoPlayer({
     playback.heartbeat,
     playback.close,
   ])
+
+  const requestSeek = useCallback((targetSeconds: number, reason: string) => {
+    if (!playback.sessionId || playback.loading) return
+    const upperBound = knownDuration && knownDuration > 0 ? knownDuration : Number.MAX_SAFE_INTEGER
+    const target = Math.max(0, Math.min(upperBound, targetSeconds))
+    absolutePositionRef.current = target
+    usePlayerStore.getState().setCurrentTime(target)
+    void playback.restart(target, reason)
+  }, [knownDuration, playback.sessionId, playback.loading, playback.restart])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!playback.sessionId || playback.loading) return
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+
+      let delta = 0
+      if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'j') delta = -10
+      if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'l') delta = 10
+      if (delta === 0) return
+
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      requestSeek(absolutePositionRef.current + delta, 'keyboard_seek')
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [playback.sessionId, playback.loading, requestSeek])
+
+  const handlePlayerClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+
+    const progressBar = target.closest<HTMLElement>('.progress-bar')
+    if (progressBar && rootRef.current?.contains(progressBar)) {
+      const rect = progressBar.getBoundingClientRect()
+      if (rect.width <= 0) return
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+      const duration = knownDuration && knownDuration > 0
+        ? knownDuration
+        : usePlayerStore.getState().duration
+      if (duration <= 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      requestSeek(ratio * duration, 'progress_seek')
+      return
+    }
+
+    const button = target.closest<HTMLButtonElement>('button')
+    if (!button || !rootRef.current?.contains(button)) return
+    if (button.querySelector('[class*="lucide-skip-forward"]')) {
+      event.preventDefault()
+      event.stopPropagation()
+      requestSeek(absolutePositionRef.current + 10, 'skip_forward')
+      return
+    }
+    if (button.querySelector('[class*="lucide-skip-back"]')) {
+      const parent = button.parentElement
+      const isTitleBack = Boolean(
+        parent?.classList.contains('absolute') &&
+        parent.classList.contains('top-4') &&
+        parent.classList.contains('left-4'),
+      )
+      if (!isTitleBack) {
+        event.preventDefault()
+        event.stopPropagation()
+        requestSeek(absolutePositionRef.current - 10, 'skip_backward')
+      }
+    }
+  }
 
   const handleBack = () => {
     void playback.close('navigate_back', true)
@@ -142,7 +251,11 @@ export default function SessionVideoPlayer({
   }
 
   return (
-    <div ref={rootRef} className="h-full w-full">
+    <div
+      ref={rootRef}
+      className="h-full w-full"
+      onClickCapture={handlePlayerClickCapture}
+    >
       <VideoPlayer
         src={playback.source}
         mode="hls"
