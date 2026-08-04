@@ -16,6 +16,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$DESKTOP_ROOT/.." && pwd)"
+DEV_WEB_PORT=28889
 
 normalize_version() {
     local raw="${1:-}"
@@ -43,10 +44,12 @@ APP_VERSION_RESOLVED="$(resolve_app_version)"
 export NOWEN_VERSION="$APP_VERSION_RESOLVED"
 export APP_VERSION="$APP_VERSION_RESOLVED"
 export VITE_APP_VERSION="$APP_VERSION_RESOLVED"
+export WEB_PORT="$DEV_WEB_PORT"
 
 echo "============================================"
 echo " nowen-video Desktop 开发环境启动"
 echo " Version: $APP_VERSION_RESOLVED"
+echo " Vite port: $DEV_WEB_PORT"
 echo "============================================"
 
 BIN_DIR="$DESKTOP_ROOT/bin"
@@ -82,13 +85,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-(cd "$WEB_ROOT" && npm run dev) &
+(cd "$WEB_ROOT" && npm run dev -- --port "$DEV_WEB_PORT" --strictPort) &
 VITE_PID=$!
 echo "  Vite 已启动 (PID: $VITE_PID)"
 
 # 等待 vite 就绪
 for i in $(seq 1 30); do
-    if curl -sf http://localhost:3000 >/dev/null 2>&1; then
+    if curl -sf "http://localhost:$DEV_WEB_PORT" >/dev/null 2>&1; then
         echo "  ✅ Vite ready"
         break
     fi
