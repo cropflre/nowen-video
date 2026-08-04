@@ -16,6 +16,7 @@ const (
 	TaskKindScrape          = "scrape"
 	TaskKindTranscode       = "transcode"
 	TaskKindArtifactCleanup = "artifact_cleanup"
+	TaskKindStorageIncident = "storage_incident"
 
 	TaskStatusQueued    = "queued"
 	TaskStatusRunning   = "running"
@@ -56,8 +57,8 @@ type TaskCenterSnapshot struct {
 }
 
 // TaskCenterService adapts scan phases plus persisted scrape/transcode/cleanup
-// work into one read model. Existing execution services remain the source of
-// truth; Artifact cleanup remains owned by transcode_artifacts.
+// work and storage incidents into one read model. Existing execution services
+// remain the source of truth.
 type TaskCenterService struct {
 	library       *LibraryService
 	transcodeRepo *repository.TranscodeRepo
@@ -103,6 +104,17 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 	}
 
 	if s.executionRepo != nil {
+		incidents, err := s.executionRepo.ListActiveStorageIncidents(limit)
+		if err != nil {
+			return nil, fmt.Errorf("list storage incidents: %w", err)
+		}
+		for i := range incidents {
+			task := storageIncidentToUnifiedTask(&incidents[i])
+			if !activeOnly || isTaskActive(task.Status) {
+				tasks = append(tasks, task)
+			}
+		}
+
 		rows, err := s.executionRepo.ListArtifactCleanupOperations(limit)
 		if err != nil {
 			return nil, fmt.Errorf("list artifact cleanup operations: %w", err)
@@ -146,6 +158,11 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 		rightActive := isTaskActive(tasks[j].Status)
 		if leftActive != rightActive {
 			return leftActive
+		}
+		leftStorageFailure := tasks[i].Kind == TaskKindStorageIncident && tasks[i].Status == TaskStatusFailed
+		rightStorageFailure := tasks[j].Kind == TaskKindStorageIncident && tasks[j].Status == TaskStatusFailed
+		if leftStorageFailure != rightStorageFailure {
+			return leftStorageFailure
 		}
 		leftCleanupFailure := tasks[i].Kind == TaskKindArtifactCleanup && tasks[i].Status == TaskStatusFailed
 		rightCleanupFailure := tasks[j].Kind == TaskKindArtifactCleanup && tasks[j].Status == TaskStatusFailed
@@ -191,6 +208,58 @@ func scanPhaseToUnifiedTask(phase ScanPhaseData, updatedAt *time.Time) UnifiedTa
 		Progress:  progress,
 		SourceID:  phase.LibraryID,
 		UpdatedAt: updatedAt,
+	}
+}
+
+func storageIncidentToUnifiedTask(incident *model.TranscodeStorageIncidentRecord) UnifiedTask {
+	if incident == nil {
+		return UnifiedTask{}
+	}
+	subtitle := storageIncidentCodeLabel(incident.Code)
+	if incident.Occurrences > 1 {
+		subtitle += fmt.Sprintf(" · 已出现 %d 次", incident.Occurrences)
+	}
+	messageParts := make([]string, 0, 3)
+	if incident.Message != "" {
+		messageParts = append(messageParts, incident.Message)
+	}
+	if incident.Path != "" {
+		messageParts = append(messageParts, incident.Path)
+	}
+	if incident.Retryable {
+		messageParts = append(messageParts, "系统将持续探测并在存储恢复后自动解除队列暂停")
+	} else {
+		messageParts = append(messageParts, "需要管理员修复挂载模式或目录权限")
+	}
+	return UnifiedTask{
+		ID:        TaskKindStorageIncident + ":" + incident.ID,
+		Kind:      TaskKindStorageIncident,
+		Status:    TaskStatusFailed,
+		Title:     "转码存储不可写",
+		Subtitle:  subtitle,
+		Message:   strings.Join(messageParts, " · "),
+		Progress:  0,
+		SourceID:  incident.ID,
+		CreatedAt: timePtr(incident.FirstSeenAt),
+		UpdatedAt: timePtr(incident.LastSeenAt),
+		StartedAt: timePtr(incident.FirstSeenAt),
+	}
+}
+
+func storageIncidentCodeLabel(code string) string {
+	switch code {
+	case "no_space":
+		return "空间耗尽"
+	case "read_only":
+		return "只读文件系统"
+	case "permission_denied":
+		return "目录权限不足"
+	case "unavailable":
+		return "挂载不可用"
+	case "io_error":
+		return "存储 I/O 错误"
+	default:
+		return "存储状态异常"
 	}
 }
 
