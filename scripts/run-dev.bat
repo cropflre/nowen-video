@@ -14,6 +14,7 @@ REM  如果端口已被占用，会从优先端口开始自动向上寻找空闲
 REM ============================================================
 
 set "SCRIPT_DIR=%~dp0"
+set "PROJECT_DIR=%SCRIPT_DIR%.."
 set "PORT_HELPER=%SCRIPT_DIR%find-free-port.ps1"
 
 REM 优先级：命令行参数 > 已有环境变量 > 项目默认值
@@ -66,13 +67,13 @@ echo ============================================================
 echo.
 
 echo [1/2] 启动后端服务窗口 ...
-start "nowen-video-server-lite (port %SERVER_PORT%)" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_DEBUG=%NOWEN_DEBUG%&& set NOWEN_SERVER_MODE=lite&& set NOWEN_PORT_RESOLVED=1&& %SCRIPT_DIR%run-server.bat"
+start "nowen-video-server-lite (port %SERVER_PORT%)" /D "%PROJECT_DIR%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_DEBUG=%NOWEN_DEBUG%&& set NOWEN_SERVER_MODE=lite&& set NOWEN_PORT_RESOLVED=1&& call scripts\run-server.bat"
 
 REM 稍等一下，让后端先开始初始化
 timeout /t 2 /nobreak >nul
 
 echo [2/2] 启动前端 Vite 窗口 ...
-start "nowen-video-web (port %WEB_PORT%)" cmd /k "set WEB_PORT=%WEB_PORT%&& set SERVER_PORT=%SERVER_PORT%&& set NOWEN_PORT_RESOLVED=1&& %SCRIPT_DIR%run-web.bat"
+start "nowen-video-web (port %WEB_PORT%)" /D "%PROJECT_DIR%" cmd /k "set WEB_PORT=%WEB_PORT%&& set SERVER_PORT=%SERVER_PORT%&& set NOWEN_PORT_RESOLVED=1&& call scripts\run-web.bat"
 
 echo.
 echo 已分别启动后端和前端窗口，关闭对应窗口即可停止服务。
