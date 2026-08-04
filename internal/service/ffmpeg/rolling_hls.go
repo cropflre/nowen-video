@@ -6,12 +6,16 @@ import (
 	"strconv"
 )
 
-// RollingHLSOptions applies session-scoped storage limits to the canonical HLS
-// encoder arguments without duplicating codec/backend planning.
+// RollingHLSOptions applies session-scoped storage and stream-selection limits
+// to the canonical HLS encoder arguments without duplicating codec/backend
+// planning. Audio selection is emitted only for Session playback callers; other
+// HLS producers retain their historical automatic stream selection.
 type RollingHLSOptions struct {
 	ListSize        int
 	DeleteThreshold int
 	SegmentPattern  string
+	MapAudioTrack   bool
+	AudioTrack      int
 }
 
 func BuildRollingHLSArgs(opts BuildOptions, rolling RollingHLSOptions) []string {
@@ -40,8 +44,18 @@ func BuildRollingHLSArgs(opts BuildOptions, rolling RollingHLSOptions) []string 
 	}
 
 	outputIndex := len(args) - 1
-	result := make([]string, 0, len(args)+2)
+	result := make([]string, 0, len(args)+8)
 	result = append(result, args[:outputIndex]...)
+	if rolling.MapAudioTrack {
+		audioTrack := rolling.AudioTrack
+		if audioTrack < 0 {
+			audioTrack = 0
+		}
+		result = append(result,
+			"-map", "0:v:0",
+			"-map", fmt.Sprintf("0:a:%d?", audioTrack),
+		)
+	}
 	result = append(result,
 		"-hls_delete_threshold",
 		strconv.Itoa(rolling.DeleteThreshold),
@@ -59,6 +73,9 @@ func ValidateRollingHLSOptions(rolling RollingHLSOptions) error {
 	}
 	if rolling.DeleteThreshold > rolling.ListSize {
 		return fmt.Errorf("rolling HLS delete threshold must not exceed list size")
+	}
+	if rolling.MapAudioTrack && rolling.AudioTrack < -1 {
+		return fmt.Errorf("rolling HLS audio track must be -1 or greater")
 	}
 	return nil
 }
