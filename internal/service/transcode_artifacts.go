@@ -1,20 +1,15 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	transcodeexecutor "github.com/nowen-video/nowen-video/internal/transcode/executor"
-	"gorm.io/gorm"
 )
 
 type transcodeAttemptExecution struct {
@@ -164,8 +159,9 @@ func (s *TranscodeService) completeAttemptArtifact(job *TranscodeJob, execution 
 }
 
 // publishCurrentHLSArtifact validates, attests, prepares, atomically renames and
-// commits one immutable HLS Artifact. Job completion happens in the same
-// database transaction as Artifact visibility.
+// commits one immutable HLS Artifact. This primitive is retained for explicit
+// administrator workflows and historical execution certification; runtime
+// playback has no read path into the published Artifact store.
 func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, error) {
 	if s == nil || s.artifactStore == nil || s.executionRepo == nil {
 		return false, fmt.Errorf("transcode artifact store is unavailable")
@@ -285,131 +281,6 @@ func (s *TranscodeService) publishCurrentHLSArtifact(job *TranscodeJob) (bool, e
 	job.taskMu.Unlock()
 	s.InvalidateCacheDiskUsage()
 	return true, nil
-}
-
-func (s *TranscodeService) hasPublishedHLSArtifact(media *model.Media, quality string) bool {
-	if s == nil || s.executionRepo == nil || media == nil {
-		return false
-	}
-	artifact, err := s.executionRepo.FindPublishedHLSArtifact(
-		media.ID,
-		quality,
-		transcodeSourceFingerprint(media),
-		transcodePlannerVersion,
-	)
-	if err != nil || artifact == nil || artifact.Path == "" {
-		return false
-	}
-	manifestPath := artifact.ManifestPath
-	if manifestPath == "" {
-		manifestPath = filepath.Join(artifact.Path, "stream.m3u8")
-	}
-	_, err = os.Stat(manifestPath)
-	return err == nil
-}
-
-// ResolveHLSOutputDir is the only runtime HLS filesystem resolver. It first
-// resolves a Lease-valid staging Artifact, then an immutable published version,
-// then performs one bounded legacy import for historical shared directories.
-func (s *TranscodeService) ResolveHLSOutputDir(media *model.Media, quality string) (string, error) {
-	if s == nil || s.executionRepo == nil || media == nil {
-		return "", gorm.ErrRecordNotFound
-	}
-	fingerprint := transcodeSourceFingerprint(media)
-	artifact, err := s.executionRepo.FindReadableHLSArtifact(
-		media.ID,
-		quality,
-		fingerprint,
-		transcodePlannerVersion,
-		time.Now(),
-	)
-	if err == nil && artifact != nil {
-		switch artifact.Status {
-		case "staging":
-			if artifact.TempPath != "" {
-				return artifact.TempPath, nil
-			}
-		case "publishing":
-			if artifact.Path != "" {
-				if _, statErr := os.Stat(artifact.Path); statErr == nil {
-					return artifact.Path, nil
-				}
-			}
-			if artifact.TempPath != "" {
-				return artifact.TempPath, nil
-			}
-		case "published":
-			if artifact.Path != "" {
-				return artifact.Path, nil
-			}
-		}
-	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", err
-	}
-	return s.importLegacyHLSArtifact(media, quality, fingerprint)
-}
-
-func (s *TranscodeService) importLegacyHLSArtifact(media *model.Media, quality, fingerprint string) (string, error) {
-	legacyDir := s.GetLegacyOutputDir(media.ID, quality)
-	manifestPath := filepath.Join(legacyDir, "stream.m3u8")
-	content, err := os.ReadFile(manifestPath)
-	if err != nil || !strings.Contains(string(content), ".ts") {
-		return "", gorm.ErrRecordNotFound
-	}
-	artifactID := stableHash(strings.Join([]string{
-		"legacy_runtime_hls_v1",
-		media.ID,
-		quality,
-		fingerprint,
-		transcodePlannerVersion,
-	}, "|"))
-	now := time.Now()
-	artifact := &model.TranscodeArtifactRecord{
-		ID:                artifactID,
-		JobID:             "legacy:" + artifactID,
-		MediaID:           media.ID,
-		Kind:              "hls_variant",
-		ProfileID:         quality,
-		SourceFingerprint: fingerprint,
-		PlannerVersion:    transcodePlannerVersion,
-		Path:              legacyDir,
-		ManifestPath:      manifestPath,
-		Status:            "published",
-		MigrationSource:   "legacy_runtime_hls_v1",
-		DurationMS:        int64(media.Duration * 1000),
-		SegmentDuration:   hlsTargetSegmentSeconds,
-		PublishedAt:       &now,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}
-	if err := s.executionRepo.ImportLegacyHLSArtifact(artifact); err != nil {
-		return "", err
-	}
-	s.logger.Infof("已导入历史 HLS Artifact media=%s profile=%s path=%s", media.ID, quality, legacyDir)
-	return legacyDir, nil
-}
-
-func (s *TranscodeService) WaitForFirstSegmentForMedia(ctx context.Context, media *model.Media, quality string) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		outputDir, resolveErr := s.ResolveHLSOutputDir(media, quality)
-		if resolveErr == nil {
-			manifestPath := filepath.Join(outputDir, "stream.m3u8")
-			if content, readErr := os.ReadFile(manifestPath); readErr == nil && strings.Contains(string(content), ".ts") {
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
 }
 
 func normalizeAttemptBackend(backend string) string {
