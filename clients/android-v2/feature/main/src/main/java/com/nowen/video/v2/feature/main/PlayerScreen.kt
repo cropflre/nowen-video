@@ -236,7 +236,6 @@ class PlayerViewModel @Inject constructor(
                     return@launch
                 }
                 applySessionResult(
-                    mediaId = mediaId,
                     title = title,
                     durationMs = durationMs,
                     subtitles = subtitles?.external.orEmpty(),
@@ -283,7 +282,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun applySessionResult(
-        mediaId: String,
         title: String,
         durationMs: Long,
         subtitles: List<SubtitleTrack>,
@@ -457,7 +455,7 @@ class PlayerViewModel @Inject constructor(
         )
 
         if (current.sessionManaged) {
-            reportProgress(current.sessionId.ifBlank { loadedId.orEmpty() }, relativePositionMs, current.mediaDurationMs, true)
+            reportProgress(loadedId.orEmpty(), relativePositionMs, current.mediaDurationMs, true)
             detachPlaybackSession("player_error")
             _state.update {
                 it.copy(
@@ -513,7 +511,6 @@ class PlayerViewModel @Inject constructor(
                         return@withLock
                     }
                     applySessionResult(
-                        mediaId = mediaId,
                         title = current.title,
                         durationMs = current.mediaDurationMs,
                         subtitles = current.externalSubtitles,
@@ -707,8 +704,9 @@ fun PlayerScreen(
     }
 
     fun reportCurrentProgress(force: Boolean) {
+        val current = viewModel.state.value
         val playerDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-        val duration = state.mediaDurationMs.takeIf { it > 0L } ?: playerDuration ?: 0L
+        val duration = current.mediaDurationMs.takeIf { it > 0L } ?: playerDuration ?: 0L
         viewModel.reportProgress(
             mediaId = mediaId,
             positionMs = player.currentPosition.coerceAtLeast(0L),
@@ -794,6 +792,7 @@ fun PlayerScreen(
 
     LaunchedEffect(player, state.sessionManaged, state.sessionOffsetMs) {
         if (!state.sessionManaged) return@LaunchedEffect
+        sessionDisplayPositionMs = state.sessionOffsetMs
         while (true) {
             sessionDisplayPositionMs = viewModel.absolutePositionMs(player.currentPosition)
             delay(500L)
@@ -811,17 +810,7 @@ fun PlayerScreen(
         leavePlayback("next_media", action = { onPlayNext(next.id) })
     }
 
-    DisposableEffect(
-        player,
-        mediaId,
-        lifecycleOwner,
-        state.nextEpisode?.id,
-        state.autoPlayNext,
-        state.mediaDurationMs,
-        state.sessionManaged,
-        state.sessionOffsetMs,
-        state.sessionGenerationId,
-    ) {
+    DisposableEffect(player, mediaId, lifecycleOwner) {
         val playerListener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying && player.playbackState == Player.STATE_READY) {
@@ -836,24 +825,25 @@ fun PlayerScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    val relativeEnd = if (state.sessionManaged) {
+                    val current = viewModel.state.value
+                    val relativeEnd = if (current.sessionManaged) {
                         relativePlaybackPositionMs(
                             sessionManaged = true,
-                            generationOffsetMs = state.sessionOffsetMs,
-                            absolutePositionMs = state.mediaDurationMs,
+                            generationOffsetMs = current.sessionOffsetMs,
+                            absolutePositionMs = current.mediaDurationMs,
                         )
                     } else {
                         player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-                            ?: state.mediaDurationMs
+                            ?: current.mediaDurationMs
                     }
                     viewModel.reportProgress(
                         mediaId = mediaId,
                         positionMs = relativeEnd,
-                        durationMs = state.mediaDurationMs,
+                        durationMs = current.mediaDurationMs,
                         force = true,
                     )
                     viewModel.closePlaybackSession("playback_ended")
-                    if (state.nextEpisode != null) {
+                    if (current.nextEpisode != null) {
                         nextEpisodeCountdown = NEXT_EPISODE_COUNTDOWN_SECONDS
                         showNextEpisodePanel = true
                     }
@@ -874,10 +864,11 @@ fun PlayerScreen(
                 newPosition: Player.PositionInfo,
                 reason: Int,
             ) {
-                if (reason == Player.DISCONTINUITY_REASON_SEEK && state.sessionManaged) {
+                val current = viewModel.state.value
+                if (reason == Player.DISCONTINUITY_REASON_SEEK && current.sessionManaged) {
                     val target = clampPlaybackTargetMs(
-                        state.sessionOffsetMs + newPosition.positionMs.coerceAtLeast(0L),
-                        state.mediaDurationMs,
+                        current.sessionOffsetMs + newPosition.positionMs.coerceAtLeast(0L),
+                        current.mediaDurationMs,
                     )
                     player.pause()
                     viewModel.restartPlaybackSession(target, "exo_player_seek")
