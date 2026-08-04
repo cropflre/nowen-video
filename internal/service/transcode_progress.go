@@ -39,6 +39,10 @@ func (s *TranscodeService) recordProgress(job *TranscodeJob, progress transcodee
 		}
 	}
 
+	// Filesystem and store sampling runs asynchronously so FFmpeg's progress
+	// pipe is never blocked by NAS directory traversal or disk-pressure refresh.
+	s.scheduleJobStorageObservation(job, time.Now())
+
 	s.broadcastTranscodeEvent(EventTranscodeProgress, &TranscodeProgressData{
 		TaskID:   job.Task.ID,
 		MediaID:  job.Media.ID,
@@ -67,8 +71,13 @@ func (s *TranscodeService) markJobRunning(job *TranscodeJob) bool {
 }
 
 func (s *TranscodeService) finalizeCancelled(job *TranscodeJob) {
+	// Force one final observation while the Lease is still valid. The Job
+	// terminal transition then releases the audit row and its remaining future
+	// commitment.
+	s.observeJobStorageReservation(job, time.Now(), true)
 	now := time.Now()
 	if !s.persistJobTerminal(job, "cancelled", now) {
+		forgetStorageObservation(job)
 		return
 	}
 	job.taskMu.Lock()
@@ -80,6 +89,7 @@ func (s *TranscodeService) finalizeCancelled(job *TranscodeJob) {
 	if err != nil {
 		s.logger.Warnf("持久化转码取消状态失败 task=%s: %v", job.Task.ID, err)
 	}
+	s.releaseJobStorageReservation(job, "cancelled", now)
 	s.broadcastTranscodeEvent(EventTranscodeCancelled, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
@@ -90,12 +100,14 @@ func (s *TranscodeService) finalizeCancelled(job *TranscodeJob) {
 }
 
 func (s *TranscodeService) finalizeFailed(job *TranscodeJob, result transcodeexecutor.Result) {
+	s.observeJobStorageReservation(job, time.Now(), true)
 	errorText := strings.TrimSpace(result.ErrorText())
 	if errorText == "" {
 		errorText = "FFmpeg 进程异常退出"
 	}
 	now := time.Now()
 	if !s.persistJobTerminal(job, "failed", now) {
+		forgetStorageObservation(job)
 		return
 	}
 	job.taskMu.Lock()
@@ -107,6 +119,7 @@ func (s *TranscodeService) finalizeFailed(job *TranscodeJob, result transcodeexe
 	if err != nil {
 		s.logger.Warnf("持久化转码失败状态失败 task=%s: %v", job.Task.ID, err)
 	}
+	s.releaseJobStorageReservation(job, "failed", now)
 	s.broadcastTranscodeEvent(EventTranscodeFailed, &TranscodeProgressData{
 		TaskID:  job.Task.ID,
 		MediaID: job.Media.ID,
@@ -117,6 +130,8 @@ func (s *TranscodeService) finalizeFailed(job *TranscodeJob, result transcodeexe
 }
 
 func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
+	// Capture the last staging size before the workspace is atomically renamed.
+	s.observeJobStorageReservation(job, time.Now(), true)
 	published, publishErr := s.publishCurrentHLSArtifact(job)
 	if publishErr != nil {
 		s.finalizeFailed(job, transcodeexecutor.Result{Err: fmt.Errorf("发布转码 Artifact 失败: %w", publishErr)})
@@ -125,6 +140,7 @@ func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
 	if !published {
 		// Lease ownership changed while the old Worker was publishing. The new
 		// owner remains authoritative and this stale result must stay invisible.
+		forgetStorageObservation(job)
 		return
 	}
 
@@ -132,6 +148,7 @@ func (s *TranscodeService) finalizeCompleted(job *TranscodeJob) {
 	if job.CurrentArtifact != nil && job.CurrentArtifact.PublishedAt != nil {
 		now = *job.CurrentArtifact.PublishedAt
 	}
+	s.finalizePublishedStorageReservation(job, now)
 	job.taskMu.Lock()
 	job.Task.Status = "done"
 	job.Task.Progress = 100
