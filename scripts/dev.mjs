@@ -9,7 +9,6 @@ const __filename = fileURLToPath(import.meta.url)
 const scriptDir = path.dirname(__filename)
 const projectRoot = path.resolve(scriptDir, '..')
 const webRoot = path.join(projectRoot, 'web')
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
 function parsePort(value, name) {
   const port = Number(value)
@@ -92,15 +91,44 @@ function resolveVersion() {
   return '0.1.0'
 }
 
+function resolveNpmInvocation(args) {
+  // npm run 会提供 npm_execpath。直接用当前 node 执行 npm-cli.js，
+  // 避免 Windows 新版 Node 对 npm.cmd 直接 spawn 时抛出 EINVAL。
+  const npmExecPath = process.env.npm_execpath
+  if (npmExecPath && existsSync(npmExecPath)) {
+    return {
+      command: process.execPath,
+      args: [npmExecPath, ...args],
+    }
+  }
+
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', `npm ${args.join(' ')}`],
+    }
+  }
+
+  return { command: 'npm', args }
+}
+
+function runNpmSync(args, options) {
+  const invocation = resolveNpmInvocation(args)
+  return spawnSync(invocation.command, invocation.args, options)
+}
+
 function installWebDependencies() {
   if (existsSync(path.join(webRoot, 'node_modules'))) return
 
   console.log('[准备] 未检测到 web/node_modules，正在安装前端依赖...')
-  const result = spawnSync(npmCommand, ['install'], {
+  const result = runNpmSync(['install'], {
     cwd: webRoot,
     stdio: 'inherit',
     env: process.env,
   })
+  if (result.error) {
+    throw new Error(`前端依赖安装失败: ${result.error.message}`)
+  }
   if (result.status !== 0) {
     throw new Error(`前端依赖安装失败，退出码: ${result.status ?? 'unknown'}`)
   }
@@ -112,6 +140,11 @@ function startProcess(command, args, options) {
     stdio: 'inherit',
     detached: process.platform !== 'win32',
   })
+}
+
+function startNpm(args, options) {
+  const invocation = resolveNpmInvocation(args)
+  return startProcess(invocation.command, invocation.args, options)
 }
 
 function stopProcess(child) {
@@ -167,38 +200,47 @@ async function main() {
     VITE_APP_VERSION: version,
   }
 
-  const server = startProcess('go', ['run', './cmd/server-lite'], {
-    cwd: projectRoot,
-    env: {
-      ...sharedEnv,
-      CGO_ENABLED: '1',
-      NOWEN_DEBUG: process.env.NOWEN_DEBUG || 'true',
-      NOWEN_APP_PORT: String(serverPort),
-      SERVER_PORT: String(serverPort),
-    },
-  })
-
-  const web = startProcess(
-    npmCommand,
-    ['run', 'dev', '--', '--port', String(webPort), '--host', '--strictPort'],
-    {
-      cwd: webRoot,
-      env: {
-        ...sharedEnv,
-        WEB_PORT: String(webPort),
-        SERVER_PORT: String(serverPort),
-        VITE_API_PROXY_TARGET: `http://localhost:${serverPort}`,
-      },
-    },
-  )
-
+  let server = null
+  let web = null
   let shuttingDown = false
+
   const shutdown = (exitCode = 0) => {
     if (shuttingDown) return
     shuttingDown = true
     stopProcess(web)
     stopProcess(server)
     process.exitCode = exitCode
+  }
+
+  try {
+    server = startProcess('go', ['run', './cmd/server-lite'], {
+      cwd: projectRoot,
+      env: {
+        ...sharedEnv,
+        CGO_ENABLED: '1',
+        NOWEN_DEBUG: process.env.NOWEN_DEBUG || 'true',
+        NOWEN_APP_PORT: String(serverPort),
+        SERVER_PORT: String(serverPort),
+      },
+    })
+
+    web = startNpm(
+      ['run', 'dev', '--', '--port', String(webPort), '--host', '--strictPort'],
+      {
+        cwd: webRoot,
+        env: {
+          ...sharedEnv,
+          WEB_PORT: String(webPort),
+          SERVER_PORT: String(serverPort),
+          VITE_API_PROXY_TARGET: `http://localhost:${serverPort}`,
+        },
+      },
+    )
+  } catch (error) {
+    // spawn 可能同步抛错。确保前端启动失败时不会遗留已经运行的 Go 后端。
+    stopProcess(web)
+    stopProcess(server)
+    throw error
   }
 
   process.on('SIGINT', () => shutdown(0))
