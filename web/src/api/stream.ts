@@ -330,6 +330,7 @@ export const streamApi = {
           session_managed: true,
           reported_bitrate: Math.round(bitrate),
           recommended_max: Math.round(bitrate),
+          throttle: undefined,
         },
       })
     }
