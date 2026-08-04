@@ -204,6 +204,11 @@ func (s *PlaybackSession) snapshot() SessionSnapshot {
 	if generationID == 0 {
 		generationID = s.pendingGenerationID
 	}
+	// A failed preparing Generation is no longer pending, but its diagnostics
+	// remain the only useful status payload for the client and operator.
+	if generationID == 0 {
+		generationID = s.generationCounter
+	}
 	if current := s.generations[generationID]; current != nil {
 		value := current.snapshot()
 		generation = &value
