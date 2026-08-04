@@ -196,12 +196,19 @@ func (r *Runner) Start(ctx context.Context, request StartRequest) (*Execution, e
 	if _, ok := transcodeprofile.Runtime(request.ProfileID); !ok {
 		return nil, fmt.Errorf("unknown runtime transcode profile %q", request.ProfileID)
 	}
+	processLease, err := r.sessions.AcquireProcess(request.SessionID, request.GenerationID)
+	if err != nil {
+		return nil, err
+	}
 
 	execution := &Execution{
 		ready: make(chan ReadyResult, 1),
 		done:  make(chan transcodeexecutor.Result, 1),
 	}
-	go r.run(runtimeView, request, execution)
+	go func() {
+		defer processLease.Release()
+		r.run(runtimeView, request, execution)
+	}()
 	return execution, nil
 }
 
