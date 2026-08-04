@@ -9,13 +9,14 @@ on:
       - 'cmd/server-lite/**'
       - 'cmd/server/**'
       - 'cmd/transcode-fixture-cert/**'
+      - 'internal/playback/**'
       - 'internal/service/lite.go'
       - 'internal/service/task_center.go'
       - 'internal/service/task_center_test.go'
       - 'internal/service/playback_planner.go'
       - 'internal/service/playback_planner_test.go'
       - 'internal/service/playback_startup*.go'
-      - 'internal/service/stream_startup_bridge*.go'
+      - 'internal/service/media_probe_warmup*.go'
       - 'internal/service/transcode*.go'
       - 'internal/service/stream_artifacts.go'
       - 'internal/service/ondemand.go'
@@ -25,6 +26,7 @@ on:
       - 'internal/handler/stream_startup_bridge.go'
       - 'internal/handler/task_center.go'
       - 'internal/handler/playback_plan.go'
+      - 'internal/handler/playback_session.go'
       - 'internal/model/migrate_lite.go'
       - 'internal/model/transcode_execution.go'
       - 'internal/model/transcode_handoff*.go'
@@ -80,22 +82,22 @@ jobs:
         run: go test ./internal/transcode/timestampplan -run '^TestFFmpegCopyTSStartAtZeroPreservesContinuationOrigin$' -count=1 -v
       - name: Produced media attestation contract
         run: go test ./internal/transcode/attestation
-      - name: Timeline continuity contract
+      - name: Historical timeline value-object contract
         run: go test ./internal/transcode/timeline
-      - name: Execution plan, migration, attestation and resolver contract
-        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Timestamp|Attestation|Startup|Handoff|Timeline'
-      - name: Startup stream planner and bridge contract
-        run: go test ./internal/service -run 'Startup|Playback|EncodingPlan|Timestamp|Attestation|Handoff|Timeline'
+      - name: Execution history and retirement contract
+        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Timestamp|Attestation|Artifact|Lease|Retire|RuntimePlayback|PlaybackSession'
+      - name: Playback session and fallback contract
+        run: go test ./internal/playback/... ./internal/service ./internal/handler -run 'PlaybackSession|Playback|RuntimeArtifactServingIsRetired|SubmitStartupStreamIsRetired|RuntimePlayback'
+      - name: Runtime playback source removal contract
+        run: go test ./cmd/server -run '^TestRetiredRuntimePlaybackImplementationRemainsDeleted$'
       - name: Plan and attestation race verification
         run: go test -race ./internal/transcode/encodingplan ./internal/transcode/timestampplan ./internal/transcode/attestation ./internal/transcode/timeline
       - name: Artifact lease and filesystem race tests
-        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Timestamp|Attestation|Handoff|Timeline|Lease|Shutdown'
-      - name: Previous attested resolver performance baseline
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Timestamp|Attestation|Lease|Shutdown|Retire'
+      - name: Artifact repository encoding-plan baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByEncodingPlan$' -benchtime=100x -benchmem
-      - name: Timestamp-fenced resolver performance baseline
+      - name: Artifact repository execution-contract baseline
         run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByExecutionContract$' -benchtime=100x -benchmem
-      - name: Handoff contract lookup performance baseline
-        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindHandoffAttestation$' -benchtime=100x -benchmem
       - name: Build fixture certification CLI
         run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
       - name: Build lite server
@@ -204,7 +206,7 @@ jobs:
             docker exec "$container" test -d /cache/transcode
 
             # Restart the exact image against the same volumes. This exercises
-            # additive migrations, Artifact startup reconciliation and normal
+            # additive migrations, runtime retirement reconciliation and normal
             # ownership/permission handling rather than only a cold boot.
             docker rm -f "$container" >/dev/null
             docker run -d \
