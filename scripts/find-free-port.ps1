@@ -19,9 +19,8 @@ function Test-TcpPortAvailable {
     )
 
     # 先读取当前监听端口，再实际尝试绑定，避免只依赖 netstat 文本解析。
-    $activePorts = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
-        .GetActiveTcpListeners()
-        .Port
+    $ipProperties = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
+    $activePorts = $ipProperties.GetActiveTcpListeners() | ForEach-Object { $_.Port }
 
     if ($activePorts -contains $Port) {
         return $false
