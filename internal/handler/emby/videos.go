@@ -98,6 +98,36 @@ func (h *Handler) HLSMasterHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"Error": "Item not found"})
 		return
 	}
+
+	// Full runtime HLS is ephemeral and strictly bound to the external Emby
+	// PlaySessionId. The returned master contains one current Generation; seek
+	// or profile changes create a new Generation instead of sharing media-level
+	// output directories between clients.
+	if runtime := h.playbackSessionRuntime(); runtime != nil {
+		externalID, startPositionMS, hasStart, maxBitrate := parseEmbyPlaybackRequest(c)
+		mapping, err := runtime.ensure(
+			c.Request.Context(),
+			c.GetString("user_id"),
+			uuid,
+			externalID,
+			startPositionMS,
+			hasStart,
+			maxBitrate,
+		)
+		if err != nil {
+			h.logger.Warnf("[emby] playback session start failed media=%s err=%v", uuid, err)
+			c.JSON(http.StatusBadGateway, gin.H{"Error": "Runtime transcode unavailable"})
+			return
+		}
+		c.Header("Content-Type", "application/vnd.apple.mpegurl")
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Pragma", "no-cache")
+		c.String(http.StatusOK, buildEmbySessionMaster(c, embyID, mapping))
+		return
+	}
+
+	// Compatibility fallback for deployments that have not mounted the new
+	// PlaybackSessionService yet.
 	maxBitrate := 0
 	if value := c.Query("maxBitrate"); value != "" {
 		maxBitrate = atoiSafe(value)
