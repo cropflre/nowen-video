@@ -26,32 +26,18 @@ func transcodeActiveKey(media *model.Media, quality string, startOffset float64)
 	))
 }
 
+// createExecutionJob is the authoritative creation boundary for the former
+// persistent Runtime HLS scheduler. Keeping the compatibility call surface is
+// useful for old internal callers, but no Job row may be inserted after runtime
+// playback moved to PlaybackSessionService.
 func (s *TranscodeService) createExecutionJob(media *model.Media, quality string, startOffset float64, legacyTaskID string, priority int) (*model.TranscodeJobRecord, error) {
-	fingerprint := transcodeSourceFingerprint(media)
-	planHash := stableHash(fmt.Sprintf("%s|%s|%.3f|%s", transcodePlannerVersion, quality, startOffset, s.hwAccel))
-	activeKey := transcodeActiveKey(media, quality, startOffset)
-	legacyID := strings.TrimSpace(legacyTaskID)
-	job := &model.TranscodeJobRecord{
-		MediaID:           media.ID,
-		Intent:            "runtime_hls",
-		ProfileID:         quality,
-		AudioTrack:        -1,
-		StartMS:           int64(startOffset * 1000),
-		Priority:          priority,
-		Status:            "queued",
-		DesiredState:      "running",
-		ActiveKey:         &activeKey,
-		SourceFingerprint: fingerprint,
-		PlanHash:          planHash,
-		PlannerVersion:    transcodePlannerVersion,
-	}
-	if legacyID != "" {
-		job.LegacyTaskID = &legacyID
-	}
-	if err := s.executionRepo.CreateJob(job); err != nil {
-		return nil, err
-	}
-	return job, nil
+	_ = s
+	_ = media
+	_ = quality
+	_ = startOffset
+	_ = legacyTaskID
+	_ = priority
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
 func (s *TranscodeService) findActiveExecutionTask(media *model.Media, quality string, startOffset float64, requestedPriority int) (*model.TranscodeTask, error) {
