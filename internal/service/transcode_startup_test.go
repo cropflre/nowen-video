@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -55,6 +56,17 @@ func TestStartupStreamProfileCapsAt720p(t *testing.T) {
 		if got := startupStreamProfile(&model.MediaProbeRecord{Height: tc.height}); got != tc.want {
 			t.Fatalf("height=%d profile=%s want=%s", tc.height, got, tc.want)
 		}
+	}
+}
+
+func TestSubmitStartupStreamIsRetired(t *testing.T) {
+	service := &TranscodeService{}
+	task, err := service.SubmitStartupStream(
+		&model.Media{ID: "media-1", FilePath: "/media/movie.mkv"},
+		&model.MediaProbeRecord{VideoCodec: "hevc", DurationMS: 60_000},
+	)
+	if task != nil || !errors.Is(err, ErrPersistentRuntimeTranscodeRetired) {
+		t.Fatalf("startup stream submission must be rejected task=%+v err=%v", task, err)
 	}
 }
 
