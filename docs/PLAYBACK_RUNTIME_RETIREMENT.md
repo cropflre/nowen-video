@@ -2,7 +2,7 @@
 
 Runtime video transcoding is now owned exclusively by `PlaybackSessionService`.
 The server no longer creates, resolves, publishes, recovers, or reuses durable
-Runtime HLS / Startup Stream Artifacts.
+Runtime HLS / Startup Stream Artifacts for ordinary playback.
 
 ## Storage ownership
 
@@ -34,11 +34,36 @@ The following compatibility paths return `410 Gone` with
 Current clients create a session through `POST /api/playback/sessions`. Emby and
 Infuse bind HLS to their external `PlaySessionId`.
 
+## Physically removed runtime implementation
+
+The retirement is no longer only a routing fence. The following implementation
+has been removed from the production service layer:
+
+- on-demand video and audio FFmpeg segment generation;
+- media/profile keyed segment locks and cache publication;
+- Runtime Artifact playlist and segment filesystem serving;
+- Artifact-version query binding and immutable Runtime segment responses;
+- Lease-valid Runtime workspace resolution;
+- published Runtime Artifact lookup for playback;
+- automatic import of historical shared HLS directories;
+- first-segment polling against durable Artifact storage;
+- Startup eligibility, profile, active-key and command rewriting;
+- Startup Continuation Job creation and queue submission;
+- Startup/Continuation Artifact resolution and EVENT bridge construction;
+- handoff attestation orchestration;
+- scan-time Startup submission callbacks.
+
+Source-compatible methods remain only where older integrations may still link
+against the symbol. They return `ErrPersistentRuntimeTranscodeRetired`,
+`gorm.ErrRecordNotFound`, an empty compatibility value, or a `410` HTTP
+tombstone. They perform no database lookup, filesystem read or FFmpeg execution.
+
 ## Startup behavior
 
 Media scan completion still submits FFprobe warm-up. It does not submit Startup
 Stream or Runtime HLS jobs and therefore does not create playback files before
-a user starts watching.
+a user starts watching. Probe Warmup now only persists technical information
+for the Playback Planner and Session runner.
 
 At server startup and every lease-recovery interval, the retirement sweep:
 
@@ -65,6 +90,10 @@ The retirement sweep does not remove:
 Only validated child paths below `cache/transcode` are eligible for deletion.
 The exact transcode root and namespace roots are rejected by the path boundary.
 
+The generic Artifact write/publish primitives and repository models remain for
+administrator workflows, historical execution evidence, migration and storage
+certification. Ordinary playback has no read path into that store.
+
 ## Rolling upgrade behavior
 
 When an older server instance still owns a runtime Job Lease, the new instance
@@ -76,3 +105,16 @@ from deleting files still being written by a valid worker.
 Runtime playback sessions themselves are intentionally not recovered after a
 server restart. `PlaybackSessionService` removes orphan session directories on
 startup, and clients create a new session.
+
+## Regression boundary
+
+A source-level server test prevents reintroduction of:
+
+- deleted Startup Bridge and handoff runtime files;
+- on-demand execution-runtime calls;
+- Runtime Artifact filesystem resolution and legacy import;
+- Startup Continuation Job creation;
+- Probe Warmup Startup callback execution.
+
+These checks complement behavioral tests for `410`, Session cleanup, Lease-safe
+retirement and zero-write runtime Job creation.
