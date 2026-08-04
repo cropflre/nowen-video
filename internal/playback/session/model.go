@@ -1,0 +1,191 @@
+package session
+
+import (
+	"context"
+	"sync"
+	"time"
+)
+
+type SessionState string
+
+const (
+	SessionStateCreating SessionState = "creating"
+	SessionStateStarting SessionState = "starting"
+	SessionStateReady    SessionState = "ready"
+	SessionStateActive   SessionState = "active"
+	SessionStateClosing  SessionState = "closing"
+	SessionStateClosed   SessionState = "closed"
+	SessionStateFailed   SessionState = "failed"
+	SessionStateExpired  SessionState = "expired"
+)
+
+type GenerationState string
+
+const (
+	GenerationStatePreparing GenerationState = "preparing"
+	GenerationStateRunning   GenerationState = "running"
+	GenerationStateDraining  GenerationState = "draining"
+	GenerationStateRetired   GenerationState = "retired"
+	GenerationStateFailed    GenerationState = "failed"
+)
+
+type CreateRequest struct {
+	UserID          string
+	MediaID         string
+	ProfileID       string
+	StartPositionMS int64
+	AudioTrack      int
+	SubtitleTrack   int
+	BurnSubtitle    bool
+	MaxBitrate      int
+}
+
+type BeginGenerationRequest struct {
+	ProfileID       string
+	StartPositionMS int64
+	AudioTrack      int
+	SubtitleTrack   int
+	BurnSubtitle    bool
+	MaxBitrate      int
+	Reason          string
+}
+
+type Heartbeat struct {
+	GenerationID uint64
+	PositionMS   int64
+	BufferedEndMS int64
+	Paused       bool
+}
+
+type GenerationSnapshot struct {
+	ID              uint64          `json:"id"`
+	SessionID       string          `json:"session_id"`
+	State           GenerationState `json:"state"`
+	ProfileID       string          `json:"profile_id"`
+	StartPositionMS int64           `json:"start_position_ms"`
+	AudioTrack      int             `json:"audio_track"`
+	SubtitleTrack   int             `json:"subtitle_track"`
+	BurnSubtitle    bool            `json:"burn_subtitle"`
+	MaxBitrate      int             `json:"max_bitrate"`
+	Reason          string          `json:"reason,omitempty"`
+	OutputDir       string          `json:"-"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+}
+
+type SessionSnapshot struct {
+	ID                  string         `json:"id"`
+	UserID              string         `json:"user_id"`
+	MediaID             string         `json:"media_id"`
+	State               SessionState   `json:"state"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	LastSeen            time.Time      `json:"last_seen"`
+	Paused              bool           `json:"paused"`
+	PositionMS          int64          `json:"position_ms"`
+	BufferedEndMS       int64          `json:"buffered_end_ms"`
+	CurrentGenerationID uint64         `json:"current_generation_id,omitempty"`
+	PendingGenerationID uint64         `json:"pending_generation_id,omitempty"`
+	CloseReason         string         `json:"close_reason,omitempty"`
+	Generation          *GenerationSnapshot `json:"generation,omitempty"`
+}
+
+type PlaybackSession struct {
+	ID      string
+	UserID  string
+	MediaID string
+
+	mu                  sync.RWMutex
+	state               SessionState
+	createdAt           time.Time
+	updatedAt           time.Time
+	lastSeen            time.Time
+	paused              bool
+	positionMS          int64
+	bufferedEndMS       int64
+	currentGenerationID uint64
+	pendingGenerationID uint64
+	generationCounter   uint64
+	generations         map[uint64]*Generation
+	closing             bool
+	closeReason         string
+	closed               chan struct{}
+	closedOnce           sync.Once
+
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+type Generation struct {
+	ID        uint64
+	SessionID string
+
+	ProfileID       string
+	StartPositionMS int64
+	AudioTrack      int
+	SubtitleTrack   int
+	BurnSubtitle    bool
+	MaxBitrate      int
+	Reason          string
+	OutputDir       string
+
+	mu        sync.RWMutex
+	state     GenerationState
+	createdAt time.Time
+	updatedAt time.Time
+	gate      *readerGate
+	ctx       context.Context
+	cancel    context.CancelFunc
+}
+
+func (g *Generation) snapshot() GenerationSnapshot {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return GenerationSnapshot{
+		ID:              g.ID,
+		SessionID:       g.SessionID,
+		State:           g.state,
+		ProfileID:       g.ProfileID,
+		StartPositionMS: g.StartPositionMS,
+		AudioTrack:      g.AudioTrack,
+		SubtitleTrack:   g.SubtitleTrack,
+		BurnSubtitle:    g.BurnSubtitle,
+		MaxBitrate:      g.MaxBitrate,
+		Reason:          g.Reason,
+		OutputDir:       g.OutputDir,
+		CreatedAt:       g.createdAt,
+		UpdatedAt:       g.updatedAt,
+	}
+}
+
+func (s *PlaybackSession) snapshot() SessionSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var generation *GenerationSnapshot
+	generationID := s.currentGenerationID
+	if generationID == 0 {
+		generationID = s.pendingGenerationID
+	}
+	if current := s.generations[generationID]; current != nil {
+		value := current.snapshot()
+		generation = &value
+	}
+
+	return SessionSnapshot{
+		ID:                  s.ID,
+		UserID:              s.UserID,
+		MediaID:             s.MediaID,
+		State:               s.state,
+		CreatedAt:           s.createdAt,
+		UpdatedAt:           s.updatedAt,
+		LastSeen:            s.lastSeen,
+		Paused:              s.paused,
+		PositionMS:          s.positionMS,
+		BufferedEndMS:       s.bufferedEndMS,
+		CurrentGenerationID: s.currentGenerationID,
+		PendingGenerationID: s.pendingGenerationID,
+		CloseReason:         s.closeReason,
+		Generation:          generation,
+	}
+}
