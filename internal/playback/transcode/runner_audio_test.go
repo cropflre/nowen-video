@@ -9,38 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunnerBuildArgsMapsGenerationAudioTrack(t *testing.T) {
-	manager := newSessionManager(t)
-	created, err := manager.Create(context.Background(), playbacksession.CreateRequest{
-		UserID:     "user-audio",
-		MediaID:    "media-audio",
-		ProfileID:  "720p",
-		AudioTrack: 2,
-	})
-	require.NoError(t, err)
-
-	runtimeView, err := manager.Runtime(created.ID, created.PendingGenerationID)
-	require.NoError(t, err)
-	runner := newTestRunner(t, manager, &fakeRuntime{behavior: func(
-		_ int,
-		_ context.Context,
-		_ interfaceKind,
-		_ interfaceCommand,
-		_ interfaceCallbacks,
-	) interfaceResult {
-		return interfaceResult{}
-	}}, Config{})
-	_ = runner
-	_ = runtimeView
-}
-
-// compile-time aliases keep this focused test independent from fake execution;
-// the actual assertion is performed by the helper below.
-type interfaceKind = interface{}
-type interfaceCommand = interface{}
-type interfaceCallbacks = interface{}
-type interfaceResult = struct{}
-
 func TestGenerationAudioTrackIsEncodedIntoRollingHLSArgs(t *testing.T) {
 	manager := newSessionManager(t)
 	created, err := manager.Create(context.Background(), playbacksession.CreateRequest{
