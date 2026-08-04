@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
+	embyh "github.com/nowen-video/nowen-video/internal/handler/emby"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
 	"go.uber.org/zap"
@@ -27,6 +28,9 @@ func newFullPlaybackRuntime(
 	if err != nil {
 		return nil, err
 	}
+	// Emby/Infuse compatibility uses the same ephemeral runtime as first-party
+	// Web and Android clients. No second Manager, Governor or temp root exists.
+	embyh.SetDefaultPlaybackSessionService(sessions)
 	return &fullPlaybackRuntime{
 		sessions: sessions,
 		plan:     handler.NewPlaybackPlanHandler(services.Stream, logger),
@@ -57,5 +61,7 @@ func (r *fullPlaybackRuntime) Shutdown(ctx context.Context) error {
 	if r == nil || r.sessions == nil {
 		return nil
 	}
-	return r.sessions.Shutdown(ctx)
+	err := r.sessions.Shutdown(ctx)
+	embyh.SetDefaultPlaybackSessionService(nil)
+	return err
 }
