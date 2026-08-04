@@ -3,18 +3,14 @@ setlocal EnableDelayedExpansion
 chcp 65001 >nul
 
 REM ============================================================
-REM  nowen-video 本地开发一键交互脚本
+REM  nowen-video 本地开发交互启动器
 REM
-REM  功能：
-REM    1) 选择要启动的服务（后端 / 前端 / 全部）
-REM    2) 手动填写端口（直接回车使用默认值）
-REM    3) 自动拉起对应的命令行窗口
-REM
-REM  使用：双击运行本脚本，按提示操作即可
+REM  推荐直接运行项目根目录 dev.bat，一键启动 Server Lite + Vite。
+REM  本脚本保留按需启动单个服务的交互入口。
 REM ============================================================
 
 set "SCRIPT_DIR=%~dp0"
-REM 去掉末尾反斜杠，避免路径拼接时 \" 转义引号
+REM 去掉末尾反斜杠，避免路径拼接时出现重复分隔符
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
 :menu
@@ -24,9 +20,9 @@ echo ============================================================
 echo            nowen-video local dev launcher
 echo ============================================================
 echo.
-echo   [1] Start Backend  (Go server)
+echo   [1] Start Backend  (Server Lite)
 echo   [2] Start Frontend (Vite dev server)
-echo   [3] Start ALL      (Backend + Frontend)
+echo   [3] Start ALL      (auto-select free ports)
 echo   [0] Exit
 echo.
 echo ============================================================
@@ -52,9 +48,9 @@ echo.
 echo ----------- 启动后端服务 -----------
 call :ask_server_port
 echo.
-echo 即将启动后端，端口: %SERVER_PORT%
+echo 将从端口 %SERVER_PORT% 开始自动寻找可用端口。
 echo.
-start "nowen-video-server port %SERVER_PORT%" cmd /k "set SERVER_PORT=%SERVER_PORT% & set NOWEN_APP_PORT=%SERVER_PORT% & call "%SCRIPT_DIR%\run-server.bat""
+start "nowen-video-server-lite preferred port %SERVER_PORT%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_SERVER_MODE=lite&& call %SCRIPT_DIR%\run-server.bat"
 goto end
 
 
@@ -67,14 +63,15 @@ echo ----------- 启动前端服务 -----------
 call :ask_web_port
 call :ask_server_port_for_proxy
 echo.
-echo 即将启动前端，端口: %WEB_PORT%, 代理后端: http://localhost:%SERVER_PORT%
+echo 将从前端端口 %WEB_PORT% 开始自动寻找可用端口。
+echo 后端代理目标: http://localhost:%SERVER_PORT%
 echo.
-start "nowen-video-web port %WEB_PORT%" cmd /k "set WEB_PORT=%WEB_PORT% & set SERVER_PORT=%SERVER_PORT% & call "%SCRIPT_DIR%\run-web.bat""
+start "nowen-video-web preferred port %WEB_PORT%" cmd /k "set WEB_PORT=%WEB_PORT%&& set SERVER_PORT=%SERVER_PORT%&& call %SCRIPT_DIR%\run-web.bat"
 goto end
 
 
 REM ============================================================
-REM  全部启动
+REM  全部启动：复用非交互一键脚本，确保前后端端口成对解析
 REM ============================================================
 :run_all
 echo.
@@ -82,35 +79,22 @@ echo ----------- 启动全部服务 后端 + 前端 -----------
 call :ask_server_port
 call :ask_web_port
 echo.
-echo 即将启动:
-echo   后端端口: %SERVER_PORT%
-echo   前端端口: %WEB_PORT%
+echo 将自动解析并启动:
+echo   后端优先端口: %SERVER_PORT%
+echo   前端优先端口: %WEB_PORT%
 echo.
-
-echo [1/2] 启动后端服务窗口 ...
-start "nowen-video-server port %SERVER_PORT%" cmd /k "set SERVER_PORT=%SERVER_PORT% & set NOWEN_APP_PORT=%SERVER_PORT% & call "%SCRIPT_DIR%\run-server.bat""
-
-echo 等待后端初始化 2 秒 ...
-timeout /t 2 /nobreak >nul
-
-echo [2/2] 启动前端 Vite 窗口 ...
-start "nowen-video-web port %WEB_PORT%" cmd /k "set WEB_PORT=%WEB_PORT% & set SERVER_PORT=%SERVER_PORT% & call "%SCRIPT_DIR%\run-web.bat""
-
-echo.
-echo 已分别启动后端和前端窗口，关闭对应窗口即可停止服务。
-echo 浏览器访问 http://localhost:%WEB_PORT%
-echo.
+call "%SCRIPT_DIR%\run-dev.bat" %SERVER_PORT% %WEB_PORT%
 goto end
 
 
 REM ============================================================
-REM  子例程：询问后端端口（默认 8080）
+REM  子例程：询问后端优先端口（默认 28888）
 REM ============================================================
 :ask_server_port
 set "INPUT="
-set /p "INPUT=请输入后端端口 [默认 8080，直接回车使用默认]: "
+set /p "INPUT=请输入后端优先端口 [默认 28888，直接回车使用默认]: "
 if "%INPUT%"=="" (
-    set "SERVER_PORT=8080"
+    set "SERVER_PORT=28888"
 ) else (
     set "SERVER_PORT=%INPUT%"
 )
@@ -118,13 +102,13 @@ goto :eof
 
 
 REM ============================================================
-REM  子例程：询问前端端口（默认 3000）
+REM  子例程：询问前端优先端口（默认 28889）
 REM ============================================================
 :ask_web_port
 set "INPUT="
-set /p "INPUT=请输入前端端口 [默认 3000，直接回车使用默认]: "
+set /p "INPUT=请输入前端优先端口 [默认 28889，直接回车使用默认]: "
 if "%INPUT%"=="" (
-    set "WEB_PORT=3000"
+    set "WEB_PORT=28889"
 ) else (
     set "WEB_PORT=%INPUT%"
 )
@@ -132,13 +116,13 @@ goto :eof
 
 
 REM ============================================================
-REM  子例程：询问后端端口（用于前端代理目标）
+REM  子例程：询问后端端口（用于仅启动前端时的代理目标）
 REM ============================================================
 :ask_server_port_for_proxy
 set "INPUT="
-set /p "INPUT=请输入要代理的后端端口 [默认 8080，直接回车使用默认]: "
+set /p "INPUT=请输入要代理的后端端口 [默认 28888，直接回车使用默认]: "
 if "%INPUT%"=="" (
-    set "SERVER_PORT=8080"
+    set "SERVER_PORT=28888"
 ) else (
     set "SERVER_PORT=%INPUT%"
 )
