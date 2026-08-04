@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/nowen-video/nowen-video/internal/model"
-	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
 )
 
 // buildJobFFmpegArgs remains source-compatible for focused argument tests.
@@ -35,24 +34,14 @@ func (s *TranscodeService) buildJobFFmpegArgsChecked(job *TranscodeJob, outputDi
 		}
 		args = applyTimestampNormalization(args, plan)
 	}
-	if job.ExecutionJob != nil && job.ExecutionJob.Intent == string(transcodedomain.IntentStartupHLS) {
-		args = startupStreamOutputArgs(args, job.ExecutionJob.DurationMS)
-	}
 	return args, nil
 }
 
-func transcodeArtifactKind(job *TranscodeJob) string {
-	if job == nil || job.ExecutionJob == nil {
-		return "hls_variant"
-	}
-	switch transcodedomain.Intent(job.ExecutionJob.Intent) {
-	case transcodedomain.IntentStartupHLS:
-		return startupStreamArtifactKind
-	case transcodedomain.IntentStartupContinuationHLS:
-		return startupContinuationArtifactKind
-	default:
-		return "hls_variant"
-	}
+// The durable executor no longer distinguishes runtime/startup Artifact kinds.
+// Its remaining compatibility records use the historical generic kind while
+// all executable runtime media is owned by Playback Session Generations.
+func transcodeArtifactKind(_ *TranscodeJob) string {
+	return "hls_variant"
 }
 
 func transcodeArtifactDurationMS(job *TranscodeJob) int64 {
@@ -74,7 +63,7 @@ func transcodeArtifactDurationMS(job *TranscodeJob) int64 {
 // supportedTranscodeIntent is the final execution fence for the retired
 // persistent playback scheduler. Runtime/startup/on-demand work executes only
 // through PlaybackSessionService, while explicit administrator preprocessing
-// remains owned by PreprocessService. No new Job can be hydrated by this queue.
+// remains owned by PreprocessService. No Job can be hydrated by this queue.
 func supportedTranscodeIntent(_ *model.TranscodeJobRecord) bool {
 	return false
 }
