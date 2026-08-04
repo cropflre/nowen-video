@@ -79,6 +79,8 @@ export interface PlaybackGenerationSnapshot {
   backend?: string
   process_pid?: number
   transcoded_ms: number
+  ahead_ms: number
+  suspended: boolean
   speed?: string
   error_code?: string
   error_message?: string
@@ -209,6 +211,16 @@ export const streamApi = {
       },
     })
 
+    // Playback Session routes are wired into Lite first. Resolve the server
+    // profile before consuming an embedded plan so Full continues using its
+    // existing runtime HLS path until it receives the same lifecycle wiring.
+    try {
+      await useServerProfileStore.getState().load()
+    } catch {
+      // Capability loading is best-effort; an unknown profile fails closed to
+      // the legacy playback path rather than calling a potentially absent API.
+    }
+
     const embeddedPlan = response.data.data.playback_plan
     if (embeddedPlan) {
       playbackPlanCache.set(mediaId, embeddedPlan)
@@ -217,7 +229,6 @@ export const streamApi = {
     }
 
     try {
-      await useServerProfileStore.getState().load()
       if (useServerProfileStore.getState().manifest?.profile !== 'lite') {
         playbackPlanCache.delete(mediaId)
         return response
@@ -263,6 +274,7 @@ export const streamApi = {
   getCachedPlaybackPlan: (mediaId: string) => playbackPlanCache.get(mediaId),
 
   requiresPlaybackSession: (mediaId: string) => {
+    if (useServerProfileStore.getState().manifest?.profile !== 'lite') return false
     const plan = playbackPlanCache.get(mediaId)
     return Boolean(plan?.method === 'transcode' && plan.session_required && plan.session_template)
   },
