@@ -2,7 +2,6 @@ package service
 
 import (
 	"github.com/nowen-video/nowen-video/internal/model"
-	"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
 	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
 )
 
@@ -33,5 +32,3 @@ func applyTimestampNormalization(args []string, plan transcodetimestamp.Plan) []
 func timestampPlanCommandSummary(args []string) string {
 	return transcodetimestamp.CommandSummary(args)
 }
-
-var _ = ffmpeg.HWAccelNone
