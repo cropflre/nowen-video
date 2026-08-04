@@ -26,6 +26,20 @@ func (m *Manager) cleanupSession(session *PlaybackSession, finalState SessionSta
 		generation.cancel()
 	}
 
+	// Process completion is a hard filesystem safety boundary. Do not remove a
+	// generation while FFmpeg or its hardware/software fallback runner can still
+	// write into it. The caller-facing Close may time out, but this cleanup
+	// goroutine remains responsible until every process lease is released.
+	for _, generation := range generations {
+		if err := generation.waitForProcessExit(context.Background()); err != nil {
+			m.logger.Warnw("wait for playback generation process failed",
+				"session_id", session.ID,
+				"generation_id", generation.ID,
+				"error", err,
+			)
+		}
+	}
+
 	drainCtx, cancel := context.WithTimeout(context.Background(), m.cfg.CloseDrainTimeout)
 	for _, generation := range generations {
 		if err := generation.gate.closeAndWait(drainCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
@@ -76,6 +90,14 @@ func (m *Manager) cleanupSession(session *PlaybackSession, finalState SessionSta
 
 func (m *Manager) retireGeneration(session *PlaybackSession, generation *Generation) {
 	generation.cancel()
+	if err := generation.waitForProcessExit(context.Background()); err != nil {
+		m.logger.Warnw("wait for retired generation process failed",
+			"session_id", session.ID,
+			"generation_id", generation.ID,
+			"error", err,
+		)
+	}
+
 	drainCtx, cancel := context.WithTimeout(context.Background(), m.cfg.CloseDrainTimeout)
 	err := generation.gate.closeAndWait(drainCtx)
 	cancel()
@@ -166,8 +188,8 @@ func (m *Manager) moveAndRemove(path, prefix string) error {
 			return nil
 		}
 		// Cross-device mounts and Windows/NAS file semantics can reject rename.
-		// Reader gating has already stopped new opens, so bounded direct removal
-		// remains safe and the janitor will retry any residual path.
+		// Process and Reader gates have already stopped writes and new opens, so
+		// bounded direct removal remains safe.
 		return m.removeWithRetry(path)
 	}
 	return m.removeWithRetry(target)
