@@ -35,6 +35,9 @@ func (s *TranscodeService) initializeStorageReservations() error {
 	if err := model.AutoMigrateTranscodeStorageReservation(s.repo.DB()); err != nil {
 		return err
 	}
+	if err := s.initializeStorageHealth(); err != nil {
+		return err
+	}
 	now := time.Now()
 	published, err := s.executionRepo.ReconcilePublishedStorageReservations(now)
 	if err != nil {
@@ -146,6 +149,9 @@ func estimateTranscodeJobStorage(
 }
 
 func (s *TranscodeService) storageReservationBudget(now time.Time) (repository.TranscodeStorageReservationBudget, error) {
+	if healthErr := s.checkStorageHealthAdmission(); healthErr != nil {
+		return repository.TranscodeStorageReservationBudget{}, fmt.Errorf("%w: %v", ErrTranscodeStorageReservationUnavailable, healthErr)
+	}
 	status := s.runDiskPressureGovernorTick(now, false)
 	if status.AdmissionBlocked {
 		return repository.TranscodeStorageReservationBudget{}, fmt.Errorf(
