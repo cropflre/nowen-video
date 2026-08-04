@@ -90,6 +90,7 @@ func (s *TranscodeService) cleanupClaimedArtifact(
 		}
 		seen[path] = struct{}{}
 		if err := s.artifactStore.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			s.reportStorageOperationFailure(storageOperationCleanupArtifact, path, err, now)
 			return removedDirs, false, s.persistArtifactCleanupFailure(artifact, token, err, now)
 		}
 		removedDirs++
