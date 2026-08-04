@@ -6,6 +6,8 @@ Predictive storage Reservation is implemented on `refactor/server-lite-v1` as th
 
 Disk-pressure governance reacts to real filesystem usage. Reservation adds the complementary forward-looking guarantee: a Job must prove that its predicted peak Artifact output fits the remaining storage headroom before a Worker can claim it and start FFmpeg.
 
+The current protocol also measures the active Attempt workspace, refunds bytes already represented by the physical disk sample, and records the final predicted-versus-actual Artifact error for estimator calibration.
+
 ## Scheduling boundary
 
 The runtime order is:
@@ -60,9 +62,36 @@ free bytes above the minimum-free-space floor
 configured Artifact Store max-size headroom
 ```
 
-Existing active Reservations are subtracted inside the serialized database transaction.
+Capacity accounting uses:
+
+```text
+physical Artifact Store usage
++ sum(max(reserved_bytes - observed_bytes, 0))
+```
+
+`observed_bytes` is already included in the physical filesystem/store sample. Subtracting the complete original Reservation after those bytes materialize would count them twice and unnecessarily suppress safe concurrency.
 
 Disk pressure remains authoritative. A `pressure`, `critical`, or unavailable filesystem sample prevents new Reservations even when a stale calculation might otherwise appear to fit.
+
+## Consumption observation protocol
+
+The running Attempt workspace is measured at most once every 30 seconds. Progress parsing only schedules the observation; directory traversal and disk sampling run outside the FFmpeg progress pipe.
+
+The refund order is deliberately strict:
+
+```text
+measure current Attempt workspace
+  -> invalidate cached Store usage
+  -> force a fresh filesystem and Store sample
+  -> verify current Job Lease Token and Attempt ID
+  -> persist observed_bytes
+```
+
+The database write is serialized through the same singleton Ledger used for Reservation acquisition. A stale Worker, replaced Attempt, expired Lease, or unavailable disk sample cannot reduce the remaining commitment.
+
+Observation is monotonic within one Attempt. Hardware-to-software fallback resets `observed_bytes` for the new Attempt because the replacement output must receive a complete future commitment again. `peak_observed_bytes` remains monotonic across all Attempts for diagnostics.
+
+A final synchronous observation is performed before cancellation, failure, or atomic Artifact publication.
 
 ## Persistent records
 
@@ -80,10 +109,19 @@ job_id
 media_id
 profile_id
 intent
+attempt_id
 estimated_bytes
 reserved_bytes
+observed_bytes
+peak_observed_bytes
+final_bytes
+prediction_error_bytes
+actual_to_estimate_ratio
+observation_count
+outcome
 state
 acquired_at
+last_observed_at
 released_at
 created_at
 updated_at
@@ -102,7 +140,7 @@ The singleton ledger row is named:
 artifact_store
 ```
 
-Updating its version is the serialization fence. The transaction obtains the database write/row lock before reading the active Reservation total, so two server instances cannot both observe and consume the same final headroom.
+Updating its version is the serialization fence. The transaction obtains the database write/row lock before reading or changing active Reservation commitment, so multiple server instances cannot spend the same headroom or race a consumption refund.
 
 ## Reservation ownership and recovery
 
@@ -118,15 +156,33 @@ It therefore survives:
 
 A recovered Job reuses its existing active Reservation idempotently before obtaining a new Worker Lease.
 
-Capacity accounting joins each Reservation back to an active `transcode_jobs` row. Once a Job becomes terminal and releases `active_key`, its Reservation immediately stops consuming effective headroom even if the audit row has not yet been reconciled from `active` to `released`.
+Capacity accounting joins each Reservation back to an active `transcode_jobs` row. Once a Job becomes terminal and releases `active_key`, its Reservation immediately stops consuming effective headroom.
 
-Startup reconciliation marks such terminal audit rows `released` and records `released_at` without deleting their evidence.
+Failed and cancelled Jobs close their Reservation audit row after the terminal transition while retaining peak workspace evidence. Successful publication records the immutable Artifact size, prediction error, and actual-to-estimate ratio.
 
-## Interaction with physical usage
+Startup recovery first repairs the narrow crash window where Artifact/Job publication committed but calibration evidence did not. Remaining terminal audit rows are then reconciled to `released` without deleting evidence.
 
-Reservation is a conservative peak commitment. Real workspace bytes are still included in filesystem usage, while the original Reservation remains active until Job terminal state. This intentionally favors preventing NAS exhaustion over maximizing concurrency.
+## Prediction calibration evidence
 
-A later refinement may persist consumed workspace bytes and reduce the remaining commitment dynamically. The current protocol does not guess consumption from progress percentages because FFmpeg progress is time-based and is not a reliable byte-allocation signal for VBR media.
+For a published Artifact:
+
+```text
+prediction_error_bytes = final_bytes - estimated_bytes
+actual_to_estimate_ratio = final_bytes / estimated_bytes
+```
+
+A positive error means underprediction. A ratio below `1.0` means the initial envelope was conservative.
+
+Aggregated statistics expose:
+
+```text
+calibration sample count
+average actual-to-estimate ratio
+average absolute relative error
+underpredicted sample count
+```
+
+This phase records evidence but does not automatically mutate the shared profile catalog. Policy changes remain explicit and reviewable rather than allowing a small or biased local sample to silently weaken storage safety.
 
 ## Failure behavior
 
@@ -138,7 +194,7 @@ Expected capacity shortage:
 - allows the scheduler to consider smaller candidates;
 - is visible through the waiting Reservation count.
 
-Unexpected database, media metadata, profile, or filesystem sampling failures also leave the Job queued and fail closed. The scheduler logs the durable reason rather than starting unreserved work.
+Unexpected database, media metadata, profile, or filesystem sampling failures also leave the Job queued and fail closed. Observation failures retain the previous full future commitment rather than refunding uncertain bytes.
 
 Cancellation remains available while a Job waits for capacity. A cancelled or otherwise terminal Job no longer contributes to active Reservation totals.
 
@@ -149,9 +205,18 @@ Cancellation remains available while a Job waits for capacity. A cancelled or ot
 ```text
 storage_reservation.active_count
 storage_reservation.active_bytes
+storage_reservation.reserved_bytes
+storage_reservation.observed_bytes
+storage_reservation.remaining_bytes
 storage_reservation.waiting_count
 storage_reservation.available_headroom_bytes
+storage_reservation.calibration_samples
+storage_reservation.average_actual_to_estimate
+storage_reservation.average_absolute_error
+storage_reservation.underpredicted_count
 ```
+
+`active_bytes` remains a compatibility alias of `remaining_bytes`.
 
 The scheduler identifier is:
 
@@ -159,7 +224,7 @@ The scheduler identifier is:
 database_priority_fifo_storage_reserved
 ```
 
-These fields distinguish actual Artifact Store usage from future bytes already promised to active Jobs.
+These fields distinguish actual Artifact Store usage, total predicted output, already-materialized output, and future bytes still promised to active Jobs.
 
 ## Certification
 
@@ -170,6 +235,11 @@ The multi-job contention gate certifies:
 - bounded Startup Stream estimates;
 - unknown-duration fail-closed behavior;
 - per-Job idempotency;
+- observed-byte refund without physical double counting;
+- Lease and Attempt fencing of observations;
+- fallback Attempt observation reset with retained peak evidence;
+- published predicted-versus-actual calibration;
+- failed/cancelled audit release;
 - terminal capacity release;
 - waiting-count projection;
 - concurrent ledger serialization;
@@ -187,10 +257,9 @@ Workflow:
 
 This phase does not yet provide:
 
-- dynamic reduction of Reservation by measured workspace bytes;
-- historical estimator calibration from predicted versus actual Artifact size;
+- automatic estimator coefficient updates from local calibration samples;
 - per-library or per-user storage quotas;
 - operator controls for manually bypassing storage governance;
 - real multi-host PostgreSQL/NFS contention certification on a NAS lab runner.
 
-There is intentionally no manual bypass in this phase. Uncertain capacity remains queued rather than risking an incomplete Artifact or a full NAS volume.
+There is intentionally no manual bypass. Uncertain capacity remains queued rather than risking an incomplete Artifact or a full NAS volume.
