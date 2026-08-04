@@ -6,7 +6,7 @@
   "identifier": "com.nowen.video.desktop",
   "build": {
     "frontendDist": "../../web/dist",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:28889",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
