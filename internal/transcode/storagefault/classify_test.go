@@ -2,6 +2,8 @@ package storagefault
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -33,5 +35,24 @@ func TestClassifyNASMessageFallbacks(t *testing.T) {
 	classified := Classify(fmt.Errorf("rename failed: stale file handle"))
 	if classified.Code != CodeUnavailable || !classified.Retryable {
 		t.Fatalf("stale mount was not classified as unavailable: %+v", classified)
+	}
+}
+
+func TestLinuxDevFullProducesNoSpaceClassification(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("/dev/full certification is Linux-specific")
+	}
+	file, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
+	if err != nil {
+		t.Skipf("/dev/full is unavailable: %v", err)
+	}
+	defer file.Close()
+	_, writeErr := file.Write([]byte("nowen-storage-fault-cert"))
+	if writeErr == nil {
+		t.Fatal("/dev/full unexpectedly accepted a write")
+	}
+	classified := Classify(writeErr)
+	if classified.Code != CodeNoSpace || !classified.Retryable {
+		t.Fatalf("kernel ENOSPC was not classified: err=%v classified=%+v", writeErr, classified)
 	}
 }
