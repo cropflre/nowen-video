@@ -28,6 +28,8 @@ type mediaProbeProvider interface {
 	Probe(ctx context.Context, media *model.Media) (*model.MediaProbeRecord, error)
 }
 
+// Kept only for source compatibility with downstream integrations compiled
+// against the former startup-submission hook.
 type mediaProbeWarmupHook func(media *model.Media, probe *model.MediaProbeRecord) (submitted bool, err error)
 
 type MediaProbeWarmupStats struct {
@@ -40,6 +42,8 @@ type MediaProbeWarmupStats struct {
 	ProcessedMedia   uint64 `json:"processed_media"`
 	SkippedMedia     uint64 `json:"skipped_media"`
 	FailedMedia      uint64 `json:"failed_media"`
+	// Deprecated compatibility fields. Probe warmup no longer submits startup
+	// artifacts, so these values are always zero.
 	StartupSubmitted uint64 `json:"startup_submitted"`
 	StartupSkipped   uint64 `json:"startup_skipped"`
 	StartupFailed    uint64 `json:"startup_failed"`
@@ -47,8 +51,8 @@ type MediaProbeWarmupStats struct {
 
 // MediaProbeWarmupService removes cold FFprobe work from first playback. Scan
 // completion submits a library ID, while this service pages media records and
-// populates the same persistent Probe cache used by runtime HLS and the
-// Playback Planner.
+// populates the persistent Probe cache used by the Playback Planner and
+// Playback Session runner. It never creates a transcode Job or media file.
 type MediaProbeWarmupService struct {
 	repo     mediaProbeWarmupRepository
 	provider mediaProbeProvider
@@ -60,21 +64,17 @@ type MediaProbeWarmupService struct {
 	queue    chan string
 	wg       sync.WaitGroup
 
-	mu       sync.Mutex
-	pending  map[string]struct{}
-	onProbed mediaProbeWarmupHook
-	closed   atomic.Bool
+	mu      sync.Mutex
+	pending map[string]struct{}
+	closed  atomic.Bool
 
-	activeWorkers   atomic.Int64
-	submittedRuns   atomic.Uint64
-	completedRuns   atomic.Uint64
-	failedRuns      atomic.Uint64
-	processedMedia  atomic.Uint64
-	skippedMedia    atomic.Uint64
-	failedMedia     atomic.Uint64
-	startupSubmitted atomic.Uint64
-	startupSkipped   atomic.Uint64
-	startupFailed    atomic.Uint64
+	activeWorkers  atomic.Int64
+	submittedRuns  atomic.Uint64
+	completedRuns  atomic.Uint64
+	failedRuns     atomic.Uint64
+	processedMedia atomic.Uint64
+	skippedMedia   atomic.Uint64
+	failedMedia    atomic.Uint64
 }
 
 func NewMediaProbeWarmupService(
@@ -109,17 +109,9 @@ func NewMediaProbeWarmupService(
 	return service
 }
 
-// SetOnProbed installs the next orchestration stage. The callback runs after
-// Probe persistence and legacy summary synchronization, and must only submit a
-// durable Job; it must not execute FFmpeg on the warmup worker.
-func (s *MediaProbeWarmupService) SetOnProbed(callback mediaProbeWarmupHook) {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	s.onProbed = callback
-	s.mu.Unlock()
-}
+// SetOnProbed is retained as a no-op compatibility boundary. Probe warmup no
+// longer chains into startup media generation or any other FFmpeg work.
+func (s *MediaProbeWarmupService) SetOnProbed(_ mediaProbeWarmupHook) {}
 
 // SubmitLibrary is idempotent while the same library is queued or running.
 // The scan completion path never blocks on FFprobe work.
@@ -227,34 +219,11 @@ func (s *MediaProbeWarmupService) warmLibrary(libraryID string) error {
 				continue
 			}
 			s.processedMedia.Add(1)
-			s.runOnProbed(media, record)
 		}
 		afterID = rows[len(rows)-1].ID
 		if len(rows) < defaultProbeWarmupPageSize {
 			return nil
 		}
-	}
-}
-
-func (s *MediaProbeWarmupService) runOnProbed(media *model.Media, record *model.MediaProbeRecord) {
-	s.mu.Lock()
-	callback := s.onProbed
-	s.mu.Unlock()
-	if callback == nil {
-		return
-	}
-	submitted, err := callback(media, record)
-	if err != nil {
-		s.startupFailed.Add(1)
-		if s.logger != nil {
-			s.logger.Warnf("提交 Startup Stream 失败 media=%s: %v", media.ID, err)
-		}
-		return
-	}
-	if submitted {
-		s.startupSubmitted.Add(1)
-	} else {
-		s.startupSkipped.Add(1)
 	}
 }
 
@@ -275,9 +244,6 @@ func (s *MediaProbeWarmupService) Stats() MediaProbeWarmupStats {
 		ProcessedMedia:   s.processedMedia.Load(),
 		SkippedMedia:     s.skippedMedia.Load(),
 		FailedMedia:      s.failedMedia.Load(),
-		StartupSubmitted: s.startupSubmitted.Load(),
-		StartupSkipped:   s.startupSkipped.Load(),
-		StartupFailed:    s.startupFailed.Load(),
 	}
 }
 
