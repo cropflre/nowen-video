@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 )
 
-// attachProbeWarmup connects scan completion to the same Probe service used by
-// runtime transcoding. The warmup is owned by the transcode scheduler lifecycle:
-// closing the durable scheduler stops new warmups and waits for workers to exit.
+// attachProbeWarmup keeps cold FFprobe work out of first playback. Scan
+// completion now warms only the technical Probe cache; it never submits a
+// durable startup/runtime transcode Job and therefore cannot grow playback
+// storage before a user starts watching.
 func (s *TranscodeService) attachProbeWarmup(hub *WSHub) {
 	if s == nil || hub == nil || s.repo == nil || s.mediaProbe == nil || s.jobs == nil {
 		return
@@ -22,13 +22,6 @@ func (s *TranscodeService) attachProbeWarmup(hub *WSHub) {
 			s.logger,
 			s.jobs.Done(),
 		)
-		warmup.SetOnProbed(func(media *model.Media, probe *model.MediaProbeRecord) (bool, error) {
-			if !StartupStreamEligible(media, probe) {
-				return false, nil
-			}
-			_, err := s.SubmitStartupStream(media, probe)
-			return err == nil, err
-		})
 		s.probeWarmup = warmup
 
 		unsubscribe := hub.SubscribeInternal(EventScanCompleted, func(event WSEvent) {
