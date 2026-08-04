@@ -13,7 +13,7 @@ const (
 	PlaybackMethodDirect        = "direct"
 	PlaybackMethodRemux         = "remux"
 	PlaybackMethodSmartRemux    = "smart_remux"
-	PlaybackMethodStartupStream = "startup_stream"
+	PlaybackMethodStartupStream = "startup_stream" // response compatibility only
 	PlaybackMethodTranscode     = "transcode"
 )
 
@@ -88,8 +88,8 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 
 	// Playback planning is latency sensitive. Only a fresh cached Probe is read
 	// here; this path never starts FFprobe. Runtime HLS performs cold probing in
-	// its claimed Worker, while scan warm-up populates this cache ahead of
-	// playback.
+	// its Session-owned execution, while scan warm-up populates this cache ahead
+	// of playback.
 	effectiveInfo := *info
 	var sourceTechnical *PlaybackSourceTechnical
 	if s != nil && s.mediaRepo != nil && s.transcoder != nil {
@@ -103,13 +103,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 
 	directURL := fmt.Sprintf("/api/stream/%s/direct", mediaID)
 	remuxURL := fmt.Sprintf("/api/stream/%s/remux", mediaID)
-	hlsURL := info.HlsURL
-	if hlsURL == "" {
-		hlsURL = fmt.Sprintf("/api/stream/%s/master.m3u8", mediaID)
-	}
-	if caps.MaxBitrate > 0 && !info.IsPreprocessed {
-		hlsURL = appendQuery(hlsURL, "maxBitrate", strconv.Itoa(caps.MaxBitrate))
-	}
+	preprocessedAvailable := info.IsPreprocessed && strings.TrimSpace(info.PreprocessedURL) != "" && caps.MaxBitrate <= 0
 
 	plan := &PlaybackPlan{
 		MediaID:         mediaID,
@@ -124,10 +118,16 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		return plan, nil
 	}
 	if caps.ForceTranscode {
-		return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, "client_forced_transcode", "客户端要求使用兼容转码")
+		if preprocessedAvailable {
+			return choosePreprocessed(plan, info.PreprocessedURL, "preprocessed_forced_transcode", "已使用管理员生成的兼容播放版本"), nil
+		}
+		return s.chooseTranscodeOrStartup(plan, mediaID, caps, "", "client_forced_transcode", "客户端要求使用兼容转码")
 	}
 	if !info.PreferDirectPlay {
-		return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, "system_prefers_transcode", "系统设置要求优先使用兼容转码")
+		if preprocessedAvailable {
+			return choosePreprocessed(plan, info.PreprocessedURL, "preprocessed_system_preference", "系统设置要求优先使用兼容播放版本"), nil
+		}
+		return s.chooseTranscodeOrStartup(plan, mediaID, caps, "", "system_prefers_transcode", "系统设置要求优先使用兼容转码")
 	}
 
 	hevcSource := isHEVCCodec(info.VideoCodec)
@@ -137,7 +137,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.URL = directURL
 		plan.ReasonCode = "native_direct_play"
 		plan.Reason = "容器与音视频编码均受客户端原生支持"
-		applyTranscodeFallback(plan, hlsURL)
+		applyTranscodeFallback(plan)
 		return plan, nil
 	}
 
@@ -147,7 +147,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.URL = remuxURL
 		plan.ReasonCode = "container_remux"
 		plan.Reason = "编码兼容，仅转换容器，音视频均直接复制"
-		applyTranscodeFallback(plan, hlsURL)
+		applyTranscodeFallback(plan)
 		return plan, nil
 	}
 
@@ -160,7 +160,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		plan.ReasonCode = "audio_transcode_only"
 		plan.Reason = "视频编码可直接复制，仅将不兼容音频转换为 AAC"
 		plan.RequiresTranscode = true
-		applyTranscodeFallback(plan, hlsURL)
+		applyTranscodeFallback(plan)
 		return plan, nil
 	}
 
@@ -176,7 +176,10 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 		reasonCode = "client_remux_disabled"
 		reason = "客户端不支持 fragmented MP4 Remux"
 	}
-	return s.chooseTranscodeOrStartup(plan, mediaID, caps, hlsURL, reasonCode, reason)
+	if preprocessedAvailable {
+		return choosePreprocessed(plan, info.PreprocessedURL, "preprocessed_hls_ready", "已使用管理员生成的兼容播放版本"), nil
+	}
+	return s.chooseTranscodeOrStartup(plan, mediaID, caps, "", reasonCode, reason)
 }
 
 func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.MediaProbeRecord) *PlaybackSourceTechnical {
@@ -267,20 +270,36 @@ func smartRemuxVideoCodec(codec string) bool {
 	return managedRemuxVideoCodecs[normalized]
 }
 
-func chooseTranscode(plan *PlaybackPlan, hlsURL, reasonCode, reason string) *PlaybackPlan {
+// chooseTranscode creates only an ephemeral Session contract. The legacy HLS
+// URL is deliberately ignored so no new client can accidentally enter the
+// persistent runtime Artifact path.
+func chooseTranscode(plan *PlaybackPlan, _ string, reasonCode, reason string) *PlaybackPlan {
 	plan.Method = PlaybackMethodTranscode
-	plan.URL = hlsURL // temporary legacy adapter for clients not migrated yet
+	plan.URL = ""
 	plan.ReasonCode = reasonCode
 	plan.Reason = reason
 	plan.RequiresTranscode = true
 	plan.SessionRequired = true
 	plan.SessionTemplate = newPlaybackSessionTemplate(plan)
+	plan.StartupStream = nil
 	return plan
 }
 
-func applyTranscodeFallback(plan *PlaybackPlan, hlsURL string) {
+func choosePreprocessed(plan *PlaybackPlan, playbackURL, reasonCode, reason string) *PlaybackPlan {
+	plan.Method = PlaybackMethodTranscode
+	plan.URL = playbackURL
+	plan.ReasonCode = reasonCode
+	plan.Reason = reason
+	plan.RequiresTranscode = true
+	plan.SessionRequired = false
+	plan.SessionTemplate = nil
+	plan.StartupStream = nil
+	return plan
+}
+
+func applyTranscodeFallback(plan *PlaybackPlan) {
 	plan.FallbackMethod = PlaybackMethodTranscode
-	plan.FallbackURL = hlsURL // temporary legacy adapter
+	plan.FallbackURL = ""
 	plan.SessionTemplate = newPlaybackSessionTemplate(plan)
 }
 
@@ -315,3 +334,7 @@ func appendQuery(rawURL, key, value string) string {
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }
+
+// Retain strconv as a source compatibility dependency for callers that still
+// use appendQuery with integer capability values in downstream branches.
+var _ = strconv.Itoa
