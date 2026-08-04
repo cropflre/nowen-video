@@ -153,6 +153,7 @@ type Generation struct {
 	firstSegmentAt *time.Time
 	completedAt    *time.Time
 	gate           *readerGate
+	processGate    *readerGate
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
