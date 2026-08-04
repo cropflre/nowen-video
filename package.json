@@ -1,0 +1,12 @@
+{
+  "name": "nowen-video",
+  "private": true,
+  "version": "1.2.5",
+  "description": "Nowen Video development workspace",
+  "scripts": {
+    "dev": "node scripts/dev.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
