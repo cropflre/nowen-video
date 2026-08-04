@@ -28,6 +28,28 @@ func TestArtifactStoreHealthProbeVerifiesAtomicWrite(t *testing.T) {
 	}
 }
 
+func TestArtifactStoreHealthProbeDetectsReadOnlyRootAndRecovers(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "transcode")
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	_, probeErr := store.ProbeWritable(time.Now())
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if probeErr == nil {
+		t.Skip("current user bypasses directory write permissions")
+	}
+	result, err := store.ProbeWritable(time.Now())
+	if err != nil || !result.Writable {
+		t.Fatalf("writable permissions did not recover: result=%+v err=%v", result, err)
+	}
+}
+
 func TestArtifactStoreHealthProbeDetectsDisconnectedRootAndRecovers(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "transcode")
