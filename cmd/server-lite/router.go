@@ -21,6 +21,7 @@ import (
 func buildRouter(
 	cfg *config.Config,
 	services *service.Services,
+	playbackSessions *service.PlaybackSessionService,
 	handlers *handler.Handlers,
 	repos *repository.Repositories,
 	appVer string,
@@ -64,10 +65,16 @@ func buildRouter(
 	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, taskActionDispatcher, logger)
 	taskCenterHandler.SetAuditService(services.User)
 	playbackPlanHandler := handler.NewPlaybackPlanHandler(services.Stream, logger)
+	playbackSessionHandler := handler.NewPlaybackSessionHandler(
+		playbackSessions,
+		services.Permission,
+		repos.Media,
+		logger,
+	)
 
 	startMaintenanceJobs(repos, appVer)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
-	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, repos, jwtMiddleware)
+	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 
