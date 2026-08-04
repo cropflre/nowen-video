@@ -25,6 +25,13 @@ data class PlaybackStartupStream(
 )
 
 @Serializable
+data class PlaybackSessionTemplate(
+    @SerialName("create_url") val createUrl: String = "/api/playback/sessions",
+    @SerialName("profile_id") val profileId: String = "auto",
+    @SerialName("max_bitrate") val maxBitrate: Int = 0,
+)
+
+@Serializable
 data class PlaybackPlan(
     @SerialName("media_id") val mediaId: String = "",
     val method: String = "",
@@ -32,6 +39,8 @@ data class PlaybackPlan(
     @SerialName("reason_code") val reasonCode: String = "",
     val reason: String = "",
     @SerialName("requires_transcode") val requiresTranscode: Boolean = false,
+    @SerialName("session_required") val sessionRequired: Boolean = false,
+    @SerialName("session_template") val sessionTemplate: PlaybackSessionTemplate? = null,
     @SerialName("fallback_method") val fallbackMethod: String = "",
     @SerialName("fallback_url") val fallbackUrl: String = "",
     @SerialName("client_capabilities") val clientCapabilities: PlaybackClientCapabilities = PlaybackClientCapabilities(),
@@ -46,7 +55,92 @@ data class PlaybackPlan(
             "transcode" -> "兼容转码"
             else -> "自动选择"
         }
+
+    val requiresEphemeralSession: Boolean
+        get() = method.equals("transcode", ignoreCase = true) && sessionRequired
 }
+
+@Serializable
+data class PlaybackGenerationSnapshot(
+    val id: Long = 0,
+    @SerialName("session_id") val sessionId: String = "",
+    val state: String = "",
+    @SerialName("profile_id") val profileId: String = "",
+    @SerialName("start_position_ms") val startPositionMs: Long = 0,
+    @SerialName("audio_track") val audioTrack: Int = 0,
+    @SerialName("subtitle_track") val subtitleTrack: Int = -1,
+    @SerialName("burn_subtitle") val burnSubtitle: Boolean = false,
+    @SerialName("max_bitrate") val maxBitrate: Int = 0,
+    val reason: String = "",
+    val backend: String = "",
+    @SerialName("transcoded_ms") val transcodedMs: Long = 0,
+    @SerialName("ahead_ms") val aheadMs: Long = 0,
+    val suspended: Boolean = false,
+    val speed: String = "",
+    @SerialName("error_code") val errorCode: String = "",
+    @SerialName("error_message") val errorMessage: String = "",
+)
+
+@Serializable
+data class PlaybackSessionSnapshot(
+    val id: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("media_id") val mediaId: String = "",
+    val state: String = "",
+    val paused: Boolean = false,
+    @SerialName("position_ms") val positionMs: Long = 0,
+    @SerialName("buffered_end_ms") val bufferedEndMs: Long = 0,
+    @SerialName("current_generation_id") val currentGenerationId: Long = 0,
+    @SerialName("pending_generation_id") val pendingGenerationId: Long = 0,
+    @SerialName("close_reason") val closeReason: String = "",
+    val generation: PlaybackGenerationSnapshot? = null,
+)
+
+@Serializable
+data class PlaybackSessionResult(
+    val session: PlaybackSessionSnapshot = PlaybackSessionSnapshot(),
+    @SerialName("playlist_url") val playlistUrl: String = "",
+    @SerialName("status_url") val statusUrl: String = "",
+    @SerialName("heartbeat_interval_sec") val heartbeatIntervalSec: Int = 15,
+    @SerialName("first_segment_ready") val firstSegmentReady: Boolean = false,
+    @SerialName("startup_ms") val startupMs: Long = 0,
+) {
+    val failureMessage: String
+        get() = session.generation?.errorMessage.orEmpty()
+
+    val isTerminalFailure: Boolean
+        get() = session.state == "failed" || session.state == "closed" || session.state == "expired"
+}
+
+@Serializable
+data class CreatePlaybackSessionRequest(
+    @SerialName("media_id") val mediaId: String,
+    @SerialName("profile_id") val profileId: String = "auto",
+    @SerialName("start_position_ms") val startPositionMs: Long = 0,
+    @SerialName("audio_track") val audioTrack: Int = 0,
+    @SerialName("subtitle_track") val subtitleTrack: Int = -1,
+    @SerialName("burn_subtitle") val burnSubtitle: Boolean = false,
+    @SerialName("max_bitrate") val maxBitrate: Int = 0,
+)
+
+@Serializable
+data class RestartPlaybackSessionRequest(
+    @SerialName("profile_id") val profileId: String = "auto",
+    @SerialName("start_position_ms") val startPositionMs: Long,
+    @SerialName("audio_track") val audioTrack: Int = 0,
+    @SerialName("subtitle_track") val subtitleTrack: Int = -1,
+    @SerialName("burn_subtitle") val burnSubtitle: Boolean = false,
+    @SerialName("max_bitrate") val maxBitrate: Int = 0,
+    val reason: String = "seek",
+)
+
+@Serializable
+data class PlaybackSessionHeartbeatRequest(
+    @SerialName("generation_id") val generationId: Long,
+    @SerialName("position_ms") val positionMs: Long,
+    @SerialName("buffered_end_ms") val bufferedEndMs: Long,
+    val paused: Boolean,
+)
 
 @Serializable
 data class SubtitleTrack(
