@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 )
@@ -73,6 +74,8 @@ type GenerationSnapshot struct {
 	Backend         string          `json:"backend,omitempty"`
 	ProcessPID      int             `json:"process_pid,omitempty"`
 	TranscodedMS    int64           `json:"transcoded_ms"`
+	AheadMS         int64           `json:"ahead_ms"`
+	Suspended       bool            `json:"suspended"`
 	Speed           string          `json:"speed,omitempty"`
 	ErrorCode       string          `json:"error_code,omitempty"`
 	ErrorMessage    string          `json:"error_message,omitempty"`
@@ -142,8 +145,11 @@ type Generation struct {
 	mu             sync.RWMutex
 	state          GenerationState
 	backend        string
+	process        *os.Process
 	processPID     int
 	transcodedMS   int64
+	aheadMS        int64
+	suspended      bool
 	speed          string
 	errorCode      string
 	errorMessage   string
@@ -176,6 +182,8 @@ func (g *Generation) snapshot() GenerationSnapshot {
 		Backend:         g.backend,
 		ProcessPID:      g.processPID,
 		TranscodedMS:    g.transcodedMS,
+		AheadMS:         g.aheadMS,
+		Suspended:       g.suspended,
 		Speed:           g.speed,
 		ErrorCode:       g.errorCode,
 		ErrorMessage:    g.errorMessage,
