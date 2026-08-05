@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/implement_legacy_projection_retirement.py
       - scripts/fix_legacy_projection_retirement_script.py
+      - scripts/fix_generated_legacy_projection_retirement.py
       - .github/workflows/one-shot-legacy-projection-retirement.yml
       - .github/workflows/one-shot-transcode-projection-audit.yml
 
@@ -38,6 +39,7 @@ jobs:
         run: |
           python3 scripts/fix_legacy_projection_retirement_script.py
           python3 scripts/implement_legacy_projection_retirement.py
+          python3 scripts/fix_generated_legacy_projection_retirement.py
           gofmt -w \
             internal/model/transcode_execution.go \
             internal/model/model.go \
@@ -46,6 +48,7 @@ jobs:
             internal/repository/repo_stats.go \
             internal/repository/repo_transcode_queue.go \
             internal/repository/repo_transcode_artifact_cleanup.go \
+            internal/repository/repo_transcode_artifact_cleanup_test.go \
             internal/repository/runtime_history.go \
             internal/service/artifact_maintenance.go \
             internal/service/transcode_cleanup.go \
@@ -88,6 +91,7 @@ jobs:
         run: |
           rm -f scripts/implement_legacy_projection_retirement.py
           rm -f scripts/fix_legacy_projection_retirement_script.py
+          rm -f scripts/fix_generated_legacy_projection_retirement.py
           rm -f .github/workflows/one-shot-legacy-projection-retirement.yml
           rm -f .github/workflows/one-shot-transcode-projection-audit.yml
           git add -A
