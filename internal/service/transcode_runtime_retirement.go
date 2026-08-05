@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
-	transcodeprofile "github.com/nowen-video/nowen-video/internal/transcode/profile"
 	"gorm.io/gorm"
 )
 
@@ -43,12 +43,11 @@ type runtimePlaybackRetirementReport struct {
 	JobsDeferred     int
 	ArtifactsDeleted int
 	AttemptsRetired  int
-	TasksRetired     int
 	PathsRemoved     int
 }
 
 func (r runtimePlaybackRetirementReport) Changed() bool {
-	return r.JobsCancelled > 0 || r.ArtifactsDeleted > 0 || r.AttemptsRetired > 0 || r.TasksRetired > 0 || r.PathsRemoved > 0
+	return r.JobsCancelled > 0 || r.ArtifactsDeleted > 0 || r.AttemptsRetired > 0 || r.PathsRemoved > 0
 }
 
 func isRetiredRuntimePlaybackIntent(intent string) bool {
@@ -87,18 +86,15 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 		return report, nil
 	}
 	db := s.repo.DB()
-
 	var jobs []model.TranscodeJobRecord
 	if err := db.Where("intent IN ?", retiredRuntimePlaybackIntents).Find(&jobs).Error; err != nil {
 		return report, fmt.Errorf("list retired runtime playback jobs: %w", err)
 	}
 	report.JobsFound = len(jobs)
-
 	allJobIDs := make([]string, 0, len(jobs))
 	cleanupJobIDs := make([]string, 0, len(jobs))
 	cancelJobIDs := make([]string, 0, len(jobs))
 	liveJobIDs := make(map[string]struct{})
-	legacyTaskIDs := make([]string, 0, len(jobs))
 	for index := range jobs {
 		job := &jobs[index]
 		allJobIDs = append(allJobIDs, job.ID)
@@ -108,27 +104,18 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 			continue
 		}
 		cleanupJobIDs = append(cleanupJobIDs, job.ID)
-		if job.LegacyTaskID != nil && strings.TrimSpace(*job.LegacyTaskID) != "" {
-			legacyTaskIDs = append(legacyTaskIDs, strings.TrimSpace(*job.LegacyTaskID))
-		}
 		if !runtimePlaybackJobTerminal(job.Status) {
 			cancelJobIDs = append(cancelJobIDs, job.ID)
 		}
 	}
-
 	if len(allJobIDs) > 0 {
 		err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&model.TranscodeJobRecord{}).
-				Where("id IN ?", allJobIDs).
-				Updates(map[string]any{
-					"desired_state":       "cancelled",
-					"active_key":          nil,
-					"cancel_requested_at": now,
-					"updated_at":          now,
-				}).Error; err != nil {
+			if err := tx.Model(&model.TranscodeJobRecord{}).Where("id IN ?", allJobIDs).Updates(map[string]any{
+				"desired_state": "cancelled", "active_key": nil,
+				"cancel_requested_at": now, "updated_at": now,
+			}).Error; err != nil {
 				return err
 			}
-
 			if len(liveJobIDs) > 0 {
 				ids := make([]string, 0, len(liveJobIDs))
 				for id := range liveJobIDs {
@@ -140,20 +127,12 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 					return err
 				}
 			}
-
 			if len(cancelJobIDs) > 0 {
-				if err := tx.Model(&model.TranscodeJobRecord{}).
-					Where("id IN ?", cancelJobIDs).
-					Updates(map[string]any{
-						"status":            "cancelled",
-						"worker_id":         "",
-						"lease_token":       "",
-						"claimed_at":        nil,
-						"last_heartbeat_at": nil,
-						"lease_expires_at":  nil,
-						"completed_at":      now,
-						"updated_at":        now,
-					}).Error; err != nil {
+				if err := tx.Model(&model.TranscodeJobRecord{}).Where("id IN ?", cancelJobIDs).Updates(map[string]any{
+					"status": "cancelled", "worker_id": "", "lease_token": "",
+					"claimed_at": nil, "last_heartbeat_at": nil, "lease_expires_at": nil,
+					"completed_at": now, "updated_at": now,
+				}).Error; err != nil {
 					return err
 				}
 			}
@@ -171,58 +150,42 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 			return report, fmt.Errorf("list retired runtime playback attempts: %w", err)
 		}
 	}
-
 	var artifacts []model.TranscodeArtifactRecord
 	if err := db.Where("kind IN ?", retiredRuntimeArtifactKinds).Find(&artifacts).Error; err != nil {
 		return report, fmt.Errorf("list retired runtime playback artifacts: %w", err)
 	}
 	cleanupArtifacts := make([]model.TranscodeArtifactRecord, 0, len(artifacts))
 	for index := range artifacts {
-		artifact := artifacts[index]
-		if _, live := liveJobIDs[artifact.JobID]; live {
-			continue
+		if _, live := liveJobIDs[artifacts[index].JobID]; !live && artifacts[index].CleanupState != repository.ArtifactCleanupCompleted {
+			cleanupArtifacts = append(cleanupArtifacts, artifacts[index])
 		}
-		cleanupArtifacts = append(cleanupArtifacts, artifact)
 	}
-
-	var tasks []model.TranscodeTask
-	if len(legacyTaskIDs) > 0 {
-		if err := db.Where("id IN ?", legacyTaskIDs).Find(&tasks).Error; err != nil {
-			return report, fmt.Errorf("list retired runtime playback task projections: %w", err)
+	if len(cleanupArtifacts) > 0 {
+		ids := make([]string, 0, len(cleanupArtifacts))
+		for index := range cleanupArtifacts {
+			ids = append(ids, cleanupArtifacts[index].ID)
+		}
+		if err := db.Model(&model.TranscodeArtifactRecord{}).Where("id IN ?", ids).Updates(map[string]any{
+			"status":     gorm.Expr("CASE WHEN status = ? THEN ? ELSE ? END", "published", "expired", "cancelled"),
+			"updated_at": now,
+		}).Error; err != nil {
+			return report, fmt.Errorf("terminalize retired artifacts: %w", err)
 		}
 	}
 
 	root := filepath.Join(s.cfg.Cache.CacheDir, "transcode")
 	paths := make(map[string]struct{})
-	addPath := func(path string) {
-		path = strings.TrimSpace(path)
+	for index := range attempts {
+		path := strings.TrimSpace(attempts[index].WorkspacePath)
 		if path != "" && runtimeRetirementPathAllowed(root, path) {
 			paths[filepath.Clean(path)] = struct{}{}
 		}
 	}
-	for index := range attempts {
-		addPath(attempts[index].WorkspacePath)
-	}
-	for index := range cleanupArtifacts {
-		addPath(cleanupArtifacts[index].TempPath)
-		addPath(cleanupArtifacts[index].Path)
-		if cleanupArtifacts[index].ManifestPath != "" {
-			addPath(filepath.Dir(cleanupArtifacts[index].ManifestPath))
-		}
-	}
-	for index := range tasks {
-		addPath(tasks[index].OutputDir)
-	}
-	addPath(filepath.Join(root, "ondemand"))
-	collectLegacyRuntimeDirectories(root, report.JobsDeferred == 0, addPath)
-
 	orderedPaths := make([]string, 0, len(paths))
 	for path := range paths {
 		orderedPaths = append(orderedPaths, path)
 	}
-	sort.Slice(orderedPaths, func(i, j int) bool {
-		return len(orderedPaths[i]) > len(orderedPaths[j])
-	})
+	sort.Slice(orderedPaths, func(i, j int) bool { return len(orderedPaths[i]) > len(orderedPaths[j]) })
 	cleanupErrors := make([]string, 0)
 	for _, path := range orderedPaths {
 		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
@@ -237,73 +200,37 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 		}
 		report.PathsRemoved++
 	}
-	if len(cleanupErrors) > 0 {
-		return report, fmt.Errorf("retire runtime playback storage: %s", strings.Join(cleanupErrors, "; "))
+	for index := range cleanupArtifacts {
+		removed, err := s.cleanupArtifactRecord(&cleanupArtifacts[index])
+		report.PathsRemoved += removed
+		if err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Sprintf("artifact %s: %v", cleanupArtifacts[index].ID, err))
+			continue
+		}
+		report.ArtifactsDeleted++
 	}
 
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		if len(cleanupArtifacts) > 0 {
-			artifactIDs := make([]string, 0, len(cleanupArtifacts))
-			for index := range cleanupArtifacts {
-				artifactIDs = append(artifactIDs, cleanupArtifacts[index].ID)
-			}
-			if err := tx.Where("id IN ?", artifactIDs).Delete(&model.TranscodeArtifactRecord{}).Error; err != nil {
-				return err
-			}
-			report.ArtifactsDeleted = len(artifactIDs)
-		}
 		if len(attempts) > 0 {
 			attemptIDs := make([]string, 0, len(attempts))
 			for index := range attempts {
 				attemptIDs = append(attemptIDs, attempts[index].ID)
 			}
-			if err := tx.Model(&model.TranscodeAttemptRecord{}).
-				Where("id IN ?", attemptIDs).
-				Updates(map[string]any{
-					"workspace_path": "",
-					"updated_at":     now,
-				}).Error; err != nil {
+			if err := tx.Model(&model.TranscodeAttemptRecord{}).Where("id IN ?", attemptIDs).
+				Updates(map[string]any{"workspace_path": "", "updated_at": now}).Error; err != nil {
 				return err
 			}
 			if err := tx.Model(&model.TranscodeAttemptRecord{}).
 				Where("id IN ? AND status NOT IN ?", attemptIDs, []string{"completed", "failed", "cancelled"}).
-				Updates(map[string]any{
-					"status":        "cancelled",
-					"completed_at":  now,
-					"error_code":    "runtime_playback_retired",
-					"error_message": ErrPersistentRuntimeTranscodeRetired.Error(),
-					"updated_at":    now,
-				}).Error; err != nil {
+				Updates(map[string]any{"status": "cancelled", "completed_at": now,
+					"error_code": "runtime_playback_retired", "error_message": ErrPersistentRuntimeTranscodeRetired.Error(), "updated_at": now}).Error; err != nil {
 				return err
 			}
 			report.AttemptsRetired = len(attemptIDs)
 		}
-		if len(tasks) > 0 {
-			taskIDs := make([]string, 0, len(tasks))
-			for index := range tasks {
-				taskIDs = append(taskIDs, tasks[index].ID)
-			}
-			if err := tx.Model(&model.TranscodeTask{}).
-				Where("id IN ?", taskIDs).
-				Updates(map[string]any{
-					"status":       "cancelled",
-					"output_dir":   "",
-					"error":        ErrPersistentRuntimeTranscodeRetired.Error(),
-					"completed_at": now,
-					"updated_at":   now,
-				}).Error; err != nil {
-				return err
-			}
-			report.TasksRetired = len(taskIDs)
-		}
 		if len(cleanupJobIDs) > 0 {
-			if err := tx.Model(&model.TranscodeJobRecord{}).
-				Where("id IN ?", cleanupJobIDs).
-				Updates(map[string]any{
-					"intent":             retiredRuntimePlaybackIntent,
-					"current_attempt_id": "",
-					"updated_at":         now,
-				}).Error; err != nil {
+			if err := tx.Model(&model.TranscodeJobRecord{}).Where("id IN ?", cleanupJobIDs).
+				Updates(map[string]any{"intent": retiredRuntimePlaybackIntent, "current_attempt_id": "", "updated_at": now}).Error; err != nil {
 				return err
 			}
 		}
@@ -311,8 +238,10 @@ func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Ti
 	}); err != nil {
 		return report, fmt.Errorf("finalize runtime playback retirement: %w", err)
 	}
-
 	s.InvalidateCacheDiskUsage()
+	if len(cleanupErrors) > 0 {
+		return report, fmt.Errorf("retire runtime playback storage: %s", strings.Join(cleanupErrors, "; "))
+	}
 	return report, nil
 }
 
@@ -335,28 +264,4 @@ func runtimeRetirementPathAllowed(root, candidate string) bool {
 		}
 	}
 	return true
-}
-
-func collectLegacyRuntimeDirectories(root string, includeQualityDirs bool, add func(string)) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		switch entry.Name() {
-		case "artifacts", "workspaces", "ondemand":
-			continue
-		}
-		mediaRoot := filepath.Join(root, entry.Name())
-		add(filepath.Join(mediaRoot, "audio"))
-		if !includeQualityDirs {
-			continue
-		}
-		for _, quality := range transcodeprofile.Names() {
-			add(filepath.Join(mediaRoot, quality))
-		}
-	}
 }

@@ -135,7 +135,7 @@ export interface TaskActionUpdatedData {
   id: string
   kind: 'scan' | 'scrape' | 'transcode'
   source_id: string
-  action: 'cancel' | 'retry'
+  action: 'retry' | 'rollback'
   accepted: boolean
   message: string
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Ban, CheckCircle2, CircleAlert, Clock3, Database, Film, HardDrive, Loader2, RefreshCw, RotateCcw, X, XCircle } from 'lucide-react'
+import { Activity, CheckCircle2, CircleAlert, Clock3, Database, HardDrive, Loader2, RefreshCw, RotateCcw, ShieldCheck, X, XCircle } from 'lucide-react'
 import { taskCenterApi } from '@/api'
 import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskAction, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -11,8 +11,8 @@ const TASK_REFRESH_DEBOUNCE_MS = 250
 const kindLabel: Record<UnifiedTaskKind, string> = {
   scan: '媒体库扫描',
   scrape: '元数据刮削',
-  transcode: '视频转码',
   artifact_cleanup: '转码缓存清理',
+  legacy_artifact_migration: '旧转码目录迁移',
   storage_incident: '转码存储告警',
 }
 
@@ -26,13 +26,12 @@ const statusLabel: Record<UnifiedTaskStatus, string> = {
 
 function taskIcon(kind: UnifiedTaskKind, status: UnifiedTaskStatus) {
   if (kind === 'storage_incident') return <CircleAlert size={17} />
-  if (kind === 'artifact_cleanup' && status === 'failed') return <CircleAlert size={17} />
+  if ((kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') && status === 'failed') return <CircleAlert size={17} />
   if (status === 'failed') return <XCircle size={17} />
   if (status === 'completed') return <CheckCircle2 size={17} />
   if (status === 'queued') return <Clock3 size={17} />
-  if (kind === 'artifact_cleanup') return <HardDrive size={17} />
+  if (kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') return <HardDrive size={17} />
   if (kind === 'scan') return <Database size={17} />
-  if (kind === 'transcode') return <Film size={17} />
   return <Loader2 size={17} className="animate-spin" />
 }
 
@@ -78,7 +77,8 @@ function TaskRow({
   onAction: (task: UnifiedTask, action: UnifiedTaskAction) => void
 }) {
   const active = task.status === 'queued' || task.status === 'running'
-  const cleanupTask = task.kind === 'artifact_cleanup'
+  const cleanupTask = task.kind === 'artifact_cleanup' || task.kind === 'legacy_artifact_migration'
+  const migrationTask = task.kind === 'legacy_artifact_migration'
   const storageIncident = task.kind === 'storage_incident'
   const operationalIssue = (cleanupTask || storageIncident) && task.status === 'failed'
   const time = formatTime(task.updated_at || task.started_at || task.created_at)
@@ -134,7 +134,7 @@ function TaskRow({
             </div>
           )}
 
-          {cleanupTask && task.status === 'failed' && (
+          {cleanupTask && task.status === 'failed' && !migrationTask && (
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
               修复挂载、权限或路径配置后再重试。操作仍会经过 Cleanup Lease 与路径安全校验。
             </p>
@@ -160,16 +160,16 @@ function TaskRow({
                   {cleanupTask ? '立即重试' : '重试'}
                 </button>
               )}
-              {actions.includes('cancel') && (
+              {actions.includes('rollback') && (
                 <button
                   type="button"
-                  onClick={() => onAction(task, 'cancel')}
+                  onClick={() => onAction(task, 'rollback')}
                   disabled={actionLoading !== null}
                   className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-                  style={{ borderColor: 'rgba(220,38,38,.25)', color: '#DC2626' }}
+                  style={{ borderColor: 'rgba(202,138,4,.3)', color: '#CA8A04' }}
                 >
-                  {actionLoading === `${task.id}:cancel` ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
-                  取消
+                  {actionLoading === `${task.id}:rollback` ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                  保留目录
                 </button>
               )}
             </div>

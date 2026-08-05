@@ -3,8 +3,6 @@ package service
 import (
 	"testing"
 	"time"
-
-	"github.com/nowen-video/nowen-video/internal/model"
 )
 
 func TestNormalizeTaskStatus(t *testing.T) {
@@ -43,27 +41,6 @@ func TestScanPhaseToUnifiedTaskUsesCurrentProgress(t *testing.T) {
 	}
 	if task.Progress != 25 {
 		t.Fatalf("scan progress = %v, want 25", task.Progress)
-	}
-}
-
-func TestTranscodeTaskMapping(t *testing.T) {
-	created := time.Now().Add(-time.Minute)
-	updated := time.Now()
-	task := transcodeToUnifiedTask(&model.TranscodeTask{
-		ID:         "tr-1",
-		Status:     "running",
-		Quality:    "1080p",
-		Progress:   45.5,
-		MediaTitle: "测试电影",
-		CreatedAt:  created,
-		UpdatedAt:  updated,
-	})
-
-	if task.ID != "transcode:tr-1" || task.Title != "测试电影" {
-		t.Fatalf("unexpected transcode task: %+v", task)
-	}
-	if task.Status != TaskStatusRunning || task.Progress != 45.5 {
-		t.Fatalf("unexpected transcode state: %+v", task)
 	}
 }
 

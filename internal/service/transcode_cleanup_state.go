@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
 )
 
 const artifactCleanupLeaseDuration = 2 * time.Minute
@@ -96,19 +97,31 @@ func (s *ArtifactMaintenanceService) cleanupClaimedArtifact(
 		removedDirs++
 	}
 
-	deleted, err := s.executionRepo.DeleteArtifactByCleanupClaim(artifact.ID, token)
+	deleted, err := s.executionRepo.CompleteArtifactCleanupByClaim(
+		artifact.ID,
+		token,
+		artifactCleanupDisposition(artifact),
+		now,
+	)
 	if err != nil {
 		return removedDirs, false, s.persistArtifactCleanupFailure(
 			artifact,
 			token,
-			fmt.Errorf("delete artifact cleanup metadata: %w", err),
+			fmt.Errorf("complete artifact cleanup metadata: %w", err),
 			now,
 		)
 	}
 	if !deleted {
-		return removedDirs, false, fmt.Errorf("artifact cleanup ownership lost: %s", artifact.ID)
+		return removedDirs, false, fmt.Errorf("artifact cleanup completion ownership lost: %s", artifact.ID)
 	}
 	return removedDirs, true, nil
+}
+
+func artifactCleanupDisposition(artifact *model.TranscodeArtifactRecord) string {
+	if artifact != nil && artifact.MigrationSource == repository.LegacyTranscodeArtifactMigrationSource {
+		return "legacy_projection_reclaimed"
+	}
+	return "retention_reclaimed"
 }
 
 func (s *ArtifactMaintenanceService) persistArtifactCleanupFailure(

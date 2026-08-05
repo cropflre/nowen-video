@@ -69,6 +69,10 @@ export interface RuntimeHistoryArtifact {
   cleanup_attempts: number
   cleanup_error_code?: string
   cleanup_error_message?: string
+  cleanup_completed_at?: string
+  cleanup_disposition?: string
+  cleanup_original_path?: string
+  cleanup_rollback_until?: string
   published_at?: string
   expires_at?: string
   created_at: string

@@ -18,8 +18,7 @@ func TestTaskLifecycleUpdateForEvent(t *testing.T) {
 		{EventScanStarted, &ScanProgressData{LibraryID: "library-1"}, TaskKindScan, TaskStatusRunning, "library-1"},
 		{EventScanCompleted, ScanProgressData{LibraryID: "library-2"}, TaskKindScan, TaskStatusCompleted, "library-2"},
 		{EventScrapeProgress, &ScrapeProgressData{LibraryID: "library-3"}, TaskKindScrape, TaskStatusRunning, "library-3"},
-		{EventTranscodeCompleted, &TranscodeProgressData{TaskID: "task-1"}, TaskKindTranscode, TaskStatusCompleted, "task-1"},
-		{EventTranscodeFailed, TranscodeProgressData{TaskID: "task-2"}, TaskKindTranscode, TaskStatusFailed, "task-2"},
+		{EventScrapeCompleted, ScrapeProgressData{LibraryID: "library-4"}, TaskKindScrape, TaskStatusCompleted, "library-4"},
 	}
 
 	for _, tt := range tests {
@@ -32,6 +31,11 @@ func TestTaskLifecycleUpdateForEvent(t *testing.T) {
 		}
 	}
 
+	for _, retired := range []string{EventTranscodeStarted, EventTranscodeProgress, EventTranscodeCompleted, EventTranscodeFailed} {
+		if update, ok := taskLifecycleUpdateForEvent(retired, &TranscodeProgressData{TaskID: "retired"}); ok || update != nil {
+			t.Fatalf("retired Runtime event must not enter Task Center: event=%s update=%+v", retired, update)
+		}
+	}
 	if update, ok := taskLifecycleUpdateForEvent(EventLibraryUpdated, nil); ok || update != nil {
 		t.Fatalf("non-task event must not be mapped: %+v", update)
 	}
@@ -42,13 +46,13 @@ func TestTaskLifecycleUpdateForEvent(t *testing.T) {
 
 func TestBroadcastEventAlsoEmitsTaskUpdated(t *testing.T) {
 	hub := NewWSHub(zap.NewNop().Sugar())
-	hub.BroadcastEvent(EventTranscodeProgress, &TranscodeProgressData{TaskID: "task-9"})
+	hub.BroadcastEvent(EventScrapeProgress, &ScrapeProgressData{LibraryID: "library-9"})
 
 	var original WSEvent
 	if err := json.Unmarshal(<-hub.broadcast, &original); err != nil {
 		t.Fatal(err)
 	}
-	if original.Type != EventTranscodeProgress {
+	if original.Type != EventScrapeProgress {
 		t.Fatalf("unexpected original event: %s", original.Type)
 	}
 
@@ -68,7 +72,7 @@ func TestBroadcastEventAlsoEmitsTaskUpdated(t *testing.T) {
 	if err := json.Unmarshal(payload, &update); err != nil {
 		t.Fatal(err)
 	}
-	if update.Kind != TaskKindTranscode || update.SourceID != "task-9" || update.SourceEvent != EventTranscodeProgress {
+	if update.Kind != TaskKindScrape || update.SourceID != "library-9" || update.SourceEvent != EventScrapeProgress {
 		t.Fatalf("unexpected unified update: %+v", update)
 	}
 }

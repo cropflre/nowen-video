@@ -853,7 +853,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&MediaPerson{},
 		&WatchHistory{},
 		&Favorite{},
-		&TranscodeTask{},
 		&Playlist{},
 		&PlaylistItem{},
 		&Bookmark{},

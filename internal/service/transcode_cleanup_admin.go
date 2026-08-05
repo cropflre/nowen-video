@@ -46,12 +46,28 @@ func (s *ArtifactMaintenanceService) RetryArtifactCleanup(artifactID string) err
 		}
 	}
 	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
-		// The row disappeared because another cleanup owner completed the same
-		// operation after requeue. This is an idempotent success.
+		// The operation is no longer active because another cleanup owner completed
+		// the tombstone after requeue. This is an idempotent success.
 		return nil
 	}
 	if lookupErr != nil {
 		return fmt.Errorf("读取 Artifact 清理重试结果失败: %w", lookupErr)
 	}
 	return cleanupErr
+}
+
+var ErrLegacyArtifactRollbackUnavailable = errors.New("legacy artifact rollback is unavailable")
+
+func (s *ArtifactMaintenanceService) RollbackLegacyArtifactMigration(artifactID string) error {
+	if s == nil || s.executionRepo == nil {
+		return fmt.Errorf("Legacy Artifact 迁移服务不可用")
+	}
+	rolledBack, err := s.executionRepo.RollbackLegacyArtifactCleanup(artifactID, time.Now())
+	if err != nil {
+		return fmt.Errorf("回滚 Legacy Artifact 清理失败: %w", err)
+	}
+	if !rolledBack {
+		return fmt.Errorf("%w: artifact=%s", ErrLegacyArtifactRollbackUnavailable, artifactID)
+	}
+	return nil
 }

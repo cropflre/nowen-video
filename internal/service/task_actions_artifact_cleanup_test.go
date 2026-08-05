@@ -29,6 +29,10 @@ func (f *fakeArtifactCleanupActions) RetryArtifactCleanup(id string) error {
 	return f.err
 }
 
+func (f *fakeArtifactCleanupActions) RollbackLegacyArtifactMigration(string) error {
+	return f.err
+}
+
 func TestTaskActionDispatcherRetriesBlockedArtifactCleanup(t *testing.T) {
 	actions := &fakeArtifactCleanupActions{}
 	dispatcher := &TaskActionDispatcher{
@@ -90,7 +94,7 @@ func TestTaskActionDispatcherRejectsUnsafeCleanupAction(t *testing.T) {
 		}},
 	}
 
-	_, err := dispatcher.Execute(TaskKindArtifactCleanup, "artifact-blocked", TaskActionCancel, "admin")
+	_, err := dispatcher.Execute(TaskKindArtifactCleanup, "artifact-blocked", "cancel", "admin")
 	if !errors.Is(err, ErrTaskActionUnsupported) {
 		t.Fatalf("expected unsupported cleanup action, got %v", err)
 	}

@@ -1,128 +1,44 @@
 package repository
 
 import (
-	"time"
-
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
 
 // ==================== TranscodeRepo ====================
 
+// TranscodeRepo is now only the read-only migration gateway for an existing
+// transcode_tasks table. New databases never create that table and no runtime
+// component may write, update or delete its rows.
 type TranscodeRepo struct {
 	db *gorm.DB
 }
 
-func (r *TranscodeRepo) Create(task *model.TranscodeTask) error {
-	return r.db.Create(task).Error
+func (r *TranscodeRepo) LegacyTableExists() bool {
+	return r != nil && r.db != nil && r.db.Migrator().HasTable(&model.TranscodeTask{})
 }
 
-func (r *TranscodeRepo) Update(task *model.TranscodeTask) error {
-	return r.db.Save(task).Error
-}
-
-// UpdateProgress 仅更新进度字段（避免全量 Save 导致 SQLite 写锁竞争）
-func (r *TranscodeRepo) UpdateProgress(taskID string, progress float64) error {
-	return r.db.Model(&model.TranscodeTask{}).Where("id = ?", taskID).
-		Updates(map[string]interface{}{"progress": progress, "updated_at": time.Now()}).Error
-}
-
-func (r *TranscodeRepo) FindByMediaAndQuality(mediaID, quality string) (*model.TranscodeTask, error) {
-	var task model.TranscodeTask
-	err := r.db.Where("media_id = ? AND quality = ? AND status = ?", mediaID, quality, "done").First(&task).Error
-	return &task, err
-}
-
-func (r *TranscodeRepo) ListRunning() ([]model.TranscodeTask, error) {
-	var tasks []model.TranscodeTask
-	err := r.db.Where("status IN ?", []string{"pending", "running"}).Find(&tasks).Error
-	return tasks, err
-}
-
-// ListStaleDone 查询 done 状态且 updated_at 早于 before 的任务（用于缓存清理）
-func (r *TranscodeRepo) ListStaleDone(before time.Time) ([]model.TranscodeTask, error) {
-	var tasks []model.TranscodeTask
-	err := r.db.Where("status = ? AND updated_at < ?", "done", before).Find(&tasks).Error
-	return tasks, err
-}
-
-// ListStaleFailed 查询 failed/cancelled 状态且 updated_at 早于 before 的任务
-func (r *TranscodeRepo) ListStaleFailed(before time.Time) ([]model.TranscodeTask, error) {
-	var tasks []model.TranscodeTask
-	err := r.db.Where("status IN ? AND updated_at < ?", []string{"failed", "cancelled"}, before).Find(&tasks).Error
-	return tasks, err
-}
-
-// DeleteByID 根据 ID 删除任务记录
-func (r *TranscodeRepo) DeleteByID(id string) error {
-	return r.db.Delete(&model.TranscodeTask{}, "id = ?", id).Error
-}
-
-// DeleteByIDs 批量删除任务记录（不删除 running 中的）
-func (r *TranscodeRepo) DeleteByIDs(ids []string) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
+// ListLegacyTerminalWithOutput returns a bounded inventory source. It never
+// mutates the legacy projection and is a no-op for fresh databases.
+func (r *TranscodeRepo) ListLegacyTerminalWithOutput(limit int) ([]model.TranscodeTask, error) {
+	if !r.LegacyTableExists() {
+		return []model.TranscodeTask{}, nil
 	}
-	res := r.db.Where("id IN ? AND status NOT IN ?", ids, []string{"running", "pending"}).
-		Delete(&model.TranscodeTask{})
-	return res.RowsAffected, res.Error
-}
-
-// FindByID 按 ID 查询任务
-func (r *TranscodeRepo) FindByID(id string) (*model.TranscodeTask, error) {
-	var task model.TranscodeTask
-	err := r.db.Where("id = ?", id).First(&task).Error
-	if err != nil {
-		return nil, err
+	if limit <= 0 {
+		limit = 500
 	}
-	return &task, nil
-}
-
-// ListAll 分页查询所有任务，按 updated_at 倒序，可按状态过滤
-// 同时 Preload 关联的 Media，方便展示标题等信息
-func (r *TranscodeRepo) ListAll(page, pageSize int, status string) ([]model.TranscodeTask, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	q := r.db.Model(&model.TranscodeTask{})
-	if status != "" {
-		q = q.Where("status = ?", status)
-	}
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, err
+	if limit > 2000 {
+		limit = 2000
 	}
 	var tasks []model.TranscodeTask
-	err := q.Preload("Media").
-		Order("updated_at DESC").
-		Offset((page - 1) * pageSize).
-		Limit(pageSize).
+	err := r.db.Where(
+		"status IN ? AND TRIM(COALESCE(output_dir, '')) <> ''",
+		[]string{"done", "completed", "failed", "cancelled"},
+	).
+		Order("updated_at ASC, id ASC").
+		Limit(limit).
 		Find(&tasks).Error
-	return tasks, total, err
-}
-
-// CountByStatus 按状态分组统计任务数（用于面板顶部统计卡片）
-func (r *TranscodeRepo) CountByStatus() (map[string]int64, error) {
-	type row struct {
-		Status string
-		Cnt    int64
-	}
-	var rows []row
-	err := r.db.Model(&model.TranscodeTask{}).
-		Select("status, count(*) as cnt").
-		Group("status").
-		Scan(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]int64, len(rows))
-	for _, r := range rows {
-		result[r.Status] = r.Cnt
-	}
-	return result, nil
+	return tasks, err
 }
 
 // ==================== PlaybackStatsRepo ====================

@@ -102,18 +102,25 @@ func TestArtifactCleanupClaimRetryAndRecovery(t *testing.T) {
 	if claimed.CleanupAttempts != 2 || claimed.CleanupToken != "token-b" {
 		t.Fatalf("retry claim did not preserve attempt evidence: %+v", claimed)
 	}
-	if deleted, err := repo.DeleteArtifactByCleanupClaim(artifact.ID, "token-a"); err != nil || deleted {
+	if deleted, err := repo.CompleteArtifactCleanupByClaim(artifact.ID, "token-a", "test_cleanup", now.Add(6*time.Minute)); err != nil || deleted {
 		t.Fatalf("stale cleanup token deleted artifact: deleted=%v err=%v", deleted, err)
 	}
-	if deleted, err := repo.DeleteArtifactByCleanupClaim(artifact.ID, "token-b"); err != nil || !deleted {
+	if deleted, err := repo.CompleteArtifactCleanupByClaim(artifact.ID, "token-b", "test_cleanup", now.Add(6*time.Minute)); err != nil || !deleted {
 		t.Fatalf("current cleanup token failed to delete artifact: deleted=%v err=%v", deleted, err)
 	}
 	var count int64
 	if err := db.Model(&model.TranscodeArtifactRecord{}).Where("id = ?", artifact.ID).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatalf("artifact row survived cleanup commit: %d", count)
+	if count != 1 {
+		t.Fatalf("artifact cleanup tombstone missing: %d", count)
+	}
+	var tombstone model.TranscodeArtifactRecord
+	if err := db.First(&tombstone, "id = ?", artifact.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tombstone.CleanupState != ArtifactCleanupCompleted || tombstone.CleanupDisposition != "test_cleanup" {
+		t.Fatalf("unexpected cleanup tombstone: %+v", tombstone)
 	}
 }
 

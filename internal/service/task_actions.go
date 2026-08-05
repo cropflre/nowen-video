@@ -11,10 +11,9 @@ import (
 )
 
 const (
-	TaskActionCancel = "cancel"
-	TaskActionRetry  = "retry"
-
-	EventTaskUpdated = "task_updated"
+	TaskActionRetry    = "retry"
+	TaskActionRollback = "rollback"
+	EventTaskUpdated   = "task_updated"
 )
 
 var (
@@ -31,10 +30,6 @@ type TaskActionResult struct {
 	Message  string `json:"message"`
 }
 
-type transcodeTaskLookup interface {
-	FindByID(id string) (*model.TranscodeTask, error)
-}
-
 type scrapeTaskLookup interface {
 	FindByID(id string) (*model.ScrapeTask, error)
 }
@@ -43,13 +38,9 @@ type artifactCleanupLookup interface {
 	FindArtifactCleanupOperation(id string) (*model.TranscodeArtifactRecord, error)
 }
 
-type transcodeTaskActions interface {
-	CancelTranscode(taskID string) error
-	RetryTask(taskID string, mediaResolver func(mediaID string) (*model.Media, error)) error
-}
-
 type artifactCleanupActions interface {
 	RetryArtifactCleanup(artifactID string) error
+	RollbackLegacyArtifactMigration(artifactID string) error
 }
 
 type scrapeTaskActions interface {
@@ -57,13 +48,10 @@ type scrapeTaskActions interface {
 }
 
 type TaskActionDispatcher struct {
-	transcode       transcodeTaskActions
 	artifactCleanup artifactCleanupActions
 	scrape          scrapeTaskActions
-	transcodeLookup transcodeTaskLookup
 	artifactLookup  artifactCleanupLookup
 	scrapeLookup    scrapeTaskLookup
-	mediaResolver   func(mediaID string) (*model.Media, error)
 	wsHub           *WSHub
 	logger          *zap.SugaredLogger
 }
@@ -71,48 +59,27 @@ type TaskActionDispatcher struct {
 func NewTaskActionDispatcher(
 	maintenance *ArtifactMaintenanceService,
 	scrape *ScrapeManagerService,
-	transcodeRepo *repository.TranscodeRepo,
 	scrapeRepo *repository.ScrapeTaskRepo,
-	mediaRepo *repository.MediaRepo,
 	wsHub *WSHub,
 	logger *zap.SugaredLogger,
 ) *TaskActionDispatcher {
-	var resolver func(string) (*model.Media, error)
-	if mediaRepo != nil {
-		resolver = mediaRepo.FindByID
-	}
 	dispatcher := &TaskActionDispatcher{
-		scrape:          scrape,
-		transcodeLookup: transcodeRepo,
-		scrapeLookup:    scrapeRepo,
-		mediaResolver:   resolver,
-		wsHub:           wsHub,
-		logger:          logger,
+		scrape:       scrape,
+		scrapeLookup: scrapeRepo,
+		wsHub:        wsHub,
+		logger:       logger,
 	}
 	if maintenance != nil {
 		dispatcher.artifactCleanup = maintenance
-	}
-	if transcodeRepo != nil && transcodeRepo.DB() != nil {
-		dispatcher.artifactLookup = repository.NewTranscodeExecutionRepo(transcodeRepo.DB())
+		dispatcher.artifactLookup = maintenance.executionRepo
 	}
 	return dispatcher
 }
 
-// AvailableTaskActions is shared by the API and dispatcher. Queued transcode
-// jobs are cancellable because cancellation is now a persisted desired state,
-// not a best-effort signal consumed only by a running worker.
 func AvailableTaskActions(kind, status string) []string {
 	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
 	normalizedStatus := normalizeTaskStatus(status)
-
 	switch normalizedKind {
-	case TaskKindTranscode:
-		switch normalizedStatus {
-		case TaskStatusQueued, TaskStatusRunning:
-			return []string{TaskActionCancel}
-		case TaskStatusFailed, TaskStatusCancelled:
-			return []string{TaskActionRetry}
-		}
 	case TaskKindScrape:
 		if normalizedStatus == TaskStatusFailed || normalizedStatus == TaskStatusCancelled {
 			return []string{TaskActionRetry}
@@ -120,6 +87,13 @@ func AvailableTaskActions(kind, status string) []string {
 	case TaskKindArtifactCleanup:
 		if normalizedStatus == TaskStatusFailed {
 			return []string{TaskActionRetry}
+		}
+	case TaskKindLegacyArtifactMigration:
+		switch normalizedStatus {
+		case TaskStatusQueued:
+			return []string{TaskActionRollback}
+		case TaskStatusFailed:
+			return []string{TaskActionRetry, TaskActionRollback}
 		}
 	}
 	return []string{}
@@ -132,31 +106,25 @@ func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*
 	if sourceID == "" {
 		return nil, fmt.Errorf("%w: empty source id", ErrTaskNotFound)
 	}
-
 	var err error
 	switch kind {
-	case TaskKindTranscode:
-		err = d.executeTranscode(sourceID, action)
 	case TaskKindScrape:
 		err = d.executeScrape(sourceID, action, userID)
 	case TaskKindArtifactCleanup:
-		err = d.executeArtifactCleanup(sourceID, action)
-	case TaskKindScan:
-		err = fmt.Errorf("%w: scan tasks do not expose lifecycle controls", ErrTaskActionUnsupported)
+		err = d.executeArtifactCleanup(sourceID, action, false)
+	case TaskKindLegacyArtifactMigration:
+		err = d.executeArtifactCleanup(sourceID, action, true)
+	case TaskKindScan, TaskKindStorageIncident:
+		err = fmt.Errorf("%w: task kind %s exposes no lifecycle controls", ErrTaskActionUnsupported, kind)
 	default:
 		err = fmt.Errorf("%w: unknown task kind %q", ErrTaskActionUnsupported, kind)
 	}
 	if err != nil {
 		return nil, err
 	}
-
 	result := &TaskActionResult{
-		ID:       kind + ":" + sourceID,
-		Kind:     kind,
-		SourceID: sourceID,
-		Action:   action,
-		Accepted: true,
-		Message:  taskActionMessage(kind, action),
+		ID: kind + ":" + sourceID, Kind: kind, SourceID: sourceID,
+		Action: action, Accepted: true, Message: taskActionMessage(kind, action),
 	}
 	if d.wsHub != nil {
 		d.wsHub.BroadcastEvent(EventTaskUpdated, result)
@@ -167,38 +135,7 @@ func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*
 	return result, nil
 }
 
-func (d *TaskActionDispatcher) executeTranscode(sourceID, action string) error {
-	if d.transcodeLookup == nil || d.transcode == nil {
-		return fmt.Errorf("转码任务执行器不可用")
-	}
-	task, err := d.transcodeLookup.FindByID(sourceID)
-	if err != nil || task == nil {
-		return fmt.Errorf("%w: transcode %s", ErrTaskNotFound, sourceID)
-	}
-	if !containsAction(AvailableTaskActions(TaskKindTranscode, task.Status), action) {
-		if action == TaskActionCancel || action == TaskActionRetry {
-			return fmt.Errorf("%w: transcode status=%s action=%s", ErrTaskActionConflict, task.Status, action)
-		}
-		return fmt.Errorf("%w: transcode action=%s", ErrTaskActionUnsupported, action)
-	}
-
-	switch action {
-	case TaskActionCancel:
-		if err := d.transcode.CancelTranscode(sourceID); err != nil {
-			return fmt.Errorf("取消转码失败: %w", err)
-		}
-	case TaskActionRetry:
-		if d.mediaResolver == nil {
-			return fmt.Errorf("转码媒体解析器不可用")
-		}
-		if err := d.transcode.RetryTask(sourceID, d.mediaResolver); err != nil {
-			return fmt.Errorf("重试转码失败: %w", err)
-		}
-	}
-	return nil
-}
-
-func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string) error {
+func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string, legacyMigration bool) error {
 	if d.artifactLookup == nil || d.artifactCleanup == nil {
 		return fmt.Errorf("Artifact 清理执行器不可用")
 	}
@@ -206,19 +143,56 @@ func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string) e
 	if err != nil || artifact == nil {
 		return fmt.Errorf("%w: artifact cleanup %s", ErrTaskNotFound, sourceID)
 	}
-	if action != TaskActionRetry {
+	isLegacy := artifact.MigrationSource == repository.LegacyTranscodeArtifactMigrationSource
+	if legacyMigration != isLegacy {
+		return fmt.Errorf("%w: artifact migration kind mismatch", ErrTaskActionConflict)
+	}
+	if action != TaskActionRetry && action != TaskActionRollback {
 		return fmt.Errorf("%w: artifact cleanup action=%s", ErrTaskActionUnsupported, action)
 	}
-	if artifact.CleanupState != repository.ArtifactCleanupBlocked && artifact.CleanupState != repository.ArtifactCleanupRetryWait {
+	if !containsAction(AvailableTaskActions(mapArtifactTaskKind(artifact), mapArtifactTaskStatus(artifact)), action) {
 		return fmt.Errorf("%w: artifact cleanup state=%s action=%s", ErrTaskActionConflict, artifact.CleanupState, action)
 	}
-	if err := d.artifactCleanup.RetryArtifactCleanup(sourceID); err != nil {
-		if errors.Is(err, ErrArtifactCleanupNotRetryable) {
-			return fmt.Errorf("%w: artifact cleanup state changed", ErrTaskActionConflict)
+	switch action {
+	case TaskActionRetry:
+		if err := d.artifactCleanup.RetryArtifactCleanup(sourceID); err != nil {
+			if errors.Is(err, ErrArtifactCleanupNotRetryable) {
+				return fmt.Errorf("%w: artifact cleanup state changed", ErrTaskActionConflict)
+			}
+			return fmt.Errorf("重试 Artifact 清理失败: %w", err)
 		}
-		return fmt.Errorf("重试 Artifact 清理失败: %w", err)
+	case TaskActionRollback:
+		if err := d.artifactCleanup.RollbackLegacyArtifactMigration(sourceID); err != nil {
+			if errors.Is(err, ErrLegacyArtifactRollbackUnavailable) {
+				return fmt.Errorf("%w: legacy artifact cleanup already claimed or completed", ErrTaskActionConflict)
+			}
+			return fmt.Errorf("保留回滚 Legacy Artifact 失败: %w", err)
+		}
+	default:
+		return fmt.Errorf("%w: artifact cleanup action=%s", ErrTaskActionUnsupported, action)
 	}
 	return nil
+}
+
+func mapArtifactTaskKind(artifact *model.TranscodeArtifactRecord) string {
+	if artifact != nil && artifact.MigrationSource == repository.LegacyTranscodeArtifactMigrationSource {
+		return TaskKindLegacyArtifactMigration
+	}
+	return TaskKindArtifactCleanup
+}
+
+func mapArtifactTaskStatus(artifact *model.TranscodeArtifactRecord) string {
+	if artifact == nil {
+		return TaskStatusFailed
+	}
+	switch artifact.CleanupState {
+	case repository.ArtifactCleanupPending:
+		return TaskStatusQueued
+	case repository.ArtifactCleanupClaimed:
+		return TaskStatusRunning
+	default:
+		return TaskStatusFailed
+	}
 }
 
 func (d *TaskActionDispatcher) executeScrape(sourceID, action, userID string) error {
@@ -230,18 +204,15 @@ func (d *TaskActionDispatcher) executeScrape(sourceID, action, userID string) er
 		return fmt.Errorf("%w: scrape %s", ErrTaskNotFound, sourceID)
 	}
 	if !containsAction(AvailableTaskActions(TaskKindScrape, task.Status), action) {
-		if action == TaskActionCancel || action == TaskActionRetry {
+		if action == TaskActionRetry {
 			return fmt.Errorf("%w: scrape status=%s action=%s", ErrTaskActionConflict, task.Status, action)
 		}
 		return fmt.Errorf("%w: scrape action=%s", ErrTaskActionUnsupported, action)
 	}
-	if action == TaskActionRetry {
-		if err := d.scrape.StartScrape(sourceID, userID); err != nil {
-			return fmt.Errorf("重试刮削失败: %w", err)
-		}
-		return nil
+	if err := d.scrape.StartScrape(sourceID, userID); err != nil {
+		return fmt.Errorf("重试刮削失败: %w", err)
 	}
-	return fmt.Errorf("%w: scrape action=%s", ErrTaskActionUnsupported, action)
+	return nil
 }
 
 func containsAction(actions []string, action string) bool {
@@ -255,17 +226,13 @@ func containsAction(actions []string, action string) bool {
 
 func taskActionMessage(kind, action string) string {
 	switch action {
-	case TaskActionCancel:
-		return "取消请求已提交"
 	case TaskActionRetry:
-		switch kind {
-		case TaskKindScrape:
+		if kind == TaskKindScrape {
 			return "刮削任务已重新提交"
-		case TaskKindArtifactCleanup:
-			return "Artifact 清理已重新执行"
-		default:
-			return "转码任务已重新提交"
 		}
+		return "Artifact 清理已重新执行"
+	case TaskActionRollback:
+		return "Legacy 目录已退出清理队列并保留"
 	default:
 		return "任务操作已提交"
 	}

@@ -8,10 +8,14 @@ import (
 )
 
 const (
-	ArtifactCleanupPending   = "pending"
-	ArtifactCleanupClaimed   = "claimed"
-	ArtifactCleanupRetryWait = "retry_wait"
-	ArtifactCleanupBlocked   = "blocked"
+	ArtifactCleanupPending                 = "pending"
+	ArtifactCleanupClaimed                 = "claimed"
+	ArtifactCleanupRetryWait               = "retry_wait"
+	ArtifactCleanupBlocked                 = "blocked"
+	ArtifactCleanupCompleted               = "completed"
+	ArtifactCleanupRollbackCompleted       = "rollback_completed"
+	LegacyTranscodeArtifactMigrationSource = "legacy_transcode_task_v1"
+	LegacyTranscodeArtifactKind            = "legacy_hls_directory"
 )
 
 var artifactCleanupTerminalStatuses = []string{
@@ -241,19 +245,29 @@ func (r *TranscodeExecutionRepo) BlockArtifactCleanup(
 	return result.RowsAffected == 1, result.Error
 }
 
-// DeleteArtifactByCleanupClaim removes dependent handoff evidence and the
-// Artifact row in one transaction, but only while the caller still owns the
-// cleanup Lease.
-func (r *TranscodeExecutionRepo) DeleteArtifactByCleanupClaim(artifactID, token string) (bool, error) {
-	deleted := false
+// CompleteArtifactCleanupByClaim preserves a durable tombstone after the
+// filesystem has been reclaimed. Runtime History therefore keeps the original
+// path, byte count, completion time and disposition without treating the file
+// as live storage.
+func (r *TranscodeExecutionRepo) CompleteArtifactCleanupByClaim(
+	artifactID,
+	token,
+	disposition string,
+	now time.Time,
+) (bool, error) {
+	completed := false
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&model.TranscodeArtifactRecord{}).
-			Where("id = ? AND cleanup_state = ? AND cleanup_token = ?", artifactID, ArtifactCleanupClaimed, token).
-			Count(&count).Error; err != nil {
-			return err
+		var artifact model.TranscodeArtifactRecord
+		result := tx.Where(
+			"id = ? AND cleanup_state = ? AND cleanup_token = ?",
+			artifactID,
+			ArtifactCleanupClaimed,
+			token,
+		).Limit(1).Find(&artifact)
+		if result.Error != nil {
+			return result.Error
 		}
-		if count != 1 {
+		if result.RowsAffected != 1 {
 			return nil
 		}
 		if err := tx.Where(
@@ -263,19 +277,67 @@ func (r *TranscodeExecutionRepo) DeleteArtifactByCleanupClaim(artifactID, token 
 		).Delete(&model.TranscodeHandoffAttestationRecord{}).Error; err != nil {
 			return err
 		}
-		result := tx.Where(
-			"id = ? AND cleanup_state = ? AND cleanup_token = ?",
-			artifactID,
-			ArtifactCleanupClaimed,
-			token,
-		).Delete(&model.TranscodeArtifactRecord{})
+		result = tx.Model(&model.TranscodeArtifactRecord{}).
+			Where(
+				"id = ? AND cleanup_state = ? AND cleanup_token = ?",
+				artifactID,
+				ArtifactCleanupClaimed,
+				token,
+			).
+			Updates(map[string]any{
+				"status":                         "deleted",
+				"cleanup_state":                  ArtifactCleanupCompleted,
+				"cleanup_completed_at":           now,
+				"cleanup_disposition":            disposition,
+				"cleanup_original_path":          artifact.Path,
+				"cleanup_original_temp_path":     artifact.TempPath,
+				"cleanup_original_manifest_path": artifact.ManifestPath,
+				"path":                           "",
+				"temp_path":                      "",
+				"manifest_path":                  "",
+				"cleanup_token":                  "",
+				"cleanup_claimed_at":             nil,
+				"cleanup_lease_expires_at":       nil,
+				"cleanup_next_attempt_at":        nil,
+				"cleanup_error_code":             "",
+				"cleanup_error_message":          "",
+				"updated_at":                     now,
+			})
 		if result.Error != nil {
 			return result.Error
 		}
-		deleted = result.RowsAffected == 1
+		completed = result.RowsAffected == 1
 		return nil
 	})
-	return deleted, err
+	return completed, err
+}
+
+// RollbackLegacyArtifactCleanup removes a migrated legacy directory from the
+// cleanup work set without changing or deleting the directory itself. Claimed
+// or completed cleanup cannot be rolled back.
+func (r *TranscodeExecutionRepo) RollbackLegacyArtifactCleanup(artifactID string, now time.Time) (bool, error) {
+	result := r.db.Model(&model.TranscodeArtifactRecord{}).
+		Where(
+			"id = ? AND migration_source = ? AND cleanup_state IN ?",
+			artifactID,
+			LegacyTranscodeArtifactMigrationSource,
+			[]string{ArtifactCleanupPending, ArtifactCleanupRetryWait, ArtifactCleanupBlocked},
+		).
+		Updates(map[string]any{
+			"status":                   "migration_rolled_back",
+			"cleanup_state":            ArtifactCleanupRollbackCompleted,
+			"cleanup_completed_at":     now,
+			"cleanup_disposition":      "rollback_preserved",
+			"cleanup_token":            "",
+			"cleanup_claimed_at":       nil,
+			"cleanup_lease_expires_at": nil,
+			"cleanup_next_attempt_at":  nil,
+			"cleanup_error_code":       "",
+			"cleanup_error_message":    "",
+			"cleanup_rollback_until":   nil,
+			"updated_at":               now,
+		})
+	return result.RowsAffected == 1, result.Error
 }
 
 func (r *TranscodeExecutionRepo) ArtifactCleanupStateCounts() (map[string]int64, error) {

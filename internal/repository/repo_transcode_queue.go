@@ -1,8 +1,6 @@
 package repository
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -52,31 +50,6 @@ func (r *TranscodeExecutionRepo) ClaimNextQueuedJob(workerID string, now time.Ti
 		}
 	}
 	return nil, false, nil
-}
-
-// LoadJobPayload reconstructs the process payload from durable rows. The
-// transcode Job remains the scheduling authority; the legacy task is only the
-// management API projection and Media is loaded by the Job's immutable ID.
-func (r *TranscodeExecutionRepo) LoadJobPayload(job *model.TranscodeJobRecord) (*model.TranscodeTask, *model.Media, error) {
-	if job == nil {
-		return nil, nil, fmt.Errorf("transcode job is nil")
-	}
-	if job.LegacyTaskID == nil || strings.TrimSpace(*job.LegacyTaskID) == "" {
-		return nil, nil, fmt.Errorf("transcode job %s has no legacy task projection", job.ID)
-	}
-	taskID := strings.TrimSpace(*job.LegacyTaskID)
-	var task model.TranscodeTask
-	if err := r.db.First(&task, "id = ?", taskID).Error; err != nil {
-		return nil, nil, fmt.Errorf("load transcode task %s: %w", taskID, err)
-	}
-	if task.MediaID != job.MediaID {
-		return nil, nil, fmt.Errorf("transcode job %s media mismatch: job=%s task=%s", job.ID, job.MediaID, task.MediaID)
-	}
-	var media model.Media
-	if err := r.db.First(&media, "id = ?", job.MediaID).Error; err != nil {
-		return nil, nil, fmt.Errorf("load media %s: %w", job.MediaID, err)
-	}
-	return &task, &media, nil
 }
 
 // CompleteUnleasedJob finalizes work cancelled or rejected before a Worker

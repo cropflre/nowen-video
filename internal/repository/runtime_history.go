@@ -145,7 +145,9 @@ func (r *RuntimeHistoryRepo) Counts() (*RuntimeHistoryCounts, error) {
 	if err := r.db.Model(&model.TranscodeArtifactRecord{}).Count(&counts.Artifacts).Error; err != nil {
 		return nil, err
 	}
-	if err := r.db.Model(&model.TranscodeArtifactRecord{}).Select("COALESCE(SUM(size_bytes), 0)").Scan(&counts.ArtifactBytes).Error; err != nil {
+	if err := r.db.Model(&model.TranscodeArtifactRecord{}).
+		Where("cleanup_state <> ? OR cleanup_state IS NULL", ArtifactCleanupCompleted).
+		Select("COALESCE(SUM(size_bytes), 0)").Scan(&counts.ArtifactBytes).Error; err != nil {
 		return nil, err
 	}
 	if r.db.Migrator().HasTable(&model.TranscodeTask{}) {

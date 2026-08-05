@@ -78,24 +78,28 @@ type RuntimeHistoryAttempt struct {
 }
 
 type RuntimeHistoryArtifact struct {
-	ID                  string     `json:"id"`
-	AttemptID           string     `json:"attempt_id,omitempty"`
-	Kind                string     `json:"kind"`
-	ProfileID           string     `json:"profile_id,omitempty"`
-	Status              string     `json:"status"`
-	SizeBytes           int64      `json:"size_bytes"`
-	DurationMS          int64      `json:"duration_ms"`
-	AttestationStatus   string     `json:"attestation_status,omitempty"`
-	AttestationHash     string     `json:"attestation_hash,omitempty"`
-	ErrorCode           string     `json:"error_code,omitempty"`
-	ErrorMessage        string     `json:"error_message,omitempty"`
-	CleanupState        string     `json:"cleanup_state,omitempty"`
-	CleanupAttempts     int        `json:"cleanup_attempts"`
-	CleanupErrorCode    string     `json:"cleanup_error_code,omitempty"`
-	CleanupErrorMessage string     `json:"cleanup_error_message,omitempty"`
-	PublishedAt         *time.Time `json:"published_at,omitempty"`
-	ExpiresAt           *time.Time `json:"expires_at,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
+	ID                   string     `json:"id"`
+	AttemptID            string     `json:"attempt_id,omitempty"`
+	Kind                 string     `json:"kind"`
+	ProfileID            string     `json:"profile_id,omitempty"`
+	Status               string     `json:"status"`
+	SizeBytes            int64      `json:"size_bytes"`
+	DurationMS           int64      `json:"duration_ms"`
+	AttestationStatus    string     `json:"attestation_status,omitempty"`
+	AttestationHash      string     `json:"attestation_hash,omitempty"`
+	ErrorCode            string     `json:"error_code,omitempty"`
+	ErrorMessage         string     `json:"error_message,omitempty"`
+	CleanupState         string     `json:"cleanup_state,omitempty"`
+	CleanupAttempts      int        `json:"cleanup_attempts"`
+	CleanupErrorCode     string     `json:"cleanup_error_code,omitempty"`
+	CleanupErrorMessage  string     `json:"cleanup_error_message,omitempty"`
+	CleanupCompletedAt   *time.Time `json:"cleanup_completed_at,omitempty"`
+	CleanupDisposition   string     `json:"cleanup_disposition,omitempty"`
+	CleanupOriginalPath  string     `json:"cleanup_original_path,omitempty"`
+	CleanupRollbackUntil *time.Time `json:"cleanup_rollback_until,omitempty"`
+	PublishedAt          *time.Time `json:"published_at,omitempty"`
+	ExpiresAt            *time.Time `json:"expires_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
 }
 
 type RuntimeHistoryList struct {
@@ -352,7 +356,9 @@ func mapRuntimeHistoryArtifacts(rows []model.TranscodeArtifactRecord) []RuntimeH
 			CleanupState: row.CleanupState, CleanupAttempts: row.CleanupAttempts,
 			CleanupErrorCode:    row.CleanupErrorCode,
 			CleanupErrorMessage: truncateRuntimeHistoryText(row.CleanupErrorMessage),
-			PublishedAt:         row.PublishedAt, ExpiresAt: row.ExpiresAt, CreatedAt: row.CreatedAt,
+			CleanupCompletedAt:  row.CleanupCompletedAt, CleanupDisposition: row.CleanupDisposition,
+			CleanupOriginalPath: row.CleanupOriginalPath, CleanupRollbackUntil: row.CleanupRollbackUntil,
+			PublishedAt: row.PublishedAt, ExpiresAt: row.ExpiresAt, CreatedAt: row.CreatedAt,
 		})
 	}
 	return result

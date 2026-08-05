@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	TaskKindScan            = "scan"
-	TaskKindScrape          = "scrape"
-	TaskKindTranscode       = "transcode"
-	TaskKindArtifactCleanup = "artifact_cleanup"
-	TaskKindStorageIncident = "storage_incident"
+	TaskKindScan                    = "scan"
+	TaskKindScrape                  = "scrape"
+	TaskKindLegacyArtifactMigration = "legacy_artifact_migration"
+	TaskKindArtifactCleanup         = "artifact_cleanup"
+	TaskKindStorageIncident         = "storage_incident"
 
 	TaskStatusQueued    = "queued"
 	TaskStatusRunning   = "running"
@@ -61,7 +61,6 @@ type TaskCenterSnapshot struct {
 // remain the source of truth.
 type TaskCenterService struct {
 	library       *LibraryService
-	transcodeRepo *repository.TranscodeRepo
 	scrapeRepo    *repository.ScrapeTaskRepo
 	executionRepo *repository.TranscodeExecutionRepo
 	logger        *zap.SugaredLogger
@@ -69,20 +68,16 @@ type TaskCenterService struct {
 
 func NewTaskCenterService(
 	library *LibraryService,
-	transcodeRepo *repository.TranscodeRepo,
 	scrapeRepo *repository.ScrapeTaskRepo,
+	executionRepo *repository.TranscodeExecutionRepo,
 	logger *zap.SugaredLogger,
 ) *TaskCenterService {
-	service := &TaskCenterService{
+	return &TaskCenterService{
 		library:       library,
-		transcodeRepo: transcodeRepo,
 		scrapeRepo:    scrapeRepo,
+		executionRepo: executionRepo,
 		logger:        logger,
 	}
-	if transcodeRepo != nil && transcodeRepo.DB() != nil {
-		service.executionRepo = repository.NewTranscodeExecutionRepo(transcodeRepo.DB())
-	}
-	return service
 }
 
 func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSnapshot, error) {
@@ -121,19 +116,6 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 		}
 		for i := range rows {
 			task := artifactCleanupToUnifiedTask(&rows[i])
-			if !activeOnly || isTaskActive(task.Status) {
-				tasks = append(tasks, task)
-			}
-		}
-	}
-
-	if s.transcodeRepo != nil {
-		rows, _, err := s.transcodeRepo.ListAll(1, limit, "")
-		if err != nil {
-			return nil, fmt.Errorf("list transcode tasks: %w", err)
-		}
-		for i := range rows {
-			task := transcodeToUnifiedTask(&rows[i])
 			if !activeOnly || isTaskActive(task.Status) {
 				tasks = append(tasks, task)
 			}
@@ -267,6 +249,11 @@ func artifactCleanupToUnifiedTask(artifact *model.TranscodeArtifactRecord) Unifi
 	if artifact == nil {
 		return UnifiedTask{}
 	}
+	kind := TaskKindArtifactCleanup
+	migrationTask := artifact.MigrationSource == repository.LegacyTranscodeArtifactMigrationSource
+	if migrationTask {
+		kind = TaskKindLegacyArtifactMigration
+	}
 	status := TaskStatusQueued
 	switch artifact.CleanupState {
 	case repository.ArtifactCleanupClaimed:
@@ -276,14 +263,20 @@ func artifactCleanupToUnifiedTask(artifact *model.TranscodeArtifactRecord) Unifi
 	}
 
 	title := "转码缓存清理"
+	if migrationTask {
+		title = "旧转码目录迁移"
+	}
 	if artifact.MediaID != "" {
 		title += " · " + artifact.MediaID
 	}
-	subtitleParts := make([]string, 0, 3)
+	subtitleParts := make([]string, 0, 4)
 	if artifact.ProfileID != "" {
 		subtitleParts = append(subtitleParts, artifact.ProfileID)
 	}
 	subtitleParts = append(subtitleParts, cleanupStateLabel(artifact.CleanupState))
+	if migrationTask && artifact.CleanupRollbackUntil != nil {
+		subtitleParts = append(subtitleParts, "可保留回滚至 "+artifact.CleanupRollbackUntil.Format("01-02 15:04"))
+	}
 	if artifact.CleanupAttempts > 0 {
 		subtitleParts = append(subtitleParts, fmt.Sprintf("第 %d 次尝试", artifact.CleanupAttempts))
 	}
@@ -304,12 +297,16 @@ func artifactCleanupToUnifiedTask(artifact *model.TranscodeArtifactRecord) Unifi
 		messageParts = append(messageParts, artifact.TempPath)
 	}
 	if len(messageParts) == 0 {
-		messageParts = append(messageParts, "等待 Artifact 清理 Worker")
+		if migrationTask {
+			messageParts = append(messageParts, "观察期结束后进入 Cleanup Lease；回滚仅保留目录，不恢复旧执行器")
+		} else {
+			messageParts = append(messageParts, "等待 Artifact 清理 Worker")
+		}
 	}
 
 	return UnifiedTask{
-		ID:        TaskKindArtifactCleanup + ":" + artifact.ID,
-		Kind:      TaskKindArtifactCleanup,
+		ID:        kind + ":" + artifact.ID,
+		Kind:      kind,
 		Status:    status,
 		Title:     title,
 		Subtitle:  strings.Join(subtitleParts, " · "),
@@ -334,27 +331,6 @@ func cleanupStateLabel(state string) string {
 		return "已阻断"
 	default:
 		return "清理状态未知"
-	}
-}
-
-func transcodeToUnifiedTask(task *model.TranscodeTask) UnifiedTask {
-	title := task.MediaTitle
-	if title == "" {
-		title = task.Media.Title
-	}
-	return UnifiedTask{
-		ID:          "transcode:" + task.ID,
-		Kind:        TaskKindTranscode,
-		Status:      normalizeTaskStatus(task.Status),
-		Title:       fallbackText(title, "视频转码"),
-		Subtitle:    task.Quality,
-		Message:     task.Error,
-		Progress:    clampProgress(task.Progress),
-		SourceID:    task.ID,
-		CreatedAt:   timePtr(task.CreatedAt),
-		UpdatedAt:   timePtr(task.UpdatedAt),
-		StartedAt:   task.StartedAt,
-		CompletedAt: task.CompletedAt,
 	}
 }
 

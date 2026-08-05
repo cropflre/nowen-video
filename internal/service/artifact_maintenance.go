@@ -66,10 +66,15 @@ func NewArtifactMaintenanceService(repo *repository.TranscodeRepo, cfg *config.C
 	if err := service.initializeStorageHealth(); err != nil {
 		panic(fmt.Sprintf("initialize artifact storage health: %v", err))
 	}
+	if report, inventoryErr := service.inventoryLegacyTranscodeProjection(time.Now()); inventoryErr != nil {
+		logger.Warnf("启动登记 Legacy 转码目录失败: %v", inventoryErr)
+	} else if report.Changed() {
+		logger.Infof("启动登记 Legacy 转码目录 tasks=%d jobs=%d queued=%d blocked=%d missing=%d", report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
+	}
 	if report, retireErr := service.retirePersistentRuntimePlayback(time.Now()); retireErr != nil {
 		logger.Warnf("启动退役持久 Runtime 播放状态失败: %v", retireErr)
 	} else if report.Changed() {
-		logger.Infof("启动退役持久 Runtime 播放状态 cancelled=%d artifacts=%d attempts=%d tasks=%d paths=%d", report.JobsCancelled, report.ArtifactsDeleted, report.AttemptsRetired, report.TasksRetired, report.PathsRemoved)
+		logger.Infof("启动退役持久 Runtime 播放状态 cancelled=%d artifacts=%d attempts=%d paths=%d", report.JobsCancelled, report.ArtifactsDeleted, report.AttemptsRetired, report.PathsRemoved)
 	}
 	service.runDiskPressureGovernorTick(time.Now(), true)
 	service.wg.Add(1)
@@ -91,12 +96,17 @@ func (s *ArtifactMaintenanceService) maintenanceLoop() {
 		select {
 		case now := <-ticker.C:
 			s.runStorageHealthTick(now, true)
+			if report, err := s.inventoryLegacyTranscodeProjection(now); err != nil {
+				s.logger.Warnf("周期登记 Legacy 转码目录失败: %v", err)
+			} else if report.Changed() {
+				s.logger.Infof("周期登记 Legacy 转码目录 tasks=%d jobs=%d queued=%d blocked=%d missing=%d", report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
+			}
 			s.runDiskPressureGovernorTick(now, false)
 			report, err := s.retirePersistentRuntimePlayback(now)
 			if err != nil {
 				s.logger.Warnf("周期退役持久 Runtime 播放状态失败: %v", err)
 			} else if report.Changed() {
-				s.logger.Infof("周期退役持久 Runtime 播放状态 cancelled=%d artifacts=%d attempts=%d tasks=%d paths=%d", report.JobsCancelled, report.ArtifactsDeleted, report.AttemptsRetired, report.TasksRetired, report.PathsRemoved)
+				s.logger.Infof("周期退役持久 Runtime 播放状态 cancelled=%d artifacts=%d attempts=%d paths=%d", report.JobsCancelled, report.ArtifactsDeleted, report.AttemptsRetired, report.PathsRemoved)
 			}
 		case <-s.done:
 			return

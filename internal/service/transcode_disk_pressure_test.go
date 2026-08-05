@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
 	transcodediskpressure "github.com/nowen-video/nowen-video/internal/transcode/diskpressure"
 	"gorm.io/gorm"
 )
@@ -24,12 +25,12 @@ func TestDiskPressureGovernorReclaimsOldPublishedArtifact(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("artifact directory survived pressure reclaim: %v", err)
 	}
-	var count int64
-	if err := db.Model(&model.TranscodeArtifactRecord{}).Where("id = ?", artifact.ID).Count(&count).Error; err != nil {
+	var tombstone model.TranscodeArtifactRecord
+	if err := db.First(&tombstone, "id = ?", artifact.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatalf("artifact metadata survived pressure cleanup: %d", count)
+	if tombstone.CleanupState != repository.ArtifactCleanupCompleted || tombstone.Path != "" || tombstone.CleanupOriginalPath != path {
+		t.Fatalf("pressure cleanup did not preserve Artifact tombstone: %+v", tombstone)
 	}
 }
 

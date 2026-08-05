@@ -30,15 +30,6 @@ func taskLifecycleUpdateForEvent(eventType string, data interface{}) (*TaskLifec
 	case EventScrapeCompleted:
 		update.Kind = TaskKindScrape
 		update.Status = TaskStatusCompleted
-	case EventTranscodeStarted, EventTranscodeProgress:
-		update.Kind = TaskKindTranscode
-		update.Status = TaskStatusRunning
-	case EventTranscodeCompleted:
-		update.Kind = TaskKindTranscode
-		update.Status = TaskStatusCompleted
-	case EventTranscodeFailed:
-		update.Kind = TaskKindTranscode
-		update.Status = TaskStatusFailed
 	case EventStorageHealthUpdated:
 		update.Kind = TaskKindStorageIncident
 		update.Status = TaskStatusFailed
@@ -70,8 +61,6 @@ func taskLifecycleSourceID(data interface{}) string {
 		return value.LibraryID
 	case ScrapeProgressData:
 		return value.LibraryID
-	case *TranscodeProgressData:
-		return value.TaskID
 	case TranscodeProgressData:
 		return value.TaskID
 	case *TranscodeStorageHealthStatus:

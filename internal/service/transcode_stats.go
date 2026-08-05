@@ -30,10 +30,7 @@ type TranscodeStatistics struct {
 }
 
 func (s *ArtifactMaintenanceService) GetStatistics() TranscodeStatistics {
-	counts, _ := s.repo.CountByStatus()
-	if counts == nil {
-		counts = map[string]int64{}
-	}
+	counts := map[string]int64{}
 	artifactCounts, _ := s.executionRepo.ArtifactStatusCounts()
 	if artifactCounts == nil {
 		artifactCounts = map[string]int64{}
