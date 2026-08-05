@@ -52,8 +52,13 @@ func buildRouter(
 	jwtMiddleware := middleware.JWTAuthWithValidator(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
 	profileRuntime := serverprofile.NewLiteRuntime(cfg)
-	taskCenterService := service.NewTaskCenterService(services.Library, repos.Transcode, repos.ScrapeTask, logger)
-	taskActionDispatcher := service.NewTaskActionDispatcher(
+	taskCenterService := service.NewTaskCenterServiceWithoutRuntimeTranscode(
+		services.Library,
+		repos.Transcode,
+		repos.ScrapeTask,
+		logger,
+	)
+	taskActionDispatcher := service.NewTaskActionDispatcherWithoutRuntimeTranscode(
 		services.Transcode,
 		services.ScrapeManager,
 		repos.Transcode,
