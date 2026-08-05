@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/runtime_maintenance_refactor.py
+      - scripts/runtime_maintenance_refactor_fix.py
       - .github/workflows/runtime-maintenance-refactor.yml
 
 permissions:
@@ -28,10 +29,12 @@ jobs:
       - name: Apply runtime maintenance refactor
         run: |
           python3 scripts/runtime_maintenance_refactor.py
+          python3 scripts/runtime_maintenance_refactor_fix.py
           gofmt -w \
             internal/service/playback_session.go \
             internal/service/media_execution.go \
             internal/service/stream.go \
+            internal/service/stream_managed_remux.go \
             internal/service/playback_planner.go \
             internal/service/service.go \
             internal/service/lite.go \
@@ -53,6 +56,7 @@ jobs:
         run: |
           rm .github/workflows/runtime-maintenance-refactor.yml
           rm scripts/runtime_maintenance_refactor.py
+          rm scripts/runtime_maintenance_refactor_fix.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
