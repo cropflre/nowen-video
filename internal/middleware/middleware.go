@@ -202,7 +202,9 @@ func retiredPersistentRuntimeAdminPath(path string) bool {
 	return path == "/api/admin/transcode" ||
 		strings.HasPrefix(path, "/api/admin/transcode/") ||
 		path == "/api/admin/transcode-tasks" ||
-		strings.HasPrefix(path, "/api/admin/transcode-tasks/")
+		strings.HasPrefix(path, "/api/admin/transcode-tasks/") ||
+		path == "/api/admin/tasks/transcode" ||
+		strings.HasPrefix(path, "/api/admin/tasks/transcode/")
 }
 
 // AdminOnly 管理员权限中间件
