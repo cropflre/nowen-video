@@ -18,7 +18,6 @@ interface PlaybackSessionHandle {
 interface UsePlaybackSessionSourceOptions {
   enabled: boolean
   mediaId: string
-  fallbackSource: string
   startPosition?: number
 }
 
@@ -79,10 +78,9 @@ async function waitUntilReady(
 export function usePlaybackSessionSource({
   enabled,
   mediaId,
-  fallbackSource,
   startPosition = 0,
 }: UsePlaybackSessionSourceOptions): PlaybackSessionSource {
-  const [source, setSource] = useState(enabled ? '' : fallbackSource)
+  const [source, setSource] = useState('')
   const [loading, setLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -118,7 +116,7 @@ export function usePlaybackSessionSource({
     let disposed = false
 
     if (!enabled) {
-      setSource(fallbackSource)
+      setSource('')
       setLoading(false)
       setError(null)
       setOffsetSeconds(Math.max(0, startPosition))
@@ -192,7 +190,7 @@ export function usePlaybackSessionSource({
       if (operationRef.current === operation) operationRef.current++
       void close('component_unmounted', true)
     }
-  }, [enabled, mediaId, fallbackSource, startPosition, close])
+  }, [enabled, mediaId, startPosition, close])
 
   const restart = useCallback(async (
     positionSeconds: number,

@@ -316,14 +316,9 @@ func main() {
 		api.GET("/stream/:id/info", guardByMediaID, handlers.Stream.MediaInfo)
 		api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
 		api.GET("/stream/:id/remux", guardByMediaID, handlers.Stream.Remux)
-		api.GET("/stream/:id/master.m3u8", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
-		api.GET("/stream/:id/:quality/:segment", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
 		// 播放进度上报（驱动 Throttling 节流）
-		api.POST("/stream/:id/playback", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
 		// 客户端带宽上报（驱动 ABR 档位过滤建议）
-		api.POST("/stream/:id/bandwidth", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
 		// 节流/转码状态快照（供前端播放器 Settings 菜单可视化）
-		api.GET("/stream/:id/throttle", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
 		playbackRuntime.Register(api, guardByMediaID)
 
 		// STRM 远程流专用端点
@@ -333,8 +328,6 @@ func main() {
 		// 多音轨 HLS 路由（独立于 /stream/:id/:quality/... 避免参数冲突）
 		// /api/audio-track/:id/:trackIdx.m3u8       按需音轨 playlist
 		// /api/audio-track/:id/:trackIdx/:seg        按需音轨分片
-		api.GET("/audio-track/:id/:trackIdx", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
-		api.GET("/audio-track/:id/:trackIdx/:seg", guardByMediaID, handlers.Stream.RetiredRuntimeHLS)
 
 		// 海报/缩略图（不做权限校验：海报属于媒体元信息，不可播放）
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
@@ -536,20 +529,8 @@ func main() {
 		admin.GET("/runtime-history", runtimeHistoryHandler.List)
 		admin.GET("/runtime-history/summary", runtimeHistoryHandler.Summary)
 		admin.GET("/runtime-history/jobs/:id", runtimeHistoryHandler.Detail)
-		admin.GET("/transcode/status", handlers.Admin.RetiredRuntimeTranscode)
-		admin.GET("/transcode/throttle", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode/:taskId/cancel", handlers.Admin.RetiredRuntimeTranscode)
 		// 转码任务管理面板（与预处理交互对齐）
 		// 注意：使用 /transcode-tasks 前缀，避免与上面 /transcode/:taskId/cancel 的通配段产生 Gin 路由冲突
-		admin.GET("/transcode-tasks", handlers.Admin.RetiredRuntimeTranscode)
-		admin.GET("/transcode-tasks/statistics", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/batch-cancel", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/batch-delete", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/batch-retry", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/batch-submit", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/:id/cancel", handlers.Admin.RetiredRuntimeTranscode)
-		admin.POST("/transcode-tasks/:id/retry", handlers.Admin.RetiredRuntimeTranscode)
-		admin.DELETE("/transcode-tasks/:id", handlers.Admin.RetiredRuntimeTranscode)
 
 		// TMDb 配置管理
 		admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)

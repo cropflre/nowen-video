@@ -219,7 +219,13 @@ export default function PlayerPage() {
             ? 'remux'
             : 'hls'
 
-  // src 选择：WebCodecs 模式使用 remux URL（拿到 fMP4 流）或 direct URL（MP4 源）
+  const requiresSessionTranscode =
+    mode === 'hls' &&
+    !isPreprocessed &&
+    (remuxFailed || streamApi.requiresPlaybackSession(id))
+
+  // src 只能来自直放、Remux、持久预处理或服务端播放计划。
+  // Session 模式由 SessionVideoPlayer 创建 Generation 后提供实际 playlist。
   const src = isPreprocessed
     ? streamApi.withTokenUrl(playInfo.preprocessed_url!)
     : mode === 'direct'
@@ -228,12 +234,9 @@ export default function PlayerPage() {
         ? streamApi.getRemuxUrl(id)
         : mode === 'webcodecs'
           ? (playInfo.can_remux ? streamApi.getRemuxUrl(id) : streamApi.getDirectUrl(id))
-          : streamApi.getMasterUrl(id)
-
-  const requiresSessionTranscode =
-    mode === 'hls' &&
-    !isPreprocessed &&
-    (remuxFailed || streamApi.requiresPlaybackSession(id))
+          : requiresSessionTranscode
+            ? ''
+            : streamApi.getMasterUrl(id)
 
   // 构建播放标题（剧集显示 S01E02 格式）
   const playerTitle = media.media_type === 'episode'
@@ -353,7 +356,6 @@ export default function PlayerPage() {
         />
       ) : requiresSessionTranscode ? (
         <SessionVideoPlayer
-          fallbackSrc={src}
           mediaId={id}
           title={playerTitle}
           knownDuration={playInfo.duration}

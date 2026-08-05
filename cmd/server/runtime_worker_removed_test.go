@@ -11,9 +11,6 @@ func TestPersistentRuntimeExecutionSurfaceRemoved(t *testing.T) {
 	requireSource(t, "../../internal/service/artifact_maintenance.go", "NewArtifactMaintenanceService")
 	requireSource(t, "../../internal/service/playback_session.go", "execution   *MediaExecutionService")
 	requireSource(t, "../../internal/service/stream.go", "execution   *MediaExecutionService")
-	requireSource(t, "../../internal/handler/admin.go", "RetiredRuntimeTranscode")
-	requireSource(t, "../../internal/handler/stream.go", "RetiredRuntimeHLS")
-	requireSource(t, "../server-lite/routes_core.go", "handlers.Stream.RetiredRuntimeHLS")
 
 	for _, removed := range []string{"../../internal/service/transcode.go", "../../internal/service/transcode_queue.go", "../../internal/service/transcode_lease.go", "../../internal/service/transcode_progress.go", "../../internal/service/transcode_throttle.go", "../../internal/service/transcode_persistence.go", "../../internal/service/transcode_process_shutdown.go"} {
 		if _, err := os.Stat(removed); !os.IsNotExist(err) {

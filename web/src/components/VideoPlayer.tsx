@@ -3,7 +3,6 @@ import Hls from 'hls.js'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { mediaApi, userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
-import { streamApi } from '@/api/stream'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import type { SubtitleTrack, ExternalSubtitle, ASRTask, TranslatedSubtitle, SubtitlePreprocessTask, DanmakuComment } from '@/types'
 import {
@@ -99,15 +98,9 @@ export default function VideoPlayer({
   const [currentQuality, setCurrentQuality] = useState(-1)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // 实时转码/带宽状态（Settings 面板展示）
+  // HLS 本地播放指标（不再调用媒体级 Runtime 遥测接口）
   const [currentBitrate, setCurrentBitrate] = useState(0) // 当前播放档位码率 bit/s
   const [bandwidthEstimate, setBandwidthEstimate] = useState(0) // hls.js EWMA 平滑带宽 bit/s
-  const [throttleStatus, setThrottleStatus] = useState<{
-    running: boolean
-    active_qualities: string[] | null
-    suspended_count: number
-    ahead_seconds: number
-  } | null>(null)
 
   // 字幕状态
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
@@ -563,34 +556,12 @@ export default function VideoPlayer({
           setCurrentAudioTrack(data.id)
         })
         // 带宽上报（驱动服务端 ABR 档位过滤）
-        // hls.js 内部维护了 EWMA 平滑后的 bandwidthEstimate，
-        // 我们每 10 秒采样一次并上报服务端，用作后续 master.m3u8 请求的 maxBitrate 依据。
-        // 注意：低频上报（10s）避免频繁打扰后端；弱网场景下这个评估值会更保守。
-        let lastReportedBw = 0
-        let lastReportAt = 0
-        const reportBandwidth = () => {
+        // hls.js 的 EWMA 仅用于本地诊断展示，不再上报媒体级 Runtime。
+        const updateBandwidthEstimate = () => {
           const bw = Math.round((hls as unknown as { bandwidthEstimate: number }).bandwidthEstimate || 0)
-          if (bw > 0) setBandwidthEstimate(bw) // 每个片段都更新本地展示
-          const now = Date.now()
-          if (now - lastReportAt < 10_000) return // 10 秒节流
-          if (bw <= 0) return
-          // 仅在带宽变化 >20% 时上报，避免噪声
-          if (lastReportedBw > 0 && Math.abs(bw - lastReportedBw) / lastReportedBw < 0.2) return
-          lastReportAt = now
-          lastReportedBw = bw
-          streamApi.reportBandwidth(mediaId, bw).then((res) => {
-            if (res?.data?.throttle) {
-              const t = res.data.throttle
-              setThrottleStatus({
-                running: t.running,
-                active_qualities: t.active_qualities,
-                suspended_count: t.suspended_count,
-                ahead_seconds: t.ahead_seconds,
-              })
-            }
-          }).catch(() => {})
+          if (bw > 0) setBandwidthEstimate(bw)
         }
-        hls.on(Hls.Events.FRAG_LOADED, reportBandwidth)
+        hls.on(Hls.Events.FRAG_LOADED, updateBandwidthEstimate)
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (data.fatal) {
             switch (data.type) {
@@ -647,7 +618,6 @@ export default function VideoPlayer({
     const onSeeked = () => {
       const pos = video.currentTime + remuxOffsetRef.current
       if (pos > 0) {
-        streamApi.reportPlayback(mediaId, pos).catch(() => {})
       }
     }
     video.addEventListener('play', onPlay)
@@ -694,7 +664,6 @@ export default function VideoPlayer({
       const actualTime = video.currentTime + remuxOffsetRef.current
       const actualDuration = displayDuration > 0 ? displayDuration : video.duration
       // 驱动后端节流（高频）
-      streamApi.reportPlayback(mediaId, actualTime).catch(() => {})
       // 写观看历史（低频，每 5 次 = 15s）
       tick++
       if (tick % 5 === 0) {
@@ -767,33 +736,8 @@ export default function VideoPlayer({
     video.src = newSrc
     video.play().catch(() => {})
     // 立即通知后端新位置，避免 throttleLoop 按旧位置误挂起/恢复
-    streamApi.reportPlayback(mediaId, targetTime).catch(() => {})
   }, [src, mode, mediaId])
 
-  // 节流状态轮询：仅 HLS 转码模式下，每 5s 拉一次后端节流快照
-  // 用于 Settings 面板实时展示（running / 挂起档位数 / 领先秒数等）
-  useEffect(() => {
-    if (!mediaId || mode === 'direct' || mode === 'remux') return
-    let alive = true
-    const poll = () => {
-      streamApi.getThrottleStatus(mediaId).then((res) => {
-        if (!alive || !res?.data?.data) return
-        const t = res.data.data
-        setThrottleStatus({
-          running: t.running,
-          active_qualities: t.active_qualities,
-          suspended_count: t.suspended_count,
-          ahead_seconds: t.ahead_seconds,
-        })
-      }).catch(() => {})
-    }
-    poll()
-    const timer = setInterval(poll, 5000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [mediaId, mode])
 
   // Remux 时间偏移：记录 Seek 的起始时间，用于计算真实播放位置
   const remuxOffsetRef = useRef(0)
@@ -1944,32 +1888,6 @@ export default function VideoPlayer({
                           <span>带宽评估</span>
                           <span className="text-white">{(bandwidthEstimate / 1_000_000).toFixed(2)} Mbps</span>
                         </div>
-                      )}
-                      {throttleStatus && (
-                        <>
-                          <div className="flex justify-between">
-                            <span>转码</span>
-                            <span className={throttleStatus.running ? 'text-emerald-400' : 'text-surface-500'}>
-                              {throttleStatus.running ? '运行中' : '空闲'}
-                            </span>
-                          </div>
-                          {throttleStatus.active_qualities && throttleStatus.active_qualities.length > 0 && (
-                            <div className="flex justify-between">
-                              <span>活跃档位</span>
-                              <span className="text-white">{throttleStatus.active_qualities.join('/')}</span>
-                            </div>
-                          )}
-                          {throttleStatus.suspended_count > 0 && (
-                            <div className="flex justify-between">
-                              <span>已挂起</span>
-                              <span className="text-amber-400">{throttleStatus.suspended_count}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span>缓冲领先</span>
-                            <span className="text-white">{throttleStatus.ahead_seconds.toFixed(0)}s</span>
-                          </div>
-                        </>
                       )}
                     </div>
                   )}

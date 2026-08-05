@@ -198,30 +198,12 @@ func JWTAuthAllowExpired(secret string, validator TokenVersionProvider) gin.Hand
 	}
 }
 
-func retiredPersistentRuntimeAdminPath(path string) bool {
-	return path == "/api/admin/transcode" ||
-		strings.HasPrefix(path, "/api/admin/transcode/") ||
-		path == "/api/admin/transcode-tasks" ||
-		strings.HasPrefix(path, "/api/admin/transcode-tasks/") ||
-		path == "/api/admin/tasks/transcode" ||
-		strings.HasPrefix(path, "/api/admin/tasks/transcode/")
-}
-
 // AdminOnly 管理员权限中间件
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, exists := c.Get("role")
 		if !exists || role.(string) != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "需要管理员权限"})
-			c.Abort()
-			return
-		}
-		if retiredPersistentRuntimeAdminPath(c.Request.URL.Path) {
-			c.Header("Cache-Control", "no-store")
-			c.JSON(http.StatusGone, gin.H{
-				"error": "持久 Runtime 转码任务已退役，请使用播放会话或管理员预处理",
-				"code":  "persistent_runtime_transcode_retired",
-			})
 			c.Abort()
 			return
 		}

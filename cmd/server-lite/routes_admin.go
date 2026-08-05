@@ -35,18 +35,6 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 	admin.DELETE("/invite-codes/:id", handlers.Admin.DeleteInviteCode)
 
 	admin.GET("/system", handlers.Admin.SystemInfo)
-	admin.GET("/transcode/status", handlers.Admin.RetiredRuntimeTranscode)
-	admin.GET("/transcode/throttle", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode/:taskId/cancel", handlers.Admin.RetiredRuntimeTranscode)
-	admin.GET("/transcode-tasks", handlers.Admin.RetiredRuntimeTranscode)
-	admin.GET("/transcode-tasks/statistics", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/batch-cancel", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/batch-delete", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/batch-retry", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/batch-submit", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/:id/cancel", handlers.Admin.RetiredRuntimeTranscode)
-	admin.POST("/transcode-tasks/:id/retry", handlers.Admin.RetiredRuntimeTranscode)
-	admin.DELETE("/transcode-tasks/:id", handlers.Admin.RetiredRuntimeTranscode)
 
 	admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)
 	admin.PUT("/settings/tmdb", handlers.Admin.UpdateTMDbConfig)

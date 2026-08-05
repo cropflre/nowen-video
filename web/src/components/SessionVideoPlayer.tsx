@@ -9,7 +9,6 @@ import {
 } from '@/playback/sessionRuntime'
 
 interface SessionVideoPlayerProps {
-  fallbackSrc: string
   mediaId: string
   title?: string
   startPosition?: number
@@ -22,7 +21,6 @@ interface SessionVideoPlayerProps {
 }
 
 export default function SessionVideoPlayer({
-  fallbackSrc,
   mediaId,
   title,
   startPosition = 0,
@@ -38,7 +36,6 @@ export default function SessionVideoPlayer({
   const playback = usePlaybackSessionSource({
     enabled: true,
     mediaId,
-    fallbackSource: fallbackSrc,
     startPosition,
   })
 

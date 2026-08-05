@@ -357,14 +357,3 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 		},
 	})
 }
-
-// RetiredRuntimeTranscode is the sole compatibility handler for removed
-// persistent Runtime task APIs. AdminOnly performs the same tombstone before
-// this handler, preserving authorization-first behavior.
-func (h *AdminHandler) RetiredRuntimeTranscode(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusGone, gin.H{
-		"error": "持久 Runtime 转码任务已退役，请使用播放会话或管理员预处理",
-		"code":  "persistent_runtime_transcode_retired",
-	})
-}

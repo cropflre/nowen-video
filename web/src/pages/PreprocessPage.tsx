@@ -69,7 +69,6 @@ import { useToast } from '@/components/Toast'
 import { useDialog } from '@/components/Dialog'
 import { usePagination } from '@/hooks/usePagination'
 import Pagination from '@/components/Pagination'
-import TranscodeJobsPanel from '@/components/preprocess/TranscodeJobsPanel'
 import type {
   PreprocessTask,
   PreprocessStatistics,
@@ -164,13 +163,10 @@ export default function PreprocessPage() {
   const [total, setTotal] = useState(0)
   const { page, size: pageSize, setPage, setSize, totalPages: calcTotalPages } = usePagination({ initialSize: 10 })
   const [statusFilter, setStatusFilter] = useState('')
-  // 主区域 Tab 切换：'submit' = 影视文件列表（选源提交）；'tasks' = HLS 处理任务进度；'transcode' = 转码任务（迁自系统管理）
-  // 默认 'tasks' —— 进度查看是日常高频场景；用户主动提交新任务时再切到 'submit'
-  // 支持 URL hash：#transcode 直达转码任务子页
-  const [mainTab, setMainTab] = useState<'submit' | 'tasks' | 'transcode'>(() => {
-    const hash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '')
-    if (hash === 'submit' || hash === 'tasks' || hash === 'transcode') return hash
-    return 'tasks'
+  // 主区域 Tab 切换：'submit' = 影视文件列表；'tasks' = 持久预处理任务。
+  const [mainTab, setMainTab] = useState<'submit' | 'tasks'>(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash.replace('#', '') : ''
+    return hash === 'submit' ? 'submit' : 'tasks'
   })
   const [stats, setStats] = useState<PreprocessStatistics | null>(null)
   const [sysLoad, setSysLoad] = useState<SystemLoadInfo | null>(null)
@@ -1025,12 +1021,11 @@ export default function PreprocessPage() {
         </div>
       )}
 
-      {/* 主区域 Tab 切换：选源提交 / 处理进度 / 转码任务 —— 避免多块同时铺开造成页面过长 */}
+      {/* 主区域 Tab 切换：选源提交 / 持久预处理进度 */}
       <div className="flex items-center gap-2 flex-wrap">
         {([
           { key: 'submit', label: '选源提交', count: candidatesTotal },
           { key: 'tasks', label: '处理进度', count: total },
-          { key: 'transcode', label: '转码任务', count: 0 },
         ] as const).map((t) => {
           const active = mainTab === t.key
           return (
@@ -1632,11 +1627,6 @@ export default function PreprocessPage() {
       )}
 
       {/* ====== 转码任务 Tab：迁自系统管理 ====== */}
-      {mainTab === 'transcode' && (
-        <div className="rounded-xl p-4" style={{ background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)' }}>
-          <TranscodeJobsPanel />
-        </div>
-      )}
 
       {/* 预处理产物存储占用 - 详情弹窗 */}
       <AnimatePresence>

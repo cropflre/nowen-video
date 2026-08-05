@@ -1,5 +1,4 @@
 import { useAuthStore } from '@/stores/auth'
-import { getPlaybackSessionRuntime } from '@/playback/sessionRuntime'
 import type {
   MediaPlayInfo,
 } from '@/types'
@@ -294,7 +293,10 @@ export const streamApi = {
   getMasterUrl: (mediaId: string) => {
     const plan = playbackPlanCache.get(mediaId)
     const plannedHls = plan?.method === 'transcode' || plan?.method === 'startup_stream'
-    return withToken(plannedHls ? plan.url : `/api/stream/${mediaId}/master.m3u8`)
+    if (!plannedHls || !plan.url) {
+      throw new Error('播放计划未提供可用的 HLS 地址')
+    }
+    return withToken(plan.url)
   },
 
   getPlaybackFallbackUrl: (mediaId: string) => {
@@ -311,73 +313,6 @@ export const streamApi = {
     const plan = playbackPlanCache.get(mediaId)
     const plannedRemux = plan?.method === 'remux' || plan?.method === 'smart_remux'
     return withToken(plannedRemux ? plan.url : `/api/stream/${mediaId}/remux`)
-  },
-
-  reportPlayback: (mediaId: string, position: number) => {
-    if (getPlaybackSessionRuntime(mediaId)) {
-      return Promise.resolve({ data: { session_managed: true } })
-    }
-    return api.post(`/stream/${mediaId}/playback`, null, {
-      params: { position: position.toFixed(2) },
-    })
-  },
-
-  reportBandwidth: (mediaId: string, bitrate: number) => {
-    if (getPlaybackSessionRuntime(mediaId)) {
-      return Promise.resolve({
-        data: {
-          ok: true,
-          session_managed: true,
-          reported_bitrate: Math.round(bitrate),
-          recommended_max: Math.round(bitrate),
-          throttle: undefined,
-        },
-      })
-    }
-    return api.post<{
-      ok: boolean
-      reported_bitrate: number
-      recommended_max: number
-      throttle?: {
-        media_id: string
-        running: boolean
-        active_qualities: string[] | null
-        suspended_count: number
-        playback_pos: number
-        transcoded_pos: number
-        ahead_seconds: number
-      }
-    }>(`/stream/${mediaId}/bandwidth`, null, { params: { bitrate: Math.round(bitrate) } })
-  },
-
-  getThrottleStatus: (mediaId: string) => {
-    const runtime = getPlaybackSessionRuntime(mediaId)
-    if (runtime) {
-      return Promise.resolve({
-        data: {
-          data: {
-            media_id: mediaId,
-            running: true,
-            active_qualities: null,
-            suspended_count: 0,
-            playback_pos: runtime.offsetSeconds,
-            transcoded_pos: runtime.offsetSeconds,
-            ahead_seconds: 0,
-          },
-        },
-      })
-    }
-    return api.get<{
-      data: {
-        media_id: string
-        running: boolean
-        active_qualities: string[] | null
-        suspended_count: number
-        playback_pos: number
-        transcoded_pos: number
-        ahead_seconds: number
-      }
-    }>(`/stream/${mediaId}/throttle`)
   },
 
   checkSTRM: (mediaId: string) =>

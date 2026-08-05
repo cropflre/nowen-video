@@ -66,17 +66,6 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 
-// RetiredRuntimeHLS is the authenticated compatibility tombstone for the
-// removed media-keyed persistent HLS surface. Runtime media is available only
-// through /api/playback/sessions.
-func (h *StreamHandler) RetiredRuntimeHLS(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusGone, gin.H{
-		"error": "媒体级持久 Runtime HLS 已退役，请创建播放会话",
-		"code":  "persistent_runtime_hls_retired",
-	})
-}
-
 // Remux 统一进入受资源治理的 Managed Remux。兼容音频直接 copy，
 // DTS/TrueHD/FLAC/Opus 等不兼容音频只转 AAC，视频保持 bit-for-bit copy。
 func (h *StreamHandler) Remux(c *gin.Context) {
