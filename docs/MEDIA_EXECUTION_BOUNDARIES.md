@@ -114,7 +114,8 @@ return `410 Gone` with code `persistent_runtime_transcode_retired`:
 
 - `/api/admin/transcode/*`;
 - `/api/admin/transcode-tasks`;
-- `/api/admin/transcode-tasks/*`.
+- `/api/admin/transcode-tasks/*`;
+- `/api/admin/tasks/transcode/*`.
 
 Authorization is evaluated before the tombstone, so an unauthenticated or
 non-administrator request still receives the normal authentication or
