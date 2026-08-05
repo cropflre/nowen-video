@@ -59,7 +59,10 @@ jobs:
             internal/service/task_center.go \
             internal/service/task_actions.go \
             internal/service/task_actions_test.go \
+            internal/service/task_actions_artifact_cleanup_test.go \
             internal/service/task_center_test.go \
+            internal/service/task_lifecycle_events.go \
+            internal/service/transcode_stats.go \
             internal/service/transcode_runtime_retirement.go \
             internal/service/transcode_runtime_retirement_test.go \
             internal/service/runtime_history.go \
