@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/implement_legacy_projection_retirement.py
+      - scripts/fix_legacy_projection_retirement_script.py
       - .github/workflows/one-shot-legacy-projection-retirement.yml
       - .github/workflows/one-shot-transcode-projection-audit.yml
 
@@ -35,6 +36,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Apply projection retirement
         run: |
+          python3 scripts/fix_legacy_projection_retirement_script.py
           python3 scripts/implement_legacy_projection_retirement.py
           gofmt -w \
             internal/model/transcode_execution.go \
@@ -85,6 +87,7 @@ jobs:
       - name: Commit verified phase and remove one-shot files
         run: |
           rm -f scripts/implement_legacy_projection_retirement.py
+          rm -f scripts/fix_legacy_projection_retirement_script.py
           rm -f .github/workflows/one-shot-legacy-projection-retirement.yml
           rm -f .github/workflows/one-shot-transcode-projection-audit.yml
           git add -A
