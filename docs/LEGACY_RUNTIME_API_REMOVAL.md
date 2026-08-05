@@ -35,3 +35,17 @@ normal watch history remains a separate user-progress write.
 No historical table or row is deleted. Existing `transcode_jobs`,
 `transcode_attempts`, `transcode_artifacts` and `transcode_tasks` data remains
 available through Runtime History and remains compatible with database rollback.
+
+## Acceptance
+
+- The dedicated migration gate passed the complete Go package suite, Lite and
+  Full server builds, Web TypeScript compilation, Vite production build and
+  retired-URL production-asset scan.
+- Source contracts reject reintroduction of the removed routes, tombstone
+  handlers, middleware special cases, guessed client URLs and obsolete Web task
+  panel.
+- Build-only changes to tracked `server` and `server-lite` binaries were restored
+  before final acceptance; this phase contains source, tests and documentation
+  changes only.
+- The normal project CI matrix is rerun from this documentation commit so Docker
+  startup and database upgrade/rollback checks execute on the final tree.
