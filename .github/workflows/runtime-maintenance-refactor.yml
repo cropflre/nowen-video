@@ -1,0 +1,583 @@
+name: One-shot runtime maintenance refactor
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - .github/workflows/runtime-maintenance-refactor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/server-lite-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply runtime maintenance refactor
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, content):
+              Path(path).write_text(content)
+
+          def replace_once(path, old, new):
+              content = read(path)
+              if content.count(old) != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, got {content.count(old)} for {old[:80]!r}")
+              write(path, content.replace(old, new, 1))
+
+          # Playback Session now owns the stateless execution dependency directly.
+          path = "internal/service/playback_session.go"
+          content = read(path)
+          content = content.replace("\ttranscoder  *TranscodeService\n", "\texecution   *MediaExecutionService\n")
+          constructor = re.compile(r"func NewPlaybackSessionService\(.*?\n\}\n\nfunc \(s \*PlaybackSessionService\) Create", re.S)
+          replacement = '''func NewPlaybackSessionService(
+          \tmediaRepo *repository.MediaRepo,
+          \texecution *MediaExecutionService,
+          \tcfg *config.Config,
+          \tlogger *zap.SugaredLogger,
+          ) (*PlaybackSessionService, error) {
+          \tif mediaRepo == nil {
+          \t\treturn nil, fmt.Errorf("media repository is required")
+          \t}
+          \tif execution == nil || execution.ExecutionRuntime() == nil {
+          \t\treturn nil, fmt.Errorf("media execution runtime is required")
+          \t}
+          \tif cfg == nil {
+          \t\treturn nil, fmt.Errorf("configuration is required")
+          \t}
+          \tif logger == nil {
+          \t\tlogger = zap.NewNop().Sugar()
+          \t}
+
+          \tmanager, err := playbacksession.NewManager(
+          \t\tplaybacksession.DefaultConfig(cfg.Cache.CacheDir),
+          \t\tlogger,
+          \t)
+          \tif err != nil {
+          \t\treturn nil, err
+          \t}
+          \trunnerConfig := playbacktranscode.DefaultConfig(
+          \t\tcfg.App.FFmpegPath,
+          \t\texecution.GetHWAccelInfo(),
+          \t\tcfg.App.VAAPIDevice,
+          \t\tffmpeg.CalcThreads(cfg),
+          \t)
+          \trunner, err := playbacktranscode.NewRunner(
+          \t\tmanager,
+          \t\texecution.ExecutionRuntime(),
+          \t\trunnerConfig,
+          \t\tlogger,
+          \t)
+          \tif err != nil {
+          \t\tshutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+          \t\tdefer cancel()
+          \t\t_ = manager.Shutdown(shutdownCtx)
+          \t\treturn nil, err
+          \t}
+          \treturn &PlaybackSessionService{
+          \t\tmediaRepo:   mediaRepo,
+          \t\tcfg:         cfg,
+          \t\texecution:   execution,
+          \t\tmanager:     manager,
+          \t\trunner:      runner,
+          \t\tlogger:      logger,
+          \t\tstartupWait: defaultPlaybackStartupWait,
+          \t\theartbeat:   defaultPlaybackHeartbeatInterval,
+          \t}, nil
+          }
+
+          func (s *PlaybackSessionService) Create'''
+          content, count = constructor.subn(replacement, content, count=1)
+          if count != 1:
+              raise SystemExit("playback_session.go: constructor block not found")
+          content = content.replace("s.transcoder.GetCachedMediaProbe(media)", "s.execution.GetCachedMediaProbe(media)")
+          if "transcoder" in content:
+              raise SystemExit("playback_session.go: lingering transcoder dependency")
+          write(path, content)
+
+          # Remove the concrete TranscodeService compatibility adapter.
+          path = "internal/service/media_execution.go"
+          content = read(path)
+          content, count = re.subn(
+              r"\n// playbackCompatibilityAdapter.*?\n\}\n\n// NewPlaybackSessionServiceWithExecution",
+              "\n// NewPlaybackSessionServiceWithExecution",
+              content,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit("media_execution.go: compatibility adapter block not found")
+          content = content.replace(
+              "\treturn NewPlaybackSessionService(\n\t\tmediaRepo,\n\t\texecution.playbackCompatibilityAdapter(),\n\t\tcfg,\n\t\tlogger,\n\t)\n",
+              "\treturn NewPlaybackSessionService(mediaRepo, execution, cfg, logger)\n",
+          )
+          if "playbackCompatibilityAdapter" in content:
+              raise SystemExit("media_execution.go: adapter still present")
+          write(path, content)
+
+          # Stream planning and file serving have no persistent runtime dependency.
+          path = "internal/service/stream.go"
+          content = read(path)
+          content = content.replace("\ttranscoder  *TranscodeService\n", "")
+          content = content.replace("\ttranscoder *TranscodeService,\n", "")
+          content = content.replace("\t\ttranscoder: transcoder,\n", "")
+          write(path, content)
+
+          path = "internal/handler/stream.go"
+          content = read(path).replace("\ttranscodeService *service.TranscodeService // 用于接收播放进度上报驱动节流\n", "")
+          write(path, content)
+
+          path = "internal/handler/handler.go"
+          content = read(path)
+          content = content.replace("\t\t\ttranscodeService: services.Transcode,\n", "")
+          content = content.replace("\t\t\ttranscodeService:  services.Transcode,\n", "\t\t\tmediaExecution:    services.MediaExecution,\n")
+          write(path, content)
+
+          # Formal service ownership: one execution platform and one maintenance service.
+          path = "internal/service/service.go"
+          content = read(path)
+          content = content.replace(
+              "\tTranscode      *TranscodeService\n",
+              "\tMediaExecution     *MediaExecutionService\n\tArtifactMaintenance *ArtifactMaintenanceService\n\tTranscode          *ArtifactMaintenanceService // Deprecated compatibility alias; no Runtime execution\n",
+          )
+          content = content.replace(
+              "\ttranscoder := NewTranscodeService(repos.Transcode, cfg, logger)\n\tregisterFullTranscodeProcessShutdown(transcoder, logger)\n",
+              "\tmediaExecution, err := NewMediaExecutionService(repos.DB(), cfg, logger)\n\tif err != nil {\n\t\tpanic(fmt.Sprintf(\"initialize media execution service: %v\", err))\n\t}\n\tartifactMaintenance := NewArtifactMaintenanceService(repos.Transcode, cfg, logger)\n\tregisterFullTranscodeProcessShutdown(artifactMaintenance, logger)\n",
+          )
+          content = re.sub(r"\btranscoder\b", "artifactMaintenance", content)
+          content = content.replace("detectedHWAccel := artifactMaintenance.GetHWAccelInfo()", "detectedHWAccel := mediaExecution.GetHWAccelInfo()")
+          content = content.replace("NewStreamService(repos.Media, repos.Series, artifactMaintenance, cfg, logger)", "NewStreamService(repos.Media, repos.Series, cfg, logger)")
+          content = content.replace(
+              "\t\tTranscode:      artifactMaintenance,\n",
+              "\t\tMediaExecution:     mediaExecution,\n\t\tArtifactMaintenance: artifactMaintenance,\n\t\tTranscode:          artifactMaintenance,\n",
+          )
+          write(path, content)
+
+          path = "internal/service/lite.go"
+          content = read(path)
+          content = content.replace('import (\n', 'import (\n\t"fmt"\n', 1)
+          content = content.replace(
+              "\ttranscoder := NewTranscodeService(repos.Transcode, cfg, logger)\n",
+              "\tmediaExecution, err := NewMediaExecutionService(repos.DB(), cfg, logger)\n\tif err != nil {\n\t\tpanic(fmt.Sprintf(\"initialize media execution service: %v\", err))\n\t}\n\tartifactMaintenance := NewArtifactMaintenanceService(repos.Transcode, cfg, logger)\n",
+          )
+          content = re.sub(r"\btranscoder\b", "artifactMaintenance", content)
+          content = content.replace("NewStreamService(repos.Media, repos.Series, artifactMaintenance, cfg, logger)", "NewStreamService(repos.Media, repos.Series, cfg, logger)")
+          content = content.replace(
+              "\t\tTranscode:      artifactMaintenance,\n",
+              "\t\tMediaExecution:     mediaExecution,\n\t\tArtifactMaintenance: artifactMaintenance,\n\t\tTranscode:          artifactMaintenance,\n",
+          )
+          write(path, content)
+
+          path = "cmd/server-lite/main.go"
+          content = read(path)
+          content, count = re.subn(
+              r"\tmediaExecution, err := service.NewMediaExecutionService\(repos.DB\(\), cfg, sugar\).*?\t}\n\tplaybackSessions, err := service.NewPlaybackSessionServiceWithExecution\(",
+              "\tplaybackSessions, err := service.NewPlaybackSessionServiceWithExecution(\n",
+              content,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit("server-lite main: duplicate media execution block not found")
+          content = content.replace("\t\tmediaExecution,\n", "\t\tservices.MediaExecution,\n", 1)
+          content = content.replace("services.Transcode.Shutdown", "services.ArtifactMaintenance.Shutdown")
+          content = content.replace("if services.Transcode != nil", "if services.ArtifactMaintenance != nil")
+          write(path, content)
+
+          path = "cmd/server/playback_sessions.go"
+          content = read(path)
+          content, count = re.subn(
+              r"\tmediaExecution, err := service.NewMediaExecutionService\(repos.DB\(\), cfg, logger\).*?\t}\n",
+              "\tmediaExecution := services.MediaExecution\n\tif mediaExecution == nil {\n\t\treturn nil, fmt.Errorf(\"media execution service is required\")\n\t}\n",
+              content,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit("full playback runtime: media execution construction block not found")
+          if '"fmt"' not in content:
+              content = content.replace('import (\n', 'import (\n\t"fmt"\n', 1)
+          write(path, content)
+
+          # Replace the executable runtime service with a maintenance-only owner.
+          transcode = '''package service
+
+          import (
+          \t"context"
+          \t"fmt"
+          \t"os"
+          \t"path/filepath"
+          \t"sync"
+          \t"sync/atomic"
+          \t"time"
+
+          \t"github.com/nowen-video/nowen-video/internal/config"
+          \t"github.com/nowen-video/nowen-video/internal/model"
+          \t"github.com/nowen-video/nowen-video/internal/repository"
+          \t"github.com/nowen-video/nowen-video/internal/service/ffmpeg"
+          \ttranscodeartifactstore "github.com/nowen-video/nowen-video/internal/transcode/artifactstore"
+          \ttranscodeprobe "github.com/nowen-video/nowen-video/internal/transcode/probe"
+          \ttranscoderuntime "github.com/nowen-video/nowen-video/internal/transcode/runtime"
+          \t"go.uber.org/zap"
+          )
+
+          const EventTranscodeCancelled = "transcode_cancelled"
+
+          // ArtifactMaintenanceService owns only upgrade retirement, durable
+          // Artifact cleanup and storage-health evidence. It cannot submit or
+          // execute Runtime playback work.
+          type ArtifactMaintenanceService = TranscodeService
+
+          type TranscodeService struct {
+          \trepo          *repository.TranscodeRepo
+          \texecutionRepo *repository.TranscodeExecutionRepo
+          \tcfg           *config.Config
+          \tlogger        *zap.SugaredLogger
+
+          \t// Retained for source compatibility with historical evidence helpers.
+          \t// No production constructor creates a claimable queue or Worker.
+          \tjobs        *transcodePriorityQueue
+          \tworkerCount int
+          \tsubmitMu    sync.Mutex
+          \tmu          sync.RWMutex
+          \trunning     map[string]*TranscodeJob
+
+          \tinstanceID             string
+          \tleaseDuration          time.Duration
+          \tleaseHeartbeatInterval time.Duration
+          \tleaseRecoveryInterval  time.Duration
+
+          \thwAccel   string
+          \thwAccelMu sync.Once
+          \twsHub     *WSHub
+
+          \texecutionRuntime *transcoderuntime.Runtime
+          \tmediaProbe       *transcodeprobe.Service
+          \tprobeWarmup      *MediaProbeWarmupService
+          \tprobeWarmupOnce  sync.Once
+          \tartifactStore    *transcodeartifactstore.Store
+
+          \tthrottleSuspendSeconds atomic.Uint64
+          \tthrottleSuspendCount   atomic.Uint64
+
+          \tdiskUsageMu    sync.RWMutex
+          \tdiskUsageBytes int64
+          \tdiskUsageAt    time.Time
+          \tdiskUsageTTL   time.Duration
+
+          \tmaintenanceDone chan struct{}
+          \tmaintenanceStop sync.Once
+          }
+
+          type TranscodeJob struct {
+          \tTask            *model.TranscodeTask
+          \tExecutionJob    *model.TranscodeJobRecord
+          \tCurrentAttempt  *model.TranscodeAttemptRecord
+          \tCurrentArtifact *model.TranscodeArtifactRecord
+          \tMedia           *model.Media
+          \tProbe           *model.MediaProbeRecord
+          \tQuality         string
+
+          \tctx        context.Context
+          \tcancel     context.CancelFunc
+          \tcancelOnce sync.Once
+          \ttaskMu     sync.Mutex
+
+          \tworkerID   string
+          \tleaseToken string
+          \tleaseDone  chan struct{}
+          \tleaseStop  sync.Once
+
+          \tprocessMu sync.RWMutex
+          \tprocess   *os.Process
+
+          \tplaybackPos          atomic.Uint64
+          \ttranscodedPos        atomic.Uint64
+          \tlastDBProgress       atomic.Uint64
+          \tlastAttemptHeartbeat atomic.Int64
+          \tsuspended            atomic.Int32
+          \tstartOffset          float64
+
+          \tthrottleDone    chan struct{}
+          \tthrottleStop    sync.Once
+          \tthrottleStarted sync.Once
+          }
+
+          func (j *TranscodeJob) RequestCancel() {
+          \tif j == nil { return }
+          \tj.cancelOnce.Do(func() { if j.cancel != nil { j.cancel() } })
+          }
+
+          func (j *TranscodeJob) CancellationRequested() bool {
+          \treturn j == nil || j.ctx == nil || j.ctx.Err() != nil
+          }
+
+          func (j *TranscodeJob) setProcess(process *os.Process) {
+          \tj.processMu.Lock(); j.process = process; j.processMu.Unlock()
+          }
+
+          func (j *TranscodeJob) currentProcess() *os.Process {
+          \tj.processMu.RLock(); defer j.processMu.RUnlock(); return j.process
+          }
+
+          func (j *TranscodeJob) stopThrottle() { j.throttleStop.Do(func() { close(j.throttleDone) }) }
+          func (j *TranscodeJob) stopLeaseHeartbeat() { j.leaseStop.Do(func() { close(j.leaseDone) }) }
+
+          func (j *TranscodeJob) SetPlaybackPosition(sec float64) {
+          \tif sec < 0 { sec = 0 }
+          \tj.playbackPos.Store(uint64(sec * 100))
+          }
+          func (j *TranscodeJob) getPlaybackPosition() float64 { return float64(j.playbackPos.Load()) / 100 }
+          func (j *TranscodeJob) getTranscodedPosition() float64 { return float64(j.transcodedPos.Load()) / 100 }
+
+          func NewArtifactMaintenanceService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *ArtifactMaintenanceService {
+          \tif repo == nil || repo.DB() == nil { panic("transcode repository is required") }
+          \tif cfg == nil { panic("configuration is required") }
+          \tif logger == nil { logger = zap.NewNop().Sugar() }
+          \tif err := model.AutoMigrateTranscodeExecution(repo.DB()); err != nil {
+          \t\tpanic(fmt.Sprintf("migrate transcode execution schema: %v", err))
+          \t}
+          \texecutionRepo := repository.NewTranscodeExecutionRepo(repo.DB())
+          \tartifactStore, err := transcodeartifactstore.New(filepath.Join(cfg.Cache.CacheDir, "transcode"))
+          \tif err != nil { panic(fmt.Sprintf("initialize transcode artifact store: %v", err)) }
+          \tservice := &TranscodeService{
+          \t\trepo: repo,
+          \t\texecutionRepo: executionRepo,
+          \t\tcfg: cfg,
+          \t\tlogger: logger,
+          \t\tjobs: newTranscodePriorityQueue(executionRepo, repo, 1, logger),
+          \t\trunning: make(map[string]*TranscodeJob),
+          \t\tartifactStore: artifactStore,
+          \t\tdiskUsageTTL: 30 * time.Second,
+          \t\tmaintenanceDone: make(chan struct{}),
+          \t}
+          \tservice.startArtifactMaintenance()
+          \treturn service
+          }
+
+          // NewTranscodeService remains only as a source-compatible constructor.
+          // It returns the maintenance service and never creates Runtime workers.
+          func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
+          \treturn NewArtifactMaintenanceService(repo, cfg, logger)
+          }
+
+          func (s *TranscodeService) SetWSHub(hub *WSHub) { if s != nil { s.wsHub = hub } }
+          func (s *TranscodeService) GetHWAccelInfo() string { return ffmpeg.HWAccelNone }
+          func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return nil }
+          '''
+          write("internal/service/transcode.go", re.sub(r"^          ", "", transcode, flags=re.M))
+
+          maintenance = '''package service
+
+          import "time"
+
+          const artifactMaintenanceInterval = 10 * time.Second
+
+          func (s *TranscodeService) startArtifactMaintenance() {
+          \tif s == nil { return }
+          \ts.runArtifactMaintenanceTick(time.Now())
+          \tgo func() {
+          \t\tticker := time.NewTicker(artifactMaintenanceInterval)
+          \t\tdefer ticker.Stop()
+          \t\tfor {
+          \t\t\tselect {
+          \t\t\tcase now := <-ticker.C:
+          \t\t\t\ts.runArtifactMaintenanceTick(now)
+          \t\t\tcase <-s.maintenanceDone:
+          \t\t\t\treturn
+          \t\t\t}
+          \t\t}
+          \t}()
+          }
+
+          func (s *TranscodeService) runArtifactMaintenanceTick(now time.Time) {
+          \tif s == nil || s.executionRepo == nil { return }
+          \treport, err := s.retirePersistentRuntimePlayback(now)
+          \tif err != nil {
+          \t\ts.logger.Warnf("退役持久 Runtime 播放状态失败: %v", err)
+          \t} else if report.Changed() || report.JobsDeferred > 0 {
+          \t\ts.logger.Infof("持久 Runtime 退役维护 jobs=%d cancelled=%d deferred=%d artifacts=%d attempts=%d tasks=%d paths=%d", report.JobsFound, report.JobsCancelled, report.JobsDeferred, report.ArtifactsDeleted, report.AttemptsRetired, report.TasksRetired, report.PathsRemoved)
+          \t}
+          \tif abandoned, reconcileErr := s.executionRepo.AbandonUnownedArtifacts(now); reconcileErr != nil {
+          \t\ts.logger.Warnf("Artifact 所有权对账失败: %v", reconcileErr)
+          \t} else if abandoned > 0 {
+          \t\ts.logger.Infof("已隔离 %d 个失去有效 Lease 的 Artifact", abandoned)
+          \t}
+          }
+          '''
+          write("internal/service/artifact_maintenance.go", re.sub(r"^          ", "", maintenance, flags=re.M))
+
+          shutdown = '''package service
+
+          import "context"
+
+          // Shutdown stops only the migration and Artifact-maintenance loop.
+          // Runtime playback processes are owned and closed by PlaybackSessionService.
+          func (s *TranscodeService) Shutdown(_ context.Context) error {
+          \tif s == nil { return nil }
+          \ts.maintenanceStop.Do(func() {
+          \t\tif s.maintenanceDone != nil { close(s.maintenanceDone) }
+          \t\tif s.jobs != nil { s.jobs.Close() }
+          \t})
+          \treturn nil
+          }
+          '''
+          write("internal/service/transcode_shutdown.go", re.sub(r"^          ", "", shutdown, flags=re.M))
+
+          compat = '''package service
+
+          import (
+          \t"context"
+          \t"github.com/nowen-video/nowen-video/internal/model"
+          )
+
+          func (s *TranscodeService) StartTranscode(*model.Media, string) (*model.TranscodeTask, error) { return nil, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) StartABRTranscode(*model.Media, []string) ([]*model.TranscodeTask, error) { return nil, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) StartTranscodeWithStart(*model.Media, string, float64) (*model.TranscodeTask, error) { return nil, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) startTranscodeWithPriority(*model.Media, string, float64, int) (*model.TranscodeTask, error) { return nil, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) CancelTranscode(string) error { return ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) RetryTask(string, func(string) (*model.Media, error)) error { return ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) DeleteTask(string) error { return ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) BatchCancelTasks([]string) (int, error) { return 0, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) BatchDeleteTasks([]string) (int64, error) { return 0, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) BatchRetryTasks([]string, func(string) (*model.Media, error)) (int, error) { return 0, ErrPersistentRuntimeTranscodeRetired }
+          func (s *TranscodeService) BatchSubmitByMediaIDs([]string, []string, func(string) (*model.Media, error)) (int, int, []*model.TranscodeTask, []string) { return 0, 0, nil, []string{ErrPersistentRuntimeTranscodeRetired.Error()} }
+          func (s *TranscodeService) WaitForFirstSegment(context.Context, string, string) error { return ErrPersistentRuntimeTranscodeRetired }
+          '''
+          write("internal/service/transcode_retired_compat.go", re.sub(r"^          ", "", compat, flags=re.M))
+          Path("internal/service/transcode_task_actions.go").unlink()
+
+          # Old admin implementation is removed. Middleware owns the authenticated 410 tombstone.
+          path = "internal/handler/admin.go"
+          content = read(path)
+          content = content.replace('\t"fmt"\n', '').replace('\t"strconv"\n', '')
+          content = content.replace("\ttranscodeService  *service.TranscodeService\n", "\tmediaExecution    *service.MediaExecutionService\n")
+          content = content.replace("\tmediaRepo         *repository.MediaRepo // 用于转码任务重试时解析媒体\n", "")
+          content = content.replace('"hw_accel":   h.transcodeService.GetHWAccelInfo(),', '"hw_accel":   h.mediaExecution.GetHWAccelInfo(),')
+          marker = "// ==================== 转码管理 ===================="
+          if marker not in content:
+              raise SystemExit("admin.go: transcode section marker missing")
+          content = content.split(marker, 1)[0].rstrip() + "\n"
+          write(path, content)
+
+          # Route registrations are deleted; global middleware still supplies 410 after auth.
+          route_markers = (
+              'handlers.Admin.TranscodeStatus', 'handlers.Admin.TranscodeThrottleStats',
+              'handlers.Admin.CancelTranscode', 'handlers.Admin.ListTranscodeTasks',
+              'handlers.Admin.GetTranscodeStatistics', 'handlers.Admin.BatchCancelTranscodeTasks',
+              'handlers.Admin.BatchDeleteTranscodeTasks', 'handlers.Admin.BatchRetryTranscodeTasks',
+              'handlers.Admin.BatchSubmitTranscodeTasks', 'handlers.Admin.CancelTranscodeTask',
+              'handlers.Admin.RetryTranscodeTask', 'handlers.Admin.DeleteTranscodeTask',
+          )
+          for path in ["cmd/server/main.go", "cmd/server-lite/routes_admin.go"]:
+              lines = read(path).splitlines()
+              lines = [line for line in lines if not any(marker in line for marker in route_markers)]
+              write(path, "\n".join(lines) + "\n")
+
+          # Source-level gates now require physical removal rather than a disabled worker.
+          gate = '''package main
+
+          import (
+          \t"os"
+          \t"strings"
+          \t"testing"
+          )
+
+          func TestPersistentRuntimeExecutionSurfaceRemoved(t *testing.T) {
+          \tassertSourceContains(t, "../../internal/service/transcode.go", []string{
+          \t\t"type ArtifactMaintenanceService = TranscodeService",
+          \t\t"NewArtifactMaintenanceService",
+          \t\t"startArtifactMaintenance",
+          \t})
+          \tassertSourceContains(t, "../../internal/service/playback_session.go", []string{
+          \t\t"execution   *MediaExecutionService",
+          \t\t"s.execution.GetCachedMediaProbe",
+          \t})
+          \tassertSourceContains(t, "../../internal/service/media_execution.go", []string{
+          \t\t"NewPlaybackSessionService(mediaRepo, execution, cfg, logger)",
+          \t})
+          \tassertSourceContains(t, "../../internal/handler/admin.go", []string{
+          \t\t"mediaExecution    *service.MediaExecutionService",
+          \t})
+
+          \tfor _, forbidden := range []struct{ path, marker string }{
+          \t\t{"../../internal/service/transcode.go", "go service.worker"},
+          \t\t{"../../internal/service/transcode.go", "func (s *TranscodeService) worker"},
+          \t\t{"../../internal/service/transcode.go", "func (s *TranscodeService) processJob"},
+          \t\t{"../../internal/service/media_execution.go", "playbackCompatibilityAdapter"},
+          \t\t{"../../internal/service/stream.go", "transcoder *TranscodeService"},
+          \t\t{"../../internal/handler/stream.go", "transcodeService *service.TranscodeService"},
+          \t\t{"../../internal/handler/admin.go", "ListTranscodeTasks"},
+          \t} {
+          \t\tcontent, err := os.ReadFile(forbidden.path)
+          \t\tif err != nil { t.Fatalf("read %s: %v", forbidden.path, err) }
+          \t\tif strings.Contains(string(content), forbidden.marker) {
+          \t\t\tt.Fatalf("%s still contains retired execution marker %q", forbidden.path, forbidden.marker)
+          \t\t}
+          \t}
+          }
+
+          func assertSourceContains(t *testing.T, path string, required []string) {
+          \tt.Helper()
+          \tcontent, err := os.ReadFile(path)
+          \tif err != nil { t.Fatalf("read %s: %v", path, err) }
+          \tfor _, marker := range required {
+          \t\tif !strings.Contains(string(content), marker) {
+          \t\t\tt.Fatalf("%s is missing architecture marker %q", path, marker)
+          \t\t}
+          \t}
+          }
+          '''
+          write("cmd/server/runtime_worker_removed_test.go", re.sub(r"^          ", "", gate, flags=re.M))
+          PY
+
+          gofmt -w \
+            internal/service/playback_session.go \
+            internal/service/media_execution.go \
+            internal/service/stream.go \
+            internal/service/service.go \
+            internal/service/lite.go \
+            internal/service/transcode.go \
+            internal/service/artifact_maintenance.go \
+            internal/service/transcode_shutdown.go \
+            internal/service/transcode_retired_compat.go \
+            internal/handler/stream.go \
+            internal/handler/handler.go \
+            internal/handler/admin.go \
+            cmd/server/playback_sessions.go \
+            cmd/server-lite/main.go \
+            cmd/server/runtime_worker_removed_test.go
+
+      - name: Verify Go architecture and builds
+        run: |
+          go test ./...
+          go build ./cmd/server-lite
+          go build ./cmd/server
+
+      - name: Commit refactor and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/runtime-maintenance-refactor.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(transcode): remove persistent runtime execution surface"
+          git push origin HEAD:refactor/server-lite-v1
