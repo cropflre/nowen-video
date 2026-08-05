@@ -2,22 +2,27 @@
 
 ## Status
 
-Runtime playback and durable administrator preprocessing are now separate
-products with one shared stateless execution platform.
+Runtime playback, managed remux, and durable administrator preprocessing now
+share one stateless execution platform. Historical Runtime migration and
+Artifact cleanup are owned by a separate maintenance service.
 
 ```text
 MediaExecutionService
-  ├─ PlaybackSessionService        ephemeral
+  ├─ PlaybackSessionService        ephemeral HLS
+  ├─ StreamService                 direct play / managed remux / planning
   └─ PreprocessArtifactService     explicit durable output
+
+ArtifactMaintenanceService
+  └─ historical retirement / Artifact cleanup only
 ```
 
-The retired persistent Runtime queue is not a third path.
+The retired persistent Runtime queue is not an execution path.
 
 ## MediaExecutionService
 
 `MediaExecutionService` owns only process-local capabilities:
 
-- FFmpeg execution runtime;
+- FFmpeg execution runtime and resource governor;
 - FFprobe cache service;
 - detected hardware acceleration backend;
 - configuration and structured logging.
@@ -31,15 +36,15 @@ It owns no:
 - media/profile keyed playback cache;
 - playback lifecycle state.
 
-Lite and Full construct playback sessions through
-`NewPlaybackSessionServiceWithExecution`. The compatibility adapter passed to
-the current session constructor contains only the execution runtime, Probe
-service, hardware backend, configuration, and logger. Repository, queue,
-Artifact Store, worker registry, and Lease fields remain nil.
+Lite and Full create one `MediaExecutionService` and inject that same instance
+into playback sessions, playback planning, managed remux, system capability
+reporting, and administrator preprocessing. The former
+`playbackCompatibilityAdapter` has been removed; playback no longer constructs
+or receives a `TranscodeService` object.
 
 ## Runtime playback
 
-Runtime playback is exclusively session-scoped:
+Runtime video transcoding is exclusively session-scoped:
 
 ```text
 cache/playback-temp/sessions/<session>/<generation>
@@ -49,6 +54,10 @@ A session owns its FFmpeg process, rolling HLS window, active readers, seek
 generations, heartbeat, close state, and cleanup. Closing or expiring a session
 removes all generated media. Runtime playback never publishes or resolves a
 durable Artifact.
+
+Direct play and managed remux remain immediate stream responses. Managed remux
+uses the same `MediaExecutionService` runtime and governor but creates no Job,
+Lease, task projection, or reusable media Artifact.
 
 ## Administrator preprocessing
 
@@ -65,16 +74,37 @@ Preprocessing owns:
 - ABR policy, GPU safety, and VFS integration.
 
 Full server binds preprocessing to the same `MediaExecutionService` hardware
-capability used by playback. It does not obtain execution capability from the
-retired persistent Runtime queue.
+capability used by playback. It does not obtain execution capability from
+Artifact maintenance or the retired persistent Runtime queue.
 
 Preprocessing output is not silently reused as a Runtime playback cache. The
 Playback Planner may select a preprocessing asset only through the explicit
 preprocess contract and source-fingerprint policy.
 
+## ArtifactMaintenanceService
+
+`ArtifactMaintenanceService` is the production construction boundary for the
+remaining historical transcode domain. It owns only:
+
+- startup and periodic retirement of historical Runtime intents;
+- expired Lease fencing during rolling upgrades;
+- durable Artifact ownership reconciliation;
+- retryable Artifact filesystem cleanup;
+- storage incident and cleanup evidence exposed to Task Center.
+
+Its constructor does not create an FFprobe service, FFmpeg execution runtime,
+hardware detector, or Runtime Worker. `NewTranscodeService` remains temporarily
+as a source-compatible constructor alias, but returns the maintenance-only
+service.
+
+Compatibility submission methods fail closed with
+`ErrPersistentRuntimeTranscodeRetired`. No production constructor starts the
+legacy `worker` loop. Dead execution helpers remain isolated for the next
+physical source-deletion phase and are unreachable from Lite or Full assembly.
+
 ## Retired persistent Runtime queue
 
-The historical database queue is constructed with an invariant
+The historical database queue is constructed with the invariant
 `runtimeRetired=true`.
 
 It must never:
@@ -87,9 +117,29 @@ It must never:
 - restore a media-keyed Runtime Job after restart.
 
 The queue object remains lifecycle-open until shutdown only so rolling-upgrade
-maintenance can continue to wake the retirement sweeper. Historical Runtime
-rows are fenced and cleaned by the dedicated retirement migration, not by an
-execution worker.
+maintenance can wake the retirement sweeper. Historical Runtime rows are fenced
+and cleaned by migration maintenance, not by an execution worker.
+
+## Retired stream and administrator APIs
+
+Legacy media-keyed HLS, playback-position, bandwidth, and throttle routes remain
+registered temporarily so old clients receive a deterministic migration
+response. They return `410 Gone` with code
+`persistent_runtime_hls_retired`. Runtime clients must create and maintain a
+Playback Session instead.
+
+After JWT validation and the administrator role check, legacy administrator
+Runtime paths return `410 Gone` with code
+`persistent_runtime_transcode_retired`:
+
+- `/api/admin/transcode/*`;
+- `/api/admin/transcode-tasks`;
+- `/api/admin/transcode-tasks/*`;
+- `/api/admin/tasks/transcode/*`.
+
+Authorization is evaluated before the tombstone, and all tombstone responses
+are `no-store`. Preprocessing routes are explicitly outside these matches and
+continue to operate normally.
 
 ## Task Center
 
@@ -102,48 +152,31 @@ longer exposes Runtime cancel/retry actions. It continues to show:
 - durable Artifact cleanup operations.
 
 Playback sessions are user playback state, not administrator background tasks.
-Explicit preprocessing remains represented by its own preprocessing APIs and
-models rather than being relabeled as Runtime transcode work.
-
-## Retired administrator APIs
-
-Legacy administrator Runtime endpoints remain registered temporarily so old
-clients receive a deterministic migration response instead of an ambiguous
-failure. After JWT validation and the administrator role check, these paths
-return `410 Gone` with code `persistent_runtime_transcode_retired`:
-
-- `/api/admin/transcode/*`;
-- `/api/admin/transcode-tasks`;
-- `/api/admin/transcode-tasks/*`;
-- `/api/admin/tasks/transcode/*`.
-
-Authorization is evaluated before the tombstone, so an unauthenticated or
-non-administrator request still receives the normal authentication or
-permission failure. Responses are `no-store`.
-
-Preprocessing routes are explicitly outside this match and continue to operate
-normally.
+Explicit preprocessing remains represented by its own APIs and models.
 
 ## Compatibility and migration
 
 Historical tables and records remain intact for audit, upgrade, and rollback.
 No destructive schema drop is performed.
 
-Compatibility methods may remain while callers migrate, but they must fail
-closed and cannot create Jobs, Claim Leases, read Runtime Artifacts, or start
-FFmpeg outside a Playback Session or explicit preprocessing task.
+Compatibility methods and routes may remain during the migration window, but
+they fail closed and cannot create Jobs, Claim Leases, read Runtime Artifacts,
+or start FFmpeg outside a Playback Session, managed remux request, or explicit
+preprocessing task.
 
 ## Regression gates
 
 Automated tests enforce:
 
-- queue construction is permanently retired;
+- one process-local `MediaExecutionService` runtime;
+- Playback Session and Stream construction have no `TranscodeService`
+  dependency;
+- the playback compatibility adapter cannot return;
+- media-keyed HLS service and Handler implementations cannot return;
+- legacy stream and administrator routes resolve only to authenticated `410`
+  tombstones;
+- Artifact maintenance construction does not start a Runtime Worker;
 - retired queues cannot accept, Claim, or restore Runtime work;
-- Playback Session construction uses `MediaExecutionService`;
-- the playback compatibility adapter has no persistent repositories or worker
-  state;
 - Full preprocessing is bound to the shared media execution capability;
 - Lite Task Center has no historical Runtime task projection or executor;
-- retired administrator APIs preserve authorization before returning `410`;
-- preprocessing administrator APIs are not intercepted;
 - source assembly cannot silently restore the removed execution path.
