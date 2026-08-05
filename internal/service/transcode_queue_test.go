@@ -108,98 +108,52 @@ func TestDatabaseTranscodeQueueRejectsRetiredRuntimePayload(t *testing.T) {
 	}
 }
 
-func TestDatabaseTranscodeQueueTerminalizesRetiredRuntimeRows(t *testing.T) {
+func TestDatabaseTranscodeQueueNeverClaimsRetiredRows(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
-	record := ctx.createJob(t, "terminalize", TranscodePriorityInteractive, time.Now())
+	record := ctx.createJob(t, "no-claim", TranscodePriorityInteractive, time.Now())
 
-	result := make(chan bool, 1)
-	go func() {
-		job, ok := ctx.queue.Pop("retirement-worker", time.Minute)
-		result <- ok || job != nil
-	}()
-
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		stored, err := ctx.executionRepo.FindJobByID(record.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if stored.Status == "failed" {
-			if stored.ActiveKey != nil {
-				t.Fatalf("failed retired job retained active key: %+v", stored)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("retired job was not terminalized: %+v", stored)
-		}
-		time.Sleep(10 * time.Millisecond)
+	job, ok := ctx.queue.Pop("retirement-worker", time.Minute)
+	if ok || job != nil {
+		t.Fatalf("retired queue returned executable work: ok=%v job=%+v", ok, job)
 	}
-
-	ctx.queue.Close()
-	select {
-	case returnedWork := <-result:
-		if returnedWork {
-			t.Fatal("retired queue returned executable work")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("retired queue worker did not stop after close")
-	}
-
-	task, err := ctx.legacyRepo.FindByID(*record.LegacyTaskID)
+	stored, err := ctx.executionRepo.FindJobByID(record.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task.Status != "failed" || !strings.Contains(task.Error, "unsupported transcode intent") {
-		t.Fatalf("legacy task projection was not terminalized: %+v", task)
+	if stored.Status != "queued" || stored.LeaseToken != "" || stored.WorkerID != "" {
+		t.Fatalf("retired queue mutated or claimed historical row: %+v", stored)
 	}
 }
 
-func TestDatabaseTranscodeQueueFreshInstanceDoesNotRestoreRetiredRows(t *testing.T) {
+func TestDatabaseTranscodeQueueFreshInstanceRemainsRetired(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
 	record := ctx.createJob(t, "restart", TranscodePriorityInteractive, time.Now())
 	restarted := newTranscodePriorityQueue(ctx.executionRepo, ctx.legacyRepo, 10, zap.NewNop().Sugar())
-	restarted.pollInterval = 10 * time.Millisecond
 
-	result := make(chan bool, 1)
-	go func() {
-		job, ok := restarted.Pop("restart-worker", time.Minute)
-		result <- ok || job != nil
-	}()
-
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		stored, err := ctx.executionRepo.FindJobByID(record.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if stored.Status == "failed" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("fresh queue attempted to preserve retired row: %+v", stored)
-		}
-		time.Sleep(10 * time.Millisecond)
+	job, ok := restarted.Pop("restart-worker", time.Minute)
+	if ok || job != nil {
+		t.Fatalf("fresh queue restored retired runtime work: ok=%v job=%+v", ok, job)
 	}
-	restarted.Close()
-	select {
-	case returnedWork := <-result:
-		if returnedWork {
-			t.Fatal("fresh queue restored retired runtime work")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("fresh retired queue did not stop")
+	stored, err := ctx.executionRepo.FindJobByID(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "queued" || stored.LeaseToken != "" {
+		t.Fatalf("fresh retired queue touched historical row: %+v", stored)
 	}
 }
 
-func TestDatabaseTranscodeQueueCapacityAndClose(t *testing.T) {
+func TestDatabaseTranscodeQueueRejectsCapacityAndCloses(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 1)
-	if !ctx.queue.CanAccept() {
-		t.Fatal("empty durable queue rejected work")
+	if ctx.queue.CanAccept() {
+		t.Fatal("retired durable queue accepted work")
 	}
 	ctx.createJob(t, "capacity", TranscodePriorityBackground, time.Now())
-	if ctx.queue.CanAccept() {
-		t.Fatal("durable queue accepted work beyond configured capacity")
+	if ctx.queue.CanAccept() || ctx.queue.Len() != 0 {
+		t.Fatal("retired durable queue exposed historical capacity")
+	}
+	if !ctx.queue.Notify() {
+		t.Fatal("retirement lifecycle wake-up was unavailable")
 	}
 	ctx.queue.Close()
 	if !ctx.queue.IsClosed() || ctx.queue.Notify() {
@@ -213,7 +167,7 @@ func TestDatabaseTranscodeQueueCapacityAndClose(t *testing.T) {
 	}
 }
 
-func TestDatabaseTranscodeQueueReleasesClaimWhenClosed(t *testing.T) {
+func TestDatabaseTranscodeQueueReleasesHistoricalClaimWhenClosed(t *testing.T) {
 	ctx := newDatabaseQueueTestContext(t, 10)
 	record := ctx.createJob(t, "shutdown-race", TranscodePriorityInteractive, time.Now())
 	claimed, ok, err := ctx.executionRepo.ClaimJob(record.ID, "shutdown-worker", time.Now(), time.Minute)
@@ -228,6 +182,6 @@ func TestDatabaseTranscodeQueueReleasesClaimWhenClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stored.Status != "queued" || stored.LeaseToken != "" || stored.WorkerID != "" || stored.LeaseExpiresAt != nil {
-		t.Fatalf("shutdown did not release just-claimed ownership: %+v", stored)
+		t.Fatalf("shutdown did not release historical ownership: %+v", stored)
 	}
 }
