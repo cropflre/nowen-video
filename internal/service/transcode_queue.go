@@ -20,10 +20,11 @@ const (
 	defaultTranscodeQueueScanLimit    = 16
 )
 
-// transcodePriorityQueue is a database-backed Priority + FIFO scheduler. The
-// channel is only a wake-up hint; transcode_jobs is the sole source of pending
-// work. Storage Reservation is acquired before ClaimJob, and ClaimJob remains
-// the Lease ownership boundary across processes.
+// transcodePriorityQueue is retained only as a migration-compatible shell.
+// Runtime playback moved to PlaybackSessionService, so this queue must never
+// accept submissions or Claim a database Job again. It intentionally remains
+// lifecycle-open until Shutdown so the TranscodeService retirement sweeper can
+// keep fencing old rolling-upgrade Leases and deleting their files.
 type transcodePriorityQueue struct {
 	executionRepo *repository.TranscodeExecutionRepo
 	legacyRepo    *repository.TranscodeRepo
@@ -33,6 +34,10 @@ type transcodePriorityQueue struct {
 	wake          chan struct{}
 	done          chan struct{}
 	closeOnce     sync.Once
+
+	// runtimeRetired is an invariant, not a feature flag. Re-enabling this queue
+	// would recreate the removed media-keyed persistent playback architecture.
+	runtimeRetired bool
 
 	mu     sync.RWMutex
 	closed bool
@@ -55,11 +60,12 @@ func newTranscodePriorityQueue(
 		pollInterval:  defaultTranscodeQueuePollInterval,
 		wake:          make(chan struct{}, 1),
 		done:          make(chan struct{}),
+		runtimeRetired: true,
 	}
 }
 
 func (q *transcodePriorityQueue) CanAccept() bool {
-	if q == nil || q.IsClosed() || q.executionRepo == nil {
+	if q == nil || q.runtimeRetired || q.IsClosed() || q.executionRepo == nil {
 		return false
 	}
 	if err := transcodeQueueAdmissionError(q); err != nil {
@@ -74,13 +80,10 @@ func (q *transcodePriorityQueue) CanAccept() bool {
 	return depth < q.capacity
 }
 
-// Push preserves the existing submission call shape but never stores the Job
-// pointer. The durable row has already been created; this validates global
-// queue capacity and wakes database-polling workers. Peak storage is reserved
-// later, immediately before the Job is claimed, so queued work does not hold
-// physical capacity indefinitely.
+// Push remains only for source compatibility. Runtime Jobs are rejected before
+// any wake-up or capacity query, even when an old caller constructs a Job value.
 func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
-	if q == nil || job == nil || job.ExecutionJob == nil || q.IsClosed() {
+	if q == nil || q.runtimeRetired || job == nil || job.ExecutionJob == nil || q.IsClosed() {
 		return false
 	}
 	if err := transcodeQueueAdmissionError(q); err != nil {
@@ -98,6 +101,8 @@ func (q *transcodePriorityQueue) Push(job *TranscodeJob) bool {
 	return q.Notify()
 }
 
+// Notify is still available to migration and shutdown code. It does not make a
+// retired queue claimable; Pop always fails closed while runtimeRetired is true.
 func (q *transcodePriorityQueue) Notify() bool {
 	if q == nil || q.IsClosed() {
 		return false
@@ -109,14 +114,17 @@ func (q *transcodePriorityQueue) Notify() bool {
 	return true
 }
 
-// Promote is already persisted by PromoteQueuedJob. Waking workers is enough;
-// their next database selection observes the new priority atomically.
+// Promote is already persisted by PromoteQueuedJob. A retired queue never
+// consumes the promoted row, but keeping this adapter avoids unsafe dual paths.
 func (q *transcodePriorityQueue) Promote(_ string, _ int) bool {
+	if q == nil || q.runtimeRetired {
+		return false
+	}
 	return q.Notify()
 }
 
 func (q *transcodePriorityQueue) Pop(workerID string, leaseDuration time.Duration) (*TranscodeJob, bool) {
-	if q == nil || q.executionRepo == nil || q.legacyRepo == nil {
+	if q == nil || q.runtimeRetired || q.executionRepo == nil || q.legacyRepo == nil {
 		return nil, false
 	}
 	for {
@@ -283,7 +291,7 @@ func (q *transcodePriorityQueue) Close() {
 }
 
 // There are no unclaimed process-local deliveries to drain. Closing only
-// stops future database Claims; queued rows remain durable for the next start.
+// stops the retirement lifecycle and cannot affect database queue ownership.
 func (q *transcodePriorityQueue) CloseAndDrain() []*TranscodeJob {
 	q.Close()
 	return nil
@@ -308,7 +316,7 @@ func (q *transcodePriorityQueue) IsClosed() bool {
 }
 
 func (q *transcodePriorityQueue) Len() int {
-	if q == nil || q.executionRepo == nil {
+	if q == nil || q.runtimeRetired || q.executionRepo == nil {
 		return 0
 	}
 	depth, err := q.executionRepo.CountQueuedJobs()
