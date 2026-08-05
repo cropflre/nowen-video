@@ -8,6 +8,7 @@ on:
       - scripts/runtime_maintenance_refactor.py
       - scripts/runtime_maintenance_refactor_fix.py
       - scripts/runtime_maintenance_refactor_fix2.py
+      - scripts/runtime_maintenance_refactor_fix3.py
       - .github/workflows/runtime-maintenance-refactor.yml
 
 permissions:
@@ -32,6 +33,7 @@ jobs:
           python3 scripts/runtime_maintenance_refactor.py
           python3 scripts/runtime_maintenance_refactor_fix.py
           python3 scripts/runtime_maintenance_refactor_fix2.py
+          python3 scripts/runtime_maintenance_refactor_fix3.py
           gofmt -w \
             internal/service/playback_session.go \
             internal/service/media_execution.go \
@@ -62,6 +64,7 @@ jobs:
           rm scripts/runtime_maintenance_refactor.py
           rm scripts/runtime_maintenance_refactor_fix.py
           rm scripts/runtime_maintenance_refactor_fix2.py
+          rm scripts/runtime_maintenance_refactor_fix3.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
