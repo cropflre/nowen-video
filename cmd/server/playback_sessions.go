@@ -24,7 +24,16 @@ func newFullPlaybackRuntime(
 	repos *repository.Repositories,
 	logger *zap.SugaredLogger,
 ) (*fullPlaybackRuntime, error) {
-	sessions, err := service.NewPlaybackSessionService(repos.Media, services.Transcode, cfg, logger)
+	mediaExecution, err := service.NewMediaExecutionService(repos.DB(), cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := service.NewPlaybackSessionServiceWithExecution(
+		repos.Media,
+		mediaExecution,
+		cfg,
+		logger,
+	)
 	if err != nil {
 		return nil, err
 	}
