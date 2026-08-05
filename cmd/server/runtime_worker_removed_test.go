@@ -13,6 +13,7 @@ func TestPersistentRuntimeExecutionSurfaceRemoved(t *testing.T) {
 	requireSource(t, "../../internal/service/stream.go", "execution   *MediaExecutionService")
 	requireSource(t, "../../internal/handler/admin.go", "RetiredRuntimeTranscode")
 	requireSource(t, "../../internal/handler/stream.go", "RetiredRuntimeHLS")
+	requireSource(t, "../server-lite/routes_core.go", "handlers.Stream.RetiredRuntimeHLS")
 
 	for _, check := range []struct{ path, marker string }{
 		{"../../internal/service/transcode.go", "go service.worker"},
@@ -22,6 +23,10 @@ func TestPersistentRuntimeExecutionSurfaceRemoved(t *testing.T) {
 		{"../../internal/service/stream.go", "GetMasterPlaylistFiltered"},
 		{"../../internal/handler/admin.go", "ListTranscodeTasks"},
 		{"../../internal/handler/stream.go", "func (h *StreamHandler) Master"},
+		{"../server-lite/routes_core.go", "handlers.Stream.Master"},
+		{"../server-lite/routes_core.go", "handlers.Stream.Segment"},
+		{"../server-lite/routes_core.go", "handlers.Stream.AudioPlaylist"},
+		{"../server-lite/routes_core.go", "handlers.Stream.AudioSegment"},
 	} {
 		content, err := os.ReadFile(check.path)
 		if err != nil {
