@@ -1,0 +1,32 @@
+name: One-shot transcode projection audit
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - .github/workflows/one-shot-transcode-projection-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/server-lite-v1
+          fetch-depth: 0
+      - name: Inventory legacy task projection
+        shell: bash
+        run: |
+          set -o pipefail
+          echo '=== TranscodeTask / transcode_tasks ==='
+          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'TranscodeTask|transcode_tasks|LegacyTaskID|legacy_task_id' . || true
+          echo '=== Artifact cleanup and filesystem ownership ==='
+          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'TranscodeArtifactRecord|CleanupState|cleanup_state|ArtifactMaintenance|cleanup artifact|CleanupArtifact|artifact cleanup|MigrationSource|migration_source' internal cmd docs || true
+          echo '=== Runtime history ==='
+          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'RuntimeHistory|runtime-history|legacy_task' internal cmd web docs || true
+          echo '=== Current transcode model migrations ==='
+          rg -n 'AutoMigrate|TranscodeTask|TranscodeJobRecord|TranscodeArtifactRecord' internal/model internal/serverprofile cmd || true
