@@ -33,3 +33,14 @@ There is no automatic metadata deletion. Artifact file content remains bounded
 by `ArtifactMaintenanceService`, disk-pressure reclamation and cleanup retry
 state. Cleanup failures stay visible until cleanup succeeds or an operator fixes
 the underlying storage problem.
+
+## Acceptance gates
+
+The phase is accepted only when all of the following remain true:
+
+- the repository, service and handler tests pass with the project SQLite driver;
+- Lite and Full expose the same three administrator-only GET endpoints;
+- source contracts reject mutating Runtime History routes and execution methods;
+- Web TypeScript and Vite production builds include the administrator history drawer;
+- Lite and Full binaries and Docker images start with persistent data volumes;
+- historical metadata survives the Full → Lite → Full SQLite upgrade and rollback cycle.
