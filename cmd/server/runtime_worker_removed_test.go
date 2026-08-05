@@ -18,12 +18,18 @@ func TestPersistentRuntimeWorkerRemainsRetired(t *testing.T) {
 		"NewPlaybackSessionServiceWithExecution",
 		"executionRuntime: s.executionRuntime",
 	})
+	assertRuntimeSourceContains(t, "../../internal/service/preprocess_artifact.go", []string{
+		"type PreprocessArtifactService = PreprocessService",
+		"NewPreprocessArtifactService",
+		"BindMediaExecution",
+	})
 	assertRuntimeSourceContains(t, "../server-lite/main.go", []string{
 		"NewMediaExecutionService",
 		"NewPlaybackSessionServiceWithExecution",
 	})
 	assertRuntimeSourceContains(t, "playback_sessions.go", []string{
 		"NewMediaExecutionService",
+		"BindMediaExecution(mediaExecution)",
 		"NewPlaybackSessionServiceWithExecution",
 	})
 	assertRuntimeSourceContains(t, "../../internal/service/task_center_runtime_retirement.go", []string{
