@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -99,6 +100,23 @@ func AvailableTaskActions(kind, status string) []string {
 	return []string{}
 }
 
+func AvailableTaskActionsForTask(task UnifiedTask, now time.Time) []string {
+	actions := AvailableTaskActions(task.Kind, task.Status)
+	if task.Kind != TaskKindLegacyArtifactMigration {
+		return actions
+	}
+	if task.RollbackUntil != nil && !now.After(*task.RollbackUntil) {
+		return actions
+	}
+	filtered := make([]string, 0, len(actions))
+	for _, action := range actions {
+		if action != TaskActionRollback {
+			filtered = append(filtered, action)
+		}
+	}
+	return filtered
+}
+
 func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*TaskActionResult, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	sourceID = strings.TrimSpace(sourceID)
@@ -150,7 +168,12 @@ func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string, l
 	if action != TaskActionRetry && action != TaskActionRollback {
 		return fmt.Errorf("%w: artifact cleanup action=%s", ErrTaskActionUnsupported, action)
 	}
-	if !containsAction(AvailableTaskActions(mapArtifactTaskKind(artifact), mapArtifactTaskStatus(artifact)), action) {
+	task := UnifiedTask{
+		Kind:          mapArtifactTaskKind(artifact),
+		Status:        mapArtifactTaskStatus(artifact),
+		RollbackUntil: artifact.CleanupRollbackUntil,
+	}
+	if !containsAction(AvailableTaskActionsForTask(task, time.Now()), action) {
 		return fmt.Errorf("%w: artifact cleanup state=%s action=%s", ErrTaskActionConflict, artifact.CleanupState, action)
 	}
 	switch action {

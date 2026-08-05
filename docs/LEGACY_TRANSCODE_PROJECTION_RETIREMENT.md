@@ -22,13 +22,15 @@ Missing paths become completed audit tombstones.
 
 ## Rollback
 
-Before cleanup is claimed, an administrator can choose **保留目录** in Task
-Center. This changes the Artifact to `rollback_completed` and removes it from
-the cleanup work set without modifying the directory or resurrecting the old
-Runtime executor.
+During the seven-day observation window, and only before cleanup is claimed,
+an administrator can choose **保留目录** in Task Center. This changes the
+Artifact to `rollback_completed` and removes it from the cleanup work set
+without modifying the directory or resurrecting the old Runtime executor.
 
-A claimed or completed cleanup cannot be rolled back because filesystem work
-may already have started.
+The action disappears when the persisted deadline expires. The repository
+rechecks the same deadline atomically, so a stale browser cannot extend the
+window. A claimed or completed cleanup cannot be rolled back because filesystem
+work may already have started.
 
 ## Cleanup evidence
 

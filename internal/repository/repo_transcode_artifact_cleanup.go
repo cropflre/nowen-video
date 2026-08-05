@@ -318,10 +318,11 @@ func (r *TranscodeExecutionRepo) CompleteArtifactCleanupByClaim(
 func (r *TranscodeExecutionRepo) RollbackLegacyArtifactCleanup(artifactID string, now time.Time) (bool, error) {
 	result := r.db.Model(&model.TranscodeArtifactRecord{}).
 		Where(
-			"id = ? AND migration_source = ? AND cleanup_state IN ?",
+			"id = ? AND migration_source = ? AND cleanup_state IN ? AND cleanup_rollback_until IS NOT NULL AND cleanup_rollback_until >= ?",
 			artifactID,
 			LegacyTranscodeArtifactMigrationSource,
 			[]string{ArtifactCleanupPending, ArtifactCleanupRetryWait, ArtifactCleanupBlocked},
+			now,
 		).
 		Updates(map[string]any{
 			"status":                   "migration_rolled_back",

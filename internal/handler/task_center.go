@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -57,7 +58,7 @@ func (h *TaskCenterHandler) List(c *gin.Context) {
 	for _, task := range snapshot.Tasks {
 		items = append(items, taskCenterItem{
 			UnifiedTask: task,
-			Actions:     service.AvailableTaskActions(task.Kind, task.Status),
+			Actions:     service.AvailableTaskActionsForTask(task, time.Now()),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": taskCenterListResponse{Tasks: items, Summary: snapshot.Summary}})

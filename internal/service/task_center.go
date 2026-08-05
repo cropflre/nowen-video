@@ -29,18 +29,19 @@ const (
 // It intentionally adapts existing task stores instead of introducing another
 // persistence table or execution queue.
 type UnifiedTask struct {
-	ID          string     `json:"id"`
-	Kind        string     `json:"kind"`
-	Status      string     `json:"status"`
-	Title       string     `json:"title"`
-	Subtitle    string     `json:"subtitle,omitempty"`
-	Message     string     `json:"message,omitempty"`
-	Progress    float64    `json:"progress"`
-	SourceID    string     `json:"source_id,omitempty"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	ID            string     `json:"id"`
+	Kind          string     `json:"kind"`
+	Status        string     `json:"status"`
+	Title         string     `json:"title"`
+	Subtitle      string     `json:"subtitle,omitempty"`
+	Message       string     `json:"message,omitempty"`
+	Progress      float64    `json:"progress"`
+	SourceID      string     `json:"source_id,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	RollbackUntil *time.Time `json:"rollback_until,omitempty"`
 }
 
 type TaskCenterSummary struct {
@@ -305,17 +306,18 @@ func artifactCleanupToUnifiedTask(artifact *model.TranscodeArtifactRecord) Unifi
 	}
 
 	return UnifiedTask{
-		ID:        kind + ":" + artifact.ID,
-		Kind:      kind,
-		Status:    status,
-		Title:     title,
-		Subtitle:  strings.Join(subtitleParts, " · "),
-		Message:   strings.Join(messageParts, " · "),
-		Progress:  0,
-		SourceID:  artifact.ID,
-		CreatedAt: timePtr(artifact.CreatedAt),
-		UpdatedAt: timePtr(artifact.UpdatedAt),
-		StartedAt: artifact.CleanupClaimedAt,
+		ID:            kind + ":" + artifact.ID,
+		Kind:          kind,
+		Status:        status,
+		Title:         title,
+		Subtitle:      strings.Join(subtitleParts, " · "),
+		Message:       strings.Join(messageParts, " · "),
+		Progress:      0,
+		SourceID:      artifact.ID,
+		CreatedAt:     timePtr(artifact.CreatedAt),
+		UpdatedAt:     timePtr(artifact.UpdatedAt),
+		StartedAt:     artifact.CleanupClaimedAt,
+		RollbackUntil: artifact.CleanupRollbackUntil,
 	}
 }
 
