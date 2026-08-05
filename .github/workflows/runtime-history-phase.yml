@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/runtime_history_phase.py
+      - scripts/runtime_history_phase_fix.py
       - .github/workflows/runtime-history-phase.yml
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
       - name: Apply runtime history domain
         run: |
           python3 scripts/runtime_history_phase.py
+          python3 scripts/runtime_history_phase_fix.py
           gofmt -w internal/repository/runtime_history.go internal/service/runtime_history.go internal/service/runtime_history_test.go internal/handler/runtime_history.go cmd/server/runtime_history_contract_test.go cmd/server/main.go cmd/server-lite/router.go cmd/server-lite/routes_admin.go
       - name: Verify Go architecture and binaries
         run: |
@@ -52,6 +54,7 @@ jobs:
       - name: Commit verified phase and remove one-shot files
         run: |
           rm -f scripts/runtime_history_phase.py
+          rm -f scripts/runtime_history_phase_fix.py
           rm -f .github/workflows/runtime-history-phase.yml
           git add -A
           git config user.name "github-actions[bot]"
