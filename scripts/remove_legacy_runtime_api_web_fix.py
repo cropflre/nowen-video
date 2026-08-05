@@ -20,4 +20,9 @@ old = "        hls.on(Hls.Events.ERROR,        hls.on(Hls.Events.ERROR,"
 if content.count(old) != 1:
     raise RuntimeError("VideoPlayer HLS error handler migration boundary mismatch")
 content = content.replace(old, "        hls.on(Hls.Events.ERROR,", 1)
+
+obsolete_import = "import { streamApi } from '@/api/stream'\n"
+if content.count(obsolete_import) != 1:
+    raise RuntimeError("VideoPlayer obsolete streamApi import marker mismatch")
+content = content.replace(obsolete_import, "", 1)
 player.write_text(content, encoding="utf-8")
