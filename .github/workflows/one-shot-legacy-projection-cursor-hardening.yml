@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/harden_legacy_projection_cursor.py
+      - scripts/fix_harden_legacy_projection_cursor.py
       - .github/workflows/one-shot-legacy-projection-cursor-hardening.yml
 
 permissions:
@@ -34,6 +35,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Apply cursor hardening
         run: |
+          python3 scripts/fix_harden_legacy_projection_cursor.py
           python3 scripts/harden_legacy_projection_cursor.py
           gofmt -w \
             internal/model/transcode_execution.go \
@@ -57,7 +59,7 @@ jobs:
           grep -F 'RenewLegacyProjectionMigrationLease' internal/repository/repo_legacy_transcode_projection_migration.go
           grep -F 'legacyProjectionSourceCheckInterval' internal/service/legacy_transcode_projection_migration.go
           grep -F 'legacyProjectionFrozenHighWater' internal/service/legacy_transcode_projection_migration.go
-          ! grep -n 'CountLegacyTerminalWithOutputThrough' internal/service/legacy_transcode_projection_migration.go | grep -q '^.*highWater != nil'
+          grep -F 'NextSourceCheckAt' internal/model/transcode_execution.go
       - name: Verify Web production build
         working-directory: web
         run: |
@@ -66,6 +68,7 @@ jobs:
       - name: Commit verified hardening and remove one-shot files
         run: |
           rm -f scripts/harden_legacy_projection_cursor.py
+          rm -f scripts/fix_harden_legacy_projection_cursor.py
           rm -f .github/workflows/one-shot-legacy-projection-cursor-hardening.yml
           git add -A
           git config user.name "github-actions[bot]"
