@@ -45,6 +45,44 @@ path fields and records:
 Runtime History therefore remains auditable while storage summaries count only
 files that may still exist.
 
+## Cursor generations and source retirement
+
+The inventory source is no longer scanned from the beginning on every maintenance
+interval. `legacy_transcode_projection_migrations` stores one durable state row
+for `legacy_transcode_task_v1` with:
+
+- a finite per-generation source high-water
+- the last committed `(updated_at, id)` cursor
+- cumulative row and Artifact counters
+- a database Lease for multi-instance ownership
+- persisted cumulative and consecutive failure evidence
+- the next retry and source-tail-check timestamps
+- a 30-day read-only source retirement review date
+
+A batch advances the cursor only after every row in that batch has been imported.
+Partial Job or Artifact writes are safe because their identifiers are deterministic
+and the batch is replayed after a failure. If a rollback to an older server creates
+newer legacy rows, the next completed-generation tail check opens a new generation
+beginning at the previous high-water.
+
+A running or failed generation uses only its frozen high-water and does not query
+the legacy source again. After completion, the maintenance loop reads only the
+durable state row until a 15-minute source-check deadline is reached. A new source
+count is calculated only when the tail high-water has actually advanced.
+
+The migration Lease is renewed during directory traversal and is checked again
+immediately before Artifact insertion. The heartbeat uses the migration clock plus
+real elapsed time, so historical upgrade recovery and production execution share
+one consistent time domain. An expired owner cannot renew or commit a batch after
+another instance takes over.
+
+Retry delay is based on consecutive failures and is capped, while cumulative
+failure count remains permanent audit evidence. A successful batch or explicit
+administrator retry resets only consecutive failure pressure.
+
+The retirement date is evidence for an explicit later schema-removal decision; it
+does not automatically drop `transcode_tasks`.
+
 ## Acceptance
 
 - Fresh Lite and Full database profiles no longer create `transcode_tasks`.
@@ -56,40 +94,14 @@ files that may still exist.
   claim; the Task Center and repository enforce the same boundary.
 - Successful retention and disk-pressure cleanup reclaim files while preserving
   completed Artifact tombstones and original-path evidence.
-- The dedicated implementation gates passed focused migration/rollback tests,
-  the complete Go package suite, Lite and Full builds, and the Web production
-  build. The normal project CI matrix is rerun from this acceptance commit.
-
-
-## Cursor generations and source retirement
-
-The inventory source is no longer scanned from the beginning on every maintenance
-interval. `legacy_transcode_projection_migrations` stores one durable state row
-for `legacy_transcode_task_v1` with:
-
-- a finite per-generation source high-water
-- the last committed `(updated_at, id)` cursor
-- cumulative row and Artifact counters
-- a database Lease for multi-instance ownership
-- persisted failure evidence and exponential retry time
-- a 30-day read-only source retirement review date
-
-A batch advances the cursor only after every row in that batch has been imported.
-Partial Job or Artifact writes are safe because their identifiers are deterministic
-and the batch is replayed after a failure. A completed generation performs only a
-high-water check. If a rollback to an older server creates newer legacy rows, the
-next upgrade opens a new generation beginning at the previous high-water.
-
-The retirement date is evidence for an explicit later schema-removal decision; it
-does not automatically drop `transcode_tasks`.
-
-
-A running or failed generation uses only its frozen high-water and does not query
-the legacy source again. After completion, the maintenance loop reads only the
-durable state row until a 15-minute source-check deadline is reached. A new
-source count is calculated only when the tail high-water has actually advanced.
-
-The migration Lease is renewed during directory traversal and is checked again
-immediately before Artifact insertion. An expired owner cannot renew or commit a
-batch after another instance takes over. Retry delay is based on consecutive
-failures, while the cumulative failure count remains audit evidence.
+- Migration batches are ordered by `(updated_at, id)`, commit a durable cursor,
+  and freeze a finite high-water for each generation.
+- Concurrent instances are fenced by a renewable database Lease; stale owners
+  cannot renew, complete a batch or publish an Artifact after takeover.
+- Completed generations avoid per-tick source counts and perform only a bounded
+  15-minute tail check before deciding whether to open the next generation.
+- Task Center and Runtime History expose generation, progress, failure evidence,
+  source-check schedule and retirement-review readiness.
+- Focused migration and Lease tests, the complete Go package suite, Lite and Full
+  builds, and the Web production build passed in the dedicated implementation
+  gate. The normal project matrix is rerun from this acceptance commit.
