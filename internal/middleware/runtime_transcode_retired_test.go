@@ -10,32 +10,40 @@ import (
 )
 
 func TestAdminOnlyRetiresPersistentRuntimeTranscodeAfterAuthorization(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(func(c *gin.Context) {
-		c.Set("role", "admin")
-		c.Next()
-	})
-	router.GET("/api/admin/transcode/status", AdminOnly(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
+	for _, path := range []string{
+		"/api/admin/transcode/status",
+		"/api/admin/transcode-tasks",
+		"/api/admin/tasks/transcode/legacy-task/retry",
+	} {
+		t.Run(path, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set("role", "admin")
+				c.Next()
+			})
+			router.Any(path, AdminOnly(), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
 
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/admin/transcode/status", nil)
-	router.ServeHTTP(response, request)
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, path, nil)
+			router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusGone {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusGone)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body["code"] != "persistent_runtime_transcode_retired" {
-		t.Fatalf("unexpected tombstone response: %+v", body)
-	}
-	if got := response.Header().Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("cache control = %q", got)
+			if response.Code != http.StatusGone {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusGone)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["code"] != "persistent_runtime_transcode_retired" {
+				t.Fatalf("unexpected tombstone response: %+v", body)
+			}
+			if got := response.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("cache control = %q", got)
+			}
+		})
 	}
 }
 
