@@ -105,6 +105,24 @@ Playback sessions are user playback state, not administrator background tasks.
 Explicit preprocessing remains represented by its own preprocessing APIs and
 models rather than being relabeled as Runtime transcode work.
 
+## Retired administrator APIs
+
+Legacy administrator Runtime endpoints remain registered temporarily so old
+clients receive a deterministic migration response instead of an ambiguous
+failure. After JWT validation and the administrator role check, these paths
+return `410 Gone` with code `persistent_runtime_transcode_retired`:
+
+- `/api/admin/transcode/*`;
+- `/api/admin/transcode-tasks`;
+- `/api/admin/transcode-tasks/*`.
+
+Authorization is evaluated before the tombstone, so an unauthenticated or
+non-administrator request still receives the normal authentication or
+permission failure. Responses are `no-store`.
+
+Preprocessing routes are explicitly outside this match and continue to operate
+normally.
+
 ## Compatibility and migration
 
 Historical tables and records remain intact for audit, upgrade, and rollback.
@@ -125,4 +143,6 @@ Automated tests enforce:
   state;
 - Full preprocessing is bound to the shared media execution capability;
 - Lite Task Center has no historical Runtime task projection or executor;
+- retired administrator APIs preserve authorization before returning `410`;
+- preprocessing administrator APIs are not intercepted;
 - source assembly cannot silently restore the removed execution path.
