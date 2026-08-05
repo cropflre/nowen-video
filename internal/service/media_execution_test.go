@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestMediaExecutionCompatibilityAdapterHasNoPersistentRuntimeState(t *testing.T) {
+func TestMediaExecutionOwnsSingleProcessLocalRuntime(t *testing.T) {
 	dsn := fmt.Sprintf("file:media-execution-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -27,17 +27,11 @@ func TestMediaExecutionCompatibilityAdapterHasNoPersistentRuntimeState(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := execution.playbackCompatibilityAdapter()
-	if adapter == nil || adapter.ExecutionRuntime() == nil {
-		t.Fatal("media execution adapter did not expose FFmpeg runtime")
+	runtime := execution.ExecutionRuntime()
+	if runtime == nil {
+		t.Fatal("media execution did not expose FFmpeg runtime")
 	}
-	if adapter.ExecutionRuntime() != execution.ExecutionRuntime() {
-		t.Fatal("playback adapter created a second execution runtime")
-	}
-	if adapter.repo != nil || adapter.executionRepo != nil || adapter.jobs != nil || adapter.artifactStore != nil {
-		t.Fatalf("playback adapter reached persistent runtime state: %+v", adapter)
-	}
-	if adapter.running != nil || adapter.workerCount != 0 {
-		t.Fatal("playback adapter started a persistent worker registry")
+	if execution.ExecutionRuntime() != runtime {
+		t.Fatal("media execution created more than one runtime")
 	}
 }

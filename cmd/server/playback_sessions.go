@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
@@ -25,9 +26,9 @@ func newFullPlaybackRuntime(
 	repos *repository.Repositories,
 	logger *zap.SugaredLogger,
 ) (*fullPlaybackRuntime, error) {
-	mediaExecution, err := service.NewMediaExecutionService(repos.DB(), cfg, logger)
-	if err != nil {
-		return nil, err
+	mediaExecution := services.MediaExecution
+	if mediaExecution == nil {
+		return nil, fmt.Errorf("media execution service is required")
 	}
 	if services != nil && services.Preprocess != nil {
 		if err := services.Preprocess.BindMediaExecution(mediaExecution); err != nil {

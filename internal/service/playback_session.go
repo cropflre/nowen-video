@@ -79,7 +79,7 @@ func (f *PlaybackSessionFile) Release() {
 type PlaybackSessionService struct {
 	mediaRepo   *repository.MediaRepo
 	cfg         *config.Config
-	transcoder  *TranscodeService
+	execution   *MediaExecutionService
 	manager     *playbacksession.Manager
 	runner      *playbacktranscode.Runner
 	logger      *zap.SugaredLogger
@@ -89,14 +89,14 @@ type PlaybackSessionService struct {
 
 func NewPlaybackSessionService(
 	mediaRepo *repository.MediaRepo,
-	transcoder *TranscodeService,
+	execution *MediaExecutionService,
 	cfg *config.Config,
 	logger *zap.SugaredLogger,
 ) (*PlaybackSessionService, error) {
 	if mediaRepo == nil {
 		return nil, fmt.Errorf("media repository is required")
 	}
-	if transcoder == nil || transcoder.ExecutionRuntime() == nil {
+	if execution == nil || execution.ExecutionRuntime() == nil {
 		return nil, fmt.Errorf("transcode execution runtime is required")
 	}
 	if cfg == nil {
@@ -115,13 +115,13 @@ func NewPlaybackSessionService(
 	}
 	runnerConfig := playbacktranscode.DefaultConfig(
 		cfg.App.FFmpegPath,
-		transcoder.GetHWAccelInfo(),
+		execution.GetHWAccelInfo(),
 		cfg.App.VAAPIDevice,
 		ffmpeg.CalcThreads(cfg),
 	)
 	runner, err := playbacktranscode.NewRunner(
 		manager,
-		transcoder.ExecutionRuntime(),
+		execution.ExecutionRuntime(),
 		runnerConfig,
 		logger,
 	)
@@ -134,7 +134,7 @@ func NewPlaybackSessionService(
 	return &PlaybackSessionService{
 		mediaRepo:   mediaRepo,
 		cfg:         cfg,
-		transcoder:  transcoder,
+		execution:   execution,
 		manager:     manager,
 		runner:      runner,
 		logger:      logger,
@@ -299,7 +299,7 @@ func (s *PlaybackSessionService) startGeneration(
 		return nil, fmt.Errorf("remote media input is unavailable for transcoding")
 	}
 	fps := 25.0
-	if probe := s.transcoder.GetCachedMediaProbe(media); probe != nil {
+	if probe := s.execution.GetCachedMediaProbe(media); probe != nil {
 		if value := probe.FrameRate(); value > 0 {
 			fps = value
 		}

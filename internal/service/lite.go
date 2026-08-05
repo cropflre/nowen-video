@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
@@ -13,14 +14,18 @@ import (
 // preprocessing workers, Emby compatibility, adult scraping and AI scene
 // analysis. The full profile remains available through cmd/server.
 func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
-	transcoder := NewTranscodeService(repos.Transcode, cfg, logger)
+	mediaExecution, err := NewMediaExecutionService(repos.DB(), cfg, logger)
+	if err != nil {
+		panic(fmt.Sprintf("initialize media execution service: %v", err))
+	}
+	artifactMaintenance := NewArtifactMaintenanceService(repos.Transcode, cfg, logger)
 	scanner := NewScannerService(repos.Media, repos.Series, cfg, logger)
 	metadata := NewMetadataService(repos.Media, repos.Series, repos.Person, repos.MediaPerson, cfg, logger)
 
 	wsHub := NewWSHub(logger)
 	go wsHub.Run()
 	scanner.SetWSHub(wsHub)
-	transcoder.SetWSHub(wsHub)
+	artifactMaintenance.SetWSHub(wsHub)
 	metadata.SetWSHub(wsHub)
 
 	libraryService := NewLibraryService(
@@ -135,43 +140,45 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		aiRouter.LoadMonthUsage()
 	}
 
-	streamService := NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger)
+	streamService := NewStreamService(repos.Media, repos.Series, mediaExecution, cfg, logger)
 	streamService.SetSettingRepo(repos.SystemSetting)
 	streamService.SetVFSManager(vfsManager)
 
 	svcs := &Services{
-		User:           NewUserService(repos.User, repos.AuditLog, cfg, logger),
-		Auth:           NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
-		Library:        libraryService,
-		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
-		Series:         NewSeriesService(repos.Series, repos.Media, logger),
-		Stream:         streamService,
-		Transcode:      transcoder,
-		Metadata:       metadata,
-		Scanner:        scanner,
-		Playlist:       NewPlaylistService(repos.Playlist, logger),
-		Recommend:      recommendService,
-		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
-		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
-		FileWatcher:    fileWatcher,
-		NFO:            nfoService,
-		Stats:          statsService,
-		VFS:            vfsManager,
-		WebDAV:         webDAVService,
-		RemoteStorage:  remoteStorageService,
-		WSHub:          wsHub,
-		AI:             aiService,
-		ScrapeManager:  scrapeManager,
-		FileManager:    fileManager,
-		TheTVDB:        theTVDBService,
-		Fanart:         fanartService,
-		ProviderChain:  providerChain,
-		SubtitleSearch: subtitleSearchService,
-		BatchMetadata:  batchMetadataService,
-		ImportExport:   importExportService,
-		Collection:     collectionService,
-		AICost:         aicostService,
-		AIRouter:       aiRouter,
+		User:                NewUserService(repos.User, repos.AuditLog, cfg, logger),
+		Auth:                NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
+		Library:             libraryService,
+		Media:               NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
+		Series:              NewSeriesService(repos.Series, repos.Media, logger),
+		Stream:              streamService,
+		MediaExecution:      mediaExecution,
+		ArtifactMaintenance: artifactMaintenance,
+		Transcode:           artifactMaintenance,
+		Metadata:            metadata,
+		Scanner:             scanner,
+		Playlist:            NewPlaylistService(repos.Playlist, logger),
+		Recommend:           recommendService,
+		Bookmark:            NewBookmarkService(repos.Bookmark, repos.Media, logger),
+		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
+		FileWatcher:         fileWatcher,
+		NFO:                 nfoService,
+		Stats:               statsService,
+		VFS:                 vfsManager,
+		WebDAV:              webDAVService,
+		RemoteStorage:       remoteStorageService,
+		WSHub:               wsHub,
+		AI:                  aiService,
+		ScrapeManager:       scrapeManager,
+		FileManager:         fileManager,
+		TheTVDB:             theTVDBService,
+		Fanart:              fanartService,
+		ProviderChain:       providerChain,
+		SubtitleSearch:      subtitleSearchService,
+		BatchMetadata:       batchMetadataService,
+		ImportExport:        importExportService,
+		Collection:          collectionService,
+		AICost:              aicostService,
+		AIRouter:            aiRouter,
 	}
 
 	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)

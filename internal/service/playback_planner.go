@@ -92,9 +92,9 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	// of playback.
 	effectiveInfo := *info
 	var sourceTechnical *PlaybackSourceTechnical
-	if s != nil && s.mediaRepo != nil && s.transcoder != nil {
+	if s != nil && s.mediaRepo != nil && s.execution != nil {
 		if media, err := s.mediaRepo.FindByID(mediaID); err == nil {
-			if probe := s.transcoder.GetCachedMediaProbe(media); probe != nil {
+			if probe := s.execution.GetCachedMediaProbe(media); probe != nil {
 				sourceTechnical = applyProbeToPlaybackInfo(mediaID, &effectiveInfo, probe)
 			}
 		}

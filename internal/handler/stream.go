@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,9 +14,8 @@ import (
 
 // StreamHandler 流媒体处理器
 type StreamHandler struct {
-	streamService    *service.StreamService
-	transcodeService *service.TranscodeService // 用于接收播放进度上报驱动节流
-	logger           *zap.SugaredLogger
+	streamService *service.StreamService
+	logger        *zap.SugaredLogger
 }
 
 // Direct 直接提供原始文件流（支持Range请求，用于MP4等浏览器兼容格式）
@@ -68,86 +66,15 @@ func (h *StreamHandler) Direct(c *gin.Context) {
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 
-// Master 获取HLS主播放列表
-func (h *StreamHandler) Master(c *gin.Context) {
-	id := c.Param("id")
-	maxBitrate := 0
-	if mb := c.Query("maxBitrate"); mb != "" {
-		if v, err := strconv.Atoi(mb); err == nil && v > 0 {
-			maxBitrate = v
-		}
-	}
-	playlist, err := h.streamService.GetMasterPlaylistFiltered(id, maxBitrate)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "no-cache")
-	c.String(http.StatusOK, playlist)
-}
-
-// Segment 提供HLS分片或子播放列表
-func (h *StreamHandler) Segment(c *gin.Context) {
-	id := c.Param("id")
-	quality := c.Param("quality")
-	segment := c.Param("segment")
-
-	if segment == "stream.m3u8" {
-		playlist, err := h.streamService.GetSegmentPlaylist(id, quality)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.Header("Content-Type", "application/vnd.apple.mpegurl")
-		c.Header("Cache-Control", "no-cache")
-		c.String(http.StatusOK, playlist)
-		return
-	}
-
-	if err := h.streamService.ServeSegment(id, quality, segment, c.Writer, c.Request); err == nil {
-		return
-	}
-
-	if err := h.streamService.ServeOnDemandSegment(id, quality, segment, c.Writer, c.Request); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-}
-
-// AudioPlaylist 按需音轨 playlist
-func (h *StreamHandler) AudioPlaylist(c *gin.Context) {
-	id := c.Param("id")
-	trackParam := strings.TrimSuffix(c.Param("trackIdx"), ".m3u8")
-	trackIdx, err := strconv.Atoi(trackParam)
-	if err != nil || trackIdx < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid track index"})
-		return
-	}
-	playlist, err := h.streamService.GetAudioPlaylist(id, trackIdx)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "no-cache")
-	c.String(http.StatusOK, playlist)
-}
-
-// AudioSegment 按需音轨分片
-func (h *StreamHandler) AudioSegment(c *gin.Context) {
-	id := c.Param("id")
-	trackIdx, err := strconv.Atoi(c.Param("trackIdx"))
-	if err != nil || trackIdx < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid track index"})
-		return
-	}
-	segName := c.Param("seg")
-	if err := h.streamService.ServeAudioSegment(id, trackIdx, segName, c.Writer, c.Request); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
+// RetiredRuntimeHLS is the authenticated compatibility tombstone for the
+// removed media-keyed persistent HLS surface. Runtime media is available only
+// through /api/playback/sessions.
+func (h *StreamHandler) RetiredRuntimeHLS(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusGone, gin.H{
+		"error": "媒体级持久 Runtime HLS 已退役，请创建播放会话",
+		"code":  "persistent_runtime_hls_retired",
+	})
 }
 
 // Remux 统一进入受资源治理的 Managed Remux。兼容音频直接 copy，
@@ -280,67 +207,6 @@ func setPosterContentType(c *gin.Context, posterPath string) {
 	default:
 		c.Header("Content-Type", "application/octet-stream")
 	}
-}
-
-func (h *StreamHandler) Playback(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
-		return
-	}
-	positionStr := c.Query("position")
-	if positionStr == "" {
-		positionStr = c.PostForm("position")
-	}
-	position, err := strconv.ParseFloat(positionStr, 64)
-	if err != nil || position < 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid position"})
-		return
-	}
-	if h.transcodeService != nil {
-		h.transcodeService.SetPlaybackPosition(id, position)
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-func (h *StreamHandler) Bandwidth(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
-		return
-	}
-	bitrateStr := c.Query("bitrate")
-	if bitrateStr == "" {
-		bitrateStr = c.PostForm("bitrate")
-	}
-	bitrate, err := strconv.Atoi(bitrateStr)
-	if err != nil || bitrate <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bitrate"})
-		return
-	}
-	recommended := bitrate * 80 / 100
-	resp := gin.H{
-		"ok":               true,
-		"reported_bitrate": bitrate,
-		"recommended_max":  recommended,
-	}
-	if h.transcodeService != nil {
-		resp["throttle"] = h.transcodeService.GetMediaThrottleStatus(id)
-	}
-	c.JSON(http.StatusOK, resp)
-}
-
-func (h *StreamHandler) ThrottleStatus(c *gin.Context) {
-	id := c.Param("id")
-	if id == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing id"})
-		return
-	}
-	if h.transcodeService == nil {
-		c.JSON(http.StatusOK, gin.H{"data": gin.H{"media_id": id, "running": false}})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": h.transcodeService.GetMediaThrottleStatus(id)})
 }
 
 func (h *StreamHandler) STRMSegment(c *gin.Context) {

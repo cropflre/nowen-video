@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 	"runtime"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +19,7 @@ import (
 type AdminHandler struct {
 	userService       *service.UserService
 	authService       *service.AuthService
-	transcodeService  *service.TranscodeService
+	mediaExecution    *service.MediaExecutionService
 	permissionService *service.PermissionService
 	libraryService    *service.LibraryService
 	metadataService   *service.MetadataService
@@ -31,7 +29,6 @@ type AdminHandler struct {
 	loginLogRepo      *repository.LoginLogRepo
 	auditLogRepo      *repository.AuditLogRepo
 	inviteRepo        *repository.InviteCodeRepo
-	mediaRepo         *repository.MediaRepo // 用于转码任务重试时解析媒体
 	cfg               *config.Config
 	logger            *zap.SugaredLogger
 	db                *gorm.DB
@@ -356,231 +353,18 @@ func (h *AdminHandler) SystemInfo(c *gin.Context) {
 			"cpus":       runtime.NumCPU(),
 			"goroutines": runtime.NumGoroutine(),
 			"memory":     sysMem,
-			"hw_accel":   h.transcodeService.GetHWAccelInfo(),
+			"hw_accel":   h.mediaExecution.GetHWAccelInfo(),
 		},
 	})
 }
 
-// ==================== 转码管理 ====================
-
-// TranscodeStatus 转码任务状态
-func (h *AdminHandler) TranscodeStatus(c *gin.Context) {
-	jobs := h.transcodeService.GetRunningJobs()
-
-	var result []gin.H
-	for _, job := range jobs {
-		result = append(result, gin.H{
-			"id":       job.Task.ID,
-			"media_id": job.Task.MediaID,
-			"quality":  job.Quality,
-			"status":   job.Task.Status,
-			"progress": job.Task.Progress,
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": result})
-}
-
-// TranscodeThrottleStats 返回节流统计
-// GET /admin/transcode/throttle
-//
-// 用于监控节流策略对 GPU/CPU 的节省效果。字段：
-//   - active_suspended：当前处于挂起状态的 FFmpeg 进程数
-//   - total_suspend_count：服务启动以来累积挂起次数
-//   - total_suspend_seconds：服务启动以来累积挂起秒数（近似等于节省的 GPU/CPU 计算时间）
-func (h *AdminHandler) TranscodeThrottleStats(c *gin.Context) {
-	stats := h.transcodeService.GetThrottleStats()
-	c.JSON(http.StatusOK, gin.H{"data": stats})
-}
-
-// CancelTranscode 取消正在运行的转码任务
-func (h *AdminHandler) CancelTranscode(c *gin.Context) {
-	taskID := c.Param("taskId")
-	if taskID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "任务ID不能为空"})
-		return
-	}
-
-	if err := h.transcodeService.CancelTranscode(taskID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "转码任务已取消"})
-}
-
-// ==================== 转码任务面板 API（与预处理面板交互对齐） ====================
-//
-// 这一组接口为前端 TranscodeJobsPanel 提供与 PreprocessPage 一致的能力：
-//   - 列表分页 + 状态筛选
-//   - 顶部统计卡片
-//   - 单条 取消 / 重试 / 删除
-//   - 批量 取消 / 重试 / 删除
-
-// ListTranscodeTasks 分页查询转码任务
-//
-// GET /admin/transcode/tasks?page=1&page_size=20&status=running
-func (h *AdminHandler) ListTranscodeTasks(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	status := c.Query("status")
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-	tasks, total, err := h.transcodeService.ListTasks(page, pageSize, status)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"tasks":     tasks,
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
-		},
+// RetiredRuntimeTranscode is the sole compatibility handler for removed
+// persistent Runtime task APIs. AdminOnly performs the same tombstone before
+// this handler, preserving authorization-first behavior.
+func (h *AdminHandler) RetiredRuntimeTranscode(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusGone, gin.H{
+		"error": "持久 Runtime 转码任务已退役，请使用播放会话或管理员预处理",
+		"code":  "persistent_runtime_transcode_retired",
 	})
-}
-
-// GetTranscodeStatistics 转码任务整体统计
-//
-// GET /admin/transcode/statistics
-func (h *AdminHandler) GetTranscodeStatistics(c *gin.Context) {
-	stats := h.transcodeService.GetStatistics()
-	c.JSON(http.StatusOK, gin.H{"data": stats})
-}
-
-// CancelTranscodeTask 取消正在运行的转码任务（与预处理路径对齐：/transcode/tasks/:id/cancel）
-func (h *AdminHandler) CancelTranscodeTask(c *gin.Context) {
-	taskID := c.Param("id")
-	if taskID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "任务ID不能为空"})
-		return
-	}
-	if err := h.transcodeService.CancelTranscode(taskID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "任务已取消"})
-}
-
-// RetryTranscodeTask 重试失败/取消的转码任务
-func (h *AdminHandler) RetryTranscodeTask(c *gin.Context) {
-	taskID := c.Param("id")
-	if err := h.transcodeService.RetryTask(taskID, h.resolveMediaForRetry); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "任务已重新提交"})
-}
-
-// DeleteTranscodeTask 删除单条转码任务（仅终态可删）
-func (h *AdminHandler) DeleteTranscodeTask(c *gin.Context) {
-	taskID := c.Param("id")
-	if err := h.transcodeService.DeleteTask(taskID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "任务已删除"})
-}
-
-// BatchCancelTranscodeTasks 批量取消转码任务
-func (h *AdminHandler) BatchCancelTranscodeTasks(c *gin.Context) {
-	var req struct {
-		TaskIDs []string `json:"task_ids" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
-		return
-	}
-	cancelled, _ := h.transcodeService.BatchCancelTasks(req.TaskIDs)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "批量取消完成",
-		"data":    gin.H{"cancelled": cancelled},
-	})
-}
-
-// BatchDeleteTranscodeTasks 批量删除转码任务（运行中跳过）
-func (h *AdminHandler) BatchDeleteTranscodeTasks(c *gin.Context) {
-	var req struct {
-		TaskIDs []string `json:"task_ids" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
-		return
-	}
-	deleted, err := h.transcodeService.BatchDeleteTasks(req.TaskIDs)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"message": "批量删除完成",
-		"data":    gin.H{"deleted": deleted},
-	})
-}
-
-// BatchRetryTranscodeTasks 批量重试转码任务
-func (h *AdminHandler) BatchRetryTranscodeTasks(c *gin.Context) {
-	var req struct {
-		TaskIDs []string `json:"task_ids" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 task_ids"})
-		return
-	}
-	retried, _ := h.transcodeService.BatchRetryTasks(req.TaskIDs, h.resolveMediaForRetry)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "批量重试完成",
-		"data":    gin.H{"retried": retried},
-	})
-}
-
-// BatchSubmitTranscodeTasks 选源批量提交转码（用户在"转码任务"Tab 主动选影视入队）
-//
-// 请求体：
-//
-//	{
-//	  "media_ids":  ["..."],            // 必填
-//	  "qualities":  ["720p","1080p"],   // 选填，缺省 ["720p"]
-//	}
-//
-// service 内会自动按媒体原始分辨率过滤超分档位，不会把 1080p 强加到 720p 源上。
-// 返回 submitted 表示成功入队的媒体数（不是任务数），data.tasks 为本次新增的任务列表。
-func (h *AdminHandler) BatchSubmitTranscodeTasks(c *gin.Context) {
-	var req struct {
-		MediaIDs  []string `json:"media_ids" binding:"required"`
-		Qualities []string `json:"qualities"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 media_ids"})
-		return
-	}
-	if len(req.MediaIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "media_ids 不能为空"})
-		return
-	}
-	submitted, skipped, tasks, errs := h.transcodeService.BatchSubmitByMediaIDs(
-		req.MediaIDs, req.Qualities, h.resolveMediaForRetry,
-	)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "批量转码任务已提交",
-		"data": gin.H{
-			"submitted": submitted,
-			"skipped":   skipped,
-			"tasks":     tasks,
-			"errors":    errs,
-		},
-	})
-}
-
-// resolveMediaForRetry 重试时按 mediaID 取出 *model.Media，封装成 service 需要的解析函数
-func (h *AdminHandler) resolveMediaForRetry(mediaID string) (*model.Media, error) {
-	if h.mediaRepo == nil {
-		return nil, fmt.Errorf("mediaRepo 未注入")
-	}
-	return h.mediaRepo.FindByID(mediaID)
 }

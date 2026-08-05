@@ -79,7 +79,7 @@ func (s *StreamService) ManagedRemuxStream(mediaID string, w http.ResponseWriter
 	if !ok {
 		return fmt.Errorf("媒体视频编码不适合 Remux: %s", media.VideoCodec)
 	}
-	if s.transcoder == nil || s.transcoder.ExecutionRuntime() == nil {
+	if s.execution == nil || s.execution.ExecutionRuntime() == nil {
 		return fmt.Errorf("媒体执行 Runtime 不可用")
 	}
 
@@ -134,7 +134,7 @@ func (s *StreamService) ManagedRemuxStream(mediaID string, w http.ResponseWriter
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result := s.transcoder.ExecutionRuntime().Run(ctx, transcodegovernor.KindRemux, transcodeexecutor.Command{
+	result := s.execution.ExecutionRuntime().Run(ctx, transcodegovernor.KindRemux, transcodeexecutor.Command{
 		Path:       s.cfg.App.FFmpegPath,
 		Args:       args,
 		Stdout:     w,

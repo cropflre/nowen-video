@@ -83,22 +83,6 @@ func (s *MediaExecutionService) GetMediaProbeStats() transcodeprobe.Stats {
 	return s.mediaProbe.Stats()
 }
 
-// playbackCompatibilityAdapter is deliberately process-local and contains no
-// persistent repositories or queue. It exists only while the public playback
-// constructor is migrated from the historical concrete TranscodeService type.
-func (s *MediaExecutionService) playbackCompatibilityAdapter() *TranscodeService {
-	if s == nil {
-		return nil
-	}
-	return &TranscodeService{
-		cfg:              s.cfg,
-		logger:           s.logger,
-		executionRuntime: s.executionRuntime,
-		mediaProbe:       s.mediaProbe,
-		hwAccel:          s.hwAccel,
-	}
-}
-
 // NewPlaybackSessionServiceWithExecution is the new construction boundary.
 // Playback depends on MediaExecutionService and cannot reach the persistent
 // Runtime queue, Artifact store or legacy task repository.
@@ -111,10 +95,5 @@ func NewPlaybackSessionServiceWithExecution(
 	if execution == nil {
 		return nil, fmt.Errorf("media execution service is required")
 	}
-	return NewPlaybackSessionService(
-		mediaRepo,
-		execution.playbackCompatibilityAdapter(),
-		cfg,
-		logger,
-	)
+	return NewPlaybackSessionService(mediaRepo, execution, cfg, logger)
 }

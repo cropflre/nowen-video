@@ -26,6 +26,9 @@ import (
 
 const EventTranscodeCancelled = "transcode_cancelled"
 
+// ArtifactMaintenanceService is the formal owner of historical migration and durable Artifact cleanup.
+type ArtifactMaintenanceService = TranscodeService
+
 type TranscodeService struct {
 	repo          *repository.TranscodeRepo
 	executionRepo *repository.TranscodeExecutionRepo
@@ -146,18 +149,20 @@ func (j *TranscodeJob) getTranscodedPosition() float64 {
 	return float64(j.transcodedPos.Load()) / 100
 }
 
-func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
+func NewArtifactMaintenanceService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *ArtifactMaintenanceService {
 	if repo == nil || repo.DB() == nil {
 		panic("transcode repository is required")
+	}
+	if cfg == nil {
+		panic("configuration is required")
+	}
+	if logger == nil {
+		logger = zap.NewNop().Sugar()
 	}
 	if err := model.AutoMigrateTranscodeExecution(repo.DB()); err != nil {
 		panic(fmt.Sprintf("migrate transcode execution schema: %v", err))
 	}
 	executionRepo := repository.NewTranscodeExecutionRepo(repo.DB())
-	mediaProbe, err := transcodeprobe.NewService(repo.DB(), cfg.App.FFprobePath, logger)
-	if err != nil {
-		panic(fmt.Sprintf("initialize media probe service: %v", err))
-	}
 	artifactStore, err := transcodeartifactstore.New(filepath.Join(cfg.Cache.CacheDir, "transcode"))
 	if err != nil {
 		panic(fmt.Sprintf("initialize transcode artifact store: %v", err))
@@ -167,173 +172,60 @@ func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, log
 		executionRepo:          executionRepo,
 		cfg:                    cfg,
 		logger:                 logger,
-		jobs:                   newTranscodePriorityQueue(executionRepo, repo, 100, logger),
+		jobs:                   newTranscodePriorityQueue(executionRepo, repo, 1, logger),
 		running:                make(map[string]*TranscodeJob),
 		instanceID:             newTranscodeInstanceID(),
 		leaseDuration:          defaultTranscodeLeaseDuration,
 		leaseHeartbeatInterval: defaultTranscodeLeaseHeartbeatInterval,
 		leaseRecoveryInterval:  defaultTranscodeLeaseRecoveryInterval,
-		executionRuntime:       transcoderuntime.Default(),
-		mediaProbe:             mediaProbe,
 		artifactStore:          artifactStore,
 		diskUsageTTL:           30 * time.Second,
 	}
-
-	service.hwAccelMu.Do(func() {
-		service.hwAccel = service.detectHWAccel()
-		logger.Infof("硬件加速模式: %s", service.hwAccel)
-	})
-
 	service.recoverPendingTasks()
-
-	service.workerCount = 1
-	if service.hwAccel != "" && service.hwAccel != ffmpeg.HWAccelNone {
-		service.workerCount = 2
-	}
-	for workerIndex := 0; workerIndex < service.workerCount; workerIndex++ {
-		go service.worker(workerIndex)
-	}
 	go service.leaseRecoveryLoop()
 	return service
 }
 
-func (s *TranscodeService) SetWSHub(hub *WSHub) {
-	s.wsHub = hub
-	s.attachProbeWarmup(hub)
+// NewTranscodeService is retained only for source compatibility. It returns a
+// maintenance-only service and cannot start Runtime execution.
+func NewTranscodeService(repo *repository.TranscodeRepo, cfg *config.Config, logger *zap.SugaredLogger) *TranscodeService {
+	return NewArtifactMaintenanceService(repo, cfg, logger)
 }
 
-func (s *TranscodeService) GetHWAccelInfo() string                      { return s.hwAccel }
-func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return s.executionRuntime }
+func (s *TranscodeService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
+}
+
+func (s *TranscodeService) GetHWAccelInfo() string                      { return ffmpeg.HWAccelNone }
+func (s *TranscodeService) ExecutionRuntime() *transcoderuntime.Runtime { return nil }
 
 func (s *TranscodeService) detectHWAccel() string {
 	return ffmpeg.DetectHWAccel(s.cfg, s.logger)
 }
 
-func (s *TranscodeService) StartTranscode(media *model.Media, quality string) (*model.TranscodeTask, error) {
-	return s.startTranscodeInternal(media, quality, 0)
+func (s *TranscodeService) StartTranscode(*model.Media, string) (*model.TranscodeTask, error) {
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
-func (s *TranscodeService) StartABRTranscode(media *model.Media, qualities []string) ([]*model.TranscodeTask, error) {
-	if media == nil {
-		return nil, fmt.Errorf("media 不能为空")
-	}
-	startupQuality := ""
-	for _, quality := range qualities {
-		if _, ok := qualityPresets[quality]; ok {
-			startupQuality = quality
-			break
-		}
-	}
-	if startupQuality == "" {
-		return nil, fmt.Errorf("没有有效的 ABR 档位")
-	}
-	task, err := s.startTranscodeInternal(media, startupQuality, 0)
-	if err != nil {
-		return nil, err
-	}
-	s.logger.Infof("ABR 渐进预热已提交: media=%s startup=%s deferred=%d", media.ID, startupQuality, len(qualities)-1)
-	return []*model.TranscodeTask{task}, nil
+func (s *TranscodeService) StartABRTranscode(*model.Media, []string) ([]*model.TranscodeTask, error) {
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
-func (s *TranscodeService) StartTranscodeWithStart(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
-	return s.startTranscodeInternal(media, quality, startOffset)
+func (s *TranscodeService) StartTranscodeWithStart(*model.Media, string, float64) (*model.TranscodeTask, error) {
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
-func (s *TranscodeService) startTranscodeInternal(media *model.Media, quality string, startOffset float64) (*model.TranscodeTask, error) {
-	return s.startTranscodeWithPriority(media, quality, startOffset, TranscodePriorityInteractive)
+func (s *TranscodeService) startTranscodeInternal(*model.Media, string, float64) (*model.TranscodeTask, error) {
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
-func (s *TranscodeService) startTranscodeWithPriority(media *model.Media, quality string, startOffset float64, priority int) (*model.TranscodeTask, error) {
-	if media == nil || strings.TrimSpace(media.ID) == "" {
-		return nil, fmt.Errorf("媒体不能为空")
-	}
-	if _, ok := qualityPresets[quality]; !ok {
-		return nil, fmt.Errorf("未知转码档位: %s", quality)
-	}
-	if priority <= 0 {
-		priority = TranscodePriorityBackground
-	}
-
-	s.submitMu.Lock()
-	defer s.submitMu.Unlock()
-
-	if task, err := s.findActiveExecutionTask(media, quality, startOffset, priority); err == nil {
-		return task, nil
-	}
-	if startOffset == 0 {
-		if task, err := s.repo.FindByMediaAndQuality(media.ID, quality); err == nil {
-			if s.hasPublishedHLSArtifact(media, quality) {
-				return task, nil
-			}
-		}
-		s.mu.RLock()
-		for _, job := range s.running {
-			if job.Media.ID == media.ID && job.Quality == quality && job.startOffset == 0 {
-				s.mu.RUnlock()
-				return job.Task, nil
-			}
-		}
-		s.mu.RUnlock()
-	}
-
-	if !s.jobs.CanAccept() {
-		return nil, fmt.Errorf("转码队列已满或服务正在关闭")
-	}
-
-	outputDir := s.GetOutputDir(media.ID, quality)
-	task := &model.TranscodeTask{
-		MediaID:    media.ID,
-		Quality:    quality,
-		Status:     "pending",
-		OutputDir:  outputDir,
-		MediaTitle: media.DescriptiveTitle(),
-		Priority:   priority,
-	}
-	if err := s.repo.Create(task); err != nil {
-		return nil, err
-	}
-	executionJob, err := s.createExecutionJob(media, quality, startOffset, task.ID, priority)
-	if err != nil {
-		_ = s.repo.DeleteByID(task.ID)
-		return nil, fmt.Errorf("创建持久化转码 Job 失败: %w", err)
-	}
-
-	wakeJob := &TranscodeJob{Task: task, ExecutionJob: executionJob}
-	if s.jobs.Push(wakeJob) {
-		return task, nil
-	}
-
-	now := time.Now()
-	if completed, completeErr := s.executionRepo.CompleteQueuedJob(executionJob.ID, "failed", now); completeErr != nil {
-		s.logger.Warnf("回滚未进入持久队列的转码 Job 失败 job=%s: %v", executionJob.ID, completeErr)
-	} else if completed {
-		task.Status = "failed"
-		task.Error = "转码队列已满或服务正在关闭"
-		task.CompletedAt = &now
-		_ = s.repo.Update(task)
-	}
-	return nil, fmt.Errorf("转码队列已满或服务正在关闭")
+func (s *TranscodeService) startTranscodeWithPriority(*model.Media, string, float64, int) (*model.TranscodeTask, error) {
+	return nil, ErrPersistentRuntimeTranscodeRetired
 }
 
-// WaitForFirstSegment is retained for legacy callers. New playback paths use
-// WaitForFirstSegmentForMedia so Artifact resolution includes source identity.
-func (s *TranscodeService) WaitForFirstSegment(ctx context.Context, mediaID, quality string) error {
-	m3u8Path := filepath.Join(s.GetOutputDir(mediaID, quality), "stream.m3u8")
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if _, err := os.Stat(m3u8Path); err == nil {
-			content, readErr := os.ReadFile(m3u8Path)
-			if readErr == nil && strings.Contains(string(content), ".ts") {
-				return nil
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
+// WaitForFirstSegment is retired with media-keyed Runtime HLS.
+func (s *TranscodeService) WaitForFirstSegment(context.Context, string, string) error {
+	return ErrPersistentRuntimeTranscodeRetired
 }
 
 func (s *TranscodeService) worker(index int) {

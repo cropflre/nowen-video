@@ -48,13 +48,10 @@ func main() {
 
 	repos := repository.NewRepositories(db)
 	services := service.NewLiteServices(repos, cfg, sugar)
-	mediaExecution, err := service.NewMediaExecutionService(repos.DB(), cfg, sugar)
-	if err != nil {
-		sugar.Fatalf("初始化媒体执行平台失败: %v", err)
-	}
 	playbackSessions, err := service.NewPlaybackSessionServiceWithExecution(
+
 		repos.Media,
-		mediaExecution,
+		services.MediaExecution,
 		cfg,
 		sugar,
 	)
@@ -110,8 +107,8 @@ func main() {
 	// TranscodeService is now a compatibility and migration-maintenance shell.
 	// Its queue cannot Claim Jobs; Shutdown only stops retirement/cleanup loops.
 	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if services.Transcode != nil {
-		if err := services.Transcode.Shutdown(transcodeCtx); err != nil {
+	if services.ArtifactMaintenance != nil {
+		if err := services.ArtifactMaintenance.Shutdown(transcodeCtx); err != nil {
 			sugar.Warnf("转码迁移维护服务关闭超时: %v", err)
 		}
 	}
