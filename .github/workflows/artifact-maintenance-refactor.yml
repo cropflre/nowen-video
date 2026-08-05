@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/artifact_maintenance_refactor.py
+      - scripts/artifact_maintenance_refactor_fix.py
       - .github/workflows/artifact-maintenance-refactor.yml
 
 permissions:
@@ -30,6 +31,7 @@ jobs:
       - name: Apply physical runtime source removal
         run: |
           python3 scripts/artifact_maintenance_refactor.py --apply
+          python3 scripts/artifact_maintenance_refactor_fix.py
           gofmt -w $(find . -name '*.go' -not -path './vendor/*')
       - name: Verify architecture and binaries
         run: |
@@ -45,6 +47,7 @@ jobs:
       - name: Commit verified refactor and remove one-shot files
         run: |
           rm -f scripts/artifact_maintenance_refactor.py
+          rm -f scripts/artifact_maintenance_refactor_fix.py
           rm -f .github/workflows/artifact-maintenance-refactor.yml
           git add -A
           git config user.name "github-actions[bot]"
