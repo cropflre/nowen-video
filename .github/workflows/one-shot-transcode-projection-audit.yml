@@ -22,11 +22,22 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          grep_tree() {
+            local pattern="$1"
+            shift
+            grep -RInE \
+              --exclude-dir=.git \
+              --exclude-dir=vendor \
+              --exclude-dir=node_modules \
+              --exclude='server' \
+              --exclude='server-lite' \
+              "$pattern" "$@" || true
+          }
           echo '=== TranscodeTask / transcode_tasks ==='
-          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'TranscodeTask|transcode_tasks|LegacyTaskID|legacy_task_id' . || true
+          grep_tree 'TranscodeTask|transcode_tasks|LegacyTaskID|legacy_task_id' .
           echo '=== Artifact cleanup and filesystem ownership ==='
-          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'TranscodeArtifactRecord|CleanupState|cleanup_state|ArtifactMaintenance|cleanup artifact|CleanupArtifact|artifact cleanup|MigrationSource|migration_source' internal cmd docs || true
+          grep_tree 'TranscodeArtifactRecord|CleanupState|cleanup_state|ArtifactMaintenance|CleanupArtifact|MigrationSource|migration_source' internal cmd docs
           echo '=== Runtime history ==='
-          rg -n --glob '!vendor/**' --glob '!web/node_modules/**' 'RuntimeHistory|runtime-history|legacy_task' internal cmd web docs || true
+          grep_tree 'RuntimeHistory|runtime-history|legacy_task' internal cmd web docs
           echo '=== Current transcode model migrations ==='
-          rg -n 'AutoMigrate|TranscodeTask|TranscodeJobRecord|TranscodeArtifactRecord' internal/model internal/serverprofile cmd || true
+          grep_tree 'AutoMigrate|TranscodeTask|TranscodeJobRecord|TranscodeArtifactRecord' internal/model internal/serverprofile cmd
