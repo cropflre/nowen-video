@@ -55,7 +55,9 @@ jobs:
             internal/service/artifact_maintenance.go \
             internal/service/transcode_cleanup.go \
             internal/service/transcode_cleanup_state.go \
+            internal/service/transcode_cleanup_state_test.go \
             internal/service/transcode_cleanup_admin.go \
+            internal/service/transcode_disk_pressure_test.go \
             internal/service/legacy_transcode_projection_migration.go \
             internal/service/legacy_transcode_projection_migration_test.go \
             internal/service/task_center.go \
