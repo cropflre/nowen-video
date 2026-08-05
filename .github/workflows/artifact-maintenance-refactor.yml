@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/artifact_maintenance_refactor.py
       - scripts/artifact_maintenance_refactor_fix.py
+      - scripts/artifact_maintenance_refactor_fix2.py
       - .github/workflows/artifact-maintenance-refactor.yml
 
 permissions:
@@ -32,6 +33,7 @@ jobs:
         run: |
           python3 scripts/artifact_maintenance_refactor.py --apply
           python3 scripts/artifact_maintenance_refactor_fix.py
+          python3 scripts/artifact_maintenance_refactor_fix2.py
           gofmt -w $(find . -name '*.go' -not -path './vendor/*')
       - name: Verify architecture and binaries
         run: |
@@ -41,6 +43,9 @@ jobs:
           test ! -e internal/service/transcode.go
           test ! -e internal/service/transcode_queue.go
           test ! -e internal/service/transcode_lease.go
+          test ! -e internal/service/transcode_process_shutdown.go
+          test ! -e internal/service/transcode_startup.go
+          test ! -e internal/service/transcode_startup_continuation.go
           ! grep -R "type TranscodeService" internal cmd --include='*.go'
           ! grep -R "type TranscodeJob struct" internal cmd --include='*.go'
           ! grep -R "NewTranscodeService" internal cmd --include='*.go'
@@ -48,6 +53,7 @@ jobs:
         run: |
           rm -f scripts/artifact_maintenance_refactor.py
           rm -f scripts/artifact_maintenance_refactor_fix.py
+          rm -f scripts/artifact_maintenance_refactor_fix2.py
           rm -f .github/workflows/artifact-maintenance-refactor.yml
           git add -A
           git config user.name "github-actions[bot]"
