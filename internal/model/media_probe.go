@@ -40,16 +40,16 @@ type MediaProbeRecord struct {
 	FrameRateNum int `json:"frame_rate_num"`
 	FrameRateDen int `json:"frame_rate_den"`
 
-	VideoCodec    string `json:"video_codec" gorm:"type:text"`
-	PixelFormat   string `json:"pixel_format" gorm:"type:text"`
-	BitDepth      int    `json:"bit_depth"`
-	ColorTransfer string `json:"color_transfer" gorm:"type:text"`
+	VideoCodec     string `json:"video_codec" gorm:"type:text"`
+	PixelFormat    string `json:"pixel_format" gorm:"type:text"`
+	BitDepth       int    `json:"bit_depth"`
+	ColorTransfer  string `json:"color_transfer" gorm:"type:text"`
 	ColorPrimaries string `json:"color_primaries" gorm:"type:text"`
-	ColorSpace    string `json:"color_space" gorm:"type:text"`
-	ColorRange    string `json:"color_range" gorm:"type:text"`
-	HDR           bool   `json:"hdr" gorm:"index"`
+	ColorSpace     string `json:"color_space" gorm:"type:text"`
+	ColorRange     string `json:"color_range" gorm:"type:text"`
+	HDR            bool   `json:"hdr" gorm:"index"`
 
-	AudioStreamsJSON string `json:"-" gorm:"type:text"`
+	AudioStreamsJSON string    `json:"-" gorm:"type:text"`
 	ProbedAt         time.Time `json:"probed_at" gorm:"index"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

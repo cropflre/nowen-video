@@ -28,7 +28,7 @@ const (
 
 var (
 	defaultPlaybackSessionMu sync.RWMutex
-	defaultPlaybackSessions *service.PlaybackSessionService
+	defaultPlaybackSessions  *service.PlaybackSessionService
 	embyPlaybackRuntimes     sync.Map // map[*Handler]*embyPlaybackRuntime
 )
 

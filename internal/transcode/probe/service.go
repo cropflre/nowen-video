@@ -29,10 +29,10 @@ var ErrUnsupportedSource = errors.New("media source cannot be probed directly")
 const defaultProbeTimeout = 20 * time.Second
 
 type Stats struct {
-	CacheHits  uint64 `json:"cache_hits"`
+	CacheHits   uint64 `json:"cache_hits"`
 	CacheMisses uint64 `json:"cache_misses"`
-	Executions uint64 `json:"executions"`
-	Failures   uint64 `json:"failures"`
+	Executions  uint64 `json:"executions"`
+	Failures    uint64 `json:"failures"`
 }
 
 type Service struct {
@@ -49,10 +49,10 @@ type Service struct {
 }
 
 type sourceIdentity struct {
-	MediaID    string
-	Path       string
-	Size       int64
-	ModTimeNS  int64
+	MediaID     string
+	Path        string
+	Size        int64
+	ModTimeNS   int64
 	Fingerprint string
 }
 
@@ -222,11 +222,11 @@ func identifySource(media *model.Media) (sourceIdentity, error) {
 		model.MediaProbeVersion,
 	)))
 	return sourceIdentity{
-		MediaID:      media.ID,
-		Path:         path,
-		Size:         size,
-		ModTimeNS:    modTimeNS,
-		Fingerprint:  hex.EncodeToString(hash[:]),
+		MediaID:     media.ID,
+		Path:        path,
+		Size:        size,
+		ModTimeNS:   modTimeNS,
+		Fingerprint: hex.EncodeToString(hash[:]),
 	}, nil
 }
 

@@ -16,25 +16,25 @@ const (
 
 const (
 	ReasonFilesystemHigh = "filesystem_high_watermark"
-	ReasonMinimumFree     = "minimum_free_space"
-	ReasonStoreLimit      = "artifact_store_limit"
-	ReasonCriticalFree    = "critical_free_space"
-	ReasonHysteresis      = "recovery_hysteresis"
+	ReasonMinimumFree    = "minimum_free_space"
+	ReasonStoreLimit     = "artifact_store_limit"
+	ReasonCriticalFree   = "critical_free_space"
+	ReasonHysteresis     = "recovery_hysteresis"
 )
 
 type Config struct {
-	HighWatermarkPct float64
-	LowWatermarkPct  float64
-	MinFreeBytes     uint64
+	HighWatermarkPct  float64
+	LowWatermarkPct   float64
+	MinFreeBytes      uint64
 	CriticalFreeBytes uint64
-	MaxStoreBytes    uint64
+	MaxStoreBytes     uint64
 }
 
 func DefaultConfig() Config {
 	return Config{
-		HighWatermarkPct: 90,
-		LowWatermarkPct:  80,
-		MinFreeBytes:     2 * 1024 * 1024 * 1024,
+		HighWatermarkPct:  90,
+		LowWatermarkPct:   80,
+		MinFreeBytes:      2 * 1024 * 1024 * 1024,
 		CriticalFreeBytes: 512 * 1024 * 1024,
 	}
 }

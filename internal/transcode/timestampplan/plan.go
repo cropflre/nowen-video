@@ -25,20 +25,20 @@ type Plan struct {
 	SchemaVersion          string   `json:"schema_version"`
 	Strategy               string   `json:"strategy"`
 	SeekMode               string   `json:"seek_mode"`
-	CopyTimestamps          bool     `json:"copy_timestamps"`
-	StartAtZero             bool     `json:"start_at_zero"`
-	AvoidNegativeTS         string   `json:"avoid_negative_ts"`
-	FPSMode                 string   `json:"fps_mode"`
-	CertifiedBackends       []string `json:"certified_backends"`
-	OriginLowerToleranceMS  int64    `json:"origin_lower_tolerance_ms"`
-	OriginUpperToleranceMS  int64    `json:"origin_upper_tolerance_ms"`
+	CopyTimestamps         bool     `json:"copy_timestamps"`
+	StartAtZero            bool     `json:"start_at_zero"`
+	AvoidNegativeTS        string   `json:"avoid_negative_ts"`
+	FPSMode                string   `json:"fps_mode"`
+	CertifiedBackends      []string `json:"certified_backends"`
+	OriginLowerToleranceMS int64    `json:"origin_lower_tolerance_ms"`
+	OriginUpperToleranceMS int64    `json:"origin_upper_tolerance_ms"`
 }
 
 func Default() Plan {
 	return Plan{
-		SchemaVersion:         SchemaVersion,
-		Strategy:              StrategyCopyTSStartAtZero,
-		SeekMode:              SeekModeInputAccurate,
+		SchemaVersion:          SchemaVersion,
+		Strategy:               StrategyCopyTSStartAtZero,
+		SeekMode:               SeekModeInputAccurate,
 		CopyTimestamps:         true,
 		StartAtZero:            true,
 		AvoidNegativeTS:        AvoidNegativeTSDisabled,

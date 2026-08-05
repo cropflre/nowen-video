@@ -10,16 +10,16 @@ import (
 )
 
 type SourceOriginCaseReport struct {
-	Case                  SourceOriginCaseSpec           `json:"case"`
-	ContractVersion       string                         `json:"contract_version"`
-	ContractHash          string                         `json:"contract_hash"`
-	Evidence              transcodesourceorigin.Contract `json:"evidence"`
-	BoundaryVersion       string                         `json:"boundary_version"`
-	BoundaryHash          string                         `json:"boundary_hash"`
-	Boundary              transcodeboundary.Contract     `json:"boundary"`
-	AVSyncVersion         string                         `json:"av_sync_version"`
-	AVSyncHash            string                         `json:"av_sync_hash"`
-	AVSync                transcodeavsync.Contract        `json:"av_sync"`
+	Case            SourceOriginCaseSpec           `json:"case"`
+	ContractVersion string                         `json:"contract_version"`
+	ContractHash    string                         `json:"contract_hash"`
+	Evidence        transcodesourceorigin.Contract `json:"evidence"`
+	BoundaryVersion string                         `json:"boundary_version"`
+	BoundaryHash    string                         `json:"boundary_hash"`
+	Boundary        transcodeboundary.Contract     `json:"boundary"`
+	AVSyncVersion   string                         `json:"av_sync_version"`
+	AVSyncHash      string                         `json:"av_sync_hash"`
+	AVSync          transcodeavsync.Contract       `json:"av_sync"`
 }
 
 type SourceOriginMatrixReport struct {

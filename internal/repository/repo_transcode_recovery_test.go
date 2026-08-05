@@ -110,10 +110,10 @@ func TestTranscodeExecutionRepoAttemptNumbersContinueAcrossRecovery(t *testing.T
 	}
 	for number := 1; number <= 2; number++ {
 		attempt := &model.TranscodeAttemptRecord{
-			JobID:   job.ID,
-			Number:  number,
-			Backend: "software",
-			Status:  "failed",
+			JobID:    job.ID,
+			Number:   number,
+			Backend:  "software",
+			Status:   "failed",
 			ExitCode: 1,
 		}
 		if err := repo.CreateAttempt(attempt); err != nil {

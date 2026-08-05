@@ -200,7 +200,7 @@ func probeStreamEvidence(name string, firstPTS, duration int64, count, sampleRat
 
 func evidenceForContract(video transcodeboundary.StreamEvidence) transcodeboundary.Contract {
 	contract := transcodeboundary.Contract{
-		SchemaVersion:                   transcodeboundary.SchemaVersion,
+		SchemaVersion:                  transcodeboundary.SchemaVersion,
 		CaseID:                         "test-case",
 		FixtureID:                      FixtureCFR48KZeroLatency,
 		ExpectedBoundaryMicros:         30_000_000,

@@ -131,12 +131,12 @@ func (s *AdultBatchService) SetTaskStore(store *AdultTaskStore) {
 
 // AdultBatchOptions 启动批量任务的选项
 type AdultBatchOptions struct {
-	LibraryID    string   // 空=全库
-	MediaIDs     []string // 若非空，只处理这些 ID（忽略 LibraryID）
-	OnlyUnscraped bool    // 只处理尚未刮削成功的媒体
-	DryRun       bool     // 仅识别番号不实际刮削
-	Concurrency  int      // 并发度（默认 2）
-	Aggregated   bool     // 使用聚合模式
+	LibraryID     string   // 空=全库
+	MediaIDs      []string // 若非空，只处理这些 ID（忽略 LibraryID）
+	OnlyUnscraped bool     // 只处理尚未刮削成功的媒体
+	DryRun        bool     // 仅识别番号不实际刮削
+	Concurrency   int      // 并发度（默认 2）
+	Aggregated    bool     // 使用聚合模式
 }
 
 // Start 启动批量刮削任务，返回任务 ID
@@ -280,13 +280,13 @@ func (s *AdultBatchService) run(task *AdultBatchTask, mediaList []model.Media, o
 		// 广播完成
 		if s.wsHub != nil {
 			s.wsHub.BroadcastEvent(EventAdultBatchCompleted, map[string]interface{}{
-				"task_id":   task.ID,
-				"total":     task.Total,
-				"success":   atomic.LoadInt32(&task.Success),
-				"failed":    atomic.LoadInt32(&task.Failed),
-				"skipped":   atomic.LoadInt32(&task.Skipped),
-				"status":    task.Status,
-				"elapsed":   time.Since(task.StartedAt).Milliseconds(),
+				"task_id": task.ID,
+				"total":   task.Total,
+				"success": atomic.LoadInt32(&task.Success),
+				"failed":  atomic.LoadInt32(&task.Failed),
+				"skipped": atomic.LoadInt32(&task.Skipped),
+				"status":  task.Status,
+				"elapsed": time.Since(task.StartedAt).Milliseconds(),
 			})
 		}
 	}()

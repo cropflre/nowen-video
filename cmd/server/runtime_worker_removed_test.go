@@ -7,16 +7,24 @@ import (
 )
 
 func TestPersistentRuntimeExecutionSurfaceRemoved(t *testing.T) {
-	requireSource(t, "../../internal/service/transcode.go", "type ArtifactMaintenanceService = TranscodeService")
-	requireSource(t, "../../internal/service/transcode.go", "NewArtifactMaintenanceService")
+	requireSource(t, "../../internal/service/artifact_maintenance.go", "type ArtifactMaintenanceService struct")
+	requireSource(t, "../../internal/service/artifact_maintenance.go", "NewArtifactMaintenanceService")
 	requireSource(t, "../../internal/service/playback_session.go", "execution   *MediaExecutionService")
 	requireSource(t, "../../internal/service/stream.go", "execution   *MediaExecutionService")
 	requireSource(t, "../../internal/handler/admin.go", "RetiredRuntimeTranscode")
 	requireSource(t, "../../internal/handler/stream.go", "RetiredRuntimeHLS")
 	requireSource(t, "../server-lite/routes_core.go", "handlers.Stream.RetiredRuntimeHLS")
 
+	for _, removed := range []string{"../../internal/service/transcode.go", "../../internal/service/transcode_queue.go", "../../internal/service/transcode_lease.go", "../../internal/service/transcode_progress.go", "../../internal/service/transcode_throttle.go", "../../internal/service/transcode_persistence.go", "../../internal/service/transcode_process_shutdown.go"} {
+		if _, err := os.Stat(removed); !os.IsNotExist(err) {
+			t.Fatalf("retired runtime file still exists: %s", removed)
+		}
+	}
+
 	for _, check := range []struct{ path, marker string }{
-		{"../../internal/service/transcode.go", "go service.worker"},
+		{"../../internal/service/artifact_maintenance.go", "TranscodeService"},
+		{"../../internal/service/artifact_maintenance.go", "TranscodeJob"},
+		{"../../internal/service/service.go", "Transcode           *ArtifactMaintenanceService"},
 		{"../../internal/service/media_execution.go", "playbackCompatibilityAdapter"},
 		{"../../internal/service/playback_session.go", "*TranscodeService"},
 		{"../../internal/service/stream.go", "s.transcoder"},

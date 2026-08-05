@@ -42,11 +42,11 @@ func (h *AdultScraperHandler) ScanFolder(c *gin.Context) {
 // body: { paths: []string, aggregated: bool, concurrency: int, skip_if_has_nfo: bool }
 func (h *AdultScraperHandler) StartFolderBatch(c *gin.Context) {
 	var req struct {
-		Paths         []string `json:"paths" binding:"required"`
-		Aggregated    bool     `json:"aggregated"`
-		Concurrency   int      `json:"concurrency"`
-		SkipIfHasNFO  bool     `json:"skip_if_has_nfo"`
-		OverrideCode  string   `json:"override_code"`
+		Paths        []string `json:"paths" binding:"required"`
+		Aggregated   bool     `json:"aggregated"`
+		Concurrency  int      `json:"concurrency"`
+		SkipIfHasNFO bool     `json:"skip_if_has_nfo"`
+		OverrideCode string   `json:"override_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.Paths) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 paths 列表"})

@@ -46,37 +46,37 @@ const (
 // projections. Frame-count deltas are diagnostic projections only; v1 does not
 // claim content-level duplicate-frame detection and cannot authorize seamless HLS.
 type Contract struct {
-	SchemaVersion                              string           `json:"schema_version"`
-	CaseID                                    string           `json:"case_id"`
-	FixtureID                                 string           `json:"fixture_id"`
-	SourceMode                                string           `json:"source_mode"`
-	DeclaredFrameRateNumerator                int64            `json:"declared_frame_rate_numerator"`
-	DeclaredFrameRateDenominator              int64            `json:"declared_frame_rate_denominator"`
-	DeclaredFrameRateMilli                    int              `json:"declared_frame_rate_milli"`
-	ExpectedBoundaryMicros                    int64            `json:"expected_boundary_micros"`
-	ExpectedStartupMaterialVariable           bool             `json:"expected_startup_material_variable"`
-	ExpectedContinuationMaterialVariable      bool             `json:"expected_continuation_material_variable"`
-	FFmpegVersion                             string           `json:"ffmpeg_version"`
-	FFprobeVersion                            string           `json:"ffprobe_version"`
-	SourceOriginVersion                       string           `json:"source_origin_version"`
-	SourceOriginHash                          string           `json:"source_origin_hash"`
-	TimestampPlanVersion                      string           `json:"timestamp_plan_version"`
-	TimestampPlanHash                         string           `json:"timestamp_plan_hash"`
-	BoundaryEvidenceVersion                   string           `json:"boundary_evidence_version"`
-	BoundaryEvidenceHash                      string           `json:"boundary_evidence_hash"`
-	AVSyncEvidenceVersion                     string           `json:"av_sync_evidence_version"`
-	AVSyncEvidenceHash                        string           `json:"av_sync_evidence_hash"`
-	SourceTimeline                            TimelineEvidence `json:"source_timeline"`
-	SourceStartupTimeline                     TimelineEvidence `json:"source_startup_timeline"`
-	SourceContinuationTimeline                TimelineEvidence `json:"source_continuation_timeline"`
-	StartupTimeline                           TimelineEvidence `json:"startup_timeline"`
-	ContinuationTimeline                      TimelineEvidence `json:"continuation_timeline"`
-	StartupMapping                            FrameMapping     `json:"startup_mapping"`
-	ContinuationMapping                       FrameMapping     `json:"continuation_mapping"`
-	PreservationStatus                        string           `json:"preservation_status"`
-	ContentDuplicateClassification            string           `json:"content_duplicate_classification"`
-	SeamlessAllowed                           bool             `json:"seamless_allowed"`
-	DiscontinuityRequired                     bool             `json:"discontinuity_required"`
+	SchemaVersion                        string           `json:"schema_version"`
+	CaseID                               string           `json:"case_id"`
+	FixtureID                            string           `json:"fixture_id"`
+	SourceMode                           string           `json:"source_mode"`
+	DeclaredFrameRateNumerator           int64            `json:"declared_frame_rate_numerator"`
+	DeclaredFrameRateDenominator         int64            `json:"declared_frame_rate_denominator"`
+	DeclaredFrameRateMilli               int              `json:"declared_frame_rate_milli"`
+	ExpectedBoundaryMicros               int64            `json:"expected_boundary_micros"`
+	ExpectedStartupMaterialVariable      bool             `json:"expected_startup_material_variable"`
+	ExpectedContinuationMaterialVariable bool             `json:"expected_continuation_material_variable"`
+	FFmpegVersion                        string           `json:"ffmpeg_version"`
+	FFprobeVersion                       string           `json:"ffprobe_version"`
+	SourceOriginVersion                  string           `json:"source_origin_version"`
+	SourceOriginHash                     string           `json:"source_origin_hash"`
+	TimestampPlanVersion                 string           `json:"timestamp_plan_version"`
+	TimestampPlanHash                    string           `json:"timestamp_plan_hash"`
+	BoundaryEvidenceVersion              string           `json:"boundary_evidence_version"`
+	BoundaryEvidenceHash                 string           `json:"boundary_evidence_hash"`
+	AVSyncEvidenceVersion                string           `json:"av_sync_evidence_version"`
+	AVSyncEvidenceHash                   string           `json:"av_sync_evidence_hash"`
+	SourceTimeline                       TimelineEvidence `json:"source_timeline"`
+	SourceStartupTimeline                TimelineEvidence `json:"source_startup_timeline"`
+	SourceContinuationTimeline           TimelineEvidence `json:"source_continuation_timeline"`
+	StartupTimeline                      TimelineEvidence `json:"startup_timeline"`
+	ContinuationTimeline                 TimelineEvidence `json:"continuation_timeline"`
+	StartupMapping                       FrameMapping     `json:"startup_mapping"`
+	ContinuationMapping                  FrameMapping     `json:"continuation_mapping"`
+	PreservationStatus                   string           `json:"preservation_status"`
+	ContentDuplicateClassification       string           `json:"content_duplicate_classification"`
+	SeamlessAllowed                      bool             `json:"seamless_allowed"`
+	DiscontinuityRequired                bool             `json:"discontinuity_required"`
 }
 
 type TimelineEvidence struct {
@@ -164,11 +164,11 @@ func (c Contract) Validate() error {
 		return fmt.Errorf("A/V sync evidence identity is invalid")
 	}
 	for kind, timeline := range map[string]TimelineEvidence{
-		TimelineSource: c.SourceTimeline,
-		TimelineSourceStartup: c.SourceStartupTimeline,
+		TimelineSource:             c.SourceTimeline,
+		TimelineSourceStartup:      c.SourceStartupTimeline,
 		TimelineSourceContinuation: c.SourceContinuationTimeline,
-		TimelineStartup: c.StartupTimeline,
-		TimelineContinuation: c.ContinuationTimeline,
+		TimelineStartup:            c.StartupTimeline,
+		TimelineContinuation:       c.ContinuationTimeline,
 	} {
 		if err := timeline.validate(kind); err != nil {
 			return fmt.Errorf("%s timeline: %w", kind, err)

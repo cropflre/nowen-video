@@ -26,17 +26,17 @@ const (
 // A later persisted production plan must be introduced only after real-media
 // and client certification proves a selected policy safe.
 type Plan struct {
-	SchemaVersion             string   `json:"schema_version"`
-	Strategy                  string   `json:"strategy"`
-	BaseTimestampPlanVersion  string   `json:"base_timestamp_plan_version"`
-	BaseTimestampPlanHash     string   `json:"base_timestamp_plan_hash"`
-	SeekPrecision             string   `json:"seek_precision"`
-	VideoPTSShiftMicros       int64    `json:"video_pts_shift_micros"`
-	AudioPTSShiftMicros       int64    `json:"audio_pts_shift_micros"`
-	CertifiedBackends         []string `json:"certified_backends"`
-	CertificationOnly         bool     `json:"certification_only"`
-	SeamlessAllowed           bool     `json:"seamless_allowed"`
-	DiscontinuityRequired     bool     `json:"discontinuity_required"`
+	SchemaVersion            string   `json:"schema_version"`
+	Strategy                 string   `json:"strategy"`
+	BaseTimestampPlanVersion string   `json:"base_timestamp_plan_version"`
+	BaseTimestampPlanHash    string   `json:"base_timestamp_plan_hash"`
+	SeekPrecision            string   `json:"seek_precision"`
+	VideoPTSShiftMicros      int64    `json:"video_pts_shift_micros"`
+	AudioPTSShiftMicros      int64    `json:"audio_pts_shift_micros"`
+	CertifiedBackends        []string `json:"certified_backends"`
+	CertificationOnly        bool     `json:"certification_only"`
+	SeamlessAllowed          bool     `json:"seamless_allowed"`
+	DiscontinuityRequired    bool     `json:"discontinuity_required"`
 }
 
 func New(videoShiftMicros, audioShiftMicros int64) (Plan, error) {

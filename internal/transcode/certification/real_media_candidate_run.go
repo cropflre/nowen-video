@@ -9,10 +9,10 @@ import (
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
 	transcodeavsync "github.com/nowen-video/nowen-video/internal/transcode/avsync"
 	transcodeboundary "github.com/nowen-video/nowen-video/internal/transcode/boundaryevidence"
-	transcodecandidate "github.com/nowen-video/nowen-video/internal/transcode/realmediacandidate"
-	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
 	transcodeencoding "github.com/nowen-video/nowen-video/internal/transcode/encodingplan"
 	transcodeoutputcadence "github.com/nowen-video/nowen-video/internal/transcode/outputcadence"
+	transcodecandidate "github.com/nowen-video/nowen-video/internal/transcode/realmediacandidate"
+	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
 	transcodereorder "github.com/nowen-video/nowen-video/internal/transcode/reordercandidate"
 	transcodetimebase "github.com/nowen-video/nowen-video/internal/transcode/timebasecandidate"
 	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
@@ -316,12 +316,12 @@ func runRealMediaCandidate(
 		AVSync:                  avSync,
 	}
 	run := transcodereorder.RunEvidence{
-		Ordinal:                         ordinal,
-		Base:                            base,
-		StartupPacketOrder:              startupOrder,
-		ContinuationPacketOrder:         continuationOrder,
-		StartupPerceptualSequence:       startupPerceptual,
-		ContinuationPerceptualSequence:  continuationPerceptual,
+		Ordinal:                        ordinal,
+		Base:                           base,
+		StartupPacketOrder:             startupOrder,
+		ContinuationPacketOrder:        continuationOrder,
+		StartupPerceptualSequence:      startupPerceptual,
+		ContinuationPerceptualSequence: continuationPerceptual,
 	}
 	if err := run.Validate(caseSpec, candidateSpec, sourceStartup, sourceContinuation, ordinal); err != nil {
 		return transcodereorder.RunEvidence{}, err

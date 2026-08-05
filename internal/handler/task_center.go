@@ -35,7 +35,7 @@ type taskCenterItem struct {
 }
 
 type taskCenterListResponse struct {
-	Tasks   []taskCenterItem           `json:"tasks"`
+	Tasks   []taskCenterItem          `json:"tasks"`
 	Summary service.TaskCenterSummary `json:"summary"`
 }
 

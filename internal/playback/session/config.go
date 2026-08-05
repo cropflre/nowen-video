@@ -38,11 +38,11 @@ type Config struct {
 // root without changing the legacy cache configuration contract.
 func DefaultConfig(cacheRoot string) Config {
 	return Config{
-		RootDir:           filepath.Join(cacheRoot, "playback-temp"),
-		ActiveTimeout:     defaultActiveTimeout,
-		PausedTimeout:     defaultPausedTimeout,
-		SweepInterval:     defaultSweepInterval,
-		CloseDrainTimeout: defaultCloseDrainTimeout,
+		RootDir:            filepath.Join(cacheRoot, "playback-temp"),
+		ActiveTimeout:      defaultActiveTimeout,
+		PausedTimeout:      defaultPausedTimeout,
+		SweepInterval:      defaultSweepInterval,
+		CloseDrainTimeout:  defaultCloseDrainTimeout,
 		AheadHighWatermark: defaultAheadHighWatermark,
 		AheadLowWatermark:  defaultAheadLowWatermark,
 		CleanupRetries:     defaultCleanupRetries,

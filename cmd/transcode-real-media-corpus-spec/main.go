@@ -11,10 +11,10 @@ import (
 )
 
 type report struct {
-	SchemaVersion string                   `json:"schema_version"`
-	SpecVersion   string                   `json:"spec_version"`
-	SpecHash      string                   `json:"spec_hash"`
-	Spec          transcodecorpus.Spec     `json:"spec"`
+	SchemaVersion string               `json:"schema_version"`
+	SpecVersion   string               `json:"spec_version"`
+	SpecHash      string               `json:"spec_hash"`
+	Spec          transcodecorpus.Spec `json:"spec"`
 }
 
 func main() {

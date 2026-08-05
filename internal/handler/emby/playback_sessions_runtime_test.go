@@ -40,8 +40,8 @@ func TestAppendPlaybackQueryPreservesAndReplacesValues(t *testing.T) {
 	result := appendPlaybackQuery(
 		"/Videos/item/master.m3u8?api_key=old&custom=value",
 		url.Values{
-			"api_key":       []string{"new"},
-			"PlaySessionId": []string{"play-session"},
+			"api_key":        []string{"new"},
+			"PlaySessionId":  []string{"play-session"},
 			"StartTimeTicks": []string{"36000000000"},
 		},
 	)

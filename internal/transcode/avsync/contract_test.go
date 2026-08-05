@@ -77,7 +77,7 @@ func validBoundaryContract() transcodeboundary.Contract {
 	}
 
 	return transcodeboundary.Contract{
-		SchemaVersion:                   transcodeboundary.SchemaVersion,
+		SchemaVersion:                  transcodeboundary.SchemaVersion,
 		CaseID:                         "shape-48k-per-stream-v1",
 		FixtureID:                      "cfr-h264-aac-48k-software-zerolatency-v1",
 		ExpectedBoundaryMicros:         30_000_000,

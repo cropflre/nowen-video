@@ -14,62 +14,62 @@ import (
 // 注：仅列举高频 Top 名字作为内置种子，可通过 SetActressAliases 动态扩展
 var defaultActressAliases = map[string]string{
 	// 三上悠亚
-	"三上悠亜":         "三上悠亚",
-	"三上悠亞":         "三上悠亚",
-	"mikami yua":   "三上悠亚",
-	"Mikami Yua":   "三上悠亚",
-	"MIKAMI YUA":   "三上悠亚",
-	"三上 悠亜":        "三上悠亚",
+	"三上悠亜":       "三上悠亚",
+	"三上悠亞":       "三上悠亚",
+	"mikami yua": "三上悠亚",
+	"Mikami Yua": "三上悠亚",
+	"MIKAMI YUA": "三上悠亚",
+	"三上 悠亜":      "三上悠亚",
 	// 桥本有菜
-	"橋本ありな":        "桥本有菜",
-	"橋本有菜":         "桥本有菜",
+	"橋本ありな":           "桥本有菜",
+	"橋本有菜":            "桥本有菜",
 	"hashimoto arina": "桥本有菜",
 	// 明里䌷
-	"明里つむぎ":        "明里䌷",
-	"明里紬":          "明里䌷",
+	"明里つむぎ":         "明里䌷",
+	"明里紬":           "明里䌷",
 	"akari tsumugi": "明里䌷",
 	// 深田咏美
-	"深田えいみ":        "深田咏美",
-	"深田詠美":         "深田咏美",
+	"深田えいみ": "深田咏美",
+	"深田詠美":  "深田咏美",
 	// 相泽南
-	"相沢みなみ":        "相泽南",
-	"相澤みなみ":        "相泽南",
+	"相沢みなみ": "相泽南",
+	"相澤みなみ": "相泽南",
 	// 天使萌
-	"天使もえ":         "天使萌",
-	"天使 萌":         "天使萌",
+	"天使もえ": "天使萌",
+	"天使 萌": "天使萌",
 	// 七泽美亚
-	"七沢みあ":         "七泽美亚",
-	"七澤みあ":         "七泽美亚",
+	"七沢みあ": "七泽美亚",
+	"七澤みあ": "七泽美亚",
 	// 高桥圣子
-	"高橋しょう子":       "高桥圣子",
-	"高橋聖子":         "高桥圣子",
+	"高橋しょう子": "高桥圣子",
+	"高橋聖子":   "高桥圣子",
 	// 枫富爱
-	"楓ふうあ":         "枫富爱",
-	"楓カレン":         "枫花恋",
+	"楓ふうあ": "枫富爱",
+	"楓カレン": "枫花恋",
 	// 水卜樱
-	"水卜さくら":        "水卜樱",
+	"水卜さくら": "水卜樱",
 	// 葵司
-	"葵つかさ":         "葵司",
+	"葵つかさ": "葵司",
 	// 河北彩花
-	"河北彩花":         "河北彩花",
+	"河北彩花": "河北彩花",
 	// 乃木坂步美
-	"乃木坂あゆみ":       "乃木坂步美",
+	"乃木坂あゆみ": "乃木坂步美",
 }
 
 // defaultStudioAliases 片商/制作商别名 -> 规范名
 var defaultStudioAliases = map[string]string{
 	// S1
-	"s1":              "S1 NO.1 STYLE",
-	"S1":              "S1 NO.1 STYLE",
-	"s1 no.1 style":   "S1 NO.1 STYLE",
+	"s1":            "S1 NO.1 STYLE",
+	"S1":            "S1 NO.1 STYLE",
+	"s1 no.1 style": "S1 NO.1 STYLE",
 	"エスワン ナンバーワンスタイル": "S1 NO.1 STYLE",
 	// MOODYZ
-	"moodyz":  "MOODYZ",
+	"moodyz": "MOODYZ",
 	"ムーディーズ": "MOODYZ",
 	// IdeaPocket
 	"idea pocket": "IdeaPocket",
 	"IDEA POCKET": "IdeaPocket",
-	"アイデアポケット":   "IdeaPocket",
+	"アイデアポケット":    "IdeaPocket",
 	// Madonna
 	"madonna": "Madonna",
 	"マドンナ":    "Madonna",
@@ -83,10 +83,10 @@ var defaultStudioAliases = map[string]string{
 	"prestige": "Prestige",
 	"プレステージ":   "Prestige",
 	// kawaii*
-	"kawaii*":  "kawaii*",
-	"kawaii":   "kawaii*",
+	"kawaii*": "kawaii*",
+	"kawaii":  "kawaii*",
 	// SOD Create
-	"sod create":   "SOD Create",
+	"sod create":     "SOD Create",
 	"soft on demand": "SOD Create",
 	// FALENO
 	"faleno": "FALENO",
@@ -95,37 +95,37 @@ var defaultStudioAliases = map[string]string{
 
 // defaultSeriesAliases 常见系列别名 -> 规范名
 var defaultSeriesAliases = map[string]string{
-	"新・絶頂" : "新・绝顶",
+	"新・絶頂":   "新・绝顶",
 	"極上泡姫物語": "极上泡姫物语",
 	"中出し":    "中出",
 }
 
 // defaultGenreAliases 标签别名 -> 规范标签
 var defaultGenreAliases = map[string]string{
-	"単体作品":    "单体作品",
-	"美少女":     "美少女",
-	"巨乳":      "巨乳",
-	"美乳":      "美乳",
-	"中出し":     "中出",
-	"騎乗位":     "骑乘位",
-	"フェラ":     "口交",
-	"イラマチオ":   "深喉",
-	"デジモ":     "高清",
-	"ハイビジョン":  "高清",
-	"独占配信":    "独家",
-	"HD":      "高清",
-	"4K":      "4K",
+	"単体作品":   "单体作品",
+	"美少女":    "美少女",
+	"巨乳":     "巨乳",
+	"美乳":     "美乳",
+	"中出し":    "中出",
+	"騎乗位":    "骑乘位",
+	"フェラ":    "口交",
+	"イラマチオ":  "深喉",
+	"デジモ":    "高清",
+	"ハイビジョン": "高清",
+	"独占配信":   "独家",
+	"HD":     "高清",
+	"4K":     "4K",
 }
 
 // ==================== 动态映射注册表 ====================
 
 // mappingRegistry 运行时可扩展的映射表（线程安全）
 type mappingRegistry struct {
-	mu       sync.RWMutex
-	actress  map[string]string
-	studio   map[string]string
-	series   map[string]string
-	genre    map[string]string
+	mu      sync.RWMutex
+	actress map[string]string
+	studio  map[string]string
+	series  map[string]string
+	genre   map[string]string
 }
 
 var globalMapping = &mappingRegistry{

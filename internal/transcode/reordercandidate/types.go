@@ -63,12 +63,12 @@ type PacketOrderEvidence struct {
 }
 
 type RunEvidence struct {
-	Ordinal                         int                             `json:"ordinal"`
-	Base                            transcodetimebase.RunEvidence   `json:"base"`
-	StartupPacketOrder              PacketOrderEvidence             `json:"startup_packet_order"`
-	ContinuationPacketOrder         PacketOrderEvidence             `json:"continuation_packet_order"`
-	StartupPerceptualSequence       PerceptualFrameSequence         `json:"startup_perceptual_sequence"`
-	ContinuationPerceptualSequence  PerceptualFrameSequence         `json:"continuation_perceptual_sequence"`
+	Ordinal                        int                           `json:"ordinal"`
+	Base                           transcodetimebase.RunEvidence `json:"base"`
+	StartupPacketOrder             PacketOrderEvidence           `json:"startup_packet_order"`
+	ContinuationPacketOrder        PacketOrderEvidence           `json:"continuation_packet_order"`
+	StartupPerceptualSequence      PerceptualFrameSequence       `json:"startup_perceptual_sequence"`
+	ContinuationPerceptualSequence PerceptualFrameSequence       `json:"continuation_perceptual_sequence"`
 }
 
 type CandidateSummary struct {

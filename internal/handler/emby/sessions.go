@@ -45,16 +45,16 @@ func (h *Handler) SessionsHandler(c *gin.Context) {
 // ==================== Playback 会话上报 ====================
 
 type playbackReport struct {
-	ItemId          string  `json:"ItemId"`
-	MediaSourceId   string  `json:"MediaSourceId"`
-	PositionTicks   int64   `json:"PositionTicks"`
-	PlaybackRate    float64 `json:"PlaybackRate"`
-	IsPaused        bool    `json:"IsPaused"`
-	IsMuted         bool    `json:"IsMuted"`
-	EventName       string  `json:"EventName"`
-	PlaySessionId   string  `json:"PlaySessionId"`
-	VolumeLevel     int     `json:"VolumeLevel"`
-	CanSeek         bool    `json:"CanSeek"`
+	ItemId        string  `json:"ItemId"`
+	MediaSourceId string  `json:"MediaSourceId"`
+	PositionTicks int64   `json:"PositionTicks"`
+	PlaybackRate  float64 `json:"PlaybackRate"`
+	IsPaused      bool    `json:"IsPaused"`
+	IsMuted       bool    `json:"IsMuted"`
+	EventName     string  `json:"EventName"`
+	PlaySessionId string  `json:"PlaySessionId"`
+	VolumeLevel   int     `json:"VolumeLevel"`
+	CanSeek       bool    `json:"CanSeek"`
 }
 
 func (h *Handler) PlayingStartHandler(c *gin.Context) {
@@ -130,10 +130,6 @@ func (h *Handler) recordProgress(c *gin.Context, isStop bool) {
 		}
 	}
 
-	// Compatibility fallback for direct/remux playback and older servers.
-	if h.transcode != nil && !isStop {
-		h.transcode.SetPlaybackPosition(uuid, position)
-	}
 	c.Status(http.StatusNoContent)
 }
 
@@ -196,9 +192,6 @@ func (h *Handler) PlayingGetProgressHandler(c *gin.Context) {
 			c.Status(http.StatusNoContent)
 			return
 		}
-	}
-	if h.transcode != nil {
-		h.transcode.SetPlaybackPosition(uuid, position)
 	}
 	c.Status(http.StatusNoContent)
 }

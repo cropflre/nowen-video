@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	HLSSegmentMicros        int64 = 2_000_000
-	SegmentCountTolerance         = 10
+	HLSSegmentMicros      int64 = 2_000_000
+	SegmentCountTolerance       = 10
 )
 
 // Policy makes duration and checkpoint geometry explicit while preserving the

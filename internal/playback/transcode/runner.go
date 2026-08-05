@@ -104,7 +104,7 @@ type Execution struct {
 	doneOnce  sync.Once
 }
 
-func (e *Execution) Ready() <-chan ReadyResult { return e.ready }
+func (e *Execution) Ready() <-chan ReadyResult             { return e.ready }
 func (e *Execution) Done() <-chan transcodeexecutor.Result { return e.done }
 
 func (e *Execution) WaitReady(ctx context.Context) (ReadyResult, error) {

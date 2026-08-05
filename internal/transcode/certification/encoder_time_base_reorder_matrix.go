@@ -48,11 +48,11 @@ var encoderTimeBaseReorderCaseSpecs = []transcodereorder.CaseSpec{
 
 func newEncoderTimeBaseReorderCase(base transcodetimebase.CaseSpec, bFrames, references int) transcodereorder.CaseSpec {
 	return transcodereorder.CaseSpec{
-		Base: base,
-		BFrames: bFrames,
-		BAdapt: 0,
+		Base:            base,
+		BFrames:         bFrames,
+		BAdapt:          0,
 		ReferenceFrames: references,
-		OpenGOP: false,
+		OpenGOP:         false,
 	}
 }
 

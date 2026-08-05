@@ -72,7 +72,7 @@ func classifyArtifactCleanupError(err error) (code string, retryable bool) {
 	return "cleanup_io", true
 }
 
-func (s *TranscodeService) cleanupClaimedArtifact(
+func (s *ArtifactMaintenanceService) cleanupClaimedArtifact(
 	artifact *model.TranscodeArtifactRecord,
 	token string,
 	now time.Time,
@@ -111,7 +111,7 @@ func (s *TranscodeService) cleanupClaimedArtifact(
 	return removedDirs, true, nil
 }
 
-func (s *TranscodeService) persistArtifactCleanupFailure(
+func (s *ArtifactMaintenanceService) persistArtifactCleanupFailure(
 	artifact *model.TranscodeArtifactRecord,
 	token string,
 	cause error,
@@ -153,7 +153,7 @@ func (s *TranscodeService) persistArtifactCleanupFailure(
 	return fmt.Errorf("artifact cleanup retry scheduled at %s (%s): %w", nextAttemptAt.Format(time.RFC3339), code, cause)
 }
 
-func (s *TranscodeService) cleanupTerminalArtifactBatch(cutoff, now time.Time) (int, int, error) {
+func (s *ArtifactMaintenanceService) cleanupTerminalArtifactBatch(cutoff, now time.Time) (int, int, error) {
 	dirsCleaned := 0
 	recordsCleaned := 0
 	for {

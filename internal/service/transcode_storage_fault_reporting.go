@@ -17,7 +17,7 @@ const (
 // instead of waiting for the next periodic write probe. Unknown logical or
 // invariant errors are deliberately ignored here and remain owned by their
 // domain-specific Artifact/Cleanup state.
-func (s *TranscodeService) reportStorageOperationFailure(operation, path string, cause error, now time.Time) {
+func (s *ArtifactMaintenanceService) reportStorageOperationFailure(operation, path string, cause error, now time.Time) {
 	if s == nil || s.executionRepo == nil || cause == nil {
 		return
 	}

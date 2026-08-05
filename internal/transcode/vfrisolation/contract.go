@@ -51,24 +51,24 @@ type VariantSpec struct {
 }
 
 type VariantEvidence struct {
-	Spec                       VariantSpec                              `json:"spec"`
-	CommandHash                string                                   `json:"command_hash"`
-	Timeline                   transcodeoutputcadence.TimelineEvidence  `json:"timeline"`
-	Mapping                    transcodeoutputcadence.FrameMapping      `json:"mapping"`
-	Fingerprint                FrameFingerprint                         `json:"fingerprint"`
-	CadenceClassification      string                                   `json:"cadence_classification"`
-	SequenceReference          string                                   `json:"sequence_reference"`
-	SequenceReferenceVariantID string                                   `json:"sequence_reference_variant_id,omitempty"`
-	SequenceMatchesReference   bool                                     `json:"sequence_matches_reference"`
+	Spec                       VariantSpec                             `json:"spec"`
+	CommandHash                string                                  `json:"command_hash"`
+	Timeline                   transcodeoutputcadence.TimelineEvidence `json:"timeline"`
+	Mapping                    transcodeoutputcadence.FrameMapping     `json:"mapping"`
+	Fingerprint                FrameFingerprint                        `json:"fingerprint"`
+	CadenceClassification      string                                  `json:"cadence_classification"`
+	SequenceReference          string                                  `json:"sequence_reference"`
+	SequenceReferenceVariantID string                                  `json:"sequence_reference_variant_id,omitempty"`
+	SequenceMatchesReference   bool                                    `json:"sequence_matches_reference"`
 }
 
 type FrameFingerprint struct {
-	FrameCount              int    `json:"frame_count"`
-	UniqueFrameCount        int    `json:"unique_frame_count"`
-	AdjacentDuplicateCount  int    `json:"adjacent_duplicate_count"`
-	SequenceSHA256          string `json:"sequence_sha256"`
-	FirstFrameSHA256        string `json:"first_frame_sha256"`
-	LastFrameSHA256         string `json:"last_frame_sha256"`
+	FrameCount             int    `json:"frame_count"`
+	UniqueFrameCount       int    `json:"unique_frame_count"`
+	AdjacentDuplicateCount int    `json:"adjacent_duplicate_count"`
+	SequenceSHA256         string `json:"sequence_sha256"`
+	FirstFrameSHA256       string `json:"first_frame_sha256"`
+	LastFrameSHA256        string `json:"last_frame_sha256"`
 }
 
 func (c Contract) Validate() error {
@@ -76,12 +76,12 @@ func (c Contract) Validate() error {
 		return fmt.Errorf("unsupported VFR isolation schema %q", c.SchemaVersion)
 	}
 	for label, value := range map[string]string{
-		"case ID": c.CaseID,
-		"fixture ID": c.FixtureID,
-		"FFmpeg version": c.FFmpegVersion,
-		"FFprobe version": c.FFprobeVersion,
+		"case ID":                         c.CaseID,
+		"fixture ID":                      c.FixtureID,
+		"FFmpeg version":                  c.FFmpegVersion,
+		"FFprobe version":                 c.FFprobeVersion,
 		"baseline output cadence version": c.BaselineOutputCadenceVersion,
-		"baseline output cadence hash": c.BaselineOutputCadenceHash,
+		"baseline output cadence hash":    c.BaselineOutputCadenceHash,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required", label)
@@ -157,13 +157,13 @@ func (c Contract) Validate() error {
 
 func (v VariantEvidence) validate(source transcodeoutputcadence.TimelineEvidence) error {
 	for label, value := range map[string]string{
-		"variant ID": v.Spec.ID,
-		"description": v.Spec.Description,
-		"layer": v.Spec.Layer,
-		"container": v.Spec.Container,
-		"fps mode": v.Spec.FPSMode,
+		"variant ID":        v.Spec.ID,
+		"description":       v.Spec.Description,
+		"layer":             v.Spec.Layer,
+		"container":         v.Spec.Container,
+		"fps mode":          v.Spec.FPSMode,
 		"encoder time base": v.Spec.EncoderTimeBase,
-		"command hash": v.CommandHash,
+		"command hash":      v.CommandHash,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required", label)

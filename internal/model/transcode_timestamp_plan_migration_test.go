@@ -56,11 +56,11 @@ func TestArtifactMigrationBackfillsTimestampIdentityWithoutFabricatingEvidence(t
 		t.Fatal(err)
 	}
 	artifact := &TranscodeArtifactRecord{
-		JobID:       job.ID,
-		Kind:        "startup_continuation_hls",
-		ProfileID:   "720p",
-		Status:      "published",
-		Path:        "/cache/historical/timestamp",
+		JobID:        job.ID,
+		Kind:         "startup_continuation_hls",
+		ProfileID:    "720p",
+		Status:       "published",
+		Path:         "/cache/historical/timestamp",
 		ManifestPath: "/cache/historical/timestamp/stream.m3u8",
 	}
 	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(artifact).Error; err != nil {

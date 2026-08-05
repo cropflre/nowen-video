@@ -59,7 +59,7 @@ func buildRouter(
 		logger,
 	)
 	taskActionDispatcher := service.NewTaskActionDispatcherWithoutRuntimeTranscode(
-		services.Transcode,
+		services.ArtifactMaintenance,
 		services.ScrapeManager,
 		repos.Transcode,
 		repos.ScrapeTask,

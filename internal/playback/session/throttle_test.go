@@ -30,15 +30,15 @@ func TestReconcileThrottleSuspendsAndResumesCurrentGeneration(t *testing.T) {
 	}
 
 	manager, err := NewManager(Config{
-		RootDir:               t.TempDir(),
-		ActiveTimeout:         time.Hour,
-		PausedTimeout:         time.Hour,
-		SweepInterval:         time.Hour,
-		CloseDrainTimeout:     time.Second,
-		AheadHighWatermark:    5 * time.Second,
-		AheadLowWatermark:     2 * time.Second,
-		CleanupRetries:        2,
-		CleanupRetryDelay:     time.Millisecond,
+		RootDir:            t.TempDir(),
+		ActiveTimeout:      time.Hour,
+		PausedTimeout:      time.Hour,
+		SweepInterval:      time.Hour,
+		CloseDrainTimeout:  time.Second,
+		AheadHighWatermark: 5 * time.Second,
+		AheadLowWatermark:  2 * time.Second,
+		CleanupRetries:     2,
+		CleanupRetryDelay:  time.Millisecond,
 	}, zap.NewNop().Sugar())
 	require.NoError(t, err)
 	t.Cleanup(func() {

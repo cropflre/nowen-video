@@ -104,7 +104,7 @@ func main() {
 	}
 	playbackCancel()
 
-	// TranscodeService is now a compatibility and migration-maintenance shell.
+	// ArtifactMaintenanceService owns migration and cleanup only.
 	// Its queue cannot Claim Jobs; Shutdown only stops retirement/cleanup loops.
 	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if services.ArtifactMaintenance != nil {

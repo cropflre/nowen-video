@@ -44,9 +44,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	report, err := transcodecertification.RunEncoderTimeBaseReorderMatrix(ctx, transcodecertification.Config{
-		FFmpegPath: *ffmpegPath,
+		FFmpegPath:  *ffmpegPath,
 		FFprobePath: *ffprobePath,
-		WorkDir: *workDir,
+		WorkDir:     *workDir,
 		KeepWorkDir: *keepWork,
 	})
 	if err != nil {

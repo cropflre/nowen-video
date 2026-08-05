@@ -23,9 +23,9 @@ const (
 
 const (
 	DecisionClientCertificationPending = "client_certification_pending"
-	DecisionTimelineGap                 = "timeline_gap"
-	DecisionTimelineOverlap             = "timeline_overlap"
-	DecisionTimelineMixed               = "timeline_mixed"
+	DecisionTimelineGap                = "timeline_gap"
+	DecisionTimelineOverlap            = "timeline_overlap"
+	DecisionTimelineMixed              = "timeline_mixed"
 )
 
 // Contract is immutable evidence for the boundary between a published Startup

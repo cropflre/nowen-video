@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	reorderCadenceKindPrefix      = "candidate_reorder-"
-	realMediaCadenceKindPrefix    = "candidate_real-"
-	realMediaSourceKindPrefix     = "real_media_source_"
+	reorderCadenceKindPrefix   = "candidate_reorder-"
+	realMediaCadenceKindPrefix = "candidate_real-"
+	realMediaSourceKindPrefix  = "real_media_source_"
 )
 
 // orderCadencePointsForEvidence keeps the legacy packet-order behavior for

@@ -69,7 +69,7 @@ type TaskActionDispatcher struct {
 }
 
 func NewTaskActionDispatcher(
-	transcode *TranscodeService,
+	maintenance *ArtifactMaintenanceService,
 	scrape *ScrapeManagerService,
 	transcodeRepo *repository.TranscodeRepo,
 	scrapeRepo *repository.ScrapeTaskRepo,
@@ -82,7 +82,6 @@ func NewTaskActionDispatcher(
 		resolver = mediaRepo.FindByID
 	}
 	dispatcher := &TaskActionDispatcher{
-		transcode:       transcode,
 		scrape:          scrape,
 		transcodeLookup: transcodeRepo,
 		scrapeLookup:    scrapeRepo,
@@ -90,8 +89,8 @@ func NewTaskActionDispatcher(
 		wsHub:           wsHub,
 		logger:          logger,
 	}
-	if transcode != nil {
-		dispatcher.artifactCleanup = transcode
+	if maintenance != nil {
+		dispatcher.artifactCleanup = maintenance
 	}
 	if transcodeRepo != nil && transcodeRepo.DB() != nil {
 		dispatcher.artifactLookup = repository.NewTranscodeExecutionRepo(transcodeRepo.DB())

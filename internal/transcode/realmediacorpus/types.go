@@ -37,13 +37,13 @@ type Spec struct {
 }
 
 type CaseSpec struct {
-	ID               string         `json:"id"`
-	Description      string         `json:"description"`
-	Purpose          string         `json:"purpose"`
-	Tier             string         `json:"tier"`
-	Source           SourcePlan     `json:"source"`
-	BoundaryMicros   int64          `json:"boundary_micros"`
-	RequiredEvidence []string       `json:"required_evidence"`
+	ID               string     `json:"id"`
+	Description      string     `json:"description"`
+	Purpose          string     `json:"purpose"`
+	Tier             string     `json:"tier"`
+	Source           SourcePlan `json:"source"`
+	BoundaryMicros   int64      `json:"boundary_micros"`
+	RequiredEvidence []string   `json:"required_evidence"`
 }
 
 type SourcePlan struct {
@@ -54,22 +54,22 @@ type SourcePlan struct {
 }
 
 type VideoPlan struct {
-	Codec             string     `json:"codec"`
-	Profile           string     `json:"profile"`
-	PixelFormat       string     `json:"pixel_format"`
-	Width             int        `json:"width"`
-	Height            int        `json:"height"`
-	FrameRateMode     string     `json:"frame_rate_mode"`
-	FrameRates        []Rational `json:"frame_rates"`
-	GOPSize           int        `json:"gop_size"`
-	BFrames           int        `json:"b_frames"`
-	ReferenceFrames   int        `json:"reference_frames"`
-	OpenGOP           bool       `json:"open_gop"`
-	Interlaced        bool       `json:"interlaced"`
-	HDR               bool       `json:"hdr"`
-	ColorPrimaries    string     `json:"color_primaries"`
-	ColorTransfer     string     `json:"color_transfer"`
-	ColorMatrix       string     `json:"color_matrix"`
+	Codec           string     `json:"codec"`
+	Profile         string     `json:"profile"`
+	PixelFormat     string     `json:"pixel_format"`
+	Width           int        `json:"width"`
+	Height          int        `json:"height"`
+	FrameRateMode   string     `json:"frame_rate_mode"`
+	FrameRates      []Rational `json:"frame_rates"`
+	GOPSize         int        `json:"gop_size"`
+	BFrames         int        `json:"b_frames"`
+	ReferenceFrames int        `json:"reference_frames"`
+	OpenGOP         bool       `json:"open_gop"`
+	Interlaced      bool       `json:"interlaced"`
+	HDR             bool       `json:"hdr"`
+	ColorPrimaries  string     `json:"color_primaries"`
+	ColorTransfer   string     `json:"color_transfer"`
+	ColorMatrix     string     `json:"color_matrix"`
 }
 
 type AudioPlan struct {
@@ -84,7 +84,7 @@ type TimelinePlan struct {
 	DurationMicros int64 `json:"duration_micros"`
 	OriginMicros   int64 `json:"origin_micros"`
 	HasEditList    bool  `json:"has_edit_list"`
-	Discontinuous bool  `json:"discontinuous"`
+	Discontinuous  bool  `json:"discontinuous"`
 }
 
 type Rational struct {

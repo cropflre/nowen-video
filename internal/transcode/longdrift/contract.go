@@ -13,17 +13,17 @@ import (
 )
 
 const (
-	SchemaVersion                         = "long-duration-drift-evidence-v1"
-	SourceCaseID                          = "real-mp4-h264-aac-cfr-30-aac-44100-v1"
-	DurationMicros                  int64 = 30 * 60 * 1_000_000
-	CheckpointMicros                int64 = 5 * 60 * 1_000_000
-	RepeatCount                           = 2
-	StartToleranceMicros            int64 = 3_000_000
-	EndToleranceMicros              int64 = 50_000
-	CheckpointToleranceMicros       int64 = 50_000
-	AVSkewToleranceMicros           int64 = 50_000
-	RepeatVarianceToleranceMicros   int64 = 2_000
-	CrossCandidateToleranceMicros   int64 = 2_000
+	SchemaVersion                       = "long-duration-drift-evidence-v1"
+	SourceCaseID                        = "real-mp4-h264-aac-cfr-30-aac-44100-v1"
+	DurationMicros                int64 = 30 * 60 * 1_000_000
+	CheckpointMicros              int64 = 5 * 60 * 1_000_000
+	RepeatCount                         = 2
+	StartToleranceMicros          int64 = 3_000_000
+	EndToleranceMicros            int64 = 50_000
+	CheckpointToleranceMicros     int64 = 50_000
+	AVSkewToleranceMicros         int64 = 50_000
+	RepeatVarianceToleranceMicros int64 = 2_000
+	CrossCandidateToleranceMicros int64 = 2_000
 )
 
 type SourceIdentity struct {
@@ -64,13 +64,13 @@ type RunEvidence struct {
 }
 
 type CandidateSummary struct {
-	RepeatCount                           int   `json:"repeat_count"`
-	MaximumAbsoluteVideoEndErrorMicros    int64 `json:"maximum_absolute_video_end_error_micros"`
-	MaximumAbsoluteAudioEndErrorMicros    int64 `json:"maximum_absolute_audio_end_error_micros"`
-	MaximumAbsoluteAVSkewMicros           int64 `json:"maximum_absolute_av_skew_micros"`
+	RepeatCount                          int   `json:"repeat_count"`
+	MaximumAbsoluteVideoEndErrorMicros   int64 `json:"maximum_absolute_video_end_error_micros"`
+	MaximumAbsoluteAudioEndErrorMicros   int64 `json:"maximum_absolute_audio_end_error_micros"`
+	MaximumAbsoluteAVSkewMicros          int64 `json:"maximum_absolute_av_skew_micros"`
 	MaximumAbsoluteCheckpointErrorMicros int64 `json:"maximum_absolute_checkpoint_error_micros"`
-	MaximumRepeatMetricVarianceMicros     int64 `json:"maximum_repeat_metric_variance_micros"`
-	Stable                                bool  `json:"stable"`
+	MaximumRepeatMetricVarianceMicros    int64 `json:"maximum_repeat_metric_variance_micros"`
+	Stable                               bool  `json:"stable"`
 }
 
 type CandidateEvidence struct {
@@ -91,32 +91,32 @@ type CandidateComparison struct {
 }
 
 type Contract struct {
-	SchemaVersion                  string              `json:"schema_version"`
-	SpecVersion                    string              `json:"spec_version"`
-	SpecHash                       string              `json:"spec_hash"`
-	ManifestVersion                string              `json:"manifest_version"`
-	ManifestHash                   string              `json:"manifest_hash"`
-	SourceGeneratorVersion         string              `json:"source_generator_version"`
-	SourceFFmpegVersion            string              `json:"source_ffmpeg_version"`
-	SourceFFprobeVersion           string              `json:"source_ffprobe_version"`
-	CertificationFFmpegVersion     string              `json:"certification_ffmpeg_version"`
-	CertificationFFprobeVersion    string              `json:"certification_ffprobe_version"`
-	TimestampPlanVersion           string              `json:"timestamp_plan_version"`
-	TimestampPlanHash              string              `json:"timestamp_plan_hash"`
-	Source                         SourceIdentity      `json:"source"`
-	DurationMicros                 int64               `json:"duration_micros"`
-	CheckpointIntervalMicros       int64               `json:"checkpoint_interval_micros"`
-	RepeatCount                    int                 `json:"repeat_count"`
-	StartToleranceMicros           int64               `json:"start_tolerance_micros"`
-	EndToleranceMicros             int64               `json:"end_tolerance_micros"`
-	CheckpointToleranceMicros      int64               `json:"checkpoint_tolerance_micros"`
-	AVSkewToleranceMicros          int64               `json:"av_skew_tolerance_micros"`
-	RepeatVarianceToleranceMicros  int64               `json:"repeat_variance_tolerance_micros"`
-	CrossCandidateToleranceMicros  int64               `json:"cross_candidate_tolerance_micros"`
-	Candidates                     []CandidateEvidence `json:"candidates"`
-	Comparison                     CandidateComparison `json:"comparison"`
-	SeamlessAllowed                bool                `json:"seamless_allowed"`
-	DiscontinuityRequired          bool                `json:"discontinuity_required"`
+	SchemaVersion                 string              `json:"schema_version"`
+	SpecVersion                   string              `json:"spec_version"`
+	SpecHash                      string              `json:"spec_hash"`
+	ManifestVersion               string              `json:"manifest_version"`
+	ManifestHash                  string              `json:"manifest_hash"`
+	SourceGeneratorVersion        string              `json:"source_generator_version"`
+	SourceFFmpegVersion           string              `json:"source_ffmpeg_version"`
+	SourceFFprobeVersion          string              `json:"source_ffprobe_version"`
+	CertificationFFmpegVersion    string              `json:"certification_ffmpeg_version"`
+	CertificationFFprobeVersion   string              `json:"certification_ffprobe_version"`
+	TimestampPlanVersion          string              `json:"timestamp_plan_version"`
+	TimestampPlanHash             string              `json:"timestamp_plan_hash"`
+	Source                        SourceIdentity      `json:"source"`
+	DurationMicros                int64               `json:"duration_micros"`
+	CheckpointIntervalMicros      int64               `json:"checkpoint_interval_micros"`
+	RepeatCount                   int                 `json:"repeat_count"`
+	StartToleranceMicros          int64               `json:"start_tolerance_micros"`
+	EndToleranceMicros            int64               `json:"end_tolerance_micros"`
+	CheckpointToleranceMicros     int64               `json:"checkpoint_tolerance_micros"`
+	AVSkewToleranceMicros         int64               `json:"av_skew_tolerance_micros"`
+	RepeatVarianceToleranceMicros int64               `json:"repeat_variance_tolerance_micros"`
+	CrossCandidateToleranceMicros int64               `json:"cross_candidate_tolerance_micros"`
+	Candidates                    []CandidateEvidence `json:"candidates"`
+	Comparison                    CandidateComparison `json:"comparison"`
+	SeamlessAllowed               bool                `json:"seamless_allowed"`
+	DiscontinuityRequired         bool                `json:"discontinuity_required"`
 }
 
 func BuildCandidateSummary(runs []RunEvidence) CandidateSummary {

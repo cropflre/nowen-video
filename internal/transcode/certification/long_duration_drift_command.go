@@ -89,10 +89,10 @@ func longDurationHLSArgsForPolicy(
 		return nil, err
 	}
 	args := serviceffmpeg.BuildHLSArgs(serviceffmpeg.BuildOptions{
-		InputPath: sourcePath,
-		OutputDir: outputDir,
+		InputPath:  sourcePath,
+		OutputDir:  outputDir,
 		ExtraInput: []string{"-stream_loop", "-1"},
-		HWAccel: serviceffmpeg.HWAccelNone,
+		HWAccel:    serviceffmpeg.HWAccelNone,
 		Profile: serviceffmpeg.Profile{
 			Width:        fixtureWidth,
 			Height:       fixtureHeight,

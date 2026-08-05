@@ -63,8 +63,8 @@ func TestTicksToMicrosRoundsSignedValues(t *testing.T) {
 func TestNormalizeContainer(t *testing.T) {
 	for input, want := range map[string]string{
 		"mov,mp4,m4a,3gp,3g2,mj2": transcodecorpus.ContainerMP4,
-		"matroska,webm":            transcodecorpus.ContainerMatroska,
-		"mpegts":                   transcodecorpus.ContainerMPEGTS,
+		"matroska,webm":           transcodecorpus.ContainerMatroska,
+		"mpegts":                  transcodecorpus.ContainerMPEGTS,
 	} {
 		got, err := normalizeContainer(input)
 		if err != nil {

@@ -12,14 +12,14 @@ import (
 
 // JAV321 正则表达式
 var (
-	jav321TitleRe    = regexp.MustCompile(`(?is)<div[^>]*class="panel-heading"[^>]*>\s*<h3>([^<]+)</h3>`)
-	jav321InfoRe     = regexp.MustCompile(`(?is)<b>([^<:：]+)</b>\s*[:：]\s*([^<]+?)<`)
-	jav321CoverRe    = regexp.MustCompile(`(?is)<img[^>]+src="([^"]+\.(?:jpg|jpeg|png|webp))"[^>]+class="img-responsive"`)
-	jav321PlotRe     = regexp.MustCompile(`(?is)<div[^>]+class="panel-body"[^>]*>(.*?)</div>`)
-	jav321ActressRe  = regexp.MustCompile(`(?is)<a[^>]+href="/star/[^"]+"[^>]*>([^<]+)</a>`)
-	jav321GenreRe    = regexp.MustCompile(`(?is)<a[^>]+href="/genre/[^"]+"[^>]*>([^<]+)</a>`)
-	jav321FanartRe   = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+)"[^>]+class="sample-box"`)
-	jav321TrailerRe  = regexp.MustCompile(`(?is)<source[^>]+src="([^"]+)"`)
+	jav321TitleRe   = regexp.MustCompile(`(?is)<div[^>]*class="panel-heading"[^>]*>\s*<h3>([^<]+)</h3>`)
+	jav321InfoRe    = regexp.MustCompile(`(?is)<b>([^<:：]+)</b>\s*[:：]\s*([^<]+?)<`)
+	jav321CoverRe   = regexp.MustCompile(`(?is)<img[^>]+src="([^"]+\.(?:jpg|jpeg|png|webp))"[^>]+class="img-responsive"`)
+	jav321PlotRe    = regexp.MustCompile(`(?is)<div[^>]+class="panel-body"[^>]*>(.*?)</div>`)
+	jav321ActressRe = regexp.MustCompile(`(?is)<a[^>]+href="/star/[^"]+"[^>]*>([^<]+)</a>`)
+	jav321GenreRe   = regexp.MustCompile(`(?is)<a[^>]+href="/genre/[^"]+"[^>]*>([^<]+)</a>`)
+	jav321FanartRe  = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+)"[^>]+class="sample-box"`)
+	jav321TrailerRe = regexp.MustCompile(`(?is)<source[^>]+src="([^"]+)"`)
 )
 
 // scrapeJav321 从 JAV321 刮削番号元数据（POST 搜索 + 详情页一步到位）

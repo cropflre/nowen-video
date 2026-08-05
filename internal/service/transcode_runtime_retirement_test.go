@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func newRuntimeRetirementTestService(t *testing.T) (*TranscodeService, *gorm.DB, string) {
+func newRuntimeRetirementTestService(t *testing.T) (*ArtifactMaintenanceService, *gorm.DB, string) {
 	t.Helper()
 	base := t.TempDir()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(base, "retirement.db")), &gorm.Config{})
@@ -36,7 +36,7 @@ func newRuntimeRetirementTestService(t *testing.T) (*TranscodeService, *gorm.DB,
 		t.Fatal(err)
 	}
 	repos := repository.NewRepositories(db)
-	return &TranscodeService{
+	return &ArtifactMaintenanceService{
 		repo:          repos.Transcode,
 		executionRepo: repository.NewTranscodeExecutionRepo(db),
 		cfg:           &config.Config{Cache: config.CacheConfig{CacheDir: cacheRoot}},

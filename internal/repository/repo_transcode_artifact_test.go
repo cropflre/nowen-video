@@ -31,12 +31,12 @@ func createRunningArtifactFixture(t *testing.T) (*TranscodeExecutionRepo, *model
 		t.Fatalf("claim job: ok=%v err=%v", ok, err)
 	}
 	attempt := &model.TranscodeAttemptRecord{
-		JobID:        job.ID,
-		Number:       1,
-		Backend:      "none",
-		Status:       "running",
+		JobID:         job.ID,
+		Number:        1,
+		Backend:       "none",
+		Status:        "running",
 		WorkspacePath: "/cache/workspaces/job/attempt/hls",
-		ExitCode:     -1,
+		ExitCode:      -1,
 	}
 	if err := repo.CreateAttempt(attempt); err != nil {
 		t.Fatal(err)

@@ -104,12 +104,12 @@ func probeDecodedFrameFingerprint(ctx context.Context, ffmpegPath, inputPath str
 	}
 	sequenceDigest := sha256.Sum256([]byte(strings.Join(hashes, "\n")))
 	return transcodevfrisolation.FrameFingerprint{
-		FrameCount:              len(hashes),
-		UniqueFrameCount:        len(unique),
-		AdjacentDuplicateCount:  adjacentDuplicates,
-		SequenceSHA256:          hex.EncodeToString(sequenceDigest[:]),
-		FirstFrameSHA256:        hashes[0],
-		LastFrameSHA256:         hashes[len(hashes)-1],
+		FrameCount:             len(hashes),
+		UniqueFrameCount:       len(unique),
+		AdjacentDuplicateCount: adjacentDuplicates,
+		SequenceSHA256:         hex.EncodeToString(sequenceDigest[:]),
+		FirstFrameSHA256:       hashes[0],
+		LastFrameSHA256:        hashes[len(hashes)-1],
 	}, nil
 }
 

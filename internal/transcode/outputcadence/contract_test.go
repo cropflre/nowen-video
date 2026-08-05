@@ -137,23 +137,23 @@ func validContract() Contract {
 	hash := strings.Repeat("0", 64)
 	contract := Contract{
 		SchemaVersion: SchemaVersion,
-		CaseID: "case-v1", FixtureID: "fixture-v1", SourceMode: transcodesourceorigin.ModeCFR,
+		CaseID:        "case-v1", FixtureID: "fixture-v1", SourceMode: transcodesourceorigin.ModeCFR,
 		DeclaredFrameRateNumerator: 30, DeclaredFrameRateDenominator: 1, DeclaredFrameRateMilli: 30_000,
 		ExpectedBoundaryMicros: 30_000_000,
-		FFmpegVersion: "ffmpeg test", FFprobeVersion: "ffprobe test",
+		FFmpegVersion:          "ffmpeg test", FFprobeVersion: "ffprobe test",
 		SourceOriginVersion: transcodesourceorigin.SchemaVersion, SourceOriginHash: hash,
 		TimestampPlanVersion: transcodetimestamp.SchemaVersion, TimestampPlanHash: hash,
 		BoundaryEvidenceVersion: transcodeboundary.SchemaVersion, BoundaryEvidenceHash: hash,
 		AVSyncEvidenceVersion: transcodeavsync.SchemaVersion, AVSyncEvidenceHash: hash,
-		SourceTimeline: timeline(TimelineSource, 0, 40_000_000, 1_200),
-		SourceStartupTimeline: timeline(TimelineSourceStartup, 0, 30_000_000, 900),
-		SourceContinuationTimeline: timeline(TimelineSourceContinuation, 30_000_000, 40_000_000, 300),
-		StartupTimeline: timeline(TimelineStartup, 0, 30_000_000, 900),
-		ContinuationTimeline: timeline(TimelineContinuation, 30_000_000, 40_000_000, 300),
-		StartupMapping: NewFrameMapping(900, 900),
-		ContinuationMapping: NewFrameMapping(300, 300),
+		SourceTimeline:                 timeline(TimelineSource, 0, 40_000_000, 1_200),
+		SourceStartupTimeline:          timeline(TimelineSourceStartup, 0, 30_000_000, 900),
+		SourceContinuationTimeline:     timeline(TimelineSourceContinuation, 30_000_000, 40_000_000, 300),
+		StartupTimeline:                timeline(TimelineStartup, 0, 30_000_000, 900),
+		ContinuationTimeline:           timeline(TimelineContinuation, 30_000_000, 40_000_000, 300),
+		StartupMapping:                 NewFrameMapping(900, 900),
+		ContinuationMapping:            NewFrameMapping(300, 300),
 		ContentDuplicateClassification: ContentDuplicateNotMeasured,
-		DiscontinuityRequired: true,
+		DiscontinuityRequired:          true,
 	}
 	contract.PreservationStatus = PreservationFor(contract)
 	return contract

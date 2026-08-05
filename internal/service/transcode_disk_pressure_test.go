@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestDiskPressureGovernorReclaimsOldPublishedArtifact(t *testing.T) {
-	service, db := newConcurrentArtifactService(t)
+	service, db := newArtifactMaintenanceTestService(t)
 	service.cfg.Cache.MaxDiskUsageMB = 1
 	service.diskUsageTTL = time.Nanosecond
 	artifact, path := createDiskPressureArtifact(t, service, db, "pressure-old", time.Now().Add(-48*time.Hour), 2*1024*1024)
@@ -34,15 +33,15 @@ func TestDiskPressureGovernorReclaimsOldPublishedArtifact(t *testing.T) {
 	}
 }
 
-func TestDiskPressureGovernorProtectsRecentPlaybackAndBlocksAdmission(t *testing.T) {
-	service, db := newConcurrentArtifactService(t)
+func TestDiskPressureGovernorProtectsRecentArtifact(t *testing.T) {
+	service, db := newArtifactMaintenanceTestService(t)
 	service.cfg.Cache.MaxDiskUsageMB = 1
 	service.diskUsageTTL = time.Nanosecond
 	artifact, path := createDiskPressureArtifact(t, service, db, "pressure-active", time.Now(), 2*1024*1024)
 
 	status := service.runDiskPressureGovernorTick(time.Now(), true)
 	if status.Level == transcodediskpressure.LevelNormal || !status.AdmissionBlocked || !status.QueuePaused {
-		t.Fatalf("recent artifact should keep pressure active: %+v", status)
+		t.Fatalf("recent artifact should keep pressure visible: %+v", status)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("recently accessed artifact was removed: %v", err)
@@ -54,21 +53,11 @@ func TestDiskPressureGovernorProtectsRecentPlaybackAndBlocksAdmission(t *testing
 	if stored.Status != "published" || stored.CleanupState != "" {
 		t.Fatalf("recent artifact entered cleanup: %+v", stored)
 	}
-	if err := service.checkDiskPressureAdmission(); !errors.Is(err, ErrTranscodeStoragePressure) {
-		t.Fatalf("expected pressure admission rejection, got %v", err)
-	}
-
-	service.jobs = newTranscodePriorityQueue(service.executionRepo, service.repo, 10, service.logger)
-	transcodeDiskPressureOwners.Store(service.jobs, service)
-	if service.jobs.CanAccept() {
-		t.Fatal("queue accepted a new job while pressure was active")
-	}
-	service.jobs.Close()
 }
 
 func createDiskPressureArtifact(
 	t *testing.T,
-	service *TranscodeService,
+	service *ArtifactMaintenanceService,
 	db *gorm.DB,
 	id string,
 	updatedAt time.Time,

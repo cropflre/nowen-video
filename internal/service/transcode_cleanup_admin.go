@@ -15,7 +15,7 @@ var ErrArtifactCleanupNotRetryable = errors.New("artifact cleanup is not retryab
 // unified task center. It never bypasses Artifact Store path validation and it
 // never deletes metadata directly. The command only requeues blocked/retrying
 // work and immediately enters the normal Cleanup Lease flow.
-func (s *TranscodeService) RetryArtifactCleanup(artifactID string) error {
+func (s *ArtifactMaintenanceService) RetryArtifactCleanup(artifactID string) error {
 	if s == nil || s.executionRepo == nil {
 		return fmt.Errorf("Artifact 清理服务不可用")
 	}

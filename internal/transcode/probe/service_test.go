@@ -56,9 +56,9 @@ func TestParseFFprobeOutputDoesNotTreatSDRHEVCAsHDR(t *testing.T) {
 
 func TestParseFFprobeOutputDetectsPQHLGAndMetadataHDR(t *testing.T) {
 	cases := []struct {
-		name       string
-		transfer   string
-		sideData   string
+		name     string
+		transfer string
+		sideData string
 	}{
 		{name: "pq", transfer: "smpte2084"},
 		{name: "hlg", transfer: "arib-std-b67"},

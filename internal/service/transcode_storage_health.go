@@ -43,14 +43,13 @@ type TranscodeStorageHealthStatus struct {
 
 type transcodeStorageHealthState struct {
 	mu             sync.Mutex
-	startOnce      sync.Once
 	status         TranscodeStorageHealthStatus
 	lastEvaluation time.Time
 }
 
 var transcodeStorageHealthStates sync.Map
 
-func (s *TranscodeService) storageHealthState() *transcodeStorageHealthState {
+func (s *ArtifactMaintenanceService) storageHealthState() *transcodeStorageHealthState {
 	if s == nil {
 		return &transcodeStorageHealthState{}
 	}
@@ -59,31 +58,18 @@ func (s *TranscodeService) storageHealthState() *transcodeStorageHealthState {
 	return actual.(*transcodeStorageHealthState)
 }
 
-func (s *TranscodeService) initializeStorageHealth() error {
+func (s *ArtifactMaintenanceService) initializeStorageHealth() error {
 	if s == nil || s.repo == nil || s.repo.DB() == nil || s.executionRepo == nil {
 		return fmt.Errorf("transcode storage health dependencies are unavailable")
 	}
 	if err := model.AutoMigrateTranscodeStorageIncidents(s.repo.DB()); err != nil {
 		return err
 	}
-	state := s.storageHealthState()
 	s.runStorageHealthTick(time.Now(), true)
-	state.startOnce.Do(func() { go s.storageHealthLoop() })
 	return nil
 }
 
-func (s *TranscodeService) storageHealthLoop() {
-	ticker := time.NewTicker(transcodeStorageHealthInterval)
-	defer ticker.Stop()
-	for now := range ticker.C {
-		if s == nil || s.jobs == nil || s.jobs.IsClosed() {
-			return
-		}
-		s.runStorageHealthTick(now, true)
-	}
-}
-
-func (s *TranscodeService) runStorageHealthTick(now time.Time, force bool) TranscodeStorageHealthStatus {
+func (s *ArtifactMaintenanceService) runStorageHealthTick(now time.Time, force bool) TranscodeStorageHealthStatus {
 	state := s.storageHealthState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -171,7 +157,7 @@ func storageHealthTransitioned(previous, current TranscodeStorageHealthStatus) b
 	return previous.State != current.State || previous.Code != current.Code || previous.IncidentID != current.IncidentID || previous.ActiveIncidents != current.ActiveIncidents
 }
 
-func (s *TranscodeService) checkStorageHealthAdmission() error {
+func (s *ArtifactMaintenanceService) checkStorageHealthAdmission() error {
 	status := s.runStorageHealthTick(time.Now(), false)
 	if !status.AdmissionBlocked {
 		return nil
@@ -179,6 +165,6 @@ func (s *TranscodeService) checkStorageHealthAdmission() error {
 	return fmt.Errorf("%w: code=%s path=%s message=%s", ErrTranscodeStorageUnavailable, status.Code, status.Path, status.Message)
 }
 
-func (s *TranscodeService) GetStorageHealthStatus() TranscodeStorageHealthStatus {
+func (s *ArtifactMaintenanceService) GetStorageHealthStatus() TranscodeStorageHealthStatus {
 	return s.runStorageHealthTick(time.Now(), false)
 }

@@ -49,7 +49,7 @@ func TestFullShutdownClosesPlaybackBeforeDurableTranscode(t *testing.T) {
 	text := string(source)
 
 	playback := strings.Index(text, "playbackRuntime.Shutdown(playbackCtx)")
-	durable := strings.Index(text, "services.Transcode.Shutdown(transcodeCtx)")
+	durable := strings.Index(text, "services.ArtifactMaintenance.Shutdown(transcodeCtx)")
 	require.GreaterOrEqual(t, playback, 0, "full server must close playback sessions")
 	require.GreaterOrEqual(t, durable, 0, "full server must close durable transcode jobs")
 	require.Less(t, playback, durable, "ephemeral playback must close before durable jobs")

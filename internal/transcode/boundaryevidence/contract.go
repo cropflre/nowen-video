@@ -33,7 +33,7 @@ const (
 // Continuation boundary. It is deliberately diagnostic: v1 can explain packet
 // quantization and encoder delay, but can never authorize seamless playback.
 type Contract struct {
-	SchemaVersion                   string         `json:"schema_version"`
+	SchemaVersion                  string         `json:"schema_version"`
 	CaseID                         string         `json:"case_id"`
 	FixtureID                      string         `json:"fixture_id"`
 	ExpectedBoundaryMicros         int64          `json:"expected_boundary_micros"`

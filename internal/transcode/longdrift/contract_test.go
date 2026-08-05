@@ -43,15 +43,15 @@ func validRun(ordinal int) RunEvidence {
 	video := validStream("video")
 	audio := validStream("audio")
 	return RunEvidence{
-		Ordinal: ordinal,
-		CommandHash: hash,
-		ManifestSHA256: hash,
+		Ordinal:            ordinal,
+		CommandHash:        hash,
+		ManifestSHA256:     hash,
 		AttestationVersion: "hls-produced-media-attestation-v1",
-		AttestationHash: hash,
-		SegmentCount: 900,
-		Video: video,
-		Audio: audio,
-		FinalAVSkewMicros: video.EndMicros-audio.EndMicros,
+		AttestationHash:    hash,
+		SegmentCount:       900,
+		Video:              video,
+		Audio:              audio,
+		FinalAVSkewMicros:  video.EndMicros - audio.EndMicros,
 	}
 }
 
@@ -61,12 +61,12 @@ func validStream(kind string) StreamEvidence {
 		checkpoints = append(checkpoints, CheckpointEvidence{TargetMicros: target, PresentationMicros: target})
 	}
 	return StreamEvidence{
-		Kind: kind,
-		TimeBase: "1/90000",
-		PacketCount: 100,
-		StartMicros: 0,
-		EndMicros: DurationMicros,
+		Kind:           kind,
+		TimeBase:       "1/90000",
+		PacketCount:    100,
+		StartMicros:    0,
+		EndMicros:      DurationMicros,
 		DurationMicros: DurationMicros,
-		Checkpoints: checkpoints,
+		Checkpoints:    checkpoints,
 	}
 }

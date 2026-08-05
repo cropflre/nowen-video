@@ -23,7 +23,7 @@ func NewTaskCenterServiceWithoutRuntimeTranscode(
 // Artifact cleanup recovery but removes cancel/retry operations for the retired
 // persistent Runtime queue.
 func NewTaskActionDispatcherWithoutRuntimeTranscode(
-	maintenance *TranscodeService,
+	maintenance *ArtifactMaintenanceService,
 	scrape *ScrapeManagerService,
 	transcodeRepo *repository.TranscodeRepo,
 	scrapeRepo *repository.ScrapeTaskRepo,

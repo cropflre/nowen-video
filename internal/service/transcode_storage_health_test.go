@@ -12,7 +12,7 @@ import (
 )
 
 func TestStorageHealthPausesAdmissionAndRecoversAfterMountRestore(t *testing.T) {
-	service, db := newConcurrentArtifactService(t)
+	service, db := newArtifactMaintenanceTestService(t)
 	if err := model.AutoMigrateTranscodeStorageIncidents(db); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestStorageHealthPausesAdmissionAndRecoversAfterMountRestore(t *testing.T) 
 }
 
 func TestLiveStorageOperationFailureBlocksImmediatelyUntilWriteProbeRecovers(t *testing.T) {
-	service, db := newConcurrentArtifactService(t)
+	service, db := newArtifactMaintenanceTestService(t)
 	if err := model.AutoMigrateTranscodeStorageIncidents(db); err != nil {
 		t.Fatal(err)
 	}

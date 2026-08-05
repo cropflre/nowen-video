@@ -8,7 +8,7 @@ func TestExtractBaseNameDeep_ChineseMixedSuffix(t *testing.T) {
 		title string
 		want  string
 	}{
-		{"逃学威龙3之龙过鸡年", "逃学威龙"}, // 连接词 "之" + 尾部数字 3
+		{"逃学威龙3之龙过鸡年", "逃学威龙"},  // 连接词 "之" + 尾部数字 3
 		{"哈利波特2之消失的密室", "哈利波特"}, // 经典场景
 		{"Iron Man 3: Rise of Ultron", "Iron Man"},
 	}

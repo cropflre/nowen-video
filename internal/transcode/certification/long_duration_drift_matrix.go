@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 
 	transcodeattestation "github.com/nowen-video/nowen-video/internal/transcode/attestation"
-	transcodecandidate "github.com/nowen-video/nowen-video/internal/transcode/realmediacandidate"
-	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
 	transcodeencoding "github.com/nowen-video/nowen-video/internal/transcode/encodingplan"
 	transcodelongdrift "github.com/nowen-video/nowen-video/internal/transcode/longdrift"
+	transcodecandidate "github.com/nowen-video/nowen-video/internal/transcode/realmediacandidate"
+	transcodecorpus "github.com/nowen-video/nowen-video/internal/transcode/realmediacorpus"
 	transcodereorder "github.com/nowen-video/nowen-video/internal/transcode/reordercandidate"
 	transcodetimebase "github.com/nowen-video/nowen-video/internal/transcode/timebasecandidate"
 	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
@@ -122,18 +122,18 @@ func RunLongDurationDriftMatrix(ctx context.Context, config LongDurationDriftCon
 		return LongDurationDriftMatrixReport{}, err
 	}
 	contract := transcodelongdrift.Contract{
-		SchemaVersion:                 transcodelongdrift.SchemaVersion,
-		SpecVersion:                   specVersion,
-		SpecHash:                      specHash,
-		ManifestVersion:               manifestVersion,
-		ManifestHash:                  manifestHash,
-		SourceGeneratorVersion:        manifest.GeneratorVersion,
-		SourceFFmpegVersion:           manifest.FFmpegVersion,
-		SourceFFprobeVersion:          manifest.FFprobeVersion,
-		CertificationFFmpegVersion:    ffmpegVersion,
-		CertificationFFprobeVersion:   ffprobeVersion,
-		TimestampPlanVersion:          timestampVersion,
-		TimestampPlanHash:             timestampHash,
+		SchemaVersion:               transcodelongdrift.SchemaVersion,
+		SpecVersion:                 specVersion,
+		SpecHash:                    specHash,
+		ManifestVersion:             manifestVersion,
+		ManifestHash:                manifestHash,
+		SourceGeneratorVersion:      manifest.GeneratorVersion,
+		SourceFFmpegVersion:         manifest.FFmpegVersion,
+		SourceFFprobeVersion:        manifest.FFprobeVersion,
+		CertificationFFmpegVersion:  ffmpegVersion,
+		CertificationFFprobeVersion: ffprobeVersion,
+		TimestampPlanVersion:        timestampVersion,
+		TimestampPlanHash:           timestampHash,
 		Source: transcodelongdrift.SourceIdentity{
 			CaseID:            asset.CaseID,
 			RelativePath:      asset.RelativePath,

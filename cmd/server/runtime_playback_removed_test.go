@@ -12,6 +12,9 @@ func TestRetiredRuntimePlaybackImplementationRemainsDeleted(t *testing.T) {
 		"../../internal/service/stream_startup_bridge.go",
 		"../../internal/service/stream_startup_bridge_contract.go",
 		"../../internal/service/transcode_handoff_attestation.go",
+		"../../internal/service/transcode_startup.go",
+		"../../internal/service/transcode_startup_continuation.go",
+		"../../internal/service/transcode_process_shutdown.go",
 	} {
 		_, statErr := os.Stat(path)
 		if statErr == nil {
@@ -34,12 +37,6 @@ func TestRetiredRuntimePlaybackImplementationRemainsDeleted(t *testing.T) {
 		"WaitForFirstSegmentForMedia",
 		"TouchArtifactAccess",
 		"ServeContent",
-	})
-	assertSourceOmits(t, "../../internal/service/transcode_startup_continuation.go", []string{
-		"CreateJob(",
-		"FindPublishedArtifactByExecutionContract",
-		"FindReadableArtifactByExecutionContract",
-		"jobs.Push",
 	})
 	assertSourceOmits(t, "../../internal/service/media_probe_warmup.go", []string{
 		"runOnProbed(",

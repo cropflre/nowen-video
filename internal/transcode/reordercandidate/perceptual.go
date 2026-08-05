@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	PerceptualHashHexLength       = 32
-	PerceptualHashBits            = 128
-	PerceptualMaxHammingDistance  = 8
+	PerceptualHashHexLength      = 32
+	PerceptualHashBits           = 128
+	PerceptualMaxHammingDistance = 8
 )
 
 type PerceptualFrameSequence struct {
@@ -21,11 +21,11 @@ type PerceptualFrameSequence struct {
 }
 
 type PerceptualFrameComparison struct {
-	FrameCount           int `json:"frame_count"`
-	ExactHashMatchCount  int `json:"exact_hash_match_count"`
-	MaxHammingDistance   int `json:"max_hamming_distance"`
-	TotalHammingDistance int `json:"total_hamming_distance"`
-	MeanHammingMilli     int `json:"mean_hamming_milli"`
+	FrameCount           int  `json:"frame_count"`
+	ExactHashMatchCount  int  `json:"exact_hash_match_count"`
+	MaxHammingDistance   int  `json:"max_hamming_distance"`
+	TotalHammingDistance int  `json:"total_hamming_distance"`
+	MeanHammingMilli     int  `json:"mean_hamming_milli"`
 	Equivalent           bool `json:"equivalent"`
 }
 

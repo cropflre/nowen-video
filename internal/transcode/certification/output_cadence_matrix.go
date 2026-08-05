@@ -10,11 +10,11 @@ import (
 const OutputCadenceMatrixSchemaVersion = "ffmpeg-output-cadence-matrix-v1"
 
 type OutputCadenceCaseReport struct {
-	Case             SourceOriginCaseSpec             `json:"case"`
-	SourceOrigin     SourceOriginCaseReport           `json:"source_origin"`
-	ContractVersion  string                           `json:"contract_version"`
-	ContractHash     string                           `json:"contract_hash"`
-	Evidence         transcodeoutputcadence.Contract  `json:"evidence"`
+	Case            SourceOriginCaseSpec            `json:"case"`
+	SourceOrigin    SourceOriginCaseReport          `json:"source_origin"`
+	ContractVersion string                          `json:"contract_version"`
+	ContractHash    string                          `json:"contract_hash"`
+	Evidence        transcodeoutputcadence.Contract `json:"evidence"`
 }
 
 type OutputCadenceMatrixReport struct {

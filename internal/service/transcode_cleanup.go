@@ -9,7 +9,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
-func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays int) (int, int, error) {
+func (s *ArtifactMaintenanceService) CleanupStaleCache(doneRetainDays, failedRetainDays int) (int, int, error) {
 	if doneRetainDays <= 0 {
 		doneRetainDays = 30
 	}
@@ -27,12 +27,6 @@ func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays in
 	}
 	for i := range doneStale {
 		task := &doneStale[i]
-		s.mu.RLock()
-		_, active := s.running[task.ID]
-		s.mu.RUnlock()
-		if active {
-			continue
-		}
 		removedDirs, removedArtifacts, cleanupErr := s.cleanupArtifactsForTask(task)
 		if cleanupErr != nil {
 			s.logger.Warnf("清理完成任务 Artifact 延期 task=%s: %v", task.ID, cleanupErr)
@@ -82,7 +76,7 @@ func (s *TranscodeService) CleanupStaleCache(doneRetainDays, failedRetainDays in
 	return dirsCleaned, recordsCleaned, nil
 }
 
-func (s *TranscodeService) cleanupArtifactsForTask(task *model.TranscodeTask) (int, int, error) {
+func (s *ArtifactMaintenanceService) cleanupArtifactsForTask(task *model.TranscodeTask) (int, int, error) {
 	if task == nil {
 		return 0, 0, nil
 	}
@@ -103,14 +97,14 @@ func (s *TranscodeService) cleanupArtifactsForTask(task *model.TranscodeTask) (i
 	if len(artifacts) == 0 {
 		// Historical task without an imported Artifact: remove only the bounded
 		// legacy directory, never resolve and delete a newer Artifact version.
-		if err := os.RemoveAll(s.GetLegacyOutputDir(task.MediaID, task.Quality)); err == nil {
+		if err := os.RemoveAll(s.legacyOutputDir(task.MediaID, task.Quality)); err == nil {
 			removedDirs++
 		}
 	}
 	return removedDirs, removedRecords, nil
 }
 
-func (s *TranscodeService) cleanupArtifactRecord(artifact *model.TranscodeArtifactRecord) (int, error) {
+func (s *ArtifactMaintenanceService) cleanupArtifactRecord(artifact *model.TranscodeArtifactRecord) (int, error) {
 	if artifact == nil {
 		return 0, nil
 	}

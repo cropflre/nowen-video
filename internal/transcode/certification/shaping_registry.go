@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	timestampexecution "github.com/nowen-video/nowen-video/internal/transcode/timestampexecution"
 	transcodeboundary "github.com/nowen-video/nowen-video/internal/transcode/boundaryevidence"
+	timestampexecution "github.com/nowen-video/nowen-video/internal/transcode/timestampexecution"
 )
 
 const ShapingMatrixSchemaVersion = "ffmpeg-boundary-shaping-matrix-v1"
@@ -42,12 +42,12 @@ type ShapingCaseSpec struct {
 }
 
 type ShapingCaseReport struct {
-	Case            ShapingCaseSpec           `json:"case"`
-	PlanVersion     string                    `json:"plan_version"`
-	PlanHash        string                    `json:"plan_hash"`
-	PlanJSON        string                    `json:"plan_json"`
-	EvidenceVersion string                    `json:"evidence_version"`
-	EvidenceHash    string                    `json:"evidence_hash"`
+	Case            ShapingCaseSpec            `json:"case"`
+	PlanVersion     string                     `json:"plan_version"`
+	PlanHash        string                     `json:"plan_hash"`
+	PlanJSON        string                     `json:"plan_json"`
+	EvidenceVersion string                     `json:"evidence_version"`
+	EvidenceHash    string                     `json:"evidence_hash"`
 	Evidence        transcodeboundary.Contract `json:"evidence"`
 }
 

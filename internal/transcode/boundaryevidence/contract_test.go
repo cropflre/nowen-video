@@ -102,7 +102,7 @@ func validContract() Contract {
 	}
 
 	return Contract{
-		SchemaVersion:                   SchemaVersion,
+		SchemaVersion:                  SchemaVersion,
 		CaseID:                         "boundary-48k-keyframe-v1",
 		FixtureID:                      "cfr-h264-aac-48k-software-zerolatency-v1",
 		ExpectedBoundaryMicros:         30_000_000,

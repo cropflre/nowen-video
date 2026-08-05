@@ -93,14 +93,10 @@ remaining historical transcode domain. It owns only:
 - storage incident and cleanup evidence exposed to Task Center.
 
 Its constructor does not create an FFprobe service, FFmpeg execution runtime,
-hardware detector, or Runtime Worker. `NewTranscodeService` remains temporarily
-as a source-compatible constructor alias, but returns the maintenance-only
-service.
-
-Compatibility submission methods fail closed with
-`ErrPersistentRuntimeTranscodeRetired`. No production constructor starts the
-legacy `worker` loop. Dead execution helpers remain isolated for the next
-physical source-deletion phase and are unreachable from Lite or Full assembly.
+hardware detector, or Runtime Worker. There is no `TranscodeService` alias, Runtime Job value, queue, Lease loop,
+worker, attempt runner, throttle controller or submission API in the service
+assembly. Historical database records remain data only and are consumed by the
+retirement and cleanup sweepers.
 
 ## Retired persistent Runtime queue
 
@@ -159,10 +155,9 @@ Explicit preprocessing remains represented by its own APIs and models.
 Historical tables and records remain intact for audit, upgrade, and rollback.
 No destructive schema drop is performed.
 
-Compatibility methods and routes may remain during the migration window, but
-they fail closed and cannot create Jobs, Claim Leases, read Runtime Artifacts,
-or start FFmpeg outside a Playback Session, managed remux request, or explicit
-preprocessing task.
+Compatibility routes may remain during the migration window, but they resolve
+only to authenticated `410 Gone` tombstones. No service compatibility method
+can create a Job, Claim a Lease, read a Runtime Artifact or start FFmpeg.
 
 ## Regression gates
 

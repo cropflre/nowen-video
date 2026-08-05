@@ -16,13 +16,13 @@ func NewPacketOrderEvidence(kind, timeBase string, packets []PacketTimestamp) (P
 		return PacketOrderEvidence{}, fmt.Errorf("packet-order input is incomplete")
 	}
 	evidence := PacketOrderEvidence{
-		Kind: kind,
-		TimeBase: timeBase,
+		Kind:        kind,
+		TimeBase:    timeBase,
 		PacketCount: len(packets),
-		FirstPTS: packets[0].PTS,
-		FirstDTS: packets[0].DTS,
-		LastPTS: packets[len(packets)-1].PTS,
-		LastDTS: packets[len(packets)-1].DTS,
+		FirstPTS:    packets[0].PTS,
+		FirstDTS:    packets[0].DTS,
+		LastPTS:     packets[len(packets)-1].PTS,
+		LastDTS:     packets[len(packets)-1].DTS,
 	}
 	var err error
 	if evidence.FirstPTSMicros, err = transcodeboundary.TicksToMicros(evidence.FirstPTS, timeBase); err != nil {
@@ -136,10 +136,10 @@ func (e PacketOrderEvidence) Validate() error {
 		return fmt.Errorf("packet-order identity is incomplete")
 	}
 	for ticks, micros := range map[int64]int64{
-		e.FirstPTS: e.FirstPTSMicros,
-		e.FirstDTS: e.FirstDTSMicros,
-		e.LastPTS: e.LastPTSMicros,
-		e.LastDTS: e.LastDTSMicros,
+		e.FirstPTS:                  e.FirstPTSMicros,
+		e.FirstDTS:                  e.FirstDTSMicros,
+		e.LastPTS:                   e.LastPTSMicros,
+		e.LastDTS:                   e.LastDTSMicros,
 		e.MinCompositionOffsetTicks: e.MinCompositionOffsetMicros,
 		e.MaxCompositionOffsetTicks: e.MaxCompositionOffsetMicros,
 	} {

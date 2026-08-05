@@ -43,7 +43,7 @@ func TestContractRejectsSeamlessAuthorization(t *testing.T) {
 
 func validContract() Contract {
 	return Contract{
-		SchemaVersion:                  SchemaVersion,
+		SchemaVersion:                 SchemaVersion,
 		CaseID:                        "source-cfr-25-origin-zero-v1",
 		FixtureID:                     "source-origin-cfr-25-v1",
 		SourceMode:                    ModeCFR,

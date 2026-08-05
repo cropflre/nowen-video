@@ -52,25 +52,25 @@ type ScalingShardSpec struct {
 }
 
 type ScalingShardContract struct {
-	SchemaVersion                string            `json:"schema_version"`
-	SpecVersion                  string            `json:"spec_version"`
-	SpecHash                     string            `json:"spec_hash"`
-	ManifestVersion              string            `json:"manifest_version"`
-	ManifestHash                 string            `json:"manifest_hash"`
-	SourceGeneratorVersion       string            `json:"source_generator_version"`
-	SourceFFmpegVersion          string            `json:"source_ffmpeg_version"`
-	SourceFFprobeVersion         string            `json:"source_ffprobe_version"`
-	CertificationFFmpegVersion   string            `json:"certification_ffmpeg_version"`
-	CertificationFFprobeVersion  string            `json:"certification_ffprobe_version"`
-	TimestampPlanVersion         string            `json:"timestamp_plan_version"`
-	TimestampPlanHash            string            `json:"timestamp_plan_hash"`
-	Shard                        ScalingShardSpec  `json:"shard"`
-	Tier                         ScalingTierSpec   `json:"tier"`
-	Profile                      ProfileSpec       `json:"profile"`
-	Source                       SourceIdentity    `json:"source"`
-	Candidate                    CandidateEvidence `json:"candidate"`
-	SeamlessAllowed              bool              `json:"seamless_allowed"`
-	DiscontinuityRequired        bool              `json:"discontinuity_required"`
+	SchemaVersion               string            `json:"schema_version"`
+	SpecVersion                 string            `json:"spec_version"`
+	SpecHash                    string            `json:"spec_hash"`
+	ManifestVersion             string            `json:"manifest_version"`
+	ManifestHash                string            `json:"manifest_hash"`
+	SourceGeneratorVersion      string            `json:"source_generator_version"`
+	SourceFFmpegVersion         string            `json:"source_ffmpeg_version"`
+	SourceFFprobeVersion        string            `json:"source_ffprobe_version"`
+	CertificationFFmpegVersion  string            `json:"certification_ffmpeg_version"`
+	CertificationFFprobeVersion string            `json:"certification_ffprobe_version"`
+	TimestampPlanVersion        string            `json:"timestamp_plan_version"`
+	TimestampPlanHash           string            `json:"timestamp_plan_hash"`
+	Shard                       ScalingShardSpec  `json:"shard"`
+	Tier                        ScalingTierSpec   `json:"tier"`
+	Profile                     ProfileSpec       `json:"profile"`
+	Source                      SourceIdentity    `json:"source"`
+	Candidate                   CandidateEvidence `json:"candidate"`
+	SeamlessAllowed             bool              `json:"seamless_allowed"`
+	DiscontinuityRequired       bool              `json:"discontinuity_required"`
 }
 
 type ScalingShardBinding struct {
@@ -87,17 +87,17 @@ type ScalingComparisonEvidence struct {
 }
 
 type ScalingAggregateContract struct {
-	SchemaVersion          string                      `json:"schema_version"`
-	SpecVersion            string                      `json:"spec_version"`
-	SpecHash               string                      `json:"spec_hash"`
-	ManifestVersion        string                      `json:"manifest_version"`
-	ManifestHash           string                      `json:"manifest_hash"`
-	TimestampPlanVersion   string                      `json:"timestamp_plan_version"`
-	TimestampPlanHash      string                      `json:"timestamp_plan_hash"`
-	Shards                 []ScalingShardBinding        `json:"shards"`
-	Comparisons            []ScalingComparisonEvidence `json:"comparisons"`
-	SeamlessAllowed        bool                        `json:"seamless_allowed"`
-	DiscontinuityRequired  bool                        `json:"discontinuity_required"`
+	SchemaVersion         string                      `json:"schema_version"`
+	SpecVersion           string                      `json:"spec_version"`
+	SpecHash              string                      `json:"spec_hash"`
+	ManifestVersion       string                      `json:"manifest_version"`
+	ManifestHash          string                      `json:"manifest_hash"`
+	TimestampPlanVersion  string                      `json:"timestamp_plan_version"`
+	TimestampPlanHash     string                      `json:"timestamp_plan_hash"`
+	Shards                []ScalingShardBinding       `json:"shards"`
+	Comparisons           []ScalingComparisonEvidence `json:"comparisons"`
+	SeamlessAllowed       bool                        `json:"seamless_allowed"`
+	DiscontinuityRequired bool                        `json:"discontinuity_required"`
 }
 
 func AvailableScalingTiers() []ScalingTierSpec {

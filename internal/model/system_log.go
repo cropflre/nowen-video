@@ -24,21 +24,21 @@ const (
 
 // SystemLog 统一系统日志
 type SystemLog struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:text"`
-	Type      string    `json:"type" gorm:"index;type:text;not null"`  // api / playback / system
-	Level     string    `json:"level" gorm:"index;type:text;not null"` // debug / info / warn / error
-	Message   string    `json:"message" gorm:"type:text"`
-	Detail    string    `json:"detail" gorm:"type:text"` // JSON 格式的详细信息
+	ID      string `json:"id" gorm:"primaryKey;type:text"`
+	Type    string `json:"type" gorm:"index;type:text;not null"`  // api / playback / system
+	Level   string `json:"level" gorm:"index;type:text;not null"` // debug / info / warn / error
+	Message string `json:"message" gorm:"type:text"`
+	Detail  string `json:"detail" gorm:"type:text"` // JSON 格式的详细信息
 
 	// API 请求相关字段
-	Method     string `json:"method,omitempty" gorm:"type:text"`      // GET / POST / PUT / DELETE
-	Path       string `json:"path,omitempty" gorm:"index;type:text"`  // 请求路径
-	StatusCode int    `json:"status_code,omitempty" gorm:"index"`     // HTTP 状态码
-	LatencyMs  int64  `json:"latency_ms,omitempty"`                   // 响应时间（毫秒）
-	ClientIP   string `json:"client_ip,omitempty" gorm:"type:text"`   // 客户端 IP
-	UserAgent  string `json:"user_agent,omitempty" gorm:"type:text"`  // User-Agent
+	Method     string `json:"method,omitempty" gorm:"type:text"`        // GET / POST / PUT / DELETE
+	Path       string `json:"path,omitempty" gorm:"index;type:text"`    // 请求路径
+	StatusCode int    `json:"status_code,omitempty" gorm:"index"`       // HTTP 状态码
+	LatencyMs  int64  `json:"latency_ms,omitempty"`                     // 响应时间（毫秒）
+	ClientIP   string `json:"client_ip,omitempty" gorm:"type:text"`     // 客户端 IP
+	UserAgent  string `json:"user_agent,omitempty" gorm:"type:text"`    // User-Agent
 	UserID     string `json:"user_id,omitempty" gorm:"index;type:text"` // 操作用户 ID
-	Username   string `json:"username,omitempty" gorm:"type:text"`    // 操作用户名
+	Username   string `json:"username,omitempty" gorm:"type:text"`      // 操作用户名
 
 	// 播放错误相关字段
 	MediaID    string `json:"media_id,omitempty" gorm:"index;type:text"` // 关联媒体 ID

@@ -34,33 +34,33 @@ const (
 // normalisation, then binds that source evidence to produced-media boundary and
 // A/V sync evidence. It is diagnostic only and cannot authorize seamless HLS.
 type Contract struct {
-	SchemaVersion                   string         `json:"schema_version"`
-	CaseID                         string         `json:"case_id"`
-	FixtureID                      string         `json:"fixture_id"`
-	SourceMode                     string         `json:"source_mode"`
-	DeclaredFrameRateNumerator     int64          `json:"declared_frame_rate_numerator"`
-	DeclaredFrameRateDenominator   int64          `json:"declared_frame_rate_denominator"`
-	DeclaredFrameRateMilli         int            `json:"declared_frame_rate_milli"`
-	SourceOffsetMicros             int64          `json:"source_offset_micros"`
-	OriginClass                    string         `json:"origin_class"`
-	OriginToleranceMicros          int64          `json:"origin_tolerance_micros"`
-	ExpectedBoundaryMicros         int64          `json:"expected_boundary_micros"`
-	FFmpegVersion                  string         `json:"ffmpeg_version"`
-	FFprobeVersion                 string         `json:"ffprobe_version"`
-	TimestampPlanVersion           string         `json:"timestamp_plan_version"`
-	TimestampPlanHash              string         `json:"timestamp_plan_hash"`
-	BoundaryEvidenceVersion        string         `json:"boundary_evidence_version"`
-	BoundaryEvidenceHash           string         `json:"boundary_evidence_hash"`
-	AVSyncEvidenceVersion          string         `json:"av_sync_evidence_version"`
-	AVSyncEvidenceHash             string         `json:"av_sync_evidence_hash"`
-	SourceVideo                    StreamEvidence `json:"source_video"`
-	SourceAudio                    StreamEvidence `json:"source_audio"`
-	NormalizedStartupVideoStartMS  int64          `json:"normalized_startup_video_start_ms"`
-	NormalizedStartupAudioStartMS  int64          `json:"normalized_startup_audio_start_ms"`
-	NormalizedContinuationVideoMS  int64          `json:"normalized_continuation_video_start_ms"`
-	NormalizedContinuationAudioMS  int64          `json:"normalized_continuation_audio_start_ms"`
-	SeamlessAllowed                bool           `json:"seamless_allowed"`
-	DiscontinuityRequired          bool           `json:"discontinuity_required"`
+	SchemaVersion                 string         `json:"schema_version"`
+	CaseID                        string         `json:"case_id"`
+	FixtureID                     string         `json:"fixture_id"`
+	SourceMode                    string         `json:"source_mode"`
+	DeclaredFrameRateNumerator    int64          `json:"declared_frame_rate_numerator"`
+	DeclaredFrameRateDenominator  int64          `json:"declared_frame_rate_denominator"`
+	DeclaredFrameRateMilli        int            `json:"declared_frame_rate_milli"`
+	SourceOffsetMicros            int64          `json:"source_offset_micros"`
+	OriginClass                   string         `json:"origin_class"`
+	OriginToleranceMicros         int64          `json:"origin_tolerance_micros"`
+	ExpectedBoundaryMicros        int64          `json:"expected_boundary_micros"`
+	FFmpegVersion                 string         `json:"ffmpeg_version"`
+	FFprobeVersion                string         `json:"ffprobe_version"`
+	TimestampPlanVersion          string         `json:"timestamp_plan_version"`
+	TimestampPlanHash             string         `json:"timestamp_plan_hash"`
+	BoundaryEvidenceVersion       string         `json:"boundary_evidence_version"`
+	BoundaryEvidenceHash          string         `json:"boundary_evidence_hash"`
+	AVSyncEvidenceVersion         string         `json:"av_sync_evidence_version"`
+	AVSyncEvidenceHash            string         `json:"av_sync_evidence_hash"`
+	SourceVideo                   StreamEvidence `json:"source_video"`
+	SourceAudio                   StreamEvidence `json:"source_audio"`
+	NormalizedStartupVideoStartMS int64          `json:"normalized_startup_video_start_ms"`
+	NormalizedStartupAudioStartMS int64          `json:"normalized_startup_audio_start_ms"`
+	NormalizedContinuationVideoMS int64          `json:"normalized_continuation_video_start_ms"`
+	NormalizedContinuationAudioMS int64          `json:"normalized_continuation_audio_start_ms"`
+	SeamlessAllowed               bool           `json:"seamless_allowed"`
+	DiscontinuityRequired         bool           `json:"discontinuity_required"`
 }
 
 type StreamEvidence struct {
@@ -85,12 +85,12 @@ func (c Contract) Validate() error {
 		return fmt.Errorf("unsupported source origin schema %q", c.SchemaVersion)
 	}
 	for label, value := range map[string]string{
-		"case ID":                    c.CaseID,
-		"fixture ID":                 c.FixtureID,
-		"FFmpeg version":             c.FFmpegVersion,
-		"FFprobe version":            c.FFprobeVersion,
-		"timestamp plan version":     c.TimestampPlanVersion,
-		"timestamp plan hash":        c.TimestampPlanHash,
+		"case ID":                   c.CaseID,
+		"fixture ID":                c.FixtureID,
+		"FFmpeg version":            c.FFmpegVersion,
+		"FFprobe version":           c.FFprobeVersion,
+		"timestamp plan version":    c.TimestampPlanVersion,
+		"timestamp plan hash":       c.TimestampPlanHash,
 		"boundary evidence version": c.BoundaryEvidenceVersion,
 		"boundary evidence hash":    c.BoundaryEvidenceHash,
 		"A/V sync evidence version": c.AVSyncEvidenceVersion,

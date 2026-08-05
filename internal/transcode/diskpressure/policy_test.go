@@ -7,11 +7,11 @@ import (
 
 func TestEvaluateNormalPressureCriticalAndRecovery(t *testing.T) {
 	cfg := Config{
-		HighWatermarkPct: 90,
-		LowWatermarkPct:  80,
-		MinFreeBytes:     200,
+		HighWatermarkPct:  90,
+		LowWatermarkPct:   80,
+		MinFreeBytes:      200,
 		CriticalFreeBytes: 50,
-		MaxStoreBytes:    500,
+		MaxStoreBytes:     500,
 	}
 	now := time.Now()
 
@@ -43,11 +43,11 @@ func TestEvaluateNormalPressureCriticalAndRecovery(t *testing.T) {
 
 func TestEvaluateUsesStoreLimitWithoutFilesystemPressure(t *testing.T) {
 	cfg := Config{
-		HighWatermarkPct: 90,
-		LowWatermarkPct:  80,
-		MinFreeBytes:     100,
+		HighWatermarkPct:  90,
+		LowWatermarkPct:   80,
+		MinFreeBytes:      100,
 		CriticalFreeBytes: 25,
-		MaxStoreBytes:    400,
+		MaxStoreBytes:     400,
 	}
 	snapshot := Evaluate(LevelNormal, Sample{
 		TotalBytes: 1000,

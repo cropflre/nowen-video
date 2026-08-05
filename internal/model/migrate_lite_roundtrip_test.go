@@ -363,12 +363,12 @@ func TestFreshLiteMigrationDoesNotCreateFullOnlyTables(t *testing.T) {
 	assertProfileIntegrity(t, db)
 
 	for name, table := range map[string]any{
-		"preprocess tasks":           &PreprocessTask{},
+		"preprocess tasks":          &PreprocessTask{},
 		"subtitle preprocess tasks": &SubtitlePreprocessTask{},
-		"video chapters":             &VideoChapter{},
-		"video highlights":           &VideoHighlight{},
-		"AI analysis tasks":          &AIAnalysisTask{},
-		"AI cache":                   &AICacheEntry{},
+		"video chapters":            &VideoChapter{},
+		"video highlights":          &VideoHighlight{},
+		"AI analysis tasks":         &AIAnalysisTask{},
+		"AI cache":                  &AICacheEntry{},
 	} {
 		if db.Migrator().HasTable(table) {
 			t.Fatalf("fresh Lite unexpectedly created full-only table: %s", name)

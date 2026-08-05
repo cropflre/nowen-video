@@ -17,20 +17,20 @@ func TestArtifactCleanupClaimRetryAndRecovery(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	old := now.Add(-8 * 24 * time.Hour)
 	artifact := &model.TranscodeArtifactRecord{
-		ID:                 "cleanup-artifact",
-		JobID:              "cleanup-job",
-		MediaID:            "cleanup-media",
-		Kind:               "hls_variant",
-		ProfileID:          "720p",
-		SourceFingerprint:  "source",
-		PlannerVersion:     "planner",
-		Status:             "superseded",
-		CleanupAttempts:    0,
-		CleanupState:       "",
-		CleanupErrorCode:   "",
+		ID:                  "cleanup-artifact",
+		JobID:               "cleanup-job",
+		MediaID:             "cleanup-media",
+		Kind:                "hls_variant",
+		ProfileID:           "720p",
+		SourceFingerprint:   "source",
+		PlannerVersion:      "planner",
+		Status:              "superseded",
+		CleanupAttempts:     0,
+		CleanupState:        "",
+		CleanupErrorCode:    "",
 		CleanupErrorMessage: "",
-		CreatedAt:          old,
-		UpdatedAt:          old,
+		CreatedAt:           old,
+		UpdatedAt:           old,
 	}
 	if err := db.Create(artifact).Error; err != nil {
 		t.Fatal(err)

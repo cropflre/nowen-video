@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -17,8 +16,6 @@ const (
 	transcodePressureAccessWriteInterval = 30 * time.Second
 	transcodePressureMaxReclaimBatches   = 4
 )
-
-var ErrTranscodeStoragePressure = errors.New("transcode artifact store is under disk pressure")
 
 type TranscodeDiskPressureStatus struct {
 	transcodediskpressure.Snapshot
@@ -41,9 +38,8 @@ type transcodeDiskPressureState struct {
 }
 
 var transcodeDiskPressureStates sync.Map
-var transcodeDiskPressureOwners sync.Map
 
-func (s *TranscodeService) diskPressureState() *transcodeDiskPressureState {
+func (s *ArtifactMaintenanceService) diskPressureState() *transcodeDiskPressureState {
 	if s == nil {
 		return &transcodeDiskPressureState{}
 	}
@@ -59,61 +55,11 @@ func (s *TranscodeService) diskPressureState() *transcodeDiskPressureState {
 	return state
 }
 
-func (s *TranscodeService) initializeDiskPressureGovernor() {
-	if s == nil || s.jobs == nil {
-		return
-	}
-	transcodeDiskPressureOwners.Store(s.jobs, s)
-	if err := s.initializeStorageReservations(); err != nil {
-		panic(fmt.Sprintf("initialize transcode storage reservations: %v", err))
-	}
-	s.runDiskPressureGovernorTick(time.Now(), true)
-}
-
-func transcodePressureOwner(queue *transcodePriorityQueue) *TranscodeService {
-	if queue == nil {
-		return nil
-	}
-	owner, ok := transcodeDiskPressureOwners.Load(queue)
-	if !ok {
-		return nil
-	}
-	service, _ := owner.(*TranscodeService)
-	return service
-}
-
-func transcodeQueueAdmissionError(queue *transcodePriorityQueue) error {
-	owner := transcodePressureOwner(queue)
-	if owner == nil {
-		return nil
-	}
-	return owner.checkDiskPressureAdmission()
-}
-
-func transcodeQueueClaimAllowed(queue *transcodePriorityQueue) bool {
-	return transcodeQueueAdmissionError(queue) == nil
-}
-
-func (s *TranscodeService) checkDiskPressureAdmission() error {
-	status := s.runDiskPressureGovernorTick(time.Now(), false)
-	if !status.AdmissionBlocked {
-		return nil
-	}
-	return fmt.Errorf(
-		"%w: level=%s free=%d store=%d reasons=%v",
-		ErrTranscodeStoragePressure,
-		status.Level,
-		status.FreeBytes,
-		status.StoreBytes,
-		status.Reasons,
-	)
-}
-
-func (s *TranscodeService) GetDiskPressureStatus() TranscodeDiskPressureStatus {
+func (s *ArtifactMaintenanceService) GetDiskPressureStatus() TranscodeDiskPressureStatus {
 	return s.runDiskPressureGovernorTick(time.Now(), false)
 }
 
-func (s *TranscodeService) runDiskPressureGovernorTick(now time.Time, force bool) TranscodeDiskPressureStatus {
+func (s *ArtifactMaintenanceService) runDiskPressureGovernorTick(now time.Time, force bool) TranscodeDiskPressureStatus {
 	state := s.diskPressureState()
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -166,7 +112,7 @@ func (s *TranscodeService) runDiskPressureGovernorTick(now time.Time, force bool
 	return state.status
 }
 
-func (s *TranscodeService) diskPressurePolicy() transcodediskpressure.Config {
+func (s *ArtifactMaintenanceService) diskPressurePolicy() transcodediskpressure.Config {
 	cfg := transcodediskpressure.DefaultConfig()
 	if s != nil && s.cfg != nil && s.cfg.Cache.MaxDiskUsageMB > 0 {
 		cfg.MaxStoreBytes = uint64(s.cfg.Cache.MaxDiskUsageMB) * 1024 * 1024
@@ -174,7 +120,7 @@ func (s *TranscodeService) diskPressurePolicy() transcodediskpressure.Config {
 	return cfg
 }
 
-func (s *TranscodeService) sampleDiskPressure(now time.Time) (transcodediskpressure.Sample, error) {
+func (s *ArtifactMaintenanceService) sampleDiskPressure(now time.Time) (transcodediskpressure.Sample, error) {
 	if s == nil || s.artifactStore == nil || s.artifactStore.Root() == "" {
 		return transcodediskpressure.Sample{}, fmt.Errorf("artifact store is unavailable")
 	}
@@ -195,7 +141,7 @@ func (s *TranscodeService) sampleDiskPressure(now time.Time) (transcodediskpress
 	}, nil
 }
 
-func (s *TranscodeService) reclaimDiskPressure(
+func (s *ArtifactMaintenanceService) reclaimDiskPressure(
 	snapshot transcodediskpressure.Snapshot,
 	now time.Time,
 ) (int, int64, error) {
@@ -282,7 +228,7 @@ func (s *TranscodeService) reclaimDiskPressure(
 	return totalRows, totalBytes, firstErr
 }
 
-func (s *TranscodeService) TouchArtifactAccess(artifactID string) {
+func (s *ArtifactMaintenanceService) TouchArtifactAccess(artifactID string) {
 	if s == nil || s.executionRepo == nil || artifactID == "" {
 		return
 	}
@@ -296,9 +242,15 @@ func (s *TranscodeService) TouchArtifactAccess(artifactID string) {
 	}
 }
 
-func (s *TranscodeService) artifactAccessTouchLoop(state *transcodeDiskPressureState) {
+func (s *ArtifactMaintenanceService) artifactAccessTouchLoop(state *transcodeDiskPressureState) {
 	lastWrite := make(map[string]time.Time)
-	for touch := range state.touches {
+	for {
+		var touch artifactAccessTouch
+		select {
+		case touch = <-state.touches:
+		case <-s.done:
+			return
+		}
 		if previous := lastWrite[touch.artifactID]; !previous.IsZero() && touch.at.Sub(previous) < transcodePressureAccessWriteInterval {
 			continue
 		}

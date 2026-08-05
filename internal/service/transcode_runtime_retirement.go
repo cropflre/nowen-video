@@ -11,12 +11,17 @@ import (
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	transcodedomain "github.com/nowen-video/nowen-video/internal/transcode/domain"
+	transcodeprofile "github.com/nowen-video/nowen-video/internal/transcode/profile"
 	"gorm.io/gorm"
 )
 
 var ErrPersistentRuntimeTranscodeRetired = errors.New("persistent runtime transcoding has been retired; create a playback session")
 
-const retiredRuntimePlaybackIntent = "retired_runtime_playback"
+const (
+	retiredRuntimePlaybackIntent    = "retired_runtime_playback"
+	startupStreamArtifactKind       = "startup_hls"
+	startupContinuationArtifactKind = "startup_continuation_hls"
+)
 
 var retiredRuntimePlaybackIntents = []string{
 	string(transcodedomain.IntentRuntimeHLS),
@@ -76,7 +81,7 @@ func runtimePlaybackJobHasLiveLease(job *model.TranscodeJobRecord, now time.Time
 // longer protected by a live Lease. A second server still running old code will
 // fail its next renewal because desired_state is cancelled; the periodic sweep
 // removes its workspace only after the Lease expires.
-func (s *TranscodeService) retirePersistentRuntimePlayback(now time.Time) (runtimePlaybackRetirementReport, error) {
+func (s *ArtifactMaintenanceService) retirePersistentRuntimePlayback(now time.Time) (runtimePlaybackRetirementReport, error) {
 	report := runtimePlaybackRetirementReport{}
 	if s == nil || s.repo == nil || s.repo.DB() == nil || s.cfg == nil {
 		return report, nil
@@ -350,7 +355,7 @@ func collectLegacyRuntimeDirectories(root string, includeQualityDirs bool, add f
 		if !includeQualityDirs {
 			continue
 		}
-		for quality := range qualityPresets {
+		for _, quality := range transcodeprofile.Names() {
 			add(filepath.Join(mediaRoot, quality))
 		}
 	}

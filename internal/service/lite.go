@@ -153,7 +153,6 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		Stream:              streamService,
 		MediaExecution:      mediaExecution,
 		ArtifactMaintenance: artifactMaintenance,
-		Transcode:           artifactMaintenance,
 		Metadata:            metadata,
 		Scanner:             scanner,
 		Playlist:            NewPlaylistService(repos.Playlist, logger),

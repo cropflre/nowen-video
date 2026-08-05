@@ -17,7 +17,7 @@ func TestCleanupStaleCacheRetriesBusyArtifactStorage(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("directory permission semantics differ on Windows")
 	}
-	service, db := newConcurrentArtifactService(t)
+	service, db := newArtifactMaintenanceTestService(t)
 	dir, err := service.artifactStore.PublishedDir("cleanup-media", "720p", "busy-artifact")
 	if err != nil {
 		t.Fatal(err)

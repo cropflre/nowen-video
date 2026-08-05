@@ -5,6 +5,7 @@
 //   - 简介：日文原版简介完整
 //   - 演员/片商：官方规范名
 //   - 日期：准确的发售日期
+//
 // 访问限制：Fanza 有 cookie 验证（age_check_done=1），已自动处理
 package service
 

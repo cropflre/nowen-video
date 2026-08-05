@@ -33,9 +33,9 @@ func TestArtifactAttestationLeaseAndPublishFences(t *testing.T) {
 		t.Fatalf("claim: ok=%v err=%v", ok, err)
 	}
 	attempt := &model.TranscodeAttemptRecord{
-		JobID:   job.ID,
-		Number:  1,
-		Status:  "running",
+		JobID:    job.ID,
+		Number:   1,
+		Status:   "running",
 		ExitCode: -1,
 	}
 	if err := repo.CreateAttempt(attempt); err != nil {

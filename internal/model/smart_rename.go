@@ -65,12 +65,12 @@ type RenamePlan struct {
 
 	// 统计快照
 	TotalItems    int `json:"total_items"`
-	NeedRename    int `json:"need_rename"`     // 真正需要改名的条目数
-	SkippedItems  int `json:"skipped_items"`   // 命中目标格式或被忽略
-	UnsafeItems   int `json:"unsafe_items"`    // 安全检测拦截
-	ExecutedItems int `json:"executed_items"`  // 已落盘
-	FailedItems   int `json:"failed_items"`    // 执行失败
-	AIInvocations int `json:"ai_invocations"`  // AI 调用次数（成本观测）
+	NeedRename    int `json:"need_rename"`    // 真正需要改名的条目数
+	SkippedItems  int `json:"skipped_items"`  // 命中目标格式或被忽略
+	UnsafeItems   int `json:"unsafe_items"`   // 安全检测拦截
+	ExecutedItems int `json:"executed_items"` // 已落盘
+	FailedItems   int `json:"failed_items"`   // 执行失败
+	AIInvocations int `json:"ai_invocations"` // AI 调用次数（成本观测）
 
 	// 创建者（用户 ID）
 	CreatedBy string `json:"created_by" gorm:"type:text"`

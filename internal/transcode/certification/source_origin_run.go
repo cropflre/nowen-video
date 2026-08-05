@@ -165,7 +165,7 @@ func RunSourceOriginCase(ctx context.Context, config Config, caseID string) (Sou
 	}
 
 	evidence := transcodesourceorigin.Contract{
-		SchemaVersion:                  transcodesourceorigin.SchemaVersion,
+		SchemaVersion:                 transcodesourceorigin.SchemaVersion,
 		CaseID:                        spec.ID,
 		FixtureID:                     spec.FixtureID,
 		SourceMode:                    spec.SourceMode,

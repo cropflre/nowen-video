@@ -976,7 +976,7 @@ func main() {
 	// ==================== Emby / Infuse 兼容层 ====================
 	// 独立挂载到 /emby/* 与根路径的 Emby 标准路径（/System /Users /Items /Videos 等）。
 	// 复用现有的 AuthService / StreamService / Repositories，不做侵入式改动。
-	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, services.Transcode, repos)
+	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, repos)
 	embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
 	sugar.Info("Emby 兼容层已启用：/emby/* 与根路径 Emby 端点（供 Infuse 等客户端使用）")
 
@@ -1102,8 +1102,8 @@ func main() {
 	// Full 与 Lite 使用同一套持久队列关闭协议：已 Claim 的任务最多等待
 	// 30 秒，超时后先原子释放本机 Lease 回 queued，再取消旧 Context。
 	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if services != nil && services.Transcode != nil {
-		if err := services.Transcode.Shutdown(transcodeCtx); err != nil {
+	if services != nil && services.ArtifactMaintenance != nil {
+		if err := services.ArtifactMaintenance.Shutdown(transcodeCtx); err != nil {
 			sugar.Warnf("转码服务关闭超时，未完成任务已重新排队: %v", err)
 		}
 	}

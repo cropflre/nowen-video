@@ -20,7 +20,6 @@ type Services struct {
 	Stream              *StreamService
 	MediaExecution      *MediaExecutionService
 	ArtifactMaintenance *ArtifactMaintenanceService
-	Transcode           *ArtifactMaintenanceService // deprecated alias
 	Metadata            *MetadataService
 	Scanner             *ScannerService
 	Playlist            *PlaylistService
@@ -101,7 +100,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		panic(fmt.Sprintf("initialize media execution service: %v", err))
 	}
 	artifactMaintenance := NewArtifactMaintenanceService(repos.Transcode, cfg, logger)
-	registerFullTranscodeProcessShutdown(artifactMaintenance, logger)
 	scanner := NewScannerService(repos.Media, repos.Series, cfg, logger)
 	metadata := NewMetadataService(repos.Media, repos.Series, repos.Person, repos.MediaPerson, cfg, logger)
 
@@ -242,7 +240,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	offlineDownloadService.SetWSHub(wsHub)
 
 	// V2: 创建ABR自适应码率服务
-	// 使用 TranscodeService 检测后的实际硬件加速模式（而非配置中的 "auto"）
+	// 使用 MediaExecutionService 检测后的实际硬件加速模式（而非配置中的 "auto"）
 	detectedHWAccel := mediaExecution.GetHWAccelInfo()
 	abrService := NewABRService(cfg, detectedHWAccel, logger)
 	abrService.SetWSHub(wsHub)
@@ -294,7 +292,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Stream:              NewStreamService(repos.Media, repos.Series, mediaExecution, cfg, logger),
 		MediaExecution:      mediaExecution,
 		ArtifactMaintenance: artifactMaintenance,
-		Transcode:           artifactMaintenance,
 		Metadata:            metadata,
 		Scanner:             scanner,
 		Playlist:            NewPlaylistService(repos.Playlist, logger),

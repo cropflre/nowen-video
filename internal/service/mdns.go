@@ -275,8 +275,8 @@ func (m *MdnsService) buildResponsePacket() []byte {
 	}
 
 	// 完整服务名
-	serviceFQDN := m.serviceType + "." + mdnsDomain           // _nowen-video._tcp.local
-	instanceFQDN := m.instanceName + "." + serviceFQDN        // NowenVideo._nowen-video._tcp.local
+	serviceFQDN := m.serviceType + "." + mdnsDomain                             // _nowen-video._tcp.local
+	instanceFQDN := m.instanceName + "." + serviceFQDN                          // NowenVideo._nowen-video._tcp.local
 	hostFQDN := strings.ReplaceAll(m.instanceName, " ", "-") + "." + mdnsDomain // NowenVideo.local
 
 	var buf []byte

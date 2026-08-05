@@ -11,12 +11,12 @@ import (
 const RealMediaCandidateMatrixSchemaVersion = "ffmpeg-real-media-corpus-candidate-matrix-v1"
 
 type RealMediaCandidateMatrixReport struct {
-	SchemaVersion   string                          `json:"schema_version"`
-	Spec            transcodecorpus.Spec            `json:"spec"`
-	Manifest        transcodecorpus.Manifest        `json:"manifest"`
-	ContractVersion string                          `json:"contract_version"`
-	ContractHash    string                          `json:"contract_hash"`
-	Evidence        transcodecandidate.Contract     `json:"evidence"`
+	SchemaVersion   string                      `json:"schema_version"`
+	Spec            transcodecorpus.Spec        `json:"spec"`
+	Manifest        transcodecorpus.Manifest    `json:"manifest"`
+	ContractVersion string                      `json:"contract_version"`
+	ContractHash    string                      `json:"contract_hash"`
+	Evidence        transcodecandidate.Contract `json:"evidence"`
 }
 
 func (r RealMediaCandidateMatrixReport) Validate() error {

@@ -115,6 +115,7 @@ func (h *Handler) PublicUsersHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, out)
 }
+
 // AuthenticateByNameRequest 对应 Emby 登录请求体。
 type AuthenticateByNameRequest struct {
 	Username string `json:"Username"`

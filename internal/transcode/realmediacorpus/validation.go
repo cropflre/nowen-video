@@ -105,11 +105,11 @@ func (v VideoPlan) Validate() error {
 		return fmt.Errorf("unsupported v1 video codec %q", v.Codec)
 	}
 	for label, value := range map[string]string{
-		"video profile":  v.Profile,
-		"pixel format":   v.PixelFormat,
+		"video profile":   v.Profile,
+		"pixel format":    v.PixelFormat,
 		"color primaries": v.ColorPrimaries,
-		"color transfer": v.ColorTransfer,
-		"color matrix":   v.ColorMatrix,
+		"color transfer":  v.ColorTransfer,
+		"color matrix":    v.ColorMatrix,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s is required", label)

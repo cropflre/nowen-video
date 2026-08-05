@@ -185,10 +185,10 @@ func (s *AdultScraperService) translateByDeeplx(text, sourceLang, targetLang str
 	}
 
 	var result struct {
-		Code         int    `json:"code"`
-		Data         string `json:"data"`
-		SourceLang   string `json:"source_lang"`
-		TargetLang   string `json:"target_lang"`
+		Code         int      `json:"code"`
+		Data         string   `json:"data"`
+		SourceLang   string   `json:"source_lang"`
+		TargetLang   string   `json:"target_lang"`
 		Alternatives []string `json:"alternatives"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
@@ -243,8 +243,8 @@ func (s *AdultScraperService) translateByBaidu(text, sourceLang, targetLang stri
 	}
 
 	var result struct {
-		ErrorCode string `json:"error_code"`
-		ErrorMsg  string `json:"error_msg"`
+		ErrorCode   string `json:"error_code"`
+		ErrorMsg    string `json:"error_msg"`
 		TransResult []struct {
 			Src string `json:"src"`
 			Dst string `json:"dst"`

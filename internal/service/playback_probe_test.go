@@ -9,14 +9,14 @@ import (
 func TestPlaybackTechnicalFromProbeUsesDefaultAudioAndPreservesDiagnostics(t *testing.T) {
 	probe := &model.MediaProbeRecord{
 		ProbeVersion: model.MediaProbeVersion,
-		VideoCodec:  "hevc",
-		Width:       3840,
-		Height:      2160,
+		VideoCodec:   "hevc",
+		Width:        3840,
+		Height:       2160,
 		FrameRateNum: 24000,
 		FrameRateDen: 1001,
-		PixelFormat: "yuv420p10le",
-		BitDepth:    10,
-		HDR:         true,
+		PixelFormat:  "yuv420p10le",
+		BitDepth:     10,
+		HDR:          true,
 	}
 	if err := probe.SetAudioStreams([]model.MediaProbeAudioStream{
 		{Index: 1, Codec: "aac"},
