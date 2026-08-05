@@ -44,3 +44,18 @@ path fields and records:
 
 Runtime History therefore remains auditable while storage summaries count only
 files that may still exist.
+
+## Acceptance
+
+- Fresh Lite and Full database profiles no longer create `transcode_tasks`.
+- Existing legacy tables survive migration unchanged and are used only as a
+  bounded, read-only inventory source.
+- Legacy directories receive deterministic Job and Artifact records, a persisted
+  seven-day observation window, path fencing and Cleanup Lease ownership.
+- Rollback is available only before both the persisted deadline and cleanup
+  claim; the Task Center and repository enforce the same boundary.
+- Successful retention and disk-pressure cleanup reclaim files while preserving
+  completed Artifact tombstones and original-path evidence.
+- The dedicated implementation gates passed focused migration/rollback tests,
+  the complete Go package suite, Lite and Full builds, and the Web production
+  build. The normal project CI matrix is rerun from this acceptance commit.
