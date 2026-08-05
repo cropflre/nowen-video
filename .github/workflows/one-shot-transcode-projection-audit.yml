@@ -39,5 +39,7 @@ jobs:
           grep_tree 'TranscodeArtifactRecord|CleanupState|cleanup_state|ArtifactMaintenance|CleanupArtifact|MigrationSource|migration_source' internal cmd docs
           echo '=== Runtime history ==='
           grep_tree 'RuntimeHistory|runtime-history|legacy_task' internal cmd web docs
-          echo '=== Current transcode model migrations ==='
-          grep_tree 'AutoMigrate|TranscodeTask|TranscodeJobRecord|TranscodeArtifactRecord' internal/model internal/serverprofile cmd
+          echo '=== Task Center Web actions ==='
+          grep_tree '/admin/tasks|artifact_cleanup|task_updated|actions\.map|action ===|retry|cancel' web/src
+          echo '=== Task Center constructors ==='
+          grep_tree 'NewTaskCenterService|NewTaskActionDispatcher|NewTaskCenterHandler' cmd internal
