@@ -16,6 +16,16 @@ export { authApi } from './auth'
 export { serverApi } from './server'
 export type { ServerCapability, ServerProfileManifest, ServerHealthData } from './server'
 export { taskCenterApi } from './tasks'
+export { runtimeHistoryApi } from './runtimeHistory'
+export type {
+  RuntimeHistoryRetentionPolicy,
+  RuntimeHistoryItem,
+  RuntimeHistoryAttempt,
+  RuntimeHistoryArtifact,
+  RuntimeHistoryList,
+  RuntimeHistoryDetail,
+  RuntimeHistorySummary,
+} from './runtimeHistory'
 export type {
   UnifiedTask,
   UnifiedTaskAction,

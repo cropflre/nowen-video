@@ -9,7 +9,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/middleware"
 )
 
-func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handlers, taskCenter *handler.TaskCenterHandler, jwtMiddleware gin.HandlerFunc) {
+func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handlers, taskCenter *handler.TaskCenterHandler, runtimeHistory *handler.RuntimeHistoryHandler, jwtMiddleware gin.HandlerFunc) {
 	r.OPTIONS("/api/admin/settings/douban/import", handler.DoubanImportCORS(), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -19,6 +19,9 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 	admin.Use(jwtMiddleware, middleware.AdminOnly())
 
 	admin.GET("/tasks", taskCenter.List)
+	admin.GET("/runtime-history", runtimeHistory.List)
+	admin.GET("/runtime-history/summary", runtimeHistory.Summary)
+	admin.GET("/runtime-history/jobs/:id", runtimeHistory.Detail)
 	admin.GET("/users", handlers.Admin.ListUsers)
 	admin.POST("/users", handlers.Admin.CreateUser)
 	admin.PUT("/users/:id", handlers.Admin.UpdateUser)

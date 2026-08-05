@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
 import TaskCenter from './TaskCenter'
+import RuntimeHistoryButton from './RuntimeHistoryButton'
 import PageTransition from './PageTransition'
 import { Menu } from 'lucide-react'
 
@@ -67,6 +68,7 @@ export default function Layout() {
       style={{ backgroundColor: 'transparent' }}
     >
       <TaskCenter />
+      <RuntimeHistoryButton />
       <div className="relative flex flex-1 min-h-0 overflow-hidden">
         {/* 深空背景光效 */}
         <div className="pointer-events-none absolute inset-0 z-0 bg-deep-space" />

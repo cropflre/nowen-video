@@ -95,6 +95,10 @@ func main() {
 	repos := repository.NewRepositories(db)
 	services := service.NewServices(repos, cfg, sugar)
 	handlers := handler.NewHandlers(services, repos, cfg, sugar)
+	runtimeHistoryHandler := handler.NewRuntimeHistoryHandler(
+		service.NewRuntimeHistoryService(repository.NewRuntimeHistoryRepo(repos.DB()), sugar),
+		sugar,
+	)
 	playbackRuntime, err := newFullPlaybackRuntime(cfg, services, repos, sugar)
 	if err != nil {
 		sugar.Fatalf("初始化临时播放会话服务失败: %v", err)
@@ -529,6 +533,9 @@ func main() {
 		admin.POST("/invite-codes", handlers.Admin.CreateInviteCode)
 		admin.DELETE("/invite-codes/:id", handlers.Admin.DeleteInviteCode)
 		admin.GET("/system", handlers.Admin.SystemInfo)
+		admin.GET("/runtime-history", runtimeHistoryHandler.List)
+		admin.GET("/runtime-history/summary", runtimeHistoryHandler.Summary)
+		admin.GET("/runtime-history/jobs/:id", runtimeHistoryHandler.Detail)
 		admin.GET("/transcode/status", handlers.Admin.RetiredRuntimeTranscode)
 		admin.GET("/transcode/throttle", handlers.Admin.RetiredRuntimeTranscode)
 		admin.POST("/transcode/:taskId/cancel", handlers.Admin.RetiredRuntimeTranscode)

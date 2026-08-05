@@ -69,6 +69,10 @@ func buildRouter(
 	)
 	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, taskActionDispatcher, logger)
 	taskCenterHandler.SetAuditService(services.User)
+	runtimeHistoryHandler := handler.NewRuntimeHistoryHandler(
+		service.NewRuntimeHistoryService(repository.NewRuntimeHistoryRepo(repos.DB()), logger),
+		logger,
+	)
 	playbackPlanHandler := handler.NewPlaybackPlanHandler(services.Stream, logger)
 	playbackSessionHandler := handler.NewPlaybackSessionHandler(
 		playbackSessions,
@@ -80,7 +84,7 @@ func buildRouter(
 	startMaintenanceJobs(repos, appVer)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
 	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, repos, jwtMiddleware)
-	registerAdminAPI(r, cfg, handlers, taskCenterHandler, jwtMiddleware)
+	registerAdminAPI(r, cfg, handlers, taskCenterHandler, runtimeHistoryHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 
 	// Pulse 已从客户端移除。旧书签或旧浏览器地址必须在服务端直接退出该页面，
