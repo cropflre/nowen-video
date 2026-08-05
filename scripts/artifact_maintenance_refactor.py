@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
-import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -24,20 +23,31 @@ SYMBOLS = (
 )
 
 
-def run(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=ROOT, text=True, capture_output=True, check=check)
+def go_files() -> list[pathlib.Path]:
+    return [
+        path
+        for path in ROOT.rglob("*.go")
+        if "vendor" not in path.parts and ".git" not in path.parts
+    ]
 
 
 def audit() -> None:
+    files = sorted(go_files())
     print("=== artifact maintenance refactor audit ===")
     for symbol in SYMBOLS:
         print(f"\n--- {symbol} ---")
-        result = run("rg", "-n", "--glob", "*.go", "--glob", "!vendor/**", symbol, check=False)
-        print(result.stdout.rstrip() or "<no matches>")
+        matches = 0
+        for path in files:
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if symbol in line:
+                    print(f"{path.relative_to(ROOT)}:{lineno}:{line}")
+                    matches += 1
+        if matches == 0:
+            print("<no matches>")
     print("\n--- transcode service files ---")
     for path in sorted((ROOT / "internal/service").glob("transcode*.go")):
         text = path.read_text(encoding="utf-8")
-        receivers = sorted(set(re.findall(r"func \\(s \\*(\\w+)\\)", text)))
+        receivers = sorted(set(re.findall(r"func \(s \*(\w+)\)", text)))
         symbols = [name for name in SYMBOLS if name in text]
         print(f"{path.relative_to(ROOT)} size={path.stat().st_size} receivers={receivers} symbols={symbols}")
 
