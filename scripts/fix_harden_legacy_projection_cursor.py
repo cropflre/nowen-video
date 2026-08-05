@@ -56,7 +56,23 @@ new_size_block = '''\t\tsizeBytes, sizeErr := directorySizeWithCheckpoint(output
 '''
 if service.count(old_size_block) != 1:
     raise RuntimeError(f"directory size block anchor count={service.count(old_size_block)}")
-service_path.write_text(service.replace(old_size_block, new_size_block, 1), encoding="utf-8")
+service = service.replace(old_size_block, new_size_block, 1)
+
+old_clock = '''\tlastRenewed := claimedAt
+\treturn func(force bool) error {
+\t\tcurrent := time.Now()
+\t\tif current.Before(lastRenewed) {
+\t\t\tcurrent = lastRenewed
+\t\t}
+'''
+new_clock = '''\twallStarted := time.Now()
+\tlastRenewed := claimedAt
+\treturn func(force bool) error {
+\t\tcurrent := claimedAt.Add(time.Since(wallStarted))
+'''
+if service.count(old_clock) != 1:
+    raise RuntimeError(f"lease heartbeat clock anchor count={service.count(old_clock)}")
+service_path.write_text(service.replace(old_clock, new_clock, 1), encoding="utf-8")
 
 history_path = root / "internal/service/runtime_history.go"
 history = history_path.read_text(encoding="utf-8")
