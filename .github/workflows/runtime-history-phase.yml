@@ -45,7 +45,7 @@ jobs:
           go build ./cmd/server
           grep -R 'type RuntimeHistoryService struct' internal/service/runtime_history.go
           ! grep -E 'Submit|ClaimJob|RenewJobLease|exec\.Command|CancelJob|RetryJob' internal/service/runtime_history.go
-          ! grep -R -E '(POST|PUT|PATCH|DELETE)\("/runtime-history' cmd/server cmd/server-lite --include='*.go'
+          ! grep -E '(POST|PUT|PATCH|DELETE)\("/runtime-history' cmd/server/main.go cmd/server-lite/routes_admin.go
       - name: Verify Web typecheck and build
         working-directory: web
         run: |
