@@ -35,8 +35,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Apply cursor hardening
         run: |
-          python3 scripts/fix_harden_legacy_projection_cursor.py
           python3 scripts/harden_legacy_projection_cursor.py
+          python3 scripts/fix_harden_legacy_projection_cursor.py
           gofmt -w \
             internal/model/transcode_execution.go \
             internal/repository/repo_legacy_transcode_projection_migration.go \
