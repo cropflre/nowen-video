@@ -1,0 +1,27 @@
+name: One-shot artifact maintenance refactor
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - scripts/artifact_maintenance_refactor.py
+      - .github/workflows/artifact-maintenance-refactor.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: artifact-maintenance-refactor
+  cancel-in-progress: true
+
+jobs:
+  refactor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/server-lite-v1
+          fetch-depth: 0
+      - name: Audit current dependency closure
+        run: python3 scripts/artifact_maintenance_refactor.py --audit
