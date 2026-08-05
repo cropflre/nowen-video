@@ -1,0 +1,74 @@
+name: One-shot legacy projection cursor hardening
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - scripts/harden_legacy_projection_cursor.py
+      - .github/workflows/one-shot-legacy-projection-cursor-hardening.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: legacy-projection-cursor-hardening
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/server-lite-v1
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Apply cursor hardening
+        run: |
+          python3 scripts/harden_legacy_projection_cursor.py
+          gofmt -w \
+            internal/model/transcode_execution.go \
+            internal/repository/repo_legacy_transcode_projection_migration.go \
+            internal/repository/repo_legacy_transcode_projection_migration_test.go \
+            internal/service/legacy_transcode_projection_migration.go \
+            internal/service/legacy_transcode_projection_cursor_test.go \
+            internal/service/runtime_history.go \
+            internal/service/task_center.go \
+            cmd/server/legacy_projection_cursor_test.go
+          git diff --check
+      - name: Verify hardened cursor contracts
+        run: |
+          go test ./internal/model -run 'LegacyProjection'
+          go test ./internal/repository -run 'LegacyProjection'
+          go test ./internal/service -run 'LegacyProjection|RuntimeHistory|TaskCenter|TaskAction'
+          go test ./cmd/server ./cmd/server-lite
+          go test ./...
+          go build -o /tmp/nowen-server-lite ./cmd/server-lite
+          go build -o /tmp/nowen-server ./cmd/server
+          grep -F 'RenewLegacyProjectionMigrationLease' internal/repository/repo_legacy_transcode_projection_migration.go
+          grep -F 'legacyProjectionSourceCheckInterval' internal/service/legacy_transcode_projection_migration.go
+          grep -F 'legacyProjectionFrozenHighWater' internal/service/legacy_transcode_projection_migration.go
+          ! grep -n 'CountLegacyTerminalWithOutputThrough' internal/service/legacy_transcode_projection_migration.go | grep -q '^.*highWater != nil'
+      - name: Verify Web production build
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Commit verified hardening and remove one-shot files
+        run: |
+          rm -f scripts/harden_legacy_projection_cursor.py
+          rm -f .github/workflows/one-shot-legacy-projection-cursor-hardening.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(transcode): harden legacy migration cursor"
+          git push origin HEAD:refactor/server-lite-v1
