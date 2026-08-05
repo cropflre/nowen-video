@@ -14,8 +14,9 @@ func TestPersistentRuntimeWorkerRemainsRetired(t *testing.T) {
 	})
 	assertRuntimeSourceContains(t, "../../internal/service/media_execution.go", []string{
 		"type MediaExecutionService struct",
+		"playbackCompatibilityAdapter",
 		"NewPlaybackSessionServiceWithExecution",
-		"adapter.repo != nil",
+		"executionRuntime: s.executionRuntime",
 	})
 	assertRuntimeSourceContains(t, "../server-lite/main.go", []string{
 		"NewMediaExecutionService",
