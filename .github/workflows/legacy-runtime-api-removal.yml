@@ -6,6 +6,7 @@ on:
       - refactor/server-lite-v1
     paths:
       - scripts/remove_legacy_runtime_api.py
+      - scripts/remove_legacy_runtime_api_fix.py
       - .github/workflows/legacy-runtime-api-removal.yml
 
 permissions:
@@ -34,16 +35,17 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Remove legacy Runtime API surface
         run: |
+          python3 scripts/remove_legacy_runtime_api_fix.py
           python3 scripts/remove_legacy_runtime_api.py
-          gofmt -w internal/handler/stream.go internal/handler/admin.go cmd/server/main.go cmd/server-lite/routes_core.go cmd/server-lite/routes_admin.go cmd/server/legacy_runtime_api_removed_test.go
+          gofmt -w internal/middleware/middleware.go internal/handler/stream.go internal/handler/admin.go cmd/server/main.go cmd/server-lite/routes_core.go cmd/server-lite/routes_admin.go cmd/server/legacy_runtime_api_removed_test.go
           git diff --check
       - name: Verify backend contracts and binaries
         run: |
           go test ./...
           go build ./cmd/server-lite
           go build ./cmd/server
-          ! grep -R -E 'RetiredRuntimeHLS|RetiredRuntimeTranscode' cmd internal --include='*.go' --exclude='*_test.go'
-          ! grep -R -E '(/stream/:id/master\.m3u8|/stream/:id/:quality/:segment|/stream/:id/playback|/stream/:id/bandwidth|/stream/:id/throttle|/audio-track/:id/:trackIdx|/transcode-tasks|/transcode/status)' cmd --include='*.go' --exclude='*_test.go'
+          ! grep -R -E 'RetiredRuntimeHLS|RetiredRuntimeTranscode|retiredPersistentRuntimeAdminPath' cmd internal --include='*.go' --exclude='*_test.go'
+          ! grep -R -E '(/stream/:id/master\.m3u8|/stream/:id/:quality/:segment|/stream/:id/playback|/stream/:id/bandwidth|/stream/:id/throttle|/audio-track/:id/:trackIdx|/transcode-tasks|/transcode/status)' cmd internal --include='*.go' --exclude='*_test.go'
           grep -F 'api.POST("/playback/sessions"' cmd/server-lite/routes_core.go
           grep -F 'playbackRuntime.Register(api, guardByMediaID)' cmd/server/main.go
           grep -F 'admin.GET("/runtime-history"' cmd/server/main.go cmd/server-lite/routes_admin.go
@@ -58,6 +60,7 @@ jobs:
       - name: Commit verified phase and remove one-shot files
         run: |
           rm -f scripts/remove_legacy_runtime_api.py
+          rm -f scripts/remove_legacy_runtime_api_fix.py
           rm -f .github/workflows/legacy-runtime-api-removal.yml
           git add -A
           git config user.name "github-actions[bot]"
