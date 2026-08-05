@@ -20,4 +20,10 @@ if content.count(redundant) != 1:
     raise RuntimeError(f"retirement log assertion mismatch: {content.count(redundant)}")
 content = content.replace(redundant, "", 1)
 
+old_driver = '"gorm.io/driver/sqlite"'
+new_driver = '"github.com/glebarez/sqlite"'
+if content.count(old_driver) != 1:
+    raise RuntimeError(f"SQLite test driver anchor mismatch: {content.count(old_driver)}")
+content = content.replace(old_driver, new_driver, 1)
+
 path.write_text(content, encoding="utf-8")
