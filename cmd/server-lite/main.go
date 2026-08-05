@@ -48,7 +48,16 @@ func main() {
 
 	repos := repository.NewRepositories(db)
 	services := service.NewLiteServices(repos, cfg, sugar)
-	playbackSessions, err := service.NewPlaybackSessionService(repos.Media, services.Transcode, cfg, sugar)
+	mediaExecution, err := service.NewMediaExecutionService(repos.DB(), cfg, sugar)
+	if err != nil {
+		sugar.Fatalf("初始化媒体执行平台失败: %v", err)
+	}
+	playbackSessions, err := service.NewPlaybackSessionServiceWithExecution(
+		repos.Media,
+		mediaExecution,
+		cfg,
+		sugar,
+	)
 	if err != nil {
 		sugar.Fatalf("初始化临时播放会话服务失败: %v", err)
 	}
@@ -81,8 +90,8 @@ func main() {
 	sugar.Info("正在关闭 nowen-video lite...")
 	mdnsService.Stop()
 
-	// Stop accepting new API requests first, so no new playback session or
-	// background transcode submission can race with shutdown.
+	// Stop accepting new API requests first, so no new playback session can
+	// race with shutdown. Persistent Runtime submissions are permanently retired.
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := srv.Shutdown(httpCtx); err != nil {
 		sugar.Warnf("HTTP 服务优雅关闭超时: %v", err)
@@ -91,20 +100,19 @@ func main() {
 
 	// Runtime playback is ephemeral and must never be requeued or recovered.
 	// Cancel its FFmpeg processes, drain active segment readers, and delete all
-	// temporary generation directories before handling durable background Jobs.
+	// temporary generation directories before stopping migration maintenance.
 	playbackCtx, playbackCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err := playbackSessions.Shutdown(playbackCtx); err != nil {
 		sugar.Warnf("播放会话清理超时: %v", err)
 	}
 	playbackCancel()
 
-	// Claimed background jobs may finish normally. At the deadline,
-	// TranscodeService fences the old worker by returning its Lease to queued
-	// before cancelling Context.
+	// TranscodeService is now a compatibility and migration-maintenance shell.
+	// Its queue cannot Claim Jobs; Shutdown only stops retirement/cleanup loops.
 	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	if services.Transcode != nil {
 		if err := services.Transcode.Shutdown(transcodeCtx); err != nil {
-			sugar.Warnf("转码服务关闭超时，未完成任务已重新排队: %v", err)
+			sugar.Warnf("转码迁移维护服务关闭超时: %v", err)
 		}
 	}
 	transcodeCancel()
