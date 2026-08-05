@@ -106,6 +106,7 @@ export interface RuntimeHistoryLegacyMigration {
   artifacts_blocked: number
   missing_paths: number
   failure_count: number
+  consecutive_failures: number
   last_error_code?: string
   last_error_message?: string
   cursor_updated_at?: string
@@ -114,6 +115,7 @@ export interface RuntimeHistoryLegacyMigration {
   high_water_id?: string
   completed_at?: string
   source_retire_after?: string
+  next_source_check_at?: string
   retirement_eligible: boolean
 }
 

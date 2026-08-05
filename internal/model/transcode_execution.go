@@ -204,11 +204,13 @@ type LegacyTranscodeProjectionMigrationState struct {
 	MissingPaths         int64      `json:"missing_paths"`
 	BatchSize            int        `json:"batch_size"`
 	FailureCount         int        `json:"failure_count"`
+	ConsecutiveFailures  int        `json:"consecutive_failures"`
 	LastErrorCode        string     `json:"last_error_code" gorm:"type:text"`
 	LastErrorMessage     string     `json:"last_error_message" gorm:"type:text"`
 	LastBatchStartedAt   *time.Time `json:"last_batch_started_at,omitempty"`
 	LastBatchCompletedAt *time.Time `json:"last_batch_completed_at,omitempty"`
 	NextAttemptAt        *time.Time `json:"next_attempt_at,omitempty" gorm:"index"`
+	NextSourceCheckAt    *time.Time `json:"next_source_check_at,omitempty" gorm:"index"`
 	LeaseOwner           string     `json:"lease_owner" gorm:"type:text"`
 	LeaseToken           string     `json:"lease_token" gorm:"index;type:text"`
 	LeaseExpiresAt       *time.Time `json:"lease_expires_at,omitempty" gorm:"index"`

@@ -48,7 +48,7 @@ func TestLegacyProjectionCursorAndGenerationLease(t *testing.T) {
 	if err != nil || len(batch) != 2 || batch[0].ID != "a" || batch[1].ID != "b" {
 		t.Fatalf("batch=%+v err=%v", batch, err)
 	}
-	state, changed, err := execution.PrepareLegacyProjectionMigration(LegacyTranscodeArtifactMigrationSource, high, target, 2, now, 30*24*time.Hour)
+	state, changed, err := execution.PrepareLegacyProjectionMigration(LegacyTranscodeArtifactMigrationSource, high, target, 2, now, 30*24*time.Hour, 15*time.Minute)
 	if err != nil || !changed || state.Generation != 1 {
 		t.Fatalf("prepare=%+v changed=%v err=%v", state, changed, err)
 	}
@@ -60,7 +60,7 @@ func TestLegacyProjectionCursorAndGenerationLease(t *testing.T) {
 		t.Fatalf("second claim ok=%v err=%v", ok, err)
 	}
 	cursor := LegacyProjectionCursor{UpdatedAt: batch[1].UpdatedAt, ID: batch[1].ID}
-	state, ok, err = execution.CompleteLegacyProjectionMigrationBatch(state.Source, "token-one", cursor, LegacyProjectionBatchDelta{ScannedRows: 2}, false, now, 30*24*time.Hour)
+	state, ok, err = execution.CompleteLegacyProjectionMigrationBatch(state.Source, "token-one", cursor, LegacyProjectionBatchDelta{ScannedRows: 2}, false, now, 30*24*time.Hour, 15*time.Minute)
 	if err != nil || !ok || state.Status != LegacyProjectionMigrationPending || state.ScannedRows != 2 {
 		t.Fatalf("batch state=%+v ok=%v err=%v", state, ok, err)
 	}
@@ -74,7 +74,7 @@ func TestCompletedLegacyProjectionReopensOnlyForNewHighWater(t *testing.T) {
 		t.Fatal(err)
 	}
 	high, _ := source.LegacyProjectionHighWater()
-	state, _, err := execution.PrepareLegacyProjectionMigration(LegacyTranscodeArtifactMigrationSource, high, 1, 10, now, 30*24*time.Hour)
+	state, _, err := execution.PrepareLegacyProjectionMigration(LegacyTranscodeArtifactMigrationSource, high, 1, 10, now, 30*24*time.Hour, 15*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,20 +82,42 @@ func TestCompletedLegacyProjectionReopensOnlyForNewHighWater(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatal(err)
 	}
-	state, ok, err = execution.CompleteLegacyProjectionMigrationBatch(state.Source, "token", *high, LegacyProjectionBatchDelta{ScannedRows: 1}, true, now, 30*24*time.Hour)
+	state, ok, err = execution.CompleteLegacyProjectionMigrationBatch(state.Source, "token", *high, LegacyProjectionBatchDelta{ScannedRows: 1}, true, now, 30*24*time.Hour, 15*time.Minute)
 	if err != nil || !ok || state.Generation != 1 {
 		t.Fatalf("complete=%+v err=%v", state, err)
 	}
-	state, changed, err := execution.PrepareLegacyProjectionMigration(state.Source, high, 1, 10, now.Add(time.Minute), 30*24*time.Hour)
-	if err != nil || changed || state.Generation != 1 {
-		t.Fatalf("same high-water reopened state=%+v changed=%v err=%v", state, changed, err)
+	state, changed, err := execution.PrepareLegacyProjectionMigration(state.Source, high, 1, 10, now.Add(time.Minute), 30*24*time.Hour, 15*time.Minute)
+	if err != nil || !changed || state.Generation != 1 {
+		t.Fatalf("same high-water source-check scheduling state=%+v changed=%v err=%v", state, changed, err)
 	}
 	if err := db.Create(&model.TranscodeTask{ID: "b", Status: "done", OutputDir: "/tmp/b", UpdatedAt: now.Add(time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
 	high, _ = source.LegacyProjectionHighWater()
-	state, changed, err = execution.PrepareLegacyProjectionMigration(state.Source, high, 2, 10, now.Add(time.Hour), 30*24*time.Hour)
+	state, changed, err = execution.PrepareLegacyProjectionMigration(state.Source, high, 2, 10, now.Add(time.Hour), 30*24*time.Hour, 15*time.Minute)
 	if err != nil || !changed || state.Generation != 2 || state.CursorID != "a" {
 		t.Fatalf("reopen=%+v changed=%v err=%v", state, changed, err)
+	}
+}
+
+func TestLegacyProjectionLeaseRenewalRejectsExpiredOwner(t *testing.T) {
+	_, execution := newLegacyProjectionRepoTestDB(t)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	high := &LegacyProjectionCursor{UpdatedAt: now, ID: "a"}
+	state, _, err := execution.PrepareLegacyProjectionMigration(LegacyTranscodeArtifactMigrationSource, high, 1, 10, now, 30*24*time.Hour, 15*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := execution.ClaimLegacyProjectionMigration(state.Source, "one", "token-one", now, time.Minute); err != nil || !ok {
+		t.Fatalf("claim one ok=%v err=%v", ok, err)
+	}
+	if ok, err := execution.RenewLegacyProjectionMigrationLease(state.Source, "token-one", now.Add(30*time.Second), time.Minute); err != nil || !ok {
+		t.Fatalf("renew current owner ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := execution.ClaimLegacyProjectionMigration(state.Source, "two", "token-two", now.Add(2*time.Minute), time.Minute); err != nil || !ok {
+		t.Fatalf("takeover ok=%v err=%v", ok, err)
+	}
+	if ok, err := execution.RenewLegacyProjectionMigrationLease(state.Source, "token-one", now.Add(2*time.Minute), time.Minute); err != nil || ok {
+		t.Fatalf("expired owner renewed ok=%v err=%v", ok, err)
 	}
 }

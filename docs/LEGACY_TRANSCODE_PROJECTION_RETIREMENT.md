@@ -82,3 +82,14 @@ next upgrade opens a new generation beginning at the previous high-water.
 
 The retirement date is evidence for an explicit later schema-removal decision; it
 does not automatically drop `transcode_tasks`.
+
+
+A running or failed generation uses only its frozen high-water and does not query
+the legacy source again. After completion, the maintenance loop reads only the
+durable state row until a 15-minute source-check deadline is reached. A new
+source count is calculated only when the tail high-water has actually advanced.
+
+The migration Lease is renewed during directory traversal and is checked again
+immediately before Artifact insertion. An expired owner cannot renew or commit a
+batch after another instance takes over. Retry delay is based on consecutive
+failures, while the cumulative failure count remains audit evidence.

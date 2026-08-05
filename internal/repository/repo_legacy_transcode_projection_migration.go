@@ -59,7 +59,11 @@ func (r *TranscodeExecutionRepo) PrepareLegacyProjectionMigration(
 	batchSize int,
 	now time.Time,
 	retirementWindow time.Duration,
+	sourceCheckInterval time.Duration,
 ) (*model.LegacyTranscodeProjectionMigrationState, bool, error) {
+	if sourceCheckInterval <= 0 {
+		sourceCheckInterval = 15 * time.Minute
+	}
 	var state model.LegacyTranscodeProjectionMigrationState
 	changed := false
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -74,13 +78,14 @@ func (r *TranscodeExecutionRepo) PrepareLegacyProjectionMigration(
 			if state.HighWaterUpdatedAt == nil && state.Status != LegacyProjectionMigrationCompleted {
 				retireAfter := now.Add(retirementWindow)
 				updates = map[string]any{
-					"status":              LegacyProjectionMigrationCompleted,
-					"target_rows":         int64(0),
-					"completed_at":        now,
-					"quiescent_since":     now,
-					"source_retire_after": retireAfter,
-					"next_attempt_at":     nil,
-					"updated_at":          now,
+					"status":               LegacyProjectionMigrationCompleted,
+					"target_rows":          int64(0),
+					"completed_at":         now,
+					"quiescent_since":      now,
+					"source_retire_after":  retireAfter,
+					"next_attempt_at":      nil,
+					"next_source_check_at": now.Add(sourceCheckInterval),
+					"updated_at":           now,
 				}
 			}
 		} else if state.HighWaterUpdatedAt == nil {
@@ -92,6 +97,7 @@ func (r *TranscodeExecutionRepo) PrepareLegacyProjectionMigration(
 				"target_rows":           targetRows,
 				"batch_size":            batchSize,
 				"next_attempt_at":       now,
+				"next_source_check_at":  nil,
 				"completed_at":          nil,
 				"quiescent_since":       nil,
 				"source_retire_after":   nil,
@@ -110,12 +116,19 @@ func (r *TranscodeExecutionRepo) PrepareLegacyProjectionMigration(
 					"target_rows":           targetRows,
 					"batch_size":            batchSize,
 					"next_attempt_at":       now,
+					"next_source_check_at":  nil,
+					"consecutive_failures":  int64(0),
 					"last_error_code":       "",
 					"last_error_message":    "",
 					"completed_at":          nil,
 					"quiescent_since":       nil,
 					"source_retire_after":   nil,
 					"updated_at":            now,
+				}
+			} else if state.Status == LegacyProjectionMigrationCompleted {
+				updates = map[string]any{
+					"next_source_check_at": now.Add(sourceCheckInterval),
+					"updated_at":           now,
 				}
 			}
 		}
@@ -155,7 +168,29 @@ func (r *TranscodeExecutionRepo) ClaimLegacyProjectionMigration(source, owner, t
 	return state, state != nil, err
 }
 
-func (r *TranscodeExecutionRepo) CompleteLegacyProjectionMigrationBatch(source, token string, cursor LegacyProjectionCursor, delta LegacyProjectionBatchDelta, completed bool, now time.Time, retirementWindow time.Duration) (*model.LegacyTranscodeProjectionMigrationState, bool, error) {
+func (r *TranscodeExecutionRepo) RenewLegacyProjectionMigrationLease(source, token string, now time.Time, leaseDuration time.Duration) (bool, error) {
+	if leaseDuration <= 0 {
+		leaseDuration = 2 * time.Minute
+	}
+	result := r.db.Model(&model.LegacyTranscodeProjectionMigrationState{}).
+		Where(
+			"source = ? AND status = ? AND lease_token = ? AND lease_expires_at IS NOT NULL AND lease_expires_at > ?",
+			source,
+			LegacyProjectionMigrationRunning,
+			token,
+			now,
+		).
+		Updates(map[string]any{
+			"lease_expires_at": now.Add(leaseDuration),
+			"updated_at":       now,
+		})
+	return result.RowsAffected == 1, result.Error
+}
+
+func (r *TranscodeExecutionRepo) CompleteLegacyProjectionMigrationBatch(source, token string, cursor LegacyProjectionCursor, delta LegacyProjectionBatchDelta, completed bool, now time.Time, retirementWindow, sourceCheckInterval time.Duration) (*model.LegacyTranscodeProjectionMigrationState, bool, error) {
+	if sourceCheckInterval <= 0 {
+		sourceCheckInterval = 15 * time.Minute
+	}
 	updates := map[string]any{
 		"cursor_updated_at":       cursor.UpdatedAt,
 		"cursor_id":               cursor.ID,
@@ -165,6 +200,7 @@ func (r *TranscodeExecutionRepo) CompleteLegacyProjectionMigrationBatch(source, 
 		"artifacts_blocked":       gorm.Expr("artifacts_blocked + ?", delta.ArtifactsBlocked),
 		"missing_paths":           gorm.Expr("missing_paths + ?", delta.MissingPaths),
 		"last_batch_completed_at": now,
+		"consecutive_failures":    int64(0),
 		"last_error_code":         "",
 		"last_error_message":      "",
 		"lease_owner":             "",
@@ -178,12 +214,14 @@ func (r *TranscodeExecutionRepo) CompleteLegacyProjectionMigrationBatch(source, 
 		updates["quiescent_since"] = now
 		updates["source_retire_after"] = now.Add(retirementWindow)
 		updates["next_attempt_at"] = nil
+		updates["next_source_check_at"] = now.Add(sourceCheckInterval)
 	} else {
 		updates["status"] = LegacyProjectionMigrationPending
 		updates["completed_at"] = nil
 		updates["quiescent_since"] = nil
 		updates["source_retire_after"] = nil
 		updates["next_attempt_at"] = now
+		updates["next_source_check_at"] = nil
 	}
 	result := r.db.Model(&model.LegacyTranscodeProjectionMigrationState{}).
 		Where("source = ? AND status = ? AND lease_token = ?", source, LegacyProjectionMigrationRunning, token).
@@ -201,9 +239,11 @@ func (r *TranscodeExecutionRepo) FailLegacyProjectionMigrationBatch(source, toke
 		Updates(map[string]any{
 			"status":                  LegacyProjectionMigrationFailed,
 			"failure_count":           gorm.Expr("failure_count + 1"),
+			"consecutive_failures":    gorm.Expr("consecutive_failures + 1"),
 			"last_error_code":         code,
 			"last_error_message":      message,
 			"next_attempt_at":         nextAttemptAt,
+			"next_source_check_at":    nil,
 			"last_batch_completed_at": now,
 			"lease_owner":             "",
 			"lease_token":             "",
@@ -221,14 +261,16 @@ func (r *TranscodeExecutionRepo) RetryLegacyProjectionMigration(source string, n
 	result := r.db.Model(&model.LegacyTranscodeProjectionMigrationState{}).
 		Where("source = ? AND status = ?", source, LegacyProjectionMigrationFailed).
 		Updates(map[string]any{
-			"status":             LegacyProjectionMigrationPending,
-			"next_attempt_at":    now,
-			"last_error_code":    "",
-			"last_error_message": "",
-			"lease_owner":        "",
-			"lease_token":        "",
-			"lease_expires_at":   nil,
-			"updated_at":         now,
+			"status":               LegacyProjectionMigrationPending,
+			"next_attempt_at":      now,
+			"last_error_code":      "",
+			"last_error_message":   "",
+			"consecutive_failures": int64(0),
+			"next_source_check_at": nil,
+			"lease_owner":          "",
+			"lease_token":          "",
+			"lease_expires_at":     nil,
+			"updated_at":           now,
 		})
 	return result.RowsAffected == 1, result.Error
 }

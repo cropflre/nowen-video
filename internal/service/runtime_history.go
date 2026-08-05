@@ -120,25 +120,27 @@ type RuntimeHistoryDetail struct {
 }
 
 type RuntimeHistoryLegacyMigration struct {
-	Source             string     `json:"source"`
-	Generation         int64      `json:"generation"`
-	Status             string     `json:"status"`
-	TargetRows         int64      `json:"target_rows"`
-	ScannedRows        int64      `json:"scanned_rows"`
-	ImportedJobs       int64      `json:"imported_jobs"`
-	ArtifactsQueued    int64      `json:"artifacts_queued"`
-	ArtifactsBlocked   int64      `json:"artifacts_blocked"`
-	MissingPaths       int64      `json:"missing_paths"`
-	FailureCount       int        `json:"failure_count"`
-	LastErrorCode      string     `json:"last_error_code,omitempty"`
-	LastErrorMessage   string     `json:"last_error_message,omitempty"`
-	CursorUpdatedAt    *time.Time `json:"cursor_updated_at,omitempty"`
-	CursorID           string     `json:"cursor_id,omitempty"`
-	HighWaterUpdatedAt *time.Time `json:"high_water_updated_at,omitempty"`
-	HighWaterID        string     `json:"high_water_id,omitempty"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"`
-	SourceRetireAfter  *time.Time `json:"source_retire_after,omitempty"`
-	RetirementEligible bool       `json:"retirement_eligible"`
+	Source              string     `json:"source"`
+	Generation          int64      `json:"generation"`
+	Status              string     `json:"status"`
+	TargetRows          int64      `json:"target_rows"`
+	ScannedRows         int64      `json:"scanned_rows"`
+	ImportedJobs        int64      `json:"imported_jobs"`
+	ArtifactsQueued     int64      `json:"artifacts_queued"`
+	ArtifactsBlocked    int64      `json:"artifacts_blocked"`
+	MissingPaths        int64      `json:"missing_paths"`
+	FailureCount        int        `json:"failure_count"`
+	ConsecutiveFailures int        `json:"consecutive_failures"`
+	LastErrorCode       string     `json:"last_error_code,omitempty"`
+	LastErrorMessage    string     `json:"last_error_message,omitempty"`
+	CursorUpdatedAt     *time.Time `json:"cursor_updated_at,omitempty"`
+	CursorID            string     `json:"cursor_id,omitempty"`
+	HighWaterUpdatedAt  *time.Time `json:"high_water_updated_at,omitempty"`
+	HighWaterID         string     `json:"high_water_id,omitempty"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	SourceRetireAfter   *time.Time `json:"source_retire_after,omitempty"`
+	NextSourceCheckAt   *time.Time `json:"next_source_check_at,omitempty"`
+	RetirementEligible  bool       `json:"retirement_eligible"`
 }
 
 type RuntimeHistorySummary struct {
@@ -266,11 +268,13 @@ func (s *RuntimeHistoryService) Summary() (*RuntimeHistorySummary, error) {
 			TargetRows: migration.TargetRows, ScannedRows: migration.ScannedRows,
 			ImportedJobs: migration.ImportedJobs, ArtifactsQueued: migration.ArtifactsQueued,
 			ArtifactsBlocked: migration.ArtifactsBlocked, MissingPaths: migration.MissingPaths,
-			FailureCount: migration.FailureCount, LastErrorCode: migration.LastErrorCode,
+			FailureCount: migration.FailureCount, ConsecutiveFailures: migration.ConsecutiveFailures,
+			LastErrorCode:    migration.LastErrorCode,
 			LastErrorMessage: truncateRuntimeHistoryText(migration.LastErrorMessage),
 			CursorUpdatedAt:  migration.CursorUpdatedAt, CursorID: migration.CursorID,
 			HighWaterUpdatedAt: migration.HighWaterUpdatedAt, HighWaterID: migration.HighWaterID,
 			CompletedAt: migration.CompletedAt, SourceRetireAfter: migration.SourceRetireAfter,
+			NextSourceCheckAt:  migration.NextSourceCheckAt,
 			RetirementEligible: migration.SourceRetireAfter != nil && !time.Now().Before(*migration.SourceRetireAfter),
 		}
 	}

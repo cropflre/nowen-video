@@ -11,8 +11,8 @@ func TestLegacyProjectionMigrationKeepsDurableCursorBoundary(t *testing.T) {
 	root := filepath.Join("..", "..")
 	checks := map[string][]string{
 		"internal/model/transcode_execution.go":                             {"legacy_transcode_projection_migrations", "HighWaterUpdatedAt", "SourceRetireAfter"},
-		"internal/repository/repo_legacy_transcode_projection_migration.go": {"ClaimLegacyProjectionMigration", "CompleteLegacyProjectionMigrationBatch", "RetryLegacyProjectionMigration"},
-		"internal/service/legacy_transcode_projection_migration.go":         {"ListLegacyTerminalWithOutputAfter", "legacyProjectionSourceRetirementWindow", "legacyProjectionMigrationLease"},
+		"internal/repository/repo_legacy_transcode_projection_migration.go": {"ClaimLegacyProjectionMigration", "RenewLegacyProjectionMigrationLease", "CompleteLegacyProjectionMigrationBatch", "RetryLegacyProjectionMigration"},
+		"internal/service/legacy_transcode_projection_migration.go":         {"ListLegacyTerminalWithOutputAfter", "legacyProjectionSourceRetirementWindow", "legacyProjectionSourceCheckInterval", "legacyProjectionMigrationLease"},
 	}
 	for name, needles := range checks {
 		content, err := os.ReadFile(filepath.Join(root, name))

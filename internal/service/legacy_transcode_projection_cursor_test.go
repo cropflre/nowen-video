@@ -62,3 +62,33 @@ func TestLegacyProjectionTaskCenterProgress(t *testing.T) {
 		t.Fatalf("task=%+v", task)
 	}
 }
+
+func TestLegacyProjectionSourceSnapshotPolicy(t *testing.T) {
+	now := time.Now()
+	highAt := now.Add(time.Hour)
+	same := &repository.LegacyProjectionCursor{UpdatedAt: now, ID: "a"}
+	newer := &repository.LegacyProjectionCursor{UpdatedAt: highAt, ID: "b"}
+	state := &model.LegacyTranscodeProjectionMigrationState{
+		Status:             repository.LegacyProjectionMigrationPending,
+		HighWaterUpdatedAt: &now,
+		HighWaterID:        "a",
+	}
+	if shouldRefreshLegacyProjectionTarget(state, newer) {
+		t.Fatal("active generation must keep its frozen target")
+	}
+	if frozen := legacyProjectionFrozenHighWater(state); frozen == nil || frozen.ID != "a" {
+		t.Fatalf("frozen=%+v", frozen)
+	}
+	state.Status = repository.LegacyProjectionMigrationCompleted
+	if shouldRefreshLegacyProjectionTarget(state, same) {
+		t.Fatal("completed generation refreshed unchanged target")
+	}
+	if !shouldRefreshLegacyProjectionTarget(state, newer) {
+		t.Fatal("completed generation did not detect newer source high-water")
+	}
+	next := now.Add(time.Minute)
+	state.NextSourceCheckAt = &next
+	if !legacyProjectionStateDeferred(state, now) {
+		t.Fatal("completed generation ignored source-check schedule")
+	}
+}

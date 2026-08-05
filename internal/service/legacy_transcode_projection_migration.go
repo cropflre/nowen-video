@@ -19,6 +19,8 @@ const (
 	legacyProjectionRollbackWindow         = 7 * 24 * time.Hour
 	legacyProjectionSourceRetirementWindow = 30 * 24 * time.Hour
 	legacyProjectionMigrationLease         = 2 * time.Minute
+	legacyProjectionLeaseHeartbeat         = 30 * time.Second
+	legacyProjectionSourceCheckInterval    = 15 * time.Minute
 	legacyProjectionDefaultBatchSize       = 250
 )
 
@@ -49,15 +51,31 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 		batchSize = legacyProjectionDefaultBatchSize
 	}
 
-	highWater, err := s.repo.LegacyProjectionHighWater()
+	currentState, err := s.executionRepo.LegacyProjectionMigrationState(repository.LegacyTranscodeArtifactMigrationSource)
 	if err != nil {
-		return report, fmt.Errorf("read legacy projection high-water: %w", err)
+		return report, fmt.Errorf("read legacy projection migration state: %w", err)
 	}
-	var targetRows int64
-	if highWater != nil {
-		targetRows, err = s.repo.CountLegacyTerminalWithOutputThrough(*highWater)
+	if legacyProjectionStateDeferred(currentState, now) {
+		return legacyProjectionReportFromState(currentState), nil
+	}
+
+	var highWater *repository.LegacyProjectionCursor
+	targetRows := int64(0)
+	if currentState != nil {
+		targetRows = currentState.TargetRows
+	}
+	if frozen := legacyProjectionFrozenHighWater(currentState); frozen != nil {
+		highWater = frozen
+	} else {
+		highWater, err = s.repo.LegacyProjectionHighWater()
 		if err != nil {
-			return report, fmt.Errorf("count legacy projection target rows: %w", err)
+			return report, fmt.Errorf("read legacy projection high-water: %w", err)
+		}
+		if shouldRefreshLegacyProjectionTarget(currentState, highWater) {
+			targetRows, err = s.repo.CountLegacyTerminalWithOutputThrough(*highWater)
+			if err != nil {
+				return report, fmt.Errorf("count legacy projection target rows: %w", err)
+			}
 		}
 	}
 	state, _, err := s.executionRepo.PrepareLegacyProjectionMigration(
@@ -67,6 +85,7 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 		batchSize,
 		now,
 		legacyProjectionSourceRetirementWindow,
+		legacyProjectionSourceCheckInterval,
 	)
 	if err != nil {
 		return report, fmt.Errorf("prepare legacy projection migration: %w", err)
@@ -91,6 +110,7 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 		return report, nil
 	}
 	state = claimed
+	checkpoint := newLegacyProjectionLeaseCheckpoint(s.executionRepo, state.Source, token, now)
 
 	after := legacyProjectionCursor(state.CursorUpdatedAt, state.CursorID)
 	through := repository.LegacyProjectionCursor{UpdatedAt: *state.HighWaterUpdatedAt, ID: state.HighWaterID}
@@ -101,7 +121,7 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 
 	delta := repository.LegacyProjectionBatchDelta{ScannedRows: int64(len(tasks))}
 	for index := range tasks {
-		item, importErr := s.importLegacyProjectionTask(&tasks[index], now)
+		item, importErr := s.importLegacyProjectionTask(&tasks[index], now, checkpoint)
 		if importErr != nil {
 			return s.failLegacyProjectionBatch(state, token, now, importErr)
 		}
@@ -125,6 +145,7 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 		completed,
 		now,
 		legacyProjectionSourceRetirementWindow,
+		legacyProjectionSourceCheckInterval,
 	)
 	if err != nil {
 		return report, fmt.Errorf("complete legacy migration batch: %w", err)
@@ -146,7 +167,7 @@ func (s *ArtifactMaintenanceService) failLegacyProjectionBatch(state *model.Lega
 	if state == nil {
 		return legacyProjectionInventoryReport{}, cause
 	}
-	backoff := legacyProjectionRetryBackoff(state.FailureCount + 1)
+	backoff := legacyProjectionRetryBackoff(state.ConsecutiveFailures + 1)
 	stored, _, persistErr := s.executionRepo.FailLegacyProjectionMigrationBatch(
 		state.Source,
 		token,
@@ -162,6 +183,59 @@ func (s *ArtifactMaintenanceService) failLegacyProjectionBatch(state *model.Lega
 		s.broadcastLegacyProjectionMigration(stored)
 	}
 	return legacyProjectionReportFromState(stored), cause
+}
+
+func legacyProjectionStateDeferred(state *model.LegacyTranscodeProjectionMigrationState, now time.Time) bool {
+	if state == nil {
+		return false
+	}
+	if state.Status == repository.LegacyProjectionMigrationFailed && state.NextAttemptAt != nil && now.Before(*state.NextAttemptAt) {
+		return true
+	}
+	return state.Status == repository.LegacyProjectionMigrationCompleted && state.NextSourceCheckAt != nil && now.Before(*state.NextSourceCheckAt)
+}
+
+func legacyProjectionFrozenHighWater(state *model.LegacyTranscodeProjectionMigrationState) *repository.LegacyProjectionCursor {
+	if state == nil || state.HighWaterUpdatedAt == nil || state.Status == repository.LegacyProjectionMigrationCompleted {
+		return nil
+	}
+	return &repository.LegacyProjectionCursor{UpdatedAt: *state.HighWaterUpdatedAt, ID: state.HighWaterID}
+}
+
+func shouldRefreshLegacyProjectionTarget(state *model.LegacyTranscodeProjectionMigrationState, highWater *repository.LegacyProjectionCursor) bool {
+	if highWater == nil {
+		return false
+	}
+	if state == nil || state.HighWaterUpdatedAt == nil {
+		return true
+	}
+	if state.Status != repository.LegacyProjectionMigrationCompleted {
+		return false
+	}
+	current := repository.LegacyProjectionCursor{UpdatedAt: *state.HighWaterUpdatedAt, ID: state.HighWaterID}
+	return repository.LegacyProjectionCursorAfter(*highWater, current)
+}
+
+type legacyProjectionLeaseCheckpoint func(force bool) error
+
+func newLegacyProjectionLeaseCheckpoint(repo *repository.TranscodeExecutionRepo, source, token string, claimedAt time.Time) legacyProjectionLeaseCheckpoint {
+	wallStarted := time.Now()
+	lastRenewed := claimedAt
+	return func(force bool) error {
+		current := claimedAt.Add(time.Since(wallStarted))
+		if !force && current.Sub(lastRenewed) < legacyProjectionLeaseHeartbeat {
+			return nil
+		}
+		renewed, err := repo.RenewLegacyProjectionMigrationLease(source, token, current, legacyProjectionMigrationLease)
+		if err != nil {
+			return fmt.Errorf("renew legacy migration Lease: %w", err)
+		}
+		if !renewed {
+			return fmt.Errorf("legacy migration Lease expired or changed owner")
+		}
+		lastRenewed = current
+		return nil
+	}
 }
 
 func legacyProjectionRetryBackoff(failureCount int) time.Duration {
@@ -212,10 +286,15 @@ func (s *ArtifactMaintenanceService) broadcastLegacyProjectionMigration(state *m
 	})
 }
 
-func (s *ArtifactMaintenanceService) importLegacyProjectionTask(task *model.TranscodeTask, now time.Time) (legacyProjectionInventoryReport, error) {
+func (s *ArtifactMaintenanceService) importLegacyProjectionTask(task *model.TranscodeTask, now time.Time, checkpoint legacyProjectionLeaseCheckpoint) (legacyProjectionInventoryReport, error) {
 	report := legacyProjectionInventoryReport{TasksFound: 1}
 	if task == nil {
 		return report, nil
+	}
+	if checkpoint != nil {
+		if err := checkpoint(true); err != nil {
+			return report, err
+		}
 	}
 	root := filepath.Join(s.cfg.Cache.CacheDir, "transcode")
 	db := s.repo.DB()
@@ -280,7 +359,16 @@ func (s *ArtifactMaintenanceService) importLegacyProjectionTask(task *model.Tran
 		artifact.CleanupErrorMessage = "legacy output path is not a directory"
 		report.ArtifactsBlocked++
 	} else {
-		artifact.SizeBytes, _ = directorySize(outputDir)
+		sizeBytes, sizeErr := directorySizeWithCheckpoint(outputDir, func() error {
+			if checkpoint == nil {
+				return nil
+			}
+			return checkpoint(false)
+		})
+		if sizeErr != nil {
+			return report, fmt.Errorf("inventory legacy directory size: %w", sizeErr)
+		}
+		artifact.SizeBytes = sizeBytes
 		manifest := filepath.Join(outputDir, "stream.m3u8")
 		if _, manifestErr := os.Stat(manifest); manifestErr == nil {
 			artifact.ManifestPath = manifest
@@ -288,6 +376,11 @@ func (s *ArtifactMaintenanceService) importLegacyProjectionTask(task *model.Tran
 		report.ArtifactsQueued++
 	}
 
+	if checkpoint != nil {
+		if err := checkpoint(true); err != nil {
+			return report, err
+		}
+	}
 	if err := s.executionRepo.ImportLegacyHLSArtifact(artifact); err != nil {
 		return report, fmt.Errorf("import legacy transcode artifact %s: %w", artifact.ID, err)
 	}
@@ -371,10 +464,19 @@ func legacyProjectionPathAllowed(root, candidate string) bool {
 }
 
 func directorySize(root string) (int64, error) {
+	return directorySizeWithCheckpoint(root, nil)
+}
+
+func directorySizeWithCheckpoint(root string, checkpoint func() error) (int64, error) {
 	var total int64
 	err := filepath.Walk(root, func(_ string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if checkpoint != nil {
+			if err := checkpoint(); err != nil {
+				return err
+			}
 		}
 		if !info.IsDir() {
 			total += info.Size()

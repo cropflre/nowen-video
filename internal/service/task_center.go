@@ -287,6 +287,9 @@ func legacyProjectionMigrationToUnifiedTask(state *model.LegacyTranscodeProjecti
 	} else if state.Status == repository.LegacyProjectionMigrationCompleted && state.SourceRetireAfter != nil {
 		if now.Before(*state.SourceRetireAfter) {
 			message = "迁移完成；旧表只读观察至 " + state.SourceRetireAfter.Format("2006-01-02 15:04")
+			if state.NextSourceCheckAt != nil {
+				message += "；下次尾部检查 " + state.NextSourceCheckAt.Format("01-02 15:04")
+			}
 		} else {
 			message = "迁移完成；旧表已达到人工废弃评审时间"
 		}
