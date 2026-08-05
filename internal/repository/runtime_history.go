@@ -31,6 +31,7 @@ type RuntimeHistoryCounts struct {
 	ByStatus          map[string]int64
 	OldestAt          *time.Time
 	NewestAt          *time.Time
+	LegacyMigration   *model.LegacyTranscodeProjectionMigrationState
 }
 
 type RuntimeHistoryRepo struct {
@@ -149,6 +150,13 @@ func (r *RuntimeHistoryRepo) Counts() (*RuntimeHistoryCounts, error) {
 		Where("cleanup_state <> ? OR cleanup_state IS NULL", ArtifactCleanupCompleted).
 		Select("COALESCE(SUM(size_bytes), 0)").Scan(&counts.ArtifactBytes).Error; err != nil {
 		return nil, err
+	}
+	if r.db.Migrator().HasTable(&model.LegacyTranscodeProjectionMigrationState{}) {
+		if migration, err := NewTranscodeExecutionRepo(r.db).LegacyProjectionMigrationState(LegacyTranscodeArtifactMigrationSource); err != nil {
+			return nil, err
+		} else {
+			counts.LegacyMigration = migration
+		}
 	}
 	if r.db.Migrator().HasTable(&model.TranscodeTask{}) {
 		if err := r.db.Model(&model.TranscodeTask{}).Count(&counts.LegacyTasks).Error; err != nil {

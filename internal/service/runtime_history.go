@@ -119,18 +119,41 @@ type RuntimeHistoryDetail struct {
 	Retention RuntimeHistoryRetentionPolicy `json:"retention"`
 }
 
+type RuntimeHistoryLegacyMigration struct {
+	Source             string     `json:"source"`
+	Generation         int64      `json:"generation"`
+	Status             string     `json:"status"`
+	TargetRows         int64      `json:"target_rows"`
+	ScannedRows        int64      `json:"scanned_rows"`
+	ImportedJobs       int64      `json:"imported_jobs"`
+	ArtifactsQueued    int64      `json:"artifacts_queued"`
+	ArtifactsBlocked   int64      `json:"artifacts_blocked"`
+	MissingPaths       int64      `json:"missing_paths"`
+	FailureCount       int        `json:"failure_count"`
+	LastErrorCode      string     `json:"last_error_code,omitempty"`
+	LastErrorMessage   string     `json:"last_error_message,omitempty"`
+	CursorUpdatedAt    *time.Time `json:"cursor_updated_at,omitempty"`
+	CursorID           string     `json:"cursor_id,omitempty"`
+	HighWaterUpdatedAt *time.Time `json:"high_water_updated_at,omitempty"`
+	HighWaterID        string     `json:"high_water_id,omitempty"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	SourceRetireAfter  *time.Time `json:"source_retire_after,omitempty"`
+	RetirementEligible bool       `json:"retirement_eligible"`
+}
+
 type RuntimeHistorySummary struct {
-	Jobs              int64                         `json:"jobs"`
-	Attempts          int64                         `json:"attempts"`
-	Artifacts         int64                         `json:"artifacts"`
-	LegacyTasks       int64                         `json:"legacy_tasks"`
-	OrphanLegacyTasks int64                         `json:"orphan_legacy_tasks"`
-	ArtifactBytes     int64                         `json:"artifact_bytes"`
-	ByStatus          map[string]int64              `json:"by_status"`
-	OldestAt          *time.Time                    `json:"oldest_at,omitempty"`
-	NewestAt          *time.Time                    `json:"newest_at,omitempty"`
-	Generated         time.Time                     `json:"generated_at"`
-	Retention         RuntimeHistoryRetentionPolicy `json:"retention"`
+	Jobs              int64                          `json:"jobs"`
+	Attempts          int64                          `json:"attempts"`
+	Artifacts         int64                          `json:"artifacts"`
+	LegacyTasks       int64                          `json:"legacy_tasks"`
+	OrphanLegacyTasks int64                          `json:"orphan_legacy_tasks"`
+	ArtifactBytes     int64                          `json:"artifact_bytes"`
+	ByStatus          map[string]int64               `json:"by_status"`
+	OldestAt          *time.Time                     `json:"oldest_at,omitempty"`
+	NewestAt          *time.Time                     `json:"newest_at,omitempty"`
+	Generated         time.Time                      `json:"generated_at"`
+	Retention         RuntimeHistoryRetentionPolicy  `json:"retention"`
+	LegacyMigration   *RuntimeHistoryLegacyMigration `json:"legacy_migration,omitempty"`
 }
 
 // RuntimeHistoryService is a read model only. It has no methods for submit,
@@ -230,13 +253,28 @@ func (s *RuntimeHistoryService) Summary() (*RuntimeHistorySummary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("summarize runtime history: %w", err)
 	}
-	return &RuntimeHistorySummary{
+	summary := &RuntimeHistorySummary{
 		Jobs: counts.Jobs, Attempts: counts.Attempts, Artifacts: counts.Artifacts,
 		LegacyTasks: counts.LegacyTasks, OrphanLegacyTasks: counts.OrphanLegacyTasks,
 		ArtifactBytes: counts.ArtifactBytes, ByStatus: counts.ByStatus,
 		OldestAt: counts.OldestAt, NewestAt: counts.NewestAt,
 		Generated: time.Now(), Retention: RuntimeHistoryRetention(),
-	}, nil
+	}
+	if migration := counts.LegacyMigration; migration != nil {
+		summary.LegacyMigration = &RuntimeHistoryLegacyMigration{
+			Source: migration.Source, Generation: migration.Generation, Status: migration.Status,
+			TargetRows: migration.TargetRows, ScannedRows: migration.ScannedRows,
+			ImportedJobs: migration.ImportedJobs, ArtifactsQueued: migration.ArtifactsQueued,
+			ArtifactsBlocked: migration.ArtifactsBlocked, MissingPaths: migration.MissingPaths,
+			FailureCount: migration.FailureCount, LastErrorCode: migration.LastErrorCode,
+			LastErrorMessage: truncateRuntimeHistoryText(migration.LastErrorMessage),
+			CursorUpdatedAt:  migration.CursorUpdatedAt, CursorID: migration.CursorID,
+			HighWaterUpdatedAt: migration.HighWaterUpdatedAt, HighWaterID: migration.HighWaterID,
+			CompletedAt: migration.CompletedAt, SourceRetireAfter: migration.SourceRetireAfter,
+			RetirementEligible: migration.SourceRetireAfter != nil && !time.Now().Before(*migration.SourceRetireAfter),
+		}
+	}
+	return summary, nil
 }
 
 func normalizeRuntimeHistoryPage(page, pageSize int) (int, int) {

@@ -188,11 +188,47 @@ func (a *TranscodeArtifactRecord) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+type LegacyTranscodeProjectionMigrationState struct {
+	Source               string     `json:"source" gorm:"primaryKey;type:text"`
+	Generation           int64      `json:"generation" gorm:"default:0"`
+	Status               string     `json:"status" gorm:"index;type:text;not null"`
+	CursorUpdatedAt      *time.Time `json:"cursor_updated_at,omitempty" gorm:"index"`
+	CursorID             string     `json:"cursor_id" gorm:"type:text"`
+	HighWaterUpdatedAt   *time.Time `json:"high_water_updated_at,omitempty" gorm:"index"`
+	HighWaterID          string     `json:"high_water_id" gorm:"type:text"`
+	TargetRows           int64      `json:"target_rows"`
+	ScannedRows          int64      `json:"scanned_rows"`
+	ImportedJobs         int64      `json:"imported_jobs"`
+	ArtifactsQueued      int64      `json:"artifacts_queued"`
+	ArtifactsBlocked     int64      `json:"artifacts_blocked"`
+	MissingPaths         int64      `json:"missing_paths"`
+	BatchSize            int        `json:"batch_size"`
+	FailureCount         int        `json:"failure_count"`
+	LastErrorCode        string     `json:"last_error_code" gorm:"type:text"`
+	LastErrorMessage     string     `json:"last_error_message" gorm:"type:text"`
+	LastBatchStartedAt   *time.Time `json:"last_batch_started_at,omitempty"`
+	LastBatchCompletedAt *time.Time `json:"last_batch_completed_at,omitempty"`
+	NextAttemptAt        *time.Time `json:"next_attempt_at,omitempty" gorm:"index"`
+	LeaseOwner           string     `json:"lease_owner" gorm:"type:text"`
+	LeaseToken           string     `json:"lease_token" gorm:"index;type:text"`
+	LeaseExpiresAt       *time.Time `json:"lease_expires_at,omitempty" gorm:"index"`
+	CompletedAt          *time.Time `json:"completed_at,omitempty" gorm:"index"`
+	QuiescentSince       *time.Time `json:"quiescent_since,omitempty" gorm:"index"`
+	SourceRetireAfter    *time.Time `json:"source_retire_after,omitempty" gorm:"index"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at" gorm:"index"`
+}
+
+func (LegacyTranscodeProjectionMigrationState) TableName() string {
+	return "legacy_transcode_projection_migrations"
+}
+
 func AutoMigrateTranscodeExecution(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&TranscodeJobRecord{},
 		&TranscodeAttemptRecord{},
 		&TranscodeArtifactRecord{},
+		&LegacyTranscodeProjectionMigrationState{},
 		&TranscodeHandoffAttestationRecord{},
 	); err != nil {
 		return err

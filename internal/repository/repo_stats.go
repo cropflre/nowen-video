@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
@@ -18,27 +20,86 @@ func (r *TranscodeRepo) LegacyTableExists() bool {
 	return r != nil && r.db != nil && r.db.Migrator().HasTable(&model.TranscodeTask{})
 }
 
-// ListLegacyTerminalWithOutput returns a bounded inventory source. It never
-// mutates the legacy projection and is a no-op for fresh databases.
-func (r *TranscodeRepo) ListLegacyTerminalWithOutput(limit int) ([]model.TranscodeTask, error) {
+type LegacyProjectionCursor struct {
+	UpdatedAt time.Time
+	ID        string
+}
+
+func LegacyProjectionCursorAfter(left, right LegacyProjectionCursor) bool {
+	if left.UpdatedAt.Equal(right.UpdatedAt) {
+		return left.ID > right.ID
+	}
+	return left.UpdatedAt.After(right.UpdatedAt)
+}
+
+func (r *TranscodeRepo) legacyTerminalWithOutputQuery() *gorm.DB {
+	return r.db.Model(&model.TranscodeTask{}).Where(
+		"status IN ? AND TRIM(COALESCE(output_dir, '')) <> ''",
+		[]string{"done", "completed", "failed", "cancelled"},
+	)
+}
+
+func (r *TranscodeRepo) LegacyProjectionHighWater() (*LegacyProjectionCursor, error) {
+	if !r.LegacyTableExists() {
+		return nil, nil
+	}
+	var row struct {
+		UpdatedAt time.Time
+		ID        string
+	}
+	result := r.legacyTerminalWithOutputQuery().
+		Select("updated_at", "id").
+		Order("updated_at DESC, id DESC").
+		Limit(1).
+		Find(&row)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, nil
+	}
+	return &LegacyProjectionCursor{UpdatedAt: row.UpdatedAt, ID: row.ID}, nil
+}
+
+func (r *TranscodeRepo) CountLegacyTerminalWithOutputThrough(highWater LegacyProjectionCursor) (int64, error) {
+	if !r.LegacyTableExists() {
+		return 0, nil
+	}
+	var count int64
+	err := r.legacyTerminalWithOutputQuery().
+		Where("updated_at < ? OR (updated_at = ? AND id <= ?)", highWater.UpdatedAt, highWater.UpdatedAt, highWater.ID).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *TranscodeRepo) ListLegacyTerminalWithOutputAfter(after *LegacyProjectionCursor, highWater LegacyProjectionCursor, limit int) ([]model.TranscodeTask, error) {
 	if !r.LegacyTableExists() {
 		return []model.TranscodeTask{}, nil
 	}
 	if limit <= 0 {
-		limit = 500
+		limit = 250
 	}
 	if limit > 2000 {
 		limit = 2000
 	}
+	query := r.legacyTerminalWithOutputQuery().
+		Where("updated_at < ? OR (updated_at = ? AND id <= ?)", highWater.UpdatedAt, highWater.UpdatedAt, highWater.ID)
+	if after != nil {
+		query = query.Where("updated_at > ? OR (updated_at = ? AND id > ?)", after.UpdatedAt, after.UpdatedAt, after.ID)
+	}
 	var tasks []model.TranscodeTask
-	err := r.db.Where(
-		"status IN ? AND TRIM(COALESCE(output_dir, '')) <> ''",
-		[]string{"done", "completed", "failed", "cancelled"},
-	).
-		Order("updated_at ASC, id ASC").
-		Limit(limit).
-		Find(&tasks).Error
+	err := query.Order("updated_at ASC, id ASC").Limit(limit).Find(&tasks).Error
 	return tasks, err
+}
+
+// ListLegacyTerminalWithOutput remains as a bounded compatibility reader for
+// diagnostics. Migration code uses the explicit cursor/high-water API above.
+func (r *TranscodeRepo) ListLegacyTerminalWithOutput(limit int) ([]model.TranscodeTask, error) {
+	highWater, err := r.LegacyProjectionHighWater()
+	if err != nil || highWater == nil {
+		return []model.TranscodeTask{}, err
+	}
+	return r.ListLegacyTerminalWithOutputAfter(nil, *highWater, limit)
 }
 
 // ==================== PlaybackStatsRepo ====================

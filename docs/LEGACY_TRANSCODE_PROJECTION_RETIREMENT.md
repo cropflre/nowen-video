@@ -59,3 +59,26 @@ files that may still exist.
 - The dedicated implementation gates passed focused migration/rollback tests,
   the complete Go package suite, Lite and Full builds, and the Web production
   build. The normal project CI matrix is rerun from this acceptance commit.
+
+
+## Cursor generations and source retirement
+
+The inventory source is no longer scanned from the beginning on every maintenance
+interval. `legacy_transcode_projection_migrations` stores one durable state row
+for `legacy_transcode_task_v1` with:
+
+- a finite per-generation source high-water
+- the last committed `(updated_at, id)` cursor
+- cumulative row and Artifact counters
+- a database Lease for multi-instance ownership
+- persisted failure evidence and exponential retry time
+- a 30-day read-only source retirement review date
+
+A batch advances the cursor only after every row in that batch has been imported.
+Partial Job or Artifact writes are safe because their identifiers are deterministic
+and the batch is replayed after a failure. A completed generation performs only a
+high-water check. If a rollback to an older server creates newer legacy rows, the
+next upgrade opens a new generation beginning at the previous high-water.
+
+The retirement date is evidence for an explicit later schema-removal decision; it
+does not automatically drop `transcode_tasks`.

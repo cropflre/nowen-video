@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	TaskKindScan                    = "scan"
-	TaskKindScrape                  = "scrape"
-	TaskKindLegacyArtifactMigration = "legacy_artifact_migration"
-	TaskKindArtifactCleanup         = "artifact_cleanup"
-	TaskKindStorageIncident         = "storage_incident"
+	TaskKindScan                      = "scan"
+	TaskKindScrape                    = "scrape"
+	TaskKindLegacyArtifactMigration   = "legacy_artifact_migration"
+	TaskKindLegacyProjectionMigration = "legacy_projection_migration"
+	TaskKindArtifactCleanup           = "artifact_cleanup"
+	TaskKindStorageIncident           = "storage_incident"
 
 	TaskStatusQueued    = "queued"
 	TaskStatusRunning   = "running"
@@ -100,6 +101,17 @@ func (s *TaskCenterService) Snapshot(activeOnly bool, limit int) (*TaskCenterSna
 	}
 
 	if s.executionRepo != nil {
+		migration, err := s.executionRepo.LegacyProjectionMigrationState(repository.LegacyTranscodeArtifactMigrationSource)
+		if err != nil {
+			return nil, fmt.Errorf("read legacy projection migration: %w", err)
+		}
+		if migration != nil && (migration.TargetRows > 0 || migration.Status == repository.LegacyProjectionMigrationFailed || migration.Status == repository.LegacyProjectionMigrationRunning) {
+			task := legacyProjectionMigrationToUnifiedTask(migration, now)
+			if !activeOnly || isTaskActive(task.Status) {
+				tasks = append(tasks, task)
+			}
+		}
+
 		incidents, err := s.executionRepo.ListActiveStorageIncidents(limit)
 		if err != nil {
 			return nil, fmt.Errorf("list storage incidents: %w", err)
@@ -243,6 +255,57 @@ func storageIncidentCodeLabel(code string) string {
 		return "存储 I/O 错误"
 	default:
 		return "存储状态异常"
+	}
+}
+
+func legacyProjectionMigrationToUnifiedTask(state *model.LegacyTranscodeProjectionMigrationState, now time.Time) UnifiedTask {
+	if state == nil {
+		return UnifiedTask{}
+	}
+	status := TaskStatusQueued
+	switch state.Status {
+	case repository.LegacyProjectionMigrationRunning:
+		status = TaskStatusRunning
+	case repository.LegacyProjectionMigrationFailed:
+		status = TaskStatusFailed
+	case repository.LegacyProjectionMigrationCompleted:
+		status = TaskStatusCompleted
+	}
+	progress := float64(0)
+	if state.TargetRows > 0 {
+		progress = float64(state.ScannedRows) / float64(state.TargetRows) * 100
+		if progress > 100 {
+			progress = 100
+		}
+	} else if status == TaskStatusCompleted {
+		progress = 100
+	}
+	subtitle := fmt.Sprintf("第 %d 代 · %d/%d", state.Generation, state.ScannedRows, state.TargetRows)
+	message := "按持久游标登记旧转码目录"
+	if state.Status == repository.LegacyProjectionMigrationFailed {
+		message = strings.TrimSpace(strings.Join([]string{state.LastErrorCode, state.LastErrorMessage}, " · "))
+	} else if state.Status == repository.LegacyProjectionMigrationCompleted && state.SourceRetireAfter != nil {
+		if now.Before(*state.SourceRetireAfter) {
+			message = "迁移完成；旧表只读观察至 " + state.SourceRetireAfter.Format("2006-01-02 15:04")
+		} else {
+			message = "迁移完成；旧表已达到人工废弃评审时间"
+		}
+	} else if state.CursorUpdatedAt != nil {
+		message = "当前游标 " + state.CursorUpdatedAt.Format("2006-01-02 15:04:05") + " / " + state.CursorID
+	}
+	return UnifiedTask{
+		ID:          TaskKindLegacyProjectionMigration + ":" + state.Source,
+		Kind:        TaskKindLegacyProjectionMigration,
+		Status:      status,
+		Title:       "旧转码历史登记",
+		Subtitle:    subtitle,
+		Message:     message,
+		Progress:    progress,
+		SourceID:    state.Source,
+		CreatedAt:   timePtr(state.CreatedAt),
+		UpdatedAt:   timePtr(state.UpdatedAt),
+		StartedAt:   state.LastBatchStartedAt,
+		CompletedAt: state.CompletedAt,
 	}
 }
 

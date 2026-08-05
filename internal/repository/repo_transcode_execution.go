@@ -16,6 +16,8 @@ func NewTranscodeExecutionRepo(db *gorm.DB) *TranscodeExecutionRepo {
 	return &TranscodeExecutionRepo{db: db}
 }
 
+func (r *TranscodeExecutionRepo) DB() *gorm.DB { return r.db }
+
 func (r *TranscodeRepo) DB() *gorm.DB { return r.db }
 
 func (r *TranscodeExecutionRepo) CreateJob(job *model.TranscodeJobRecord) error {

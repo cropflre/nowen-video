@@ -13,6 +13,7 @@ const kindLabel: Record<UnifiedTaskKind, string> = {
   scrape: '元数据刮削',
   artifact_cleanup: '转码缓存清理',
   legacy_artifact_migration: '旧转码目录迁移',
+  legacy_projection_migration: '旧转码历史登记',
   storage_incident: '转码存储告警',
 }
 
@@ -31,6 +32,7 @@ function taskIcon(kind: UnifiedTaskKind, status: UnifiedTaskStatus) {
   if (status === 'completed') return <CheckCircle2 size={17} />
   if (status === 'queued') return <Clock3 size={17} />
   if (kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') return <HardDrive size={17} />
+  if (kind === 'legacy_projection_migration') return <Database size={17} />
   if (kind === 'scan') return <Database size={17} />
   return <Loader2 size={17} className="animate-spin" />
 }
@@ -78,6 +80,7 @@ function TaskRow({
 }) {
   const active = task.status === 'queued' || task.status === 'running'
   const cleanupTask = task.kind === 'artifact_cleanup' || task.kind === 'legacy_artifact_migration'
+  const projectionMigrationTask = task.kind === 'legacy_projection_migration'
   const migrationTask = task.kind === 'legacy_artifact_migration'
   const storageIncident = task.kind === 'storage_incident'
   const operationalIssue = (cleanupTask || storageIncident) && task.status === 'failed'
@@ -157,7 +160,7 @@ function TaskRow({
                   style={{ borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
                 >
                   {actionLoading === `${task.id}:retry` ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                  {cleanupTask ? '立即重试' : '重试'}
+                  {cleanupTask ? '立即重试' : projectionMigrationTask ? '重新登记' : '重试'}
                 </button>
               )}
               {actions.includes('rollback') && (

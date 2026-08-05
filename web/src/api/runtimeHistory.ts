@@ -95,6 +95,28 @@ export interface RuntimeHistoryDetail {
   retention: RuntimeHistoryRetentionPolicy
 }
 
+export interface RuntimeHistoryLegacyMigration {
+  source: string
+  generation: number
+  status: string
+  target_rows: number
+  scanned_rows: number
+  imported_jobs: number
+  artifacts_queued: number
+  artifacts_blocked: number
+  missing_paths: number
+  failure_count: number
+  last_error_code?: string
+  last_error_message?: string
+  cursor_updated_at?: string
+  cursor_id?: string
+  high_water_updated_at?: string
+  high_water_id?: string
+  completed_at?: string
+  source_retire_after?: string
+  retirement_eligible: boolean
+}
+
 export interface RuntimeHistorySummary {
   jobs: number
   attempts: number
@@ -107,6 +129,7 @@ export interface RuntimeHistorySummary {
   newest_at?: string
   generated_at: string
   retention: RuntimeHistoryRetentionPolicy
+  legacy_migration?: RuntimeHistoryLegacyMigration
 }
 
 export const runtimeHistoryApi = {

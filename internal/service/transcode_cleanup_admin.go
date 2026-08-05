@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -68,6 +69,34 @@ func (s *ArtifactMaintenanceService) RollbackLegacyArtifactMigration(artifactID 
 	}
 	if !rolledBack {
 		return fmt.Errorf("%w: artifact=%s", ErrLegacyArtifactRollbackUnavailable, artifactID)
+	}
+	return nil
+}
+
+var ErrLegacyProjectionMigrationNotRetryable = errors.New("legacy projection migration is not retryable")
+
+func (s *ArtifactMaintenanceService) RetryLegacyProjectionMigration(source string) error {
+	if s == nil || s.executionRepo == nil {
+		return fmt.Errorf("Legacy Projection 迁移服务不可用")
+	}
+	if strings.TrimSpace(source) != repository.LegacyTranscodeArtifactMigrationSource {
+		return fmt.Errorf("%w: source=%s", ErrLegacyProjectionMigrationNotRetryable, source)
+	}
+	requeued, err := s.executionRepo.RetryLegacyProjectionMigration(source, time.Now())
+	if err != nil {
+		return fmt.Errorf("重新排队 Legacy Projection 迁移失败: %w", err)
+	}
+	if !requeued {
+		return fmt.Errorf("%w: source=%s", ErrLegacyProjectionMigrationNotRetryable, source)
+	}
+	_, runErr := s.inventoryLegacyTranscodeProjection(time.Now())
+	if runErr != nil {
+		stored, lookupErr := s.executionRepo.LegacyProjectionMigrationState(source)
+		if lookupErr == nil && stored != nil && stored.Status == repository.LegacyProjectionMigrationFailed {
+			s.logger.Warnf("管理员重试 Legacy Projection 迁移后仍失败 source=%s: %v", source, runErr)
+			return nil
+		}
+		return runErr
 	}
 	return nil
 }

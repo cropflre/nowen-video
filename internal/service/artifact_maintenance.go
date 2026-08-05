@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
@@ -26,6 +27,9 @@ type ArtifactMaintenanceService struct {
 	logger        *zap.SugaredLogger
 	wsHub         *WSHub
 	artifactStore *transcodeartifactstore.Store
+
+	legacyMigrationOwner     string
+	legacyMigrationBatchSize int
 
 	diskUsageMu    sync.RWMutex
 	diskUsageBytes int64
@@ -55,13 +59,15 @@ func NewArtifactMaintenanceService(repo *repository.TranscodeRepo, cfg *config.C
 		panic(fmt.Sprintf("initialize transcode artifact store: %v", err))
 	}
 	service := &ArtifactMaintenanceService{
-		repo:          repo,
-		executionRepo: repository.NewTranscodeExecutionRepo(repo.DB()),
-		cfg:           cfg,
-		logger:        logger,
-		artifactStore: artifactStore,
-		diskUsageTTL:  30 * time.Second,
-		done:          make(chan struct{}),
+		repo:                     repo,
+		executionRepo:            repository.NewTranscodeExecutionRepo(repo.DB()),
+		cfg:                      cfg,
+		logger:                   logger,
+		artifactStore:            artifactStore,
+		legacyMigrationOwner:     "artifact-maintenance-" + uuid.NewString(),
+		legacyMigrationBatchSize: legacyProjectionDefaultBatchSize,
+		diskUsageTTL:             30 * time.Second,
+		done:                     make(chan struct{}),
 	}
 	if err := service.initializeStorageHealth(); err != nil {
 		panic(fmt.Sprintf("initialize artifact storage health: %v", err))
@@ -69,7 +75,7 @@ func NewArtifactMaintenanceService(repo *repository.TranscodeRepo, cfg *config.C
 	if report, inventoryErr := service.inventoryLegacyTranscodeProjection(time.Now()); inventoryErr != nil {
 		logger.Warnf("启动登记 Legacy 转码目录失败: %v", inventoryErr)
 	} else if report.Changed() {
-		logger.Infof("启动登记 Legacy 转码目录 tasks=%d jobs=%d queued=%d blocked=%d missing=%d", report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
+		logger.Infof("启动登记 Legacy 转码目录 generation=%d status=%s scanned=%d/%d batch=%d jobs=%d queued=%d blocked=%d missing=%d", report.Generation, report.Status, report.ScannedRows, report.TargetRows, report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
 	}
 	if report, retireErr := service.retirePersistentRuntimePlayback(time.Now()); retireErr != nil {
 		logger.Warnf("启动退役持久 Runtime 播放状态失败: %v", retireErr)
@@ -99,7 +105,7 @@ func (s *ArtifactMaintenanceService) maintenanceLoop() {
 			if report, err := s.inventoryLegacyTranscodeProjection(now); err != nil {
 				s.logger.Warnf("周期登记 Legacy 转码目录失败: %v", err)
 			} else if report.Changed() {
-				s.logger.Infof("周期登记 Legacy 转码目录 tasks=%d jobs=%d queued=%d blocked=%d missing=%d", report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
+				s.logger.Infof("周期登记 Legacy 转码目录 generation=%d status=%s scanned=%d/%d batch=%d jobs=%d queued=%d blocked=%d missing=%d", report.Generation, report.Status, report.ScannedRows, report.TargetRows, report.TasksFound, report.JobsImported, report.ArtifactsQueued, report.ArtifactsBlocked, report.MissingPaths)
 			}
 			s.runDiskPressureGovernorTick(now, false)
 			report, err := s.retirePersistentRuntimePlayback(now)

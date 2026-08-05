@@ -44,17 +44,27 @@ type artifactCleanupActions interface {
 	RollbackLegacyArtifactMigration(artifactID string) error
 }
 
+type legacyProjectionActions interface {
+	RetryLegacyProjectionMigration(source string) error
+}
+
+type legacyProjectionLookup interface {
+	LegacyProjectionMigrationState(source string) (*model.LegacyTranscodeProjectionMigrationState, error)
+}
+
 type scrapeTaskActions interface {
 	StartScrape(taskID, userID string) error
 }
 
 type TaskActionDispatcher struct {
-	artifactCleanup artifactCleanupActions
-	scrape          scrapeTaskActions
-	artifactLookup  artifactCleanupLookup
-	scrapeLookup    scrapeTaskLookup
-	wsHub           *WSHub
-	logger          *zap.SugaredLogger
+	artifactCleanup        artifactCleanupActions
+	legacyProjection       legacyProjectionActions
+	legacyProjectionLookup legacyProjectionLookup
+	scrape                 scrapeTaskActions
+	artifactLookup         artifactCleanupLookup
+	scrapeLookup           scrapeTaskLookup
+	wsHub                  *WSHub
+	logger                 *zap.SugaredLogger
 }
 
 func NewTaskActionDispatcher(
@@ -72,6 +82,8 @@ func NewTaskActionDispatcher(
 	}
 	if maintenance != nil {
 		dispatcher.artifactCleanup = maintenance
+		dispatcher.legacyProjection = maintenance
+		dispatcher.legacyProjectionLookup = maintenance.executionRepo
 		dispatcher.artifactLookup = maintenance.executionRepo
 	}
 	return dispatcher
@@ -86,6 +98,10 @@ func AvailableTaskActions(kind, status string) []string {
 			return []string{TaskActionRetry}
 		}
 	case TaskKindArtifactCleanup:
+		if normalizedStatus == TaskStatusFailed {
+			return []string{TaskActionRetry}
+		}
+	case TaskKindLegacyProjectionMigration:
 		if normalizedStatus == TaskStatusFailed {
 			return []string{TaskActionRetry}
 		}
@@ -132,6 +148,8 @@ func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*
 		err = d.executeArtifactCleanup(sourceID, action, false)
 	case TaskKindLegacyArtifactMigration:
 		err = d.executeArtifactCleanup(sourceID, action, true)
+	case TaskKindLegacyProjectionMigration:
+		err = d.executeLegacyProjectionMigration(sourceID, action)
 	case TaskKindScan, TaskKindStorageIncident:
 		err = fmt.Errorf("%w: task kind %s exposes no lifecycle controls", ErrTaskActionUnsupported, kind)
 	default:
@@ -151,6 +169,29 @@ func (d *TaskActionDispatcher) Execute(kind, sourceID, action, userID string) (*
 		d.logger.Infof("统一任务操作已受理 kind=%s source_id=%s action=%s actor=%s", kind, sourceID, action, userID)
 	}
 	return result, nil
+}
+
+func (d *TaskActionDispatcher) executeLegacyProjectionMigration(sourceID, action string) error {
+	if action != TaskActionRetry {
+		return fmt.Errorf("%w: legacy projection action=%s", ErrTaskActionUnsupported, action)
+	}
+	if d.legacyProjection == nil || d.legacyProjectionLookup == nil {
+		return fmt.Errorf("Legacy Projection 迁移执行器不可用")
+	}
+	state, err := d.legacyProjectionLookup.LegacyProjectionMigrationState(sourceID)
+	if err != nil || state == nil {
+		return fmt.Errorf("%w: legacy projection %s", ErrTaskNotFound, sourceID)
+	}
+	if state.Status != repository.LegacyProjectionMigrationFailed {
+		return fmt.Errorf("%w: legacy projection status=%s", ErrTaskActionConflict, state.Status)
+	}
+	if err := d.legacyProjection.RetryLegacyProjectionMigration(sourceID); err != nil {
+		if errors.Is(err, ErrLegacyProjectionMigrationNotRetryable) {
+			return fmt.Errorf("%w: legacy projection status changed", ErrTaskActionConflict)
+		}
+		return fmt.Errorf("重试 Legacy Projection 迁移失败: %w", err)
+	}
+	return nil
 }
 
 func (d *TaskActionDispatcher) executeArtifactCleanup(sourceID, action string, legacyMigration bool) error {
@@ -252,6 +293,9 @@ func taskActionMessage(kind, action string) string {
 	case TaskActionRetry:
 		if kind == TaskKindScrape {
 			return "刮削任务已重新提交"
+		}
+		if kind == TaskKindLegacyProjectionMigration {
+			return "旧转码历史登记已重新排队"
 		}
 		return "Artifact 清理已重新执行"
 	case TaskActionRollback:

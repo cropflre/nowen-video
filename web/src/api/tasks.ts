@@ -1,6 +1,6 @@
 import api from './client'
 
-export type UnifiedTaskKind = 'scan' | 'scrape' | 'artifact_cleanup' | 'legacy_artifact_migration' | 'storage_incident'
+export type UnifiedTaskKind = 'scan' | 'scrape' | 'artifact_cleanup' | 'legacy_artifact_migration' | 'legacy_projection_migration' | 'storage_incident'
 export type UnifiedTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type UnifiedTaskAction = 'retry' | 'rollback'
 
