@@ -24,4 +24,10 @@ for function_name in (
     tests, count = pattern.subn(r"\1, 15*time.Minute)", tests)
     if count == 0:
         raise RuntimeError(f"no {function_name} test calls were normalized")
+
+old_expectation = "if err != nil || changed || state.Generation != 1 {\n\t\tt.Fatalf(\"same high-water reopened state=%+v changed=%v err=%v\", state, changed, err)\n\t}"
+new_expectation = "if err != nil || !changed || state.Generation != 1 {\n\t\tt.Fatalf(\"same high-water source-check scheduling state=%+v changed=%v err=%v\", state, changed, err)\n\t}"
+if tests.count(old_expectation) != 1:
+    raise RuntimeError(f"same high-water expectation anchor count={tests.count(old_expectation)}")
+tests = tests.replace(old_expectation, new_expectation, 1)
 test_path.write_text(tests, encoding="utf-8")
