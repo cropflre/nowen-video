@@ -13,9 +13,10 @@ import (
 )
 
 type fullPlaybackRuntime struct {
-	sessions *service.PlaybackSessionService
-	plan     *handler.PlaybackPlanHandler
-	handler  *handler.PlaybackSessionHandler
+	sessions  *service.PlaybackSessionService
+	execution *service.MediaExecutionService
+	plan      *handler.PlaybackPlanHandler
+	handler   *handler.PlaybackSessionHandler
 }
 
 func newFullPlaybackRuntime(
@@ -28,6 +29,11 @@ func newFullPlaybackRuntime(
 	if err != nil {
 		return nil, err
 	}
+	if services != nil && services.Preprocess != nil {
+		if err := services.Preprocess.BindMediaExecution(mediaExecution); err != nil {
+			return nil, err
+		}
+	}
 	sessions, err := service.NewPlaybackSessionServiceWithExecution(
 		repos.Media,
 		mediaExecution,
@@ -37,12 +43,14 @@ func newFullPlaybackRuntime(
 	if err != nil {
 		return nil, err
 	}
-	// Emby/Infuse compatibility uses the same ephemeral runtime as first-party
-	// Web and Android clients. No second Manager, Governor or temp root exists.
+	// Emby/Infuse compatibility, first-party playback and explicit administrator
+	// preprocessing share one stateless execution platform. No consumer can
+	// reach the retired Runtime queue, Lease store or playback Artifact resolver.
 	embyh.SetDefaultPlaybackSessionService(sessions)
 	return &fullPlaybackRuntime{
-		sessions: sessions,
-		plan:     handler.NewPlaybackPlanHandler(services.Stream, logger),
+		sessions:  sessions,
+		execution: mediaExecution,
+		plan:      handler.NewPlaybackPlanHandler(services.Stream, logger),
 		handler: handler.NewPlaybackSessionHandler(
 			sessions,
 			services.Permission,
