@@ -83,6 +83,44 @@ administrator retry resets only consecutive failure pressure.
 The retirement date is evidence for an explicit later schema-removal decision; it
 does not automatically drop `transcode_tasks`.
 
+## Legacy Source Retirement Decision
+
+The retirement decision is a separate, explicit administrator protocol. It does
+not reuse migration cursor state as an approval field and it does not execute a
+schema migration. The Lite administrator API exposes:
+
+- `GET /api/admin/legacy-source-retirement/:source`
+- `POST /api/admin/legacy-source-retirement/:source/decisions`
+
+The report recomputes a stable evidence hash from the current migration generation,
+cursor/high-water, 30-day observation timestamps, source-row inventory, rows that
+have no matching `transcode_jobs.legacy_task_id`, and every still-open Artifact
+rollback deadline. A submitted decision must include the hash the administrator
+reviewed. Any new legacy row, migration generation, cursor movement or rollback
+boundary change rejects the write as stale evidence.
+
+The protocol supports `approve`, `defer` and `reject`. `defer` and `reject` require
+an administrator reason. `approve` additionally requires all of the following:
+
+- the legacy source table still exists and is the object being reviewed
+- the migration generation is completed
+- `quiescent_since` and `source_retire_after` prove the 30-day observation period
+- no legacy row with an output directory remains without a migrated Job
+- no migrated Artifact still has an open rollback window
+- a backup reference and checksum have been verified
+- a restore test has been recorded with its own timestamp
+
+Each review is appended to `legacy_source_retirement_decisions` with protocol
+version, reviewer identity, immutable evidence JSON, SHA-256 evidence hash,
+backup proof, decision and reason. Approval means only **eligible for a future,
+separately reviewed schema-removal migration**. It does not mutate or delete a
+legacy row, close an Artifact rollback window, or run `DROP TABLE`.
+
+A future removal change must still be a normal, reversible database migration
+that checks the latest approved decision against fresh evidence immediately
+before DDL. This phase intentionally contains no automatic or scheduled source
+deletion.
+
 ## Acceptance
 
 - Fresh Lite and Full database profiles no longer create `transcode_tasks`.
@@ -102,6 +140,12 @@ does not automatically drop `transcode_tasks`.
   15-minute tail check before deciding whether to open the next generation.
 - Task Center and Runtime History expose generation, progress, failure evidence,
   source-check schedule and retirement-review readiness.
+- Retirement reports aggregate the durable 30-day observation, direct unmigrated
+  row count, rollback-window evidence and latest decision.
+- Administrator decisions are append-only, hash-fenced against stale evidence and
+  require verified backup plus restore-test proof before approval.
+- Approval leaves `transcode_tasks`, its rows and all migration state untouched;
+  this phase contains no `DROP TABLE` or automatic source-retirement worker.
 - Focused migration and Lease tests, the complete Go package suite, Lite and Full
   builds, and the Web production build passed in the dedicated implementation
   gate. The normal project matrix is rerun from this acceptance commit.
