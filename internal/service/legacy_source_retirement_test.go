@@ -139,15 +139,42 @@ func TestLegacySourceRetirementDecisionRequiresAllEvidence(t *testing.T) {
 		t.Fatalf("review mutated or deleted legacy row: %v", err)
 	}
 
+	plan, err := retirement.PrepareRemovalPlan(report.Source, LegacySourceRemovalPlanRequest{
+		ExpectedEvidenceHash: report.EvidenceHash,
+		ExpectedDecisionID:   record.ID,
+		Reason:               "prepare explicit schema-migration handoff",
+	}, "admin-1", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Status != LegacySourceRemovalPlanStatusPrepared || plan.SchemaHash == "" || plan.SchemaJSON == "" || plan.ExpiresAt == nil {
+		t.Fatalf("unexpected removal plan: %+v", plan)
+	}
+	if !db.Migrator().HasTable(&model.LegacySourceRemovalPlanRecord{}) {
+		t.Fatal("removal plan table was not created")
+	}
+	if !db.Migrator().HasTable(&model.TranscodeTask{}) {
+		t.Fatal("removal planning must not drop the legacy source table")
+	}
+
+	// Rows without output directories are still part of the legacy audit source
+	// and must invalidate both approval and any prepared removal-plan evidence.
 	if err := db.Create(&model.TranscodeTask{
 		ID:        "legacy-task-unmigrated",
 		MediaID:   "media-2",
-		Status:    "done",
-		OutputDir: "/tmp/legacy-task-unmigrated",
+		Status:    "failed",
+		OutputDir: "",
 		CreatedAt: now,
 		UpdatedAt: now,
 	}).Error; err != nil {
 		t.Fatal(err)
+	}
+	changedReport, err := retirement.Report(report.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedReport.UnmigratedRows != 1 || !containsRetirementBlocker(changedReport.Blockers, "unmigrated_rows_present") {
+		t.Fatalf("all legacy rows must be counted as migration evidence: %+v", changedReport)
 	}
 	_, err = retirement.Review(report.Source, LegacySourceRetirementReviewRequest{
 		Decision:             LegacySourceRetirementDecisionApprove,
@@ -162,6 +189,79 @@ func TestLegacySourceRetirementDecisionRequiresAllEvidence(t *testing.T) {
 	}, "admin-1", "admin")
 	if !errors.Is(err, ErrLegacySourceRetirementEvidenceStale) {
 		t.Fatalf("changed source evidence should reject stale approval: %v", err)
+	}
+}
+
+func TestLegacySourceRetirementReviewRecomputesCompleteSnapshot(t *testing.T) {
+	_, db := newArtifactMaintenanceTestService(t)
+	retirement := NewLegacySourceRetirementService(repository.NewTranscodeExecutionRepo(db))
+	now := time.Date(2026, 8, 6, 1, 0, 0, 0, time.UTC)
+	legacyTaskID := "legacy-task-complete-snapshot"
+	cursorAt := now.Add(-40 * 24 * time.Hour)
+	quiescentSince := now.Add(-31 * 24 * time.Hour)
+	retireAfter := now.Add(-24 * time.Hour)
+	if err := db.Create(&model.TranscodeTask{
+		ID:        legacyTaskID,
+		MediaID:   "media-complete-snapshot",
+		Status:    "done",
+		CreatedAt: cursorAt,
+		UpdatedAt: cursorAt,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.TranscodeJobRecord{
+		ID:           "job-complete-snapshot",
+		LegacyTaskID: &legacyTaskID,
+		MediaID:      "media-complete-snapshot",
+		Status:       "completed",
+		DesiredState: "running",
+		CreatedAt:    cursorAt,
+		UpdatedAt:    cursorAt,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.LegacyTranscodeProjectionMigrationState{
+		Source:             repository.LegacyTranscodeArtifactMigrationSource,
+		Generation:         1,
+		Status:             repository.LegacyProjectionMigrationCompleted,
+		CursorUpdatedAt:    &cursorAt,
+		CursorID:           legacyTaskID,
+		HighWaterUpdatedAt: &cursorAt,
+		HighWaterID:        legacyTaskID,
+		TargetRows:         1,
+		ScannedRows:        1,
+		QuiescentSince:     &quiescentSince,
+		SourceRetireAfter:  &retireAfter,
+		CreatedAt:          cursorAt,
+		UpdatedAt:          quiescentSince,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	retirement.clock = func() time.Time { return now }
+	report, err := retirement.Report(repository.LegacyTranscodeArtifactMigrationSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+	retirement.clock = func() time.Time {
+		calls++
+		if calls == 2 {
+			if err := db.Model(&model.LegacyTranscodeProjectionMigrationState{}).
+				Where("source = ?", repository.LegacyTranscodeArtifactMigrationSource).
+				Update("target_rows", 2).Error; err != nil {
+				t.Fatalf("change migration evidence: %v", err)
+			}
+		}
+		return now
+	}
+	_, err = retirement.Review(report.Source, LegacySourceRetirementReviewRequest{
+		Decision:             LegacySourceRetirementDecisionDefer,
+		ExpectedEvidenceHash: report.EvidenceHash,
+		Reason:               "exercise second snapshot",
+	}, "admin-1", "admin")
+	if !errors.Is(err, ErrLegacySourceRetirementEvidenceStale) {
+		t.Fatalf("complete second snapshot should reject changed target rows: %v", err)
 	}
 }
 

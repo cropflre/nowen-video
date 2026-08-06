@@ -92,6 +92,7 @@ func buildRouter(
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 	r.GET("/api/admin/legacy-source-retirement/:source", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Report)
 	r.POST("/api/admin/legacy-source-retirement/:source/decisions", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Review)
+	r.POST("/api/admin/legacy-source-retirement/:source/removal-plans", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.PrepareRemovalPlan)
 
 	// Pulse 已从客户端移除。旧书签或旧浏览器地址必须在服务端直接退出该页面，
 	// 避免尚未完成 Service Worker 升级的旧前端继续渲染历史页面。
