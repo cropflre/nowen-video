@@ -20,6 +20,18 @@ interface SessionVideoPlayerProps {
   spriteVttUrl?: string
 }
 
+function formatTimestamp(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
+  const total = Math.floor(seconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const remainingSeconds = total % 60
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
 export default function SessionVideoPlayer({
   mediaId,
   title,
@@ -33,26 +45,50 @@ export default function SessionVideoPlayer({
 }: SessionVideoPlayerProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const absolutePositionRef = useRef(Math.max(0, startPosition))
+  const seekTargetRef = useRef<number | null>(null)
   const playback = usePlaybackSessionSource({
     enabled: true,
     mediaId,
     startPosition,
   })
+  const isSeeking = playback.loading && Boolean(playback.source)
 
   useEffect(() => {
     if (!playback.sessionId || playback.generationId <= 0) return
-    absolutePositionRef.current = playback.offsetSeconds
+
+    const pendingTarget = seekTargetRef.current
+    const timelinePosition = isSeeking && pendingTarget !== null
+      ? pendingTarget
+      : playback.offsetSeconds
+    absolutePositionRef.current = timelinePosition
+
     setPlaybackSessionRuntime(mediaId, {
       sessionId: playback.sessionId,
       generationId: playback.generationId,
       offsetSeconds: playback.offsetSeconds,
     })
-    usePlayerStore.getState().setCurrentTime(playback.offsetSeconds)
+
+    // VideoPlayer 在切换 HLS 地址时会先 reset 全局播放状态。把绝对时间
+    // 放到下一帧写入，保证新分片的相对 0 秒不会把整片进度条拉回开头。
+    const frame = window.requestAnimationFrame(() => {
+      usePlayerStore.getState().setCurrentTime(timelinePosition)
+    })
+
+    if (!isSeeking && pendingTarget !== null && Math.abs(playback.offsetSeconds - pendingTarget) < 1) {
+      seekTargetRef.current = null
+    }
 
     return () => {
+      window.cancelAnimationFrame(frame)
       clearPlaybackSessionRuntime(mediaId, playback.sessionId || undefined)
     }
-  }, [mediaId, playback.sessionId, playback.generationId, playback.offsetSeconds])
+  }, [
+    mediaId,
+    playback.sessionId,
+    playback.generationId,
+    playback.offsetSeconds,
+    isSeeking,
+  ])
 
   useEffect(() => {
     if (!playback.source || !playback.sessionId) return
@@ -62,18 +98,31 @@ export default function SessionVideoPlayer({
     let heartbeatTimer = 0
     let discoverTimer = 0
 
+    const writeAbsolutePosition = (absolutePosition: number) => {
+      absolutePositionRef.current = absolutePosition
+      // VideoPlayer 也监听 timeupdate，并会先写入分片内相对时间。排到当前
+      // 事件循环末尾再写绝对时间，确保 UI 时间和进度条以整片时间为准。
+      queueMicrotask(() => {
+        if (!disposed) {
+          usePlayerStore.getState().setCurrentTime(absolutePosition)
+        }
+      })
+    }
+
     const updateAbsolutePosition = () => {
       if (!video) return
+      const pendingTarget = seekTargetRef.current
+      if (playback.loading && pendingTarget !== null) {
+        writeAbsolutePosition(pendingTarget)
+        return
+      }
+
       const relativePosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
-      const absolutePosition = playback.offsetSeconds + relativePosition
-      absolutePositionRef.current = absolutePosition
-      // VideoPlayer owns the visible timeline store. Session playback writes the
-      // absolute media position after its relative timeupdate listener runs.
-      usePlayerStore.getState().setCurrentTime(absolutePosition)
+      writeAbsolutePosition(playback.offsetSeconds + relativePosition)
     }
 
     const reportHeartbeat = () => {
-      if (!video) return
+      if (!video || playback.loading) return
       const relativePosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
       let bufferedEnd = relativePosition
       if (video.buffered.length > 0) {
@@ -104,6 +153,7 @@ export default function SessionVideoPlayer({
       }
       video.addEventListener('timeupdate', updateAbsolutePosition)
       video.addEventListener('loadedmetadata', updateAbsolutePosition)
+      video.addEventListener('durationchange', updateAbsolutePosition)
       video.addEventListener('ended', onEnded)
       window.addEventListener('pagehide', onPageHide)
       updateAbsolutePosition()
@@ -121,6 +171,7 @@ export default function SessionVideoPlayer({
       clearInterval(heartbeatTimer)
       video?.removeEventListener('timeupdate', updateAbsolutePosition)
       video?.removeEventListener('loadedmetadata', updateAbsolutePosition)
+      video?.removeEventListener('durationchange', updateAbsolutePosition)
       video?.removeEventListener('ended', onEnded)
       window.removeEventListener('pagehide', onPageHide)
     }
@@ -130,6 +181,7 @@ export default function SessionVideoPlayer({
     playback.generationId,
     playback.offsetSeconds,
     playback.heartbeatIntervalSec,
+    playback.loading,
     playback.heartbeat,
     playback.close,
   ])
@@ -138,9 +190,26 @@ export default function SessionVideoPlayer({
     if (!playback.sessionId || playback.loading) return
     const upperBound = knownDuration && knownDuration > 0 ? knownDuration : Number.MAX_SAFE_INTEGER
     const target = Math.max(0, Math.min(upperBound, targetSeconds))
+    const previousPosition = absolutePositionRef.current
+    const video = rootRef.current?.querySelector('video') || null
+    const shouldResumeOnFailure = Boolean(video && !video.paused)
+
+    // 先冻结当前画面并乐观更新整片进度，等待新 generation 首片就绪后
+    // 再无闪屏切换 HLS 地址；不再卸载整个播放器。
+    video?.pause()
+    seekTargetRef.current = target
     absolutePositionRef.current = target
     usePlayerStore.getState().setCurrentTime(target)
-    void playback.restart(target, reason)
+
+    void playback.restart(target, reason).then((success) => {
+      if (success) return
+      seekTargetRef.current = null
+      absolutePositionRef.current = previousPosition
+      usePlayerStore.getState().setCurrentTime(previousPosition)
+      if (shouldResumeOnFailure && video) {
+        void video.play().catch(() => undefined)
+      }
+    })
   }, [knownDuration, playback.sessionId, playback.loading, playback.restart])
 
   useEffect(() => {
@@ -219,26 +288,26 @@ export default function SessionVideoPlayer({
     onPreprocessReady?.()
   }
 
-  if (playback.error) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black px-6 text-center text-white">
-        <AlertTriangle className="text-red-400" size={32} />
-        <p className="text-base font-medium">转码播放启动失败</p>
-        <p className="max-w-xl text-sm text-surface-400">{playback.error}</p>
-        {onBack && (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="mt-2 rounded-lg bg-white/10 px-4 py-2 text-sm transition hover:bg-white/20"
-          >
-            返回
-          </button>
-        )}
-      </div>
-    )
-  }
+  if (!playback.source) {
+    if (playback.error) {
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black px-6 text-center text-white">
+          <AlertTriangle className="text-red-400" size={32} />
+          <p className="text-base font-medium">转码播放启动失败</p>
+          <p className="max-w-xl text-sm text-surface-400">{playback.error}</p>
+          {onBack && (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="mt-2 rounded-lg bg-white/10 px-4 py-2 text-sm transition hover:bg-white/20"
+            >
+              返回
+            </button>
+          )}
+        </div>
+      )
+    }
 
-  if (playback.loading || !playback.source) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black text-white">
         <Loader2 className="animate-spin text-neon-blue" size={32} />
@@ -247,11 +316,14 @@ export default function SessionVideoPlayer({
     )
   }
 
+  const seekTarget = seekTargetRef.current ?? playback.offsetSeconds
+
   return (
     <div
       ref={rootRef}
-      className="h-full w-full"
+      className="relative h-full w-full overflow-hidden"
       onClickCapture={handlePlayerClickCapture}
+      aria-busy={isSeeking}
     >
       <VideoPlayer
         src={playback.source}
@@ -266,6 +338,25 @@ export default function SessionVideoPlayer({
         onPreprocessReady={onPreprocessReady ? handlePreprocessReady : undefined}
         spriteVttUrl={spriteVttUrl}
       />
+
+      {isSeeking && (
+        <div className="absolute inset-0 z-50 cursor-progress bg-black/20" role="status" aria-live="polite">
+          <div className="pointer-events-none absolute left-1/2 top-16 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-black/75 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
+            <Loader2 className="animate-spin text-neon-blue" size={17} />
+            <div className="leading-tight">
+              <p className="text-xs font-medium">正在跳转</p>
+              <p className="mt-0.5 font-mono text-[11px] text-white/60">{formatTimestamp(seekTarget)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {playback.error && (
+        <div className="pointer-events-none absolute left-1/2 top-16 z-50 flex max-w-[min(90vw,520px)] -translate-x-1/2 items-center gap-2 rounded-xl border border-red-400/20 bg-red-950/85 px-4 py-2.5 text-sm text-red-100 shadow-2xl backdrop-blur-xl">
+          <AlertTriangle size={16} className="shrink-0 text-red-300" />
+          <span className="truncate">跳转失败：{playback.error}</span>
+        </div>
+      )}
     </div>
   )
 }
