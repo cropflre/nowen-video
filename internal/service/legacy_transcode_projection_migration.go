@@ -67,15 +67,27 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 	if frozen := legacyProjectionFrozenHighWater(currentState); frozen != nil {
 		highWater = frozen
 	} else {
-		highWater, err = s.repo.LegacyProjectionHighWater()
+		highWater, err = s.repo.LegacyProjectionSourceHighWater()
 		if err != nil {
 			return report, fmt.Errorf("read legacy projection high-water: %w", err)
 		}
-		if shouldRefreshLegacyProjectionTarget(currentState, highWater) {
-			targetRows, err = s.repo.CountLegacyTerminalWithOutputThrough(*highWater)
+		if highWater != nil && (currentState == nil || currentState.Status == repository.LegacyProjectionMigrationCompleted || shouldRefreshLegacyProjectionTarget(currentState, highWater)) {
+			targetRows, err = s.repo.CountLegacyProjectionSourceThrough(*highWater)
 			if err != nil {
 				return report, fmt.Errorf("count legacy projection target rows: %w", err)
 			}
+		}
+	}
+	if currentState != nil && currentState.Status == repository.LegacyProjectionMigrationCompleted {
+		currentState, _, err = s.executionRepo.ReopenLegacyProjectionForFullSource(
+			repository.LegacyTranscodeArtifactMigrationSource,
+			highWater,
+			targetRows,
+			batchSize,
+			now,
+		)
+		if err != nil {
+			return report, fmt.Errorf("reconcile full legacy projection source: %w", err)
 		}
 	}
 	state, _, err := s.executionRepo.PrepareLegacyProjectionMigration(
@@ -114,7 +126,7 @@ func (s *ArtifactMaintenanceService) inventoryLegacyTranscodeProjection(now time
 
 	after := legacyProjectionCursor(state.CursorUpdatedAt, state.CursorID)
 	through := repository.LegacyProjectionCursor{UpdatedAt: *state.HighWaterUpdatedAt, ID: state.HighWaterID}
-	tasks, err := s.repo.ListLegacyTerminalWithOutputAfter(after, through, state.BatchSize)
+	tasks, err := s.repo.ListLegacyProjectionSourceAfter(after, through, state.BatchSize)
 	if err != nil {
 		return s.failLegacyProjectionBatch(state, token, now, fmt.Errorf("list legacy migration batch: %w", err))
 	}
@@ -304,6 +316,12 @@ func (s *ArtifactMaintenanceService) importLegacyProjectionTask(task *model.Tran
 	}
 	if imported {
 		report.JobsImported++
+	}
+
+	// Every legacy row receives a deterministic audit Job. Only rows that
+	// actually reference a directory enter Artifact cleanup and rollback.
+	if strings.TrimSpace(task.OutputDir) == "" {
+		return report, nil
 	}
 
 	artifactID := deterministicLegacyProjectionID("artifact", task.ID)
