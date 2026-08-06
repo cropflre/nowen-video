@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { mediaApi, streamApi, seriesApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
-import VideoPlayer from '@/components/VideoPlayer'
-import SessionVideoPlayer from '@/components/SessionVideoPlayer'
+import AdaptiveWebVideoPlayer, {
+  type BrowserPlaybackMode,
+  type PlaybackTransition,
+} from '@/components/AdaptiveWebVideoPlayer'
 import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
@@ -41,11 +43,14 @@ export default function PlayerPage() {
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null)
+  const [switchPosition, setSwitchPosition] = useState<number | undefined>(undefined)
+  const [webcodecsFailed, setWebcodecsFailed] = useState(false)
+  const [runtimeMode, setRuntimeMode] = useState<BrowserPlaybackMode | null>(null)
 
   // WebCodecs 能力（异步检测）
   const [webcodecsCap, setWebcodecsCap] = useState<WebCodecsCapability | null>(null)
 
-  // 记录当前播放位置，用于预处理完成后无缝切换时恢复进度
+  // 记录当前播放位置，用于播放内核或播放方式切换时恢复进度
   const currentTimeRef = useRef(0)
 
   // 记录挂载时的历史栈长度，用于判断是否存在来路（>1 说明从站内进入）
@@ -66,6 +71,9 @@ export default function PlayerPage() {
 
     setLoading(true)
     setNextEpisode(null)
+    setSwitchPosition(undefined)
+    setWebcodecsFailed(false)
+    setRuntimeMode(null)
 
     // 并行获取媒体详情和播放信息
     Promise.all([
@@ -106,36 +114,33 @@ export default function PlayerPage() {
   }, [nextEpisode, navigate])
 
   // 预处理完成回调：后台静默刷新播放信息，自动切换到预处理流（无缝、无感知）
-  const [switchPosition, setSwitchPosition] = useState<number | undefined>(undefined)
   const handlePreprocessReady = useCallback(() => {
     if (!id) return
     streamApi.getPlayInfo(id).then((res) => {
       const newPlayInfo = res.data.data
       if (newPlayInfo.is_preprocessed && newPlayInfo.preprocessed_url) {
-        // 记录切换瞬间的播放位置，用于恢复进度
         setSwitchPosition(currentTimeRef.current)
+        setRuntimeMode(null)
         setPlayInfo(newPlayInfo)
-        // 播放信息更新后，VideoPlayer 会自动因 src 变化重新加载
-        // startPosition 会恢复到当前播放位置，实现无缝切换
       }
     }).catch(() => {})
   }, [id])
 
-  // Remux 降级状态：当 Remux 播放失败时（如浏览器不支持 HEVC 10-bit），自动降级到 HLS 转码
-  const [remuxFailed, setRemuxFailed] = useState(false)
-  // WebCodecs 降级状态：WebCodecs 播放失败时降级到原生/Remux/HLS
-  const [webcodecsFailed, setWebcodecsFailed] = useState(false)
-
-  // Remux 播放失败回调：自动降级到 HLS 转码模式
-  const handleRemuxFallback = useCallback(() => {
-    toast.info('当前浏览器不支持该编码格式，已自动切换到转码播放')
-    setRemuxFailed(true)
-  }, [toast])
-
-  // WebCodecs 播放失败回调：降级到常规模式
+  // WebCodecs 播放失败后，从当前位置进入服务端权威的 Remux/HLS 兼容链路。
   const handleWebCodecsFallback = useCallback(() => {
+    setSwitchPosition(currentTimeRef.current)
+    setRuntimeMode(null)
     toast.info('WebCodecs 播放遇到问题，已切换到兼容模式')
     setWebcodecsFailed(true)
+  }, [toast])
+
+  const handleRuntimeModeChange = useCallback((mode: BrowserPlaybackMode) => {
+    setRuntimeMode(mode)
+  }, [])
+
+  const handlePlaybackTransition = useCallback((transition: PlaybackTransition) => {
+    const target = transition.to === 'remux' ? 'Remux 兼容播放' : 'HLS 转码播放'
+    toast.info(`当前播放方式不兼容，已自动切换到${target}`)
   }, [toast])
 
   // ===== 桌面端内核决策 Hook（必须在早返回之前调用以满足 Rules of Hooks）=====
@@ -168,11 +173,9 @@ export default function PlayerPage() {
   //   1. 预处理完成 HLS（秒开）
   //   2. HEVC 源 + 浏览器 HEVC 硬解支持 → 原生直接播放
   //   3. 原生可直接播放（MP4/WebM） → 原生直接播放
-  //   4. WebCodecs 客户端硬解（源容器兼容 MP4 或走 Remux 输出 fMP4）
-  //      —— 适用场景：源是 MKV/AVI 等非 MP4 容器但编码为 H.264/HEVC/VP9/AV1 时，
-  //         通过后端 Remux URL 拿到 fMP4 流，前端 WebCodecs 硬解
+  //   4. WebCodecs 客户端硬解（失败后进入统一兼容链路）
   //   5. Remux（零转码转封装，走 <video> 原生播放）
-  //   6. HLS 实时转码（兜底）
+  //   6. HLS 实时转码（最终兜底）
   const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
   const videoCodecLower = (playInfo.video_codec || '').toLowerCase()
   const isHEVCSource = videoCodecLower.includes('hevc') || videoCodecLower.includes('h265') || videoCodecLower === 'h265'
@@ -181,27 +184,19 @@ export default function PlayerPage() {
   // 决策：HEVC 源 + 浏览器支持 HEVC + 后端确认容器/音频均可直放 → 直接播放（无需转码）
   const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed && playInfo.can_direct_play
 
-  // 桌面端 libmpv 嵌入决策（C 档 Hills 化核心）：
-  // 当 Tauri 桌面 + embed 可用 + 内核决策给出 mpv + 非预处理流时 → 走嵌入式 mpv。
-  // 注：strategy.rs 已保证 Auto 模式下桌面端默认就给 "mpv / fallback"，
-  // 所以这里不再筛 confidence —— 除非用户显式 PlayerEngine::Web 才会拿到 engine='web'。
+  // 桌面端 libmpv 嵌入决策（C 档 Hills 化核心）
   const useMpvEmbed =
     desktopIsDesktop &&
     desktopEmbedAvailable &&
     desktopEngine === 'mpv' &&
     !isPreprocessed
 
-  // WebCodecs 适用性：
-  //   - 未被标记失败
-  //   - 未使用预处理（预处理已经是 HLS，不需要 WebCodecs）
-  //   - 浏览器原生无法直接播放（否则原生更高效）
-  //   - 后端支持 Remux（拿到 fMP4 源）或 源本身是 MP4
-  //   - WebCodecs 可解该编码
+  // WebCodecs 适用性：源容器或 Remux 输出可供客户端解封装，且浏览器可硬解。
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
   const canUseWC =
     !webcodecsFailed &&
     !isPreprocessed &&
-    !playInfo.is_strm && // STRM 流走服务端代理，不走 WebCodecs
+    !playInfo.is_strm &&
     !nativeCanPlay &&
     !!webcodecsCap &&
     canUseWebCodecs(playInfo.video_codec, playInfo.audio_codec, webcodecsCap) &&
@@ -215,14 +210,14 @@ export default function PlayerPage() {
         ? 'direct'
         : canUseWC
           ? 'webcodecs'
-          : (playInfo.can_remux && !remuxFailed)
+          : playInfo.can_remux
             ? 'remux'
             : 'hls'
 
   const requiresSessionTranscode =
     mode === 'hls' &&
     !isPreprocessed &&
-    (remuxFailed || streamApi.requiresPlaybackSession(id))
+    streamApi.requiresPlaybackSession(id)
 
   // src 只能来自直放、Remux、持久预处理或服务端播放计划。
   // Session 模式由 SessionVideoPlayer 创建 Generation 后提供实际 playlist。
@@ -238,6 +233,9 @@ export default function PlayerPage() {
             ? ''
             : streamApi.getMasterUrl(id)
 
+  const effectiveBrowserMode = runtimeMode || (mode === 'webcodecs' ? null : mode)
+  const browserPlaybackResetKey = `${id}:${isPreprocessed ? playInfo.preprocessed_url : 'planned'}:${webcodecsFailed ? 'wc-fallback' : 'initial'}`
+
   // 构建播放标题（剧集显示 S01E02 格式）
   const playerTitle = media.media_type === 'episode'
     ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
@@ -249,14 +247,11 @@ export default function PlayerPage() {
     : undefined
 
   // 返回逻辑：优先回退上一页，保留列表页的分页/筛选/滚动位置
-  // 即 列表?page=2 → 详情 → 播放器 → 返回 → 回到详情 → 再返回 → 回到列表?page=2
-  // 只有当没有来路时（外链/刷新直接打开播放器）才 fallback 到详情页/系列页
   const handleBack = () => {
     if (hasHistoryOnMountRef.current) {
       navigate(-1)
       return
     }
-    // 无来路：直接跳到详情/系列页
     if (media.media_type === 'episode' && media.series_id) {
       navigate(`/series/${media.series_id}`, { replace: true })
     } else {
@@ -266,7 +261,6 @@ export default function PlayerPage() {
 
   return (
     <div className="h-screen w-screen bg-black relative">
-      {/* 左上角常驻返回按钮（不受播放器 showControls 显隐影响） */}
       <button
         onClick={handleBack}
         aria-label="返回"
@@ -277,24 +271,23 @@ export default function PlayerPage() {
         <ArrowLeft size={18} />
       </button>
 
-      {/* 预处理状态提示 + 桌面端播放内核提示 */}
       <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
         {playInfo.is_strm && (
           <STRMDiagnostics mediaId={id} compact />
         )}
-        {/* 桌面端 —— 播放内核决策徽章（仅 Tauri 环境显示） */}
         <DesktopPlayerBadge
           profile={{
             container: (playInfo.file_ext || '').replace(/^\./, '').toLowerCase(),
             video_codec: (playInfo.video_codec || '').toLowerCase(),
             audio_codec: (playInfo.audio_codec || '').toLowerCase(),
-            height: (playInfo as any).height || 0,
-            hdr: (playInfo as any).hdr || '',
+            height: (playInfo as unknown as { height?: number }).height || 0,
+            hdr: (playInfo as unknown as { hdr?: string }).hdr || '',
           } as MediaProfile}
           streamUrl={streamApi.getDirectUrl(id)}
           playOptions={{ title: playerTitle }}
         />
-        {(mode === 'webcodecs' || canDirectHEVC || isPreprocessed ||
+        {(mode === 'webcodecs' || effectiveBrowserMode === 'remux' || effectiveBrowserMode === 'hls' ||
+          (effectiveBrowserMode === 'direct' && canDirectHEVC) || isPreprocessed ||
           playInfo.preprocess_status === 'running' ||
           playInfo.preprocess_status === 'pending' ||
           playInfo.preprocess_status === 'queued') && (
@@ -305,15 +298,25 @@ export default function PlayerPage() {
                 <Cpu size={12} className="text-cyan-400" />
                 <span className="text-cyan-400">WebCodecs 硬解播放</span>
               </>
-            ) : canDirectHEVC ? (
-              <>
-                <Zap size={12} className="text-purple-400" />
-                <span className="text-purple-400">HEVC 直接播放</span>
-              </>
             ) : isPreprocessed ? (
               <>
                 <Zap size={12} className="text-emerald-400" />
                 <span className="text-emerald-400">秒开播放</span>
+              </>
+            ) : effectiveBrowserMode === 'direct' && canDirectHEVC ? (
+              <>
+                <Zap size={12} className="text-purple-400" />
+                <span className="text-purple-400">HEVC 直接播放</span>
+              </>
+            ) : effectiveBrowserMode === 'remux' ? (
+              <>
+                <Cpu size={12} className="text-cyan-400" />
+                <span className="text-cyan-400">Remux 兼容播放</span>
+              </>
+            ) : effectiveBrowserMode === 'hls' ? (
+              <>
+                <Cpu size={12} className="text-orange-400" />
+                <span className="text-orange-400">HLS 转码播放</span>
               </>
             ) : playInfo.preprocess_status === 'running' ? (
               <>
@@ -354,30 +357,23 @@ export default function PlayerPage() {
           nextTitle={nextTitle}
           onFallback={handleWebCodecsFallback}
         />
-      ) : requiresSessionTranscode ? (
-        <SessionVideoPlayer
-          mediaId={id}
-          title={playerTitle}
-          knownDuration={playInfo.duration}
-          startPosition={switchPosition}
-          spriteVttUrl={playInfo.sprite_vtt_url ? streamApi.withTokenUrl(playInfo.sprite_vtt_url) : undefined}
-          onPreprocessReady={handlePreprocessReady}
-          onBack={handleBack}
-          onNext={nextEpisode ? handleNext : undefined}
-          nextTitle={nextTitle}
-        />
       ) : (
-        <VideoPlayer
-          src={src}
-          mode={mode as 'direct' | 'hls' | 'remux'}
+        <AdaptiveWebVideoPlayer
           mediaId={id}
+          initialPlan={streamApi.getCachedPlaybackPlan(id)}
+          initialMode={mode as BrowserPlaybackMode}
+          initialSrc={src}
+          initialRequiresSession={requiresSessionTranscode}
+          resetKey={browserPlaybackResetKey}
+          supportsHEVC={browserSupportsHEVC}
           title={playerTitle}
           isStrm={playInfo.is_strm}
           knownDuration={playInfo.duration}
           startPosition={switchPosition}
           spriteVttUrl={playInfo.sprite_vtt_url ? streamApi.withTokenUrl(playInfo.sprite_vtt_url) : undefined}
           onPreprocessReady={handlePreprocessReady}
-          onRemuxFallback={mode === 'remux' ? handleRemuxFallback : undefined}
+          onModeChange={handleRuntimeModeChange}
+          onTransition={handlePlaybackTransition}
           onBack={handleBack}
           onNext={nextEpisode ? handleNext : undefined}
           nextTitle={nextTitle}
