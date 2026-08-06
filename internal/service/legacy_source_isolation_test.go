@@ -123,7 +123,8 @@ func TestLegacySourceIsolationRejectsSchemaDrift(t *testing.T) {
 
 func TestLegacySourceIsolationContainsNoDestructiveDDL(t *testing.T) {
 	paths := []string{
-		"legacy_source_isolation_service.go",
+		"legacy_source_isolation_execute.go",
+		"legacy_source_isolation_rollback.go",
 		filepath.Join("..", "repository", "repo_legacy_source_isolation.go"),
 	}
 	for _, path := range paths {
