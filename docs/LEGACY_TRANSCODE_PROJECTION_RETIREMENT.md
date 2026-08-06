@@ -9,13 +9,18 @@ Existing deployments keep the table unchanged for database rollback and audit.
 Runtime History may count it when present, but production code treats it as an
 optional read-only import source.
 
-## Legacy directory inventory
+## Legacy audit and directory inventory
 
-Terminal legacy rows with an `output_dir` are imported idempotently into a
-deterministic historical Job and a `legacy_hls_directory` Artifact. The file is
-not removed immediately. The Artifact receives a seven-day rollback deadline
-and enters the same durable Cleanup Lease state machine used by all other
-Artifact reclamation.
+Every legacy source row is imported idempotently into a deterministic historical
+Job. This complete audit projection is required before retirement review and
+includes rows without an `output_dir` as well as historical non-terminal rows
+that can no longer be executed by the current Runtime.
+
+Only a row with a non-empty `output_dir` creates a `legacy_hls_directory`
+Artifact. The directory is not removed immediately. The Artifact receives a
+seven-day rollback deadline and enters the same durable Cleanup Lease state
+machine used by all other Artifact reclamation. An empty path never creates a
+placeholder or blocked Artifact.
 
 Invalid or out-of-root paths are blocked with evidence and are never removed.
 Missing paths become completed audit tombstones.
@@ -62,13 +67,21 @@ for `legacy_transcode_task_v1` with:
 A batch advances the cursor only after every row in that batch has been imported.
 Partial Job or Artifact writes are safe because their identifiers are deterministic
 and the batch is replayed after a failure. If a rollback to an older server creates
-newer legacy rows, the next completed-generation tail check opens a new generation
-beginning at the previous high-water.
+or changes legacy rows, the next completed-generation source check opens a new
+bounded generation when the source high-water advances.
+
+Earlier builds counted only rows with output directories. When a completed state
+from that implementation is encountered, the scheduled source check compares its
+stored target with the complete source-row count. A mismatch opens one new
+idempotent generation from the beginning, resets migration progress and starts a
+fresh 30-day observation window. Existing deterministic Jobs and Artifacts are
+reused; missing audit Jobs are backfilled and no legacy row is modified.
 
 A running or failed generation uses only its frozen high-water and does not query
 the legacy source again. After completion, the maintenance loop reads only the
-durable state row until a 15-minute source-check deadline is reached. A new source
-count is calculated only when the tail high-water has actually advanced.
+durable state row until a 15-minute source-check deadline is reached. The source
+is then checked once to detect a newer high-water or a directory-only target that
+still requires the full-source backfill.
 
 The migration Lease is renewed during directory traversal and is checked again
 immediately before Artifact insertion. The heartbeat uses the migration clock plus
@@ -152,6 +165,10 @@ no `DROP TABLE` statement.
 - Fresh Lite and Full database profiles no longer create `transcode_tasks`.
 - Existing legacy tables survive migration unchanged and are used only as a
   bounded, read-only inventory source.
+- Every legacy row receives one deterministic audit Job; only non-empty output
+  directories receive an Artifact and rollback window.
+- Existing directory-only completed states open one full-source backfill
+  generation and restart the 30-day observation period.
 - Legacy directories receive deterministic Job and Artifact records, a persisted
   seven-day observation window, path fencing and Cleanup Lease ownership.
 - Rollback is available only before both the persisted deadline and cleanup
@@ -163,7 +180,7 @@ no `DROP TABLE` statement.
 - Concurrent instances are fenced by a renewable database Lease; stale owners
   cannot renew, complete a batch or publish an Artifact after takeover.
 - Completed generations avoid per-tick source counts and perform only a bounded
-  15-minute tail check before deciding whether to open the next generation.
+  15-minute source check before deciding whether to open the next generation.
 - Task Center and Runtime History expose generation, progress, failure evidence,
   source-check schedule and retirement-review readiness.
 - Retirement reports aggregate the durable 30-day observation, every unmigrated
