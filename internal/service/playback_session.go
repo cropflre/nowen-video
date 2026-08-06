@@ -20,8 +20,10 @@ import (
 )
 
 const (
-	defaultPlaybackHeartbeatInterval = 15 * time.Second
-	defaultPlaybackStartupWait       = 3 * time.Second
+	defaultPlaybackHeartbeatInterval  = 15 * time.Second
+	defaultPlaybackStartupWait        = 3 * time.Second
+	defaultPlaybackHardwareStartBudget = 10 * time.Second
+	defaultPlaybackFirstSegmentTimeout = 24 * time.Second
 )
 
 type PlaybackSessionCreateRequest struct {
@@ -119,6 +121,12 @@ func NewPlaybackSessionService(
 		cfg.App.VAAPIDevice,
 		ffmpeg.CalcThreads(cfg),
 	)
+	// Older VC-1/WMV inputs and cold GPU initialization can legitimately need
+	// more than four seconds before the first HLS segment appears. Keep the
+	// hardware attempt long enough to distinguish slow startup from a real
+	// encoder failure, while retaining a bounded software fallback window.
+	runnerConfig.HardwareStartBudget = defaultPlaybackHardwareStartBudget
+	runnerConfig.FirstSegmentTimeout = defaultPlaybackFirstSegmentTimeout
 	runner, err := playbacktranscode.NewRunner(
 		manager,
 		execution.ExecutionRuntime(),
@@ -350,7 +358,13 @@ func (s *PlaybackSessionService) result(snapshot playbacksession.SessionSnapshot
 		HeartbeatIntervalSec: int(s.heartbeat / time.Second),
 		StartupMS:            startupMS,
 	}
-	if snapshot.CurrentGenerationID != 0 && (snapshot.State == playbacksession.SessionStateReady || snapshot.State == playbacksession.SessionStateActive) {
+	generation := snapshot.Generation
+	generationIsCurrent := generation != nil && generation.ID == snapshot.CurrentGenerationID
+	generationHasSegment := generationIsCurrent && generation.FirstSegmentAt != nil
+	generationIsReadable := generationHasSegment && (
+		generation.State == playbacksession.GenerationStateRunning ||
+			generation.State == playbacksession.GenerationStateCompleted)
+	if generationIsReadable && (snapshot.State == playbacksession.SessionStateReady || snapshot.State == playbacksession.SessionStateActive) {
 		result.FirstSegmentReady = true
 		result.PlaylistURL = generationPlaylistURL(snapshot.ID, snapshot.CurrentGenerationID)
 	}
