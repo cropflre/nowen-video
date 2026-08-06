@@ -6,7 +6,7 @@ import {
 } from '@/api/stream'
 
 const STATUS_POLL_INTERVAL_MS = 250
-const SESSION_STARTUP_DEADLINE_MS = 15_000
+const SESSION_STARTUP_DEADLINE_MS = 30_000
 
 interface PlaybackSessionHandle {
   sessionId: string
