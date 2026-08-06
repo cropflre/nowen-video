@@ -68,6 +68,11 @@ func buildRouter(
 	)
 	taskCenterHandler := handler.NewTaskCenterHandler(taskCenterService, taskActionDispatcher, logger)
 	taskCenterHandler.SetAuditService(services.User)
+	legacyRetirementHandler := handler.NewLegacySourceRetirementHandler(
+		service.NewLegacySourceRetirementService(executionRepo),
+		logger,
+	)
+	legacyRetirementHandler.SetAuditService(services.User)
 	runtimeHistoryHandler := handler.NewRuntimeHistoryHandler(
 		service.NewRuntimeHistoryService(repository.NewRuntimeHistoryRepo(repos.DB()), logger),
 		logger,
@@ -85,6 +90,8 @@ func buildRouter(
 	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, runtimeHistoryHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
+	r.GET("/api/admin/legacy-source-retirement/:source", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Report)
+	r.POST("/api/admin/legacy-source-retirement/:source/decisions", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Review)
 
 	// Pulse 已从客户端移除。旧书签或旧浏览器地址必须在服务端直接退出该页面，
 	// 避免尚未完成 Service Worker 升级的旧前端继续渲染历史页面。
