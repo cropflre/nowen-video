@@ -62,7 +62,7 @@ func (h *LegacySourceRetirementHandler) RollbackIsolation(c *gin.Context) {
 	record, err := h.service.RollbackIsolation(c.Param("source"), request, reviewerID, reviewerName)
 	if err != nil {
 		h.writeIsolationError(c, err)
-		retur
+		return
 	}
 	if h.auditService != nil {
 		h.auditService.Audit(
