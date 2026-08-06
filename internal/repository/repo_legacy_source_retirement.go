@@ -33,7 +33,7 @@ func (r *TranscodeExecutionRepo) LegacySourceRetirementInventory(source string, 
 
 	inventory.SourceTablePresent = r.db.Migrator().HasTable(&model.TranscodeTask{})
 	if inventory.SourceTablePresent {
-		if err := r.db.Table((model.TranscodeTask{}).TableName()).Count(&inventory.SourceRows).Error; err != nil {
+		if err := r.db.Table("transcode_tasks").Count(&inventory.SourceRows).Error; err != nil {
 			return inventory, err
 		}
 		if err := r.db.Raw(`
