@@ -199,16 +199,19 @@ func (s *PlaybackSession) snapshot() SessionSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var generation *GenerationSnapshot
-	generationID := s.currentGenerationID
-	if generationID == 0 {
-		generationID = s.pendingGenerationID
-	}
-	// A failed preparing Generation is no longer pending, but its diagnostics
-	// remain the only useful status payload for the client and operator.
+	// Generation describes the latest timeline transition, not merely the
+	// currently readable timeline. While a restart is preparing, clients must
+	// observe that pending generation so the old readable generation cannot be
+	// mistaken for restart success. If the latest restart fails, keep its
+	// diagnostics visible even though the previous generation remains readable.
+	generationID := s.pendingGenerationID
 	if generationID == 0 {
 		generationID = s.generationCounter
 	}
+	if generationID == 0 {
+		generationID = s.currentGenerationID
+	}
+	var generation *GenerationSnapshot
 	if current := s.generations[generationID]; current != nil {
 		value := current.snapshot()
 		generation = &value
