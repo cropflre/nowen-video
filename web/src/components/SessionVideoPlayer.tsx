@@ -46,6 +46,8 @@ export default function SessionVideoPlayer({
   const rootRef = useRef<HTMLDivElement>(null)
   const absolutePositionRef = useRef(Math.max(0, startPosition))
   const seekTargetRef = useRef<number | null>(null)
+  const seekInFlightRef = useRef(false)
+  const resumeAfterSeekRef = useRef(false)
   const playback = usePlaybackSessionSource({
     enabled: true,
     mediaId,
@@ -89,6 +91,44 @@ export default function SessionVideoPlayer({
     playback.offsetSeconds,
     isSeeking,
   ])
+
+  // Seek 前正在播放时，新 generation 就绪后必须恢复播放。旧实现主动 pause，
+  // 异步切流后会失去浏览器的用户手势授权，最终停在暂停状态。
+  useEffect(() => {
+    if (isSeeking || !resumeAfterSeekRef.current || !playback.source) return
+
+    let disposed = false
+    let timer = 0
+    let attempts = 0
+
+    const resume = () => {
+      if (disposed || !resumeAfterSeekRef.current) return
+      const video = rootRef.current?.querySelector('video') || null
+      if (!video) {
+        timer = window.setTimeout(resume, 50)
+        return
+      }
+      if (!video.paused) {
+        resumeAfterSeekRef.current = false
+        return
+      }
+
+      attempts += 1
+      void video.play().then(() => {
+        resumeAfterSeekRef.current = false
+      }).catch(() => {
+        if (!disposed && attempts < 20) {
+          timer = window.setTimeout(resume, 100)
+        }
+      })
+    }
+
+    timer = window.setTimeout(resume, 0)
+    return () => {
+      disposed = true
+      window.clearTimeout(timer)
+    }
+  }, [isSeeking, playback.source, playback.generationId])
 
   useEffect(() => {
     if (!playback.source || !playback.sessionId) return
@@ -187,28 +227,29 @@ export default function SessionVideoPlayer({
   ])
 
   const requestSeek = useCallback((targetSeconds: number, reason: string) => {
-    if (!playback.sessionId || playback.loading) return
+    if (!playback.sessionId || playback.loading || seekInFlightRef.current) return
     const upperBound = knownDuration && knownDuration > 0 ? knownDuration : Number.MAX_SAFE_INTEGER
     const target = Math.max(0, Math.min(upperBound, targetSeconds))
     const previousPosition = absolutePositionRef.current
     const video = rootRef.current?.querySelector('video') || null
-    const shouldResumeOnFailure = Boolean(video && !video.paused)
+    const wasPlaying = Boolean(video && !video.paused)
 
-    // 先冻结当前画面并乐观更新整片进度，等待新 generation 首片就绪后
-    // 再无闪屏切换 HLS 地址；不再卸载整个播放器。
-    video?.pause()
+    // 保持旧 generation 继续播放，后台准备目标位置。这样不会出现黑屏或
+    // 因异步 pause/play 导致浏览器拒绝自动恢复。进度条先乐观跳到目标位置。
+    seekInFlightRef.current = true
+    resumeAfterSeekRef.current = wasPlaying
     seekTargetRef.current = target
     absolutePositionRef.current = target
     usePlayerStore.getState().setCurrentTime(target)
 
     void playback.restart(target, reason).then((success) => {
       if (success) return
+      resumeAfterSeekRef.current = false
       seekTargetRef.current = null
       absolutePositionRef.current = previousPosition
       usePlayerStore.getState().setCurrentTime(previousPosition)
-      if (shouldResumeOnFailure && video) {
-        void video.play().catch(() => undefined)
-      }
+    }).finally(() => {
+      seekInFlightRef.current = false
     })
   }, [knownDuration, playback.sessionId, playback.loading, playback.restart])
 
@@ -248,6 +289,7 @@ export default function SessionVideoPlayer({
       if (duration <= 0) return
       event.preventDefault()
       event.stopPropagation()
+      event.nativeEvent.stopImmediatePropagation()
       requestSeek(ratio * duration, 'progress_seek')
       return
     }
@@ -257,6 +299,7 @@ export default function SessionVideoPlayer({
     if (button.querySelector('[class*="lucide-skip-forward"]')) {
       event.preventDefault()
       event.stopPropagation()
+      event.nativeEvent.stopImmediatePropagation()
       requestSeek(absolutePositionRef.current + 10, 'skip_forward')
       return
     }
@@ -270,6 +313,7 @@ export default function SessionVideoPlayer({
       if (!isTitleBack) {
         event.preventDefault()
         event.stopPropagation()
+        event.nativeEvent.stopImmediatePropagation()
         requestSeek(absolutePositionRef.current - 10, 'skip_backward')
       }
     }
@@ -340,13 +384,15 @@ export default function SessionVideoPlayer({
       />
 
       {isSeeking && (
-        <div className="absolute inset-0 z-50 cursor-progress bg-black/20" role="status" aria-live="polite">
-          <div className="pointer-events-none absolute left-1/2 top-16 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-black/75 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
-            <Loader2 className="animate-spin text-neon-blue" size={17} />
-            <div className="leading-tight">
-              <p className="text-xs font-medium">正在跳转</p>
-              <p className="mt-0.5 font-mono text-[11px] text-white/60">{formatTimestamp(seekTarget)}</p>
-            </div>
+        <div
+          className="pointer-events-none absolute left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-black/75 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="animate-spin text-neon-blue" size={17} />
+          <div className="leading-tight">
+            <p className="text-xs font-medium">正在跳转</p>
+            <p className="mt-0.5 font-mono text-[11px] text-white/60">{formatTimestamp(seekTarget)}</p>
           </div>
         </div>
       )}
