@@ -79,17 +79,21 @@ func (r *TranscodeExecutionRepo) LegacySourceRetirementInventory(source string, 
 		return inventory, err
 	}
 
-	type latestRollback struct {
-		Latest *time.Time `gorm:"column:latest"`
+	// Avoid MAX(time) here. SQLite returns the aggregate as text while other
+	// drivers may return time.Time, making direct cross-driver scanning unsafe.
+	// Ordering a typed model row preserves the native timestamp scanner.
+	var latest model.TranscodeArtifactRecord
+	result := r.db.Model(&model.TranscodeArtifactRecord{}).
+		Where("migration_source = ? AND cleanup_rollback_until IS NOT NULL", source).
+		Order("cleanup_rollback_until DESC").
+		Limit(1).
+		Find(&latest)
+	if result.Error != nil {
+		return inventory, result.Error
 	}
-	var latest latestRollback
-	if err := r.db.Model(&model.TranscodeArtifactRecord{}).
-		Select("MAX(cleanup_rollback_until) AS latest").
-		Where("migration_source = ?", source).
-		Scan(&latest).Error; err != nil {
-		return inventory, err
+	if result.RowsAffected == 1 {
+		inventory.RollbackLatestUntil = latest.CleanupRollbackUntil
 	}
-	inventory.RollbackLatestUntil = latest.Latest
 	return inventory, nil
 }
 
