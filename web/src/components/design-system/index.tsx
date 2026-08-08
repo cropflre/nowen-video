@@ -1,7 +1,9 @@
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
+  InputHTMLAttributes,
   ReactNode,
+  SelectHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
 
@@ -71,6 +73,44 @@ export function Tag({ tone = 'neutral', className, children, ...props }: TagProp
     <span {...props} className={clsx('nv-tag', className)} data-tone={tone}>
       {children}
     </span>
+  )
+}
+
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  invalid?: boolean
+}
+
+export function Input({ invalid = false, className, ...props }: InputProps) {
+  return (
+    <input
+      {...props}
+      className={clsx(
+        'h-10 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
+        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
+        className,
+      )}
+      aria-invalid={invalid || props['aria-invalid'] || undefined}
+    />
+  )
+}
+
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  invalid?: boolean
+}
+
+export function Select({ invalid = false, className, children, ...props }: SelectProps) {
+  return (
+    <select
+      {...props}
+      className={clsx(
+        'h-10 rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
+        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
+        className,
+      )}
+      aria-invalid={invalid || props['aria-invalid'] || undefined}
+    >
+      {children}
+    </select>
   )
 }
 
