@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2, Trash2, Wifi, X } from 'lucide-react'
-import clsx from 'clsx'
 import { adminApi } from '@/api'
 import type { TMDbConfigStatus } from '@/types'
+import { AdminStatus } from '@/components/admin/AdminPrimitives'
+import { Button, Input, Tag } from '@/components/design-system'
 
 type ResultItem = { ok: boolean; message: string; target: string }
 type TestResult = {
@@ -143,35 +144,102 @@ export default function TMDbProxySettings({ config, onConfigChange }: Props) {
   const configured = Boolean(apiBase || imageBase || networkProxy || config?.api_proxy || config?.image_proxy || config?.network_proxy)
 
   return (
-    <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--border-default)' }}>
-      <div className="mb-2 flex items-center gap-2">
-        <Wifi size={14} className="text-neon/70" />
-        <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>TMDb 网络连接与代理</p>
+    <div className="mt-5 border-t border-[var(--nv-border-subtle)] pt-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--nv-text-primary)]">
+            <Wifi size={15} className="text-[var(--nv-action-primary)]" />
+            TMDb 网络连接与代理
+          </div>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-[var(--nv-text-tertiary)]">
+            反向代理与网络出口代理可独立配置；同时填写时，反向代理目标也会经过网络出口代理。保存后无需重启。
+          </p>
+        </div>
+        <Tag tone={configured ? 'brand' : 'neutral'}>{configured ? '已自定义网络路径' : '官方直连'}</Tag>
       </div>
-      <p className="mb-3 text-xs text-surface-500">两类代理语义不同，可单独使用；同时填写时，反向代理目标也会经过网络出口代理。保存后无需重启。</p>
 
-      <div className="mb-4 grid gap-2 rounded-lg p-3 text-xs sm:grid-cols-2" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-        <div><p className="font-medium text-neon">反向代理 Base URL</p><p className="mt-1 text-surface-500">适合 nginx 或 Worker 镜像，程序自动拼接 /3/... 与 /t/p/...，不是 curl -x。</p></div>
-        <div><p className="font-medium text-neon">HTTP/SOCKS 网络出口</p><p className="mt-1 text-surface-500">适合 Clash、v2ray、Shadowsocks、Karing，目标仍是 TMDb，只改变网络出口。</p></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
+          <p className="text-xs font-semibold text-[var(--nv-text-primary)]">反向代理 Base URL</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">适合 nginx 或 Worker 镜像，程序自动拼接 /3/... 与 /t/p/...。</p>
+        </div>
+        <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
+          <p className="text-xs font-semibold text-[var(--nv-text-primary)]">HTTP / SOCKS 网络出口</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">适合 Clash、v2ray、Shadowsocks、Karing，仅改变访问 TMDb 的网络出口。</p>
+        </div>
       </div>
 
-      {message && <div className={clsx('mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs', message.type === 'success' && 'bg-green-500/10 text-green-400', message.type === 'error' && 'bg-red-500/10 text-red-400', message.type === 'info' && 'bg-blue-500/10 text-blue-400')}>{message.type === 'success' ? <Check size={14} /> : message.type === 'error' ? <X size={14} /> : <Wifi size={14} />}{message.text}</div>}
+      {message && (
+        <div className="mt-3">
+          <AdminStatus tone={message.type === 'success' ? 'success' : message.type === 'error' ? 'danger' : 'active'}>
+            {message.type === 'success' ? <Check size={13} /> : message.type === 'error' ? <X size={13} /> : <Wifi size={13} />}
+            {message.text}
+          </AdminStatus>
+        </div>
+      )}
 
-      <div className="space-y-3">
+      <div className="mt-4 space-y-3">
         <ProxyInput label="API 反向代理 Base URL" hint="程序自动请求 {Base URL}/3/..." value={apiBase} onChange={setApiBase} placeholder="https://example.com/tmdbapi" />
         <ProxyInput label="图片反向代理 Base URL" hint="程序自动请求 {Base URL}/t/p/..." value={imageBase} onChange={setImageBase} placeholder="https://example.com/tmdbimg" />
-        <ProxyInput label="HTTP/SOCKS 网络出口代理" hint="支持 http、https、socks5、socks5h，可填写局域网地址" value={networkProxy} onChange={setNetworkProxy} placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:7891" />
+        <ProxyInput label="HTTP / SOCKS 网络出口代理" hint="支持 http、https、socks5、socks5h，可填写局域网地址" value={networkProxy} onChange={setNetworkProxy} placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:7891" />
+
         <div className="flex flex-wrap gap-2 pt-1">
-          <button onClick={save} disabled={saving} className="btn-primary gap-1.5 px-4 py-2 text-sm disabled:opacity-50">{saving ? <><Loader2 size={14} className="animate-spin" />保存中...</> : <><Check size={14} />保存连接配置</>}</button>
-          {configured && <button onClick={clear} disabled={saving} className="btn-ghost gap-1.5 px-4 py-2 text-sm text-red-400 disabled:opacity-50"><Trash2 size={14} />恢复官方直连</button>}
-          <button onClick={test} disabled={testing} className="btn-ghost gap-1.5 px-4 py-2 text-sm disabled:opacity-50">{testing ? <><Loader2 size={14} className="animate-spin" />测试中...</> : <><Wifi size={14} />测试连接</>}</button>
+          <Button variant="primary" size="sm" onClick={save} loading={saving}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {saving ? '保存中...' : '保存连接配置'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={test} loading={testing}>
+            {testing ? <Loader2 size={14} className="animate-spin" /> : <Wifi size={14} />}
+            {testing ? '测试中...' : '测试连接'}
+          </Button>
+          {configured && (
+            <Button variant="danger" size="sm" onClick={clear} disabled={saving}>
+              <Trash2 size={14} />
+              恢复官方直连
+            </Button>
+          )}
         </div>
-        {result && <div className="space-y-1.5 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>{([['API', result.api], ['图片', result.image], ['网络出口', result.network]] as const).map(([label, item]) => <div key={label} className="flex items-start gap-2">{item.ok ? <Check size={12} className="mt-0.5 shrink-0 text-green-400" /> : <X size={12} className="mt-0.5 shrink-0 text-red-400" />}<span className="shrink-0 text-surface-500">{label}：</span><span className={item.ok ? 'break-all text-green-400' : 'break-all text-red-400'}>{item.message}</span></div>)}</div>}
+
+        {result && (
+          <div className="space-y-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3 text-xs">
+            {([['API', result.api], ['图片', result.image], ['网络出口', result.network]] as const).map(([label, item]) => (
+              <div key={label} className="flex items-start gap-2">
+                {item.ok ? <Check size={13} className="mt-0.5 shrink-0 text-[var(--nv-status-success)]" /> : <X size={13} className="mt-0.5 shrink-0 text-[var(--nv-status-danger)]" />}
+                <span className="shrink-0 text-[var(--nv-text-tertiary)]">{label}：</span>
+                <span className={item.ok ? 'break-all text-[var(--nv-status-success)]' : 'break-all text-[var(--nv-status-danger)]'}>{item.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function ProxyInput({ label, hint, value, onChange, placeholder }: { label: string; hint: string; value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <div><label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>{label}</label><input type="text" value={value} onChange={(event) => onChange(event.target.value)} className="input font-mono text-sm" placeholder={placeholder} /><p className="mt-1 text-xs text-surface-500">{hint}</p></div>
+function ProxyInput({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  hint: string
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-[var(--nv-text-secondary)]">{label}</label>
+      <Input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="font-mono"
+        placeholder={placeholder}
+      />
+      <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">{hint}</p>
+    </div>
+  )
 }
