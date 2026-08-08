@@ -31,11 +31,15 @@ func TestAdaptiveWebPlaybackFallbackContract(t *testing.T) {
 		"const PLAYBACK_MODE_RANK",
 		"direct: 0",
 		"remux: 1",
-		"hls: 2",
-		"supportsDirect: false",
-		"supportsRemux: true",
-		"supportsRemux: false",
-		"forceTranscode: true",
+		"smart_remux: 2",
+		"hls: 3",
+		"const MAX_NETWORK_RETRIES = 1",
+		"networkRetryCountRef",
+		"analysis.errorType === 'aborted'",
+		"analysis.suggestedFallback === 'retry'",
+		"supportsDirect: nextDirect",
+		"supportsRemux: nextRemux",
+		"forceTranscode: nextForceTranscode",
 		"failedModesRef.current.has(to)",
 		"PLAYBACK_MODE_RANK[to] <= PLAYBACK_MODE_RANK[from]",
 		"setResumePosition(position)",
@@ -47,8 +51,13 @@ func TestAdaptiveWebPlaybackFallbackContract(t *testing.T) {
 		"streamApi.getPlaybackPlan",
 	)
 
-	if strings.Contains(adaptive, "setInterval") {
-		t.Fatalf("%s must not use timer-driven fallback retries", adaptivePath)
+	for _, forbidden := range []string{
+		"container: 'mkv'",
+		"setInterval",
+	} {
+		if strings.Contains(adaptive, forbidden) {
+			t.Fatalf("%s must not retain fallback anti-pattern %q", adaptivePath, forbidden)
+		}
 	}
 }
 
