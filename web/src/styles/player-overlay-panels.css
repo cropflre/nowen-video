@@ -1,0 +1,522 @@
+/* ============================================================
+   PLAYER-UI-V2 · Overlay Panel System
+   ------------------------------------------------------------
+   统一投屏、字幕搜索、字幕选择等播放器浮层的视觉语言。
+   ============================================================ */
+
+.group\/player {
+  --player-panel-bg: rgba(12, 14, 20, 0.94);
+  --player-panel-border: rgba(255, 255, 255, 0.09);
+  --player-panel-shadow: 0 22px 60px rgba(0, 0, 0, 0.50);
+  --player-panel-radius: 18px;
+  --player-panel-text: rgba(255, 255, 255, 0.92);
+  --player-panel-muted: rgba(255, 255, 255, 0.48);
+  --player-panel-faint: rgba(255, 255, 255, 0.30);
+  --player-panel-soft: rgba(255, 255, 255, 0.055);
+  --player-panel-soft-hover: rgba(255, 255, 255, 0.095);
+  --player-panel-accent-soft: rgba(0, 240, 255, 0.09);
+  --player-panel-accent-border: rgba(0, 240, 255, 0.18);
+}
+
+.group\/player .player-overlay-panel {
+  background: var(--player-panel-bg) !important;
+  border: 1px solid var(--player-panel-border) !important;
+  border-radius: var(--player-panel-radius) !important;
+  box-shadow: var(--player-panel-shadow) !important;
+  backdrop-filter: blur(22px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
+  color: var(--player-panel-text);
+  overflow: hidden;
+}
+
+.group\/player .player-overlay-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.group\/player .player-overlay-panel-heading {
+  min-width: 0;
+}
+
+.group\/player .player-overlay-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.group\/player .player-overlay-panel-title > svg {
+  flex: 0 0 auto;
+  color: #7defff;
+}
+
+.group\/player .player-overlay-panel-subtitle {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--player-panel-muted);
+}
+
+.group\/player .player-overlay-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.group\/player .player-overlay-close,
+.group\/player .player-overlay-toolbar-btn {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  line-height: 1;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.group\/player .player-overlay-close {
+  padding: 0;
+}
+
+.group\/player .player-overlay-close:hover,
+.group\/player .player-overlay-toolbar-btn:hover {
+  background: var(--player-panel-soft-hover);
+  color: #fff;
+}
+
+.group\/player .player-overlay-toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.group\/player .player-overlay-chip {
+  height: 28px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.43);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.group\/player .player-overlay-chip kbd {
+  color: rgba(125, 239, 255, 0.86);
+  font: inherit;
+  font-weight: 700;
+}
+
+.group\/player .player-overlay-body {
+  padding: 14px 16px 16px;
+}
+
+.group\/player .player-overlay-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--player-panel-faint);
+}
+
+.group\/player .player-overlay-input-wrap {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: rgba(7, 12, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.group\/player .player-overlay-input-wrap:focus-within {
+  background: rgba(7, 14, 26, 0.86);
+  border-color: rgba(0, 240, 255, 0.34);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.055);
+}
+
+.group\/player .player-overlay-input-wrap > svg {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.group\/player .player-overlay-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.group\/player .player-overlay-input-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.31);
+}
+
+.group\/player .player-overlay-input-action,
+.group\/player .player-overlay-input-clear {
+  flex: 0 0 auto;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+}
+
+.group\/player .player-overlay-input-clear {
+  width: 28px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.group\/player .player-overlay-input-clear:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.group\/player .player-overlay-input-action {
+  padding: 0 10px;
+  color: #7defff;
+  background: rgba(0, 240, 255, 0.075);
+  border: 1px solid rgba(0, 240, 255, 0.11);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.group\/player .player-overlay-input-action:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: rgba(0, 240, 255, 0.19);
+}
+
+.group\/player .player-overlay-input-action:disabled {
+  color: rgba(255, 255, 255, 0.23);
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(255, 255, 255, 0.045);
+  cursor: not-allowed;
+}
+
+.group\/player .player-overlay-helper {
+  padding: 18px 10px 2px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.group\/player .player-overlay-empty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 8px 2px;
+}
+
+.group\/player .player-overlay-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  text-align: center;
+}
+
+.group\/player .player-overlay-empty-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.group\/player .player-overlay-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.80);
+}
+
+.group\/player .player-overlay-empty-desc {
+  font-size: 11px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.40);
+}
+
+.group\/player .player-overlay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.group\/player .player-overlay-item {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.68);
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.group\/player .player-overlay-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.group\/player .player-overlay-item.is-active {
+  background: var(--player-panel-accent-soft);
+  border-color: var(--player-panel-accent-border);
+  color: #7defff;
+}
+
+.group\/player .player-overlay-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.group\/player .player-overlay-item-primary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+
+.group\/player .player-overlay-item-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.group\/player .player-overlay-item.is-active .player-overlay-item-icon {
+  background: rgba(0, 240, 255, 0.075);
+  border-color: rgba(0, 240, 255, 0.13);
+  color: #7defff;
+}
+
+.group\/player .player-overlay-item-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.group\/player .player-overlay-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 540;
+  line-height: 1.3;
+  color: inherit;
+}
+
+.group\/player .player-overlay-item-desc,
+.group\/player .player-overlay-item-meta {
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.group\/player .player-overlay-item-meta {
+  margin-top: 0;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.group\/player .player-overlay-divider {
+  height: 1px;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.group\/player .player-overlay-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.43);
+}
+
+.group\/player .player-overlay-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #5ee6a8;
+  box-shadow: 0 0 10px rgba(94, 230, 168, 0.38);
+}
+
+.group\/player .player-overlay-alert {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: rgba(244, 63, 94, 0.075);
+  border: 1px solid rgba(244, 63, 94, 0.13);
+  color: rgba(253, 164, 175, 0.86);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.group\/player .player-overlay-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.19) transparent;
+}
+
+.group\/player .player-overlay-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.group\/player .player-overlay-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.group\/player .player-overlay-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.19);
+  border-radius: 999px;
+}
+
+/* ==================== VideoPlayer 字幕菜单统一 ==================== */
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full {
+  width: 264px !important;
+  min-width: 264px !important;
+  max-height: min(480px, calc(100vh - 120px));
+  overflow-y: auto;
+  padding: 8px !important;
+  border-radius: var(--player-panel-radius) !important;
+  background: var(--player-panel-bg) !important;
+  border: 1px solid var(--player-panel-border) !important;
+  box-shadow: var(--player-panel-shadow) !important;
+  backdrop-filter: blur(22px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 240, 255, 0.19) transparent;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button,
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button {
+  min-height: 42px;
+  padding: 0 11px !important;
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 11px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.67) !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button:hover,
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #fff !important;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button.text-neon-blue,
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button.text-neon-blue {
+  background: var(--player-panel-accent-soft) !important;
+  border-color: var(--player-panel-accent-border) !important;
+  color: #7defff !important;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='border-t'] {
+  margin: 8px 4px !important;
+  border-color: rgba(255, 255, 255, 0.065) !important;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='uppercase'] {
+  padding: 4px 9px 6px !important;
+  color: rgba(255, 255, 255, 0.28) !important;
+  font-size: 9px !important;
+  letter-spacing: 0.15em !important;
+}
+
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-surface-600,
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-emerald-400\/60 {
+  color: rgba(255, 255, 255, 0.32) !important;
+}
+
+/* 翻译二级列表和主字幕菜单保持一致。 */
+.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > div {
+  border-radius: 11px !important;
+  background: rgba(5, 8, 14, 0.56) !important;
+  border-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+@media (max-width: 768px) {
+  .group\/player .player-overlay-panel-header {
+    min-height: 52px;
+    padding: 12px 14px;
+  }
+
+  .group\/player .player-overlay-body {
+    padding: 12px 14px 14px;
+  }
+
+  .group\/player .player-overlay-chip {
+    display: none;
+  }
+
+  .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full {
+    width: min(260px, calc(100vw - 24px)) !important;
+    min-width: 0 !important;
+    max-height: min(420px, calc(100vh - 100px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group\/player .player-overlay-panel *,
+  .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full * {
+    transition-duration: 0.01ms !important;
+  }
+}
