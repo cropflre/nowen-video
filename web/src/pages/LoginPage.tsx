@@ -80,7 +80,7 @@ export default function LoginPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
-          <div className="rounded-[var(--nv-radius-control)] border border-[color-mix(in_srgb,var(--nv-status-danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--nv-status-danger)_8%,transparent)] px-4 py-3 text-sm text-[var(--nv-status-danger)]" role="alert">
+          <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-status-danger)] bg-[var(--nv-bg-surface-soft)] px-4 py-3 text-sm text-[var(--nv-status-danger)]" role="alert">
             {error}
           </div>
         )}
