@@ -63,7 +63,7 @@ export function Modal({
     <div
       ref={overlayRef}
       className={clsx(
-        'fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm',
+        'fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center overflow-y-auto bg-[var(--nv-bg-overlay)] p-4 backdrop-blur-sm',
         className,
       )}
       onMouseDown={handleBackdrop}
@@ -73,7 +73,7 @@ export function Modal({
     >
       <div
         className={clsx(
-          'relative flex max-h-[min(90vh,900px)] w-full flex-col overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-elevated)] shadow-[var(--nv-shadow-modal)]',
+          'relative flex max-h-[min(90vh,900px)] w-full flex-col overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] shadow-[var(--nv-shadow-elevated)]',
           sizeClass[size],
           panelClassName,
         )}
