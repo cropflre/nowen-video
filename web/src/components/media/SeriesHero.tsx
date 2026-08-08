@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Heart, Link2, MoreHorizontal, Pencil, Play, RefreshCw, Share2, Trash2, Tv, Unlink } from 'lucide-react'
 import type { Media, Series } from '@/types'
@@ -165,7 +165,7 @@ export default function SeriesHero({
         </div>
       </div>
 
-      {menuOpen && <button type="button" className="fixed inset-0 z-[calc(var(--nv-z-dropdown)-1)] cursor-default" aria-label="关闭菜单" onClick={() => setMenuOpen(false)} />}
+      {menuOpen && <button type="button" className="fixed inset-0 z-[59] cursor-default" aria-label="关闭菜单" onClick={() => setMenuOpen(false)} />}
     </section>
   )
 }
@@ -177,7 +177,7 @@ function MenuItem({
   disabled = false,
   danger = false,
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   onClick: () => void
   disabled?: boolean
