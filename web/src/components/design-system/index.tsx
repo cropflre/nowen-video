@@ -209,3 +209,5 @@ export function EmptyState({ icon, title, description, action, className, ...pro
     </div>
   )
 }
+
+export { Modal, ModalBody, ModalFooter, ModalHeader, type ModalSize } from './Modal'
