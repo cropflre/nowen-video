@@ -8,6 +8,7 @@ import { initI18n } from './i18n'
 import './index.css'
 import './styles/fluent.css'
 import './styles/player-cinema.css'
+import './styles/player-speed-menu.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
