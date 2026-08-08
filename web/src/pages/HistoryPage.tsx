@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { userApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useDialog } from '@/components/Dialog'
+import { Button, EmptyState } from '@/components/design-system'
 import { useTranslation } from '@/i18n'
 import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
 import { usePagination } from '@/hooks/usePagination'
@@ -39,10 +40,9 @@ export default function HistoryPage() {
   const handleDelete = async (mediaId: string) => {
     try {
       await userApi.deleteHistory(mediaId)
-      // 乐观更新当前页；同时使其他分页缓存失效，确保重新访问时数据一致
-      mutate((prev) => ({
-        list: (prev?.list ?? []).filter((item) => item.media_id !== mediaId),
-        total: Math.max(0, (prev?.total ?? 0) - 1),
+      mutate((previous) => ({
+        list: (previous?.list ?? []).filter((item) => item.media_id !== mediaId),
+        total: Math.max(0, (previous?.total ?? 0) - 1),
       }))
       invalidatePageCachePrefix('history:')
     } catch {
@@ -62,7 +62,6 @@ export default function HistoryPage() {
       await userApi.clearHistory()
       mutate({ list: [], total: 0 })
       invalidatePageCachePrefix('history:')
-      // 同时清除首页的"继续观看"缓存，让首页刷新时不显示已清理的记录
       invalidatePageCachePrefix('home:')
       refetch(true)
     } catch {
@@ -86,143 +85,115 @@ export default function HistoryPage() {
   const pages = totalPages(total)
 
   return (
-    <div>
-      {/* 标题栏 */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <Clock size={24} className="text-neon" />
-          {t('history.title')}
-        </h1>
+    <div className="nv-section-stack">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-[-0.02em] text-[var(--nv-text-primary)]">
+            <Clock size={22} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+            {t('history.title')}
+          </h1>
+          {total > 0 && <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">共 {total} 条观看记录</p>}
+        </div>
         {histories.length > 0 && (
-          <button
-            onClick={handleClear}
-            className="btn-ghost gap-1.5 text-sm text-red-400 hover:text-red-300"
-          >
-            <Trash2 size={14} />
+          <Button variant="danger" size="sm" onClick={handleClear}>
+            <Trash2 size={14} aria-hidden="true" />
             {t('history.clearAll')}
-          </button>
+          </Button>
         )}
       </div>
 
-      {/* 加载状态 */}
       {loading && (
-        <div className="space-y-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex gap-4 rounded-xl p-4" style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-default)',
-            }}>
-              <div className="skeleton h-20 w-36 rounded-lg" />
-              <div className="flex-1 space-y-2">
-                <div className="skeleton h-5 w-1/3 rounded" />
-                <div className="skeleton h-4 w-1/4 rounded" />
+        <div className="space-y-3" aria-busy="true" aria-label="正在加载观看历史">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="flex gap-4 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 sm:p-4">
+              <div className="skeleton h-20 w-32 shrink-0 rounded-[var(--nv-radius-control)] sm:w-36" />
+              <div className="flex-1 space-y-2 py-1">
+                <div className="skeleton h-5 w-1/3" />
+                <div className="skeleton h-4 w-1/4" />
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* 历史列表 */}
-      {!loading && (
+      {!loading && histories.length > 0 && (
         <div className="space-y-3">
-          {histories.map((item) => (
-            <div
-              key={item.id}
-              className="glass-panel-subtle group flex gap-4 rounded-xl p-4 transition-all duration-300 hover:border-neon-blue/20 hover:shadow-card-hover"
-            >
-              {/* 缩略图 */}
-              <Link
-                to={`/play/${item.media_id}`}
-                className="relative h-20 w-36 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}
-              >
-                <img
-                  src={streamApi.getPosterUrl(item.media_id)}
-                  alt={item.media?.title}
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none'
-                  }}
-                />
-                {/* 播放图标 */}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Play size={24} className="text-white" fill="white" />
-                </div>
-                {/* 霓虹进度条 */}
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
-                  <div
-                    className="h-full"
-                    style={{
-                      width: `${formatProgress(item.position, item.duration)}%`,
-                      background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                      boxShadow: '0 0 6px var(--neon-blue-30)',
-                    }}
-                  />
-                </div>
-              </Link>
+          {histories.map((item) => {
+            const progress = formatProgress(item.position, item.duration)
+            const displayTitle = item.media?.media_type === 'episode' && item.media?.series
+              ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
+              : (item.media?.title || t('history.unknownMedia'))
 
-              {/* 信息 */}
-              <div className="flex flex-1 flex-col justify-center">
+            return (
+              <article
+                key={item.id}
+                className="group flex gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-elevated)] hover:shadow-[var(--nv-shadow-card)] sm:gap-4 sm:p-4"
+              >
                 <Link
-                  to={`/media/${item.media_id}`}
-                  className="text-sm font-medium transition-colors hover:text-neon"
-                  style={{ color: 'var(--text-primary)' }}
+                  to={`/play/${item.media_id}`}
+                  className="relative h-20 w-28 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] sm:w-36"
+                  aria-label={`继续播放 ${displayTitle}`}
                 >
-                  {item.media?.media_type === 'episode' && item.media?.series
-                    ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
-                    : (item.media?.title || t('history.unknownMedia'))
-                  }
+                  <img
+                    src={streamApi.getPosterUrl(item.media_id)}
+                    alt=""
+                    className="h-full w-full object-cover transition-[transform,filter] duration-300 group-hover:scale-[1.025] group-hover:brightness-90"
+                    onError={(event) => { event.currentTarget.style.display = 'none' }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
+                      <Play size={14} fill="currentColor" aria-hidden="true" />
+                    </span>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/25">
+                    <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${progress}%` }} />
+                  </div>
                 </Link>
-                {item.media?.media_type === 'episode' && item.media?.episode_title && (
-                  <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {item.media.episode_title}
-                  </p>
-                )}
-                <div className="mt-1 flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  <span>
-                    {t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}
-                  </span>
-                  <span className="text-neon-blue/20">·</span>
-                  <span>
-                    {item.completed ? t('history.completed') : `${formatProgress(item.position, item.duration)}%`}
-                  </span>
-                  <span className="text-neon-blue/20">·</span>
-                  <span>{formatDate(item.updated_at)}</span>
+
+                <div className="flex min-w-0 flex-1 flex-col justify-center">
+                  <Link
+                    to={`/media/${item.media_id}`}
+                    className="truncate text-sm font-semibold text-[var(--nv-text-primary)] transition-colors hover:text-[var(--nv-action-primary)]"
+                  >
+                    {displayTitle}
+                  </Link>
+                  {item.media?.media_type === 'episode' && item.media?.episode_title && (
+                    <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{item.media.episode_title}</p>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
+                    <span>{t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{item.completed ? t('history.completed') : `${progress}%`}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDate(item.updated_at)}</span>
+                  </div>
                 </div>
-              </div>
 
-              {/* 删除按钮 */}
-              <button
-                onClick={() => handleDelete(item.media_id)}
-                className="self-center rounded-lg p-2 text-surface-500 opacity-0 transition-all hover:text-red-400 hover:bg-red-400/5 group-hover:opacity-100"
-                title={t('history.deleteRecord')}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={() => handleDelete(item.media_id)}
+                  className="self-center opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                  title={t('history.deleteRecord')}
+                  aria-label={`${t('history.deleteRecord')}：${displayTitle}`}
+                >
+                  <X size={15} aria-hidden="true" />
+                </Button>
+              </article>
+            )
+          })}
         </div>
       )}
 
-      {/* 空状态 */}
       {!loading && histories.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div
-            className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"
-            style={{
-              background: 'var(--neon-blue-5)',
-              border: '1px solid var(--neon-blue-8)',
-            }}
-          >
-            <Clock size={36} className="text-surface-600" />
-          </div>
-          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('history.empty')}</p>
-          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t('history.emptyHint')}
-          </p>
-        </div>
+        <EmptyState
+          icon={<Clock size={26} aria-hidden="true" />}
+          title={t('history.empty')}
+          description={t('history.emptyHint')}
+        />
       )}
 
-      {/* 分页 */}
       <Pagination
         page={page}
         totalPages={pages}

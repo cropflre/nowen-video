@@ -1,0 +1,85 @@
+name: Transcode Output Cadence Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-output-cadence-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_OUTPUT_CADENCE.md'
+      - '.github/scripts/verify_output_cadence.py'
+      - '.github/workflows/transcode-output-cadence-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-output-cadence-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_OUTPUT_CADENCE.md'
+      - '.github/scripts/verify_output_cadence.py'
+      - '.github/workflows/transcode-output-cadence-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-output-cadence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  output-cadence-certification:
+    name: Full output cadence and frame-count projection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify output-cadence contracts
+        run: |
+          go test ./internal/transcode/outputcadence
+          go test ./internal/transcode/sourceorigin ./internal/transcode/boundaryevidence ./internal/transcode/avsync
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-output-cadence-cert ./cmd/transcode-output-cadence-cert
+      - name: Produce full output-cadence matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-output-cadence
+          /tmp/nowen-transcode-output-cadence-cert \
+            -output /tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json
+      - name: Verify exact cadence baseline and fail-closed policy
+        run: |
+          python3 .github/scripts/verify_output_cadence.py \
+            /tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json
+      - name: Upload output-cadence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-output-cadence-${{ github.sha }}
+          path: /tmp/nowen-transcode-output-cadence/output-cadence-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14

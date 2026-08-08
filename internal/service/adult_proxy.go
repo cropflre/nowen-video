@@ -64,9 +64,9 @@ type MirrorStatus struct {
 
 // AdultProxyManager 智能代理/镜像管理器
 type AdultProxyManager struct {
-	mu           sync.RWMutex
-	mirrorCache  map[string][]*MirrorStatus // source -> mirrors
-	client       *http.Client
+	mu                  sync.RWMutex
+	mirrorCache         map[string][]*MirrorStatus // source -> mirrors
+	client              *http.Client
 	healthCheckInterval time.Duration
 	lastHealthAll       time.Time
 }
@@ -188,7 +188,7 @@ func (m *AdultProxyManager) HealthCheckAll() (int, int) {
 	m.mu.Lock()
 	// 收集所有 (source, mirror) 配对
 	type pair struct {
-		src   string
+		src    string
 		mirror *MirrorStatus
 	}
 	pairs := []pair{}
@@ -204,10 +204,10 @@ func (m *AdultProxyManager) HealthCheckAll() (int, int) {
 	}
 
 	var (
-		wg        sync.WaitGroup
-		mu        sync.Mutex
-		healthy   int
-		sem       = make(chan struct{}, 6) // 并发上限 6
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		healthy int
+		sem     = make(chan struct{}, 6) // 并发上限 6
 	)
 
 	for _, p := range pairs {

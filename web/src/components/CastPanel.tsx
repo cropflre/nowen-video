@@ -21,6 +21,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
   const loadDevices = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const res = await castApi.listDevices()
       setDevices(res.data.data || [])
     } catch {
@@ -32,6 +33,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
 
   const refreshDevices = async () => {
     setRefreshing(true)
+    setError(null)
     try {
       await castApi.refreshDevices()
       await new Promise(resolve => setTimeout(resolve, 2000))
@@ -87,135 +89,145 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
   }, [session])
 
   return (
-    <div className="absolute bottom-full right-0 mb-2 w-80 rounded-xl shadow-2xl"
-      style={{
-        background: 'rgba(11, 17, 32, 0.92)',
-        border: '1px solid var(--neon-blue-10)',
-        backdropFilter: 'blur(20px)',
-      }}
+    <div
+      className="player-overlay-panel absolute bottom-full right-0 mb-3 w-[360px] max-w-[calc(100vw-24px)]"
+      onClick={(e) => e.stopPropagation()}
     >
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
-        <div className="flex items-center gap-2">
-          <Monitor size={18} className="text-neon-blue" />
-          <h3 className="text-sm font-medium text-white">投屏</h3>
-        </div>
-        <button
-          onClick={onClose}
-          className="rounded-lg p-1 text-surface-400 transition-colors hover:text-white hover:bg-white/5"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* 正在投屏 */}
-      {session && (
-        <div className="p-4" style={{ borderBottom: '1px solid var(--neon-blue-8)' }}>
-          <div className="mb-2 flex items-center gap-2">
-            <div className="h-2 w-2 animate-pulse rounded-full" style={{ background: 'var(--neon-green)', boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)' }} />
-            <span className="text-xs" style={{ color: 'var(--neon-green)' }}>正在投屏</span>
+      <div className="player-overlay-panel-header">
+        <div className="player-overlay-panel-heading">
+          <div className="player-overlay-panel-title">
+            <Monitor size={17} />
+            <span>投屏</span>
           </div>
-          <p className="mb-1 text-sm font-medium text-white">{mediaTitle || '正在播放'}</p>
-          <p className="mb-3 text-xs text-surface-500">{session.device?.name || '未知设备'}</p>
-
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => controlCast(session.status === 'playing' ? 'pause' : 'play')}
-              className="rounded-full p-2.5 text-white transition-all hover:scale-105"
-              style={{
-                background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                boxShadow: 'var(--neon-glow-shadow-md)',
-              }}
-            >
-              {session.status === 'playing' ? <Pause size={18} /> : <Play size={18} />}
-            </button>
-            <button
-              onClick={() => controlCast('stop')}
-              className="rounded-full p-2 text-surface-300 transition-colors hover:text-white"
-              style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)' }}
-              title="停止投屏"
-            >
-              <Square size={16} />
-            </button>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <Volume2 size={14} className="text-surface-400" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={Math.round(session.volume * 100)}
-              onChange={(e) => controlCast('volume', parseInt(e.target.value))}
-              className="h-1 flex-1 cursor-pointer appearance-none rounded-full"
-              style={{
-                background: `linear-gradient(to right, var(--neon-blue) ${session.volume * 100}%, rgba(255,255,255,0.1) ${session.volume * 100}%)`,
-              }}
-            />
+          <div className="player-overlay-panel-subtitle">
+            {session ? '远程控制当前播放设备' : '发现并连接同一网络中的设备'}
           </div>
         </div>
-      )}
 
-      {/* 设备列表 */}
-      {!session && (
-        <div className="p-2">
-          <div className="flex items-center justify-between px-2 py-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">可用设备</span>
+        <div className="player-overlay-inline-actions">
+          {!session && (
             <button
               onClick={refreshDevices}
               disabled={refreshing}
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-surface-400 transition-colors hover:text-neon-blue hover:bg-neon-blue/5 disabled:opacity-50"
+              className="player-overlay-toolbar-btn"
+              title="刷新设备"
             >
-              <RefreshCw size={12} className={clsx(refreshing && 'animate-spin')} />
-              刷新
+              <RefreshCw size={14} className={clsx(refreshing && 'animate-spin')} />
+              <span>刷新</span>
             </button>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={20} className="animate-spin text-neon-blue/40" />
-            </div>
-          ) : devices.length === 0 ? (
-            <div className="py-8 text-center">
-              <Wifi size={32} className="mx-auto mb-2 text-surface-600" />
-              <p className="text-sm text-surface-400">未发现投屏设备</p>
-              <p className="mt-1 text-xs text-surface-600">请确保设备与服务器在同一网络</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {devices.map((device) => (
-                <button
-                  key={device.id}
-                  onClick={() => startCast(device.id)}
-                  disabled={casting}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-neon-blue/5 disabled:opacity-50"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl"
-                    style={{ background: 'var(--neon-blue-6)', border: '1px solid var(--neon-blue-10)' }}
-                  >
-                    <Monitor size={16} className="text-neon-blue" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-white">{device.name || '未知设备'}</p>
-                    <p className="truncate text-xs text-surface-500">
-                      {device.manufacturer || device.type.toUpperCase()}
-                      {device.model_name && ` · ${device.model_name}`}
-                    </p>
-                  </div>
-                  {casting && <Loader2 size={16} className="animate-spin text-neon-blue" />}
-                </button>
-              ))}
-            </div>
           )}
+          <button onClick={onClose} className="player-overlay-close" title="关闭">
+            <X size={16} />
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* 错误提示 */}
-      {error && (
-        <div className="px-4 py-2" style={{ borderTop: '1px solid rgba(239, 68, 68, 0.1)' }}>
-          <p className="text-xs text-red-400">{error}</p>
-        </div>
-      )}
+      <div className="player-overlay-body">
+        {session ? (
+          <>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="player-overlay-status">
+                <span className="player-overlay-status-dot animate-pulse" />
+                <span>正在投屏</span>
+              </div>
+              <span className="player-overlay-item-meta">{session.device?.name || '未知设备'}</span>
+            </div>
+
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.035] p-3">
+              <p className="truncate text-sm font-semibold text-white/90">{mediaTitle || '正在播放'}</p>
+              <p className="mt-1 truncate text-[11px] text-white/35">{session.device?.name || '未知设备'}</p>
+
+              <div className="mt-4 flex items-center justify-center gap-8">
+                <button
+                  onClick={() => controlCast(session.status === 'playing' ? 'pause' : 'play')}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-300/15 bg-cyan-300/10 text-cyan-100 transition-all hover:bg-cyan-300/15"
+                  title={session.status === 'playing' ? '暂停' : '播放'}
+                >
+                  {session.status === 'playing' ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+                </button>
+                <button
+                  onClick={() => controlCast('stop')}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.07] bg-white/[0.04] text-white/55 transition-colors hover:bg-white/[0.08] hover:text-white"
+                  title="停止投屏"
+                >
+                  <Square size={15} />
+                </button>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <Volume2 size={14} className="shrink-0 text-white/35" />
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={Math.round(session.volume * 100)}
+                  onChange={(e) => controlCast('volume', parseInt(e.target.value))}
+                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full"
+                  style={{
+                    background: `linear-gradient(to right, var(--neon-blue) ${session.volume * 100}%, rgba(255,255,255,0.12) ${session.volume * 100}%)`,
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="player-overlay-section-label">
+              <span>可用设备</span>
+              {!loading && devices.length > 0 && <span className="normal-case tracking-normal">{devices.length} 台</span>}
+            </div>
+
+            {loading ? (
+              <div className="player-overlay-empty">
+                <div className="player-overlay-empty-inner">
+                  <div className="player-overlay-empty-icon">
+                    <Loader2 size={22} className="animate-spin" />
+                  </div>
+                  <div className="player-overlay-empty-title">正在发现设备</div>
+                  <div className="player-overlay-empty-desc">正在扫描当前网络中的可投屏设备</div>
+                </div>
+              </div>
+            ) : devices.length === 0 ? (
+              <div className="player-overlay-empty">
+                <div className="player-overlay-empty-inner">
+                  <div className="player-overlay-empty-icon">
+                    <Wifi size={25} />
+                  </div>
+                  <div className="player-overlay-empty-title">未发现投屏设备</div>
+                  <div className="player-overlay-empty-desc">请确保设备与服务器处于同一局域网，然后点击刷新重试</div>
+                </div>
+              </div>
+            ) : (
+              <div className="player-overlay-list player-overlay-scroll max-h-[300px] overflow-y-auto pr-1">
+                {devices.map((device) => (
+                  <button
+                    key={device.id}
+                    onClick={() => startCast(device.id)}
+                    disabled={casting}
+                    className="player-overlay-item"
+                  >
+                    <div className="player-overlay-item-primary">
+                      <div className="player-overlay-item-icon">
+                        <Monitor size={15} />
+                      </div>
+                      <div className="player-overlay-item-copy">
+                        <div className="player-overlay-item-title">{device.name || '未知设备'}</div>
+                        <div className="player-overlay-item-desc">
+                          {device.manufacturer || device.type.toUpperCase()}
+                          {device.model_name && ` · ${device.model_name}`}
+                        </div>
+                      </div>
+                    </div>
+                    {casting && <Loader2 size={14} className="animate-spin text-cyan-200/80" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {error && <div className="player-overlay-alert">{error}</div>}
+      </div>
     </div>
   )
 }

@@ -1,0 +1,81 @@
+name: Transcode VFR Layer Isolation Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-vfr-isolation-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'internal/transcode/vfrisolation/**'
+      - 'docs/TRANSCODE_VFR_LAYER_ISOLATION.md'
+      - '.github/scripts/verify_vfr_isolation.py'
+      - '.github/workflows/transcode-vfr-isolation-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-vfr-isolation-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/certification/output_cadence_*.go'
+      - 'internal/transcode/certification/source_origin_*.go'
+      - 'internal/transcode/certification/vfr_isolation_*.go'
+      - 'internal/transcode/outputcadence/**'
+      - 'internal/transcode/sourceorigin/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'internal/transcode/vfrisolation/**'
+      - 'docs/TRANSCODE_VFR_LAYER_ISOLATION.md'
+      - '.github/scripts/verify_vfr_isolation.py'
+      - '.github/workflows/transcode-vfr-isolation-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-vfr-isolation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vfr-layer-isolation:
+    name: Isolate VFR encoder and muxer timing layers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify isolation contracts
+        run: |
+          go test ./internal/transcode/vfrisolation
+          go test ./internal/transcode/outputcadence ./internal/transcode/sourceorigin ./internal/transcode/timestampplan
+          go test ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-vfr-isolation-cert ./cmd/transcode-vfr-isolation-cert
+      - name: Produce VFR layer-isolation matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-vfr-isolation
+          /tmp/nowen-transcode-vfr-isolation-cert \
+            -output /tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json
+      - name: Verify exact cadence, frame-content and layer-isolation baseline
+        run: |
+          python3 .github/scripts/verify_vfr_isolation.py \
+            /tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json
+      - name: Upload VFR layer-isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-vfr-layer-isolation-${{ github.sha }}
+          path: /tmp/nowen-transcode-vfr-isolation/vfr-layer-isolation-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14

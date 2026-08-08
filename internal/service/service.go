@@ -12,42 +12,43 @@ import (
 
 // Services 聚合所有服务
 type Services struct {
-	User           *UserService
-	Auth           *AuthService
-	Library        *LibraryService
-	Media          *MediaService
-	Series         *SeriesService
-	Stream         *StreamService
-	Transcode      *TranscodeService
-	Metadata       *MetadataService
-	Scanner        *ScannerService
-	Playlist       *PlaylistService
-	Recommend      *RecommendService
-	Cast           *CastService
-	Bookmark       *BookmarkService
-	Comment        *CommentService
-	Danmaku        *DanmakuService
-	Permission     *PermissionService
-	FileWatcher    *FileWatcherService
-	NFO            *NFOService
-	Stats          *StatsService
-	Webhook        *WebhookService
-	VFS            *VFSManager
-	WebDAV         *WebDAVService
-	RemoteStorage  *RemoteStorageService // V2.3: Alist / S3 统一管理
-	WSHub          *WSHub
-	AI             *AIService
-	ScrapeManager  *ScrapeManagerService
-	FileManager    *FileManagerService
-	AIAssistant    *AIAssistantService
-	TheTVDB        *TheTVDBService
-	Fanart         *FanartService
-	ProviderChain  *ProviderChain
-	Notification   *NotificationService
-	SubtitleSearch *SubtitleSearchService
-	BatchMetadata  *BatchMetadataService
-	ImportExport   *MediaImportExportService
-	EmbyCompat     *EmbyCompatService
+	User                *UserService
+	Auth                *AuthService
+	Library             *LibraryService
+	Media               *MediaService
+	Series              *SeriesService
+	Stream              *StreamService
+	MediaExecution      *MediaExecutionService
+	ArtifactMaintenance *ArtifactMaintenanceService
+	Metadata            *MetadataService
+	Scanner             *ScannerService
+	Playlist            *PlaylistService
+	Recommend           *RecommendService
+	Cast                *CastService
+	Bookmark            *BookmarkService
+	Comment             *CommentService
+	Danmaku             *DanmakuService
+	Permission          *PermissionService
+	FileWatcher         *FileWatcherService
+	NFO                 *NFOService
+	Stats               *StatsService
+	Webhook             *WebhookService
+	VFS                 *VFSManager
+	WebDAV              *WebDAVService
+	RemoteStorage       *RemoteStorageService // V2.3: Alist / S3 统一管理
+	WSHub               *WSHub
+	AI                  *AIService
+	ScrapeManager       *ScrapeManagerService
+	FileManager         *FileManagerService
+	AIAssistant         *AIAssistantService
+	TheTVDB             *TheTVDBService
+	Fanart              *FanartService
+	ProviderChain       *ProviderChain
+	Notification        *NotificationService
+	SubtitleSearch      *SubtitleSearchService
+	BatchMetadata       *BatchMetadataService
+	ImportExport        *MediaImportExportService
+	EmbyCompat          *EmbyCompatService
 	// V2: 中期发展规划服务
 	UserProfile     *UserProfileService
 	OfflineDownload *OfflineDownloadService
@@ -58,8 +59,6 @@ type Services struct {
 	Federation      *FederationService
 	// V3: 新增服务
 	AIScene *AISceneService
-	// V5: Pulse 数据中心
-	Pulse *PulseService
 	// V6: P1~P3 新增功能
 	ASR                *ASRService
 	Preprocess         *PreprocessService
@@ -96,7 +95,11 @@ type Services struct {
 }
 
 func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap.SugaredLogger) *Services {
-	transcoder := NewTranscodeService(repos.Transcode, cfg, logger)
+	mediaExecution, err := NewMediaExecutionService(repos.DB(), cfg, logger)
+	if err != nil {
+		panic(fmt.Sprintf("initialize media execution service: %v", err))
+	}
+	artifactMaintenance := NewArtifactMaintenanceService(repos.Transcode, cfg, logger)
 	scanner := NewScannerService(repos.Media, repos.Series, cfg, logger)
 	metadata := NewMetadataService(repos.Media, repos.Series, repos.Person, repos.MediaPerson, cfg, logger)
 
@@ -106,7 +109,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 
 	// 注入WSHub到各服务
 	scanner.SetWSHub(wsHub)
-	transcoder.SetWSHub(wsHub)
+	artifactMaintenance.SetWSHub(wsHub)
 	metadata.SetWSHub(wsHub)
 
 	// 创建Library服务
@@ -144,7 +147,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 注入到全局 URL 解析器
 	SetGlobalRemoteStorageService(remoteStorageService)
 
-	// V2.1: 将 VFSManager 注入到 scanner 与 transcoder，支持 webdav:// 路径扫描
+	// V2.1: 将 VFSManager 注入到 scanner 与 artifactMaintenance，支持 webdav:// 路径扫描
 
 	// 创建 AI 服务
 	aiService := NewAIService(cfg.AI, cfg, repos.Media, repos.AICache, logger)
@@ -237,8 +240,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	offlineDownloadService.SetWSHub(wsHub)
 
 	// V2: 创建ABR自适应码率服务
-	// 使用 TranscodeService 检测后的实际硬件加速模式（而非配置中的 "auto"）
-	detectedHWAccel := transcoder.GetHWAccelInfo()
+	// 使用 MediaExecutionService 检测后的实际硬件加速模式（而非配置中的 "auto"）
+	detectedHWAccel := mediaExecution.GetHWAccelInfo()
 	abrService := NewABRService(cfg, detectedHWAccel, logger)
 	abrService.SetWSHub(wsHub)
 
@@ -280,47 +283,44 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	)
 	aiSceneService.SetWSHub(wsHub)
 
-	// V5: 创建 Pulse 数据中心服务
-	pulseService := NewPulseService(repos.Pulse, logger)
-	pulseService.SetWSHub(wsHub)
-
 	svcs := &Services{
-		User:           NewUserService(repos.User, repos.AuditLog, cfg, logger),
-		Auth:           NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
-		Library:        libService,
-		Media:          NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
-		Series:         NewSeriesService(repos.Series, repos.Media, logger),
-		Stream:         NewStreamService(repos.Media, repos.Series, transcoder, cfg, logger),
-		Transcode:      transcoder,
-		Metadata:       metadata,
-		Scanner:        scanner,
-		Playlist:       NewPlaylistService(repos.Playlist, logger),
-		Recommend:      recommendService,
-		Cast:           NewCastService(repos.Media, cfg, logger),
-		Bookmark:       NewBookmarkService(repos.Bookmark, repos.Media, logger),
-		Comment:        NewCommentService(repos.Comment, repos.Media, logger),
-		Danmaku:        NewDanmakuService(repos.Danmaku, repos.Media, logger),
-		Permission:     NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
-		FileWatcher:    fileWatcher,
-		NFO:            nfoService,
-		Stats:          statsService,
-		Webhook:        webhookService,
-		VFS:            vfsManager,
-		WebDAV:         webdavService,
-		RemoteStorage:  remoteStorageService,
-		WSHub:          wsHub,
-		AI:             aiService,
-		ScrapeManager:  scrapeManager,
-		FileManager:    fileManager,
-		AIAssistant:    aiAssistant,
-		TheTVDB:        thetvdbService,
-		Fanart:         fanartService,
-		ProviderChain:  providerChain,
-		Notification:   notificationService,
-		SubtitleSearch: subtitleSearchService,
-		BatchMetadata:  batchMetadataService,
-		ImportExport:   importExportService,
-		EmbyCompat:     embyCompatService,
+		User:                NewUserService(repos.User, repos.AuditLog, cfg, logger),
+		Auth:                NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, cfg, logger),
+		Library:             libService,
+		Media:               NewMediaService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.Library, repos.PlaybackStats, cfg, logger),
+		Series:              NewSeriesService(repos.Series, repos.Media, logger),
+		Stream:              NewStreamService(repos.Media, repos.Series, mediaExecution, cfg, logger),
+		MediaExecution:      mediaExecution,
+		ArtifactMaintenance: artifactMaintenance,
+		Metadata:            metadata,
+		Scanner:             scanner,
+		Playlist:            NewPlaylistService(repos.Playlist, logger),
+		Recommend:           recommendService,
+		Cast:                NewCastService(repos.Media, cfg, logger),
+		Bookmark:            NewBookmarkService(repos.Bookmark, repos.Media, logger),
+		Comment:             NewCommentService(repos.Comment, repos.Media, logger),
+		Danmaku:             NewDanmakuService(repos.Danmaku, repos.Media, logger),
+		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
+		FileWatcher:         fileWatcher,
+		NFO:                 nfoService,
+		Stats:               statsService,
+		Webhook:             webhookService,
+		VFS:                 vfsManager,
+		WebDAV:              webdavService,
+		RemoteStorage:       remoteStorageService,
+		WSHub:               wsHub,
+		AI:                  aiService,
+		ScrapeManager:       scrapeManager,
+		FileManager:         fileManager,
+		AIAssistant:         aiAssistant,
+		TheTVDB:             thetvdbService,
+		Fanart:              fanartService,
+		ProviderChain:       providerChain,
+		Notification:        notificationService,
+		SubtitleSearch:      subtitleSearchService,
+		BatchMetadata:       batchMetadataService,
+		ImportExport:        importExportService,
+		EmbyCompat:          embyCompatService,
 		// V2
 		UserProfile:     userProfileService,
 		OfflineDownload: offlineDownloadService,
@@ -331,8 +331,6 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Federation:      federationService,
 		// V3
 		AIScene: aiSceneService,
-		// V5: Pulse 数据中心
-		Pulse: pulseService,
 		// V6: P1~P3 新增功能
 		ASR:                asrService,
 		Preprocess:         preprocessService,
@@ -410,7 +408,8 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// 启动调度器（后台循环，默认未启用，需配置开启）
 	adultScheduler.Start()
 
-	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职员关联）	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
+	// 延迟注入：SeriesService 需要 MediaPersonRepo（用于合并时迁移演职员关联）
+	svcs.Series.SetMediaPersonRepo(repos.MediaPerson)
 
 	// 延迟注入：LibraryService 需要 SeriesService（用于扫描后自动合并重复剧集）
 	svcs.Library.SetSeriesService(svcs.Series)

@@ -17,8 +17,8 @@ func RequestLogger(logRepo *repository.SystemLogRepo) gin.HandlerFunc {
 	excludePrefixes := []string{
 		"/assets/",
 		"/api/ws",
-		"/api/stream/",             // 流媒体传输（高频）
-		"/api/preprocess/media/",   // 预处理流媒体
+		"/api/stream/",           // 流媒体传输（高频）
+		"/api/preprocess/media/", // 预处理流媒体
 		"/manifest.json",
 		"/sw.js",
 		"/favicon.ico",

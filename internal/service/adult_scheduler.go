@@ -12,26 +12,26 @@ import (
 
 // AdultSchedulerConfig 调度器运行时配置
 type AdultSchedulerConfig struct {
-	Enabled      bool   // 是否启用
-	DailyHour    int    // 每日几点执行（0-23，默认 3 点）
-	DailyMinute  int    // 分钟（默认 30）
-	Concurrency  int    // 并发度
-	OnlyUnscraped bool  // 只处理未成功刮削的
-	Aggregated   bool   // 聚合模式
+	Enabled       bool // 是否启用
+	DailyHour     int  // 每日几点执行（0-23，默认 3 点）
+	DailyMinute   int  // 分钟（默认 30）
+	Concurrency   int  // 并发度
+	OnlyUnscraped bool // 只处理未成功刮削的
+	Aggregated    bool // 聚合模式
 }
 
 // AdultScheduler 定时调度器
 type AdultScheduler struct {
-	cfg         AdultSchedulerConfig
-	batch       *AdultBatchService
-	proxy       *AdultProxyManager
-	scraper     *AdultScraperService
+	cfg     AdultSchedulerConfig
+	batch   *AdultBatchService
+	proxy   *AdultProxyManager
+	scraper *AdultScraperService
 
-	mu          sync.Mutex
-	running     bool
-	lastRunAt   time.Time
-	lastTaskID  string
-	stopCh      chan struct{}
+	mu         sync.Mutex
+	running    bool
+	lastRunAt  time.Time
+	lastTaskID string
+	stopCh     chan struct{}
 }
 
 // NewAdultScheduler 创建调度器

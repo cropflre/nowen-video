@@ -18,7 +18,7 @@ type SourceStats struct {
 	Total        int     `json:"total"`
 	Success      int     `json:"success"`
 	Failed       int     `json:"failed"`
-	SuccessRate  float64 `json:"success_rate"`  // 0.0-1.0
+	SuccessRate  float64 `json:"success_rate"` // 0.0-1.0
 	AvgLatencyMS int64   `json:"avg_latency_ms,omitempty"`
 }
 
@@ -33,16 +33,16 @@ type PrefixStats struct {
 
 // AdultScrapeReport 刮削总体报表
 type AdultScrapeReport struct {
-	Period         string        `json:"period"` // "7d" / "30d" / "all"
-	TotalProcessed int           `json:"total_processed"`
-	TotalSuccess   int           `json:"total_success"`
-	TotalFailed    int           `json:"total_failed"`
-	OverallRate    float64       `json:"overall_rate"`
+	Period         string  `json:"period"` // "7d" / "30d" / "all"
+	TotalProcessed int     `json:"total_processed"`
+	TotalSuccess   int     `json:"total_success"`
+	TotalFailed    int     `json:"total_failed"`
+	OverallRate    float64 `json:"overall_rate"`
 
-	BySource      []SourceStats `json:"by_source"`
-	ByPrefix      []PrefixStats `json:"by_prefix"`       // 按番号前缀统计
-	TopFailures   []string      `json:"top_failures"`     // 最常失败的番号
-	BestHours     []int         `json:"best_hours"`       // 成功率最高的时段
+	BySource    []SourceStats `json:"by_source"`
+	ByPrefix    []PrefixStats `json:"by_prefix"`    // 按番号前缀统计
+	TopFailures []string      `json:"top_failures"` // 最常失败的番号
+	BestHours   []int         `json:"best_hours"`   // 成功率最高的时段
 
 	GeneratedAt time.Time `json:"generated_at"`
 }

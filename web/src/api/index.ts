@@ -13,6 +13,28 @@
 
 // 核心模块
 export { authApi } from './auth'
+export { serverApi } from './server'
+export type { ServerCapability, ServerProfileManifest, ServerHealthData } from './server'
+export { taskCenterApi } from './tasks'
+export { runtimeHistoryApi } from './runtimeHistory'
+export type {
+  RuntimeHistoryRetentionPolicy,
+  RuntimeHistoryItem,
+  RuntimeHistoryAttempt,
+  RuntimeHistoryArtifact,
+  RuntimeHistoryList,
+  RuntimeHistoryDetail,
+  RuntimeHistorySummary,
+} from './runtimeHistory'
+export type {
+  UnifiedTask,
+  UnifiedTaskAction,
+  UnifiedTaskKind,
+  UnifiedTaskStatus,
+  TaskActionResult,
+  TaskCenterSnapshot,
+  TaskCenterSummary,
+} from './tasks'
 export { libraryApi } from './library'
 export { mediaApi, personApi, collectionApi } from './media'
 export { streamApi } from './stream'

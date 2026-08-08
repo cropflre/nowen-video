@@ -142,7 +142,7 @@ type AdultTaskStats struct {
 	TotalSuccess   int            `json:"total_success"`
 	TotalFailed    int            `json:"total_failed"`
 	TotalSkipped   int            `json:"total_skipped"`
-	BySource       map[string]int `json:"by_source"`      // 按数据源统计成功数
+	BySource       map[string]int `json:"by_source"` // 按数据源统计成功数
 	TopFailedCodes []string       `json:"top_failed_codes"`
 }
 

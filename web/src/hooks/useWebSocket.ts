@@ -18,6 +18,8 @@ export const WS_EVENTS = {
   TRANSCODE_PROGRESS: 'transcode_progress',
   TRANSCODE_COMPLETED: 'transcode_completed',
   TRANSCODE_FAILED: 'transcode_failed',
+  // 统一任务事件
+  TASK_UPDATED: 'task_updated',
   // 媒体库变更事件
   LIBRARY_DELETED: 'library_deleted',
   LIBRARY_UPDATED: 'library_updated',
@@ -122,6 +124,24 @@ export interface TranscodeProgressData {
   message: string
 }
 
+export interface TaskLifecycleUpdatedData {
+  kind: 'scan' | 'scrape' | 'transcode'
+  source_id?: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  source_event: string
+}
+
+export interface TaskActionUpdatedData {
+  id: string
+  kind: 'scan' | 'scrape' | 'transcode'
+  source_id: string
+  action: 'retry' | 'rollback'
+  accepted: boolean
+  message: string
+}
+
+export type TaskUpdatedData = TaskLifecycleUpdatedData | TaskActionUpdatedData
+
 export interface LibraryChangedData {
   library_id: string
   library_name: string
@@ -131,7 +151,7 @@ export interface LibraryChangedData {
 
 export interface WSMessage {
   type: WSEventType
-  data: ScanProgressData | ScanPhaseData | ScrapeProgressData | TranscodeProgressData
+  data: ScanProgressData | ScanPhaseData | ScrapeProgressData | TranscodeProgressData | TaskUpdatedData
   timestamp: number
 }
 
@@ -186,7 +206,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     listenersRef.current.get(event)!.add(handler)
   }, [])
 
-  // 取消事件监听
+  // 取消订阅
   const off = useCallback((event: WSEventType, handler: WSEventHandler) => {
     listenersRef.current.get(event)?.delete(handler)
   }, [])

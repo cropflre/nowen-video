@@ -13,14 +13,14 @@ import (
 
 // MGStage 正则
 var (
-	mgstageTitleRe    = regexp.MustCompile(`(?is)<h1[^>]*class="tag"[^>]*>([^<]+)</h1>`)
-	mgstageCoverRe    = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.jpg)"[^>]+id="EnlargeImage"`)
-	mgstagePlotRe     = regexp.MustCompile(`(?is)<p[^>]+class="introduction"[^>]*>([\s\S]*?)</p>`)
-	mgstageInfoRowRe  = regexp.MustCompile(`(?is)<tr>\s*<th[^>]*>([^<]+)</th>\s*<td[^>]*>([\s\S]*?)</td>\s*</tr>`)
-	mgstageActressRe  = regexp.MustCompile(`(?is)<th[^>]*>出演[：:]?\s*</th>\s*<td[^>]*>([\s\S]*?)</td>`)
-	mgstageGenreRe    = regexp.MustCompile(`(?is)<a[^>]+href="/search/cSearch/genre/[^"]+"[^>]*>([^<]+)</a>`)
-	mgstageFanartRe   = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.jpg)"[^>]+class="sample-image"`)
-	mgstageTrailerRe  = regexp.MustCompile(`(?is)"url"\s*:\s*"([^"]+\.mp4)"`)
+	mgstageTitleRe   = regexp.MustCompile(`(?is)<h1[^>]*class="tag"[^>]*>([^<]+)</h1>`)
+	mgstageCoverRe   = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.jpg)"[^>]+id="EnlargeImage"`)
+	mgstagePlotRe    = regexp.MustCompile(`(?is)<p[^>]+class="introduction"[^>]*>([\s\S]*?)</p>`)
+	mgstageInfoRowRe = regexp.MustCompile(`(?is)<tr>\s*<th[^>]*>([^<]+)</th>\s*<td[^>]*>([\s\S]*?)</td>\s*</tr>`)
+	mgstageActressRe = regexp.MustCompile(`(?is)<th[^>]*>出演[：:]?\s*</th>\s*<td[^>]*>([\s\S]*?)</td>`)
+	mgstageGenreRe   = regexp.MustCompile(`(?is)<a[^>]+href="/search/cSearch/genre/[^"]+"[^>]*>([^<]+)</a>`)
+	mgstageFanartRe  = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.jpg)"[^>]+class="sample-image"`)
+	mgstageTrailerRe = regexp.MustCompile(`(?is)"url"\s*:\s*"([^"]+\.mp4)"`)
 )
 
 // scrapeMGStage 从 MGStage 刮削元数据

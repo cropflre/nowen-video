@@ -1,0 +1,457 @@
+/* ============================================================
+   PLAYER-UI-V2 · Cinema Mode
+   ------------------------------------------------------------
+   播放时尽可能“消失”，交互时提供克制、清晰、可读的影院式控制层。
+   仅负责 UI / 交互呈现，不修改 HLS、Remux、字幕、投屏等播放逻辑。
+   ============================================================ */
+
+.group\/player {
+  --cinema-side: clamp(16px, 2vw, 32px);
+  --cinema-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  --cinema-control-size: 40px;
+  --cinema-control-text: rgba(255, 255, 255, 0.78);
+  --cinema-control-muted: rgba(255, 255, 255, 0.58);
+  --cinema-control-hover: rgba(255, 255, 255, 0.10);
+  --cinema-panel: rgba(14, 14, 17, 0.92);
+  --cinema-panel-border: rgba(255, 255, 255, 0.10);
+  isolation: isolate;
+}
+
+.group\/player > video {
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+
+.group\/player:has(.player-controls.opacity-0) > video {
+  cursor: none;
+}
+
+/* ==================== 上下双渐变 ==================== */
+.group\/player .player-controls {
+  inset: 0 !important;
+  padding: 0 !important;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.28) 13%, transparent 31%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.50) 14%, rgba(0, 0, 0, 0.16) 25%, transparent 38%) !important;
+  pointer-events: none;
+  transition: opacity 280ms ease !important;
+}
+
+.group\/player .player-controls > * {
+  pointer-events: auto;
+}
+
+/* ==================== 顶部标题栏 ==================== */
+.group\/player .player-controls > .absolute.left-4.top-4 {
+  top: max(20px, env(safe-area-inset-top, 0px)) !important;
+  left: var(--cinema-side) !important;
+  right: var(--cinema-side) !important;
+  width: auto;
+  gap: 12px !important;
+  min-width: 0;
+  align-items: center !important;
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.34) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(125%) !important;
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child svg {
+  display: none;
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child::before {
+  content: '←';
+  display: block;
+  font-size: 23px;
+  line-height: 1;
+  font-weight: 400;
+  transform: translateY(-1px);
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > h2 {
+  min-width: 0;
+  max-width: min(72vw, 920px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(15px, 1.2vw, 18px) !important;
+  font-weight: 560 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0.01em !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75) !important;
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > .badge-neon {
+  display: none !important;
+}
+
+/* ==================== 进度条 ==================== */
+.group\/player .player-controls > .progress-bar {
+  position: absolute !important;
+  left: var(--cinema-side) !important;
+  right: var(--cinema-side) !important;
+  bottom: calc(var(--cinema-bottom) + 52px) !important;
+  width: auto !important;
+  height: 3px !important;
+  margin: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.24) !important;
+  transition: height 140ms ease, background-color 140ms ease !important;
+}
+
+.group\/player .player-controls > .progress-bar:hover {
+  height: 5px !important;
+  background: rgba(255, 255, 255, 0.30) !important;
+}
+
+.group\/player .progress-bar-fill {
+  background: var(--neon-blue) !important;
+  box-shadow: none !important;
+  transition: width 100ms linear !important;
+}
+
+.group\/player .progress-bar-thumb {
+  width: 12px !important;
+  height: 12px !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.38), 0 3px 12px rgba(0, 0, 0, 0.42) !important;
+}
+
+.group\/player .progress-bar:hover .progress-bar-thumb {
+  opacity: 1 !important;
+}
+
+.group\/player .progress-bar [class*='shadow-2xl'] {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.52) !important;
+}
+
+/* ==================== 底部主控制行 ==================== */
+.group\/player .player-controls > .flex.items-center.gap-1 {
+  position: absolute !important;
+  left: var(--cinema-side) !important;
+  right: var(--cinema-side) !important;
+  bottom: var(--cinema-bottom) !important;
+  min-width: 0;
+  min-height: var(--cinema-control-size);
+  gap: 2px !important;
+  align-items: center !important;
+  line-height: 1 !important;
+}
+
+/* 所有一级按钮采用同一盒模型，避免图标、伪元素文字、普通文字基线各自漂移。 */
+.group\/player .player-controls > .flex.items-center.gap-1 > button,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button {
+  box-sizing: border-box;
+  min-width: var(--cinema-control-size);
+  height: var(--cinema-control-size);
+  padding: 0 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  line-height: 1 !important;
+  white-space: nowrap;
+  border-radius: 10px !important;
+  color: var(--cinema-control-text) !important;
+  background: transparent !important;
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease !important;
+}
+
+/* 控制按钮外层也强制垂直居中，修复右侧 1× / 字幕 / 搜索等出现高低差。 */
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative,
+.group\/player .player-controls > .flex.items-center.gap-1 > .group\/vol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: var(--cinema-control-size);
+  line-height: 1;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:hover,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:hover {
+  color: #fff !important;
+  background: var(--cinema-control-hover) !important;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:active,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:active {
+  transform: scale(0.94);
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 button > svg {
+  display: block;
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:first-child {
+  color: #fff !important;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:first-child svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* −10 / +10 作为居中的按钮标签。 */
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back) svg,
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward) svg {
+  display: none;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back)::after,
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward)::after,
+.group\/player button[title='播放速度']:has(> svg)::after,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings)::after {
+  display: block;
+  line-height: 1 !important;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  transform: translateY(0);
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back)::after {
+  content: '−10';
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward)::after {
+  content: '+10';
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* 默认倍速直接展示 1×。 */
+.group\/player button[title='播放速度']:has(> svg) svg {
+  display: none;
+}
+
+.group\/player button[title='播放速度']:has(> svg)::after {
+  content: '1×';
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 画质按钮用明确文本替代齿轮。 */
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings) {
+  width: auto;
+  min-width: 48px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings) svg {
+  display: none;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings)::after {
+  content: '画质';
+}
+
+/* 下一集按钮中图标和文字保持同一中心线。 */
+.group\/player .player-controls > .flex.items-center.gap-1 button > span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1 !important;
+}
+
+/* 音量滑杆默认收起，进入音量区域时展开。 */
+.group\/player .group\/vol input[type='range'] {
+  width: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0 !important;
+  align-self: center;
+  transition: width 180ms ease, opacity 160ms ease !important;
+}
+
+.group\/player .group\/vol:hover input[type='range'],
+.group\/player .group\/vol:focus-within input[type='range'] {
+  width: 80px !important;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 时间文字占用与按钮相同的 40px 高度，视觉中心完全一致。 */
+.group\/player .player-controls > .flex.items-center.gap-1 > span {
+  height: var(--cinema-control-size);
+  margin-left: 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  flex: 0 0 auto;
+  line-height: 1 !important;
+  white-space: nowrap;
+  color: var(--cinema-control-muted) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.group\/player .player-controls > .flex.items-center.gap-1 > span .text-neon-blue\/30 {
+  display: inline-block;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* ==================== 弹出菜单 ==================== */
+.group\/player .player-controls [class*='bottom-full'] {
+  background: var(--cinema-panel) !important;
+  border: 1px solid var(--cinema-panel-border) !important;
+  border-radius: 14px !important;
+  backdrop-filter: blur(20px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.48) !important;
+}
+
+.group\/player .player-controls [class*='bottom-full'] button {
+  border-radius: 8px;
+}
+
+.group\/player .player-controls [class*='bottom-full'] .text-neon-blue {
+  color: #7defff !important;
+}
+
+/* ==================== 中央暂停按钮 ==================== */
+.group\/player > .absolute.inset-0.flex.items-center.justify-center:not(.pointer-events-none):not(.bg-black\/90):not(.bg-black\/60) > div {
+  width: 64px !important;
+  height: 64px !important;
+  background: rgba(0, 0, 0, 0.48) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32) !important;
+  backdrop-filter: blur(14px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(120%) !important;
+}
+
+.group\/player > .absolute.inset-0.flex.items-center.justify-center:not(.pointer-events-none):not(.bg-black\/90):not(.bg-black\/60) > div svg {
+  width: 30px !important;
+  height: 30px !important;
+}
+
+.group\/player > .pointer-events-none.absolute.left-1\/2.top-1\/2 > div {
+  background: rgba(0, 0, 0, 0.58) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.30);
+}
+
+/* ==================== 下一集右下角卡片 ==================== */
+.group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm {
+  inset: auto var(--cinema-side) calc(var(--cinema-bottom) + 76px) auto !important;
+  width: min(360px, calc(100% - 32px));
+  height: auto !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+}
+
+.group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm > div {
+  width: 100%;
+  padding: 18px !important;
+  gap: 13px !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
+  background: rgba(12, 12, 15, 0.88) !important;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(20px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+}
+
+.group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm > div > .relative.flex.h-20.w-20,
+.group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm > div > .relative.flex.h-20.w-20 > svg {
+  width: 56px !important;
+  height: 56px !important;
+}
+
+.group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm > div > .relative.flex.h-20.w-20 > span {
+  font-size: 22px !important;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 768px) {
+  .group\/player {
+    --cinema-side: 12px;
+    --cinema-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    --cinema-control-size: 38px;
+  }
+
+  .group\/player .player-controls > .absolute.left-4.top-4 {
+    top: max(10px, env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+
+  .group\/player .player-controls > .progress-bar {
+    bottom: calc(var(--cinema-bottom) + 50px) !important;
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 {
+    gap: 0 !important;
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button,
+  .group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button {
+    min-width: var(--cinema-control-size);
+    height: var(--cinema-control-size);
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .group\/player .group\/vol input[type='range'] {
+    display: none !important;
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > span {
+    margin-left: 4px !important;
+    font-size: 10px !important;
+  }
+
+  .group\/player > .absolute.inset-0.bg-black\/60.backdrop-blur-sm {
+    right: 12px !important;
+    bottom: calc(var(--cinema-bottom) + 68px) !important;
+    width: min(330px, calc(100% - 24px));
+  }
+}
+
+@media (max-width: 560px) {
+  .group\/player .player-controls > .flex.items-center.gap-1 > span {
+    display: none !important;
+  }
+
+  .group\/player .player-controls > .absolute.left-4.top-4 > h2 {
+    max-width: calc(100vw - 76px);
+    font-size: 14px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group\/player .player-controls,
+  .group\/player .progress-bar,
+  .group\/player .player-controls button,
+  .group\/player .group\/vol input[type='range'] {
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,40 +1,35 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { storageApi, libraryApi } from '@/api'
-import type { WebDAVConfig, WebDAVStatus, AlistStatus, S3Status } from '@/api/storage'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { libraryApi, storageApi } from '@/api'
+import type { AlistStatus, S3Status, WebDAVConfig, WebDAVStatus } from '@/api/storage'
 import type { Library } from '@/types'
 import {
-  HardDrive,
   Cloud,
-  Loader2,
-  Save,
-  Wifi,
-  Link2,
   Database,
-  Server,
+  HardDrive,
+  Link2,
+  Loader2,
   RefreshCw,
+  Save,
+  Server,
+  Wifi,
 } from 'lucide-react'
+import { AdminPanel } from './AdminPrimitives'
 import { AlistSection, S3Section } from './RemoteStorageSections'
 import {
-  ProviderCard,
-  SectionShell,
-  FieldGroup,
-  Field,
-  Input,
-  Toggle,
   ActionBar,
   ActionButton,
-  Toast,
-  StatusBadge,
-  EyeToggle,
   EnableRow,
+  EyeToggle,
+  Field,
+  FieldGroup,
+  Input,
+  ProviderCard,
+  SectionShell,
+  StatusBadge,
+  Toast,
+  Toggle,
   type ProviderState,
 } from './storage/StorageUIKit'
-
-// ==================== 存储管理标签页 ====================
-// V2.3 UI 重构：四 provider 统一 Provider Registry 布局
-//   顶部：全局概览（Local / WebDAV / Alist / S3 四张卡片，充当 Tab 入口）
-//   下部：当前选中 provider 的完整配置表单
-// WebDAV 直接在此文件实现；Alist / S3 复用 RemoteStorageSections
 
 const DEFAULT_CONFIG: WebDAVConfig = {
   enabled: false,
@@ -59,8 +54,15 @@ function toState(enabled?: boolean, connected?: boolean): ProviderState {
   return 'error'
 }
 
+function ProtocolCode({ children }: { children: string }) {
+  return (
+    <code className="mx-0.5 rounded-[var(--nv-radius-sm)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nv-text-secondary)]">
+      {children}
+    </code>
+  )
+}
+
 export default function StorageTab() {
-  // WebDAV 本地 state
   const [config, setConfig] = useState<WebDAVConfig>(DEFAULT_CONFIG)
   const [status, setStatus] = useState<WebDAVStatus | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -71,15 +73,10 @@ export default function StorageTab() {
   const [showPassword, setShowPassword] = useState(false)
   const [passwordDirty, setPasswordDirty] = useState(false)
   const [registeringLib, setRegisteringLib] = useState<string | null>(null)
-
-  // Alist / S3 状态（仅用于概览卡，详细表单仍由各自 Section 自己拉取）
   const [alistStatus, setAlistStatus] = useState<AlistStatus | null>(null)
   const [s3Status, setS3Status] = useState<S3Status | null>(null)
-
-  // 当前激活的 provider tab
   const [activeTab, setActiveTab] = useState<ProviderKey>('webdav')
 
-  // 加载 WebDAV 配置 + 统一状态概览 + 媒体库
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
@@ -97,18 +94,17 @@ export default function StorageTab() {
         setAlistStatus(aggregateStatusRes.data.data.alist || null)
         setS3Status(aggregateStatusRes.data.data.s3 || null)
       }
-    } catch (e: any) {
-      console.error('加载存储配置失败', e)
+    } catch (error) {
+      console.error('加载存储配置失败', error)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadAll()
+    void loadAll()
   }, [loadAll])
 
-  // ----- WebDAV 动作 -----
   const handleSave = async () => {
     setSaving(true)
     setToast(null)
@@ -118,8 +114,8 @@ export default function StorageTab() {
       await storageApi.updateWebDAVConfig(payload)
       setToast({ ok: true, msg: 'WebDAV 配置已保存' })
       await loadAll()
-    } catch (e: any) {
-      setToast({ ok: false, msg: e?.response?.data?.error || '保存失败' })
+    } catch (error: any) {
+      setToast({ ok: false, msg: error?.response?.data?.error || '保存失败' })
     } finally {
       setSaving(false)
     }
@@ -136,27 +132,26 @@ export default function StorageTab() {
         base_path: config.base_path,
       })
       setToast({ ok: true, msg: 'WebDAV 连接测试成功' })
-    } catch (e: any) {
-      setToast({ ok: false, msg: e?.response?.data?.error || '连接测试失败' })
+    } catch (error: any) {
+      setToast({ ok: false, msg: error?.response?.data?.error || '连接测试失败' })
     } finally {
       setTesting(false)
     }
   }
 
-  const handleRegisterLib = async (libId: string) => {
-    setRegisteringLib(libId)
+  const handleRegisterLib = async (libraryId: string) => {
+    setRegisteringLib(libraryId)
     try {
-      await storageApi.registerWebDAVLibrary(libId)
+      await storageApi.registerWebDAVLibrary(libraryId)
       setToast({ ok: true, msg: '已为媒体库注册 WebDAV 存储' })
       await loadAll()
-    } catch (e: any) {
-      setToast({ ok: false, msg: e?.response?.data?.error || '注册失败' })
+    } catch (error: any) {
+      setToast({ ok: false, msg: error?.response?.data?.error || '注册失败' })
     } finally {
       setRegisteringLib(null)
     }
   }
 
-  // 概览卡数据
   const providers = useMemo(
     () => [
       {
@@ -165,7 +160,6 @@ export default function StorageTab() {
         subtitle: '文件系统直读',
         icon: <HardDrive size={20} />,
         state: 'connected' as ProviderState,
-        accent: 'emerald' as const,
       },
       {
         key: 'webdav' as const,
@@ -173,7 +167,6 @@ export default function StorageTab() {
         subtitle: status?.server_url || '远程文件协议',
         icon: <Cloud size={20} />,
         state: toState(status?.enabled, status?.connected),
-        accent: 'blue' as const,
       },
       {
         key: 'alist' as const,
@@ -181,7 +174,6 @@ export default function StorageTab() {
         subtitle: '阿里云盘 / 115 / 夸克 等',
         icon: <Server size={20} />,
         state: toState(alistStatus?.enabled, alistStatus?.connected),
-        accent: 'purple' as const,
       },
       {
         key: 's3' as const,
@@ -189,65 +181,53 @@ export default function StorageTab() {
         subtitle: 'AWS S3 / MinIO / R2 / OSS / COS',
         icon: <Database size={20} />,
         state: toState(s3Status?.enabled, s3Status?.connected),
-        accent: 'amber' as const,
       },
     ],
-    [status, alistStatus, s3Status]
+    [status, alistStatus, s3Status],
   )
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="animate-spin text-primary-400" size={32} />
+        <Loader2 className="animate-spin text-[var(--nv-action-primary)]" size={28} />
       </div>
     )
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* ============ 顶部：存储概览 + Tab 切换 ============ */}
-      <section>
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <h2
-              className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              <HardDrive size={20} className="text-primary-400" />
-              存储概览
-            </h2>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              点击下方卡片切换 provider 配置
-            </p>
-          </div>
+    <div className="space-y-6">
+      <AdminPanel
+        icon={<HardDrive size={18} className="text-[var(--nv-action-primary)]" />}
+        title="存储概览"
+        description="查看各存储 Provider 的连接状态，并切换到对应配置。"
+        actions={
           <ActionButton variant="icon" onClick={loadAll} icon={<RefreshCw size={16} />} aria-label="刷新状态" />
-        </div>
+        }
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {providers.map((p) => (
+          {providers.map((provider) => (
             <ProviderCard
-              key={p.key}
-              name={p.name}
-              subtitle={p.subtitle}
-              icon={p.icon}
-              state={p.state}
-              accent={p.accent}
-              active={activeTab === p.key}
-              onClick={p.key === 'local' ? undefined : () => setActiveTab(p.key)}
+              key={provider.key}
+              name={provider.name}
+              subtitle={provider.subtitle}
+              icon={provider.icon}
+              state={provider.state}
+              active={activeTab === provider.key}
+              onClick={() => setActiveTab(provider.key)}
             />
           ))}
         </div>
-      </section>
+      </AdminPanel>
 
-      {/* ============ 详情区：根据激活 tab 渲染 ============ */}
       {activeTab === 'local' && (
         <SectionShell
           icon={<HardDrive size={18} />}
           title="本地存储"
           subtitle="直接读取宿主机挂载的目录"
           statusSlot={<StatusBadge state="connected" label="始终启用" />}
-          description="本地存储始终启用，媒体库路径使用标准文件系统路径（如 /vol01/Media/电影）。无需额外配置。"
+          description="本地存储始终启用，媒体库路径使用标准文件系统路径（如 /vol01/Media/电影），无需额外配置。"
         >
-          <div className="text-sm text-center py-4" style={{ color: 'var(--text-tertiary)' }}>
+          <div className="rounded-[var(--nv-radius-control)] border border-dashed border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] px-4 py-8 text-center text-sm text-[var(--nv-text-tertiary)]">
             本地存储无配置项。请在「媒体库」菜单中新增本地路径的媒体库。
           </div>
         </SectionShell>
@@ -262,44 +242,31 @@ export default function StorageTab() {
             statusSlot={<StatusBadge state={toState(status?.enabled, status?.connected)} />}
             description={
               <>
-                媒体库路径使用{' '}
-                <code
-                  className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px]"
-                  style={{
-                    background: 'var(--nav-hover-bg)',
-                    color: 'var(--neon-blue)',
-                    border: '1px solid var(--border-default)',
-                  }}
-                >
-                  webdav://
-                </code>{' '}
-                前缀。扫描时会自动从远程目录拉取文件列表。
+                媒体库路径使用 <ProtocolCode>webdav://</ProtocolCode> 前缀，扫描时会自动从远程目录拉取文件列表。
                 {status?.error && (
-                  <div className="mt-2 text-red-500 dark:text-red-400">
-                    <strong>错误：</strong>{status.error}
+                  <div className="mt-2 rounded-[var(--nv-radius-sm)] border border-[color-mix(in_srgb,var(--nv-status-danger)_28%,var(--nv-border-subtle))] bg-[color-mix(in_srgb,var(--nv-status-danger)_8%,var(--nv-bg-surface))] px-2.5 py-2 text-[var(--nv-status-danger)]">
+                    <strong>错误：</strong>
+                    {status.error}
                   </div>
                 )}
               </>
             }
           >
-            {/* 启用开关 */}
             <EnableRow
               icon={<Link2 size={16} />}
               title="启用 WebDAV 存储"
               description="启用后可为媒体库挂载远程 WebDAV 目录"
               checked={config.enabled}
-              onChange={(v) => setConfig({ ...config, enabled: v })}
-              accent="neon"
+              onChange={(value) => setConfig({ ...config, enabled: value })}
             />
 
-            {/* 连接 */}
             <FieldGroup title="连接" description="WebDAV 服务器地址与基础路径">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="服务器地址" required fullWidth>
                   <Input
                     type="url"
                     value={config.server_url}
-                    onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
+                    onChange={(event) => setConfig({ ...config, server_url: event.target.value })}
                     placeholder="https://webdav.example.com/dav/"
                     disabled={!config.enabled}
                   />
@@ -308,7 +275,7 @@ export default function StorageTab() {
                   <Input
                     type="text"
                     value={config.base_path}
-                    onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
+                    onChange={(event) => setConfig({ ...config, base_path: event.target.value })}
                     placeholder="/ 或 /media/videos"
                     disabled={!config.enabled}
                   />
@@ -316,14 +283,13 @@ export default function StorageTab() {
               </div>
             </FieldGroup>
 
-            {/* 鉴权 */}
             <FieldGroup title="鉴权" description="HTTP Basic 认证凭据">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="用户名">
                   <Input
                     type="text"
                     value={config.username}
-                    onChange={(e) => setConfig({ ...config, username: e.target.value })}
+                    onChange={(event) => setConfig({ ...config, username: event.target.value })}
                     disabled={!config.enabled}
                     autoComplete="username"
                   />
@@ -332,8 +298,8 @@ export default function StorageTab() {
                   <Input
                     type={showPassword ? 'text' : 'password'}
                     value={config.password}
-                    onChange={(e) => {
-                      setConfig({ ...config, password: e.target.value })
+                    onChange={(event) => {
+                      setConfig({ ...config, password: event.target.value })
                       setPasswordDirty(true)
                     }}
                     disabled={!config.enabled}
@@ -342,7 +308,7 @@ export default function StorageTab() {
                     suffix={
                       <EyeToggle
                         visible={showPassword}
-                        onToggle={() => setShowPassword((v) => !v)}
+                        onToggle={() => setShowPassword((value) => !value)}
                       />
                     }
                   />
@@ -350,20 +316,19 @@ export default function StorageTab() {
               </div>
             </FieldGroup>
 
-            {/* 性能与可靠性（折叠） */}
             <FieldGroup
               title="性能与可靠性"
               collapsible
               defaultOpen={false}
               description="连接池、缓存、重试等高级参数"
             >
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                 <Field label="请求超时（秒）">
                   <Input
                     type="number"
                     min={1}
                     value={config.timeout}
-                    onChange={(e) => setConfig({ ...config, timeout: Number(e.target.value) })}
+                    onChange={(event) => setConfig({ ...config, timeout: Number(event.target.value) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -372,7 +337,7 @@ export default function StorageTab() {
                     type="number"
                     min={1}
                     value={config.pool_size}
-                    onChange={(e) => setConfig({ ...config, pool_size: Number(e.target.value) })}
+                    onChange={(event) => setConfig({ ...config, pool_size: Number(event.target.value) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -381,7 +346,7 @@ export default function StorageTab() {
                     type="number"
                     min={0}
                     value={config.max_retries}
-                    onChange={(e) => setConfig({ ...config, max_retries: Number(e.target.value) })}
+                    onChange={(event) => setConfig({ ...config, max_retries: Number(event.target.value) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -390,17 +355,16 @@ export default function StorageTab() {
                     type="number"
                     min={1}
                     value={config.retry_interval}
-                    onChange={(e) => setConfig({ ...config, retry_interval: Number(e.target.value) })}
+                    onChange={(event) => setConfig({ ...config, retry_interval: Number(event.target.value) })}
                     disabled={!config.enabled}
                   />
                 </Field>
                 <Field label="启用元数据缓存">
-                  <div className="flex items-center h-9">
+                  <div className="flex h-9 items-center">
                     <Toggle
                       checked={config.enable_cache}
-                      onChange={(v) => setConfig({ ...config, enable_cache: v })}
+                      onChange={(value) => setConfig({ ...config, enable_cache: value })}
                       disabled={!config.enabled}
-                      accent="neon"
                     />
                   </div>
                 </Field>
@@ -409,7 +373,7 @@ export default function StorageTab() {
                     type="number"
                     min={0}
                     value={config.cache_ttl_hours}
-                    onChange={(e) => setConfig({ ...config, cache_ttl_hours: Number(e.target.value) })}
+                    onChange={(event) => setConfig({ ...config, cache_ttl_hours: Number(event.target.value) })}
                     disabled={!config.enabled || !config.enable_cache}
                   />
                 </Field>
@@ -424,7 +388,6 @@ export default function StorageTab() {
                 <>
                   <ActionButton
                     variant="secondary"
-                    accent="neon"
                     onClick={handleTest}
                     disabled={!config.enabled || !config.server_url || testing || saving}
                     loading={testing}
@@ -432,18 +395,12 @@ export default function StorageTab() {
                   >
                     测试连接
                   </ActionButton>
-                  <ActionButton
-                    variant="icon"
-                    onClick={loadAll}
-                    icon={<RefreshCw size={16} />}
-                    aria-label="刷新"
-                  />
+                  <ActionButton variant="icon" onClick={loadAll} icon={<RefreshCw size={16} />} aria-label="刷新" />
                 </>
               }
               primaryActions={
                 <ActionButton
                   variant="primary"
-                  accent="neon"
                   onClick={handleSave}
                   disabled={saving || testing}
                   loading={saving}
@@ -455,7 +412,6 @@ export default function StorageTab() {
             />
           </SectionShell>
 
-          {/* 媒体库挂载（仅 WebDAV 可用时显示） */}
           {status?.enabled && status?.connected && (
             <SectionShell
               icon={<Link2 size={18} />}
@@ -463,117 +419,57 @@ export default function StorageTab() {
               subtitle="将 WebDAV 注册为指定媒体库的数据源"
               description={
                 <>
-                  将 WebDAV 存储挂载到媒体库后，扫描时会自动从远程读取文件。
-                  媒体库路径需以{' '}
-                  <code
-                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px]"
-                    style={{ background: 'var(--nav-hover-bg)', color: 'var(--neon-blue)', border: '1px solid var(--border-default)' }}
-                  >
-                    webdav://
-                  </code>
-                  、
-                  <code
-                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-purple-600 dark:text-purple-300"
-                    style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)' }}
-                  >
-                    alist://
-                  </code>
-                  {' '}或{' '}
-                  <code
-                    className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-300"
-                    style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
-                  >
-                    s3://
-                  </code>
-                  {' '}开头才会走远程存储。
+                  将远程存储挂载到媒体库后，扫描会按路径协议读取远程文件。支持{' '}
+                  <ProtocolCode>webdav://</ProtocolCode>、<ProtocolCode>alist://</ProtocolCode> 和{' '}
+                  <ProtocolCode>s3://</ProtocolCode>。
                 </>
               }
             >
               {libraries.length === 0 ? (
-                <div
-                  className="rounded-lg py-10 text-center text-sm"
-                  style={{
-                    color: 'var(--text-tertiary)',
-                    border: '1px dashed var(--storage-enable-row-border, var(--border-strong))',
-                  }}
-                >
+                <div className="rounded-[var(--nv-radius-control)] border border-dashed border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] px-4 py-10 text-center text-sm text-[var(--nv-text-tertiary)]">
                   暂无媒体库
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {libraries.map((lib) => {
-                    const isWebDAV = lib.path?.startsWith('webdav://')
-                    const isAlist = lib.path?.startsWith('alist://')
-                    const isS3 = lib.path?.startsWith('s3://')
+                  {libraries.map((library) => {
+                    const isWebDAV = library.path?.startsWith('webdav://')
+                    const isAlist = library.path?.startsWith('alist://')
+                    const isS3 = library.path?.startsWith('s3://')
                     const isRemote = isWebDAV || isAlist || isS3
+                    const providerLabel = isWebDAV ? 'WebDAV' : isAlist ? 'Alist' : isS3 ? 'S3' : '本地'
+                    const ProviderIcon = isWebDAV ? Cloud : isAlist ? Server : isS3 ? Database : HardDrive
+
                     return (
                       <li
-                        key={lib.id}
-                        className="flex items-center justify-between gap-3 rounded-lg p-3 transition-colors"
-                        style={{
-                          background: 'var(--storage-enable-row-bg, var(--nav-hover-bg))',
-                          border: '1px solid var(--storage-enable-row-border, var(--border-strong))',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--neon-blue)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--storage-enable-row-border, var(--border-strong))')}
+                        key={library.id}
+                        className="flex items-center justify-between gap-3 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3 transition-colors hover:border-[var(--nv-border-hover)]"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={
-                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ' +
-                              (isWebDAV
-                                ? 'bg-primary-400/10 text-primary-600 dark:text-primary-300'
-                                : isAlist
-                                ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300'
-                                : isS3
-                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
-                                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300')
-                            }
-                          >
-                            {isWebDAV ? (
-                              <Cloud size={16} />
-                            ) : isAlist ? (
-                              <Server size={16} />
-                            ) : isS3 ? (
-                              <Database size={16} />
-                            ) : (
-                              <HardDrive size={16} />
-                            )}
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-tertiary)]">
+                            <ProviderIcon size={16} />
                           </div>
                           <div className="min-w-0">
-                            <div
-                              className="truncate text-sm font-medium"
-                              style={{ color: 'var(--text-primary)' }}
-                            >
-                              {lib.name}
+                            <div className="truncate text-sm font-medium text-[var(--nv-text-primary)]">
+                              {library.name}
                             </div>
-                            <div
-                              className="truncate text-[11px] font-mono"
-                              style={{ color: 'var(--text-tertiary)' }}
-                            >
-                              {lib.path}
+                            <div className="truncate font-mono text-[11px] text-[var(--nv-text-tertiary)]">
+                              {library.path}
                             </div>
                           </div>
                         </div>
-                        {!isRemote && (
+                        {!isRemote ? (
                           <ActionButton
                             variant="secondary"
-                            accent="neon"
-                            onClick={() => handleRegisterLib(lib.id)}
-                            disabled={registeringLib === lib.id}
-                            loading={registeringLib === lib.id}
+                            onClick={() => handleRegisterLib(library.id)}
+                            disabled={registeringLib === library.id}
+                            loading={registeringLib === library.id}
                             icon={<Link2 size={14} />}
-                            className="flex-shrink-0"
+                            className="shrink-0"
                           >
                             挂载 WebDAV
                           </ActionButton>
-                        )}
-                        {isRemote && (
-                          <StatusBadge
-                            state="connected"
-                            label={isWebDAV ? 'WebDAV' : isAlist ? 'Alist' : 'S3'}
-                            size="sm"
-                          />
+                        ) : (
+                          <StatusBadge state="connected" label={providerLabel} size="sm" />
                         )}
                       </li>
                     )

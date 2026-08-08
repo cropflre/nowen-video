@@ -1,11 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, forwardRef } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Button } from '@/components/design-system'
 import { toastVariants } from '@/lib/motion'
-
-// ============================================================
-// 全局 Toast 通知系统 - 深空流体风格 + framer-motion 动画
-// ============================================================
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -27,9 +24,9 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | null>(null)
 
 export function useToast() {
-  const ctx = useContext(ToastContext)
-  if (!ctx) throw new Error('useToast must be used within <ToastProvider>')
-  return ctx
+  const context = useContext(ToastContext)
+  if (!context) throw new Error('useToast must be used within <ToastProvider>')
+  return context
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -37,38 +34,33 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const idRef = useRef(0)
 
   const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
+    setToasts((previous) => previous.filter((toast) => toast.id !== id))
   }, [])
 
   const toast = useCallback((type: ToastType, message: string, duration = 3500) => {
     const id = `toast-${++idRef.current}`
-    setToasts(prev => [...prev, { id, type, message, duration }])
-    if (duration > 0) {
-      setTimeout(() => removeToast(id), duration)
-    }
+    setToasts((previous) => [...previous, { id, type, message, duration }])
+    if (duration > 0) setTimeout(() => removeToast(id), duration)
   }, [removeToast])
 
-  const success = useCallback((msg: string) => toast('success', msg), [toast])
-  const error = useCallback((msg: string) => toast('error', msg), [toast])
-  const warning = useCallback((msg: string) => toast('warning', msg), [toast])
-  const info = useCallback((msg: string) => toast('info', msg), [toast])
+  const success = useCallback((message: string) => toast('success', message), [toast])
+  const error = useCallback((message: string) => toast('error', message), [toast])
+  const warning = useCallback((message: string) => toast('warning', message), [toast])
+  const info = useCallback((message: string) => toast('info', message), [toast])
 
-  const value: ToastContextType = useMemo(() => ({
-    toast,
-    success,
-    error,
-    warning,
-    info,
-  }), [toast, success, error, warning, info])
+  const value: ToastContextType = useMemo(() => ({ toast, success, error, warning, info }), [toast, success, error, warning, info])
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {/* Toast 容器 — AnimatePresence 实现退出动画 + layout 实现布局过渡 */}
-      <div className="pointer-events-none fixed right-4 top-4 z-[999] flex flex-col items-end gap-2">
+      <div
+        className="pointer-events-none fixed right-4 top-4 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2"
+        aria-live="polite"
+        aria-relevant="additions"
+      >
         <AnimatePresence mode="popLayout">
-          {toasts.map((t) => (
-            <ToastItem key={t.id} toast={t} onClose={() => removeToast(t.id)} />
+          {toasts.map((item) => (
+            <ToastItem key={item.id} toast={item} onClose={() => removeToast(item.id)} />
           ))}
         </AnimatePresence>
       </div>
@@ -77,17 +69,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 const iconMap: Record<ToastType, React.ReactNode> = {
-  success: <CheckCircle2 size={18} style={{ color: 'var(--neon-green)' }} />,
-  error: <XCircle size={18} className="text-red-400" />,
-  warning: <AlertTriangle size={18} className="text-yellow-400" />,
-  info: <Info size={18} style={{ color: 'var(--neon-blue)' }} />,
+  success: <CheckCircle2 size={18} className="text-[var(--nv-status-success)]" aria-hidden="true" />,
+  error: <XCircle size={18} className="text-[var(--nv-status-danger)]" aria-hidden="true" />,
+  warning: <AlertTriangle size={18} className="text-[var(--nv-status-warning)]" aria-hidden="true" />,
+  info: <Info size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />,
 }
 
-const borderColorMap: Record<ToastType, string> = {
-  success: 'rgba(0, 255, 136, 0.15)',
-  error: 'rgba(239, 68, 68, 0.15)',
-  warning: 'rgba(234, 179, 8, 0.15)',
-  info: 'var(--neon-blue-15)',
+function borderColor(type: ToastType) {
+  if (type === 'success') return 'color-mix(in srgb, var(--nv-status-success) 25%, var(--nv-border-default))'
+  if (type === 'warning') return 'color-mix(in srgb, var(--nv-status-warning) 25%, var(--nv-border-default))'
+  if (type === 'error') return 'color-mix(in srgb, var(--nv-status-danger) 25%, var(--nv-border-default))'
+  return 'var(--nv-border-default)'
 }
 
 const ToastItem = forwardRef<HTMLDivElement, { toast: Toast; onClose: () => void }>(
@@ -100,24 +92,16 @@ const ToastItem = forwardRef<HTMLDivElement, { toast: Toast; onClose: () => void
         initial="initial"
         animate="animate"
         exit="exit"
-        className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: `1px solid ${borderColorMap[toast.type]}`,
-          backdropFilter: 'blur(20px)',
-          minWidth: '280px',
-          maxWidth: '420px',
-        }}
+        className="pointer-events-auto flex w-full min-w-0 items-center gap-3 rounded-[var(--nv-radius-container)] bg-[var(--nv-bg-elevated)] px-4 py-3 shadow-[var(--nv-shadow-elevated)] sm:min-w-[280px] sm:max-w-[420px]"
+        style={{ border: `1px solid ${borderColor(toast.type)}` }}
+        role={toast.type === 'error' ? 'alert' : 'status'}
       >
         {iconMap[toast.type]}
-        <p className="flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>{toast.message}</p>
-        <button
-          onClick={onClose}
-          className="shrink-0 rounded-lg p-1 text-surface-500 transition-colors hover:text-white"
-        >
-          <X size={14} />
-        </button>
+        <p className="min-w-0 flex-1 break-words text-sm text-[var(--nv-text-primary)]">{toast.message}</p>
+        <Button variant="ghost" size="sm" iconOnly onClick={onClose} className="shrink-0" aria-label="关闭通知">
+          <X size={14} aria-hidden="true" />
+        </Button>
       </motion.div>
     )
-  }
+  },
 )

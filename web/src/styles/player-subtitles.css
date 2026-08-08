@@ -1,0 +1,67 @@
+/* ============================================================
+   PLAYER SUBTITLE PRESENTATION
+   ------------------------------------------------------------
+   Native WebVTT cues should read like cinema subtitles, not UI cards:
+   - no opaque/boxed background
+   - white text with a restrained dark optical outline
+   - responsive size tuned for desktop, TV and mobile viewing distances
+   - high contrast without covering the picture with a black rectangle
+
+   Keep this layer visual-only. Subtitle selection/loading remains owned by
+   VideoPlayer and the browser TextTrack implementation.
+   ============================================================ */
+
+.group\/player {
+  --nv-subtitle-color: rgba(255, 255, 255, 0.98);
+  --nv-subtitle-size: clamp(24px, 3.2vh, 48px);
+  --nv-subtitle-weight: 600;
+  --nv-subtitle-line-height: 1.24;
+  --nv-subtitle-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.98),
+    1px 0 1px rgba(0, 0, 0, 0.92),
+    -1px 0 1px rgba(0, 0, 0, 0.92),
+    0 1px 1px rgba(0, 0, 0, 0.96),
+    0 -1px 1px rgba(0, 0, 0, 0.88),
+    2px 2px 5px rgba(0, 0, 0, 0.72);
+}
+
+/*
+ * Chromium/WebKit ship a dark cue box by default. Explicitly remove it so
+ * subtitles sit directly on the image. Readability is provided by the optical
+ * outline/shadow instead of a panel behind the whole sentence.
+ */
+.group\/player > video::cue {
+  color: var(--nv-subtitle-color);
+  background: transparent !important;
+  background-color: transparent !important;
+  font-family:
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "PingFang SC",
+    "Microsoft YaHei",
+    "Hiragino Sans GB",
+    "Noto Sans",
+    system-ui,
+    sans-serif;
+  font-size: var(--nv-subtitle-size);
+  font-weight: var(--nv-subtitle-weight);
+  line-height: var(--nv-subtitle-line-height);
+  text-shadow: var(--nv-subtitle-shadow);
+}
+
+/* Compact windows and phones need a slightly denser subtitle scale. */
+@media (max-width: 900px), (max-height: 620px) {
+  .group\/player {
+    --nv-subtitle-size: clamp(18px, 3.6vh, 32px);
+    --nv-subtitle-weight: 600;
+    --nv-subtitle-line-height: 1.22;
+  }
+}
+
+/* On large living-room / fullscreen surfaces keep text readable without
+   letting it grow into oversized title-card typography. */
+@media (min-width: 1800px) and (min-height: 900px) {
+  .group\/player {
+    --nv-subtitle-size: clamp(34px, 3.4vh, 52px);
+  }
+}

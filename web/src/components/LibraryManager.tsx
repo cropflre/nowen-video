@@ -8,31 +8,32 @@ import { useDialog } from './Dialog'
 import CreateLibraryModal from './CreateLibraryModal'
 import EditLibraryModal from './EditLibraryModal'
 import {
-  FolderPlus,
-  RefreshCw,
-  Trash2,
-  HardDrive,
-  Film,
-  Tv,
-  Layers,
-  Video,
   ArrowUpDown,
-  ScanLine,
-  MoreHorizontal,
   Calendar,
-  FolderOpen,
   ChevronRight,
-  RotateCcw,
+  Film,
+  FolderOpen,
+  FolderPlus,
+  HardDrive,
+  Layers,
+  MoreHorizontal,
   Pencil,
+  RefreshCw,
+  RotateCcw,
+  ScanLine,
+  Trash2,
+  Tv,
+  Video,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { AdminPanel, AdminStatus } from '@/components/admin/AdminPrimitives'
+import { Button, EmptyState, Tag } from '@/components/design-system'
 
-// 类型配置映射
-const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film; color: string; bg: string }> = {
-  movie: { label: '电影', icon: Film, color: 'var(--neon-blue)', bg: 'var(--neon-blue-8)' },
-  tvshow: { label: '电视节目', icon: Tv, color: 'var(--neon-purple)', bg: 'var(--neon-purple-8)' },
-  mixed: { label: '混合影片', icon: Layers, color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' },
-  other: { label: '其他视频', icon: Video, color: '#10B981', bg: 'rgba(16, 185, 129, 0.08)' },
+const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film }> = {
+  movie: { label: '电影', icon: Film },
+  tvshow: { label: '电视节目', icon: Tv },
+  mixed: { label: '混合影片', icon: Layers },
+  other: { label: '其他视频', icon: Video },
 }
 
 interface LibraryManagerProps {
@@ -53,9 +54,9 @@ const MAIN_SCAN_STAGES: { id: MainScanStage; label: string; short: string }[] = 
   { id: 'scraping', label: '元数据刮削进度', short: '刮削' },
 ]
 
-function clampPercent(n: number) {
-  if (!Number.isFinite(n)) return 0
-  return Math.max(0, Math.min(100, n))
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
 }
 
 function LibraryManager({
@@ -76,7 +77,6 @@ function LibraryManager({
   const [scanAllLoading, setScanAllLoading] = useState(false)
   const [editingLibrary, setEditingLibrary] = useState<Library | null>(null)
 
-  // 排序逻辑
   const sortedLibraries = [...libraries].sort((a, b) => {
     let cmp = 0
     if (sortBy === 'name') cmp = a.name.localeCompare(b.name)
@@ -92,31 +92,28 @@ function LibraryManager({
   }
 
   const handleScan = async (id: string) => {
-    setScanning((s) => new Set(s).add(id))
+    setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.scan(id)
     } catch (err: any) {
-      setScanning((s) => {
-        const ns = new Set(s)
-        ns.delete(id)
-        return ns
+      setScanning((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
       })
-      const msg = err?.response?.data?.error || '扫描启动失败'
-      toast.error(msg)
+      toast.error(err?.response?.data?.error || '扫描启动失败')
     }
   }
 
   const handleScanAll = async () => {
-    const toScan = libraries.filter((lib) => !scanning.has(lib.id))
+    const toScan = libraries.filter((library) => !scanning.has(library.id))
     if (toScan.length === 0) {
       toast.info('所有媒体库已在扫描中')
       return
     }
     setScanAllLoading(true)
     try {
-      for (const lib of toScan) {
-        await handleScan(lib.id)
-      }
+      for (const library of toScan) await handleScan(library.id)
       toast.success(`已启动 ${toScan.length} 个媒体库扫描`)
     } finally {
       setScanAllLoading(false)
@@ -133,7 +130,7 @@ function LibraryManager({
     if (!ok) return
     try {
       await libraryApi.delete(id)
-      setLibraries((libs) => libs.filter((l) => l.id !== id))
+      setLibraries((current) => current.filter((library) => library.id !== id))
     } catch {
       toast.error('删除失败')
     }
@@ -147,27 +144,28 @@ function LibraryManager({
       variant: 'warning',
     })
     if (!ok) return
-    setScanning((s) => new Set(s).add(id))
+    setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.reindex(id)
     } catch {
-      setScanning((s) => {
-        const ns = new Set(s)
-        ns.delete(id)
-        return ns
+      setScanning((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
       })
       toast.error('重建索引失败')
     }
   }
 
   const toggleSort = (field: typeof sortBy) => {
-    if (sortBy === field) {
-      setSortAsc(!sortAsc)
-    } else {
+    if (sortBy === field) setSortAsc(!sortAsc)
+    else {
       setSortBy(field)
       setSortAsc(false)
     }
   }
+
+  const cycleSort = () => toggleSort(sortBy === 'name' ? 'created' : sortBy === 'created' ? 'type' : 'name')
 
   const formatDate = (date: string | null) => {
     if (!date) return '从未扫描'
@@ -180,449 +178,289 @@ function LibraryManager({
   }
 
   return (
-    <section>
-      {/* ===== 区域头部 — 飞牛风格工具栏 ===== */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        {/* 标题 */}
-        <h2
-          className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          <HardDrive size={20} className="text-neon/60" />
-          媒体库管理
-        </h2>
-
-        <div className="ml-auto flex items-center gap-2">
-          {/* 新增媒体库按钮 — 主要操作 */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary gap-1.5 px-4 py-2 text-sm"
-          >
-            <FolderPlus size={16} />
-            新增媒体库
-          </button>
-
-          {/* 排序按钮 */}
-          <div className="relative">
-            <button
-              onClick={() => toggleSort(sortBy === 'name' ? 'created' : sortBy === 'created' ? 'type' : 'name')}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all"
-              style={{
-                border: '1px solid var(--border-default)',
-                color: 'var(--text-secondary)',
-                background: 'transparent',
-              }}
-              title={`排序: ${sortBy === 'name' ? '名称' : sortBy === 'type' ? '类型' : '创建时间'}`}
-            >
+    <>
+      <AdminPanel
+        title="媒体库管理"
+        description="管理媒体目录、内容类型和扫描索引状态。"
+        icon={<HardDrive size={18} />}
+        actions={(
+          <>
+            <Button variant="secondary" size="sm" onClick={cycleSort} title={`排序: ${sortBy === 'name' ? '名称' : sortBy === 'type' ? '类型' : '创建时间'}`}>
               <ArrowUpDown size={14} />
               排序
-            </button>
+            </Button>
+            {libraries.length > 0 && (
+              <Button variant="secondary" size="sm" onClick={handleScanAll} loading={scanAllLoading}>
+                {scanAllLoading ? <RefreshCw size={14} className="animate-spin" /> : <ScanLine size={14} />}
+                {scanAllLoading ? '扫描中...' : '扫描全部'}
+              </Button>
+            )}
+            <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
+              <FolderPlus size={15} />
+              新增媒体库
+            </Button>
+          </>
+        )}
+        bodyClassName="p-0"
+      >
+        {libraries.length > 0 ? (
+          <div className="overflow-visible">
+            <div className="hidden grid-cols-[minmax(180px,2fr)_minmax(220px,2fr)_120px_150px_120px] gap-4 border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-5 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--nv-text-tertiary)] lg:grid">
+              <SortHeader active={sortBy === 'name'} asc={sortAsc} onClick={() => toggleSort('name')}>媒体库</SortHeader>
+              <span>媒体文件夹</span>
+              <SortHeader active={sortBy === 'type'} asc={sortAsc} onClick={() => toggleSort('type')}>类型</SortHeader>
+              <SortHeader active={sortBy === 'created'} asc={sortAsc} onClick={() => toggleSort('created')}>最近更新</SortHeader>
+              <span className="text-center">操作</span>
+            </div>
+
+            {sortedLibraries.map((library, index) => (
+              <LibraryRow
+                key={library.id}
+                library={library}
+                isLast={index === sortedLibraries.length - 1}
+                isScanning={scanning.has(library.id)}
+                progress={scanProgress[library.id]}
+                scrape={scrapeProgress[library.id]}
+                phase={scanPhase[library.id]}
+                activeMenu={activeMenu === library.id}
+                onScan={() => handleScan(library.id)}
+                onDelete={() => handleDelete(library.id)}
+                onMenu={() => setActiveMenu(activeMenu === library.id ? null : library.id)}
+                onCloseMenu={() => setActiveMenu(null)}
+                onEdit={() => {
+                  setActiveMenu(null)
+                  setEditingLibrary(library)
+                }}
+                onReindex={() => {
+                  setActiveMenu(null)
+                  handleReindex(library.id)
+                }}
+                formatDate={formatDate}
+              />
+            ))}
           </div>
+        ) : (
+          <EmptyState
+            icon={<FolderPlus size={28} />}
+            title="还没有媒体库"
+            description="添加媒体库后系统将自动扫描并索引您的视频文件。"
+            action={(
+              <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+                <FolderPlus size={16} />
+                新增媒体库
+              </Button>
+            )}
+          />
+        )}
+      </AdminPanel>
 
-          {/* 扫描全部按钮 */}
-          {libraries.length > 0 && (
-            <button
-              onClick={handleScanAll}
-              disabled={scanAllLoading}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all disabled:opacity-40"
-              style={{
-                border: '1px solid var(--border-default)',
-                color: 'var(--text-secondary)',
-                background: 'transparent',
-              }}
-              title="扫描所有媒体库文件"
-            >
-              {scanAllLoading ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <ScanLine size={14} />
-              )}
-              {scanAllLoading ? '扫描中...' : '扫描媒体库文件'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ===== 媒体库表格 — 飞牛风格列表 ===== */}
-      {libraries.length > 0 ? (
-        <div
-          className="rounded-xl"
-          style={{
-            border: '1px solid var(--border-default)',
-            background: 'var(--bg-card)',
-            overflow: 'visible',
-          }}
-        >
-          {/* 表头 */}
-          <div
-            className="grid gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider rounded-t-xl"
-            style={{
-              gridTemplateColumns: '2fr 2fr 1fr 1.5fr 120px',
-              borderBottom: '1px solid var(--border-default)',
-              color: 'var(--text-tertiary)',
-              background: 'var(--nav-hover-bg)',
-            }}
-          >
-            <button
-              className="flex items-center gap-1 text-left hover:text-[var(--text-primary)] transition-colors"
-              onClick={() => toggleSort('name')}
-            >
-              媒体库
-              {sortBy === 'name' && <ChevronRight size={12} className={clsx('transition-transform', sortAsc ? '-rotate-90' : 'rotate-90')} />}
-            </button>
-            <span>媒体文件夹</span>
-            <button
-              className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors"
-              onClick={() => toggleSort('type')}
-            >
-              类型
-              {sortBy === 'type' && <ChevronRight size={12} className={clsx('transition-transform', sortAsc ? '-rotate-90' : 'rotate-90')} />}
-            </button>
-            <button
-              className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors"
-              onClick={() => toggleSort('created')}
-            >
-              最近更新
-              {sortBy === 'created' && <ChevronRight size={12} className={clsx('transition-transform', sortAsc ? '-rotate-90' : 'rotate-90')} />}
-            </button>
-            <span className="text-center">操作</span>
-          </div>
-
-          {/* 列表项 */}
-          {sortedLibraries.map((lib) => {
-            const typeConfig = TYPE_CONFIG[lib.type] || TYPE_CONFIG.movie
-            const TypeIcon = typeConfig.icon
-            const isScanning = scanning.has(lib.id)
-            const progress = scanProgress[lib.id]
-            const scrape = scrapeProgress[lib.id]
-            const phase = scanPhase[lib.id]
-
-            const activeStage: MainScanStage =
-              phase?.phase === 'ai_organizing'
-                ? 'ai_organizing'
-                : phase?.phase === 'scraping' || (!phase && scrape)
-                  ? 'scraping'
-                  : 'scanning'
-            const activeStageIndex = MAIN_SCAN_STAGES.findIndex((s) => s.id === activeStage)
-            const stageLabel = MAIN_SCAN_STAGES[activeStageIndex]?.label || '入库进度'
-            const phaseCurrent = phase?.current || 0
-            const phaseTotal = phase?.total || 0
-            const stageProgress = activeStage === 'scraping'
-              ? scrape
-                ? { current: scrape.current, total: scrape.total }
-                : { current: phaseCurrent, total: phaseTotal }
-              : activeStage === 'ai_organizing'
-                ? { current: phaseCurrent, total: phaseTotal }
-                : { current: progress?.current || progress?.new_found || phaseCurrent, total: progress?.total || phaseTotal }
-            const stagePercent = stageProgress.total > 0
-              ? clampPercent((stageProgress.current / stageProgress.total) * 100)
-              : activeStageIndex > 0
-                ? 100
-                : 35
-            const stageMessage = activeStage === 'scraping' && scrape
-              ? `元数据刮削 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
-              : activeStage === 'ai_organizing' && phase?.total
-                ? `AI整理 [${phase.current || 0}/${phase.total}]`
-                : progress?.message || phase?.message || '正在入库...'
-
-            return (
-              <div key={lib.id} className="group relative">
-                <div
-                  className="grid items-center gap-4 px-5 py-4 transition-colors duration-200"
-                  style={{
-                    gridTemplateColumns: '2fr 2fr 1fr 1.5fr 120px',
-                    borderBottom: '1px solid var(--border-default)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--nav-hover-bg)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent'
-                  }}
-                >
-                  {/* 媒体库名称 */}
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: typeConfig.bg, color: typeConfig.color }}
-                    >
-                      <TypeIcon size={20} />
-                    </div>
-                    <div className="min-w-0">
-                      <h3
-                        className="truncate text-sm font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {lib.name}
-                      </h3>
-                    {isScanning && (
-                        <p className="mt-0.5 text-xs text-neon animate-pulse">
-                          {stageLabel}：{stageMessage}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 文件夹路径 */}
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <FolderOpen
-                      size={14}
-                      className="flex-shrink-0"
-                      style={{ color: 'var(--text-muted)' }}
-                    />
-                    {(() => {
-                      const allPaths = getLibraryPaths(lib)
-                      const pathTitle = allPaths.join('\n')
-                      const displayText =
-                        allPaths.length > 1
-                          ? `${allPaths[0]}  +${allPaths.length - 1}`
-                          : allPaths[0] || lib.path
-                      return (
-                        <span
-                          className="truncate text-sm font-mono"
-                          style={{ color: 'var(--text-secondary)' }}
-                          title={pathTitle}
-                        >
-                          {displayText}
-                        </span>
-                      )
-                    })()}
-                  </div>
-
-                  {/* 类型标签 */}
-                  <div>
-                    <span
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold"
-                      style={{
-                        background: typeConfig.bg,
-                        color: typeConfig.color,
-                        border: `1px solid ${typeConfig.bg}`,
-                      }}
-                    >
-                      {typeConfig.label}
-                    </span>
-                  </div>
-
-                  {/* 更新时间 */}
-                  <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                    <Calendar size={13} className="flex-shrink-0" />
-                    <span>{formatDate(lib.last_scan)}</span>
-                  </div>
-
-                  {/* 操作按钮 */}
-                  <div className="flex items-center justify-center gap-1">
-                    {/* 扫描 */}
-                    <button
-                      onClick={() => handleScan(lib.id)}
-                      disabled={isScanning}
-                      className="rounded-lg p-2 transition-all hover:bg-[var(--nav-hover-bg)] disabled:opacity-40"
-                      style={{ color: 'var(--text-tertiary)' }}
-                      title="扫描媒体文件"
-                    >
-                      <RefreshCw
-                        size={16}
-                        className={clsx(
-                          'transition-all',
-                          isScanning && 'animate-spin text-neon'
-                        )}
-                      />
-                    </button>
-
-                    {/* 删除 */}
-                    <button
-                      onClick={() => handleDelete(lib.id)}
-                      className="rounded-lg p-2 text-surface-500 transition-all hover:bg-red-500/5 hover:text-red-400"
-                      title="删除媒体库"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-
-                    {/* 更多操作 */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setActiveMenu(activeMenu === lib.id ? null : lib.id)}
-                        className="rounded-lg p-2 transition-all hover:bg-[var(--nav-hover-bg)]"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-
-                      {/* 下拉菜单 */}
-                      {activeMenu === lib.id && (
-                        <>
-                          <div className="fixed inset-0 z-30" onClick={() => setActiveMenu(null)} />
-                          <div
-                            className="absolute right-0 top-full z-40 mt-1 w-44 overflow-hidden rounded-xl py-1 animate-slide-up"
-                            style={{
-                              background: 'var(--bg-elevated)',
-                              border: '1px solid var(--border-strong)',
-                              boxShadow: 'var(--shadow-elevated)',
-                            }}
-                          >
-                            <button
-                              onClick={() => {
-                                setActiveMenu(null)
-                                setEditingLibrary(lib)
-                              }}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--nav-hover-bg)]"
-                              style={{ color: 'var(--text-secondary)' }}
-                            >
-                              <Pencil size={14} />
-                              编辑媒体库
-                            </button>
-                            <button
-                              onClick={() => {
-                                setActiveMenu(null)
-                                handleReindex(lib.id)
-                              }}
-                              disabled={isScanning}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-40"
-                              style={{ color: 'var(--text-secondary)' }}
-                            >
-                              <RotateCcw size={14} />
-                              重建索引
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 扫描进度条（扫描中显示）：固定展示 入库 → 元数据刮削 → AI整理 */}
-                {isScanning && (progress || scrape || phase) && (
-                  <div className="px-5 pb-3">
-                    <div className="mb-2 grid grid-cols-3 gap-2">
-                      {MAIN_SCAN_STAGES.map((stage, index) => {
-                        const done = index < activeStageIndex
-                        const active = index === activeStageIndex
-                        return (
-                          <div
-                            key={stage.id}
-                            className="rounded-lg px-2.5 py-2 transition-all"
-                            style={{
-                              border: active ? '1px solid var(--neon-blue)' : '1px solid var(--border-default)',
-                              background: done
-                                ? 'rgba(16, 185, 129, 0.10)'
-                                : active
-                                  ? 'var(--neon-blue-8)'
-                                  : 'var(--bg-secondary)',
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="truncate text-[11px] font-semibold" style={{ color: active ? 'var(--neon-blue)' : done ? '#10B981' : 'var(--text-tertiary)' }}>
-                                {index + 1}. {stage.short}
-                              </span>
-                              <span className="text-[10px]" style={{ color: active ? 'var(--neon-blue)' : done ? '#10B981' : 'var(--text-muted)' }}>
-                                {done ? '完成' : active ? '进行中' : '等待'}
-                              </span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] font-medium" style={{ color: 'var(--neon-blue)' }}>
-                        {stageLabel}
-                      </span>
-                      <span className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                        {stageProgress.total > 0 ? `${stageProgress.current}/${stageProgress.total}` : `已发现 ${progress?.new_found || 0}`}
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--neon-blue-6)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          background: activeStage === 'scraping'
-                            ? 'linear-gradient(90deg, var(--neon-purple), var(--neon-pink))'
-                            : activeStage === 'ai_organizing'
-                              ? 'linear-gradient(90deg, #10B981, var(--neon-blue))'
-                              : 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                          width: `${stagePercent}%`,
-                          animation: stageProgress.total <= 0 ? 'shimmer 2s linear infinite' : undefined,
-                          backgroundSize: stageProgress.total <= 0 ? '200% 100%' : undefined,
-                        }}
-                      />
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-3">
-                      <span className="truncate text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        {stageMessage}
-                      </span>
-                      {activeStage === 'scraping' && scrape && scrape.total > 0 && (
-                        <span className="shrink-0 text-[11px] font-mono" style={{ color: 'var(--neon-purple)' }}>
-                          成功:{scrape.success} 失败:{scrape.failed}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        /* ===== 空状态 ===== */
-        <div
-          className="flex flex-col items-center justify-center py-16 rounded-xl"
-          style={{
-            border: '2px dashed var(--border-default)',
-            background: 'var(--nav-hover-bg)',
-          }}
-        >
-          <div
-            className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl animate-float"
-            style={{
-              background: 'var(--neon-blue-5)',
-              border: '1px solid var(--neon-blue-10)',
-            }}
-          >
-            <FolderPlus size={32} className="text-surface-600" />
-          </div>
-          <h3
-            className="font-display text-base font-semibold tracking-wide"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            还没有媒体库
-          </h3>
-          <p
-            className="mt-1.5 mb-5 text-sm"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            添加媒体库后系统将自动扫描并索引您的视频文件
-          </p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
-          >
-            <FolderPlus size={16} />
-            新增媒体库
-          </button>
-        </div>
-      )}
-
-      {/* ===== 创建媒体库弹窗 ===== */}
       <CreateLibraryModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreate}
       />
 
-      {/* ===== 编辑媒体库弹窗 ===== */}
       <EditLibraryModal
         open={!!editingLibrary}
         library={editingLibrary}
         onClose={() => setEditingLibrary(null)}
         onUpdate={(updated) => {
-          setLibraries((libs) => libs.map((l) => (l.id === updated.id ? updated : l)))
+          setLibraries((current) => current.map((library) => (library.id === updated.id ? updated : library)))
           toast.success('媒体库已更新')
         }}
       />
+    </>
+  )
+}
 
+function SortHeader({
+  active,
+  asc,
+  onClick,
+  children,
+}: {
+  active: boolean
+  asc: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button type="button" onClick={onClick} className="flex items-center gap-1 text-left transition-colors hover:text-[var(--nv-text-primary)]">
+      {children}
+      {active && <ChevronRight size={12} className={clsx('transition-transform', asc ? '-rotate-90' : 'rotate-90')} />}
+    </button>
+  )
+}
 
-    </section>
+function LibraryRow({
+  library,
+  isLast,
+  isScanning,
+  progress,
+  scrape,
+  phase,
+  activeMenu,
+  onScan,
+  onDelete,
+  onMenu,
+  onCloseMenu,
+  onEdit,
+  onReindex,
+  formatDate,
+}: {
+  library: Library
+  isLast: boolean
+  isScanning: boolean
+  progress?: ScanProgressData
+  scrape?: ScrapeProgressData
+  phase?: ScanPhaseData
+  activeMenu: boolean
+  onScan: () => void
+  onDelete: () => void
+  onMenu: () => void
+  onCloseMenu: () => void
+  onEdit: () => void
+  onReindex: () => void
+  formatDate: (date: string | null) => string
+}) {
+  const typeConfig = TYPE_CONFIG[library.type] || TYPE_CONFIG.movie
+  const TypeIcon = typeConfig.icon
+  const allPaths = getLibraryPaths(library)
+  const displayPath = allPaths.length > 1 ? `${allPaths[0]} +${allPaths.length - 1}` : allPaths[0] || library.path
+
+  const activeStage: MainScanStage = phase?.phase === 'ai_organizing'
+    ? 'ai_organizing'
+    : phase?.phase === 'scraping' || (!phase && scrape)
+      ? 'scraping'
+      : 'scanning'
+  const activeStageIndex = MAIN_SCAN_STAGES.findIndex((stage) => stage.id === activeStage)
+  const stageLabel = MAIN_SCAN_STAGES[activeStageIndex]?.label || '入库进度'
+  const phaseCurrent = phase?.current || 0
+  const phaseTotal = phase?.total || 0
+  const stageProgress = activeStage === 'scraping'
+    ? scrape
+      ? { current: scrape.current, total: scrape.total }
+      : { current: phaseCurrent, total: phaseTotal }
+    : activeStage === 'ai_organizing'
+      ? { current: phaseCurrent, total: phaseTotal }
+      : { current: progress?.current || progress?.new_found || phaseCurrent, total: progress?.total || phaseTotal }
+  const stagePercent = stageProgress.total > 0
+    ? clampPercent((stageProgress.current / stageProgress.total) * 100)
+    : activeStageIndex > 0 ? 100 : 35
+  const stageMessage = activeStage === 'scraping' && scrape
+    ? `元数据刮削 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
+    : activeStage === 'ai_organizing' && phase?.total
+      ? `AI整理 [${phase.current || 0}/${phase.total}]`
+      : progress?.message || phase?.message || '正在入库...'
+
+  return (
+    <div className={clsx('relative', !isLast && 'border-b border-[var(--nv-border-subtle)]')}>
+      <div className="grid gap-4 px-4 py-4 transition-colors hover:bg-[var(--nv-bg-hover)] sm:px-5 lg:grid-cols-[minmax(180px,2fr)_minmax(220px,2fr)_120px_150px_120px] lg:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-action-primary)]">
+            <TypeIcon size={19} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)]">{library.name}</h3>
+            {isScanning && (
+              <div className="mt-1 flex items-center gap-2">
+                <AdminStatus tone="active">进行中</AdminStatus>
+                <span className="truncate text-xs text-[var(--nv-text-tertiary)]">{stageLabel}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--nv-text-secondary)]" title={allPaths.join('\n')}>
+          <FolderOpen size={14} className="shrink-0 text-[var(--nv-text-tertiary)]" />
+          <span className="truncate font-mono text-xs sm:text-sm">{displayPath}</span>
+        </div>
+
+        <div><Tag>{typeConfig.label}</Tag></div>
+
+        <div className="flex items-center gap-2 text-xs text-[var(--nv-text-tertiary)] sm:text-sm">
+          <Calendar size={13} className="shrink-0" />
+          <span>{formatDate(library.last_scan)}</span>
+        </div>
+
+        <div className="flex items-center gap-1 lg:justify-center">
+          <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning} title="扫描媒体文件" aria-label="扫描媒体文件">
+            <RefreshCw size={16} className={isScanning ? 'animate-spin text-[var(--nv-action-primary)]' : undefined} />
+          </Button>
+          <Button variant="danger" size="sm" iconOnly onClick={onDelete} title="删除媒体库" aria-label="删除媒体库">
+            <Trash2 size={16} />
+          </Button>
+          <div className="relative">
+            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} aria-label="更多操作">
+              <MoreHorizontal size={16} />
+            </Button>
+            {activeMenu && (
+              <>
+                <div className="fixed inset-0 z-[var(--nv-z-dropdown)]" onClick={onCloseMenu} />
+                <div className="absolute right-0 top-full z-[calc(var(--nv-z-dropdown)+1)] mt-1 w-44 overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)]">
+                  <button type="button" onClick={onEdit} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]">
+                    <Pencil size={14} />
+                    编辑媒体库
+                  </button>
+                  <button type="button" onClick={onReindex} disabled={isScanning} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] disabled:opacity-50">
+                    <RotateCcw size={14} />
+                    重建索引
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {isScanning && (progress || scrape || phase) && (
+        <div className="px-4 pb-4 sm:px-5">
+          <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
+            <div className="grid grid-cols-3 gap-2">
+              {MAIN_SCAN_STAGES.map((stage, index) => {
+                const done = index < activeStageIndex
+                const active = index === activeStageIndex
+                return (
+                  <div
+                    key={stage.id}
+                    className={clsx(
+                      'rounded-[var(--nv-radius-sm)] border px-2.5 py-2',
+                      active ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)]' : 'border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)]',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={clsx('truncate text-[11px] font-semibold', active ? 'text-[var(--nv-action-primary)]' : done ? 'text-[var(--nv-status-success)]' : 'text-[var(--nv-text-tertiary)]')}>
+                        {index + 1}. {stage.short}
+                      </span>
+                      <span className={clsx('text-[10px]', active ? 'text-[var(--nv-action-primary)]' : done ? 'text-[var(--nv-status-success)]' : 'text-[var(--nv-text-disabled)]')}>
+                        {done ? '完成' : active ? '进行中' : '等待'}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[11px] font-semibold text-[var(--nv-action-primary)]">{stageLabel}</span>
+              <span className="text-[11px] font-mono text-[var(--nv-text-tertiary)]">
+                {stageProgress.total > 0 ? `${stageProgress.current}/${stageProgress.total}` : `已发现 ${progress?.new_found || 0}`}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--nv-bg-control)]">
+              <div className="h-full rounded-full bg-[var(--nv-action-primary)] transition-[width] duration-300" style={{ width: `${stagePercent}%` }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="truncate text-[11px] text-[var(--nv-text-tertiary)]">{stageMessage}</span>
+              {activeStage === 'scraping' && scrape && scrape.total > 0 && (
+                <span className="shrink-0 text-[11px] text-[var(--nv-text-secondary)]">成功 {scrape.success} · 失败 {scrape.failed}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
 export default LibraryManager
-

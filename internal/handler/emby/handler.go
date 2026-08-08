@@ -19,9 +19,8 @@ type Handler struct {
 	idMap  *IDMapper
 
 	// 业务服务（只复用，不新建）
-	auth      *service.AuthService
-	stream    *service.StreamService
-	transcode *service.TranscodeService // 用于节流（SetPlaybackPosition）
+	auth   *service.AuthService
+	stream *service.StreamService
 
 	// 仓储（只读为主）
 	userRepo        *repository.UserRepo
@@ -43,7 +42,6 @@ func NewHandler(
 	logger *zap.SugaredLogger,
 	auth *service.AuthService,
 	stream *service.StreamService,
-	transcode *service.TranscodeService,
 	repos *repository.Repositories,
 ) *Handler {
 	return &Handler{
@@ -52,7 +50,6 @@ func NewHandler(
 		idMap:           NewIDMapper(),
 		auth:            auth,
 		stream:          stream,
-		transcode:       transcode,
 		userRepo:        repos.User,
 		libraryRepo:     repos.Library,
 		mediaRepo:       repos.Media,

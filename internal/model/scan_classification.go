@@ -54,19 +54,19 @@ type MediaClassification struct {
 	ParsedYear     int     `json:"parsed_year"`
 	ParsedTMDbID   int     `json:"parsed_tmdb_id" gorm:"index"`
 	ParsedIMDbID   string  `json:"parsed_imdb_id" gorm:"index;type:text"`
-	Confidence     float64 `json:"confidence"`        // 综合置信度（0-1）
-	AIInvoked      bool    `json:"ai_invoked"`        // 是否调用了 AI Fallback
+	Confidence     float64 `json:"confidence"`                       // 综合置信度（0-1）
+	AIInvoked      bool    `json:"ai_invoked"`                       // 是否调用了 AI Fallback
 	AIProvider     string  `json:"ai_provider" gorm:"type:text"`     // AI 服务商（来自 AI 配置当前生效项，例如 openai/deepseek/anthropic）
 	AIModel        string  `json:"ai_model" gorm:"type:text"`        // AI 模型名（如 gpt-4o-mini / deepseek-chat）
 	AIRawResponse  string  `json:"ai_raw_response" gorm:"type:text"` // AI 原始响应（JSON 字符串）
 
 	// =========== 阶段 2：虚拟归类（按规则推导，仅 DB 标签） ===========
-	Category    string `json:"category" gorm:"index;type:text"` // movie/tvshow/anime/documentary/variety/music/adult/other
-	Region      string `json:"region" gorm:"index;type:text"`   // CN/HK/TW/JP/KR/US/EU/IN/OTHER
-	Decade      string `json:"decade" gorm:"index;type:text"`   // 2020s/2010s/2000s/1990s/...
-	GenreTags   string `json:"genre_tags" gorm:"type:text"`     // 规范化后的逗号分隔类型
-	LanguageTag string `json:"language_tag" gorm:"type:text"`   // zh/ja/en/...
-	QualityTier string `json:"quality_tier" gorm:"type:text"`   // 4K/1080p/720p/SD
+	Category    string `json:"category" gorm:"index;type:text"`     // movie/tvshow/anime/documentary/variety/music/adult/other
+	Region      string `json:"region" gorm:"index;type:text"`       // CN/HK/TW/JP/KR/US/EU/IN/OTHER
+	Decade      string `json:"decade" gorm:"index;type:text"`       // 2020s/2010s/2000s/1990s/...
+	GenreTags   string `json:"genre_tags" gorm:"type:text"`         // 规范化后的逗号分隔类型
+	LanguageTag string `json:"language_tag" gorm:"type:text"`       // zh/ja/en/...
+	QualityTier string `json:"quality_tier" gorm:"type:text"`       // 4K/1080p/720p/SD
 	VirtualPath string `json:"virtual_path" gorm:"index;type:text"` // 虚拟路径，如 "电影/华语/2020s/科幻"
 
 	// =========== 阶段 3：Jellyfin/Emby 风格命名建议（仅记录） ===========

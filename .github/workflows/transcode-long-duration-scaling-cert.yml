@@ -1,0 +1,224 @@
+name: Transcode Multi-Hour Duration Scaling
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/transcode-long-duration-scaling-cert/**'
+      - 'cmd/transcode-real-media-corpus-generate/**'
+      - 'internal/transcode/longdrift/contract.go'
+      - 'internal/transcode/longdrift/contract_test.go'
+      - 'internal/transcode/longdrift/policy.go'
+      - 'internal/transcode/longdrift/policy_test.go'
+      - 'internal/transcode/longdrift/profile_matrix.go'
+      - 'internal/transcode/longdrift/profile_matrix_test.go'
+      - 'internal/transcode/longdrift/scaling.go'
+      - 'internal/transcode/longdrift/scaling_test.go'
+      - 'internal/transcode/corpusgenerator/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'internal/transcode/realmediacandidate/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/certification/long_duration_drift_command.go'
+      - 'internal/transcode/certification/long_duration_drift_probe.go'
+      - 'internal/transcode/certification/long_duration_scaling.go'
+      - 'internal/transcode/certification/long_duration_scaling_test.go'
+      - 'internal/transcode/certification/real_media_candidate_*.go'
+      - '.github/scripts/verify_long_duration_scaling.py'
+      - '.github/scripts/verify_real_media_corpus_manifest.py'
+      - '.github/workflows/transcode-long-duration-scaling-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-long-duration-scaling-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect v3 media-impacting commit
+    runs-on: ubuntu-24.04
+    outputs:
+      run_media: ${{ steps.detect.outputs.run_media }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - id: detect
+        name: Inspect latest branch commit
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.action }}" != "synchronize" ]]; then
+            echo "run_media=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          run_media=false
+          while IFS= read -r file; do
+            case "$file" in
+              cmd/transcode-long-duration-scaling-cert/*|cmd/transcode-real-media-corpus-generate/*|internal/transcode/longdrift/contract.go|internal/transcode/longdrift/contract_test.go|internal/transcode/longdrift/policy.go|internal/transcode/longdrift/policy_test.go|internal/transcode/longdrift/profile_matrix.go|internal/transcode/longdrift/profile_matrix_test.go|internal/transcode/longdrift/scaling.go|internal/transcode/longdrift/scaling_test.go|internal/transcode/corpusgenerator/*|internal/transcode/realmediacorpus/*|internal/transcode/realmediacandidate/*|internal/transcode/timebasecandidate/*|internal/transcode/reordercandidate/*|internal/transcode/certification/long_duration_drift_command.go|internal/transcode/certification/long_duration_drift_probe.go|internal/transcode/certification/long_duration_scaling.go|internal/transcode/certification/long_duration_scaling_test.go|internal/transcode/certification/real_media_candidate_*.go|.github/scripts/verify_long_duration_scaling.py|.github/scripts/verify_real_media_corpus_manifest.py)
+                run_media=true
+                break
+                ;;
+            esac
+          done < <(git diff-tree --no-commit-id --name-only -r HEAD)
+          echo "run_media=$run_media" >> "$GITHUB_OUTPUT"
+
+  generate-corpus:
+    name: Build scaling adapters and immutable corpus
+    needs: changes
+    if: needs.changes.outputs.run_media == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify scaling contracts and commands
+        run: |
+          go test ./internal/transcode/longdrift
+          go test ./internal/transcode/realmediacorpus
+          go test ./internal/transcode/corpusgenerator
+          go test ./internal/transcode/certification
+          go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go build -trimpath -o /tmp/nowen-transcode-long-duration-scaling-cert ./cmd/transcode-long-duration-scaling-cert
+          /tmp/nowen-transcode-long-duration-scaling-cert -list
+          python3 -m py_compile .github/scripts/verify_long_duration_scaling.py
+      - name: Generate deterministic file-backed corpus
+        run: |
+          rm -rf /tmp/nowen-transcode-real-media-corpus-v1
+          /tmp/nowen-transcode-real-media-corpus-generate \
+            -output-dir /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Verify immutable corpus
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_manifest.py \
+            /tmp/nowen-transcode-real-media-corpus-v1/real-media-corpus-manifest-v1.json
+          du -sh /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Upload immutable corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-long-duration-scaling-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+          if-no-files-found: error
+          retention-days: 7
+
+  certify-shard:
+    name: Certify ${{ matrix.label }}
+    needs: generate-corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix:
+        include:
+          - label: 2h MP4 AAC 44.1k AVTB
+            artifact: 2h-mp4-aac-44100-avtb
+            shard: multi-hour-breadth-2h-v1--profile-mp4-aac-44100-cfr-v1--encoder-time-base-avtb-v1
+          - label: 2h MP4 edit-list AVTB
+            artifact: 2h-mp4-edit-list-avtb
+            shard: multi-hour-breadth-2h-v1--profile-mp4-edit-list-v1--encoder-time-base-avtb-v1
+          - label: 2h Matroska VFR AVTB
+            artifact: 2h-mkv-vfr-avtb
+            shard: multi-hour-breadth-2h-v1--profile-mkv-vfr-24-30-v1--encoder-time-base-avtb-v1
+          - label: 2h MPEG-TS origin AVTB
+            artifact: 2h-mpegts-origin-avtb
+            shard: multi-hour-breadth-2h-v1--profile-mpegts-positive-origin-v1--encoder-time-base-avtb-v1
+          - label: 2h Matroska Opus AVTB
+            artifact: 2h-mkv-opus-avtb
+            shard: multi-hour-breadth-2h-v1--profile-mkv-opus-v1--encoder-time-base-avtb-v1
+          - label: 6h MP4 AAC 44.1k AVTB
+            artifact: 6h-mp4-aac-44100-avtb
+            shard: multi-hour-depth-6h-v1--profile-mp4-aac-44100-cfr-v1--encoder-time-base-avtb-v1
+          - label: 6h MP4 AAC 44.1k 90k
+            artifact: 6h-mp4-aac-44100-90k
+            shard: multi-hour-depth-6h-v1--profile-mp4-aac-44100-cfr-v1--encoder-time-base-90k-v1
+          - label: 6h Matroska VFR AVTB
+            artifact: 6h-mkv-vfr-avtb
+            shard: multi-hour-depth-6h-v1--profile-mkv-vfr-24-30-v1--encoder-time-base-avtb-v1
+          - label: 6h Matroska VFR 90k
+            artifact: 6h-mkv-vfr-90k
+            shard: multi-hour-depth-6h-v1--profile-mkv-vfr-24-30-v1--encoder-time-base-90k-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Download immutable corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: transcode-long-duration-scaling-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Build scaling certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-long-duration-scaling-cert ./cmd/transcode-long-duration-scaling-cert
+      - name: Run multi-hour scaling shard
+        run: |
+          mkdir -p /tmp/long-duration-scaling-shards
+          /tmp/nowen-transcode-long-duration-scaling-cert \
+            -corpus-root /tmp/nowen-transcode-real-media-corpus-v1 \
+            -shard '${{ matrix.shard }}' \
+            -output /tmp/long-duration-scaling-shards/${{ matrix.artifact }}.json \
+            -timeout 110m
+      - name: Independently verify shard evidence
+        run: |
+          python3 .github/scripts/verify_long_duration_scaling.py \
+            /tmp/long-duration-scaling-shards/${{ matrix.artifact }}.json
+          du -h /tmp/long-duration-scaling-shards/${{ matrix.artifact }}.json
+      - name: Upload scaling shard report
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-long-duration-scaling-shard-${{ matrix.artifact }}-${{ github.sha }}
+          path: /tmp/long-duration-scaling-shards/${{ matrix.artifact }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  aggregate:
+    name: Aggregate nine multi-hour scaling shards
+    needs: certify-shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download all shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: transcode-long-duration-scaling-shard-*-${{ github.sha }}
+          path: /tmp/long-duration-scaling-shards
+          merge-multiple: true
+      - name: Build scaling aggregation command
+        run: go build -trimpath -o /tmp/nowen-transcode-long-duration-scaling-cert ./cmd/transcode-long-duration-scaling-cert
+      - name: Aggregate shard contracts
+        run: |
+          find /tmp/long-duration-scaling-shards -maxdepth 1 -type f -name '*.json' -print | sort
+          test "$(find /tmp/long-duration-scaling-shards -maxdepth 1 -type f -name '*.json' | wc -l)" -eq 9
+          /tmp/nowen-transcode-long-duration-scaling-cert \
+            -aggregate-dir /tmp/long-duration-scaling-shards \
+            -output /tmp/long-duration-scaling-aggregate-v3.json
+      - name: Independently verify aggregate evidence
+        run: |
+          python3 .github/scripts/verify_long_duration_scaling.py \
+            /tmp/long-duration-scaling-aggregate-v3.json
+          du -h /tmp/long-duration-scaling-aggregate-v3.json
+      - name: Upload aggregate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-long-duration-scaling-aggregate-${{ github.sha }}
+          path: /tmp/long-duration-scaling-aggregate-v3.json
+          if-no-files-found: error
+          retention-days: 7

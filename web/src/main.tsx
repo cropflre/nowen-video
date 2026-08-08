@@ -5,10 +5,20 @@ import App from './App'
 import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
 import { initI18n } from './i18n'
+import { installSubtitleTrackActivationGuard } from './utils/subtitleTrackActivation'
 import './index.css'
 import './styles/fluent.css'
+import './styles/design-system.css'
+import './styles/design-system-compat.css'
+import './styles/admin-design-system.css'
+import './styles/player-cinema.css'
+import './styles/player-speed-menu.css'
+import './styles/player-overlay-panels.css'
+import './styles/player-design-system.css'
+import './styles/player-subtitles.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
+const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
 
 /**
  * Service Worker 只属于生产 PWA。
@@ -46,13 +56,36 @@ async function cleanupDevelopmentServiceWorker() {
 }
 
 function registerProductionServiceWorker() {
+  // 新 Worker 接管页面后必须刷新一次，否则当前标签仍会继续执行旧 JS 壳，
+  // 已删除的菜单和页面会一直保留到用户手动刷新。
+  window.addEventListener('pageshow', () => {
+    sessionStorage.removeItem(SW_UPDATE_RELOAD_KEY)
+  }, { once: true })
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (sessionStorage.getItem(SW_UPDATE_RELOAD_KEY) === '1') return
+    sessionStorage.setItem(SW_UPDATE_RELOAD_KEY, '1')
+    window.location.reload()
+  })
+
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register('/sw.js', {
         updateViaCache: 'none',
       })
-      // 每次启动主动检查 SW 更新，避免浏览器长期使用旧鉴权逻辑。
+
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            worker.postMessage({ type: 'SKIP_WAITING' })
+          }
+        })
+      })
+
+      // 每次启动主动检查 SW 更新，避免浏览器长期使用旧鉴权或旧导航逻辑。
       await registration.update()
+      registration.waiting?.postMessage({ type: 'SKIP_WAITING' })
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[PWA] Service Worker 注册失败:', error)
@@ -67,6 +100,10 @@ if ('serviceWorker' in navigator) {
     void cleanupDevelopmentServiceWorker()
   }
 }
+
+// 动态 blob: WebVTT <track> 默认处于 disabled。先安装兼容层，确保在线字幕和
+// 字幕菜单选择都能触发浏览器实际加载并进入 showing 状态。
+installSubtitleTrackActivationGuard()
 
 // 在渲染前初始化主题和国际化，避免闪烁
 initTheme()

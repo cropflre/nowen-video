@@ -1,0 +1,187 @@
+name: Transcode A/V Boundary Sync Certification
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/avsync_*.go'
+      - 'internal/transcode/certification/shaping_*.go'
+      - 'internal/transcode/certification/boundary_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timestampexecution/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_AV_SYNC_VARIANCE.md'
+      - '.github/workflows/transcode-av-sync-cert.yml'
+  pull_request:
+    paths:
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/service/ffmpeg/**'
+      - 'internal/transcode/attestation/**'
+      - 'internal/transcode/avsync/**'
+      - 'internal/transcode/boundaryevidence/**'
+      - 'internal/transcode/certification/avsync_*.go'
+      - 'internal/transcode/certification/shaping_*.go'
+      - 'internal/transcode/certification/boundary_*.go'
+      - 'internal/transcode/encodingplan/**'
+      - 'internal/transcode/timestampexecution/**'
+      - 'internal/transcode/timestampplan/**'
+      - 'docs/TRANSCODE_AV_SYNC_VARIANCE.md'
+      - '.github/workflows/transcode-av-sync-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-av-sync-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  av-sync-certification:
+    name: A/V boundary sync repeated-run variance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify A/V sync contracts
+        run: |
+          go test ./internal/transcode/avsync
+          go test ./internal/transcode/boundaryevidence ./internal/transcode/certification
+      - name: Build certification command
+        run: go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
+      - name: Produce repeated-run A/V sync variance matrix
+        run: |
+          mkdir -p /tmp/nowen-transcode-av-sync
+          /tmp/nowen-transcode-fixture-cert \
+            -av-sync-variance-matrix \
+            -output /tmp/nowen-transcode-av-sync/av-boundary-sync-variance-matrix-v1.json
+      - name: Verify evidence identity, determinism and fail-closed policy
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nowen-transcode-av-sync/av-boundary-sync-variance-matrix-v1.json')
+          matrix = json.loads(path.read_text())
+          assert matrix['schema_version'] == 'ffmpeg-av-boundary-sync-variance-matrix-v1'
+          assert matrix['repeat_count'] == 3
+          assert matrix['variance_tolerance_micros'] == 1
+
+          expected = [
+              'shape-48k-baseline-v1',
+              'shape-48k-per-stream-v1',
+              'shape-44k1-baseline-v1',
+              'shape-44k1-common-aac-two-v1',
+          ]
+          assert [item['case']['id'] for item in matrix['cases']] == expected
+
+          toolchain = None
+          summaries = {}
+          for item in matrix['cases']:
+              case_id = item['case']['id']
+              summary = item['summary']
+              assert summary['repeat_count'] == 3
+              assert summary['stable'] is True
+              assert summary['max_observed_span_micros'] <= 1
+              for field in (
+                  'video_boundary_delta_micros',
+                  'audio_boundary_delta_micros',
+                  'startup_end_skew_micros',
+                  'continuation_start_skew_micros',
+                  'boundary_delta_skew_micros',
+                  'skew_transition_micros',
+                  'projection_residual_micros',
+              ):
+                  metric = summary[field]
+                  assert metric['span_micros'] == metric['max_micros'] - metric['min_micros']
+                  assert metric['span_micros'] <= 1
+
+              assert [run['ordinal'] for run in item['runs']] == [1, 2, 3]
+              plan_hash = None
+              for run in item['runs']:
+                  shaping = run['shaping']
+                  evidence = shaping['evidence']
+                  av = run['av_sync']
+                  plan = json.loads(shaping['plan_json'])
+
+                  assert shaping['case']['id'] == case_id
+                  assert plan['schema_version'] == 'hls-timestamp-execution-plan-v2'
+                  assert plan['certification_only'] is True
+                  assert plan['seamless_allowed'] is False
+                  assert plan['discontinuity_required'] is True
+                  plan_hash = shaping['plan_hash'] if plan_hash is None else plan_hash
+                  assert shaping['plan_hash'] == plan_hash
+
+                  assert shaping['evidence_version'] == 'hls-boundary-packet-evidence-v1'
+                  assert evidence['seamless_allowed'] is False
+                  assert evidence['discontinuity_required'] is True
+                  evidence_canonical = json.dumps(evidence, ensure_ascii=False, separators=(',', ':'))
+                  evidence_hash = hashlib.sha256(evidence_canonical.encode()).hexdigest()
+                  assert evidence_hash == shaping['evidence_hash']
+
+                  assert run['av_sync_version'] == 'hls-av-boundary-sync-evidence-v1'
+                  assert av['schema_version'] == run['av_sync_version']
+                  assert av['case_id'] == case_id
+                  assert av['boundary_evidence_version'] == shaping['evidence_version']
+                  assert av['boundary_evidence_hash'] == shaping['evidence_hash']
+                  assert av['seamless_allowed'] is False
+                  assert av['discontinuity_required'] is True
+                  assert av['startup_end_skew_micros'] == av['startup_audio_end_micros'] - av['startup_video_end_micros']
+                  assert av['continuation_start_skew_micros'] == av['continuation_audio_start_micros'] - av['continuation_video_start_micros']
+                  assert av['boundary_delta_skew_micros'] == av['audio_boundary_delta_micros'] - av['video_boundary_delta_micros']
+                  assert av['skew_transition_micros'] == av['continuation_start_skew_micros'] - av['startup_end_skew_micros']
+                  assert av['projection_residual_micros'] == av['skew_transition_micros'] - av['boundary_delta_skew_micros']
+                  assert abs(av['projection_residual_micros']) <= 2
+                  assert av['max_absolute_skew_micros'] == max(abs(av['startup_end_skew_micros']), abs(av['continuation_start_skew_micros']))
+                  av_canonical = json.dumps(av, ensure_ascii=False, separators=(',', ':'))
+                  av_hash = hashlib.sha256(av_canonical.encode()).hexdigest()
+                  assert av_hash == run['av_sync_hash']
+
+                  current_toolchain = (evidence['ffmpeg_version'], evidence['ffprobe_version'])
+                  toolchain = current_toolchain if toolchain is None else toolchain
+                  assert current_toolchain == toolchain
+
+              summaries[case_id] = {
+                  'startup_skew_us': summary['startup_end_skew_micros']['max_micros'],
+                  'continuation_skew_us': summary['continuation_start_skew_micros']['max_micros'],
+                  'delta_skew_us': summary['boundary_delta_skew_micros']['max_micros'],
+                  'skew_transition_us': summary['skew_transition_micros']['max_micros'],
+                  'projection_residual_us': summary['projection_residual_micros']['max_micros'],
+                  'max_span_us': summary['max_observed_span_micros'],
+              }
+
+          assert [comparison['name'] for comparison in matrix['comparisons']] == [
+              '48k_per_stream_vs_baseline',
+              '44k1_common_aac_two_vs_baseline',
+          ]
+          for comparison in matrix['comparisons']:
+              assert comparison['delta_skew_improvement_micros'] == (
+                  comparison['baseline_max_abs_delta_skew_micros']
+                  - comparison['candidate_max_abs_delta_skew_micros']
+              )
+              assert comparison['delta_skew_improvement_micros'] > 0
+
+          print(json.dumps({'toolchain': toolchain, 'summaries': summaries, 'comparisons': matrix['comparisons']}, sort_keys=True))
+          PY
+      - name: Upload A/V sync variance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-av-sync-variance-${{ github.sha }}
+          path: /tmp/nowen-transcode-av-sync/av-boundary-sync-variance-matrix-v1.json
+          if-no-files-found: error
+          retention-days: 14

@@ -1,120 +1,21 @@
-// ============================================================
-// HeroCarousel �?现代化全屏幻灯片轮播组件
-// 深空流体 · 赛博朋克风格
-// ============================================================
-//
-// 特性：
-// - framer-motion 驱动的方向感知滑动切�?
-// - 触摸手势拖拽支持（移动端左右滑动�?
-// - 悬停自动暂停 + 进度条指�?
-// - 键盘导航（← �?方向键）
-// - 视差滚动背景效果
-// - 响应式布局（移动端/桌面端差异化�?
-// - reduce-motion 无障碍兼�?
-// - 图片预加载策�?
-// ============================================================
-
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  motion,
-  AnimatePresence,
-  useMotionValue,
-  useReducedMotion,
-  type PanInfo,
-} from 'framer-motion'
-import { Play, Star, ChevronLeft, ChevronRight, Info, Pause } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
+import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
-import { easeSmooth, easeExit, springDefault } from '@/lib/motion'
-import clsx from 'clsx'
+import { Button, Tag, buttonClassName } from '@/components/design-system'
 
-// ==================== 动画变体 ====================
+const AUTO_PLAY_INTERVAL = 7000
+const SWIPE_THRESHOLD = 50
+const SWIPE_VELOCITY = 300
 
-/** 背景图切�?�?方向感知 + 缩放 */
-const bgVariants = {
-  enter: (dir: number) => ({
-    opacity: 0,
-    scale: 1.08,
-    x: dir > 0 ? '4%' : '-4%',
-  }),
-  center: {
-    opacity: 1,
-    scale: 1,
-    x: '0%',
-    transition: {
-      opacity: { duration: 0.8, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-      scale: { duration: 1.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-      x: { duration: 0.8, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-    },
-  },
-  exit: (dir: number) => ({
-    opacity: 0,
-    scale: 1.04,
-    x: dir > 0 ? '-4%' : '4%',
-    transition: {
-      opacity: { duration: 0.5, ease: [0.36, 0, 0.66, -0.56] as [number, number, number, number] },
-      scale: { duration: 0.5 },
-      x: { duration: 0.5 },
-    },
-  }),
-}
-
-/** 内容区入�?�?从底部上�?+ 模糊 */
-const contentVariants = {
-  enter: {
-    opacity: 0,
-    y: 30,
-    filter: 'blur(6px)',
-  },
-  center: {
-    opacity: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: {
-      duration: 0.6,
-      delay: 0.25,
-      ease: easeSmooth as unknown as [number, number, number, number],
-      staggerChildren: 0.08,
-      delayChildren: 0.3,
-    },
-  },
-  exit: {
-    opacity: 0,
-    y: -15,
-    filter: 'blur(3px)',
-    transition: {
-      duration: 0.3,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  },
-}
-
-/** 内容子元素交错入�?*/
-const contentChildVariants = {
-  enter: { opacity: 0, y: 12 },
-  center: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.4, ease: easeSmooth as unknown as [number, number, number, number] },
-  },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
-}
-
-// ==================== 常量 ====================
-const AUTO_PLAY_INTERVAL = 7000 // 自动轮播间隔 7s
-const SWIPE_THRESHOLD = 50 // 触摸滑动阈�?px
-const SWIPE_VELOCITY = 300 // 触摸滑动速度阈�?
-
-// ==================== 工具函数 ====================
-/** �?MixedItem 转换�?HeroCarousel 可用�?RecommendedMedia 格式 */
 function mixedItemToRecommended(item: MixedItem, fallbackReason: string): RecommendedMedia | null {
   if (item.type === 'movie' && item.media) {
     return { media: item.media, score: 0, reason: fallbackReason }
   }
   if (item.type === 'series' && item.series) {
-    // �?Series 适配�?Media 接口（只填充轮播展示所需的字段）
     const s = item.series
     const pseudoMedia: Media = {
       id: s.id,
@@ -129,182 +30,145 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
       genres: s.genres,
       media_type: 'episode',
       series_id: s.id,
-      // 以下字段轮播不使用，填默认�?
-      runtime: 0, file_path: '', file_size: 0, video_codec: '', audio_codec: '',
-      resolution: '', duration: 0, subtitle_paths: '',
-      tmdb_id: s.tmdb_id || 0, douban_id: s.douban_id || '', bangumi_id: s.bangumi_id || 0,
-      country: s.country || '', language: s.language || '', tagline: '',
-      studio: s.studio || '', trailer_url: '',
-      // NFO 完整建模字段（轮播展示不使用，填默认值）
-      num: '', sort_title: '', outline: '', original_plot: '',
-      mpaa: '', country_code: '', maker: '', publisher: '',
-      label: '', tags: '', website: '', release_date: '', premiered: '',
-      season_num: 0, episode_num: 0, episode_title: '', created_at: s.created_at || '',
+      runtime: 0,
+      file_path: '',
+      file_size: 0,
+      video_codec: '',
+      audio_codec: '',
+      resolution: '',
+      duration: 0,
+      subtitle_paths: '',
+      tmdb_id: s.tmdb_id || 0,
+      douban_id: s.douban_id || '',
+      bangumi_id: s.bangumi_id || 0,
+      country: s.country || '',
+      language: s.language || '',
+      tagline: '',
+      studio: s.studio || '',
+      trailer_url: '',
+      num: '',
+      sort_title: '',
+      outline: '',
+      original_plot: '',
+      mpaa: '',
+      country_code: '',
+      maker: '',
+      publisher: '',
+      label: '',
+      tags: '',
+      website: '',
+      release_date: '',
+      premiered: '',
+      season_num: 0,
+      episode_num: 0,
+      episode_title: '',
+      created_at: s.created_at || '',
     }
     return { media: pseudoMedia, score: 0, reason: fallbackReason }
   }
   return null
 }
 
-// ==================== 组件 Props ====================
 interface HeroCarouselProps {
   items: RecommendedMedia[]
-  /** �?items 为空时的备选数据源（最近添加的混合列表�?*/
   fallbackItems?: MixedItem[]
-  /** 最大展示数量，默认 5 */
   maxItems?: number
 }
 
-// ==================== 主组�?====================
 export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems = 5 }: HeroCarouselProps) {
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
+  const containerRef = useRef<HTMLElement>(null)
+  const progressRef = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // 优先使用推荐数据；为空时�?fallback 数据
   const items = useMemo(() => {
     if (rawItems.length > 0) return rawItems.slice(0, maxItems)
-    if (fallbackItems && fallbackItems.length > 0) {
-      const converted = fallbackItems
-        .slice(0, maxItems)
-        .map(item => mixedItemToRecommended(item, t('home.recentlyAdded')))
-        .filter((x): x is RecommendedMedia => x !== null)
-      return converted
-    }
-    return []
+    return (fallbackItems || [])
+      .slice(0, maxItems)
+      .map((item) => mixedItemToRecommended(item, t('home.recentlyAdded')))
+      .filter((item): item is RecommendedMedia => item !== null)
   }, [rawItems, fallbackItems, maxItems, t])
 
-  // ---- 状�?----
   const [current, setCurrent] = useState(0)
   const [direction, setDirection] = useState(1)
   const [isPaused, setIsPaused] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
-  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set())
 
-  // ---- Refs ----
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const progressRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // ---- 拖拽 Motion Value ----
-  const dragX = useMotionValue(0)
-
-  // ---- 海报 URL 缓存 ----
-  const posterUrls = useMemo(() => {
-    const urls = new Map<string, string>()
-    items.forEach((rec) => {
-      const url = rec.media.series_id
-        ? streamApi.getSeriesPosterUrl(rec.media.series_id)
-        : streamApi.getPosterUrl(rec.media.id)
-      urls.set(rec.media.id, url)
-    })
-    return urls
-  }, [items])
-
-  // ---- 图片加载回调 ----
-  const handleImageLoad = useCallback((mediaId: string) => {
-    setLoadedImages((prev) => {
-      if (prev.has(mediaId)) return prev
-      const next = new Set(prev)
-      next.add(mediaId)
-      return next
-    })
-  }, [])
-
-  // ---- 自动轮播控制 ----
-  const startAutoPlay = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    if (items.length <= 1) return
-    timerRef.current = setInterval(() => {
-      setDirection(1)
-      setCurrent((prev) => (prev + 1) % items.length)
-    }, AUTO_PLAY_INTERVAL)
-  }, [items.length])
-
-  const stopAutoPlay = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-  }, [])
-
-  // 自动轮播 �?悬停或手动暂停时停止
   useEffect(() => {
-    if (isPaused || isHovering) {
-      stopAutoPlay()
-    } else {
-      startAutoPlay()
-    }
-    return stopAutoPlay
-  }, [isPaused, isHovering, startAutoPlay, stopAutoPlay, current])
-
-  // ---- 导航函数 ----
-  const goTo = useCallback((index: number) => {
-    setDirection(index > current ? 1 : index < current ? -1 : 1)
-    setCurrent(index)
-  }, [current])
+    if (current >= items.length && items.length > 0) setCurrent(0)
+  }, [current, items.length])
 
   const goPrev = useCallback(() => {
+    if (!items.length) return
     setDirection(-1)
-    setCurrent((prev) => (prev - 1 + items.length) % items.length)
+    setCurrent((value) => (value - 1 + items.length) % items.length)
   }, [items.length])
 
   const goNext = useCallback(() => {
+    if (!items.length) return
     setDirection(1)
-    setCurrent((prev) => (prev + 1) % items.length)
+    setCurrent((value) => (value + 1) % items.length)
   }, [items.length])
 
-  // ---- 键盘导航 ----
+  const goTo = useCallback((index: number) => {
+    setDirection(index >= current ? 1 : -1)
+    setCurrent(index)
+  }, [current])
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 只在轮播区域可见时响�?
-      if (!containerRef.current) return
-      const rect = containerRef.current.getBoundingClientRect()
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (items.length <= 1 || isPaused || isHovering) return
+
+    timerRef.current = setInterval(goNext, AUTO_PLAY_INTERVAL)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [goNext, isHovering, isPaused, items.length, current])
+
+  useEffect(() => {
+    if (!progressRef.current || isPaused || isHovering || items.length <= 1) return
+    const progress = progressRef.current
+    progress.style.transition = 'none'
+    progress.style.width = '0%'
+    void progress.offsetWidth
+    progress.style.transition = `width ${AUTO_PLAY_INTERVAL}ms linear`
+    progress.style.width = '100%'
+  }, [current, isPaused, isHovering, items.length])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
       if (rect.bottom < 0 || rect.top > window.innerHeight) return
 
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault()
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
         goPrev()
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault()
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
         goNext()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goPrev, goNext])
+  }, [goNext, goPrev])
 
-  // ---- 触摸手势处理 ----
   const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
-    const { offset, velocity } = info
-    if (Math.abs(offset.x) > SWIPE_THRESHOLD || Math.abs(velocity.x) > SWIPE_VELOCITY) {
-      if (offset.x > 0) {
-        goPrev()
-      } else {
-        goNext()
-      }
+    if (Math.abs(info.offset.x) > SWIPE_THRESHOLD || Math.abs(info.velocity.x) > SWIPE_VELOCITY) {
+      if (info.offset.x > 0) goPrev()
+      else goNext()
     }
-  }, [goPrev, goNext])
+  }, [goNext, goPrev])
 
-  // ---- 进度条动�?----
-  useEffect(() => {
-    if (!progressRef.current || isPaused || isHovering || items.length <= 1) return
-    const el = progressRef.current
-    // 重置动画
-    el.style.transition = 'none'
-    el.style.width = '0%'
-    // 强制 reflow
-    void el.offsetWidth
-    // 启动动画
-    el.style.transition = `width ${AUTO_PLAY_INTERVAL}ms linear`
-    el.style.width = '100%'
-  }, [current, isPaused, isHovering, items.length])
-
-  // ---- 安全检�?----
   if (!items.length) return null
   const item = items[current]
   if (!item) return null
 
-  // ---- 链接计算 ----
+  const imageUrl = item.media.series_id
+    ? streamApi.getSeriesPosterUrl(item.media.series_id)
+    : streamApi.getPosterUrl(item.media.id)
   const playLink = item.media.media_type === 'episode' && item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/play/${item.media.id}`
@@ -315,347 +179,197 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   return (
     <section
       ref={containerRef}
-      className="-mx-4 -mt-6 mb-6 sm:-mx-6 lg:-mx-8"
+      className="relative isolate min-h-[340px] overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)] sm:min-h-[400px] lg:min-h-[460px]"
       role="region"
       aria-roledescription="carousel"
       aria-label={t('home.recommended')}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      <div className="relative h-[320px] overflow-hidden rounded-b-2xl sm:h-[380px] lg:h-[440px] xl:h-[480px]">
-
-        {/* ==================== 背景图层 ==================== */}
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.div
-            key={`bg-${current}`}
-            custom={direction}
-            variants={prefersReducedMotion ? undefined : bgVariants}
-            initial={prefersReducedMotion ? { opacity: 0 } : 'enter'}
-            animate={prefersReducedMotion ? { opacity: 1 } : 'center'}
-            exit={prefersReducedMotion ? { opacity: 0 } : 'exit'}
-            className="absolute inset-0"
-            // 触摸拖拽
-            drag={items.length > 1 ? 'x' : false}
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.15}
-            onDragEnd={handleDragEnd}
-            style={{ x: dragX, cursor: items.length > 1 ? 'grab' : 'default' }}
-          >
-            <motion.img
-              src={posterUrls.get(item.media.id)}
-              alt=""
-              className={clsx(
-                'h-full w-full object-cover select-none pointer-events-none',
-                loadedImages.has(item.media.id) ? 'opacity-100' : 'opacity-0'
-              )}
-              style={{ transition: 'opacity 0.4s' }}
-              loading="eager"
-              draggable={false}
-              onLoad={() => handleImageLoad(item.media.id)}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          </motion.div>
-        </AnimatePresence>
-
-        {/* 预加载相邻图�?*/}
-        {items.map((rec, i) => i !== current && (
+      <AnimatePresence initial={false} custom={direction} mode="sync">
+        <motion.div
+          key={`hero-${item.media.id}`}
+          className="absolute inset-0"
+          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.025, x: direction > 0 ? '2%' : '-2%' }}
+          animate={{ opacity: 1, scale: 1, x: 0 }}
+          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.01, x: direction > 0 ? '-1%' : '1%' }}
+          transition={{ duration: prefersReducedMotion ? 0.12 : 0.42, ease: [0.2, 0.8, 0.2, 1] }}
+          drag={items.length > 1 ? 'x' : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.12}
+          onDragEnd={handleDragEnd}
+        >
           <img
-            key={`preload-${rec.media.id}`}
-            src={posterUrls.get(rec.media.id)}
+            src={imageUrl}
             alt=""
-            className="hidden"
-            loading="lazy"
-            onLoad={() => handleImageLoad(rec.media.id)}
+            className="h-full w-full select-none object-cover object-center"
+            loading="eager"
+            draggable={false}
+            onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
-        ))}
+        </motion.div>
+      </AnimatePresence>
 
-        {/* ==================== 渐变遮罩�?==================== */}
-        {/* 底部渐变 �?确保文字可读 */}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: `
-              linear-gradient(to top, var(--bg-base) 0%, var(--bg-base) 5%, rgba(6,10,19,0.7) 35%, transparent 70%),
-              linear-gradient(to right, var(--bg-base) 0%, rgba(6,10,19,0.5) 40%, transparent 70%)
-            `,
-          }}
+      {items.map((recommendation, index) => index !== current && (
+        <img
+          key={`hero-preload-${recommendation.media.id}`}
+          src={recommendation.media.series_id
+            ? streamApi.getSeriesPosterUrl(recommendation.media.series_id)
+            : streamApi.getPosterUrl(recommendation.media.id)}
+          alt=""
+          className="hidden"
+          loading="lazy"
         />
-        {/* 顶部微弱渐变 */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-24"
-          style={{
-            background: 'linear-gradient(to bottom, var(--bg-base)/40, transparent)',
-          }}
-        />
+      ))}
 
-        {/* ==================== 内容�?==================== */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 pb-10 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={`content-${current}`}
-                variants={prefersReducedMotion ? undefined : contentVariants}
-                initial={prefersReducedMotion ? { opacity: 0 } : 'enter'}
-                animate={prefersReducedMotion ? { opacity: 1 } : 'center'}
-                exit={prefersReducedMotion ? { opacity: 0 } : 'exit'}
-                className="max-w-2xl"
-              >
-                {/* 推荐理由标签 */}
-                <motion.div variants={contentChildVariants}>
-                  <span className="badge-accent mb-3 inline-flex items-center gap-1.5 text-xs">
-                    <Star size={10} fill="currentColor" className="opacity-70" />
-                    {item.reason}
-                  </span>
-                </motion.div>
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-70"
+        style={{
+          background: 'radial-gradient(circle at 72% 18%, var(--nv-ambient-purple-soft), transparent 36rem)',
+        }}
+      />
 
-                {/* 标题 */}
-                <motion.h2
-                  variants={contentChildVariants}
-                  className="mb-2 font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg sm:text-3xl lg:text-4xl xl:text-5xl"
-                >
-                  {item.media.title}
-                </motion.h2>
+      <div className="relative z-10 flex min-h-[340px] max-w-[48rem] flex-col justify-end px-[var(--nv-page-gutter)] pb-12 pt-16 sm:min-h-[400px] sm:pb-14 lg:min-h-[460px] lg:pb-16">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={`hero-content-${item.media.id}`}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={{ duration: prefersReducedMotion ? 0.12 : 0.28 }}
+          >
+            {item.reason && (
+              <Tag tone="brand" className="mb-3">
+                {item.reason}
+              </Tag>
+            )}
 
-                {/* 元数据行 */}
-                <motion.div
-                  variants={contentChildVariants}
-                  className="mb-3 flex flex-wrap items-center gap-3 text-sm text-white/70"
-                >
-                  {item.media.year > 0 && (
-                    <span className="rounded-md bg-white/10 px-2 py-0.5 text-xs font-medium backdrop-blur-sm">
-                      {item.media.year}
-                    </span>
-                  )}
-                  {item.media.rating > 0 && (
-                    <span className="flex items-center gap-1 text-yellow-400">
-                      <Star size={13} fill="currentColor" />
-                      <span className="font-semibold">{item.media.rating.toFixed(1)}</span>
-                    </span>
-                  )}
-                  {item.media.genres && (
-                    <span className="text-white/50">
-                      {item.media.genres.split(',').slice(0, 3).join(' / ')}
-                    </span>
-                  )}
-                </motion.div>
-
-                {/* 简�?*/}
-                {item.media.overview && (
-                  <motion.p
-                    variants={contentChildVariants}
-                    className="mb-5 line-clamp-2 max-w-xl text-sm leading-relaxed text-white/55 sm:text-base sm:leading-relaxed"
-                  >
-                    {item.media.overview}
-                  </motion.p>
-                )}
-
-                {/* 操作按钮 */}
-                <motion.div variants={contentChildVariants} className="flex items-center gap-3">
-                  {/* 播放按钮 �?�?CTA */}
-                  <motion.div
-                    whileHover={{ scale: 1.04, y: -2 }}
-                    whileTap={{ scale: 0.96 }}
-                    transition={springDefault}
-                  >
-                    <Link
-                      to={playLink}
-                      className="group inline-flex items-center gap-2.5 rounded-2xl px-7 py-3 text-sm font-bold shadow-lg"
-                      style={{
-                        background: 'linear-gradient(135deg, var(--neon-blue), rgba(0, 180, 220, 0.95))',
-                        boxShadow: 'var(--shadow-neon), 0 4px 15px var(--neon-blue-15)',
-                        color: 'var(--text-on-neon)',
-                      }}
-                    >
-                      <Play size={18} fill="currentColor" />
-                      {t('home.playNow')}
-                    </Link>
-                  </motion.div>
-
-                  {/* 详情按钮 */}
-                  <motion.div
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
-                    transition={springDefault}
-                  >
-                    <Link
-                      to={detailLink}
-                      className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-white/80 transition-colors hover:text-white"
-                      style={{
-                        background: 'rgba(255,255,255,0.08)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        backdropFilter: 'blur(8px)',
-                      }}
-                    >
-                      <Info size={16} />
-                      {t('home.viewDetail')}
-                    </Link>
-                  </motion.div>
-                </motion.div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* ==================== 左右切换按钮 ==================== */}
-        {items.length > 1 && (
-          <>
-            <motion.button
-              onClick={goPrev}
-              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full p-2.5 sm:left-5"
+            <h2
+              className="max-w-[18ch] font-bold text-[var(--nv-text-primary)]"
               style={{
-                background: 'rgba(0,0,0,0.3)',
-                backdropFilter: 'blur(8px)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                fontSize: 'var(--nv-type-display)',
+                lineHeight: 'var(--nv-line-tight)',
+                letterSpacing: 'var(--nv-tracking-tight)',
               }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: isHovering ? 1 : 0 }}
-              whileHover={{ scale: 1.1, background: 'rgba(0,0,0,0.5)' }}
-              whileTap={{ scale: 0.9 }}
-              transition={{ duration: 0.2 }}
-              aria-label="上一个"
             >
-              <ChevronLeft size={22} className="text-white/80" />
-            </motion.button>
-            <motion.button
-              onClick={goNext}
-              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full p-2.5 sm:right-5"
-              style={{
-                background: 'rgba(0,0,0,0.3)',
-                backdropFilter: 'blur(8px)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: isHovering ? 1 : 0 }}
-              whileHover={{ scale: 1.1, background: 'rgba(0,0,0,0.5)' }}
-              whileTap={{ scale: 0.9 }}
-              transition={{ duration: 0.2 }}
-              aria-label="下一个"
-            >
-              <ChevronRight size={22} className="text-white/80" />
-            </motion.button>
-          </>
-        )}
+              {item.media.title}
+            </h2>
 
-        {/* ==================== 底部控制�?==================== */}
-        {items.length > 1 && (
-          <div className="absolute bottom-0 left-0 right-0 z-10">
-            {/* 进度�?*/}
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center gap-3">
-                {/* 暂停/播放按钮 */}
-                <motion.button
-                  onClick={() => setIsPaused(!isPaused)}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white/50 transition-colors hover:text-white/80"
-                  whileTap={{ scale: 0.85 }}
-                  aria-label={isPaused ? '播放' : '暂停'}
-                >
-                  {isPaused ? <Play size={10} fill="currentColor" /> : <Pause size={10} />}
-                </motion.button>
-
-                {/* 指示�?+ 进度�?*/}
-                <div className="flex flex-1 items-center gap-1.5">
-                  {items.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => goTo(i)}
-                      className="group relative h-6 flex-1 cursor-pointer"
-aria-label={`第 ${i + 1} 张`}
-                      aria-current={i === current ? 'true' : undefined}
-                    >
-                      {/* 轨道背景 */}
-                      <div
-                        className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-all duration-200"
-                        style={{
-                          background: i === current
-                            ? 'rgba(255,255,255,0.15)'
-                            : 'rgba(255,255,255,0.08)',
-                        }}
-                      />
-                      {/* 填充进度 */}
-                      {i === current && (
-                        <div
-                          ref={progressRef}
-                          className="absolute inset-y-0 left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
-                          style={{
-                            background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                            boxShadow: '0 0 6px var(--neon-blue-30)',
-                            width: '0%',
-                          }}
-                        />
-                      )}
-                      {/* 已完成的指示�?*/}
-                      {i < current && (
-                        <div
-                          className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full"
-                          style={{
-                            background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                            opacity: 0.5,
-                          }}
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {/* 计数�?*/}
-                <span className="shrink-0 text-[10px] font-medium tabular-nums text-white/40">
-                  {String(current + 1).padStart(2, '0')}/{String(items.length).padStart(2, '0')}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
+              {item.media.year > 0 && <span>{item.media.year}</span>}
+              {item.media.rating > 0 && (
+                <span className="inline-flex items-center gap-1 text-[var(--nv-status-rating)]">
+                  <Star size={13} fill="currentColor" aria-hidden="true" />
+                  <span className="font-semibold">{item.media.rating.toFixed(1)}</span>
                 </span>
-              </div>
+              )}
+              {item.media.genres && (
+                <span className="text-[var(--nv-text-tertiary)]">
+                  {item.media.genres.split(',').slice(0, 3).join(' · ')}
+                </span>
+              )}
             </div>
 
-            {/* 底部间距 */}
-            <div className="h-3" />
-          </div>
-        )}
+            {item.media.overview && (
+              <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-6 text-[var(--nv-text-secondary)] sm:text-[var(--nv-type-body)]">
+                {item.media.overview}
+              </p>
+            )}
 
-        {/* ==================== 右侧缩略图预览（仅桌面端�?==================== */}
-        {items.length > 1 && (
-          <div className="pointer-events-auto absolute bottom-16 right-4 z-10 hidden items-end gap-2 lg:flex lg:right-6 xl:right-8">
-            {items.map((rec, i) => (
-              <motion.button
-                key={rec.media.id}
-                onClick={() => goTo(i)}
-                className="relative overflow-hidden rounded-lg"
-                style={{
-                  width: i === current ? 72 : 48,
-                  height: i === current ? 48 : 32,
-                  border: i === current
-                    ? '2px solid var(--neon-blue)'
-                    : '1px solid rgba(255,255,255,0.12)',
-                  boxShadow: i === current ? 'var(--neon-glow-shadow-md)' : 'none',
-                }}
-                animate={{
-                  width: i === current ? 72 : 48,
-                  height: i === current ? 48 : 32,
-                  opacity: i === current ? 1 : 0.5,
-                }}
-                whileHover={{ opacity: 1, scale: 1.08 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                aria-label={rec.media.title}
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <Link
+                to={playLink}
+                className={buttonClassName({ variant: 'primary', size: 'lg' })}
+                data-variant="primary"
+                data-size="lg"
               >
-                <img
-                  src={posterUrls.get(rec.media.id)}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  draggable={false}
-                />
-                {/* 当前项高亮边框光�?*/}
-                {i === current && (
-                  <motion.div
-                    className="absolute inset-0 rounded-lg"
-                    style={{
-                      boxShadow: 'inset 0 0 12px var(--neon-blue-20)',
-                    }}
-                    layoutId="thumb-highlight"
+                <Play size={18} fill="currentColor" aria-hidden="true" />
+                {t('home.playNow')}
+              </Link>
+              <Link
+                to={detailLink}
+                className={buttonClassName({ variant: 'secondary', size: 'lg' })}
+                data-variant="secondary"
+                data-size="lg"
+              >
+                <Info size={17} aria-hidden="true" />
+                {t('home.viewDetail')}
+              </Link>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {items.length > 1 && (
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={goPrev}
+            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity group-hover:opacity-100 sm:left-5"
+            style={{ opacity: isHovering ? 1 : undefined }}
+            aria-label="上一个"
+          >
+            <ChevronLeft size={19} aria-hidden="true" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={goNext}
+            className="absolute right-3 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity sm:right-5"
+            style={{ opacity: isHovering ? 1 : undefined }}
+            aria-label="下一个"
+          >
+            <ChevronRight size={19} aria-hidden="true" />
+          </Button>
+        </>
+      )}
+
+      {items.length > 1 && (
+        <div className="absolute inset-x-[var(--nv-page-gutter)] bottom-4 z-20 flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => setIsPaused((value) => !value)}
+            aria-label={isPaused ? '继续轮播' : '暂停轮播'}
+          >
+            {isPaused ? <Play size={12} fill="currentColor" aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
+          </Button>
+
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {items.map((recommendation, index) => (
+              <button
+                key={recommendation.media.id}
+                onClick={() => goTo(index)}
+                className="relative h-6 flex-1 cursor-pointer"
+                aria-label={`第 ${index + 1} 张：${recommendation.media.title}`}
+                aria-current={index === current ? 'true' : undefined}
+              >
+                <span className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-black/15 dark:bg-white/10" />
+                {index < current && (
+                  <span className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[var(--nv-action-primary)] opacity-55" />
+                )}
+                {index === current && (
+                  <span
+                    ref={progressRef}
+                    className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[var(--nv-action-primary)]"
+                    style={{ width: '0%' }}
                   />
                 )}
-              </motion.button>
+              </button>
             ))}
           </div>
-        )}
-      </div>
+
+          <span className="shrink-0 text-[10px] font-medium tabular-nums text-[var(--nv-text-tertiary)]">
+            {String(current + 1).padStart(2, '0')}/{String(items.length).padStart(2, '0')}
+          </span>
+        </div>
+      )}
     </section>
   )
 }

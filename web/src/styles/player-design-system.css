@@ -1,0 +1,114 @@
+/* Nowen Video Player semantic boundary
+ *
+ * The player is intentionally always immersive/dark, including when the
+ * surrounding application is using the light theme. Existing player UI is
+ * progressively migrated by remapping its legacy variables locally, without
+ * touching playback, HLS, WebCodecs, subtitle or casting logic.
+ */
+
+.group\/player {
+  --nv-player-canvas: #000000;
+  --nv-player-surface: rgba(10, 14, 20, .94);
+  --nv-player-surface-soft: rgba(18, 24, 33, .90);
+  --nv-player-surface-hover: rgba(255, 255, 255, .09);
+  --nv-player-text-primary: rgba(255, 255, 255, .96);
+  --nv-player-text-secondary: rgba(255, 255, 255, .74);
+  --nv-player-text-tertiary: rgba(255, 255, 255, .52);
+  --nv-player-border: rgba(255, 255, 255, .11);
+  --nv-player-border-hover: rgba(34, 211, 238, .30);
+  --nv-player-accent: var(--nv-brand-cyan-400);
+  --nv-player-focus: rgba(34, 211, 238, .58);
+  --nv-player-shadow: 0 20px 54px rgba(0, 0, 0, .48);
+  --nv-player-radius-control: var(--nv-radius-control);
+  --nv-player-radius-panel: var(--nv-radius-container);
+
+  /* Compatibility bridge for the existing player styles. This intentionally
+     lives on the player root so legacy app theme variables cannot recolor the
+     playback UI into green/orange/purple themes. */
+  --neon-blue: var(--nv-player-accent);
+  --neon-blue-mid: var(--nv-player-accent);
+  --neon-blue-4: rgba(34, 211, 238, .04);
+  --neon-blue-5: rgba(34, 211, 238, .05);
+  --neon-blue-8: rgba(34, 211, 238, .08);
+  --neon-blue-10: rgba(34, 211, 238, .10);
+  --neon-blue-12: rgba(34, 211, 238, .12);
+  --neon-blue-15: rgba(34, 211, 238, .15);
+  --neon-blue-20: rgba(34, 211, 238, .20);
+  --neon-blue-25: rgba(34, 211, 238, .25);
+  --neon-blue-30: rgba(34, 211, 238, .30);
+  --neon-blue-40: rgba(34, 211, 238, .40);
+  --neon-blue-50: rgba(34, 211, 238, .50);
+  --neon-purple: var(--nv-ambient-purple);
+  --neon-purple-8: rgba(139, 92, 246, .08);
+  --neon-purple-10: rgba(139, 92, 246, .10);
+  --neon-purple-15: rgba(139, 92, 246, .15);
+  --neon-purple-20: rgba(139, 92, 246, .20);
+
+  --bg-base: var(--nv-player-canvas);
+  --bg-surface: var(--nv-player-surface-soft);
+  --bg-elevated: var(--nv-player-surface);
+  --bg-subtle: rgba(255, 255, 255, .04);
+  --bg-card: var(--nv-player-surface-soft);
+  --bg-input: var(--nv-player-surface-soft);
+  --bg-overlay: rgba(0, 0, 0, .64);
+  --bg-tooltip: var(--nv-player-surface);
+
+  --text-primary: var(--nv-player-text-primary);
+  --text-secondary: var(--nv-player-text-secondary);
+  --text-tertiary: var(--nv-player-text-tertiary);
+  --text-muted: var(--nv-player-text-tertiary);
+  --text-on-neon: #041014;
+
+  --border-default: var(--nv-player-border);
+  --border-hover: var(--nv-player-border-hover);
+  --border-strong: rgba(255, 255, 255, .18);
+  --border-subtle: rgba(255, 255, 255, .07);
+  --glass-border: var(--nv-player-border);
+  --nav-hover-bg: var(--nv-player-surface-hover);
+  --nav-active-bg: rgba(34, 211, 238, .11);
+
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-elevated: var(--nv-player-shadow);
+  --shadow-neon: none;
+  --focus-ring: var(--nv-player-focus);
+
+  --cinema-control-text: var(--nv-player-text-secondary);
+  --cinema-control-muted: var(--nv-player-text-tertiary);
+  --cinema-control-hover: var(--nv-player-surface-hover);
+  --cinema-panel: var(--nv-player-surface);
+  --cinema-panel-border: var(--nv-player-border);
+}
+
+.group\/player :where(button, input, [role='button'], [role='menuitem']):focus-visible {
+  outline: 2px solid var(--nv-player-focus);
+  outline-offset: 2px;
+}
+
+.group\/player [role='menu'],
+.group\/player [role='dialog'] {
+  font-family: var(--nv-font-sans);
+}
+
+.group\/player .progress-bar-fill {
+  background: var(--nv-player-accent);
+}
+
+.group\/player .progress-bar-thumb {
+  background: var(--nv-player-text-primary);
+}
+
+.group\/player :where(.player-controls, [role='menu'], [role='dialog']) {
+  --nv-motion-fast: 120ms;
+  --nv-motion-normal: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group\/player *,
+  .group\/player *::before,
+  .group\/player *::after {
+    animation-duration: .01ms;
+    animation-iteration-count: 1;
+    transition-duration: .01ms;
+  }
+}

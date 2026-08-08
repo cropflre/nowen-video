@@ -1,11 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
-import {
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-} from 'lucide-react'
+import { Button, Surface, Tag } from '@/components/design-system'
+import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
 
@@ -15,14 +12,63 @@ interface MediaInfoSectionProps {
   persons: MediaPerson[]
 }
 
-// 格式化分钟为 Xh Ym
 function formatRuntime(minutes: number): string {
   if (!minutes || minutes <= 0) return ''
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}min`
-  if (m === 0) return `${h}h`
-  return `${h}h ${m}min`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (hours === 0) return `${mins}min`
+  if (mins === 0) return `${hours}h`
+  return `${hours}h ${mins}min`
+}
+
+function DetailLabel({ children }: { children: ReactNode }) {
+  return <span className="shrink-0 text-[var(--nv-text-tertiary)]">{children}</span>
+}
+
+function DetailValue({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={clsx('min-w-0 text-[var(--nv-text-primary)]', className)}>{children}</span>
+}
+
+function DetailItem({ label, children, wide = false }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={clsx('flex min-w-0 gap-2', wide && 'sm:col-span-2')}>
+      <DetailLabel>{label}</DetailLabel>
+      <DetailValue>{children}</DetailValue>
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">
+      {children}
+    </h3>
+  )
+}
+
+function MetadataLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="nv-tag transition-[background-color,border-color,color] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-active)] hover:text-[var(--nv-action-primary)]"
+    >
+      {children}
+    </Link>
+  )
+}
+
+function SourceLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="nv-tag transition-[background-color,border-color,color] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-active)] hover:text-[var(--nv-action-primary)]"
+    >
+      {children}
+      <ExternalLink size={10} aria-hidden="true" />
+    </a>
+  )
 }
 
 export default function MediaInfoSection({ media, playInfo: _playInfo, persons }: MediaInfoSectionProps) {
@@ -32,21 +78,18 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
   const isLongPlot = (media.overview?.length || 0) > 200
   const isLongOrigPlot = (media.original_plot?.length || 0) > 120
 
-  const directors = persons.filter(p => p.role === 'director')
-  const actors = persons.filter(p => p.role === 'actor')
+  const directors = persons.filter((person) => person.role === 'director')
+  const actors = persons.filter((person) => person.role === 'actor')
 
-  // 从标题里提取番号兜底（后端无 num 时）
   const extractedNum = (() => {
     if (media.num) return media.num
-    const m = media.title?.match(/\b([A-Z]{2,6})-?(\d{2,5})\b/i)
-    return m ? `${m[1].toUpperCase()}-${m[2]}` : ''
+    const match = media.title?.match(/\b([A-Z]{2,6})-?(\d{2,5})\b/i)
+    return match ? `${match[1].toUpperCase()}-${match[2]}` : ''
   })()
 
-  // 标签拆分：tags 字段优先（NFO 中用户标签），否则回退 genres
-  const tagList = (media.tags || '').split(',').map(s => s.trim()).filter(Boolean)
-  const genreList = (media.genres || '').split(',').map(s => s.trim()).filter(Boolean)
+  const tagList = (media.tags || '').split(',').map((value) => value.trim()).filter(Boolean)
+  const genreList = (media.genres || '').split(',').map((value) => value.trim()).filter(Boolean)
 
-  // 是否存在元数据表格内容
   const hasMetaTable = !!(
     extractedNum ||
     media.maker ||
@@ -64,345 +107,218 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
     actors.length > 0
   )
 
+  const hasIntro = !!(
+    media.orig_title ||
+    media.tagline ||
+    media.outline ||
+    media.overview ||
+    media.original_plot
+  )
+
+  const hasClassifications = genreList.length > 0 || (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
+
   return (
-    <>
-      {/* 顶部徽标行：番号、分级、分辨率 */}
+    <div className="space-y-5">
       {(extractedNum || media.mpaa || media.resolution) && (
-        <section className="flex flex-wrap items-center gap-2">
-          {extractedNum && (
-            <span
-              className="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold tracking-wider"
-              style={{
-                background: 'rgba(255,140,0,0.12)',
-                border: '1px solid rgba(255,140,0,0.35)',
-                color: '#ff8c00',
-              }}
-              title="番号"
-            >
-              {extractedNum}
-            </span>
-          )}
-          {media.mpaa && (
-            <span
-              className="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold"
-              style={{
-                background: 'rgba(220,38,38,0.12)',
-                border: '1px solid rgba(220,38,38,0.35)',
-                color: '#ef4444',
-              }}
-              title={t('mediaInfo.mpaa')}
-            >
-              {media.mpaa}
-            </span>
-          )}
-          {media.resolution && (
-            <span
-              className="inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium"
-              style={{
-                background: 'var(--neon-blue-4)',
-                border: '1px solid var(--neon-blue-8)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              {media.resolution}
-            </span>
-          )}
-        </section>
+        <div className="flex flex-wrap items-center gap-2" aria-label="媒体标识">
+          {extractedNum && <Tag>{extractedNum}</Tag>}
+          {media.mpaa && <Tag>{media.mpaa}</Tag>}
+          {media.resolution && <Tag tone="brand">{media.resolution}</Tag>}
+        </div>
       )}
 
-      {/* 原始标题（与主标题分开的独立副标题） */}
-      {media.orig_title && media.orig_title !== media.title && (
-        <section>
-          <p className="text-sm italic" style={{ color: 'var(--text-muted)' }}>
-            {media.orig_title}
-          </p>
-        </section>
-      )}
-
-      {/* 宣传语 */}
-      {media.tagline && (
-        <section>
-          <p className="text-sm italic" style={{ color: 'var(--text-secondary)' }}>
-            "{media.tagline}"
-          </p>
-        </section>
-      )}
-
-      {/* 剧情摘要 (outline)：短摘要，总是全量展示 */}
-      {media.outline && media.outline !== media.overview && (
-        <section>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            {t('mediaInfo.outline')}
-          </h4>
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            {media.outline}
-          </p>
-        </section>
-      )}
-
-      {/* 详细剧情 (plot = overview)：可展开/收起 */}
-      {media.overview && (
-        <section>
-          {media.outline && media.outline !== media.overview && (
-            <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              {t('mediaInfo.plot')}
-            </h4>
-          )}
-          <div className="relative">
-            <p className={clsx(
-              'text-sm leading-relaxed transition-all duration-500',
-              !plotExpanded && isLongPlot && 'line-clamp-3'
-            )} style={{ color: 'var(--text-secondary)' }}>
-              {media.overview}
-            </p>
-            {isLongPlot && !plotExpanded && (
-              <div className="absolute bottom-0 left-0 right-0 h-8" style={{ background: `linear-gradient(to top, var(--bg-base), transparent)` }} />
+      {hasIntro && (
+        <Surface as="section" className="space-y-5 p-4 sm:p-5 lg:p-6">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">影片简介</h2>
+            {media.orig_title && media.orig_title !== media.title && (
+              <p className="mt-1 text-sm italic text-[var(--nv-text-tertiary)]">{media.orig_title}</p>
             )}
           </div>
-          {isLongPlot && (
-            <button
-              onClick={() => setPlotExpanded(!plotExpanded)}
-              className="mt-2 flex items-center gap-1 text-xs font-medium text-neon transition-colors hover:text-neon-blue"
-            >
-              {plotExpanded ? (
-                <><ChevronUp size={14} />{t('mediaInfo.collapse')}</>
-              ) : (
-                <><ChevronDown size={14} />{t('mediaInfo.expandAll')}</>
-              )}
-            </button>
+
+          {media.tagline && (
+            <blockquote className="border-l-2 border-[var(--nv-border-hover)] pl-3 text-sm italic leading-6 text-[var(--nv-text-secondary)]">
+              “{media.tagline}”
+            </blockquote>
           )}
-        </section>
-      )}
 
-      {/* 原文剧情 (originalplot) */}
-      {media.original_plot && (
-        <section>
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            {t('mediaInfo.originalPlot')}
-          </h4>
-          <div className="relative">
-            <p className={clsx(
-              'text-sm leading-relaxed italic transition-all duration-500',
-              !origPlotExpanded && isLongOrigPlot && 'line-clamp-2'
-            )} style={{ color: 'var(--text-muted)' }}>
-              {media.original_plot}
-            </p>
-          </div>
-          {isLongOrigPlot && (
-            <button
-              onClick={() => setOrigPlotExpanded(!origPlotExpanded)}
-              className="mt-2 flex items-center gap-1 text-xs font-medium text-neon transition-colors hover:text-neon-blue"
-            >
-              {origPlotExpanded ? (
-                <><ChevronUp size={14} />{t('mediaInfo.collapse')}</>
-              ) : (
-                <><ChevronDown size={14} />{t('mediaInfo.expandAll')}</>
-              )}
-            </button>
+          {media.outline && media.outline !== media.overview && (
+            <div>
+              <SectionLabel>{t('mediaInfo.outline')}</SectionLabel>
+              <p className="text-sm leading-7 text-[var(--nv-text-secondary)]">{media.outline}</p>
+            </div>
           )}
-        </section>
-      )}
 
-      {/* 分类 (genres) */}
-      {genreList.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            {t('mediaInfo.genres').replace(/[:：]\s*$/, '')}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {genreList.map((genre) => (
-              <Link
-                key={`g-${genre}`}
-                to={`/search?q=${encodeURIComponent(genre)}`}
-                className="rounded-xl px-4 py-1.5 text-sm transition-all duration-300 hover:scale-[1.04]"
-                style={{
-                  background: 'var(--neon-blue-4)',
-                  border: '1px solid var(--neon-blue-8)',
-                  color: 'var(--text-secondary)',
-                }}
+          {media.overview && (
+            <div>
+              {media.outline && media.outline !== media.overview && <SectionLabel>{t('mediaInfo.plot')}</SectionLabel>}
+              <div className="relative">
+                <p
+                  className={clsx(
+                    'text-sm leading-7 text-[var(--nv-text-secondary)] transition-all duration-300',
+                    !plotExpanded && isLongPlot && 'line-clamp-3',
+                  )}
+                >
+                  {media.overview}
+                </p>
+                {isLongPlot && !plotExpanded && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+                    style={{ background: 'linear-gradient(to top, var(--nv-bg-surface), transparent)' }}
+                  />
+                )}
+              </div>
+              {isLongPlot && (
+                <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setPlotExpanded((value) => !value)}>
+                  {plotExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                  {plotExpanded ? t('mediaInfo.collapse') : t('mediaInfo.expandAll')}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {media.original_plot && (
+            <div className="border-t border-[var(--nv-border-subtle)] pt-4">
+              <SectionLabel>{t('mediaInfo.originalPlot')}</SectionLabel>
+              <p
+                className={clsx(
+                  'text-sm italic leading-7 text-[var(--nv-text-tertiary)] transition-all duration-300',
+                  !origPlotExpanded && isLongOrigPlot && 'line-clamp-2',
+                )}
               >
-                {genre}
-              </Link>
-            ))}
-          </div>
-        </section>
+                {media.original_plot}
+              </p>
+              {isLongOrigPlot && (
+                <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setOrigPlotExpanded((value) => !value)}>
+                  {origPlotExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                  {origPlotExpanded ? t('mediaInfo.collapse') : t('mediaInfo.expandAll')}
+                </Button>
+              )}
+            </div>
+          )}
+        </Surface>
       )}
 
-      {/* 标签 (tags) — 仅当与 genres 不同时单独展示 */}
-      {tagList.length > 0 && tagList.join(',') !== genreList.join(',') && (
-        <section>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            {t('mediaInfo.tags').replace(/[:：]\s*$/, '')}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {tagList.map((tg) => (
-              <Link
-                key={`t-${tg}`}
-                to={`/search?q=${encodeURIComponent(tg)}`}
-                className="rounded-lg px-3 py-1 text-xs transition-all duration-300 hover:scale-[1.04]"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                #{tg}
-              </Link>
-            ))}
-          </div>
-        </section>
+      {hasClassifications && (
+        <Surface as="section" className="space-y-4 p-4 sm:p-5">
+          {genreList.length > 0 && (
+            <div>
+              <SectionLabel>{t('mediaInfo.genres').replace(/[:：]\s*$/, '')}</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {genreList.map((genre) => (
+                  <MetadataLink key={`g-${genre}`} to={`/search?q=${encodeURIComponent(genre)}`}>
+                    {genre}
+                  </MetadataLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tagList.length > 0 && tagList.join(',') !== genreList.join(',') && (
+            <div>
+              <SectionLabel>{t('mediaInfo.tags').replace(/[:：]\s*$/, '')}</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {tagList.map((tag) => (
+                  <MetadataLink key={`t-${tag}`} to={`/search?q=${encodeURIComponent(tag)}`}>
+                    #{tag}
+                  </MetadataLink>
+                ))}
+              </div>
+            </div>
+          )}
+        </Surface>
       )}
 
-      {/* 影片详情表 */}
       {hasMetaTable && (
-        <section>
+        <Surface as="section" className="p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">影片详情</h2>
+            <span className="text-xs text-[var(--nv-text-tertiary)]">Metadata</span>
+          </div>
+
           <div className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             {extractedNum && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.num')}</span>
-                <span className="font-mono tracking-wide" style={{ color: 'var(--text-primary)' }}>{extractedNum}</span>
-              </div>
+              <DetailItem label={t('mediaInfo.num')}>
+                <span className="font-mono tracking-wide">{extractedNum}</span>
+              </DetailItem>
             )}
             {directors.length > 0 && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.director')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>
-                  {directors.map(d => d.person?.name || '').filter(Boolean).join(' / ')}
-                </span>
-              </div>
+              <DetailItem label={t('mediaInfo.director')}>
+                {directors.map((director) => director.person?.name || '').filter(Boolean).join(' / ')}
+              </DetailItem>
             )}
             {actors.length > 0 && (
-              <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.actors')}</span>
-                <span className="line-clamp-2" style={{ color: 'var(--text-primary)' }}>
-                  {actors.slice(0, 8).map(a => {
-                    const name = a.person?.name || ''
-                    return a.character ? `${name}${t('mediaInfo.asCharacter', { character: a.character })}` : name
+              <DetailItem label={t('mediaInfo.actors')} wide>
+                <span className="line-clamp-2">
+                  {actors.slice(0, 8).map((actor) => {
+                    const name = actor.person?.name || ''
+                    return actor.character ? `${name}${t('mediaInfo.asCharacter', { character: actor.character })}` : name
                   }).filter(Boolean).join(' / ')}
                 </span>
-              </div>
+              </DetailItem>
             )}
             {media.runtime > 0 && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.runtime')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>
-                  {formatRuntime(media.runtime)}
-                  <span className="ml-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                    ({t('mediaInfo.runtimeMinutes', { minutes: media.runtime })})
-                  </span>
+              <DetailItem label={t('mediaInfo.runtime')}>
+                {formatRuntime(media.runtime)}
+                <span className="ml-1 text-xs text-[var(--nv-text-tertiary)]">
+                  ({t('mediaInfo.runtimeMinutes', { minutes: media.runtime })})
                 </span>
-              </div>
+              </DetailItem>
             )}
             {(media.release_date || media.premiered) && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.releaseDate')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.release_date || media.premiered}</span>
-              </div>
+              <DetailItem label={t('mediaInfo.releaseDate')}>{media.release_date || media.premiered}</DetailItem>
             )}
-            {media.mpaa && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.mpaa')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.mpaa}</span>
-              </div>
-            )}
+            {media.mpaa && <DetailItem label={t('mediaInfo.mpaa')}>{media.mpaa}</DetailItem>}
             {media.country && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.country')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>
-                  {media.country}
-                  {media.country_code && <span className="ml-1 text-xs" style={{ color: 'var(--text-muted)' }}>({media.country_code})</span>}
-                </span>
-              </div>
+              <DetailItem label={t('mediaInfo.country')}>
+                {media.country}
+                {media.country_code && <span className="ml-1 text-xs text-[var(--nv-text-tertiary)]">({media.country_code})</span>}
+              </DetailItem>
             )}
-            {media.language && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.language')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.language}</span>
-              </div>
-            )}
-            {media.studio && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.studio')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.studio}</span>
-              </div>
-            )}
-            {media.maker && media.maker !== media.studio && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.maker')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.maker}</span>
-              </div>
-            )}
-            {media.publisher && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.publisher')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.publisher}</span>
-              </div>
-            )}
-            {media.label && media.label !== media.publisher && (
-              <div className="flex gap-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.label')}</span>
-                <span style={{ color: 'var(--text-primary)' }}>{media.label}</span>
-              </div>
-            )}
+            {media.language && <DetailItem label={t('mediaInfo.language')}>{media.language}</DetailItem>}
+            {media.studio && <DetailItem label={t('mediaInfo.studio')}>{media.studio}</DetailItem>}
+            {media.maker && media.maker !== media.studio && <DetailItem label={t('mediaInfo.maker')}>{media.maker}</DetailItem>}
+            {media.publisher && <DetailItem label={t('mediaInfo.publisher')}>{media.publisher}</DetailItem>}
+            {media.label && media.label !== media.publisher && <DetailItem label={t('mediaInfo.label')}>{media.label}</DetailItem>}
             {media.website && (
-              <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.website')}</span>
+              <DetailItem label={t('mediaInfo.website')} wide>
                 <a
                   href={media.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 transition-colors hover:text-neon-blue"
-                  style={{ color: 'var(--text-primary)' }}
+                  className="inline-flex min-w-0 items-center gap-1 text-[var(--nv-action-primary)] transition-colors hover:text-[var(--nv-action-primary-hover)]"
                 >
                   <span className="truncate">{media.website}</span>
-                  <ExternalLink size={12} className="shrink-0" />
+                  <ExternalLink size={12} className="shrink-0" aria-hidden="true" />
                 </a>
-              </div>
+              </DetailItem>
             )}
-            {/* 数据来源标识 */}
+
             {(media.tmdb_id > 0 || media.douban_id || media.bangumi_id > 0) && (
-              <div className="flex gap-2 sm:col-span-2">
-                <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>{t('mediaInfo.dataSource')}</span>
+              <div className="flex min-w-0 gap-2 sm:col-span-2">
+                <DetailLabel>{t('mediaInfo.dataSource')}</DetailLabel>
                 <div className="flex flex-wrap gap-1.5">
                   {media.tmdb_id > 0 && (
-                    <a
-                      href={`https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-80"
-                      style={{ background: 'rgba(1,180,228,0.12)', color: '#01b4e4' }}
-                    >
-                      🎬 TMDb #{media.tmdb_id}
-                    </a>
+                    <SourceLink href={`https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}`}>
+                      TMDb #{media.tmdb_id}
+                    </SourceLink>
                   )}
                   {media.douban_id && (
-                    <a
-                      href={`https://movie.douban.com/subject/${media.douban_id}/`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-80"
-                      style={{ background: 'rgba(0,180,20,0.12)', color: '#00b414' }}
-                    >
-                      🎯 豆瓣 #{media.douban_id}
-                    </a>
+                    <SourceLink href={`https://movie.douban.com/subject/${media.douban_id}/`}>
+                      豆瓣 #{media.douban_id}
+                    </SourceLink>
                   )}
                   {media.bangumi_id > 0 && (
-                    <a
-                      href={`https://bgm.tv/subject/${media.bangumi_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-80"
-                      style={{ background: 'rgba(240,145,153,0.12)', color: '#f09199' }}
-                    >
-                      📺 Bangumi #{media.bangumi_id}
-                    </a>
+                    <SourceLink href={`https://bgm.tv/subject/${media.bangumi_id}`}>
+                      Bangumi #{media.bangumi_id}
+                    </SourceLink>
                   )}
                 </div>
               </div>
             )}
           </div>
-        </section>
+        </Surface>
       )}
-    </>
+    </div>
   )
 }

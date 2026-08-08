@@ -14,23 +14,23 @@ import (
 // suRenPrefixes 素人系列番号前缀（需要前置 3-6 位数字）
 // 例如：259LUXU-1456、200GANA-2300、300MIUM-400
 var suRenPrefixes = map[string]string{
-	"LUXU":   "259",
-	"GANA":   "200",
-	"MIUM":   "300",
-	"MAAN":   "300",
-	"NTK":    "300",
-	"KIRAY":  "300",
-	"NMCH":   "300",
-	"MAMA":   "300",
-	"AKID":   "300",
-	"WAKID":  "302",
-	"SEMM":   "277",
-	"DCV":    "277",
-	"SCUTE":  "229",
-	"JAC":    "261",
-	"NANX":   "326",
-	"GEKI":   "326",
-	"KNB":    "326",
+	"LUXU":  "259",
+	"GANA":  "200",
+	"MIUM":  "300",
+	"MAAN":  "300",
+	"NTK":   "300",
+	"KIRAY": "300",
+	"NMCH":  "300",
+	"MAMA":  "300",
+	"AKID":  "300",
+	"WAKID": "302",
+	"SEMM":  "277",
+	"DCV":   "277",
+	"SCUTE": "229",
+	"JAC":   "261",
+	"NANX":  "326",
+	"GEKI":  "326",
+	"KNB":   "326",
 }
 
 // oumeiNameMap 欧美片商名称映射（缩写 -> 完整名）
@@ -113,8 +113,8 @@ var (
 	// KIN8TENGOKU-1234 / KIN8-1234
 	reKin8 = regexp.MustCompile(`(?i)KIN8(?:TENGOKU)?-?\d{3,}`)
 	// S2MBD-002 / MCB3DBD-33
-	reS2m    = regexp.MustCompile(`(?i)S2M[BD]*-\d{3,}`)
-	reMcb3d  = regexp.MustCompile(`(?i)MCB3D[BD]*-\d{2,}`)
+	reS2m   = regexp.MustCompile(`(?i)S2M[BD]*-\d{3,}`)
+	reMcb3d = regexp.MustCompile(`(?i)MCB3D[BD]*-\d{2,}`)
 	// T28-223
 	reT28 = regexp.MustCompile(`(?i)T28-?\d{3,}`)
 	// TH101-140-112594

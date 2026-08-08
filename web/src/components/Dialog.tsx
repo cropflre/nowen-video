@@ -1,29 +1,26 @@
 import {
   createContext,
-  useContext,
-  useState,
   useCallback,
-  useRef,
-  useMemo,
+  useContext,
   useEffect,
+  useMemo,
+  useRef,
+  useState,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
   CheckCircle2,
-  Info,
-  XCircle,
   HelpCircle,
+  Info,
   X,
+  XCircle,
 } from 'lucide-react'
+import { Button, Input } from '@/components/design-system'
 import { modalOverlayVariants, modalContentVariants } from '@/lib/motion'
-
-// ============================================================
-// 全局 Dialog 系统 — 替代浏览器原生 confirm/alert/prompt
-// 风格：深空霓虹 + glassmorphism（与 Toast 同语言）
-// ============================================================
 
 type Variant = 'default' | 'primary' | 'danger' | 'warning' | 'success' | 'error' | 'info'
 
@@ -64,12 +61,10 @@ interface DialogContextType {
 const DialogContext = createContext<DialogContextType | null>(null)
 
 export function useDialog() {
-  const ctx = useContext(DialogContext)
-  if (!ctx) throw new Error('useDialog must be used within <DialogProvider>')
-  return ctx
+  const context = useContext(DialogContext)
+  if (!context) throw new Error('useDialog must be used within <DialogProvider>')
+  return context
 }
-
-// ──────────────────── 内部状态模型 ────────────────────
 
 type DialogKind = 'confirm' | 'alert' | 'prompt'
 
@@ -80,354 +75,227 @@ interface DialogState {
   resolve: (value: any) => void
 }
 
-// ──────────────────── 视觉映射 ────────────────────
-
+const iconClassName = 'shrink-0'
 const variantIconMap: Record<Variant, ReactNode> = {
-  default: <HelpCircle size={22} style={{ color: 'var(--neon-blue)' }} />,
-  primary: <Info size={22} style={{ color: 'var(--neon-blue)' }} />,
-  info: <Info size={22} style={{ color: 'var(--neon-blue)' }} />,
-  success: <CheckCircle2 size={22} style={{ color: 'var(--neon-green, #00ff88)' }} />,
-  warning: <AlertTriangle size={22} className="text-yellow-400" />,
-  danger: <AlertTriangle size={22} className="text-red-400" />,
-  error: <XCircle size={22} className="text-red-400" />,
+  default: <HelpCircle size={22} className={`${iconClassName} text-[var(--nv-action-primary)]`} />,
+  primary: <Info size={22} className={`${iconClassName} text-[var(--nv-action-primary)]`} />,
+  info: <Info size={22} className={`${iconClassName} text-[var(--nv-action-primary)]`} />,
+  success: <CheckCircle2 size={22} className={`${iconClassName} text-[var(--nv-status-success)]`} />,
+  warning: <AlertTriangle size={22} className={`${iconClassName} text-[var(--nv-status-warning)]`} />,
+  danger: <AlertTriangle size={22} className={`${iconClassName} text-[var(--nv-status-danger)]`} />,
+  error: <XCircle size={22} className={`${iconClassName} text-[var(--nv-status-danger)]`} />,
 }
 
-const variantBorderMap: Record<Variant, string> = {
-  default: 'rgba(0, 240, 255, 0.18)',
-  primary: 'rgba(0, 240, 255, 0.18)',
-  info: 'rgba(0, 240, 255, 0.18)',
-  success: 'rgba(0, 255, 136, 0.20)',
-  warning: 'rgba(234, 179, 8, 0.20)',
-  danger: 'rgba(239, 68, 68, 0.22)',
-  error: 'rgba(239, 68, 68, 0.22)',
+function borderForVariant(variant: Variant) {
+  if (variant === 'danger' || variant === 'error') {
+    return 'color-mix(in srgb, var(--nv-status-danger) 26%, var(--nv-border-default))'
+  }
+  if (variant === 'warning') {
+    return 'color-mix(in srgb, var(--nv-status-warning) 24%, var(--nv-border-default))'
+  }
+  if (variant === 'success') {
+    return 'color-mix(in srgb, var(--nv-status-success) 22%, var(--nv-border-default))'
+  }
+  return 'var(--nv-border-default)'
 }
 
-const variantBtnMap: Record<Variant, string> = {
-  default:
-    'bg-[var(--neon-blue)] hover:bg-[var(--neon-blue-80,#00d6f0)] text-black',
-  primary:
-    'bg-[var(--neon-blue)] hover:bg-[var(--neon-blue-80,#00d6f0)] text-black',
-  info:
-    'bg-[var(--neon-blue)] hover:bg-[var(--neon-blue-80,#00d6f0)] text-black',
-  success:
-    'bg-emerald-500 hover:bg-emerald-400 text-black',
-  warning:
-    'bg-yellow-500 hover:bg-yellow-400 text-black',
-  danger:
-    'bg-red-500 hover:bg-red-400 text-white',
-  error:
-    'bg-red-500 hover:bg-red-400 text-white',
+function actionVariant(variant: Variant): 'primary' | 'danger' {
+  return variant === 'danger' || variant === 'error' ? 'danger' : 'primary'
 }
-
-// ──────────────────── Provider ────────────────────
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<DialogState[]>([])
   const idRef = useRef(0)
 
-  const push = useCallback((d: Omit<DialogState, 'id'>) => {
+  const push = useCallback((dialog: Omit<DialogState, 'id'>) => {
     const id = `dlg-${++idRef.current}`
-    setStack((prev) => [...prev, { ...d, id }])
+    setStack((previous) => [...previous, { ...dialog, id }])
     return id
   }, [])
 
   const pop = useCallback((id: string) => {
-    setStack((prev) => prev.filter((d) => d.id !== id))
+    setStack((previous) => previous.filter((dialog) => dialog.id !== id))
   }, [])
 
   const confirm = useCallback(
-    (options: ConfirmOptions) =>
-      new Promise<boolean>((resolve) => {
-        push({ kind: 'confirm', options, resolve })
-      }),
-    [push]
+    (options: ConfirmOptions) => new Promise<boolean>((resolve) => {
+      push({ kind: 'confirm', options, resolve })
+    }),
+    [push],
   )
 
   const alert = useCallback(
-    (options: AlertOptions) =>
-      new Promise<void>((resolve) => {
-        push({ kind: 'alert', options, resolve: () => resolve() })
-      }),
-    [push]
+    (options: AlertOptions) => new Promise<void>((resolve) => {
+      push({ kind: 'alert', options, resolve: () => resolve() })
+    }),
+    [push],
   )
 
   const prompt = useCallback(
-    (options: PromptOptions) =>
-      new Promise<string | null>((resolve) => {
-        push({ kind: 'prompt', options, resolve })
-      }),
-    [push]
+    (options: PromptOptions) => new Promise<string | null>((resolve) => {
+      push({ kind: 'prompt', options, resolve })
+    }),
+    [push],
   )
 
-  const value = useMemo<DialogContextType>(
-    () => ({ confirm, alert, prompt }),
-    [confirm, alert, prompt]
-  )
+  const value = useMemo<DialogContextType>(() => ({ confirm, alert, prompt }), [confirm, alert, prompt])
 
   return (
     <DialogContext.Provider value={value}>
       {children}
-      {createPortal(
+      {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
-          {stack.map((d) => (
+          {stack.map((dialog) => (
             <DialogShell
-              key={d.id}
-              state={d}
+              key={dialog.id}
+              state={dialog}
               onClose={(result) => {
-                d.resolve(result)
-                pop(d.id)
+                dialog.resolve(result)
+                pop(dialog.id)
               }}
             />
           ))}
         </AnimatePresence>,
-        typeof document !== 'undefined' ? document.body : (null as any)
+        document.body,
       )}
     </DialogContext.Provider>
   )
 }
 
-// ──────────────────── 弹窗主体 ────────────────────
-
-function DialogShell({
-  state,
-  onClose,
-}: {
-  state: DialogState
-  onClose: (result: any) => void
-}) {
+function DialogShell({ state, onClose }: { state: DialogState; onClose: (result: any) => void }) {
   const { kind, options } = state
   const variant: Variant = options.variant ?? (kind === 'confirm' ? 'default' : 'info')
   const dismissible = options.dismissible !== false
 
-  // ESC 关闭（取消语义）
+  const dismiss = useCallback(() => {
+    if (!dismissible) return
+    if (kind === 'confirm') onClose(false)
+    else if (kind === 'prompt') onClose(null)
+    else onClose(undefined)
+  }, [dismissible, kind, onClose])
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && dismissible) {
-        e.preventDefault()
-        if (kind === 'confirm') onClose(false)
-        else if (kind === 'prompt') onClose(null)
-        else onClose(undefined)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && dismissible) {
+        event.preventDefault()
+        dismiss()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [dismissible, kind, onClose])
+  }, [dismiss, dismissible])
 
-  // 锁滚动（多层弹窗时叠加）
   useEffect(() => {
-    const prev = document.body.style.overflow
+    const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = prev
+      document.body.style.overflow = previous
     }
   }, [])
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center p-4"
       variants={modalOverlayVariants}
       initial="initial"
       animate="animate"
       exit="exit"
-      style={{
-        background: 'rgba(0, 0, 0, 0.55)',
-        backdropFilter: 'blur(6px)',
-      }}
-      onClick={() => {
-        if (!dismissible) return
-        if (kind === 'confirm') onClose(false)
-        else if (kind === 'prompt') onClose(null)
-        else onClose(undefined)
-      }}
+      style={{ background: 'var(--nv-bg-overlay)', backdropFilter: 'blur(6px)' }}
+      onClick={dismiss}
     >
       <motion.div
         variants={modalContentVariants}
-        className="relative w-full max-w-md rounded-2xl shadow-2xl"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: `1px solid ${variantBorderMap[variant]}`,
-          backdropFilter: 'blur(24px)',
-        }}
-        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md rounded-[var(--nv-radius-container)] bg-[var(--nv-bg-elevated)] shadow-[var(--nv-shadow-elevated)]"
+        style={{ border: `1px solid ${borderForVariant(variant)}` }}
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={options.title || '对话框'}
       >
-        {/* 关闭按钮（右上角） */}
         {dismissible && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            iconOnly
             aria-label="关闭"
-            onClick={() => {
-              if (kind === 'confirm') onClose(false)
-              else if (kind === 'prompt') onClose(null)
-              else onClose(undefined)
-            }}
-            className="absolute right-3 top-3 rounded-lg p-1.5 text-surface-500 transition-colors hover:bg-white/5 hover:text-white"
+            onClick={dismiss}
+            className="absolute right-3 top-3"
           >
-            <X size={16} />
-          </button>
+            <X size={16} aria-hidden="true" />
+          </Button>
         )}
 
         {kind === 'confirm' && (
-          <ConfirmBody
-            options={options as ConfirmOptions}
-            variant={variant}
-            onClose={onClose}
-          />
+          <ConfirmBody options={options as ConfirmOptions} variant={variant} onClose={onClose} />
         )}
         {kind === 'alert' && (
-          <AlertBody
-            options={options as AlertOptions}
-            variant={variant}
-            onClose={onClose}
-          />
+          <AlertBody options={options as AlertOptions} variant={variant} onClose={onClose} />
         )}
         {kind === 'prompt' && (
-          <PromptBody
-            options={options as PromptOptions}
-            variant={variant}
-            onClose={onClose}
-          />
+          <PromptBody options={options as PromptOptions} variant={variant} onClose={onClose} />
         )}
       </motion.div>
     </motion.div>
   )
 }
 
-// ──────────────────── ConfirmBody ────────────────────
+function DialogHeader({ options, variant }: { options: BaseOptions; variant: Variant }) {
+  return (
+    <div className="flex min-w-0 flex-1 items-start gap-3">
+      <div className="mt-0.5">{variantIconMap[variant]}</div>
+      <div className="min-w-0 flex-1 pr-6">
+        {options.title && (
+          <h3 className="text-base font-semibold leading-tight text-[var(--nv-text-primary)]">
+            {options.title}
+          </h3>
+        )}
+        {options.message && (
+          <div className={`${options.title ? 'mt-2' : ''} text-sm leading-6 text-[var(--nv-text-secondary)]`}>
+            {options.message}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
-function ConfirmBody({
-  options,
-  variant,
-  onClose,
-}: {
-  options: ConfirmOptions
-  variant: Variant
-  onClose: (result: boolean) => void
-}) {
+function ConfirmBody({ options, variant, onClose }: { options: ConfirmOptions; variant: Variant; onClose: (result: boolean) => void }) {
   const confirmRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    confirmRef.current?.focus()
-  }, [])
+  useEffect(() => { confirmRef.current?.focus() }, [])
 
   return (
     <div className="px-6 pb-6 pt-7">
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 mt-0.5">{variantIconMap[variant]}</div>
-        <div className="flex-1 min-w-0">
-          {options.title && (
-            <h3
-              className="text-base font-semibold leading-tight"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {options.title}
-            </h3>
-          )}
-          {options.message && (
-            <div
-              className={`text-sm leading-relaxed ${options.title ? 'mt-2' : ''}`}
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {options.message}
-            </div>
-          )}
-        </div>
-      </div>
-
+      <DialogHeader options={options} variant={variant} />
       <div className="mt-6 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => onClose(false)}
-          className="rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
-          style={{
-            color: 'var(--text-secondary)',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
+        <Button type="button" variant="secondary" onClick={() => onClose(false)}>
           {options.cancelText ?? '取消'}
-        </button>
-        <button
-          ref={confirmRef}
-          type="button"
-          onClick={() => onClose(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onClose(true)
-          }}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${variantBtnMap[variant]}`}
-        >
+        </Button>
+        <Button ref={confirmRef} type="button" variant={actionVariant(variant)} onClick={() => onClose(true)}>
           {options.confirmText ?? '确定'}
-        </button>
+        </Button>
       </div>
     </div>
   )
 }
 
-// ──────────────────── AlertBody ────────────────────
-
-function AlertBody({
-  options,
-  variant,
-  onClose,
-}: {
-  options: AlertOptions
-  variant: Variant
-  onClose: (result: undefined) => void
-}) {
+function AlertBody({ options, variant, onClose }: { options: AlertOptions; variant: Variant; onClose: (result: undefined) => void }) {
   const okRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    okRef.current?.focus()
-  }, [])
+  useEffect(() => { okRef.current?.focus() }, [])
 
   return (
     <div className="px-6 pb-6 pt-7">
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 mt-0.5">{variantIconMap[variant]}</div>
-        <div className="flex-1 min-w-0">
-          {options.title && (
-            <h3
-              className="text-base font-semibold leading-tight"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {options.title}
-            </h3>
-          )}
-          {options.message && (
-            <div
-              className={`text-sm leading-relaxed ${options.title ? 'mt-2' : ''}`}
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {options.message}
-            </div>
-          )}
-        </div>
-      </div>
-
+      <DialogHeader options={options} variant={variant} />
       <div className="mt-6 flex items-center justify-end">
-        <button
-          ref={okRef}
-          type="button"
-          onClick={() => onClose(undefined)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onClose(undefined)
-          }}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${variantBtnMap[variant]}`}
-        >
+        <Button ref={okRef} type="button" variant={actionVariant(variant)} onClick={() => onClose(undefined)}>
           {options.okText ?? '知道了'}
-        </button>
+        </Button>
       </div>
     </div>
   )
 }
 
-// ──────────────────── PromptBody ────────────────────
-
-function PromptBody({
-  options,
-  variant,
-  onClose,
-}: {
-  options: PromptOptions
-  variant: Variant
-  onClose: (result: string | null) => void
-}) {
+function PromptBody({ options, variant, onClose }: { options: PromptOptions; variant: Variant; onClose: (result: string | null) => void }) {
   const [value, setValue] = useState(options.defaultValue ?? '')
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
@@ -439,9 +307,9 @@ function PromptBody({
 
   const submit = useCallback(() => {
     if (options.validator) {
-      const err = options.validator(value)
-      if (err) {
-        setError(err)
+      const validationError = options.validator(value)
+      if (validationError) {
+        setError(validationError)
         return
       }
     }
@@ -452,94 +320,51 @@ function PromptBody({
 
   return (
     <div className="px-6 pb-6 pt-7">
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 mt-0.5">{variantIconMap[variant]}</div>
-        <div className="flex-1 min-w-0">
-          {options.title && (
-            <h3
-              className="text-base font-semibold leading-tight"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {options.title}
-            </h3>
-          )}
-          {options.message && (
-            <div
-              className={`text-sm leading-relaxed ${options.title ? 'mt-2' : ''}`}
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {options.message}
-            </div>
-          )}
+      <DialogHeader options={options} variant={variant} />
 
-          <div className="mt-4">
-            {inputType === 'textarea' ? (
-              <textarea
-                ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                value={value}
-                onChange={(e) => {
-                  setValue(e.target.value)
-                  if (error) setError(null)
-                }}
-                placeholder={options.placeholder}
-                rows={4}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none transition-colors resize-y"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  color: 'var(--text-primary)',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit()
-                }}
-              />
-            ) : (
-              <input
-                ref={inputRef as React.RefObject<HTMLInputElement>}
-                type={inputType}
-                value={value}
-                onChange={(e) => {
-                  setValue(e.target.value)
-                  if (error) setError(null)
-                }}
-                placeholder={options.placeholder}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none transition-colors"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  color: 'var(--text-primary)',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submit()
-                }}
-              />
-            )}
-            {error && (
-              <p className="mt-2 text-xs text-red-400">{error}</p>
-            )}
-          </div>
-        </div>
+      <div className="mt-4 pl-[34px]">
+        {inputType === 'textarea' ? (
+          <textarea
+            ref={inputRef as RefObject<HTMLTextAreaElement>}
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value)
+              if (error) setError(null)
+            }}
+            placeholder={options.placeholder}
+            rows={4}
+            className="w-full resize-y rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)] px-3 py-2 text-sm leading-6 text-[var(--nv-text-primary)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)]"
+            aria-invalid={!!error}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) submit()
+            }}
+          />
+        ) : (
+          <Input
+            ref={inputRef as RefObject<HTMLInputElement>}
+            type={inputType}
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value)
+              if (error) setError(null)
+            }}
+            placeholder={options.placeholder}
+            invalid={!!error}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submit()
+            }}
+          />
+        )}
+        {error && <p className="mt-2 text-xs text-[var(--nv-status-danger)]">{error}</p>}
       </div>
 
       <div className="mt-6 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => onClose(null)}
-          className="rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
-          style={{
-            color: 'var(--text-secondary)',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}
-        >
+        <Button type="button" variant="secondary" onClick={() => onClose(null)}>
           {options.cancelText ?? '取消'}
-        </button>
-        <button
-          type="button"
-          onClick={submit}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${variantBtnMap[variant]}`}
-        >
+        </Button>
+        <Button type="button" variant={actionVariant(variant)} onClick={submit}>
           {options.confirmText ?? '确定'}
-        </button>
+        </Button>
       </div>
     </div>
   )

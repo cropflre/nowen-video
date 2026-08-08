@@ -123,9 +123,9 @@ func (c *AdultMetadataCache) Size() int {
 
 // Stats 缓存统计
 type AdultCacheStats struct {
-	Size    int `json:"size"`
-	MaxSize int `json:"max_size"`
-	TotalHit int `json:"total_hit"`
+	Size     int    `json:"size"`
+	MaxSize  int    `json:"max_size"`
+	TotalHit int    `json:"total_hit"`
 	TTL      string `json:"ttl"`
 }
 
@@ -138,10 +138,10 @@ func (c *AdultMetadataCache) Stats() AdultCacheStats {
 		totalHit += e.Hit
 	}
 	return AdultCacheStats{
-		Size:    len(c.entries),
-		MaxSize: c.maxItems,
+		Size:     len(c.entries),
+		MaxSize:  c.maxItems,
 		TotalHit: totalHit,
-		TTL:     c.ttl.String(),
+		TTL:      c.ttl.String(),
 	}
 }
 

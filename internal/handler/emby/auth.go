@@ -16,12 +16,12 @@ import (
 //	MediaBrowser Client="Infuse-Direct", Device="iPhone", DeviceId="xxx",
 //	             Version="7.6.4", Token="abcdef"
 type EmbyAuthHeader struct {
-	Client             string
-	Device             string
-	DeviceId           string
-	Version            string
-	Token              string
-	UserId             string
+	Client   string
+	Device   string
+	DeviceId string
+	Version  string
+	Token    string
+	UserId   string
 }
 
 // parseEmbyAuthHeader 解析 MediaBrowser 风格的 KV header。

@@ -1,0 +1,117 @@
+name: Transcode Real Media Corpus Generate
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/transcode-real-media-corpus-generate/**'
+      - 'cmd/transcode-real-media-candidate-cert/**'
+      - 'internal/transcode/corpusgenerator/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'internal/transcode/realmediacandidate/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/certification/real_media_candidate_*.go'
+      - '.github/scripts/verify_real_media_corpus_manifest.py'
+      - '.github/scripts/verify_real_media_candidate.py'
+      - '.github/scripts/verify_real_media_packet_tolerance.py'
+      - '.github/workflows/transcode-real-media-corpus-generate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-real-media-corpus-generate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate-corpus:
+    name: Build adapters and generate immutable corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify corpus and candidate adapter contracts
+        run: |
+          go test ./internal/transcode/realmediacorpus
+          go test ./internal/transcode/corpusgenerator
+          go test ./internal/transcode/timebasecandidate
+          go test ./internal/transcode/reordercandidate
+          go test ./internal/transcode/realmediacandidate
+          go test ./internal/transcode/certification
+          python3 -m py_compile \
+            .github/scripts/verify_real_media_candidate.py \
+            .github/scripts/verify_real_media_packet_tolerance.py
+      - name: Build corpus and candidate commands
+        run: |
+          go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go build -trimpath -o /tmp/nowen-transcode-real-media-candidate-cert ./cmd/transcode-real-media-candidate-cert
+      - name: Generate deterministic file-backed corpus
+        run: |
+          rm -rf /tmp/nowen-transcode-real-media-corpus-v1
+          /tmp/nowen-transcode-real-media-corpus-generate \
+            -output-dir /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Verify manifest, file digests and observed media policy
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_manifest.py \
+            /tmp/nowen-transcode-real-media-corpus-v1/real-media-corpus-manifest-v1.json
+          du -sh /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Upload real media corpus assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-real-media-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+          if-no-files-found: error
+          retention-days: 7
+
+  certify-candidates:
+    name: Certify AVTB and 90 kHz against immutable corpus bytes
+    needs: generate-corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Download immutable real media corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: transcode-real-media-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Build real media candidate command
+        run: go build -trimpath -o /tmp/nowen-transcode-real-media-candidate-cert ./cmd/transcode-real-media-candidate-cert
+      - name: Run file-backed candidate certification
+        run: |
+          /tmp/nowen-transcode-real-media-candidate-cert \
+            -corpus-root /tmp/nowen-transcode-real-media-corpus-v1 \
+            -output /tmp/real-media-corpus-candidate-v1.json \
+            -timeout 170m
+      - name: Verify bound candidate evidence graph
+        run: |
+          python3 .github/scripts/verify_real_media_candidate.py \
+            /tmp/real-media-corpus-candidate-v1.json
+          python3 .github/scripts/verify_real_media_packet_tolerance.py \
+            /tmp/real-media-corpus-candidate-v1.json
+          du -h /tmp/real-media-corpus-candidate-v1.json
+      - name: Upload candidate certification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-real-media-candidate-${{ github.sha }}
+          path: /tmp/real-media-corpus-candidate-v1.json
+          if-no-files-found: error
+          retention-days: 7

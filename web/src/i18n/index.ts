@@ -13,7 +13,6 @@ export const SUPPORTED_LOCALES = [
 
 export type LocaleCode = typeof SUPPORTED_LOCALES[number]['code']
 
-// 语言包映射
 const localeMessages: Record<LocaleCode, Record<string, string>> = {
   'zh-CN': zhCN,
   'en-US': enUS,

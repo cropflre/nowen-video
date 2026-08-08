@@ -2,6 +2,7 @@ import type { Media, MixedItem } from '@/types'
 import MediaCard from './MediaCard'
 import { motion } from 'framer-motion'
 import { useStaggerVariants } from '@/hooks/useMotion'
+import { Section } from '@/components/design-system'
 
 interface MediaGridProps {
   items?: Media[]
@@ -15,36 +16,25 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
 
   if (loading) {
     return (
-      <motion.div variants={container} initial="hidden" animate="visible">
-        {title && (
-          <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-            {title}
-          </motion.h2>
-        )}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <Section title={title}>
+        <motion.div className="nv-media-grid" variants={container} initial="hidden" animate="visible">
           {Array.from({ length: 12 }).map((_, i) => (
             <motion.div key={i} variants={itemVariant}>
-              <div className="skeleton aspect-[2/3] rounded-xl" />
-              <div className="skeleton mt-2 h-4 w-3/4 rounded" />
-              <div className="skeleton mt-1 h-3 w-1/2 rounded" />
+              <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton mt-2 h-4 w-3/4" />
+              <div className="skeleton mt-1 h-3 w-1/2" />
             </motion.div>
           ))}
-        </div>
-      </motion.div>
+        </motion.div>
+      </Section>
     )
   }
 
-  // 混合模式
   if (mixedItems) {
     if (mixedItems.length === 0) return null
     return (
-      <motion.div variants={container} initial="hidden" animate="visible">
-        {title && (
-          <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-            {title}
-          </motion.h2>
-        )}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <Section title={title}>
+        <motion.div className="nv-media-grid" variants={container} initial="hidden" animate="visible">
           {mixedItems.map((item) => {
             if (item.type === 'series' && item.series) {
               return (
@@ -62,28 +52,22 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
             }
             return null
           })}
-        </div>
-      </motion.div>
+        </motion.div>
+      </Section>
     )
   }
 
-  // 普通模式
   if (!items || items.length === 0) return null
 
   return (
-    <motion.div variants={container} initial="hidden" animate="visible">
-      {title && (
-        <motion.h2 variants={itemVariant} className="mb-4 font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          {title}
-        </motion.h2>
-      )}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <Section title={title}>
+      <motion.div className="nv-media-grid" variants={container} initial="hidden" animate="visible">
         {items.map((media) => (
           <motion.div key={media.id} variants={itemVariant}>
             <MediaCard media={media} />
           </motion.div>
         ))}
-      </div>
-    </motion.div>
+      </motion.div>
+    </Section>
   )
 }

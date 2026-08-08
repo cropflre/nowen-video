@@ -95,6 +95,14 @@ func main() {
 	repos := repository.NewRepositories(db)
 	services := service.NewServices(repos, cfg, sugar)
 	handlers := handler.NewHandlers(services, repos, cfg, sugar)
+	runtimeHistoryHandler := handler.NewRuntimeHistoryHandler(
+		service.NewRuntimeHistoryService(repository.NewRuntimeHistoryRepo(repos.DB()), sugar),
+		sugar,
+	)
+	playbackRuntime, err := newFullPlaybackRuntime(cfg, services, repos, sugar)
+	if err != nil {
+		sugar.Fatalf("初始化临时播放会话服务失败: %v", err)
+	}
 
 	// 确保首次运行时创建管理员账号
 	if err := services.User.EnsureAdminExists(); err != nil {
@@ -308,14 +316,10 @@ func main() {
 		api.GET("/stream/:id/info", guardByMediaID, handlers.Stream.MediaInfo)
 		api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
 		api.GET("/stream/:id/remux", guardByMediaID, handlers.Stream.Remux)
-		api.GET("/stream/:id/master.m3u8", guardByMediaID, handlers.Stream.Master)
-		api.GET("/stream/:id/:quality/:segment", guardByMediaID, handlers.Stream.Segment)
 		// 播放进度上报（驱动 Throttling 节流）
-		api.POST("/stream/:id/playback", guardByMediaID, handlers.Stream.Playback)
 		// 客户端带宽上报（驱动 ABR 档位过滤建议）
-		api.POST("/stream/:id/bandwidth", guardByMediaID, handlers.Stream.Bandwidth)
 		// 节流/转码状态快照（供前端播放器 Settings 菜单可视化）
-		api.GET("/stream/:id/throttle", guardByMediaID, handlers.Stream.ThrottleStatus)
+		playbackRuntime.Register(api, guardByMediaID)
 
 		// STRM 远程流专用端点
 		api.GET("/stream/:id/strm-seg", guardByMediaID, handlers.Stream.STRMSegment) // HLS 分片/子 playlist/key 代理
@@ -324,8 +328,6 @@ func main() {
 		// 多音轨 HLS 路由（独立于 /stream/:id/:quality/... 避免参数冲突）
 		// /api/audio-track/:id/:trackIdx.m3u8       按需音轨 playlist
 		// /api/audio-track/:id/:trackIdx/:seg        按需音轨分片
-		api.GET("/audio-track/:id/:trackIdx", guardByMediaID, handlers.Stream.AudioPlaylist)
-		api.GET("/audio-track/:id/:trackIdx/:seg", guardByMediaID, handlers.Stream.AudioSegment)
 
 		// 海报/缩略图（不做权限校验：海报属于媒体元信息，不可播放）
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
@@ -524,20 +526,11 @@ func main() {
 		admin.POST("/invite-codes", handlers.Admin.CreateInviteCode)
 		admin.DELETE("/invite-codes/:id", handlers.Admin.DeleteInviteCode)
 		admin.GET("/system", handlers.Admin.SystemInfo)
-		admin.GET("/transcode/status", handlers.Admin.TranscodeStatus)
-		admin.GET("/transcode/throttle", handlers.Admin.TranscodeThrottleStats)
-		admin.POST("/transcode/:taskId/cancel", handlers.Admin.CancelTranscode)
+		admin.GET("/runtime-history", runtimeHistoryHandler.List)
+		admin.GET("/runtime-history/summary", runtimeHistoryHandler.Summary)
+		admin.GET("/runtime-history/jobs/:id", runtimeHistoryHandler.Detail)
 		// 转码任务管理面板（与预处理交互对齐）
 		// 注意：使用 /transcode-tasks 前缀，避免与上面 /transcode/:taskId/cancel 的通配段产生 Gin 路由冲突
-		admin.GET("/transcode-tasks", handlers.Admin.ListTranscodeTasks)
-		admin.GET("/transcode-tasks/statistics", handlers.Admin.GetTranscodeStatistics)
-		admin.POST("/transcode-tasks/batch-cancel", handlers.Admin.BatchCancelTranscodeTasks)
-		admin.POST("/transcode-tasks/batch-delete", handlers.Admin.BatchDeleteTranscodeTasks)
-		admin.POST("/transcode-tasks/batch-retry", handlers.Admin.BatchRetryTranscodeTasks)
-		admin.POST("/transcode-tasks/batch-submit", handlers.Admin.BatchSubmitTranscodeTasks)
-		admin.POST("/transcode-tasks/:id/cancel", handlers.Admin.CancelTranscodeTask)
-		admin.POST("/transcode-tasks/:id/retry", handlers.Admin.RetryTranscodeTask)
-		admin.DELETE("/transcode-tasks/:id", handlers.Admin.DeleteTranscodeTask)
 
 		// TMDb 配置管理
 		admin.GET("/settings/tmdb", handlers.Admin.GetTMDbConfig)
@@ -899,17 +892,6 @@ func main() {
 		admin.GET("/libraries/:id/duplicates", handlers.Library.DetectDuplicates)
 		admin.POST("/libraries/:id/mark-duplicates", handlers.Library.MarkDuplicates)
 
-		// ==================== V5: Pulse 数据中心（管理员） ====================
-		admin.GET("/pulse/dashboard", handlers.Pulse.GetDashboard)
-		admin.GET("/pulse/dashboard/trends", handlers.Pulse.GetPlayTrends)
-		admin.GET("/pulse/dashboard/top-content", handlers.Pulse.GetTopContent)
-		admin.GET("/pulse/dashboard/top-users", handlers.Pulse.GetTopUsers)
-		admin.GET("/pulse/dashboard/recent", handlers.Pulse.GetRecentPlays)
-		admin.GET("/pulse/analytics", handlers.Pulse.GetAnalytics)
-		admin.GET("/pulse/analytics/hourly", handlers.Pulse.GetHourlyDistribution)
-		admin.GET("/pulse/analytics/libraries", handlers.Pulse.GetLibraryStats)
-		admin.GET("/pulse/analytics/growth", handlers.Pulse.GetMediaGrowth)
-
 		// ==================== 视频预处理管理 ====================
 		admin.POST("/preprocess/submit", handlers.Preprocess.SubmitMedia)
 		admin.POST("/preprocess/batch", handlers.Preprocess.BatchSubmit)
@@ -982,7 +964,7 @@ func main() {
 	// ==================== Emby / Infuse 兼容层 ====================
 	// 独立挂载到 /emby/* 与根路径的 Emby 标准路径（/System /Users /Items /Videos 等）。
 	// 复用现有的 AuthService / StreamService / Repositories，不做侵入式改动。
-	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, services.Transcode, repos)
+	embyHandler := embyh.NewHandler(cfg, sugar, services.Auth, services.Stream, repos)
 	embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
 	sugar.Info("Emby 兼容层已启用：/emby/* 与根路径 Emby 端点（供 Infuse 等客户端使用）")
 
@@ -1074,10 +1056,11 @@ func main() {
 		}
 	}()
 
-	// 等待中断信号以优雅关闭服务器
+	// 等待中断信号以优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	signal.Stop(quit)
 	sugar.Info("正在关闭服务器...")
 
 	// 停止 UDP 服务发现
@@ -1088,6 +1071,32 @@ func main() {
 	// 停止 mDNS 服务发现
 	mdnsService.Stop()
 
+	// 先停止接收新请求，避免转码队列关闭期间仍有新任务提交。
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := srv.Shutdown(httpCtx); err != nil {
+		sugar.Warnf("HTTP 服务优雅关闭超时: %v", err)
+	}
+	httpCancel()
+
+	// Runtime playback is ephemeral. Full and Lite now use the same ordering:
+	// stop HTTP, cancel playback FFmpeg, drain readers, remove temporary files,
+	// then fence or requeue durable background transcode Jobs.
+	playbackCtx, playbackCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := playbackRuntime.Shutdown(playbackCtx); err != nil {
+		sugar.Warnf("播放会话清理超时: %v", err)
+	}
+	playbackCancel()
+
+	// Full 与 Lite 使用同一套持久队列关闭协议：已 Claim 的任务最多等待
+	// 30 秒，超时后先原子释放本机 Lease 回 queued，再取消旧 Context。
+	transcodeCtx, transcodeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if services != nil && services.ArtifactMaintenance != nil {
+		if err := services.ArtifactMaintenance.Shutdown(transcodeCtx); err != nil {
+			sugar.Warnf("转码服务关闭超时，未完成任务已重新排队: %v", err)
+		}
+	}
+	transcodeCancel()
+
 	// 停止扫描后处理 worker（避免正在 AI 识别 / DB 写入时被中断造成数据不一致）
 	if services != nil && services.ScanPostProcess != nil {
 		services.ScanPostProcess.Stop()
@@ -1095,14 +1104,6 @@ func main() {
 
 	// 停止 Python 番号刮削微服务子进程
 	pythonLauncher.Stop()
-
-	// 设置 30 秒超时用于优雅关闭
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		sugar.Fatalf("服务器强制关闭: %v", err)
-	}
 
 	sugar.Info("服务器已优雅关闭")
 }

@@ -4,7 +4,7 @@
  * 和 VideoPlayer.tsx 并行的简化播放器：
  *   - 使用 WebCodecsPlayer 核心做解码/渲染
  *   - 提供必要的控制条（播放/暂停/进度/音量/全屏/倍速）
- *   - 进度上报与 VideoPlayer 行为对齐（reportPlayback / updateProgress）
+ *   - 观看历史上报与 VideoPlayer 行为对齐
  *
  * 不支持的功能（相较 VideoPlayer）：
  *   - 字幕（内嵌/外挂/AI 字幕/翻译）—— WebCodecs 不解码字幕流，需未来单独渲染
@@ -23,7 +23,6 @@ import clsx from 'clsx'
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, Gauge, Cpu } from 'lucide-react'
 import WebCodecsPlayer, { type WebCodecsPlayerHandle } from './WebCodecsPlayer'
 import { usePlayerStore } from '@/stores/player'
-import { streamApi } from '@/api/stream'
 import { userApi } from '@/api'
 
 interface WebCodecsPlayerShellProps {
@@ -185,12 +184,11 @@ export default function WebCodecsPlayerShell({
     }, 3000)
   }, [isPlaying])
 
-  // 进度上报（3 秒一次，每 5 次写一次观看历史）
+  // 观看历史每 15 秒写入一次；WebCodecs 不依赖媒体级 Runtime 遥测。
   useEffect(() => {
     let tick = 0
     const timer = window.setInterval(() => {
       if (!isPlaying || currentTime <= 0) return
-      streamApi.reportPlayback(mediaId, currentTime).catch(() => {})
       tick++
       if (tick % 5 === 0) {
         const dur = displayDuration > 0 ? displayDuration : duration

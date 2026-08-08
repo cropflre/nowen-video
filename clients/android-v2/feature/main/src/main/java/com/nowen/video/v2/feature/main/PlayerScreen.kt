@@ -24,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,26 +66,38 @@ import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.model.CreatePlaybackSessionRequest
 import com.nowen.video.v2.core.model.MediaDetail
+import com.nowen.video.v2.core.model.PlaybackPlan
+import com.nowen.video.v2.core.model.PlaybackSessionHeartbeatRequest
+import com.nowen.video.v2.core.model.PlaybackSessionResult
+import com.nowen.video.v2.core.model.RestartPlaybackSessionRequest
 import com.nowen.video.v2.core.model.SubtitleTrack
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val PERIODIC_PROGRESS_INTERVAL_MS = 10_000L
 private const val MIN_PROGRESS_DELTA_MS = 2_000L
 private const val MIN_PROGRESS_INTERVAL_MS = 8_000L
 private const val NEXT_EPISODE_COUNTDOWN_SECONDS = 5
+private const val FALLBACK_NOTICE_DURATION_MS = 4_000L
+private const val DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS = 15_000L
 
 data class PlayerUiState(
     val loading: Boolean = true,
@@ -94,10 +107,20 @@ data class PlayerUiState(
     val mediaDurationMs: Long = 0L,
     val externalSubtitles: List<SubtitleTrack> = emptyList(),
     val nextEpisode: MediaDetail? = null,
+    val playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
+    val fallbackNotice: String? = null,
     val playbackSpeed: Float = 1f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
     val progressQueued: Boolean = false,
+    val sessionManaged: Boolean = false,
+    val sessionId: String = "",
+    val sessionGenerationId: Long = 0L,
+    val sessionOffsetMs: Long = 0L,
+    val sessionHeartbeatIntervalMs: Long = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
+    val sessionProfileId: String = "auto",
+    val sessionMaxBitrate: Int = 0,
+    val sessionRestarting: Boolean = false,
     val error: String? = null,
 )
 
@@ -110,6 +133,8 @@ class PlayerViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state
+    private val sessionOperationMutex = Mutex()
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loadedId: String? = null
     private var lastReportedPositionMs = -1L
     private var lastReportElapsedMs = 0L
@@ -131,6 +156,7 @@ class PlayerViewModel @Inject constructor(
     fun load(mediaId: String) {
         if (loadedId == mediaId && _state.value.playbackUrl.isNotBlank()) return
         loadedId = mediaId
+        detachPlaybackSession("media_changed")
         viewModelScope.launch {
             _state.update {
                 it.copy(
@@ -141,6 +167,16 @@ class PlayerViewModel @Inject constructor(
                     mediaDurationMs = 0L,
                     externalSubtitles = emptyList(),
                     nextEpisode = null,
+                    playbackDiagnostics = PlaybackDiagnostics(),
+                    fallbackNotice = null,
+                    sessionManaged = false,
+                    sessionId = "",
+                    sessionGenerationId = 0L,
+                    sessionOffsetMs = 0L,
+                    sessionHeartbeatIntervalMs = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
+                    sessionProfileId = "auto",
+                    sessionMaxBitrate = 0,
+                    sessionRestarting = false,
                     error = null,
                 )
             }
@@ -148,15 +184,6 @@ class PlayerViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, error = error.message ?: "播放信息加载失败") }
                 return@launch
             }
-            val resolved = resolveServerResource(
-                sessionStore.snapshot.value.activeServer?.baseUrl,
-                stream.preferredUrl,
-            )
-            if (resolved.isNullOrBlank()) {
-                _state.update { it.copy(loading = false, error = "服务器没有返回可播放地址") }
-                return@launch
-            }
-
             val detail = repository.detail(mediaId).getOrNull()
             val subtitles = repository.subtitles(mediaId).getOrNull()
             val nextEpisode = detail
@@ -168,18 +195,142 @@ class PlayerViewModel @Inject constructor(
                         episode = it.episodeNumber,
                     ).getOrNull()
                 }
-            val resumeSeconds = progressRepository.restorePosition(mediaId, stream.duration)
+            val resumeMs = (progressRepository.restorePosition(mediaId, stream.duration) * 1_000)
+                .toLong()
+                .coerceAtLeast(0L)
+            val baseUrl = sessionStore.snapshot.value.activeServer?.baseUrl
+            val plan = stream.playbackPlan
+            val title = detail?.displayTitle?.takeIf(String::isNotBlank) ?: stream.title
+            val durationMs = (stream.duration * 1_000).toLong().coerceAtLeast(0L)
+
+            if (plan?.requiresEphemeralSession == true) {
+                val sessionResult = repository.createPlaybackSession(
+                    CreatePlaybackSessionRequest(
+                        mediaId = mediaId,
+                        profileId = plan.sessionTemplate?.profileId.orEmpty().ifBlank { "auto" },
+                        startPositionMs = resumeMs,
+                        maxBitrate = plan.sessionTemplate?.maxBitrate ?: 0,
+                    ),
+                ).getOrElse { error ->
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            title = title,
+                            mediaDurationMs = durationMs,
+                            error = error.message ?: "实时转码会话启动失败",
+                        )
+                    }
+                    return@launch
+                }
+                val playlist = resolveServerResource(baseUrl, sessionResult.playlistUrl)
+                if (playlist.isNullOrBlank()) {
+                    closeSessionAsync(sessionResult.session.id, "missing_playlist_url")
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            title = title,
+                            mediaDurationMs = durationMs,
+                            error = "服务器未返回会话播放地址",
+                        )
+                    }
+                    return@launch
+                }
+                applySessionResult(
+                    title = title,
+                    durationMs = durationMs,
+                    subtitles = subtitles?.external.orEmpty(),
+                    nextEpisode = nextEpisode,
+                    plan = plan,
+                    result = sessionResult,
+                    playlistUrl = playlist,
+                    offsetMs = resumeMs,
+                    notice = null,
+                )
+                return@launch
+            }
+
+            val resolved = resolveServerResource(baseUrl, stream.preferredUrl)
+            if (resolved.isNullOrBlank()) {
+                _state.update { it.copy(loading = false, error = "服务器没有返回可播放地址") }
+                return@launch
+            }
+            val fallbackResolved = resolveServerResource(baseUrl, stream.fallbackUrl)
+                ?.takeUnless { it == resolved }
+                .orEmpty()
+            val fallbackMethod = plan?.fallbackMethod.orEmpty()
             _state.update {
                 it.copy(
                     loading = false,
-                    title = detail?.displayTitle?.takeIf(String::isNotBlank) ?: stream.title,
+                    title = title,
                     playbackUrl = resolved,
-                    resumePositionMs = (resumeSeconds * 1_000).toLong().coerceAtLeast(0L),
-                    mediaDurationMs = (stream.duration * 1_000).toLong().coerceAtLeast(0L),
+                    resumePositionMs = resumeMs,
+                    mediaDurationMs = durationMs,
                     externalSubtitles = subtitles?.external.orEmpty(),
                     nextEpisode = nextEpisode,
+                    playbackDiagnostics = PlaybackDiagnostics(
+                        method = stream.playbackMethod,
+                        methodLabel = stream.playbackMethodLabel,
+                        reasonCode = stream.playbackReasonCode,
+                        reason = stream.playbackReason,
+                        fallbackUrl = fallbackResolved,
+                        fallbackMethod = fallbackMethod,
+                        fallbackMethodLabel = playbackMethodLabel(fallbackMethod),
+                    ),
                 )
             }
+        }
+    }
+
+    private fun applySessionResult(
+        title: String,
+        durationMs: Long,
+        subtitles: List<SubtitleTrack>,
+        nextEpisode: MediaDetail?,
+        plan: PlaybackPlan,
+        result: PlaybackSessionResult,
+        playlistUrl: String,
+        offsetMs: Long,
+        notice: String?,
+    ) {
+        val generation = result.session.generation
+        _state.update {
+            it.copy(
+                loading = false,
+                title = title,
+                playbackUrl = playlistUrl,
+                resumePositionMs = 0L,
+                mediaDurationMs = durationMs,
+                externalSubtitles = subtitles,
+                nextEpisode = nextEpisode,
+                playbackDiagnostics = PlaybackDiagnostics(
+                    method = "transcode",
+                    methodLabel = playbackMethodLabel("transcode"),
+                    reasonCode = plan.reasonCode.ifBlank { "playback_session" },
+                    reason = plan.reason.ifBlank { "已创建临时实时转码会话" },
+                    fallbackUrl = "",
+                    fallbackMethod = "",
+                    fallbackMethodLabel = "",
+                    usingFallback = it.playbackDiagnostics.usingFallback,
+                    lastError = it.playbackDiagnostics.lastError,
+                ),
+                fallbackNotice = notice,
+                sessionManaged = true,
+                sessionId = result.session.id,
+                sessionGenerationId = result.session.currentGenerationId,
+                sessionOffsetMs = offsetMs.coerceAtLeast(0L),
+                sessionHeartbeatIntervalMs = result.heartbeatIntervalSec
+                    .coerceAtLeast(5)
+                    .toLong() * 1_000L,
+                sessionProfileId = generation?.profileId
+                    ?.takeIf(String::isNotBlank)
+                    ?: plan.sessionTemplate?.profileId.orEmpty().ifBlank { "auto" },
+                sessionMaxBitrate = generation?.maxBitrate
+                    ?.takeIf { value -> value > 0 }
+                    ?: plan.sessionTemplate?.maxBitrate
+                    ?: 0,
+                sessionRestarting = false,
+                error = null,
+            )
         }
     }
 
@@ -198,10 +349,236 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { preferencesStore.setAutoPlayNext(enabled) }
     }
 
-    fun onPlayerError(error: PlaybackException) {
-        _state.update {
-            it.copy(error = error.errorCodeName.ifBlank { error.message ?: "播放器发生错误" })
+    fun absolutePositionMs(relativePositionMs: Long): Long {
+        val current = _state.value
+        return absolutePlaybackPositionMs(
+            sessionManaged = current.sessionManaged,
+            generationOffsetMs = current.sessionOffsetMs,
+            relativePositionMs = relativePositionMs,
+        )
+    }
+
+    fun restartPlaybackSession(targetPositionMs: Long, reason: String = "seek") {
+        val initial = _state.value
+        if (!initial.sessionManaged || initial.sessionId.isBlank() || initial.sessionRestarting) return
+        val target = clampPlaybackTargetMs(targetPositionMs, initial.mediaDurationMs)
+        viewModelScope.launch {
+            sessionOperationMutex.withLock {
+                val current = _state.value
+                if (!current.sessionManaged || current.sessionId != initial.sessionId) return@withLock
+                _state.update { it.copy(sessionRestarting = true, fallbackNotice = "正在切换播放位置…") }
+                val result = repository.restartPlaybackSession(
+                    current.sessionId,
+                    RestartPlaybackSessionRequest(
+                        profileId = current.sessionProfileId,
+                        startPositionMs = target,
+                        maxBitrate = current.sessionMaxBitrate,
+                        reason = reason,
+                    ),
+                ).getOrElse { error ->
+                    _state.update {
+                        it.copy(
+                            sessionRestarting = false,
+                            fallbackNotice = "跳转失败，继续当前播放",
+                            playbackDiagnostics = it.playbackDiagnostics.copy(
+                                lastError = error.message.orEmpty(),
+                            ),
+                        )
+                    }
+                    return@withLock
+                }
+                val playlist = resolveServerResource(
+                    sessionStore.snapshot.value.activeServer?.baseUrl,
+                    result.playlistUrl,
+                )
+                if (playlist.isNullOrBlank()) {
+                    _state.update {
+                        it.copy(
+                            sessionRestarting = false,
+                            fallbackNotice = "跳转失败：服务器未返回播放地址",
+                        )
+                    }
+                    return@withLock
+                }
+                _state.update {
+                    it.copy(
+                        playbackUrl = playlist,
+                        resumePositionMs = 0L,
+                        sessionGenerationId = result.session.currentGenerationId,
+                        sessionOffsetMs = target,
+                        sessionHeartbeatIntervalMs = result.heartbeatIntervalSec
+                            .coerceAtLeast(5)
+                            .toLong() * 1_000L,
+                        sessionProfileId = result.session.generation?.profileId
+                            ?.takeIf(String::isNotBlank)
+                            ?: it.sessionProfileId,
+                        sessionRestarting = false,
+                        fallbackNotice = "已从 ${formatPlaybackTime(target)} 继续播放",
+                        error = null,
+                    )
+                }
+            }
         }
+    }
+
+    fun heartbeat(
+        relativePositionMs: Long,
+        relativeBufferedEndMs: Long,
+        paused: Boolean,
+    ) {
+        val current = _state.value
+        if (!current.sessionManaged || current.sessionId.isBlank() || current.sessionGenerationId <= 0L) return
+        val position = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativePositionMs)
+        val buffered = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativeBufferedEndMs)
+            .coerceAtLeast(position)
+        viewModelScope.launch {
+            repository.heartbeatPlaybackSession(
+                current.sessionId,
+                PlaybackSessionHeartbeatRequest(
+                    generationId = current.sessionGenerationId,
+                    positionMs = position,
+                    bufferedEndMs = buffered,
+                    paused = paused,
+                ),
+            )
+        }
+    }
+
+    fun onPlayerError(error: PlaybackException, relativePositionMs: Long) {
+        val current = _state.value
+        if (current.sessionRestarting) return
+        val diagnostics = current.playbackDiagnostics
+        val absolutePosition = absolutePlaybackPositionMs(
+            current.sessionManaged,
+            current.sessionOffsetMs,
+            relativePositionMs,
+        )
+
+        if (current.sessionManaged) {
+            reportProgress(loadedId.orEmpty(), relativePositionMs, current.mediaDurationMs, true)
+            detachPlaybackSession("player_error")
+            _state.update {
+                it.copy(
+                    playbackDiagnostics = diagnostics.copy(lastError = error.errorCodeName),
+                    error = error.errorCodeName.ifBlank { error.message ?: "实时转码播放失败" },
+                )
+            }
+            return
+        }
+
+        if (diagnostics.fallbackMethod.equals("transcode", ignoreCase = true)) {
+            val mediaId = loadedId.orEmpty()
+            if (mediaId.isBlank()) return
+            viewModelScope.launch {
+                sessionOperationMutex.withLock {
+                    _state.update { it.copy(sessionRestarting = true, fallbackNotice = "正在切换到兼容转码…") }
+                    val fallbackPlan = PlaybackPlan(
+                        mediaId = mediaId,
+                        method = "transcode",
+                        reasonCode = "client_playback_fallback",
+                        reason = "原播放方式失败，已切换到临时实时转码",
+                        requiresTranscode = true,
+                        sessionRequired = true,
+                    )
+                    val result = repository.createPlaybackSession(
+                        CreatePlaybackSessionRequest(
+                            mediaId = mediaId,
+                            profileId = "auto",
+                            startPositionMs = absolutePosition,
+                        ),
+                    ).getOrElse { cause ->
+                        _state.update {
+                            it.copy(
+                                sessionRestarting = false,
+                                playbackDiagnostics = diagnostics.copy(lastError = error.errorCodeName),
+                                error = cause.message ?: "兼容转码启动失败",
+                            )
+                        }
+                        return@withLock
+                    }
+                    val playlist = resolveServerResource(
+                        sessionStore.snapshot.value.activeServer?.baseUrl,
+                        result.playlistUrl,
+                    )
+                    if (playlist.isNullOrBlank()) {
+                        closeSessionAsync(result.session.id, "missing_fallback_playlist")
+                        _state.update {
+                            it.copy(
+                                sessionRestarting = false,
+                                error = "兼容转码未返回播放地址",
+                            )
+                        }
+                        return@withLock
+                    }
+                    applySessionResult(
+                        title = current.title,
+                        durationMs = current.mediaDurationMs,
+                        subtitles = current.externalSubtitles,
+                        nextEpisode = current.nextEpisode,
+                        plan = fallbackPlan,
+                        result = result,
+                        playlistUrl = playlist,
+                        offsetMs = absolutePosition,
+                        notice = "播放失败，已切换到兼容转码",
+                    )
+                    _state.update {
+                        it.copy(
+                            playbackDiagnostics = it.playbackDiagnostics.copy(
+                                usingFallback = true,
+                                lastError = error.errorCodeName,
+                            ),
+                        )
+                    }
+                }
+            }
+            return
+        }
+
+        if (
+            shouldAttemptPlaybackFallback(
+                errorCode = error.errorCode,
+                currentUrl = current.playbackUrl,
+                fallbackUrl = diagnostics.fallbackUrl,
+                alreadyUsingFallback = diagnostics.usingFallback,
+            )
+        ) {
+            val fallbackMethod = diagnostics.fallbackMethod.ifBlank { "transcode" }
+            val fallbackMethodLabel = diagnostics.fallbackMethodLabel
+                .takeUnless { it == "自动选择" }
+                ?: playbackMethodLabel(fallbackMethod)
+            val previousMethodLabel = diagnostics.methodLabel
+            _state.update {
+                it.copy(
+                    playbackUrl = diagnostics.fallbackUrl,
+                    resumePositionMs = absolutePosition.coerceAtLeast(0L),
+                    playbackDiagnostics = diagnostics.copy(
+                        method = fallbackMethod,
+                        methodLabel = fallbackMethodLabel,
+                        reasonCode = "client_playback_fallback",
+                        reason = "原播放方式（$previousMethodLabel）失败，已自动切换到服务端备用地址",
+                        fallbackUrl = "",
+                        fallbackMethod = "",
+                        fallbackMethodLabel = "",
+                        usingFallback = true,
+                        lastError = error.errorCodeName,
+                    ),
+                    fallbackNotice = "播放失败，已自动切换到$fallbackMethodLabel",
+                    error = null,
+                )
+            }
+            return
+        }
+
+        _state.update {
+            it.copy(
+                playbackDiagnostics = diagnostics.copy(lastError = error.errorCodeName),
+                error = error.errorCodeName.ifBlank { error.message ?: "播放器发生错误" },
+            )
+        }
+    }
+
+    fun clearFallbackNotice() {
+        _state.update { it.copy(fallbackNotice = null) }
     }
 
     fun reportProgress(
@@ -210,26 +587,78 @@ class PlayerViewModel @Inject constructor(
         durationMs: Long,
         force: Boolean = false,
     ) {
-        if (mediaId.isBlank() || positionMs <= 0L || durationMs <= 0L) return
+        if (mediaId.isBlank()) return
+        val current = _state.value
+        val absolutePosition = absolutePlaybackPositionMs(
+            current.sessionManaged,
+            current.sessionOffsetMs,
+            positionMs,
+        )
+        val effectiveDuration = current.mediaDurationMs.takeIf { it > 0L } ?: durationMs
+        if (absolutePosition <= 0L || effectiveDuration <= 0L) return
         val now = SystemClock.elapsedRealtime()
         if (!force &&
-            abs(positionMs - lastReportedPositionMs) < MIN_PROGRESS_DELTA_MS &&
+            abs(absolutePosition - lastReportedPositionMs) < MIN_PROGRESS_DELTA_MS &&
             now - lastReportElapsedMs < MIN_PROGRESS_INTERVAL_MS
         ) {
             return
         }
-        lastReportedPositionMs = positionMs
+        lastReportedPositionMs = absolutePosition
         lastReportElapsedMs = now
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             withContext(NonCancellable + Dispatchers.IO) {
                 val delivery = progressRepository.report(
                     mediaId = mediaId,
-                    position = positionMs / 1_000.0,
-                    duration = durationMs / 1_000.0,
+                    position = absolutePosition / 1_000.0,
+                    duration = effectiveDuration / 1_000.0,
                 )
                 _state.update { it.copy(progressQueued = delivery.queued) }
             }
         }
+    }
+
+    fun closePlaybackSession(reason: String) {
+        detachPlaybackSession(reason)
+    }
+
+    private fun detachPlaybackSession(reason: String) {
+        val sessionId = _state.value.sessionId
+        if (sessionId.isBlank()) return
+        _state.update {
+            it.copy(
+                sessionManaged = false,
+                sessionId = "",
+                sessionGenerationId = 0L,
+                sessionOffsetMs = 0L,
+                sessionRestarting = false,
+            )
+        }
+        closeSessionAsync(sessionId, reason)
+    }
+
+    private fun closeSessionAsync(sessionId: String, reason: String) {
+        if (sessionId.isBlank()) return
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable + Dispatchers.IO) {
+                repository.closePlaybackSession(sessionId, reason)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        val sessionId = _state.value.sessionId
+        if (sessionId.isNotBlank()) {
+            cleanupScope.launch {
+                try {
+                    repository.closePlaybackSession(sessionId, "view_model_cleared")
+                } finally {
+                    cleanupScope.cancel()
+                }
+            }
+        } else {
+            cleanupScope.cancel()
+        }
+        super.onCleared()
     }
 }
 
@@ -256,6 +685,8 @@ fun PlayerScreen(
     var nextEpisodeCountdown by rememberSaveable(mediaId) {
         mutableIntStateOf(NEXT_EPISODE_COUNTDOWN_SECONDS)
     }
+    var sessionDisplayPositionMs by remember(mediaId) { mutableStateOf(0L) }
+    var sessionSeekPreviewMs by remember(mediaId) { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
 
@@ -273,8 +704,9 @@ fun PlayerScreen(
     }
 
     fun reportCurrentProgress(force: Boolean) {
+        val current = viewModel.state.value
         val playerDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-        val duration = playerDuration ?: state.mediaDurationMs
+        val duration = current.mediaDurationMs.takeIf { it > 0L } ?: playerDuration ?: 0L
         viewModel.reportProgress(
             mediaId = mediaId,
             positionMs = player.currentPosition.coerceAtLeast(0L),
@@ -283,9 +715,19 @@ fun PlayerScreen(
         )
     }
 
-    BackHandler {
+    fun leavePlayback(reason: String, action: () -> Unit) {
         reportCurrentProgress(force = true)
-        onBack()
+        viewModel.heartbeat(
+            relativePositionMs = player.currentPosition.coerceAtLeast(0L),
+            relativeBufferedEndMs = player.bufferedPosition.coerceAtLeast(0L),
+            paused = true,
+        )
+        viewModel.closePlaybackSession(reason)
+        action()
+    }
+
+    BackHandler {
+        leavePlayback("navigate_back", onBack)
     }
 
     LaunchedEffect(state.playbackUrl, state.resumePositionMs, state.externalSubtitles, session.activeServer?.baseUrl) {
@@ -299,13 +741,20 @@ fun PlayerScreen(
                     ),
                 )
                 .build()
-            if (state.resumePositionMs > 0L) {
+            if (state.resumePositionMs > 0L && !state.sessionManaged) {
                 player.setMediaItem(item, state.resumePositionMs)
             } else {
                 player.setMediaItem(item)
             }
             player.prepare()
             player.playWhenReady = true
+        }
+    }
+
+    LaunchedEffect(state.fallbackNotice) {
+        if (state.fallbackNotice != null) {
+            delay(FALLBACK_NOTICE_DURATION_MS)
+            viewModel.clearFallbackNotice()
         }
     }
 
@@ -324,6 +773,32 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(
+        player,
+        state.sessionId,
+        state.sessionGenerationId,
+        state.sessionHeartbeatIntervalMs,
+    ) {
+        if (!state.sessionManaged || state.sessionId.isBlank()) return@LaunchedEffect
+        while (true) {
+            delay(state.sessionHeartbeatIntervalMs.coerceAtLeast(5_000L))
+            viewModel.heartbeat(
+                relativePositionMs = player.currentPosition.coerceAtLeast(0L),
+                relativeBufferedEndMs = player.bufferedPosition.coerceAtLeast(0L),
+                paused = !player.isPlaying,
+            )
+        }
+    }
+
+    LaunchedEffect(player, state.sessionManaged, state.sessionOffsetMs) {
+        if (!state.sessionManaged) return@LaunchedEffect
+        sessionDisplayPositionMs = state.sessionOffsetMs
+        while (true) {
+            sessionDisplayPositionMs = viewModel.absolutePositionMs(player.currentPosition)
+            delay(500L)
+        }
+    }
+
     LaunchedEffect(showNextEpisodePanel, state.autoPlayNext, state.nextEpisode?.id) {
         if (!showNextEpisodePanel || !state.autoPlayNext || state.nextEpisode == null) return@LaunchedEffect
         for (remaining in NEXT_EPISODE_COUNTDOWN_SECONDS downTo 1) {
@@ -332,35 +807,43 @@ fun PlayerScreen(
         }
         val next = state.nextEpisode ?: return@LaunchedEffect
         showNextEpisodePanel = false
-        onPlayNext(next.id)
+        leavePlayback("next_media", action = { onPlayNext(next.id) })
     }
 
-    DisposableEffect(
-        player,
-        mediaId,
-        lifecycleOwner,
-        state.nextEpisode?.id,
-        state.autoPlayNext,
-        state.mediaDurationMs,
-    ) {
+    DisposableEffect(player, mediaId, lifecycleOwner) {
         val playerListener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying && player.playbackState == Player.STATE_READY) {
                     reportCurrentProgress(force = true)
                 }
+                viewModel.heartbeat(
+                    relativePositionMs = player.currentPosition.coerceAtLeast(0L),
+                    relativeBufferedEndMs = player.bufferedPosition.coerceAtLeast(0L),
+                    paused = !isPlaying,
+                )
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-                        ?: state.mediaDurationMs
+                    val current = viewModel.state.value
+                    val relativeEnd = if (current.sessionManaged) {
+                        relativePlaybackPositionMs(
+                            sessionManaged = true,
+                            generationOffsetMs = current.sessionOffsetMs,
+                            absolutePositionMs = current.mediaDurationMs,
+                        )
+                    } else {
+                        player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+                            ?: current.mediaDurationMs
+                    }
                     viewModel.reportProgress(
                         mediaId = mediaId,
-                        positionMs = duration,
-                        durationMs = duration,
+                        positionMs = relativeEnd,
+                        durationMs = current.mediaDurationMs,
                         force = true,
                     )
-                    if (state.nextEpisode != null) {
+                    viewModel.closePlaybackSession("playback_ended")
+                    if (current.nextEpisode != null) {
                         nextEpisodeCountdown = NEXT_EPISODE_COUNTDOWN_SECONDS
                         showNextEpisodePanel = true
                     }
@@ -373,7 +856,7 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                viewModel.onPlayerError(error)
+                viewModel.onPlayerError(error, player.currentPosition)
             }
 
             override fun onPositionDiscontinuity(
@@ -381,18 +864,34 @@ fun PlayerScreen(
                 newPosition: Player.PositionInfo,
                 reason: Int,
             ) {
-                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                val current = viewModel.state.value
+                if (reason == Player.DISCONTINUITY_REASON_SEEK && current.sessionManaged) {
+                    val target = clampPlaybackTargetMs(
+                        current.sessionOffsetMs + newPosition.positionMs.coerceAtLeast(0L),
+                        current.mediaDurationMs,
+                    )
+                    player.pause()
+                    viewModel.restartPlaybackSession(target, "exo_player_seek")
+                } else if (reason == Player.DISCONTINUITY_REASON_SEEK) {
                     reportCurrentProgress(force = true)
                 }
             }
         }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) reportCurrentProgress(force = true)
+            if (event == Lifecycle.Event.ON_STOP) {
+                reportCurrentProgress(force = true)
+                viewModel.heartbeat(
+                    relativePositionMs = player.currentPosition.coerceAtLeast(0L),
+                    relativeBufferedEndMs = player.bufferedPosition.coerceAtLeast(0L),
+                    paused = true,
+                )
+            }
         }
         player.addListener(playerListener)
         lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
             reportCurrentProgress(force = true)
+            viewModel.closePlaybackSession("player_disposed")
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
             player.removeListener(playerListener)
             player.release()
@@ -413,7 +912,7 @@ fun PlayerScreen(
                 title = "无法播放",
                 message = state.error!!,
                 actionLabel = "返回",
-                onAction = onBack,
+                onAction = { leavePlayback("playback_error_back", onBack) },
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(20.dp),
@@ -439,10 +938,7 @@ fun PlayerScreen(
         }
 
         IconButton(
-            onClick = {
-                reportCurrentProgress(force = true)
-                onBack()
-            },
+            onClick = { leavePlayback("navigate_back", onBack) },
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(8.dp)
@@ -466,7 +962,53 @@ fun PlayerScreen(
             Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)
         }
 
-        if (state.progressQueued && !showNextEpisodePanel) {
+        if (state.sessionManaged && state.mediaDurationMs > 0L && state.error == null) {
+            val preview = sessionSeekPreviewMs ?: sessionDisplayPositionMs
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(horizontal = 18.dp, vertical = 62.dp)
+                    .fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = Color.Black.copy(alpha = 0.68f),
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(formatPlaybackTime(preview), color = Color.White)
+                        Text(formatPlaybackTime(state.mediaDurationMs), color = Color.White.copy(alpha = 0.72f))
+                    }
+                    Slider(
+                        value = (preview.toDouble() / state.mediaDurationMs.toDouble())
+                            .coerceIn(0.0, 1.0)
+                            .toFloat(),
+                        onValueChange = { fraction ->
+                            sessionSeekPreviewMs = (state.mediaDurationMs * fraction)
+                                .toLong()
+                                .coerceIn(0L, state.mediaDurationMs)
+                        },
+                        onValueChangeFinished = {
+                            val target = sessionSeekPreviewMs ?: sessionDisplayPositionMs
+                            sessionSeekPreviewMs = null
+                            player.pause()
+                            viewModel.restartPlaybackSession(target, "android_timeline_seek")
+                        },
+                        enabled = !state.sessionRestarting,
+                    )
+                }
+            }
+        }
+
+        val statusNotice = state.fallbackNotice
+            ?: when {
+                state.sessionRestarting -> "正在生成新的播放时间线…"
+                state.progressQueued -> "当前离线，观看进度将在恢复连接后自动同步"
+                else -> null
+            }
+        if (statusNotice != null && !showNextEpisodePanel) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -476,7 +1018,7 @@ fun PlayerScreen(
                 color = Color.Black.copy(alpha = 0.76f),
             ) {
                 Text(
-                    text = "当前离线，观看进度将在恢复连接后自动同步",
+                    text = statusNotice,
                     color = Color.White,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -526,7 +1068,7 @@ fun PlayerScreen(
                         Button(
                             onClick = {
                                 showNextEpisodePanel = false
-                                onPlayNext(next.id)
+                                leavePlayback("next_media", action = { onPlayNext(next.id) })
                             },
                         ) {
                             Text("立即播放")
@@ -540,6 +1082,7 @@ fun PlayerScreen(
     if (showSettings) {
         PlayerSettingsSheet(
             onDismiss = { showSettings = false },
+            playbackDiagnostics = state.playbackDiagnostics,
             playbackSpeed = state.playbackSpeed,
             onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
             resizeMode = state.resizeMode,
@@ -578,4 +1121,16 @@ internal fun resolveServerResource(baseUrl: String?, path: String?): String? {
     if (path.isNullOrBlank()) return null
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     return baseUrl?.trimEnd('/') + "/" + path.trimStart('/')
+}
+
+internal fun formatPlaybackTime(positionMs: Long): String {
+    val totalSeconds = (positionMs.coerceAtLeast(0L) / 1_000L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
 }

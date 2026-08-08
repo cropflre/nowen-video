@@ -1,36 +1,31 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { storageApi } from '@/api'
 import type { AlistConfig, AlistStatus, S3Config, S3Status } from '@/api/storage'
 import {
   Cloud,
-  Loader2,
-  Save,
-  Wifi,
-  Server,
   Database,
-  RefreshCw,
   Link2,
+  Loader2,
+  RefreshCw,
+  Save,
+  Server,
+  Wifi,
 } from 'lucide-react'
 import {
-  SectionShell,
-  FieldGroup,
-  Field,
-  Input,
-  Toggle,
   ActionBar,
   ActionButton,
-  Toast,
-  StatusBadge,
-  VersionBadge,
-  EyeToggle,
   EnableRow,
-  ProviderState,
+  EyeToggle,
+  Field,
+  FieldGroup,
+  Input,
+  SectionShell,
+  StatusBadge,
+  Toast,
+  Toggle,
+  VersionBadge,
+  type ProviderState,
 } from './storage/StorageUIKit'
-
-// ==================== V2.3: 远程存储扩展管理 ====================
-// Alist / S3 两个 section，样式与 WebDAV 完全对齐
-
-// ---------- 默认值 ----------
 
 const DEFAULT_ALIST: AlistConfig = {
   enabled: false,
@@ -63,13 +58,18 @@ const DEFAULT_S3: S3Config = {
 }
 
 function toProviderState(status: { enabled?: boolean; connected?: boolean } | null | undefined): ProviderState {
-  if (!status) return 'disabled'
-  if (!status.enabled) return 'disabled'
+  if (!status?.enabled) return 'disabled'
   if (status.connected) return 'connected'
   return 'error'
 }
 
-// ==================== Alist Section ====================
+function ProtocolCode({ children }: { children: string }) {
+  return (
+    <code className="mx-0.5 rounded-[var(--nv-radius-sm)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nv-text-secondary)]">
+      {children}
+    </code>
+  )
+}
 
 export function AlistSection() {
   const [config, setConfig] = useState<AlistConfig>(DEFAULT_ALIST)
@@ -92,15 +92,15 @@ export function AlistSection() {
       ])
       setConfig({ ...DEFAULT_ALIST, ...cfgRes.data.data })
       setStatus(statusRes.data.data.alist || null)
-    } catch (e) {
-      console.error('加载 Alist 配置失败', e)
+    } catch (error) {
+      console.error('加载 Alist 配置失败', error)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   const handleSave = async () => {
@@ -115,8 +115,8 @@ export function AlistSection() {
       setTokenDirty(false)
       setToast({ ok: true, msg: 'Alist 配置已保存' })
       await load()
-    } catch (e: any) {
-      setToast({ ok: false, msg: '保存失败: ' + (e.response?.data?.error || e.message) })
+    } catch (error: any) {
+      setToast({ ok: false, msg: '保存失败: ' + (error.response?.data?.error || error.message) })
     } finally {
       setSaving(false)
     }
@@ -134,8 +134,8 @@ export function AlistSection() {
         base_path: config.base_path,
       })
       setToast({ ok: true, msg: 'Alist 连接测试成功' })
-    } catch (e: any) {
-      setToast({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
+    } catch (error: any) {
+      setToast({ ok: false, msg: error.response?.data?.error || '连接测试失败' })
     } finally {
       setTesting(false)
     }
@@ -144,7 +144,7 @@ export function AlistSection() {
   if (loading) {
     return (
       <section className="flex items-center justify-center py-8">
-        <Loader2 className="animate-spin text-primary-400" size={20} />
+        <Loader2 className="animate-spin text-[var(--nv-action-primary)]" size={20} />
       </section>
     )
   }
@@ -154,41 +154,30 @@ export function AlistSection() {
       icon={<Cloud size={18} />}
       title="Alist 聚合网盘"
       subtitle="统一对接阿里云盘 / 115 / 夸克 / 百度网盘 / OneDrive 等"
-      badge={<VersionBadge accent="purple">V2.3</VersionBadge>}
+      badge={<VersionBadge>V2.3</VersionBadge>}
       statusSlot={<StatusBadge state={toProviderState(status)} />}
-      accent="purple"
       description={
         <>
-          媒体库路径使用{' '}
-          <code
-            className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-purple-600 dark:text-purple-300"
-            style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)' }}
-          >
-            alist://
-          </code>
-          {' '}前缀。推荐使用 <strong>长期 Token</strong> 模式，避免明文保存密码。
+          媒体库路径使用 <ProtocolCode>alist://</ProtocolCode> 前缀。推荐使用{' '}
+          <strong>长期 Token</strong> 模式，避免明文保存密码。
         </>
       }
     >
-      {/* 启用开关行 */}
       <EnableRow
         icon={<Link2 size={16} />}
         title="启用 Alist 存储"
         description="启用后可将 Alist 挂载的网盘作为媒体库数据源"
         checked={config.enabled}
-        onChange={(v) => setConfig({ ...config, enabled: v })}
-        accent="purple"
-        iconColorClass="text-purple-600 dark:text-purple-300"
+        onChange={(value) => setConfig({ ...config, enabled: value })}
       />
 
-      {/* 连接配置 */}
       <FieldGroup title="连接" description="Alist 服务地址与基础路径">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="服务器地址" required fullWidth>
             <Input
               type="url"
               value={config.server_url}
-              onChange={(e) => setConfig({ ...config, server_url: e.target.value })}
+              onChange={(event) => setConfig({ ...config, server_url: event.target.value })}
               placeholder="https://alist.example.com"
               disabled={!config.enabled}
             />
@@ -197,7 +186,7 @@ export function AlistSection() {
             <Input
               type="text"
               value={config.base_path}
-              onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
+              onChange={(event) => setConfig({ ...config, base_path: event.target.value })}
               placeholder="/aliyun/movies"
               disabled={!config.enabled}
             />
@@ -207,21 +196,20 @@ export function AlistSection() {
               type="number"
               min={1}
               value={config.timeout}
-              onChange={(e) => setConfig({ ...config, timeout: parseInt(e.target.value) || 30 })}
+              onChange={(event) => setConfig({ ...config, timeout: parseInt(event.target.value, 10) || 30 })}
               disabled={!config.enabled}
             />
           </Field>
         </div>
       </FieldGroup>
 
-      {/* 鉴权 */}
       <FieldGroup title="鉴权" description="推荐使用 Token，二者都填时 Token 优先">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="用户名">
             <Input
               type="text"
               value={config.username}
-              onChange={(e) => setConfig({ ...config, username: e.target.value })}
+              onChange={(event) => setConfig({ ...config, username: event.target.value })}
               disabled={!config.enabled}
               autoComplete="username"
             />
@@ -230,43 +218,46 @@ export function AlistSection() {
             <Input
               type={showPwd ? 'text' : 'password'}
               value={config.password}
-              onChange={(e) => {
-                setConfig({ ...config, password: e.target.value })
+              onChange={(event) => {
+                setConfig({ ...config, password: event.target.value })
                 setPwdDirty(true)
               }}
               disabled={!config.enabled}
               placeholder={pwdDirty ? '' : '留空保持原密码'}
               autoComplete="current-password"
-              suffix={<EyeToggle visible={showPwd} onToggle={() => setShowPwd((v) => !v)} />}
+              suffix={<EyeToggle visible={showPwd} onToggle={() => setShowPwd((value) => !value)} />}
             />
           </Field>
           <Field label="长期 Token（推荐）" fullWidth hint="优先于用户名密码使用，避免每次登录换取 JWT">
             <Input
               type={showToken ? 'text' : 'password'}
               value={config.token}
-              onChange={(e) => {
-                setConfig({ ...config, token: e.target.value })
+              onChange={(event) => {
+                setConfig({ ...config, token: event.target.value })
                 setTokenDirty(true)
               }}
               disabled={!config.enabled}
               placeholder={tokenDirty ? '' : '留空保持原 Token'}
               className="font-mono"
-              suffix={<EyeToggle visible={showToken} onToggle={() => setShowToken((v) => !v)} />}
+              suffix={<EyeToggle visible={showToken} onToggle={() => setShowToken((value) => !value)} />}
             />
           </Field>
         </div>
       </FieldGroup>
 
-      {/* 性能（折叠） */}
-      <FieldGroup title="性能调优" collapsible defaultOpen={false} description="影响流式播放的缓存和分块读取策略">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <FieldGroup
+        title="性能调优"
+        collapsible
+        defaultOpen={false}
+        description="影响流式播放的缓存和分块读取策略"
+      >
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Field label="启用元数据缓存">
-            <div className="flex items-center h-9">
+            <div className="flex h-9 items-center">
               <Toggle
                 checked={config.enable_cache}
-                onChange={(v) => setConfig({ ...config, enable_cache: v })}
+                onChange={(value) => setConfig({ ...config, enable_cache: value })}
                 disabled={!config.enabled}
-                accent="purple"
               />
             </div>
           </Field>
@@ -275,7 +266,7 @@ export function AlistSection() {
               type="number"
               min={0}
               value={config.cache_ttl_hours}
-              onChange={(e) => setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 12 })}
+              onChange={(event) => setConfig({ ...config, cache_ttl_hours: parseInt(event.target.value, 10) || 12 })}
               disabled={!config.enabled || !config.enable_cache}
             />
           </Field>
@@ -284,7 +275,7 @@ export function AlistSection() {
               type="number"
               min={1}
               value={config.read_block_size_mb}
-              onChange={(e) => setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })}
+              onChange={(event) => setConfig({ ...config, read_block_size_mb: parseInt(event.target.value, 10) || 8 })}
               disabled={!config.enabled}
             />
           </Field>
@@ -293,7 +284,7 @@ export function AlistSection() {
               type="number"
               min={1}
               value={config.read_block_count}
-              onChange={(e) => setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })}
+              onChange={(event) => setConfig({ ...config, read_block_count: parseInt(event.target.value, 10) || 4 })}
               disabled={!config.enabled}
             />
           </Field>
@@ -308,7 +299,6 @@ export function AlistSection() {
           <>
             <ActionButton
               variant="secondary"
-              accent="purple"
               onClick={handleTest}
               disabled={!config.enabled || !config.server_url || testing || saving}
               loading={testing}
@@ -322,7 +312,6 @@ export function AlistSection() {
         primaryActions={
           <ActionButton
             variant="primary"
-            accent="purple"
             onClick={handleSave}
             disabled={saving || testing}
             loading={saving}
@@ -335,8 +324,6 @@ export function AlistSection() {
     </SectionShell>
   )
 }
-
-// ==================== S3 Section ====================
 
 export function S3Section() {
   const [config, setConfig] = useState<S3Config>(DEFAULT_S3)
@@ -357,15 +344,15 @@ export function S3Section() {
       ])
       setConfig({ ...DEFAULT_S3, ...cfgRes.data.data })
       setStatus(statusRes.data.data.s3 || null)
-    } catch (e) {
-      console.error('加载 S3 配置失败', e)
+    } catch (error) {
+      console.error('加载 S3 配置失败', error)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   const handleSave = async () => {
@@ -378,8 +365,8 @@ export function S3Section() {
       setSecretDirty(false)
       setToast({ ok: true, msg: 'S3 配置已保存' })
       await load()
-    } catch (e: any) {
-      setToast({ ok: false, msg: '保存失败: ' + (e.response?.data?.error || e.message) })
+    } catch (error: any) {
+      setToast({ ok: false, msg: '保存失败: ' + (error.response?.data?.error || error.message) })
     } finally {
       setSaving(false)
     }
@@ -399,8 +386,8 @@ export function S3Section() {
         path_style: config.path_style,
       })
       setToast({ ok: true, msg: 'S3 连接测试成功' })
-    } catch (e: any) {
-      setToast({ ok: false, msg: e.response?.data?.error || '连接测试失败' })
+    } catch (error: any) {
+      setToast({ ok: false, msg: error.response?.data?.error || '连接测试失败' })
     } finally {
       setTesting(false)
     }
@@ -409,7 +396,7 @@ export function S3Section() {
   if (loading) {
     return (
       <section className="flex items-center justify-center py-8">
-        <Loader2 className="animate-spin text-primary-400" size={20} />
+        <Loader2 className="animate-spin text-[var(--nv-action-primary)]" size={20} />
       </section>
     )
   }
@@ -419,36 +406,25 @@ export function S3Section() {
       icon={<Database size={18} />}
       title="S3 兼容对象存储"
       subtitle="AWS S3 / MinIO / R2 / 阿里云 OSS / 腾讯云 COS / B2"
-      badge={<VersionBadge accent="amber">V2.3</VersionBadge>}
+      badge={<VersionBadge>V2.3</VersionBadge>}
       statusSlot={<StatusBadge state={toProviderState(status)} />}
-      accent="amber"
       description={
         <>
-          媒体库路径使用{' '}
-          <code
-            className="mx-0.5 rounded px-1.5 py-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-300"
-            style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
-          >
-            s3://
-          </code>
-          {' '}前缀；MinIO 等自建服务请勾选 <strong>Path-Style</strong>；播放通过预签名 URL（有效期 2 小时）。
+          媒体库路径使用 <ProtocolCode>s3://</ProtocolCode> 前缀；MinIO 等自建服务请勾选{' '}
+          <strong>Path-Style</strong>；播放通过预签名 URL（有效期 2 小时）。
         </>
       }
     >
-      {/* 启用 */}
       <EnableRow
         icon={<Database size={16} />}
         title="启用 S3 存储"
         description="启用后可将对象存储桶作为媒体库数据源"
         checked={config.enabled}
-        onChange={(v) => setConfig({ ...config, enabled: v })}
-        accent="amber"
-        iconColorClass="text-amber-600 dark:text-amber-300"
+        onChange={(value) => setConfig({ ...config, enabled: value })}
       />
 
-      {/* 连接 */}
       <FieldGroup title="连接" description="Endpoint、Region 与 Bucket">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field
             label="Endpoint"
             required
@@ -458,7 +434,7 @@ export function S3Section() {
             <Input
               type="url"
               value={config.endpoint}
-              onChange={(e) => setConfig({ ...config, endpoint: e.target.value })}
+              onChange={(event) => setConfig({ ...config, endpoint: event.target.value })}
               placeholder="https://s3.amazonaws.com"
               disabled={!config.enabled}
             />
@@ -467,7 +443,7 @@ export function S3Section() {
             <Input
               type="text"
               value={config.region}
-              onChange={(e) => setConfig({ ...config, region: e.target.value })}
+              onChange={(event) => setConfig({ ...config, region: event.target.value })}
               placeholder="us-east-1"
               disabled={!config.enabled}
             />
@@ -476,7 +452,7 @@ export function S3Section() {
             <Input
               type="text"
               value={config.bucket}
-              onChange={(e) => setConfig({ ...config, bucket: e.target.value })}
+              onChange={(event) => setConfig({ ...config, bucket: event.target.value })}
               disabled={!config.enabled}
             />
           </Field>
@@ -484,20 +460,19 @@ export function S3Section() {
             <Input
               type="text"
               value={config.base_path}
-              onChange={(e) => setConfig({ ...config, base_path: e.target.value })}
+              onChange={(event) => setConfig({ ...config, base_path: event.target.value })}
               placeholder="media/"
               disabled={!config.enabled}
             />
           </Field>
           <Field label="Path-Style 寻址">
-            <div className="flex items-center h-9 gap-2">
+            <div className="flex h-9 items-center gap-2">
               <Toggle
                 checked={config.path_style}
-                onChange={(v) => setConfig({ ...config, path_style: v })}
+                onChange={(value) => setConfig({ ...config, path_style: value })}
                 disabled={!config.enabled}
-                accent="amber"
               />
-              <span className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
+              <span className="inline-flex items-center gap-1 text-xs text-[var(--nv-text-tertiary)]">
                 <Server size={12} /> MinIO 等自建必选
               </span>
             </div>
@@ -505,14 +480,13 @@ export function S3Section() {
         </div>
       </FieldGroup>
 
-      {/* 鉴权 */}
       <FieldGroup title="鉴权" description="Access Key + Secret Key">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="Access Key" required>
             <Input
               type="text"
               value={config.access_key}
-              onChange={(e) => setConfig({ ...config, access_key: e.target.value })}
+              onChange={(event) => setConfig({ ...config, access_key: event.target.value })}
               disabled={!config.enabled}
               className="font-mono"
               autoComplete="off"
@@ -522,35 +496,33 @@ export function S3Section() {
             <Input
               type={showSecret ? 'text' : 'password'}
               value={config.secret_key}
-              onChange={(e) => {
-                setConfig({ ...config, secret_key: e.target.value })
+              onChange={(event) => {
+                setConfig({ ...config, secret_key: event.target.value })
                 setSecretDirty(true)
               }}
               disabled={!config.enabled}
               placeholder={secretDirty ? '' : '留空保持原 Secret'}
               className="font-mono"
               autoComplete="off"
-              suffix={<EyeToggle visible={showSecret} onToggle={() => setShowSecret((v) => !v)} />}
+              suffix={<EyeToggle visible={showSecret} onToggle={() => setShowSecret((value) => !value)} />}
             />
           </Field>
         </div>
       </FieldGroup>
 
-      {/* 性能（折叠） */}
       <FieldGroup
         title="性能调优"
         collapsible
         defaultOpen={false}
         description="影响流式播放的缓存和分块读取策略"
       >
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Field label="启用元数据缓存">
-            <div className="flex items-center h-9">
+            <div className="flex h-9 items-center">
               <Toggle
                 checked={config.enable_cache}
-                onChange={(v) => setConfig({ ...config, enable_cache: v })}
+                onChange={(value) => setConfig({ ...config, enable_cache: value })}
                 disabled={!config.enabled}
-                accent="amber"
               />
             </div>
           </Field>
@@ -559,7 +531,7 @@ export function S3Section() {
               type="number"
               min={0}
               value={config.cache_ttl_hours}
-              onChange={(e) => setConfig({ ...config, cache_ttl_hours: parseInt(e.target.value) || 24 })}
+              onChange={(event) => setConfig({ ...config, cache_ttl_hours: parseInt(event.target.value, 10) || 24 })}
               disabled={!config.enabled || !config.enable_cache}
             />
           </Field>
@@ -568,7 +540,7 @@ export function S3Section() {
               type="number"
               min={1}
               value={config.read_block_size_mb}
-              onChange={(e) => setConfig({ ...config, read_block_size_mb: parseInt(e.target.value) || 8 })}
+              onChange={(event) => setConfig({ ...config, read_block_size_mb: parseInt(event.target.value, 10) || 8 })}
               disabled={!config.enabled}
             />
           </Field>
@@ -577,7 +549,7 @@ export function S3Section() {
               type="number"
               min={1}
               value={config.read_block_count}
-              onChange={(e) => setConfig({ ...config, read_block_count: parseInt(e.target.value) || 4 })}
+              onChange={(event) => setConfig({ ...config, read_block_count: parseInt(event.target.value, 10) || 4 })}
               disabled={!config.enabled}
             />
           </Field>
@@ -592,7 +564,6 @@ export function S3Section() {
           <>
             <ActionButton
               variant="secondary"
-              accent="amber"
               onClick={handleTest}
               disabled={!config.enabled || !config.endpoint || !config.bucket || testing || saving}
               loading={testing}
@@ -606,7 +577,6 @@ export function S3Section() {
         primaryActions={
           <ActionButton
             variant="primary"
-            accent="amber"
             onClick={handleSave}
             disabled={saving || testing}
             loading={saving}

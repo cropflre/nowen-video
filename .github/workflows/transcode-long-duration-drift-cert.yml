@@ -1,0 +1,144 @@
+name: Transcode Long Duration Drift Certification
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/transcode-long-duration-drift-cert/**'
+      - 'cmd/transcode-real-media-corpus-generate/**'
+      - 'internal/transcode/longdrift/contract.go'
+      - 'internal/transcode/longdrift/contract_test.go'
+      - 'internal/transcode/longdrift/policy.go'
+      - 'internal/transcode/longdrift/policy_test.go'
+      - 'internal/transcode/corpusgenerator/**'
+      - 'internal/transcode/realmediacorpus/**'
+      - 'internal/transcode/realmediacandidate/**'
+      - 'internal/transcode/timebasecandidate/**'
+      - 'internal/transcode/reordercandidate/**'
+      - 'internal/transcode/certification/long_duration_drift_*.go'
+      - 'internal/transcode/certification/real_media_candidate_*.go'
+      - '.github/scripts/verify_long_duration_drift.py'
+      - '.github/scripts/verify_real_media_corpus_manifest.py'
+      - '.github/workflows/transcode-long-duration-drift-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-long-duration-drift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect v1 media-impacting commit
+    runs-on: ubuntu-24.04
+    outputs:
+      run_media: ${{ steps.detect.outputs.run_media }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - id: detect
+        name: Inspect latest branch commit
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.action }}" != "synchronize" ]]; then
+            echo "run_media=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          run_media=false
+          while IFS= read -r file; do
+            case "$file" in
+              cmd/transcode-long-duration-drift-cert/*|cmd/transcode-real-media-corpus-generate/*|internal/transcode/longdrift/contract.go|internal/transcode/longdrift/contract_test.go|internal/transcode/longdrift/policy.go|internal/transcode/longdrift/policy_test.go|internal/transcode/corpusgenerator/*|internal/transcode/realmediacorpus/*|internal/transcode/realmediacandidate/*|internal/transcode/timebasecandidate/*|internal/transcode/reordercandidate/*|internal/transcode/certification/long_duration_drift_*.go|internal/transcode/certification/real_media_candidate_*.go|.github/scripts/verify_long_duration_drift.py|.github/scripts/verify_real_media_corpus_manifest.py)
+                run_media=true
+                break
+                ;;
+            esac
+          done < <(git diff-tree --no-commit-id --name-only -r HEAD)
+          echo "run_media=$run_media" >> "$GITHUB_OUTPUT"
+
+  generate-corpus:
+    name: Build long-duration adapters and immutable corpus
+    needs: changes
+    if: needs.changes.outputs.run_media == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Verify long-duration contracts and commands
+        run: |
+          go test ./internal/transcode/longdrift
+          go test ./internal/transcode/realmediacorpus
+          go test ./internal/transcode/corpusgenerator
+          go test ./internal/transcode/certification
+          go build -trimpath -o /tmp/nowen-transcode-real-media-corpus-generate ./cmd/transcode-real-media-corpus-generate
+          go build -trimpath -o /tmp/nowen-transcode-long-duration-drift-cert ./cmd/transcode-long-duration-drift-cert
+          python3 -m py_compile .github/scripts/verify_long_duration_drift.py
+      - name: Generate deterministic file-backed corpus
+        run: |
+          rm -rf /tmp/nowen-transcode-real-media-corpus-v1
+          /tmp/nowen-transcode-real-media-corpus-generate \
+            -output-dir /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Verify immutable corpus
+        run: |
+          python3 .github/scripts/verify_real_media_corpus_manifest.py \
+            /tmp/nowen-transcode-real-media-corpus-v1/real-media-corpus-manifest-v1.json
+          du -sh /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Upload immutable corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-long-duration-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+          if-no-files-found: error
+          retention-days: 7
+
+  certify-drift:
+    name: Certify 30-minute AVTB and 90 kHz drift
+    needs: generate-corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install FFmpeg tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Download immutable corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: transcode-long-duration-corpus-${{ github.sha }}
+          path: /tmp/nowen-transcode-real-media-corpus-v1
+      - name: Build long-duration command
+        run: go build -trimpath -o /tmp/nowen-transcode-long-duration-drift-cert ./cmd/transcode-long-duration-drift-cert
+      - name: Run 30-minute drift certification
+        run: |
+          /tmp/nowen-transcode-long-duration-drift-cert \
+            -corpus-root /tmp/nowen-transcode-real-media-corpus-v1 \
+            -output /tmp/long-duration-drift-v1.json \
+            -timeout 110m
+      - name: Independently verify drift evidence
+        run: |
+          python3 .github/scripts/verify_long_duration_drift.py \
+            /tmp/long-duration-drift-v1.json
+          du -h /tmp/long-duration-drift-v1.json
+      - name: Upload long-duration report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcode-long-duration-drift-${{ github.sha }}
+          path: /tmp/long-duration-drift-v1.json
+          if-no-files-found: error
+          retention-days: 7

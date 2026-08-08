@@ -1,57 +1,72 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { mediaApi, userApi, streamApi, playlistApi, recommendApi, adminApi } from '@/api'
+import { useNavigate, useParams } from 'react-router-dom'
+import { adminApi, mediaApi, playlistApi, recommendApi, streamApi, userApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
-import type { Media, MediaPlayInfo, Playlist, RecommendedMedia, MediaPerson, WatchHistory, TechSpecs, FileDetail, LibraryInfo, PlaybackStatsInfo } from '@/types'
-import { HeroSection, MediaInfoSection, MediaTechSpecs, RecommendationCarousel, TrailerModal, CastGrid, CollectionCarousel } from '@/components/media'
+import type {
+  FileDetail,
+  LibraryInfo,
+  Media,
+  MediaPerson,
+  MediaPlayInfo,
+  PlaybackStatsInfo,
+  Playlist,
+  RecommendedMedia,
+  TechSpecs,
+  WatchHistory,
+} from '@/types'
+import {
+  CastGrid,
+  CollectionCarousel,
+  HeroSection,
+  MediaInfoSection,
+  MediaTechSpecs,
+  RecommendationCarousel,
+  TrailerModal,
+} from '@/components/media'
+import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
+import ConfirmDialog from '@/components/design-system/ConfirmDialog'
+import { Button, Surface } from '@/components/design-system'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
-import { motion, AnimatePresence } from 'framer-motion'
-import { easeSmooth, durations } from '@/lib/motion'
-import { ArrowLeft } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { durations, easeSmooth } from '@/lib/motion'
+import { ArrowLeft, Captions } from 'lucide-react'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
+  const user = useAuthStore((state) => state.user)
   const toast = useToast()
   const { t } = useTranslation()
 
-  // 核心数据
   const [media, setMedia] = useState<Media | null>(null)
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 用户相关
   const [isFavorited, setIsFavorited] = useState(false)
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [watchProgress, setWatchProgress] = useState<WatchHistory | null>(null)
 
-  // 附加数据
   const [recommendations, setRecommendations] = useState<RecommendedMedia[]>([])
   const [persons, setPersons] = useState<MediaPerson[]>([])
 
-  // 增强详情数据
   const [techSpecs, setTechSpecs] = useState<TechSpecs | null>(null)
   const [fileInfo, setFileInfo] = useState<FileDetail | null>(null)
   const [libraryInfo, setLibraryInfo] = useState<LibraryInfo | null>(null)
   const [playbackStats, setPlaybackStats] = useState<PlaybackStatsInfo | null>(null)
   const [enhancedLoading, setEnhancedLoading] = useState(false)
 
-  // UI 状态
   const [scraping, setScraping] = useState(false)
   const [showTrailer, setShowTrailer] = useState(false)
-  // 海报/背景图版本号：手动匹配/刷新元数据/编辑保存成功后递增，用于绕过浏览器图片缓存
   const [posterVersion, setPosterVersion] = useState<number>(() => Date.now())
 
-  // 管理功能状态
   const [showMatchModal, setShowMatchModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -60,16 +75,33 @@ export default function MediaDetailPage() {
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
-  const [matchSource, setMatchSource] = useState<'tmdb' | 'bangumi' | 'douban' | 'thetvdb'>('tmdb')
+  const [matchSource, setMatchSource] = useState<MetadataMatchSource>('tmdb')
   const [matchSelectedId, setMatchSelectedId] = useState<number | string | null>(null)
   const [matchApplying, setMatchApplying] = useState(false)
   const [editForm, setEditForm] = useState<{
-    title: string; orig_title: string; year: number; overview: string;
-    rating: number; genres: string; country: string; language: string;
-    tagline: string; studio: string
-  }>({ title: '', orig_title: '', year: 0, overview: '', rating: 0, genres: '', country: '', language: '', tagline: '', studio: '' })
+    title: string
+    orig_title: string
+    year: number
+    overview: string
+    rating: number
+    genres: string
+    country: string
+    language: string
+    tagline: string
+    studio: string
+  }>({
+    title: '',
+    orig_title: '',
+    year: 0,
+    overview: '',
+    rating: 0,
+    genres: '',
+    country: '',
+    language: '',
+    tagline: '',
+    studio: '',
+  })
 
-  // ==================== 数据加载 ====================
   useEffect(() => {
     if (!id) return
     const abortController = new AbortController()
@@ -82,33 +114,31 @@ export default function MediaDetailPage() {
       streamApi.getPlayInfo(id),
       playlistApi.list(),
     ])
-      .then(([mediaRes, playInfoRes, playlistRes]) => {
+      .then(([mediaResponse, playInfoResponse, playlistResponse]) => {
         if (abortController.signal.aborted) return
-        const mediaData = mediaRes.data.data
+        const mediaData = mediaResponse.data.data
         setMedia(mediaData)
-        setPlayInfo(playInfoRes.data.data)
-        setPlaylists(playlistRes.data.data || [])
+        setPlayInfo(playInfoResponse.data.data)
+        setPlaylists(playlistResponse.data.data || [])
 
-        // 非首屏请求：收藏状态、相关推荐、演职人员、观看进度
         userApi.checkFavorite(mediaData.id)
-          .then((res) => { if (!abortController.signal.aborted) setIsFavorited(res.data.data) })
+          .then((response) => { if (!abortController.signal.aborted) setIsFavorited(response.data.data) })
           .catch(() => {})
         recommendApi.getSimilarMedia(mediaData.id, 12)
-          .then((res) => { if (!abortController.signal.aborted) setRecommendations(res.data.data || []) })
+          .then((response) => { if (!abortController.signal.aborted) setRecommendations(response.data.data || []) })
           .catch(() => {})
         mediaApi.getPersons(mediaData.id)
-          .then((res) => { if (!abortController.signal.aborted) setPersons(res.data.data || []) })
+          .then((response) => { if (!abortController.signal.aborted) setPersons(response.data.data || []) })
           .catch(() => {})
         userApi.getProgress(mediaData.id)
-          .then((res) => { if (!abortController.signal.aborted) setWatchProgress(res.data.data) })
+          .then((response) => { if (!abortController.signal.aborted) setWatchProgress(response.data.data) })
           .catch(() => {})
 
-        // 增强详情（分块加载，不阻塞首屏）
         setEnhancedLoading(true)
         mediaApi.detailEnhanced(mediaData.id)
-          .then((res) => {
+          .then((response) => {
             if (abortController.signal.aborted) return
-            const data = res.data.data
+            const data = response.data.data
             setTechSpecs(data.tech_specs)
             setFileInfo(data.file_info)
             setLibraryInfo(data.library)
@@ -127,7 +157,6 @@ export default function MediaDetailPage() {
     return () => abortController.abort()
   }, [id, navigate])
 
-  // ==================== 事件处理 ====================
   const handleFavorite = async () => {
     if (!id) return
     try {
@@ -148,12 +177,12 @@ export default function MediaDetailPage() {
     setScraping(true)
     try {
       await mediaApi.scrape(id)
-      const res = await mediaApi.detail(id)
-      setMedia(res.data.data)
+      const response = await mediaApi.detail(id)
+      setMedia(response.data.data)
       invalidateMediaListCaches()
       toast.success(t('mediaDetail.scrapeSuccess'))
-    } catch (err) {
-      toast.error(formatErrMsg(err, t('mediaDetail.scrapeFailed')))
+    } catch (error) {
+      toast.error(formatErrMsg(error, t('mediaDetail.scrapeFailed')))
     } finally {
       setScraping(false)
     }
@@ -169,7 +198,6 @@ export default function MediaDetailPage() {
     }
   }
 
-  // ==================== 管理功能事件处理 ====================
   const handleManualMatch = () => {
     if (!media) return
     setMatchQuery(media.title)
@@ -179,43 +207,39 @@ export default function MediaDetailPage() {
     setShowMatchModal(true)
   }
 
-  // 重新拉取详情相关数据（元数据替换/刷新后调用）
   const refreshMediaDetail = async (mediaId: string) => {
     try {
-      const [detailRes, enhancedRes, personsRes, recommendRes] = await Promise.all([
+      const [detailResponse, enhancedResponse, personsResponse, recommendResponse] = await Promise.all([
         mediaApi.detail(mediaId),
         mediaApi.detailEnhanced(mediaId).catch(() => null),
         mediaApi.getPersons(mediaId).catch(() => null),
         recommendApi.getSimilarMedia(mediaId, 12).catch(() => null),
       ])
-      setMedia(detailRes.data.data)
-      if (enhancedRes) {
-        const data = enhancedRes.data.data
+      setMedia(detailResponse.data.data)
+      if (enhancedResponse) {
+        const data = enhancedResponse.data.data
         setTechSpecs(data.tech_specs)
         setFileInfo(data.file_info)
         setLibraryInfo(data.library)
         setPlaybackStats(data.playback_stats)
       }
-      if (personsRes) setPersons(personsRes.data.data || [])
-      if (recommendRes) setRecommendations(recommendRes.data.data || [])
+      if (personsResponse) setPersons(personsResponse.data.data || [])
+      if (recommendResponse) setRecommendations(recommendResponse.data.data || [])
     } catch {
-      // 详情刷新失败不致命，已提示成功
+      // 匹配已经成功时，详情二次刷新失败不阻断主流程。
     }
   }
 
   const handleMatchSearch = async () => {
     if (!matchQuery.trim()) return
-    // 优先尝试直输 ID / URL 解析（支持 https://www.themoviedb.org/movie/128881-3 、128881、128881-3 等）
     const direct = parseDirectMatchId(matchQuery, matchSource)
     if (direct) {
-      // URL 中推导出的源与当前 tab 不一致，自动切换
       if (direct.source !== matchSource) {
         setMatchSource(direct.source)
         toast.info(`已识别为 ${{ tmdb: 'TMDb', douban: '豆瓣', bangumi: 'Bangumi', thetvdb: 'TheTVDB' }[direct.source]} 链接，已自动切换数据源`)
       }
-      // 准备一条“虚拟结果”，允许用户直接点击应用
       const idForApply: number | string = direct.source === 'douban' ? direct.id : Number(direct.id)
-      const placeholder: any = {
+      setMatchResults([{
         id: idForApply,
         title: `直输 ID：${direct.id}`,
         original_title: '',
@@ -226,56 +250,46 @@ export default function MediaDetailPage() {
         first_air_date: '',
         vote_average: 0,
         poster_path: '',
-      }
-      setMatchResults([placeholder])
+      }])
       setMatchSelectedId(idForApply)
       toast.success(`已识别 ${{ tmdb: 'TMDb', douban: '豆瓣', bangumi: 'Bangumi', thetvdb: 'TheTVDB' }[direct.source]} ID：${direct.id}，点击“应用”即可绑定`)
       return
     }
+
     setMatchSearching(true)
     try {
       if (matchSource === 'tmdb') {
         const mediaType = media?.media_type === 'episode' ? 'tv' : 'movie'
-        const res = await adminApi.searchMetadata(matchQuery, mediaType, media?.year || undefined)
-        setMatchResults(res.data.data || [])
-        if ((res.data.data || []).length === 0) {
-          toast.info(t('mediaDetail.tmdbNoResult'))
-        }
+        const response = await adminApi.searchMetadata(matchQuery, mediaType, media?.year || undefined)
+        setMatchResults(response.data.data || [])
+        if ((response.data.data || []).length === 0) toast.info(t('mediaDetail.tmdbNoResult'))
       } else if (matchSource === 'douban') {
-        const res = await adminApi.searchDouban(matchQuery, media?.year || undefined)
-        setMatchResults(res.data.data || [])
-        if ((res.data.data || []).length === 0) {
-          toast.info(t('mediaDetail.doubanNoResult'))
-        }
+        const response = await adminApi.searchDouban(matchQuery, media?.year || undefined)
+        setMatchResults(response.data.data || [])
+        if ((response.data.data || []).length === 0) toast.info(t('mediaDetail.doubanNoResult'))
       } else if (matchSource === 'thetvdb') {
-        const res = await adminApi.searchTheTVDB(matchQuery, media?.year || undefined)
-        setMatchResults(res.data.data || [])
-        if ((res.data.data || []).length === 0) {
-          toast.info(t('mediaDetail.thetvdbNoResult'))
-        }
+        const response = await adminApi.searchTheTVDB(matchQuery, media?.year || undefined)
+        setMatchResults(response.data.data || [])
+        if ((response.data.data || []).length === 0) toast.info(t('mediaDetail.thetvdbNoResult'))
       } else {
-        // Bangumi 搜索：2=动画, 6=三次元
         const subjectType = (media?.genres || '').includes('动画') ? 2 : 6
-        const res = await adminApi.searchBangumi(matchQuery, subjectType, media?.year || undefined)
-        setMatchResults(res.data.data || [])
-        if ((res.data.data || []).length === 0) {
-          toast.info(t('mediaDetail.bangumiNoResult'))
-        }
+        const response = await adminApi.searchBangumi(matchQuery, subjectType, media?.year || undefined)
+        setMatchResults(response.data.data || [])
+        if ((response.data.data || []).length === 0) toast.info(t('mediaDetail.bangumiNoResult'))
       }
-    } catch (err) {
+    } catch (error) {
       const errorMap: Record<string, string> = {
         tmdb: t('mediaDetail.tmdbSearchFailed'),
         douban: t('mediaDetail.doubanSearchFailed'),
         thetvdb: t('mediaDetail.thetvdbSearchFailed'),
         bangumi: t('mediaDetail.bangumiSearchFailed'),
       }
-      toast.error(formatErrMsg(err, errorMap[matchSource] || t('mediaDetail.matchFailed')))
+      toast.error(formatErrMsg(error, errorMap[matchSource] || t('mediaDetail.matchFailed')))
     } finally {
       setMatchSearching(false)
     }
   }
 
-  // 选中一个搜索结果（仅高亮，不提交）
   const handleMatchSelect = (resultId: number | string) => {
     if (matchSource === 'thetvdb') {
       toast.info('TheTVDB 主要用于剧集匹配')
@@ -284,33 +298,33 @@ export default function MediaDetailPage() {
     setMatchSelectedId(resultId)
   }
 
-  // 点击"应用"按钮：提交替换元数据并刷新详情
   const handleMatchApply = async () => {
     if (!id || matchSelectedId === null) return
     setMatchApplying(true)
     try {
-      const sourceNameMap: Record<string, string> = { tmdb: 'TMDb', bangumi: 'Bangumi', douban: '豆瓣', thetvdb: 'TheTVDB' }
-      if (matchSource === 'tmdb') {
-        await adminApi.matchMetadata(id, matchSelectedId as number)
-      } else if (matchSource === 'douban') {
-        await adminApi.matchMediaDouban(id, matchSelectedId as string)
-      } else if (matchSource === 'bangumi') {
-        await adminApi.matchMediaBangumi(id, matchSelectedId as number)
-      } else {
+      const sourceNameMap: Record<string, string> = {
+        tmdb: 'TMDb',
+        bangumi: 'Bangumi',
+        douban: '豆瓣',
+        thetvdb: 'TheTVDB',
+      }
+      if (matchSource === 'tmdb') await adminApi.matchMetadata(id, matchSelectedId as number)
+      else if (matchSource === 'douban') await adminApi.matchMediaDouban(id, matchSelectedId as string)
+      else if (matchSource === 'bangumi') await adminApi.matchMediaBangumi(id, matchSelectedId as number)
+      else {
         toast.info('TheTVDB 主要用于剧集匹配')
         return
       }
+
       await refreshMediaDetail(id)
-      // 海报/背景 URL 不变但服务端图片已替换，递增版本号触发浏览器重新加载
       setPosterVersion(Date.now())
       bumpPosterVersion()
-      // 失效所有列表页缓存（首页/浏览/合集/收藏/历史）→ 用户返回时自动拉取最新数据，无需刷新
       invalidateMediaListCaches()
       setShowMatchModal(false)
       setMatchSelectedId(null)
       toast.success(t('mediaDetail.matchSuccess', { source: sourceNameMap[matchSource] }))
-    } catch (err) {
-      toast.error(formatErrMsg(err, t('mediaDetail.matchFailed')))
+    } catch (error) {
+      toast.error(formatErrMsg(error, t('mediaDetail.matchFailed')))
     } finally {
       setMatchApplying(false)
     }
@@ -320,8 +334,8 @@ export default function MediaDetailPage() {
     if (!id) return
     try {
       await adminApi.unmatchMetadata(id)
-      const res = await mediaApi.detail(id)
-      setMedia(res.data.data)
+      const response = await mediaApi.detail(id)
+      setMedia(response.data.data)
       setPosterVersion(Date.now())
       invalidateMediaListCaches()
       setShowUnmatchConfirm(false)
@@ -336,13 +350,13 @@ export default function MediaDetailPage() {
     setScraping(true)
     try {
       await mediaApi.scrape(id)
-      const res = await mediaApi.detail(id)
-      setMedia(res.data.data)
+      const response = await mediaApi.detail(id)
+      setMedia(response.data.data)
       setPosterVersion(Date.now())
       invalidateMediaListCaches()
       toast.success(t('mediaDetail.refreshSuccess'))
-    } catch (err) {
-      toast.error(formatErrMsg(err, t('mediaDetail.refreshFailed')))
+    } catch (error) {
+      toast.error(formatErrMsg(error, t('mediaDetail.refreshFailed')))
     } finally {
       setScraping(false)
     }
@@ -369,8 +383,8 @@ export default function MediaDetailPage() {
     if (!id) return
     try {
       await adminApi.updateMediaMetadata(id, editForm)
-      const res = await mediaApi.detail(id)
-      setMedia(res.data.data)
+      const response = await mediaApi.detail(id)
+      setMedia(response.data.data)
       setPosterVersion(Date.now())
       invalidateMediaListCaches()
       setShowEditModal(false)
@@ -392,7 +406,6 @@ export default function MediaDetailPage() {
     }
   }
 
-  // ==================== 骨架屏 / 内容 — AnimatePresence 平滑过渡 ====================
   if (loading || !media) {
     return (
       <AnimatePresence mode="wait">
@@ -404,9 +417,9 @@ export default function MediaDetailPage() {
           transition={{ duration: durations.fast }}
           className="space-y-6"
         >
-          <div className="skeleton h-[420px] rounded-2xl" />
+          <div className="skeleton h-[420px] rounded-[var(--nv-radius-hero)]" />
           <div className="flex gap-6 pt-4">
-            <div className="skeleton hidden h-72 w-48 rounded-xl sm:block" />
+            <div className="skeleton hidden h-72 w-48 rounded-[var(--nv-radius-card)] sm:block" />
             <div className="flex-1 space-y-4">
               <div className="skeleton h-10 w-2/3 rounded-lg" />
               <div className="skeleton h-5 w-1/3 rounded-lg" />
@@ -423,7 +436,8 @@ export default function MediaDetailPage() {
     )
   }
 
-  // ==================== 渲染 ====================
+  const isAdmin = user?.role === 'admin'
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -431,25 +445,19 @@ export default function MediaDetailPage() {
       transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
       className="relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
     >
-      {/* 常驻返回按钮（左上角） */}
       <button
+        type="button"
         onClick={() => {
-          // 如果有历史栈就后退，否则回首页（避免直接外链打开时按返回卡住）
-          if (window.history.length > 1) {
-            navigate(-1)
-          } else {
-            navigate('/')
-          }
+          if (window.history.length > 1) navigate(-1)
+          else navigate('/')
         }}
         aria-label="返回"
         title="返回"
-        className="absolute left-4 top-4 z-30 flex h-9 w-9 items-center justify-center rounded-full text-white backdrop-blur-md transition-all hover:scale-105"
-        style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid var(--neon-blue-15)' }}
+        className="absolute left-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-[background-color,transform] hover:scale-[1.03] hover:bg-black/60"
       >
-        <ArrowLeft size={18} />
+        <ArrowLeft size={18} aria-hidden="true" />
       </button>
 
-      {/* 英雄区 */}
       <HeroSection
         media={media}
         playInfo={playInfo}
@@ -457,7 +465,7 @@ export default function MediaDetailPage() {
         watchProgress={watchProgress}
         playlists={playlists}
         scraping={scraping}
-        isAdmin={user?.role === 'admin'}
+        isAdmin={isAdmin}
         posterVersion={posterVersion}
         onFavorite={handleFavorite}
         onScrape={handleScrape}
@@ -469,39 +477,19 @@ export default function MediaDetailPage() {
         onEditMetadata={handleEditMetadata}
         onDelete={() => setShowDeleteConfirm(true)}
         onPreprocess={() => {
-          adminApi.submitPreprocess(id!).then(() => {
-            toast.success('已提交预处理任务')
-          }).catch(() => {
-            toast.error('提交预处理失败')
-          })
+          adminApi.submitPreprocess(id!).then(() => toast.success('已提交预处理任务')).catch(() => toast.error('提交预处理失败'))
         }}
         onTranscode={() => {
-          adminApi.submitTranscode(id!).then(() => {
-            toast.success('已提交强制转码任务')
-          }).catch(() => {
-            toast.error('提交转码失败')
-          })
+          adminApi.submitTranscode(id!).then(() => toast.success('已提交强制转码任务')).catch(() => toast.error('提交转码失败'))
         }}
       />
 
-      {/* 内容区 */}
-      <div className="mx-auto max-w-7xl space-y-8 px-4 pt-6 sm:px-6 lg:px-8">
-        {/* 媒体信息（简介 + 类型 + 演职） */}
-        <MediaInfoSection
-          media={media}
-          playInfo={playInfo}
-          persons={persons}
-        />
-
-        {/* 演职人员 */}
+      <div className="mx-auto w-full max-w-[var(--nv-content-max)] space-y-8 px-[var(--nv-page-gutter)] pt-6">
+        <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
         <CastGrid persons={persons} />
 
-        {/* 系列合集（自动识别同系列电影） */}
-        {media.media_type === 'movie' && id && (
-          <CollectionCarousel mediaId={id} />
-        )}
+        {media.media_type === 'movie' && id && <CollectionCarousel mediaId={id} />}
 
-        {/* 文件信息与技术规格（统一展示区域） */}
         <MediaTechSpecs
           media={media}
           techSpecs={techSpecs}
@@ -509,273 +497,67 @@ export default function MediaDetailPage() {
           library={libraryInfo}
           playbackStats={playbackStats}
           loading={enhancedLoading}
-          isAdmin={user?.role === 'admin'}
+          isAdmin={isAdmin}
         />
 
-        {/* 字幕管理入口（管理员可见） */}
-        {user?.role === 'admin' && (
-          <section>
-            <button
-              onClick={() => setShowSubtitleManager(true)}
-              className="flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all hover:opacity-90"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
-            >
-              <span>🎬</span>
-              <span>字幕管理</span>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>查看内嵌/外挂字幕 · 批量提取导出</span>
-            </button>
-          </section>
+        {isAdmin && (
+          <Surface className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
+                <Captions size={18} aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">字幕管理</h3>
+                <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">查看内嵌 / 外挂字幕，批量提取并导出文本字幕。</p>
+              </div>
+            </div>
+            <Button type="button" variant="secondary" onClick={() => setShowSubtitleManager(true)}>
+              <Captions size={15} aria-hidden="true" /> 管理字幕
+            </Button>
+          </Surface>
         )}
 
-        {/* 相关推荐 */}
         <RecommendationCarousel recommendations={recommendations} />
-
-        {/* 评论区 */}
         {id && <CommentSection mediaId={id} />}
       </div>
 
-      {/* 预告片弹窗 */}
       {showTrailer && media.trailer_url && (
-        <TrailerModal
-          trailerUrl={media.trailer_url}
-          onClose={() => setShowTrailer(false)}
+        <TrailerModal trailerUrl={media.trailer_url} onClose={() => setShowTrailer(false)} />
+      )}
+
+      {showMatchModal && (
+        <MetadataMatchModal
+          source={matchSource}
+          onSourceChange={(source) => {
+            setMatchSource(source)
+            setMatchResults([])
+            setMatchSelectedId(null)
+          }}
+          query={matchQuery}
+          setQuery={setMatchQuery}
+          results={matchResults}
+          searching={matchSearching}
+          selectedId={matchSelectedId}
+          applying={matchApplying}
+          onSearch={handleMatchSearch}
+          onSelect={handleMatchSelect}
+          onApply={handleMatchApply}
+          onClose={() => setShowMatchModal(false)}
         />
       )}
 
-      {/* ==================== 手动匹配弹窗 ==================== */}
-      {showMatchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-4 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('mediaDetail.manualMatch')}</h3>
-            {/* 数据源切换 */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => { setMatchSource('tmdb'); setMatchResults([]); setMatchSelectedId(null) }}
-                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
-                style={{
-                  background: matchSource === 'tmdb' ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))' : 'var(--bg-surface)',
-                  color: matchSource === 'tmdb' ? '#fff' : 'var(--text-secondary)',
-                  border: matchSource === 'tmdb' ? 'none' : '1px solid var(--border-default)',
-                }}
-              >
-                🎬 TMDb
-              </button>
-              <button
-                onClick={() => { setMatchSource('douban'); setMatchResults([]); setMatchSelectedId(null) }}
-                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
-                style={{
-                  background: matchSource === 'douban' ? 'linear-gradient(135deg, #00b414, #009910)' : 'var(--bg-surface)',
-                  color: matchSource === 'douban' ? '#fff' : 'var(--text-secondary)',
-                  border: matchSource === 'douban' ? 'none' : '1px solid var(--border-default)',
-                }}
-              >
-                🎯 {t('mediaDetail.doubanLabel')}
-              </button>
-              <button
-                onClick={() => { setMatchSource('bangumi'); setMatchResults([]); setMatchSelectedId(null) }}
-                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
-                style={{
-                  background: matchSource === 'bangumi' ? 'linear-gradient(135deg, #f09199, #e8788a)' : 'var(--bg-surface)',
-                  color: matchSource === 'bangumi' ? '#fff' : 'var(--text-secondary)',
-                  border: matchSource === 'bangumi' ? 'none' : '1px solid var(--border-default)',
-                }}
-              >
-                📺 Bangumi
-              </button>
-              <button
-                onClick={() => { setMatchSource('thetvdb'); setMatchResults([]); setMatchSelectedId(null) }}
-                className="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
-                style={{
-                  background: matchSource === 'thetvdb' ? 'linear-gradient(135deg, #6dc849, #4fa82d)' : 'var(--bg-surface)',
-                  color: matchSource === 'thetvdb' ? '#fff' : 'var(--text-secondary)',
-                  border: matchSource === 'thetvdb' ? 'none' : '1px solid var(--border-default)',
-                }}
-              >
-                📡 TheTVDB
-              </button>
-            </div>
-            <p className="mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {{
-                tmdb: t('mediaDetail.tmdbDesc'),
-                douban: t('mediaDetail.doubanDesc'),
-                bangumi: t('mediaDetail.bangumiDesc'),
-                thetvdb: t('mediaDetail.thetvdbDesc'),
-              }[matchSource]}
-            </p>
-            <div className="mb-4 flex gap-2">
-              <input
-                value={matchQuery}
-                onChange={(e) => setMatchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleMatchSearch()}
-                placeholder={t('mediaDetail.searchPlaceholder')}
-                className="flex-1 rounded-xl px-4 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
-                autoFocus
-              />
-              <button
-                onClick={handleMatchSearch}
-                disabled={matchSearching}
-                className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
-                style={{ background: { tmdb: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))', douban: 'linear-gradient(135deg, #00b414, #009910)', bangumi: 'linear-gradient(135deg, #f09199, #e8788a)', thetvdb: 'linear-gradient(135deg, #6dc849, #4fa82d)' }[matchSource] }}
-              >
-                {matchSearching ? t('mediaDetail.searching') : t('mediaDetail.searchBtn')}
-              </button>
-            </div>
-            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-              {matchResults.map((result: any) => {
-                // 多数据源结果的统一展示
-                let displayTitle = '', displayOrigTitle = '', displayYear = '', displayOverview = '', posterUrl: string | null = null
-                let displayRating = 0, resultKey: string | number = result.id
-
-                if (matchSource === 'tmdb') {
-                  displayTitle = result.title || result.name
-                  displayOrigTitle = result.original_title || result.original_name
-                  displayYear = (result.release_date || result.first_air_date)?.split('-')[0] || ''
-                  displayRating = result.vote_average || 0
-                  displayOverview = result.overview || ''
-                  posterUrl = result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null
-                } else if (matchSource === 'douban') {
-                  displayTitle = result.title
-                  displayYear = result.year > 0 ? String(result.year) : ''
-                  displayRating = result.rating || 0
-                  displayOverview = result.overview || ''
-                  posterUrl = result.cover || null
-                  resultKey = result.id
-                } else if (matchSource === 'thetvdb') {
-                  displayTitle = result.name || result.seriesName
-                  displayOrigTitle = result.originalName || ''
-                  displayYear = result.year || (result.firstAired?.split('-')[0]) || ''
-                  displayOverview = result.overview || ''
-                  posterUrl = result.image || result.poster || null
-                  if (posterUrl && !posterUrl.startsWith('http')) posterUrl = 'https://artworks.thetvdb.com' + posterUrl
-                } else {
-                  // Bangumi
-                  displayTitle = result.name_cn || result.name
-                  displayOrigTitle = result.name
-                  displayYear = result.air_date?.split('-')[0] || ''
-                  displayRating = result.rating?.score || 0
-                  displayOverview = result.summary || ''
-                  posterUrl = result.images?.common || result.images?.medium || null
-                }
-
-                const isSelected = matchSelectedId === result.id
-                return (
-                  <button
-                    key={resultKey}
-                    onClick={() => handleMatchSelect(result.id)}
-                    disabled={matchApplying}
-                    className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-                    style={{
-                      background: isSelected ? 'linear-gradient(135deg, rgba(56,189,248,0.12), rgba(56,189,248,0.06))' : 'var(--bg-surface)',
-                      border: isSelected ? '1px solid var(--neon-blue, #38bdf8)' : '1px solid var(--border-default)',
-                      boxShadow: isSelected ? '0 0 0 2px rgba(56,189,248,0.25)' : undefined,
-                    }}
-                  >
-                    {posterUrl ? (
-                      <img src={posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
-                    ) : (
-                      <div className="flex h-16 w-11 items-center justify-center rounded-lg" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
-                        <span className="text-xs">N/A</span>
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {displayTitle}
-                        </div>
-                        {matchSource === 'bangumi' && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(240,145,153,0.15)', color: '#f09199' }}>
-                            {result.type === 2 ? '动画' : result.type === 6 ? '三次元' : 'BGM'}
-                          </span>
-                        )}
-                        {matchSource === 'douban' && result.genres && (
-                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'rgba(0,180,20,0.12)', color: '#00b414' }}>
-                            {result.genres.split(',')[0]}
-                          </span>
-                        )}
-                      </div>
-                      {displayOrigTitle && displayOrigTitle !== displayTitle && (
-                        <div className="truncate text-xs" style={{ color: 'var(--text-tertiary)' }}>{displayOrigTitle}</div>
-                      )}
-                      <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {displayYear && <span>{displayYear}</span>}
-                        {displayRating > 0 && (
-                          <span className="text-yellow-400">★ {displayRating.toFixed(1)}</span>
-                        )}
-                        {matchSource === 'bangumi' && result.eps > 0 && (
-                          <span>{result.eps}{t('mediaDetail.episodes')}</span>
-                        )}
-                      </div>
-                      {displayOverview && (
-                        <p className="mt-1 line-clamp-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>{displayOverview}</p>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-              {matchResults.length === 0 && !matchSearching && (
-                <div className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                  {t('mediaDetail.searchHint', { source: ' ' + { tmdb: 'TMDb', douban: '豆瓣', bangumi: 'Bangumi', thetvdb: 'TheTVDB' }[matchSource] })}
-                </div>
-              )}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {matchSelectedId !== null ? '已选中 1 项，点击右侧“应用”即可替换元数据' : '提示：先选中搜索结果，再点击“应用”'}
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowMatchModal(false)}
-                  disabled={matchApplying}
-                  className="rounded-xl px-5 py-2 text-sm font-medium transition-colors hover:opacity-80 disabled:opacity-50"
-                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  onClick={handleMatchApply}
-                  disabled={matchSelectedId === null || matchApplying}
-                  className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ background: { tmdb: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))', douban: 'linear-gradient(135deg, #00b414, #009910)', bangumi: 'linear-gradient(135deg, #f09199, #e8788a)', thetvdb: 'linear-gradient(135deg, #6dc849, #4fa82d)' }[matchSource] }}
-                >
-                  {matchApplying && (
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  )}
-                  {matchApplying ? '应用中...' : '应用'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showUnmatchConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-2 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('mediaDetail.unmatchTitle')}</h3>
-            <p className="mb-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {t('mediaDetail.unmatchDesc')}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowUnmatchConfirm(false)}
-                className="rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
-                style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleUnmatch}
-                className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-orange-500"
-              >
-                {t('mediaDetail.unmatchConfirm')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={t('mediaDetail.unmatchTitle')}
+          description={t('mediaDetail.unmatchDesc')}
+          confirmLabel={t('mediaDetail.unmatchConfirm')}
+          cancelLabel={t('common.cancel')}
+          tone="warning"
+          onConfirm={handleUnmatch}
+          onClose={() => setShowUnmatchConfirm(false)}
+        />
       )}
 
-      {/* ==================== 编辑元数据弹窗 ==================== */}
       {showEditModal && (
         <EditMetadataModal
           type="media"
@@ -793,43 +575,21 @@ export default function MediaDetailPage() {
         />
       )}
 
-      {/* ==================== 字幕管理弹窗 ==================== */}
       {showSubtitleManager && (
-        <SubtitleManager
-          mediaId={id!}
-          mediaTitle={media.title}
-          onClose={() => setShowSubtitleManager(false)}
-        />
+        <SubtitleManager mediaId={id!} mediaTitle={media.title} onClose={() => setShowSubtitleManager(false)} />
       )}
 
-      {/* ==================== 删除确认弹窗 ==================== */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-          <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)' }}>
-            <h3 className="mb-2 text-lg font-bold text-red-400">{t('mediaDetail.deleteTitle')}</h3>
-            <p className="mb-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {t('mediaDetail.deleteDesc')}
-            </p>
-            <p className="mb-6 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('mediaDetail.deleteHint')}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
-                style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-red-500"
-              >
-                {t('mediaDetail.deleteConfirm')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={t('mediaDetail.deleteTitle')}
+          description={t('mediaDetail.deleteDesc')}
+          hint={t('mediaDetail.deleteHint')}
+          confirmLabel={t('mediaDetail.deleteConfirm')}
+          cancelLabel={t('common.cancel')}
+          tone="danger"
+          onConfirm={handleDelete}
+          onClose={() => setShowDeleteConfirm(false)}
+        />
       )}
     </motion.div>
   )

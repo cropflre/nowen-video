@@ -1,50 +1,48 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useServerProfileStore } from '@/stores/serverProfile'
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Library } from '@/types'
 import LanguageSwitcher from './LanguageSwitcher'
+import { Button } from './design-system'
 import { useTranslation } from '@/i18n'
 import {
-  Home,
-  Search,
-  Heart,
-  Clock,
-  ListVideo,
-  Settings,
-  LogOut,
-  Film,
-  Tv,
-  FolderOpen,
   ChevronLeft,
-  Zap,
-  Sun,
-  Moon,
+  Film,
+  FolderOpen,
+  Home,
   Layers,
+  LogOut,
+  Moon,
+  Search,
+  Settings,
+  Sun,
+  Tv,
+  UserRound,
   Video,
   X,
-  BarChart3,
-  FolderOpen as FolderOpenIcon,
-  Library as LibraryIcon,
+  Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sidebarVariants, sidebarMobileVariants } from '@/lib/motion'
 
 interface SidebarProps {
-  /** 移动端是否展开 */
   isMobileOpen?: boolean
-  /** 移动端关闭回调 */
   onMobileClose?: () => void
 }
 
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
+  const manifest = useServerProfileStore((state) => state.manifest)
+  const isFullProfile = manifest?.profile === 'full'
+  const preprocessAvailable = manifest?.capabilities.preprocess?.available === true
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -52,7 +50,6 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
   const { on, off } = useWebSocket()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 加载媒体库列表
   const fetchLibraries = useCallback(() => {
     libraryApi.list().then((res) => {
       setLibraries(res.data.data)
@@ -63,17 +60,12 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
     fetchLibraries()
   }, [fetchLibraries])
 
-  // 监听 WebSocket 事件，实时更新媒体库列表
   useEffect(() => {
     const debouncedRefresh = () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       refreshTimerRef.current = setTimeout(() => fetchLibraries(), 500)
     }
-
-    // 全局海报版本 bump：刮削/扫描完成后让所有 MediaCard 的图片 URL 更新，破除浏览器缓存
-    const bumpOnMediaChange = () => {
-      bumpPosterVersion()
-    }
+    const bumpOnMediaChange = () => bumpPosterVersion()
 
     on(WS_EVENTS.LIBRARY_DELETED, debouncedRefresh)
     on(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
@@ -106,308 +98,181 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
     }
   }
 
-  // 桌面端用 collapsed，移动端始终展开全宽
+  const showText = !collapsed || isMobileOpen
+  const navItem = (to: string, icon: ReactNode, label: string, end = false) => (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) => clsx('nav-item flex items-center gap-3 px-3 text-sm font-medium', isActive && 'active')}
+      onClick={onMobileClose}
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
+      {showText && <span className="truncate">{label}</span>}
+    </NavLink>
+  )
+
+  const sectionLabel = (label: string) => showText ? (
+    <div className="px-3 pb-1 pt-6 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nv-text-tertiary)]">
+      {label}
+    </div>
+  ) : (
+    <div className="mx-3 my-3 border-t border-[var(--nv-border-subtle)]" />
+  )
+
   const sidebarContent = (
     <>
-      {/* 右侧霓虹分割线 */}
-      <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-neon-blue/20 to-transparent" />
-
-      {/* Logo 区域 */}
-      <div className="flex h-16 items-center justify-between px-4">
-        {(!collapsed || isMobileOpen) && (
-          <h1 className="font-display text-lg font-bold tracking-wider">
-            <span className="text-neon text-neon-glow">N</span>
-            <span style={{ color: 'var(--text-primary)' }}>OWEN</span>
+      <div className="flex h-16 shrink-0 items-center justify-between px-4">
+        {showText ? (
+          <h1 className="font-display text-lg font-bold tracking-[0.12em] text-[var(--nv-text-primary)]">
+            <span className="text-[var(--nv-action-primary)]">N</span>OWEN
           </h1>
-        )}
-        {collapsed && !isMobileOpen && (
+        ) : (
           <div className="flex w-full justify-center">
-            <Zap size={20} className="text-neon animate-neon-breathe" />
+            <Zap size={20} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
           </div>
         )}
-        {/* 桌面端折叠按钮 */}
+
         {!collapsed && !isMobileOpen && (
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="rounded-lg p-1.5 text-surface-400 transition-all duration-200 hover:text-neon hover:bg-neon-blue/5 hidden md:block"
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => setCollapsed(true)}
+            className="hidden md:inline-flex"
+            aria-label="收起侧边栏"
           >
-            <ChevronLeft size={18} className="transition-transform" />
-          </button>
+            <ChevronLeft size={17} />
+          </Button>
         )}
-        {/* 移动端关闭按钮 */}
         {isMobileOpen && onMobileClose && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onMobileClose(); }}
-            className="rounded-lg p-2 text-surface-400 transition-all duration-200 hover:text-neon hover:bg-neon-blue/5 md:hidden"
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={(event) => { event.stopPropagation(); onMobileClose() }}
+            className="md:hidden"
             aria-label="关闭菜单"
           >
-            <X size={20} />
-          </button>
+            <X size={19} />
+          </Button>
         )}
       </div>
 
-      {/* 主导航 */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-4">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Home size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.home')}</span>}
-        </NavLink>
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="主导航">
+        {navItem('/', <Home size={18} />, t('nav.home'), true)}
+        {navItem('/browse', <Layers size={18} />, '影视库')}
+        {navItem('/search', <Search size={18} />, t('nav.search'))}
+        {navItem('/my', <UserRound size={18} />, '我的')}
 
-        <NavLink
-          to="/search"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Search size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.search')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/browse"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Layers size={18} />
-          {(!collapsed || isMobileOpen) && <span>影视库</span>}
-        </NavLink>
-
-        <NavLink
-          to="/collections"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <LibraryIcon size={18} />
-          {(!collapsed || isMobileOpen) && <span>影视合集</span>}
-        </NavLink>
-
-        <NavLink
-          to="/favorites"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Heart size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.favorites')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/history"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Clock size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.history')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/playlists"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <ListVideo size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.playlists')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/stats"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <BarChart3 size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.stats')}</span>}
-        </NavLink>
-
-        <NavLink
-          to="/profile"
-          className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-          onClick={onMobileClose}
-        >
-          <Settings size={18} />
-          {(!collapsed || isMobileOpen) && <span>{t('nav.profile')}</span>}
-        </NavLink>
-
-        {/* 媒体库列表 */}
         {libraries.length > 0 && (
           <>
-            {(!collapsed || isMobileOpen) && (
-              <div className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neon/40">
-                {t('nav.libraries')}
-              </div>
-            )}
-            {collapsed && !isMobileOpen && (
-              <div className="my-3 mx-3 border-t border-neon-blue/10" />
-            )}
-
-            {libraries.map((lib) => (
+            {sectionLabel(t('nav.libraries'))}
+            {libraries.map((library) => (
               <NavLink
-                key={lib.id}
-                to={`/library/${lib.id}`}
-                className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+                key={library.id}
+                to={`/library/${library.id}`}
+                className={({ isActive }) => clsx('nav-item flex items-center gap-3 px-3 text-sm font-medium', isActive && 'active')}
                 onClick={onMobileClose}
               >
-                {iconForType(lib.type)}
-                {(!collapsed || isMobileOpen) && <span>{lib.name}</span>}
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center">{iconForType(library.type)}</span>
+                {showText && <span className="truncate">{library.name}</span>}
               </NavLink>
             ))}
           </>
         )}
 
-        {/* 管理入口 */}
         {user?.role === 'admin' && (
           <>
-            {(!collapsed || isMobileOpen) && (
-              <div className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neon/40">
-                {t('nav.management')}
-              </div>
-            )}
-            {collapsed && !isMobileOpen && (
-              <div className="my-3 mx-3 border-t border-neon-blue/10" />
-            )}
-
-            <NavLink
-              to="/admin"
-              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-              onClick={onMobileClose}
-            >
-              <Settings size={18} />
-              {(!collapsed || isMobileOpen) && <span>{t('nav.admin')}</span>}
-            </NavLink>
-
-            <NavLink
-              to="/files"
-              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-              onClick={onMobileClose}
-            >
-              <FolderOpenIcon size={18} />
-              {(!collapsed || isMobileOpen) && <span>{t('nav.files')}</span>}
-            </NavLink>
-
-            <NavLink
-              to="/preprocess"
-              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
-              onClick={onMobileClose}
-            >
-              <Zap size={18} />
-              {(!collapsed || isMobileOpen) && <span>预处理</span>}
-            </NavLink>
+            {sectionLabel(t('nav.management'))}
+            {navItem('/admin', <Settings size={18} />, '管理中心')}
+            {isFullProfile && navItem('/files', <FolderOpen size={18} />, '文件管理')}
+            {preprocessAvailable && navItem('/preprocess', <Zap size={18} />, '预处理')}
           </>
         )}
       </nav>
 
-      {/* 主题切换 + 用户信息 */}
-      <div className="border-t p-3 border-[var(--border-default)]">
-        {/* 主题切换按钮 */}
-        <div className={clsx('mb-3', collapsed && !isMobileOpen && 'flex justify-center')}>
+      <div className="shrink-0 border-t border-[var(--nv-border-subtle)] p-3">
+        <div className={clsx('mb-3', !showText && 'flex justify-center')}>
           <button
             onClick={toggleTheme}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTheme() } }}
             className={clsx(
-              'theme-toggle-btn group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-300',
-              (collapsed && !isMobileOpen) ? 'justify-center' : 'w-full'
+              'nv-button nv-button--ghost nv-button--md group relative flex items-center gap-3',
+              showText ? 'w-full justify-start' : 'nv-button--icon-only',
             )}
-            style={{
-              color: 'var(--text-secondary)',
-              background: theme === 'light' ? 'var(--nav-hover-bg)' : undefined,
-              border: theme === 'light' ? '1px solid var(--border-default)' : '1px solid transparent',
-            }}
-            /* 注意：此处保留 style 因为需要根据 theme 状态动态切换 */
+            data-variant="ghost"
+            data-size="md"
+            data-icon-only={!showText || undefined}
             title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
             aria-label={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
             role="switch"
             aria-checked={theme === 'dark'}
           >
-            {/* 图标容器 - 固定尺寸确保对齐 */}
-            <div className="relative flex h-[18px] w-[18px] items-center justify-center flex-shrink-0">
+            <div className="relative flex h-[18px] w-[18px] shrink-0 items-center justify-center">
               <Sun
                 size={18}
                 className={clsx(
-                  'absolute transition-all duration-500',
-                  theme === 'light'
-                    ? 'rotate-0 scale-100 opacity-100 text-amber-500'
-                    : 'rotate-90 scale-0 opacity-0'
+                  'absolute transition-all duration-200',
+                  theme === 'light' ? 'rotate-0 scale-100 opacity-100 text-amber-500' : 'rotate-90 scale-0 opacity-0',
                 )}
-                style={theme === 'light' ? { filter: 'drop-shadow(0 0 4px rgba(245, 158, 11, 0.4))' } : undefined}
               />
               <Moon
                 size={18}
                 className={clsx(
-                  'absolute transition-all duration-500',
-                  theme === 'dark'
-                    ? 'rotate-0 scale-100 opacity-100 text-neon'
-                    : '-rotate-90 scale-0 opacity-0'
+                  'absolute transition-all duration-200',
+                  theme === 'dark' ? 'rotate-0 scale-100 opacity-100 text-[var(--nv-action-primary)]' : '-rotate-90 scale-0 opacity-0',
                 )}
-                style={theme === 'dark' ? { filter: 'drop-shadow(0 0 4px var(--neon-blue-40))' } : undefined}
               />
             </div>
-            {(!collapsed || isMobileOpen) && (
-              <span className="transition-colors group-hover:text-[var(--text-primary)]">
-                {theme === 'dark' ? t('nav.darkMode') : t('nav.lightMode')}
-              </span>
-            )}
-            {/* 当前状态指示点 */}
-            {(!collapsed || isMobileOpen) && (
-              <span
-                className="ml-auto h-1.5 w-1.5 rounded-full flex-shrink-0"
-                style={{
-                  background: theme === 'dark' ? 'var(--neon-blue)' : '#f59e0b',
-                  boxShadow: theme === 'dark'
-                    ? '0 0 6px var(--neon-blue-40)'
-                    : '0 0 6px rgba(245, 158, 11, 0.4)',
-                }}
-              />
-            )}
+            {showText && <span>{theme === 'dark' ? t('nav.darkMode') : t('nav.lightMode')}</span>}
           </button>
         </div>
 
-        {/* 语言切换 */}
-        {(!collapsed || isMobileOpen) && (
-          <LanguageSwitcher />
-        )}
+        {showText && <LanguageSwitcher />}
 
-        <div className="flex items-center gap-3">
-          {/* 霓虹头像 */}
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+        <div className="mt-3 flex items-center gap-3">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold"
             style={{
-              background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-              boxShadow: 'var(--shadow-neon)',
-              color: 'var(--text-on-neon)',
+              background: 'var(--nv-action-primary)',
+              color: 'var(--nv-text-on-brand)',
             }}
+            aria-hidden="true"
           >
             {user?.username?.charAt(0).toUpperCase()}
           </div>
-          {(!collapsed || isMobileOpen) && (
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-medium text-theme-primary">
-                {user?.username}
-              </p>
-              <p className="text-xs text-theme-tertiary">
+          {showText && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-[var(--nv-text-primary)]">{user?.username}</p>
+              <p className="text-xs text-[var(--nv-text-tertiary)]">
                 {user?.role === 'admin' ? t('user.admin') : t('user.user')}
               </p>
             </div>
           )}
-          {(!collapsed || isMobileOpen) && (
-            <button
+          {showText && (
+            <Button
+              variant="ghost"
+              size="sm"
+              iconOnly
               onClick={handleLogout}
-              className="rounded-lg p-1.5 text-surface-400 transition-all hover:text-red-400 hover:bg-red-400/5"
               title={t('nav.logout')}
+              aria-label={t('nav.logout')}
             >
               <LogOut size={16} />
-            </button>
+            </Button>
           )}
         </div>
 
-        {/* 折叠/展开按钮（折叠模式下显示在底部） */}
         {collapsed && !isMobileOpen && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
             onClick={() => setCollapsed(false)}
-            className="mt-3 flex w-full justify-center rounded-lg p-1.5 text-surface-500 transition-all hover:text-neon hover:bg-neon-blue/5"
+            className="mx-auto mt-3 flex"
+            aria-label="展开侧边栏"
           >
             <ChevronLeft size={16} className="rotate-180" />
-          </button>
+          </Button>
         )}
       </div>
     </>
@@ -415,28 +280,27 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
 
   return (
     <>
-      {/* 桌面端侧边栏 — 弹性宽度动画 */}
       <motion.aside
-        className="glass-panel-strong relative z-20 hidden h-screen flex-col md:flex overflow-hidden flex-shrink-0"
+        className="glass-panel-strong relative z-20 hidden h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[var(--nv-border-subtle)] md:flex"
         animate={collapsed ? 'collapsed' : 'expanded'}
         variants={sidebarVariants}
         style={{ willChange: 'width' }}
+        aria-label="侧边导航"
       >
         {sidebarContent}
       </motion.aside>
 
-      {/* 移动端遮罩 + 抽屉侧边栏 — 通过 Portal 渲染到 body，彻底避免父级层叠上下文干扰 */}
       {createPortal(
         <>
           <AnimatePresence>
             {isMobileOpen && (
               <motion.div
                 key="sidebar-overlay"
-                className="fixed inset-0 z-[9998] bg-black/60 md:hidden"
+                className="fixed inset-0 z-[9998] bg-black/55 md:hidden"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                transition={{ duration: 0.16 }}
                 onClick={onMobileClose}
                 aria-hidden="true"
               />
@@ -446,18 +310,19 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             {isMobileOpen && (
               <motion.aside
                 key="sidebar-drawer"
-                className="glass-panel-strong fixed inset-y-0 left-0 z-[9999] flex w-64 flex-col md:hidden"
+                className="glass-panel-strong fixed inset-y-0 left-0 z-[9999] flex w-64 flex-col border-r border-[var(--nv-border-subtle)] md:hidden"
                 variants={sidebarMobileVariants}
                 initial="hidden"
                 animate="visible"
                 exit="exit"
+                aria-label="移动端侧边导航"
               >
                 {sidebarContent}
               </motion.aside>
             )}
           </AnimatePresence>
         </>,
-        document.body
+        document.body,
       )}
     </>
   )

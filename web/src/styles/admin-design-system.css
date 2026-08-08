@@ -1,0 +1,292 @@
+/* Nowen Video Admin Design System
+ *
+ * Transitional semantic layer for the administration workspace. Admin business
+ * components are intentionally migrated incrementally: this file normalizes the
+ * shared chrome first, then individual tabs can adopt the nv-admin-* primitives
+ * without rebuilding their API/state logic.
+ */
+
+/* Page / section primitives for the next tab migrations. */
+.nv-admin-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nv-space-6);
+  color: var(--nv-text-primary);
+}
+
+.nv-admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nv-space-4);
+  padding-bottom: var(--nv-space-4);
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-admin-header-copy {
+  min-width: 0;
+}
+
+.nv-admin-title {
+  margin: 0;
+  color: var(--nv-text-primary);
+  font-family: var(--nv-font-sans);
+  font-size: var(--nv-type-h2);
+  font-weight: 720;
+  line-height: var(--nv-line-tight);
+  letter-spacing: var(--nv-tracking-tight);
+}
+
+.nv-admin-description {
+  margin-top: var(--nv-space-2);
+  color: var(--nv-text-tertiary);
+  font-size: var(--nv-type-body-sm);
+  line-height: var(--nv-line-body);
+}
+
+.nv-admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nv-space-2);
+}
+
+.nv-admin-panel {
+  background: color-mix(in srgb, var(--nv-bg-surface) 94%, transparent);
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: var(--nv-radius-container);
+  box-shadow: var(--nv-shadow-card);
+}
+
+.nv-admin-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nv-space-3);
+  padding: var(--nv-space-5) var(--nv-space-5) var(--nv-space-4);
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-admin-panel-body {
+  padding: var(--nv-space-5);
+}
+
+.nv-admin-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--nv-space-2);
+  color: var(--nv-text-primary);
+  font-size: var(--nv-type-h3);
+  font-weight: 680;
+  line-height: var(--nv-line-title);
+}
+
+.nv-admin-section-title > svg {
+  color: var(--nv-action-primary);
+}
+
+.nv-admin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  min-height: 1.75rem;
+  padding: .25rem .55rem;
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-bg-hover);
+  color: var(--nv-text-secondary);
+  font-size: var(--nv-type-caption);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.nv-admin-status[data-tone="connected"],
+.nv-admin-status[data-tone="success"] {
+  border-color: color-mix(in srgb, var(--nv-status-success) 26%, transparent);
+  background: color-mix(in srgb, var(--nv-status-success) 8%, transparent);
+  color: var(--nv-status-success);
+}
+
+.nv-admin-status[data-tone="active"] {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 26%, transparent);
+  background: var(--nv-bg-active);
+  color: var(--nv-action-primary);
+}
+
+.nv-admin-status[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--nv-status-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--nv-status-warning) 8%, transparent);
+  color: var(--nv-status-warning);
+}
+
+.nv-admin-status[data-tone="danger"] {
+  border-color: color-mix(in srgb, var(--nv-status-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--nv-status-danger) 8%, transparent);
+  color: var(--nv-status-danger);
+}
+
+/* Existing AdminPage tab chrome: semantic override while JSX is migrated. */
+.admin-tab {
+  position: relative;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nv-space-2);
+  padding: .6rem .85rem;
+  border: 1px solid transparent;
+  border-radius: var(--nv-radius-control);
+  background: transparent;
+  color: var(--nv-text-secondary);
+  box-shadow: none;
+  font-family: var(--nv-font-sans);
+  font-size: var(--nv-type-body-sm);
+  font-weight: 620;
+  letter-spacing: var(--nv-tracking-normal);
+  transition:
+    background-color var(--nv-motion-normal) var(--nv-ease-standard),
+    border-color var(--nv-motion-normal) var(--nv-ease-standard),
+    color var(--nv-motion-normal) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.admin-tab:hover {
+  background: var(--nv-bg-hover);
+  border-color: var(--nv-border-subtle);
+  color: var(--nv-text-primary);
+}
+
+.admin-tab.active {
+  background: var(--nv-bg-active);
+  border-color: color-mix(in srgb, var(--nv-action-primary) 22%, var(--nv-border-subtle));
+  color: var(--nv-action-primary);
+  box-shadow: none;
+}
+
+.admin-tab.active::after {
+  content: '';
+  position: absolute;
+  left: .85rem;
+  right: .85rem;
+  bottom: -.12rem;
+  height: 2px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-action-primary);
+  box-shadow: none;
+}
+
+.admin-tab svg {
+  flex: 0 0 auto;
+}
+
+.admin-tab .bg-neon {
+  background-color: var(--nv-action-primary);
+  box-shadow: none;
+}
+
+/* Old admin controls still use .input / .btn-* during phased migration. */
+.input {
+  min-height: 2.5rem;
+  border: 1px solid var(--nv-border-default);
+  border-radius: var(--nv-radius-control);
+  background: var(--nv-bg-control);
+  color: var(--nv-text-primary);
+  box-shadow: none;
+  transition:
+    border-color var(--nv-motion-normal) var(--nv-ease-standard),
+    background-color var(--nv-motion-normal) var(--nv-ease-standard),
+    box-shadow var(--nv-motion-normal) var(--nv-ease-standard);
+}
+
+.input::placeholder {
+  color: var(--nv-text-tertiary);
+}
+
+.input:hover {
+  border-color: var(--nv-border-hover);
+}
+
+.input:focus,
+.input:focus-visible {
+  outline: none;
+  border-color: var(--nv-action-primary);
+  box-shadow: var(--nv-shadow-focus);
+}
+
+.btn-ghost {
+  border-radius: var(--nv-radius-control);
+  color: var(--nv-text-secondary);
+  box-shadow: none;
+}
+
+.btn-ghost:hover {
+  background: var(--nv-bg-hover);
+  color: var(--nv-text-primary);
+  box-shadow: none;
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--nv-status-danger) 24%, transparent);
+  border-radius: var(--nv-radius-control);
+  background: color-mix(in srgb, var(--nv-status-danger) 10%, transparent);
+  color: var(--nv-status-danger);
+  box-shadow: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--nv-status-danger) 34%, transparent);
+  background: color-mix(in srgb, var(--nv-status-danger) 16%, transparent);
+  color: var(--nv-status-danger);
+  box-shadow: none;
+}
+
+/* Admin panels should read as operational surfaces, not glass cards. */
+.glass-panel,
+.glass-panel-strong,
+.glass-panel-subtle {
+  border-color: var(--nv-border-subtle);
+  background: color-mix(in srgb, var(--nv-bg-surface) 94%, transparent);
+  box-shadow: var(--nv-shadow-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Keep content transition restrained: admin actions should feel stable. */
+.tab-content-enter {
+  animation: nv-admin-tab-content-in var(--nv-motion-normal) var(--nv-ease-standard);
+}
+
+@keyframes nv-admin-tab-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-tab,
+  .tab-content-enter {
+    transition: none;
+    animation: none;
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .nv-admin-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nv-admin-toolbar {
+    width: 100%;
+  }
+
+  .admin-tab {
+    min-height: 2.375rem;
+    padding-inline: .7rem;
+  }
+}

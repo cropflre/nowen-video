@@ -1,0 +1,215 @@
+package certification
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	transcodetimeline "github.com/nowen-video/nowen-video/internal/transcode/timeline"
+	transcodetimestamp "github.com/nowen-video/nowen-video/internal/transcode/timestampplan"
+)
+
+func TestAvailableFixturesAreValidAndUnique(t *testing.T) {
+	seen := make(map[string]struct{})
+	for _, spec := range AvailableFixtures() {
+		if err := spec.Validate(); err != nil {
+			t.Fatalf("fixture %s is invalid: %v", spec.ID, err)
+		}
+		if _, exists := seen[spec.ID]; exists {
+			t.Fatalf("duplicate fixture %s", spec.ID)
+		}
+		seen[spec.ID] = struct{}{}
+	}
+	for _, fixtureID := range RequiredMatrixFixtureIDs() {
+		if _, ok := seen[fixtureID]; !ok {
+			t.Fatalf("required fixture %s is unavailable", fixtureID)
+		}
+	}
+}
+
+func TestFixtureHLSArgsUseProductionBuilderAndTimestampPlan(t *testing.T) {
+	spec, _ := LookupFixture(FixtureCFR48KZeroLatency)
+	args, err := fixtureHLSArgs(
+		"/media/source.mp4",
+		"/cache/continuation",
+		transcodetimestamp.Default(),
+		spec,
+		30,
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, expected := range []string{
+		"-y -copyts -start_at_zero -ss 30.00",
+		"-tune zerolatency",
+		"-force_key_frames expr:gte(t,n_forced*2)",
+		"-hls_flags independent_segments+append_list+program_date_time",
+		"-hls_playlist_type event",
+		"-avoid_negative_ts disabled -fps_mode passthrough",
+		"-start_number 15",
+	} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("fixture command missing %q: %s", expected, joined)
+		}
+	}
+	if strings.Contains(joined, "-bf 3") {
+		t.Fatalf("production zerolatency fixture forced the control B-frame policy: %s", joined)
+	}
+	if strings.Index(joined, "-copyts") > strings.Index(joined, "-i /media/source.mp4") {
+		t.Fatalf("timestamp policy must precede the input: %s", joined)
+	}
+	expectedOutput := filepath.Join("/cache/continuation", "stream.m3u8")
+	if args[len(args)-1] != expectedOutput {
+		t.Fatalf("unexpected output path %q", args[len(args)-1])
+	}
+}
+
+func TestHistoricalFixtureKeepsExplicitBFrameControl(t *testing.T) {
+	spec, _ := LookupFixture(FixtureCFR48K)
+	args, err := fixtureHLSArgs(
+		"/media/source.mp4",
+		"/cache/control",
+		transcodetimestamp.Default(),
+		spec,
+		30,
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-bf 3") {
+		t.Fatalf("historical control does not explicitly preserve B frames: %s", joined)
+	}
+	if strings.Contains(joined, "-tune zerolatency") {
+		t.Fatalf("historical control unexpectedly uses production tuning: %s", joined)
+	}
+}
+
+func TestFixtureStartupUsesBoundedVODProjection(t *testing.T) {
+	spec, _ := LookupFixture(FixtureCFR48KZeroLatency)
+	args, err := fixtureHLSArgs(
+		"/media/source.mp4",
+		"/cache/startup",
+		transcodetimestamp.Default(),
+		spec,
+		0,
+		30,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, expected := range []string{
+		"-hls_flags independent_segments+program_date_time",
+		"-t 30 -hls_playlist_type vod",
+	} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("startup fixture command missing %q: %s", expected, joined)
+		}
+	}
+	if strings.Contains(joined, "append_list") || strings.Contains(joined, "-hls_playlist_type event") {
+		t.Fatalf("startup fixture retained continuation-only HLS options: %s", joined)
+	}
+}
+
+func TestFixtureEncodingPlanTracksAudioSampleRate(t *testing.T) {
+	spec, _ := LookupFixture(FixtureCFR44K1ZeroLatency)
+	plan := fixtureEncodingPlan(spec)
+	if plan.Audio.SampleRatePolicy != "44100" {
+		t.Fatalf("44.1 kHz fixture plan drifted: %+v", plan.Audio)
+	}
+}
+
+func TestReportValidationKeepsFixtureFailClosed(t *testing.T) {
+	report := validReport(FixtureCFR48KZeroLatency)
+	if err := report.Validate(); err != nil {
+		t.Fatalf("valid report rejected: %v", err)
+	}
+	report.Handoff.SeamlessAllowed = true
+	report.Handoff.DiscontinuityRequired = false
+	if err := report.Validate(); err == nil {
+		t.Fatal("uncertified fixture authorized seamless playback")
+	}
+}
+
+func TestReportValidationRejectsFixtureMetadataDrift(t *testing.T) {
+	report := validReport(FixtureCFR44K1ZeroLatency)
+	report.Fixture.AudioSampleRate = 48_000
+	if err := report.Validate(); err == nil {
+		t.Fatal("fixture metadata drift was accepted")
+	}
+}
+
+func TestMarshalReportIsStableAndTerminated(t *testing.T) {
+	content, err := MarshalReport(validReport(FixtureCFR48KZeroLatency))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(content) == 0 || content[len(content)-1] != '\n' {
+		t.Fatal("fixture report is not newline terminated")
+	}
+	if !strings.Contains(string(content), `"schema_version": "ffmpeg-handoff-fixture-report-v2"`) {
+		t.Fatalf("fixture schema missing from report: %s", content)
+	}
+}
+
+func validReport(fixtureID string) Report {
+	spec, ok := LookupFixture(fixtureID)
+	if !ok {
+		panic("unknown test fixture " + fixtureID)
+	}
+	artifact := ArtifactReport{
+		AttestationVersion: "hls-produced-media-attestation-v1",
+		AttestationHash:    "attestation-" + fixtureID,
+		SegmentCount:       1,
+		AudioSampleRate:    spec.AudioSampleRate,
+		VideoStartMS:       1400,
+		AudioStartMS:       1379,
+		VideoEndMS:         31_400,
+		AudioEndMS:         31_379,
+	}
+	boundary := BoundaryReport{
+		TimeBase:                "1/90000",
+		StartupEndPTS:           90_000,
+		ContinuationFirstPTS:    90_000,
+		PresentationDeltaTicks:  0,
+		PresentationDeltaMicros: 0,
+		StartupEndDTS:           90_000,
+		ContinuationFirstDTS:    90_000,
+		DecodeDeltaTicks:        0,
+		DecodeDeltaMicros:       0,
+		ToleranceMicros:         1000,
+		Status:                  transcodetimeline.StatusAligned,
+	}
+	return Report{
+		SchemaVersion:        ReportSchemaVersion,
+		FixtureID:            fixtureID,
+		Fixture:              spec,
+		Backend:              transcodetimestamp.BackendSoftware,
+		FFmpegVersion:        "ffmpeg version fixture",
+		FFprobeVersion:       "ffprobe version fixture",
+		EncodingPlanVersion:  "hls-encoding-plan-v1",
+		EncodingPlanHash:     "encoding-plan-" + fixtureID,
+		TimestampPlanVersion: transcodetimestamp.SchemaVersion,
+		TimestampPlanHash:    "timestamp-plan",
+		ExpectedBoundaryMS:   fixtureBoundaryMS,
+		Startup:              artifact,
+		Continuation:         artifact,
+		Handoff: HandoffReport{
+			ContractVersion:                transcodetimeline.SchemaVersion,
+			ContractHash:                   "handoff-" + fixtureID,
+			Status:                         transcodetimeline.StatusAligned,
+			DecisionReason:                 transcodetimeline.DecisionClientCertificationPending,
+			DiscontinuityRequired:          true,
+			StartupVideoEndOffsetMS:        1400,
+			ContinuationVideoStartOffsetMS: -28_600,
+			StartupAudioEndOffsetMS:        1379,
+			ContinuationAudioStartOffsetMS: -28_621,
+			Video:                          boundary,
+			Audio:                          boundary,
+		},
+	}
+}

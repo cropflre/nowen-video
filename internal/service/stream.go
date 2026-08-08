@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -90,7 +89,7 @@ var mimeTypes = map[string]string{
 type StreamService struct {
 	mediaRepo   *repository.MediaRepo
 	seriesRepo  *repository.SeriesRepo
-	transcoder  *TranscodeService
+	execution   *MediaExecutionService
 	preprocess  *PreprocessService
 	settingRepo *repository.SystemSettingRepo
 	cfg         *config.Config
@@ -101,14 +100,14 @@ type StreamService struct {
 func NewStreamService(
 	mediaRepo *repository.MediaRepo,
 	seriesRepo *repository.SeriesRepo,
-	transcoder *TranscodeService,
+	execution *MediaExecutionService,
 	cfg *config.Config,
 	logger *zap.SugaredLogger,
 ) *StreamService {
 	return &StreamService{
 		mediaRepo:  mediaRepo,
 		seriesRepo: seriesRepo,
-		transcoder: transcoder,
+		execution:  execution,
 		cfg:        cfg,
 		logger:     logger,
 	}
@@ -484,188 +483,6 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 	}
 
 	return "", nil
-}
-
-// GetMasterPlaylist 获取HLS主播放列表（多码率自适应）
-//
-// 行为：
-//  1. 根据原始分辨率筛选可用档位（不上采样）
-//  2. 【ABR 核心】并行预转码所有档位，最低档最早产出保证可播放下限，
-//     hls.js 会在客户端带宽允许时无缝切换到更高档位
-//  3. 返回 Master Playlist，每个 #EXT-X-STREAM-INF 带 BANDWIDTH/RESOLUTION
-func (s *StreamService) GetMasterPlaylist(mediaID string) (string, error) {
-	return s.GetMasterPlaylistFiltered(mediaID, 0)
-}
-
-// GetMasterPlaylistFiltered 带带宽上限过滤的 Master Playlist 生成。
-//
-// maxBitrate > 0 时，只返回码率 <= maxBitrate 的档位（单位 bit/s）。
-// 该参数来自：
-//   - 前端 hls.js 的 bandwidth-report 上报（弱网环境自动降档）
-//   - Emby/Infuse 客户端 PlaybackInfo 请求里的 MaxStreamingBitrate 字段
-//
-// 这样前端/客户端就能在请求 master.m3u8 时通过 ?maxBitrate=xxx 约束返回档位，
-// 避免 hls.js 在高档和低档之间频繁抖动切换。
-func (s *StreamService) GetMasterPlaylistFiltered(mediaID string, maxBitrate int) (string, error) {
-	media, err := s.mediaRepo.FindByID(mediaID)
-	if err != nil {
-		return "", ErrMediaNotFound
-	}
-
-	// STRM 远程流不支持 HLS 转码，应走直接播放路径
-	if media.StreamURL != "" {
-		return "", fmt.Errorf("STRM 远程流不支持 HLS 转码，请使用直接播放")
-	}
-
-	// 根据原始视频分辨率确定可用的质量选项
-	qualities := s.getAvailableQualities(media)
-
-	// 根据 maxBitrate 过滤（超过客户端上限的档位不提供）
-	if maxBitrate > 0 {
-		filtered := make([]string, 0, len(qualities))
-		for _, q := range qualities {
-			preset, ok := qualityPresets[q]
-			if !ok {
-				continue
-			}
-			if s.estimateBandwidth(preset.VideoBitrate) <= maxBitrate {
-				filtered = append(filtered, q)
-			}
-		}
-		if len(filtered) > 0 {
-			qualities = filtered
-		} else if len(qualities) > 0 {
-			// 所有档位都超过上限时，至少保留最低档，避免返回空列表
-			qualities = qualities[:1]
-		}
-	}
-
-	// 【ABR 核心】触发并行预转码所有档位
-	// startTranscodeInternal 内部会去重（同 media+quality 已有 job 直接复用），
-	// 所以重复调用（客户端切换档位时重新请求 master.m3u8）不会导致重复转码。
-	if s.transcoder != nil {
-		go func() {
-			if _, err := s.transcoder.StartABRTranscode(media, qualities); err != nil {
-				s.logger.Debugf("ABR 预转码提交失败（可能只因所有档位已完成）: %v", err)
-			}
-		}()
-	}
-
-	// 多音轨支持：探测音轨，≥2 条时输出 #EXT-X-MEDIA:TYPE=AUDIO
-	// 单音轨的 media 保持原有行为（音频走主转码的 .ts 里）
-	audioTracks := s.GetAudioTracks(mediaID)
-	hasMultiAudio := len(audioTracks) >= 2
-
-	// 生成master.m3u8
-	var builder strings.Builder
-	builder.WriteString("#EXTM3U\n")
-
-	if hasMultiAudio {
-		builder.WriteString(s.BuildAudioMediaEntries(mediaID, audioTracks))
-	}
-
-	for _, q := range qualities {
-		preset := qualityPresets[q]
-		bandwidth := s.estimateBandwidth(preset.VideoBitrate)
-		streamInf := fmt.Sprintf(
-			"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,NAME=\"%s\"",
-			bandwidth, preset.Width, preset.Height, q,
-		)
-		if hasMultiAudio {
-			streamInf += `,AUDIO="audio"`
-		}
-		builder.WriteString(streamInf + "\n")
-		builder.WriteString(fmt.Sprintf("/api/stream/%s/%s/stream.m3u8\n", mediaID, q))
-	}
-
-	return builder.String(), nil
-}
-
-// GetSegmentPlaylist 获取指定质量的播放列表或触发转码
-// 秒开优化：
-//   - hls_time 从 6 降到 2，首片最快 2 秒内产出
-//   - 使用 WaitForFirstSegment 替代原 60 秒轮询，响应更快
-//   - 10 秒仍无首片时返回占位 playlist（ExoPlayer/HLS.js 会自动重试）
-func (s *StreamService) GetSegmentPlaylist(mediaID, quality string) (string, error) {
-	media, err := s.mediaRepo.FindByID(mediaID)
-	if err != nil {
-		return "", ErrMediaNotFound
-	}
-
-	// STRM 远程流不支持转码
-	if media.StreamURL != "" {
-		return "", fmt.Errorf("STRM 远程流不支持转码")
-	}
-
-	outputDir := s.transcoder.GetOutputDir(mediaID, quality)
-	m3u8Path := filepath.Join(outputDir, "stream.m3u8")
-
-	// 检查是否已有转码缓存（完成态或运行中均可）
-	if _, err := os.Stat(m3u8Path); err == nil {
-		content, err := os.ReadFile(m3u8Path)
-		if err == nil && strings.Contains(string(content), ".ts") {
-			return string(content), nil
-		}
-	}
-
-	// 触发转码（若已在运行则复用）
-	if _, err := s.transcoder.StartTranscode(media, quality); err != nil {
-		return "", fmt.Errorf("启动转码失败: %w", err)
-	}
-
-	// 等待首片就绪：10 秒硬超时（对比旧版 60 秒，首包延迟大幅下降）
-	// 之所以从 60→10 秒：
-	//   1) hls_time 从 6→2 秒，理论首片 2~4 秒可出
-	//   2) 若 10 秒还没出，要么 FFmpeg 启动失败，要么硬件加速卡住，
-	//      返回占位 playlist 让客户端重试是更友好的体验
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := s.transcoder.WaitForFirstSegment(ctx, mediaID, quality); err == nil {
-		if content, err := os.ReadFile(m3u8Path); err == nil {
-			return string(content), nil
-		}
-	}
-
-	// 超时：返回 EVENT 类型的空 playlist，客户端会继续轮询
-	// 由 HLS 规范，没有 #EXT-X-ENDLIST 的列表会被视为直播/事件流
-	s.logger.Warnf("HLS 首片等待超时: %s/%s，返回占位 playlist", mediaID, quality)
-	return "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:EVENT\n", nil
-}
-
-// ServeSegment 提供HLS分片文件
-func (s *StreamService) ServeSegment(mediaID, quality, segment string, w http.ResponseWriter, r *http.Request) error {
-	outputDir := s.transcoder.GetOutputDir(mediaID, quality)
-	segPath := filepath.Join(outputDir, segment)
-
-	if _, err := os.Stat(segPath); os.IsNotExist(err) {
-		return fmt.Errorf("分片文件不存在: %s", segment)
-	}
-
-	http.ServeFile(w, r, segPath)
-	return nil
-}
-
-// getAvailableQualities 根据媒体信息确定可用质量
-// 委托给 TranscodeService 已有的智能实现（会根据原片分辨率筛选，不上采样）
-func (s *StreamService) getAvailableQualities(media *model.Media) []string {
-	if s.transcoder != nil {
-		qs := s.transcoder.GetAvailableQualities(media)
-		if len(qs) > 0 {
-			return qs
-		}
-	}
-	// fallback
-	return []string{"480p", "720p", "1080p"}
-}
-
-// estimateBandwidth 估算带宽（bit/s）
-func (s *StreamService) estimateBandwidth(bitrate string) int {
-	// 简单解析，如 "3000k" -> 3000000
-	bitrate = strings.TrimSuffix(bitrate, "k")
-	var val int
-	fmt.Sscanf(bitrate, "%d", &val)
-	return val * 1000
 }
 
 // ==================== STRM 远程流代理 ====================

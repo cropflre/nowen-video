@@ -2,12 +2,85 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/serverprofile"
 )
+
+// PublicCapabilitiesProvider lets a server binary expose the typed public
+// capability contract without coupling shared middleware to its assembly code.
+// Lite owns a native route and therefore does not register this provider; Full
+// registers one from cmd/server and is served before the legacy SPA fallback.
+type PublicCapabilitiesProvider func() (serverprofile.Manifest, error)
+
+var (
+	publicCapabilitiesMu       sync.RWMutex
+	publicCapabilitiesProvider PublicCapabilitiesProvider
+)
+
+func SetPublicCapabilitiesProvider(provider PublicCapabilitiesProvider) {
+	publicCapabilitiesMu.Lock()
+	publicCapabilitiesProvider = provider
+	publicCapabilitiesMu.Unlock()
+}
+
+func servePublicCapabilities(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet || c.Request.URL.Path != "/api/capabilities" {
+		return false
+	}
+
+	publicCapabilitiesMu.RLock()
+	provider := publicCapabilitiesProvider
+	publicCapabilitiesMu.RUnlock()
+	if provider == nil {
+		return false
+	}
+
+	manifest, err := provider()
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error": "无法读取服务端能力",
+			"code":  "capabilities_unavailable",
+		})
+		return true
+	}
+
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"data": manifest})
+	return true
+}
+
+func retirePulseRoute(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+		return false
+	}
+	path := c.Request.URL.Path
+	if path != "/pulse" && !strings.HasPrefix(path, "/pulse/") {
+		return false
+	}
+
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+	c.Redirect(http.StatusTemporaryRedirect, "/admin")
+	c.Abort()
+	return true
+}
+
+func applyPWAUpgradeHeaders(c *gin.Context) {
+	if c.Request.URL.Path != "/sw.js" {
+		return
+	}
+	// Service Worker 必须每次重新验证。否则 Full/Lite 更新镜像后，浏览器仍可能
+	// 由旧 Worker 启动已经删除的菜单、路由和页面。
+	c.Header("Service-Worker-Allowed", "/")
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+}
 
 // Security 安全头中间件
 func Security() gin.HandlerFunc {
@@ -26,6 +99,13 @@ func Security() gin.HandlerFunc {
 				"connect-src 'self' ws: wss:; "+
 				"font-src 'self' data:;")
 
+		applyPWAUpgradeHeaders(c)
+		if retirePulseRoute(c) {
+			return
+		}
+		if servePublicCapabilities(c) {
+			return
+		}
 		c.Next()
 	}
 }
@@ -151,7 +231,7 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
-// generateRequestID 生成简单的请求 ID
+// generateRequestID 生成简单请求 ID
 func generateRequestID() string {
 	return strings.Replace(
 		time.Now().Format("20060102150405.000000"),

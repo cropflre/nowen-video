@@ -1,17 +1,16 @@
-// Nowen Video Service Worker v4
-// 仅缓存生产环境的静态资源；认证、API、开发模块和非 GET 请求全部直连网络。
+// Nowen Video Service Worker v6
+// 仅缓存生产环境的静态资源；认证、API、HTML 导航、开发模块和非 GET 请求全部直连网络。
 
-const CACHE_VERSION = 'v4'
+const CACHE_VERSION = 'v6'
 const STATIC_CACHE = `nowen-static-${CACHE_VERSION}`
-const DYNAMIC_CACHE = `nowen-dynamic-${CACHE_VERSION}`
 const IMAGE_CACHE = `nowen-images-${CACHE_VERSION}`
 
+// 不缓存 HTML 应用壳。页面结构和导航必须始终来自当前部署版本，
+// 避免已经下线的页面与菜单被离线回退重新启动。
 const PRECACHE_ASSETS = [
-  '/',
   '/manifest.json',
 ]
 
-const MAX_DYNAMIC_CACHE = 50
 const MAX_IMAGE_CACHE = 200
 
 self.addEventListener('install', (event) => {
@@ -22,15 +21,30 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  const currentCaches = [STATIC_CACHE, DYNAMIC_CACHE, IMAGE_CACHE]
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
+  const currentCaches = [STATIC_CACHE, IMAGE_CACHE]
+  event.waitUntil((async () => {
+    const keys = await caches.keys()
+    await Promise.all(
       keys
         .filter((key) => key.startsWith('nowen-') && !currentCaches.includes(key))
         .map((key) => caches.delete(key)),
-    )),
-  )
-  self.clients.claim()
+    )
+
+    await self.clients.claim()
+
+    // 当前打开的标签页可能仍在执行旧版 JS，无法监听新 Worker 的 controllerchange。
+    // 激活时主动执行一次带版本参数的网络导航，强制退出旧页面与旧菜单。
+    const windowClients = await self.clients.matchAll({ type: 'window' })
+    await Promise.all(windowClients.map(async (client) => {
+      try {
+        const target = new URL(client.url)
+        target.searchParams.set('__nowen_app_version', CACHE_VERSION)
+        await client.navigate(target.href)
+      } catch {
+        // 标签页可能在刷新过程中关闭；不影响其他客户端更新。
+      }
+    }))
+  })())
 })
 
 async function trimCache(cacheName, maxItems) {
@@ -73,7 +87,6 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
 
   // Service Worker 不应参与写请求、跨域请求、认证页、API 或 Vite 开发模块。
-  // 这些请求一旦被旧缓存接管，最容易造成登录成功后仍回到登录页的循环。
   if (
     request.method !== 'GET' ||
     url.protocol !== 'http:' && url.protocol !== 'https:' ||
@@ -82,6 +95,13 @@ self.addEventListener('fetch', (event) => {
     isDevelopmentRequest(url) ||
     isBackendRequest(request, url)
   ) {
+    return
+  }
+
+  // HTML 导航永远网络直连且禁止缓存。网络不可用时明确失败，
+  // 不再回退可能包含旧导航或退役页面的应用壳。
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request, { cache: 'no-store' }))
     return
   }
 
@@ -107,7 +127,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // JS/CSS/字体等带内容哈希的静态资源：网络优先，离线时回退缓存。
+  // JS/CSS/字体等带内容哈希的静态资源：网络优先，离线时回退当前版本缓存。
   if (
     ['script', 'style', 'font', 'manifest'].includes(request.destination) ||
     url.pathname.match(/\.(js|css|woff2?|json)$/i)
@@ -122,27 +142,6 @@ self.addEventListener('fetch', (event) => {
           return response
         })
         .catch(() => caches.match(request)),
-    )
-    return
-  }
-
-  // 非认证 HTML 导航：网络优先；离线时仅回退应用壳。
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' })
-        .then((response) => {
-          if (response.ok && response.type === 'basic') {
-            const clone = response.clone()
-            void caches.open(DYNAMIC_CACHE).then(async (cache) => {
-              await cache.put('/', clone)
-              await trimCache(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE)
-            })
-          }
-          return response
-        })
-        .catch(async () => {
-          return (await caches.match('/')) || Response.error()
-        }),
     )
   }
 })
@@ -166,14 +165,13 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       Promise.all([
         caches.open(STATIC_CACHE).then((cache) => cache.keys()).then((keys) => keys.length),
-        caches.open(DYNAMIC_CACHE).then((cache) => cache.keys()).then((keys) => keys.length),
         caches.open(IMAGE_CACHE).then((cache) => cache.keys()).then((keys) => keys.length),
-      ]).then(([staticCount, dynamicCount, imageCount]) => {
+      ]).then(([staticCount, imageCount]) => {
         event.ports[0]?.postMessage({
           static: staticCount,
-          dynamic: dynamicCount,
+          dynamic: 0,
           images: imageCount,
-          total: staticCount + dynamicCount + imageCount,
+          total: staticCount + imageCount,
         })
       }),
     )
@@ -193,7 +191,7 @@ async function syncPlaybackProgress() {
       console.log('[SW] 网络已恢复，可同步离线数据')
     }
   } catch {
-    // 仍然离线，等待下次同步
+    // 仍然离线，等待下次同步。
   }
 }
 

@@ -1,0 +1,128 @@
+name: Transcode Multi-Job Contention Certification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_storage_reservation.go'
+      - 'internal/repository/repo_transcode_artifact*.go'
+      - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/repository/repo_transcode_queue.go'
+      - 'internal/repository/repo_transcode_storage_reservation*.go'
+      - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/task_center.go'
+      - 'internal/service/task_actions*.go'
+      - 'internal/service/task_center*.go'
+      - 'internal/service/transcode_artifacts.go'
+      - 'internal/service/transcode_artifact_version.go'
+      - 'internal/service/transcode_attestation.go'
+      - 'internal/service/transcode_cleanup*.go'
+      - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_storage_reservation*.go'
+      - 'internal/service/transcode_lease.go'
+      - 'internal/service/transcode_queue.go'
+      - 'internal/service/transcode_concurrent_artifact_test.go'
+      - 'internal/service/transcode_stats.go'
+      - 'internal/service/stream_artifacts.go'
+      - 'internal/service/stream_startup_bridge.go'
+      - 'internal/service/stream_artifact_version_test.go'
+      - 'cmd/server-lite/router.go'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
+      - 'internal/transcode/artifactstore/**'
+      - 'internal/transcode/diskpressure/**'
+      - 'internal/transcode/storageestimate/**'
+      - 'internal/transcode/executor/**'
+      - 'internal/transcode/governor/**'
+      - 'internal/transcode/runtime/**'
+      - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
+      - 'docs/TRANSCODE_DISK_PRESSURE.md'
+      - 'docs/TRANSCODE_STORAGE_RESERVATION.md'
+      - '.github/workflows/transcode-multi-job-contention-cert.yml'
+  pull_request:
+    paths:
+      - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_storage_reservation.go'
+      - 'internal/repository/repo_transcode_artifact*.go'
+      - 'internal/repository/repo_transcode_execution*.go'
+      - 'internal/repository/repo_transcode_queue.go'
+      - 'internal/repository/repo_transcode_storage_reservation*.go'
+      - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/task_center.go'
+      - 'internal/service/task_actions*.go'
+      - 'internal/service/task_center*.go'
+      - 'internal/service/transcode_artifacts.go'
+      - 'internal/service/transcode_artifact_version.go'
+      - 'internal/service/transcode_attestation.go'
+      - 'internal/service/transcode_cleanup*.go'
+      - 'internal/service/transcode_disk_pressure*.go'
+      - 'internal/service/transcode_storage_reservation*.go'
+      - 'internal/service/transcode_lease.go'
+      - 'internal/service/transcode_queue.go'
+      - 'internal/service/transcode_concurrent_artifact_test.go'
+      - 'internal/service/transcode_stats.go'
+      - 'internal/service/stream_artifacts.go'
+      - 'internal/service/stream_startup_bridge.go'
+      - 'internal/service/stream_artifact_version_test.go'
+      - 'cmd/server-lite/router.go'
+      - 'web/src/api/tasks.ts'
+      - 'web/src/components/TaskCenter.tsx'
+      - 'internal/transcode/artifactstore/**'
+      - 'internal/transcode/diskpressure/**'
+      - 'internal/transcode/storageestimate/**'
+      - 'internal/transcode/executor/**'
+      - 'internal/transcode/governor/**'
+      - 'internal/transcode/runtime/**'
+      - 'docs/TRANSCODE_ARTIFACT_CLEANUP.md'
+      - 'docs/TRANSCODE_DISK_PRESSURE.md'
+      - 'docs/TRANSCODE_STORAGE_RESERVATION.md'
+      - '.github/workflows/transcode-multi-job-contention-cert.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transcode-multi-job-contention-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    name: Real process and artifact contention
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Governor, pressure, reservation estimate and runtime race tests
+        run: go test -race ./internal/transcode/governor ./internal/transcode/diskpressure ./internal/transcode/storageestimate ./internal/transcode/runtime -count=1
+
+      - name: Publication, cleanup, pressure, reservation and operator actions
+        run: go test -race ./internal/service -run '^(TestConcurrent|TestPlaylistPins|TestBindHLS|TestCleanup|TestArtifactCleanup|TestDiskPressure|TestStorageReservation|TestTask)' -count=1 -v
+
+      - name: Repository Lease, Artifact, cleanup, pressure and reservation fences
+        run: go test -race ./internal/repository -run 'Artifact|Lease|Claim|Cleanup|Pressure|Reservation' -count=1 -v
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -n 3
+
+      - name: Real FFmpeg multi-job contention fixture
+        env:
+          NOWEN_REQUIRE_FFMPEG_CONTENTION_FIXTURE: '1'
+        run: go test ./internal/transcode/runtime -run '^TestFFmpeg' -count=1 -v

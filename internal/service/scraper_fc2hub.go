@@ -11,15 +11,15 @@ import (
 
 // FC2Hub 正则
 var (
-	fc2hubSearchRe   = regexp.MustCompile(`(?is)<a[^>]+href="(/archive\?kw=\d+[^"]*)"[^>]*>[\s\S]*?<img`)
+	fc2hubSearchRe     = regexp.MustCompile(`(?is)<a[^>]+href="(/archive\?kw=\d+[^"]*)"[^>]*>[\s\S]*?<img`)
 	fc2hubDetailLinkRe = regexp.MustCompile(`(?is)<a[^>]+href="(/article/\d+[^"]*)"[^>]*class="overlay"`)
-	fc2hubTitleRe    = regexp.MustCompile(`(?is)<h3[^>]*class="p-b-5"[^>]*>([^<]+)</h3>`)
-	fc2hubCoverRe    = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.(?:jpg|jpeg|png))"[^>]*class="comic-cover"`)
-	fc2hubCoverAltRe = regexp.MustCompile(`(?is)<img[^>]+src="([^"]+)"[^>]+class="responsive"`)
-	fc2hubPlotRe     = regexp.MustCompile(`(?is)<div[^>]+class="comic-description"[^>]*>([\s\S]*?)</div>`)
-	fc2hubFanartRe   = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.(?:jpg|jpeg|png))"[^>]+data-fancybox`)
-	fc2hubInfoRe     = regexp.MustCompile(`(?is)<li[^>]*>\s*<strong>([^<]+)</strong>\s*[:：]?\s*([\s\S]*?)</li>`)
-	fc2hubTagRe      = regexp.MustCompile(`(?is)<a[^>]+href="/tag/[^"]+"[^>]*>([^<]+)</a>`)
+	fc2hubTitleRe      = regexp.MustCompile(`(?is)<h3[^>]*class="p-b-5"[^>]*>([^<]+)</h3>`)
+	fc2hubCoverRe      = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.(?:jpg|jpeg|png))"[^>]*class="comic-cover"`)
+	fc2hubCoverAltRe   = regexp.MustCompile(`(?is)<img[^>]+src="([^"]+)"[^>]+class="responsive"`)
+	fc2hubPlotRe       = regexp.MustCompile(`(?is)<div[^>]+class="comic-description"[^>]*>([\s\S]*?)</div>`)
+	fc2hubFanartRe     = regexp.MustCompile(`(?is)<a[^>]+href="([^"]+\.(?:jpg|jpeg|png))"[^>]+data-fancybox`)
+	fc2hubInfoRe       = regexp.MustCompile(`(?is)<li[^>]*>\s*<strong>([^<]+)</strong>\s*[:：]?\s*([\s\S]*?)</li>`)
+	fc2hubTagRe        = regexp.MustCompile(`(?is)<a[^>]+href="/tag/[^"]+"[^>]*>([^<]+)</a>`)
 )
 
 // scrapeFC2Hub 从 FC2Hub 刮削 FC2 番号

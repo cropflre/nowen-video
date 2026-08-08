@@ -1,5 +1,6 @@
 import { userApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { EmptyState } from '@/components/design-system'
 import { useTranslation } from '@/i18n'
 import { usePageCache } from '@/hooks/usePageCache'
 import { usePagination } from '@/hooks/usePagination'
@@ -21,7 +22,6 @@ export default function FavoritesPage() {
   const toast = useToast()
   const { t } = useTranslation()
 
-  // 按 page 分键缓存：切换分页时如果命中缓存则零 loading
   const { data, loading, error } = usePageCache<FavoritesData>(
     `favorites:page=${page}:size=${size}`,
     async () => {
@@ -31,44 +31,33 @@ export default function FavoritesPage() {
     { ttl: 15_000 },
   )
 
-  if (error) {
-    toast.error(t('favorites.loadFailed'))
-  }
+  if (error) toast.error(t('favorites.loadFailed'))
 
   const favorites = data?.list ?? []
   const total = data?.total ?? 0
-  const media = favorites.map((f) => f.media)
+  const media = favorites.map((favorite) => favorite.media)
   const pages = totalPages(total)
 
   return (
-    <div>
-      <h1 className="mb-6 flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        <Heart size={24} className="text-red-400" />
-        {t('favorites.title')}
-      </h1>
+    <div className="nv-section-stack">
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-[-0.02em] text-[var(--nv-text-primary)]">
+          <Heart size={22} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          {t('favorites.title')}
+        </h1>
+        {total > 0 && <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">共 {total} 个收藏</p>}
+      </div>
 
       <MediaGrid items={media} loading={loading} />
 
-      {/* 空状态 */}
       {!loading && media.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div
-            className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl"
-            style={{
-              background: 'rgba(239, 68, 68, 0.05)',
-              border: '1px solid rgba(239, 68, 68, 0.1)',
-            }}
-          >
-            <Heart size={36} className="text-surface-600" />
-          </div>
-          <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('favorites.empty')}</p>
-          <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            {t('favorites.emptyHint')}
-          </p>
-        </div>
+        <EmptyState
+          icon={<Heart size={26} aria-hidden="true" />}
+          title={t('favorites.empty')}
+          description={t('favorites.emptyHint')}
+        />
       )}
 
-      {/* 分页 */}
       <Pagination
         page={page}
         totalPages={pages}

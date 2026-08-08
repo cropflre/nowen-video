@@ -13,7 +13,7 @@ type Handlers struct {
 	Library        *LibraryHandler
 	Media          *MediaHandler
 	Series         *SeriesHandler
-	Stream         *StreamHandler
+	Stream         *ArtifactStreamHandler
 	User           *UserHandler
 	Admin          *AdminHandler
 	Subtitle       *SubtitleHandler
@@ -44,8 +44,6 @@ type Handlers struct {
 	Federation      *FederationHandler
 	// V3: 新增处理器
 	AIScene *AISceneHandler
-	// V5: Pulse 数据中心
-	Pulse *PulseHandler
 	// V6: P1~P3 新增处理器
 	// 视频预处理
 	Preprocess *PreprocessHandler
@@ -75,12 +73,15 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Library: &LibraryHandler{libService: services.Library, permSvc: services.Permission, logger: logger},
 		Media:   &MediaHandler{mediaService: services.Media, personRepo: repos.Person, mediaPersonRepo: repos.MediaPerson, logger: logger},
 		Series:  &SeriesHandler{seriesService: services.Series, mediaPersonRepo: repos.MediaPerson, logger: logger},
-		Stream:  &StreamHandler{streamService: services.Stream, transcodeService: services.Transcode, logger: logger},
-		User:    &UserHandler{userService: services.User, authService: services.Auth, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
+		Stream: NewArtifactStreamHandler(&StreamHandler{
+			streamService: services.Stream,
+			logger:        logger,
+		}),
+		User: &UserHandler{userService: services.User, authService: services.Auth, mediaService: services.Media, loginLogRepo: repos.LoginLog, logger: logger},
 		Admin: &AdminHandler{
 			userService:       services.User,
 			authService:       services.Auth,
-			transcodeService:  services.Transcode,
+			mediaExecution:    services.MediaExecution,
 			permissionService: services.Permission,
 			libraryService:    services.Library,
 			metadataService:   services.Metadata,
@@ -90,7 +91,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 			loginLogRepo:      repos.LoginLog,
 			auditLogRepo:      repos.AuditLog,
 			inviteRepo:        repos.InviteCode,
-			mediaRepo:         repos.Media,
 			cfg:               cfg,
 			logger:            logger,
 			db:                repos.DB(),
@@ -130,8 +130,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Federation:      &FederationHandler{federationService: services.Federation, logger: logger},
 		// V3
 		AIScene: &AISceneHandler{sceneService: services.AIScene, logger: logger},
-		// V5: Pulse 数据中心
-		Pulse: &PulseHandler{pulseService: services.Pulse, logger: logger},
 		// V6: P1~P3 新增处理器
 		// 视频预处理
 		Preprocess: NewPreprocessHandler(services.Preprocess),

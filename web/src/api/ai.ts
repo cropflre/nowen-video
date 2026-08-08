@@ -1,4 +1,5 @@
 import api from './client'
+import { useServerProfileStore } from '@/stores/serverProfile'
 import type {
   SearchIntent,
   AIStatus,
@@ -6,6 +7,10 @@ import type {
   AICacheStats,
   AITestResult,
 } from '@/types'
+
+async function refreshServerProfile() {
+  await useServerProfileStore.getState().load(true)
+}
 
 // ==================== AI 智能功能 ====================
 export const aiApi = {
@@ -18,7 +23,7 @@ export const aiApi = {
     api.get<{ data: AIStatus }>('/admin/ai/status'),
 
   // 更新 AI 配置（管理员）
-  updateConfig: (updates: Partial<{
+  updateConfig: async (updates: Partial<{
     enabled: boolean
     auto_pilot: boolean
     block_local_ai: boolean
@@ -36,13 +41,19 @@ export const aiApi = {
     request_interval_ms: number
     // 各 provider 配置档案（仅传需要更新的 provider；api_key 留空字符串则保留原值）
     profiles: Record<string, { api_base?: string; api_key?: string; model?: string; model_chain?: string[] }>
-  }>) =>
-    api.put<{ message: string; data: AIStatus }>('/admin/ai/config', updates),
+  }>) => {
+    const response = await api.put<{ message: string; data: AIStatus }>('/admin/ai/config', updates)
+    await refreshServerProfile()
+    return response
+  },
 
   // 一键启用全自动托管模式（管理员）
   // 提供 provider / api_key 即可，会自动填好 api_base / model，并打开所有 AI 子开关
-  enableAutoPilot: (params?: { provider?: string; api_key?: string }) =>
-    api.post<{ message: string; data: AIStatus }>('/admin/ai/auto-pilot', params || {}),
+  enableAutoPilot: async (params?: { provider?: string; api_key?: string }) => {
+    const response = await api.post<{ message: string; data: AIStatus }>('/admin/ai/auto-pilot', params || {})
+    await refreshServerProfile()
+    return response
+  },
 
   // 测试 AI 连接（管理员）
   testConnection: () =>
@@ -75,11 +86,14 @@ export const aiApi = {
     api.get<{ data: import('@/types').AIProviderPreset[] }>('/admin/ai/presets'),
 
   // 一键配置通义千问（仅需提供 api_key）
-  quickConfigQwen: (apiKey: string) =>
-    api.post<{ message: string; data: { status: import('@/types').AIStatus; test: import('@/types').AITestResult } }>(
-      '/admin/ai/quick-config/qwen',
-      { api_key: apiKey },
-    ),
+  quickConfigQwen: async (apiKey: string) => {
+    const response = await api.post<{
+      message: string
+      data: { status: import('@/types').AIStatus; test: import('@/types').AITestResult }
+    }>('/admin/ai/quick-config/qwen', { api_key: apiKey })
+    await refreshServerProfile()
+    return response
+  },
 
   // 获取 AIRouter 当前状态（首选/生效 provider、月用量、切换链等）
   getRouterSnapshot: () =>

@@ -1,78 +1,83 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { aiApi } from '@/api'
-import { useToast } from '@/components/Toast'
-import { useDialog } from '@/components/Dialog'
-import { useTranslation } from '@/i18n'
-import type { AIStatus, AIErrorLog, AICacheStats, AITestResult } from '@/types'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  Sparkles,
-  Power,
-  Eye,
-  EyeOff,
-  Cpu,
-  Zap,
-  Search,
-  MessageSquare,
-  Database as DatabaseIcon,
-  Trash2,
-  Play,
-  Loader2,
-  Check,
-  X,
   AlertTriangle,
-  Clock,
   BarChart3,
-  Settings,
-  Shield,
-  RefreshCw,
+  Check,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Database as DatabaseIcon,
+  Eye,
+  EyeOff,
+  Loader2,
+  MessageSquare,
+  Play,
+  Power,
+  RefreshCw,
+  Rocket,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Trash2,
   Wifi,
   WifiOff,
-  Rocket,
+  X,
+  Zap,
 } from 'lucide-react'
-import clsx from 'clsx'
+import { aiApi } from '@/api'
+import { useDialog } from '@/components/Dialog'
+import { useToast } from '@/components/Toast'
+import {
+  Button,
+  EmptyState,
+  Input,
+  Surface,
+  Tag,
+  type TagTone,
+} from '@/components/design-system'
+import { useTranslation } from '@/i18n'
+import { useServerProfileStore } from '@/stores/serverProfile'
+import type { AICacheStats, AIErrorLog, AIStatus, AITestResult } from '@/types'
+import {
+  AdminPanel,
+  AdminStatus,
+  type AdminStatusTone,
+} from './AdminPrimitives'
 
-// ==================== 提供商预设 ====================
 const PROVIDERS = [
   {
     id: 'openai',
     name: 'OpenAI',
     apiBase: 'https://api.openai.com/v1',
     models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-    color: 'text-green-400',
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
     apiBase: 'https://api.deepseek.com/v1',
     models: ['deepseek-chat', 'deepseek-reasoner'],
-    color: 'text-blue-400',
   },
   {
     id: 'qwen',
     name: '通义千问',
     apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-long'],
-    color: 'text-purple-400',
   },
   {
     id: 'ollama',
     name: 'Ollama (本地)',
     apiBase: 'http://localhost:11434/v1',
     models: ['llama3', 'qwen2', 'gemma2', 'mistral'],
-    color: 'text-orange-400',
   },
   {
     id: 'custom',
     name: '自定义',
     apiBase: '',
     models: [],
-    color: 'text-surface-400',
   },
 ]
 
-// ==================== 测试用例预设 ====================
 const SEARCH_TEST_CASES = [
   '帮我找一部2023年的科幻电影',
   '有没有评分8分以上的日本动画',
@@ -86,17 +91,26 @@ const RECOMMEND_TEST_CASES = [
   { title: '肖申克的救赎', genres: '剧情,犯罪' },
 ]
 
+type ProviderDraft = {
+  api_base: string
+  api_key: string
+  model: string
+}
+
 export default function AITab() {
   const toast = useToast()
   const dialog = useDialog()
   const { t } = useTranslation()
 
-  // ==================== 状态 ====================
+  const aiCapability = useServerProfileStore((state) => state.manifest?.capabilities.ai)
+  const profileLoaded = useServerProfileStore((state) => state.loaded)
+  const profileLoading = useServerProfileStore((state) => state.loading)
+  const refreshProfile = useServerProfileStore((state) => state.load)
+
   const [status, setStatus] = useState<AIStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // 配置编辑
   const [editEnabled, setEditEnabled] = useState(false)
   const [editProvider, setEditProvider] = useState('openai')
   const [editApiBase, setEditApiBase] = useState('')
@@ -110,34 +124,20 @@ export default function AITab() {
   const [editCacheTTL, setEditCacheTTL] = useState(168)
   const [editMaxConcurrent, setEditMaxConcurrent] = useState(3)
   const [editRequestInterval, setEditRequestInterval] = useState(200)
-
   const [showApiKey, setShowApiKey] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  // ==================== 多 Provider 配置记忆 ====================
-  // 每个 provider 当前会话内未保存的草稿（切换走时暂存，切回时恢复）
-  // 仅在前端内存中，不上送也不持久化；保存后由后端 profiles 接管
-  type ProviderDraft = { api_base: string; api_key: string; model: string }
   const draftProfilesRef = useRef<Record<string, ProviderDraft>>({})
-  // 标记 fetchStatus 期间不要被切换逻辑误判为「用户在编辑」
-  const skipDraftSnapshotRef = useRef<boolean>(false)
+  const skipDraftSnapshotRef = useRef(false)
 
-  // 连接测试
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<AITestResult | null>(null)
-
-  // 缓存
   const [cacheStats, setCacheStats] = useState<AICacheStats | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
-
-  // 错误日志
   const [errorLogs, setErrorLogs] = useState<AIErrorLog[]>([])
   const [showErrors, setShowErrors] = useState(false)
-
-  // AutoPilot 切换繁忙态
   const [autoPilotBusy, setAutoPilotBusy] = useState(false)
 
-  // 功能测试
   const [testingSearch, setTestingSearch] = useState(false)
   const [searchTestQuery, setSearchTestQuery] = useState('')
   const [searchTestResult, setSearchTestResult] = useState<AITestResult | null>(null)
@@ -146,34 +146,30 @@ export default function AITab() {
   const [recommendTestGenres, setRecommendTestGenres] = useState('')
   const [recommendTestResult, setRecommendTestResult] = useState<AITestResult | null>(null)
 
-  // ==================== 数据加载 ====================
   const fetchStatus = useCallback(async () => {
     try {
       const res = await aiApi.getStatus()
-      const s = res.data.data
-      setStatus(s)
-      // 同步到编辑状态（顶层即激活 provider 的当前配置）
+      const nextStatus = res.data.data
+      setStatus(nextStatus)
       skipDraftSnapshotRef.current = true
-      setEditEnabled(s.enabled)
-      setEditProvider(s.provider)
-      setEditApiBase(s.api_base || '')
-      setEditModel(s.model)
-      setEditTimeout(s.timeout || 30)
-      setEditSmartSearch(s.enable_smart_search)
-      setEditRecommendReason(s.enable_recommend_reason)
-      setEditMetadataEnhance(s.enable_metadata_enhance)
-      setEditMonthlyBudget(s.monthly_budget)
-      setEditCacheTTL(s.cache_ttl_hours || 168)
-      setEditMaxConcurrent(s.max_concurrent || 3)
-      setEditRequestInterval(s.request_interval_ms || 200)
-      // 拉到最新的激活档案，相当于覆盖了草稿，清空所有草稿避免脏数据
+      setEditEnabled(nextStatus.enabled)
+      setEditProvider(nextStatus.provider)
+      setEditApiBase(nextStatus.api_base || '')
+      setEditModel(nextStatus.model)
+      setEditTimeout(nextStatus.timeout || 30)
+      setEditSmartSearch(nextStatus.enable_smart_search)
+      setEditRecommendReason(nextStatus.enable_recommend_reason)
+      setEditMetadataEnhance(nextStatus.enable_metadata_enhance)
+      setEditMonthlyBudget(nextStatus.monthly_budget)
+      setEditCacheTTL(nextStatus.cache_ttl_hours || 168)
+      setEditMaxConcurrent(nextStatus.max_concurrent || 3)
+      setEditRequestInterval(nextStatus.request_interval_ms || 200)
       draftProfilesRef.current = {}
-      // 下一帧再放开（避免本轮 setEditProvider 触发的副作用被当作用户切换）
-      setTimeout(() => {
+      window.setTimeout(() => {
         skipDraftSnapshotRef.current = false
       }, 0)
     } catch {
-      // 静默
+      // Preserve the existing silent-failure behavior for status loading.
     }
   }, [])
 
@@ -182,7 +178,7 @@ export default function AITab() {
       const res = await aiApi.getCacheStats()
       setCacheStats(res.data.data)
     } catch {
-      // 静默
+      // Preserve the existing silent-failure behavior for cache statistics.
     }
   }, [])
 
@@ -191,7 +187,7 @@ export default function AITab() {
       const res = await aiApi.getErrorLogs()
       setErrorLogs(res.data.data || [])
     } catch {
-      // 静默
+      // Preserve the existing silent-failure behavior for error logs.
     }
   }, [])
 
@@ -201,16 +197,14 @@ export default function AITab() {
       await Promise.all([fetchStatus(), fetchCacheStats(), fetchErrorLogs()])
       setLoading(false)
     }
-    load()
+    void load()
   }, [fetchStatus, fetchCacheStats, fetchErrorLogs])
 
-  // ==================== AutoPilot 切换 ====================
   const handleToggleAutoPilot = async (enable: boolean) => {
     if (autoPilotBusy) return
     setAutoPilotBusy(true)
     try {
       if (enable) {
-        // 开启时：把当前编辑面板里的 provider+key 一起带上，方便首次开通
         const params: { provider?: string; api_key?: string } = {}
         if (editProvider) params.provider = editProvider
         if (editApiKey) params.api_key = editApiKey
@@ -228,19 +222,14 @@ export default function AITab() {
     }
   }
 
-  // ==================== 配置保存 ====================
   const handleSaveConfig = async () => {
     setSaving(true)
     try {
-      // 当前 provider 的 profile 增量（只传当前激活 provider；后端会做 merge）
       const currentProfile: { api_base: string; api_key?: string; model: string } = {
         api_base: editApiBase,
         model: editModel,
       }
-      // api_key 仅在用户输入新值时下发（空字符串 → 后端保留原值，避免覆盖掩码）
-      if (editApiKey) {
-        currentProfile.api_key = editApiKey
-      }
+      if (editApiKey) currentProfile.api_key = editApiKey
 
       const updates: Record<string, unknown> = {
         enabled: editEnabled,
@@ -255,21 +244,16 @@ export default function AITab() {
         cache_ttl_hours: editCacheTTL,
         max_concurrent: editMaxConcurrent,
         request_interval_ms: editRequestInterval,
-        // 把当前 provider 的配置以 profile 形式同步存档
         profiles: {
           [editProvider]: currentProfile,
         },
       }
-      // 只在用户输入了新密钥时才更新顶层 api_key（与 profile 保持一致）
-      if (editApiKey) {
-        updates.api_key = editApiKey
-      }
+      if (editApiKey) updates.api_key = editApiKey
 
       await aiApi.updateConfig(updates)
-      // 保存成功，清空当前 provider 的草稿（已成为激活档案）
       delete draftProfilesRef.current[editProvider]
       toast.success(t('aiTab.configSaved'))
-      setEditApiKey('') // 清空密钥输入
+      setEditApiKey('')
       await fetchStatus()
     } catch {
       toast.error(t('aiTab.configSaveFailed'))
@@ -278,7 +262,6 @@ export default function AITab() {
     }
   }
 
-  // ==================== 连接测试 ====================
   const handleTestConnection = async () => {
     setTesting(true)
     setTestResult(null)
@@ -297,7 +280,6 @@ export default function AITab() {
     }
   }
 
-  // ==================== 缓存管理 ====================
   const handleClearCache = async () => {
     const ok = await dialog.confirm({
       title: '清空 AI 缓存',
@@ -306,6 +288,7 @@ export default function AITab() {
       variant: 'warning',
     })
     if (!ok) return
+
     setClearingCache(true)
     try {
       const res = await aiApi.clearCache()
@@ -318,15 +301,14 @@ export default function AITab() {
     }
   }
 
-  // ==================== 功能测试 ====================
   const handleTestSearch = async (query?: string) => {
-    const q = query || searchTestQuery
-    if (!q.trim()) return
+    const nextQuery = query || searchTestQuery
+    if (!nextQuery.trim()) return
     setTestingSearch(true)
     setSearchTestResult(null)
     if (query) setSearchTestQuery(query)
     try {
-      const res = await aiApi.testSmartSearch(q)
+      const res = await aiApi.testSmartSearch(nextQuery)
       setSearchTestResult(res.data.data)
     } catch {
       toast.error(t('aiTab.searchTestFailed'))
@@ -336,9 +318,9 @@ export default function AITab() {
   }
 
   const handleTestRecommend = async (title?: string, genres?: string) => {
-    const titleVal = title || recommendTestTitle
-    const g = genres || recommendTestGenres
-    if (!titleVal.trim()) return
+    const nextTitle = title || recommendTestTitle
+    const nextGenres = genres || recommendTestGenres
+    if (!nextTitle.trim()) return
     setTestingRecommend(true)
     setRecommendTestResult(null)
     if (title) {
@@ -346,7 +328,7 @@ export default function AITab() {
       setRecommendTestGenres(genres || '')
     }
     try {
-      const res = await aiApi.testRecommendReason(titleVal, g)
+      const res = await aiApi.testRecommendReason(nextTitle, nextGenres)
       setRecommendTestResult(res.data.data)
     } catch {
       toast.error(t('aiTab.recommendTestFailed'))
@@ -355,16 +337,9 @@ export default function AITab() {
     }
   }
 
-  // ==================== 提供商切换 ====================
-  // 切换策略（按优先级恢复表单）：
-  //   1. 当前 provider 表单值 → 暂存为草稿到 draftProfilesRef[oldProvider]
-  //   2. 目标 provider：优先取 draftProfilesRef[newProvider]（未保存草稿）
-  //   3. 否则取 status.profiles[newProvider]（后端已保存档案）
-  //   4. 否则使用 PROVIDERS 预设的 apiBase + 第一个模型
   const handleProviderChange = (providerId: string) => {
     if (providerId === editProvider) return
 
-    // 1) 暂存当前编辑值为草稿（API Key 为空也存，恢复时配合后端 placeholder 显示）
     if (!skipDraftSnapshotRef.current && editProvider) {
       draftProfilesRef.current[editProvider] = {
         api_base: editApiBase,
@@ -375,902 +350,727 @@ export default function AITab() {
 
     setEditProvider(providerId)
 
-    // 2) 恢复优先级：草稿 > 后端档案 > 预设
     const draft = draftProfilesRef.current[providerId]
     const savedProfile = status?.profiles?.[providerId]
-    const preset = PROVIDERS.find((p) => p.id === providerId)
+    const preset = PROVIDERS.find((provider) => provider.id === providerId)
 
     if (draft) {
-      // 恢复未保存草稿
       setEditApiBase(draft.api_base)
       setEditApiKey(draft.api_key)
       setEditModel(draft.model)
     } else if (savedProfile) {
-      // 恢复后端已保存档案（api_key 字段后端不返回明文，留空让 placeholder 提示）
       setEditApiBase(savedProfile.api_base || preset?.apiBase || '')
       setEditApiKey('')
       setEditModel(savedProfile.model || preset?.models[0] || '')
     } else if (preset) {
-      // 全新 provider，用预设
       setEditApiBase(preset.apiBase)
       setEditApiKey('')
       setEditModel(preset.models[0] || '')
     }
   }
 
-  // 当前 provider 在后端是否已配置过 api_key（每个 provider 独立判断）
-  const currentProfileSavedKey = !!status?.profiles?.[editProvider]?.api_key_configured
-  // 当前 provider 在前端是否有未保存草稿（用于 UI 提示）
-  const currentProviderHasDraft = !!draftProfilesRef.current[editProvider]
-
-  // 当前提供商的可用模型
-  const currentProvider = PROVIDERS.find((p) => p.id === editProvider)
+  const currentProfileSavedKey = Boolean(status?.profiles?.[editProvider]?.api_key_configured)
+  const currentProviderHasDraft = Boolean(draftProfilesRef.current[editProvider])
+  const currentProvider = PROVIDERS.find((provider) => provider.id === editProvider)
   const availableModels = currentProvider?.models || []
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={28} className="animate-spin text-neon" />
+      <div className="flex min-h-80 items-center justify-center gap-3 text-sm text-[var(--nv-text-tertiary)]">
+        <Loader2 size={24} className="animate-spin text-[var(--nv-action-primary)]" />
+        正在读取 AI 配置...
       </div>
     )
   }
 
+  const capabilityKnown = profileLoaded && Boolean(aiCapability)
+  const configured = capabilityKnown && aiCapability?.configured === true
+  const runtimeRunning = capabilityKnown && aiCapability?.available === true && aiCapability?.enabled === true && status?.enabled === true
+  const pendingRestart = capabilityKnown && aiCapability?.pending_restart === true
+  const capabilityUnavailable = capabilityKnown && aiCapability?.available !== true
+
   return (
     <div className="space-y-6">
-      {/* ==================== 状态概览卡片 ==================== */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {/* 服务状态 */}
-        <div className="glass-panel rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            {status?.enabled && status?.api_configured ? (
-              <Wifi size={16} className="text-green-400" />
-            ) : (
-              <WifiOff size={16} className="text-surface-500" />
-            )}
-            <span className="text-xs font-medium text-theme-muted">
-              服务状态
-            </span>
-          </div>
-          <p
-            className={clsx(
-              'text-sm font-semibold',
-              status?.enabled && status?.api_configured ? 'text-green-400' : 'text-surface-500'
-            )}
-          >
-            {status?.enabled ? (status?.api_configured ? '已启用' : '未配置密钥') : '未启用'}
-          </p>
+      <AdminPanel
+        title="AI 运行状态"
+        description="配置状态、实际运行状态和待重启状态来自服务端能力契约，避免把“已保存配置”误判为“正在运行”。"
+        icon={<Sparkles size={18} />}
+        actions={
+          <Button size="sm" variant="secondary" onClick={() => void refreshProfile(true)} disabled={profileLoading}>
+            <RefreshCw size={14} className={profileLoading ? 'animate-spin' : undefined} />
+            重新检测
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <CapabilityStateCard
+            icon={<Settings size={17} />}
+            label="配置状态"
+            value={!profileLoaded ? '检测中' : configured ? '配置开启' : '配置关闭'}
+            detail="来自 capabilities.ai.configured"
+            tone={configured ? 'active' : 'neutral'}
+          />
+          <CapabilityStateCard
+            icon={runtimeRunning ? <Wifi size={17} /> : <WifiOff size={17} />}
+            label="实际运行"
+            value={!profileLoaded ? '检测中' : runtimeRunning ? '运行中' : configured ? '尚未运行' : '已停止'}
+            detail="由 capability 运行态与 AIStatus 共同确认"
+            tone={runtimeRunning ? 'success' : configured ? 'warning' : 'neutral'}
+          />
+          <CapabilityStateCard
+            icon={<RefreshCw size={17} />}
+            label="进程状态"
+            value={!profileLoaded ? '检测中' : pendingRestart ? '等待重启' : '无需重启'}
+            detail={aiCapability?.requires_restart ? '此能力的开关变更需要服务重启' : '当前能力无需进程级重启'}
+            tone={pendingRestart ? 'warning' : 'neutral'}
+          />
+          <CapabilityStateCard
+            icon={<Shield size={17} />}
+            label="API 配置"
+            value={status?.api_configured ? '密钥已配置' : '密钥未配置'}
+            detail={`${status?.provider || editProvider} · ${status?.model || editModel || '未选择模型'}`}
+            tone={status?.api_configured ? 'success' : 'warning'}
+          />
         </div>
 
-        {/* 本月调用 */}
-        <div className="glass-panel rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3 size={16} className="text-neon/60" />
-            <span className="text-xs font-medium text-theme-muted">
-              本月调用
-            </span>
-          </div>
-          <p className="text-sm font-semibold text-theme-primary">
-            {status?.monthly_calls || 0}
-            {status?.monthly_budget ? (
-              <span className="text-xs font-normal text-surface-500"> / {status.monthly_budget}</span>
-            ) : (
-              <span className="text-xs font-normal text-surface-500"> 次</span>
-            )}
-          </p>
-        </div>
-
-        {/* Token 消耗 */}
-        <div className="glass-panel rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Cpu size={16} className="text-purple-400/60" />
-            <span className="text-xs font-medium text-theme-muted">
-              Token 消耗
-            </span>
-          </div>
-          <p className="text-sm font-semibold text-theme-primary">
-            {((status?.total_tokens || 0) / 1000).toFixed(1)}K
-          </p>
-        </div>
-
-        {/* 缓存条目 */}
-        <div className="glass-panel rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <DatabaseIcon size={16} className="text-cyan-400/60" />
-            <span className="text-xs font-medium text-theme-muted">
-              缓存条目
-            </span>
-          </div>
-          <p className="text-sm font-semibold text-theme-primary">
-            {status?.cache_entries || 0}
-          </p>
-        </div>
-      </div>
-
-      {/* ==================== 🚀 全自动托管模式（AutoPilot）==================== */}
-      <section>
-        <div
-          className="glass-panel rounded-xl p-5 border"
-          style={{
-            background: status?.auto_pilot
-              ? 'linear-gradient(135deg, var(--neon-blue-10), transparent 60%)'
-              : undefined,
-            borderColor: status?.auto_pilot ? 'var(--neon-blue-30, rgba(56,189,248,0.3))' : 'transparent',
-          }}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: 'var(--neon-blue-10)' }}
-              >
-                <Rocket size={22} className="text-neon" />
-              </div>
+        {pendingRestart && (
+          <Surface className="mt-4 border-[var(--nv-status-warning)] p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--nv-status-warning)]" />
               <div className="min-w-0">
-                <p className="text-base font-semibold text-theme-primary flex items-center gap-2">
-                  全自动托管模式
-                  {status?.auto_pilot && (
-                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-neon/10 text-neon">
-                      Active
-                    </span>
-                  )}
-                </p>
-                <p className="mt-1 text-xs text-theme-muted leading-relaxed">
-                  开启后新增媒体库会自动执行：<span className="text-theme-secondary">AI 识别 → 归类 → 命名 → TMDb·豆瓣 元数据刮削 → AI 兜底</span>。
-                  <br />仅写入数据库，<span className="text-green-400">不会修改磁盘上任何原始文件</span>。开启后强制使用云端 LLM 服务商（拒绝 ollama 等本地 AI）。
+                <p className="text-sm font-semibold text-[var(--nv-text-primary)]">AI 配置等待服务重启</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                  {configured && !aiCapability?.enabled
+                    ? 'AI 配置已经开启，但运行路由、数据表和后台组件需要重启服务后才会装配。当前仍可以继续编辑配置和测试连接。'
+                    : 'AI 配置已经关闭，客户端已停止把 AI 视为可用；重启服务后将完成运行组件回收。'}
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => handleToggleAutoPilot(!status?.auto_pilot)}
-              disabled={autoPilotBusy}
-              className="toggle-switch toggle-switch-lg"
-              role="switch"
-              aria-checked={!!status?.auto_pilot}
-              aria-label="全自动托管模式"
-            >
-              <span className="toggle-switch-thumb" />
-            </button>
-          </div>
-          {!status?.api_configured && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-yellow-400">
-              <AlertTriangle size={14} />
-              请先在下方填写并保存 API Key，托管模式才能生效
-            </div>
-          )}
-          {status?.auto_pilot && status?.api_configured && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-green-400">
-              <Check size={14} />
-              托管模式已生效：后续扫描入库的文件将自动调用 {status.provider} / {status.model}
-            </div>
-          )}
-        </div>
-      </section>
+          </Surface>
+        )}
 
-      {/* ==================== 配置管理 ==================== */}
-      <section>
-        <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
-        >
-          <Settings size={20} className="text-neon/60" />
-          AI 服务配置
-        </h2>
-
-        <div className="glass-panel rounded-xl p-5 space-y-5">
-          {/* 总开关 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={clsx(
-                  'flex h-10 w-10 items-center justify-center rounded-lg'
-                )}
-                style={{ background: editEnabled ? 'var(--neon-blue-10)' : 'var(--nav-hover-bg)' }}
-              >
-                <Power size={18} className={editEnabled ? 'text-neon' : 'text-surface-500'} />
-              </div>
+        {capabilityUnavailable && !pendingRestart && (
+          <Surface className="mt-4 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--nv-status-warning)]" />
               <div>
-                <p className="text-sm font-medium text-theme-primary">
-                  启用 AI 功能
-                </p>
-                <p className="text-xs text-theme-muted">
-                  全局开关，关闭后所有 AI 功能将停用
+                <p className="text-sm font-semibold text-[var(--nv-text-primary)]">当前服务未装配 AI 运行能力</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                  可以继续维护配置；实际可用性以服务端 capabilities.ai 为准。
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setEditEnabled(!editEnabled)}
-              className="toggle-switch toggle-switch-lg"
-              role="switch"
-              aria-checked={editEnabled}
-              aria-label="启用 AI 功能"
-            >
-              <span className="toggle-switch-thumb" />
-            </button>
-          </div>
+          </Surface>
+        )}
+      </AdminPanel>
 
-          {/* 提供商选择 */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-theme-secondary">
-              LLM 提供商
-            </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {PROVIDERS.map((p) => {
-                const profileConfigured = !!status?.profiles?.[p.id]?.api_key_configured
-                const hasDraft = !!draftProfilesRef.current[p.id] && p.id !== editProvider
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => handleProviderChange(p.id)}
-                    className={clsx(
-                      'relative rounded-lg px-3 py-2.5 text-sm font-medium transition-all text-center',
-                      editProvider === p.id
-                        ? 'ring-2'
-                        : 'hover:bg-white/[0.03]'
-                    )}
-                    style={{
-                      background: editProvider === p.id ? 'var(--neon-blue-10)' : 'var(--bg-surface)',
-                      border: editProvider === p.id ? undefined : '1px solid var(--border-subtle)',
-                      color: editProvider === p.id ? 'var(--neon-blue)' : 'var(--text-secondary)',
-                      ...(editProvider === p.id ? { boxShadow: '0 0 0 2px var(--neon-blue)' } : {}),
-                    }}
-                  >
-                    {p.name}
-                    {/* 右上角状态点：已配置=绿、有草稿=黄 */}
-                    {(profileConfigured || hasDraft) && (
-                      <span
-                        className={clsx(
-                          'absolute -right-1 -top-1 h-2 w-2 rounded-full',
-                          hasDraft ? 'bg-yellow-400' : 'bg-green-400'
-                        )}
-                        title={hasDraft ? '有未保存草稿' : '已保存密钥'}
-                      />
-                    )}
-                  </button>
-                )
-              })}
+      <AdminPanel
+        title="全自动托管模式"
+        description="新增媒体库后自动串联 AI 识别、归类、命名、元数据刮削与 AI 兜底。仅写入数据库，不修改原始文件。"
+        icon={<Rocket size={18} />}
+        actions={
+          <SemanticSwitch
+            checked={Boolean(status?.auto_pilot)}
+            onChange={(checked) => void handleToggleAutoPilot(checked)}
+            disabled={autoPilotBusy}
+            label="全自动托管模式"
+          />
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminStatus tone={status?.auto_pilot ? 'active' : 'neutral'}>
+            {status?.auto_pilot ? '托管已开启' : '托管已关闭'}
+          </AdminStatus>
+          <Tag tone="neutral">云端 LLM</Tag>
+          <span className="text-xs text-[var(--nv-text-tertiary)]">托管模式会拒绝 Ollama 等本地 AI。</span>
+        </div>
+
+        {!status?.api_configured && (
+          <div className="mt-4 flex items-start gap-2 text-xs leading-5 text-[var(--nv-status-warning)]">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            请先填写并保存 API Key，托管模式才能稳定生效。
+          </div>
+        )}
+        {status?.auto_pilot && status?.api_configured && (
+          <div className="mt-4 flex items-start gap-2 text-xs leading-5 text-[var(--nv-status-success)]">
+            <Check size={14} className="mt-0.5 shrink-0" />
+            托管模式已生效：后续扫描入库会调用 {status.provider} / {status.model}。
+          </div>
+        )}
+      </AdminPanel>
+
+      <AdminPanel
+        title="AI 服务配置"
+        description="Provider 切换时会在当前页面内暂存未保存草稿；API Key 留空保存不会清除已存密钥。"
+        icon={<Settings size={18} />}
+        bodyClassName="space-y-5"
+      >
+        <Surface className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-action-primary)]">
+              <Power size={18} />
             </div>
-            <p className="mt-1.5 text-xs text-theme-muted">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 mr-1 align-middle" />
-              已保存密钥
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-yellow-400 ml-3 mr-1 align-middle" />
-              有未保存草稿（切换 provider 自动暂存，刷新页面或保存后丢失）
-            </p>
+            <div>
+              <p className="text-sm font-medium text-[var(--nv-text-primary)]">启用 AI 功能</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">这是待保存的配置值；实际运行状态请以上方能力状态为准。</p>
+            </div>
           </div>
+          <SemanticSwitch checked={editEnabled} onChange={setEditEnabled} label="启用 AI 功能" />
+        </Surface>
 
-          {/* API Base */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
-              API 地址
-            </label>
-            <input
-              type="text"
-              value={editApiBase}
-              onChange={(e) => setEditApiBase(e.target.value)}
-              className="input font-mono text-sm"
-              placeholder="https://api.openai.com/v1"
+        <FieldGroup label="LLM 提供商" description="已保存密钥用 Success 标记；未保存草稿用 Warning 标记。">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {PROVIDERS.map((provider) => {
+              const active = editProvider === provider.id
+              const profileConfigured = Boolean(status?.profiles?.[provider.id]?.api_key_configured)
+              const hasDraft = Boolean(draftProfilesRef.current[provider.id]) && provider.id !== editProvider
+              return (
+                <Button
+                  key={provider.id}
+                  type="button"
+                  variant={active ? 'primary' : 'secondary'}
+                  className="h-auto min-h-12 flex-col gap-1.5 py-2.5"
+                  onClick={() => handleProviderChange(provider.id)}
+                >
+                  <span>{provider.name}</span>
+                  <span className="flex flex-wrap items-center justify-center gap-1">
+                    {profileConfigured && <Tag tone="success">已配置</Tag>}
+                    {hasDraft && <Tag tone="warning">草稿</Tag>}
+                  </span>
+                </Button>
+              )
+            })}
+          </div>
+        </FieldGroup>
+
+        <FieldGroup label="API 地址">
+          <Input
+            type="text"
+            value={editApiBase}
+            onChange={(event) => setEditApiBase(event.target.value)}
+            className="font-mono"
+            placeholder="https://api.openai.com/v1"
+          />
+        </FieldGroup>
+
+        <FieldGroup label="API 密钥">
+          <div className="relative">
+            <Input
+              type={showApiKey ? 'text' : 'password'}
+              value={editApiKey}
+              onChange={(event) => setEditApiKey(event.target.value)}
+              className="pr-11 font-mono"
+              placeholder={currentProfileSavedKey ? '已配置（输入新值可覆盖）' : '请输入 API Key'}
+              autoComplete="off"
             />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label={showApiKey ? '隐藏 API 密钥' : '显示 API 密钥'}
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+              onClick={() => setShowApiKey((value) => !value)}
+            >
+              {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+            </Button>
           </div>
-
-          {/* API Key */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
-              API 密钥
-            </label>
-            <div className="relative">
-              <input
-                type={showApiKey ? 'text' : 'password'}
-                value={editApiKey}
-                onChange={(e) => setEditApiKey(e.target.value)}
-                className="input pr-10 font-mono text-sm"
-                placeholder={currentProfileSavedKey ? '已配置（输入新值可覆盖）' : '请输入 API Key'}
-              />
-              <button
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300 transition-colors"
-              >
-                {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+          <div className="mt-2 space-y-1">
             {currentProfileSavedKey && !editApiKey && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-green-400">
+              <p className="flex items-center gap-1.5 text-xs text-[var(--nv-status-success)]">
                 <Check size={12} />
-                {currentProvider?.name || editProvider} 的密钥已保存（留空提交不会清除）
+                {currentProvider?.name || editProvider} 的密钥已保存，留空提交不会清除。
               </p>
             )}
             {currentProviderHasDraft && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-yellow-400">
+              <p className="flex items-center gap-1.5 text-xs text-[var(--nv-status-warning)]">
                 <AlertTriangle size={12} />
-                有未保存的修改（切换 provider 会自动暂存草稿）
+                当前 Provider 有未保存修改，切换时会在本页暂存草稿。
               </p>
             )}
-
           </div>
+        </FieldGroup>
 
-          {/* 模型选择 */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-theme-secondary">
-              模型
-            </label>
-
-            {/* 手动输入框 — 始终显示 */}
-            <div className="relative">
-              <input
-                type="text"
-                value={editModel}
-                onChange={(e) => setEditModel(e.target.value)}
-                className="input font-mono text-sm"
-                placeholder={availableModels.length > 0 ? '手动输入模型名称，或从下方列表选择' : '输入模型名称，如 gpt-4o-mini'}
-              />
-              {/* 当输入值匹配预置模型时，显示匹配标记 */}
-              {editModel && availableModels.includes(editModel) && (
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-medium text-neon"
-                >
-                  <Check size={12} />
-                  预置模型
-                </span>
-              )}
-              {/* 当输入值不匹配预置模型且有预置列表时，显示自定义标记 */}
-              {editModel && availableModels.length > 0 && !availableModels.includes(editModel) && (
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-theme-muted"
-                >
-                  自定义模型
-                </span>
-              )}
-            </div>
-
-            {/* 预置模型快捷选择列表 — 有预置模型时显示 */}
-            {availableModels.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {availableModels.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setEditModel(m)}
-                    className={clsx(
-                      'rounded-lg px-3 py-1.5 text-xs font-mono transition-all',
-                      editModel === m
-                        ? 'ring-1'
-                        : 'text-surface-400 hover:text-surface-300'
-                    )}
-                    style={
-                      editModel === m
-                        ? { background: 'var(--neon-blue-10)', color: 'var(--neon-blue)', boxShadow: '0 0 0 1px var(--neon-blue)' }
-                        : { background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }
-                    }
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 功能开关 */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-theme-secondary">
-              功能开关
-            </label>
-            <div className="space-y-3">
-              {[
-                {
-                  key: 'search',
-                  label: '智能搜索',
-                  desc: '自然语言 → 结构化查询参数',
-                  icon: Search,
-                  value: editSmartSearch,
-                  setter: setEditSmartSearch,
-                },
-                {
-                  key: 'recommend',
-                  label: '推荐理由',
-                  desc: 'AI 生成个性化推荐文案',
-                  icon: MessageSquare,
-                  value: editRecommendReason,
-                  setter: setEditRecommendReason,
-                },
-                {
-                  key: 'metadata',
-                  label: '元数据增强',
-                  desc: '当传统数据源失败时用 AI 补充',
-                  icon: Sparkles,
-                  value: editMetadataEnhance,
-                  setter: setEditMetadataEnhance,
-                },
-              ].map((item) => {
-                const Icon = item.icon
-                return (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between rounded-lg p-3"
-                    style={{ background: 'var(--nav-hover-bg)' }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon size={16} className="text-neon/50" />
-                      <div>
-                        <p className="text-sm font-medium text-theme-primary">
-                          {item.label}
-                        </p>
-                        <p className="text-xs text-theme-muted">
-                          {item.desc}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => item.setter(!item.value)}
-                      className="toggle-switch toggle-switch-sm"
-                      role="switch"
-                      aria-checked={item.value}
-                      aria-label={item.label}
-                    >
-                      <span className="toggle-switch-thumb" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 高级设置折叠 */}
-          <div>
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium transition-colors text-theme-secondary"
-            >
-              {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              高级设置
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-3 space-y-4 rounded-lg p-4" style={{ background: 'var(--nav-hover-bg)' }}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-theme-muted">
-                      请求超时（秒）
-                    </label>
-                    <input
-                      type="number"
-                      value={editTimeout}
-                      onChange={(e) => setEditTimeout(Number(e.target.value))}
-                      className="input text-sm"
-                      min={5}
-                      max={120}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-theme-muted">
-                      月度预算上限（0=不限）
-                    </label>
-                    <input
-                      type="number"
-                      value={editMonthlyBudget}
-                      onChange={(e) => setEditMonthlyBudget(Number(e.target.value))}
-                      className="input text-sm"
-                      min={0}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-theme-muted">
-                      缓存时长（小时）
-                    </label>
-                    <input
-                      type="number"
-                      value={editCacheTTL}
-                      onChange={(e) => setEditCacheTTL(Number(e.target.value))}
-                      className="input text-sm"
-                      min={0}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-theme-muted">
-                      最大并发数
-                    </label>
-                    <input
-                      type="number"
-                      value={editMaxConcurrent}
-                      onChange={(e) => setEditMaxConcurrent(Number(e.target.value))}
-                      className="input text-sm"
-                      min={1}
-                      max={10}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-theme-muted">
-                      请求间隔（毫秒）
-                    </label>
-                    <input
-                      type="number"
-                      value={editRequestInterval}
-                      onChange={(e) => setEditRequestInterval(Number(e.target.value))}
-                      className="input text-sm"
-                      min={0}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 保存按钮 */}
-          <div className="flex items-center gap-3 pt-2 border-t" style={{ borderColor: 'var(--border-default)' }}>
-            <button
-              onClick={handleSaveConfig}
-              disabled={saving}
-              className="btn-primary gap-1.5 px-5 py-2 text-sm"
-            >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              {saving ? '保存中...' : '保存配置'}
-            </button>
-            <button
-              onClick={handleTestConnection}
-              disabled={testing || !status?.api_configured}
-              className="btn-ghost gap-1.5 px-4 py-2 text-sm"
-            >
-              {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-              {testing ? '测试中...' : '测试连接'}
-            </button>
-          </div>
-
-          {/* 连接测试结果 */}
-          {testResult && (
-            <div
-              className={clsx(
-                'flex items-start gap-3 rounded-lg px-4 py-3 text-sm',
-                testResult.success ? 'bg-green-500/10' : 'bg-red-500/10'
-              )}
-            >
-              {testResult.success ? (
-                <Check size={16} className="mt-0.5 text-green-400 flex-shrink-0" />
-              ) : (
-                <X size={16} className="mt-0.5 text-red-400 flex-shrink-0" />
-              )}
-              <div>
-                <p className={testResult.success ? 'text-green-400' : 'text-red-400'}>
-                  {testResult.success ? '连接成功' : '连接失败'}
-                </p>
-                <p className="mt-1 text-xs text-surface-400">
-                  {testResult.success
-                    ? `响应时间: ${testResult.latency_ms}ms · 提供商: ${testResult.provider} · 模型: ${testResult.model}`
-                    : testResult.error}
-                </p>
-              </div>
+        <FieldGroup label="模型" description={availableModels.length > 0 ? '可以手动输入模型名称，或使用下方预置模型。' : '当前 Provider 没有预置列表，请手动输入模型名称。'}>
+          <Input
+            type="text"
+            value={editModel}
+            onChange={(event) => setEditModel(event.target.value)}
+            className="font-mono"
+            placeholder={availableModels.length > 0 ? '输入模型名称，或从下方列表选择' : '输入模型名称，如 gpt-4o-mini'}
+          />
+          {editModel && (
+            <div className="mt-2">
+              <Tag tone={availableModels.includes(editModel) ? 'brand' : 'neutral'}>
+                {availableModels.includes(editModel) ? '预置模型' : '自定义模型'}
+              </Tag>
             </div>
           )}
+          {availableModels.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {availableModels.map((model) => (
+                <Button
+                  key={model}
+                  type="button"
+                  size="sm"
+                  variant={editModel === model ? 'primary' : 'secondary'}
+                  className="font-mono"
+                  onClick={() => setEditModel(model)}
+                >
+                  {model}
+                </Button>
+              ))}
+            </div>
+          )}
+        </FieldGroup>
+
+        <FieldGroup label="功能开关">
+          <div className="grid gap-2 lg:grid-cols-3">
+            <FeatureToggle
+              icon={<Search size={16} />}
+              label="智能搜索"
+              description="自然语言 → 结构化查询参数"
+              checked={editSmartSearch}
+              onChange={setEditSmartSearch}
+            />
+            <FeatureToggle
+              icon={<MessageSquare size={16} />}
+              label="推荐理由"
+              description="AI 生成个性化推荐文案"
+              checked={editRecommendReason}
+              onChange={setEditRecommendReason}
+            />
+            <FeatureToggle
+              icon={<Sparkles size={16} />}
+              label="元数据增强"
+              description="传统数据源失败时用 AI 补充"
+              checked={editMetadataEnhance}
+              onChange={setEditMetadataEnhance}
+            />
+          </div>
+        </FieldGroup>
+
+        <div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setShowAdvanced((value) => !value)}>
+            {showAdvanced ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            高级设置
+          </Button>
+          {showAdvanced && (
+            <Surface className="mt-3 grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              <NumberField label="请求超时（秒）" value={editTimeout} min={5} max={120} onChange={setEditTimeout} />
+              <NumberField label="月度预算上限（0=不限）" value={editMonthlyBudget} min={0} onChange={setEditMonthlyBudget} />
+              <NumberField label="缓存时长（小时）" value={editCacheTTL} min={0} onChange={setEditCacheTTL} />
+              <NumberField label="最大并发数" value={editMaxConcurrent} min={1} max={10} onChange={setEditMaxConcurrent} />
+              <NumberField label="请求间隔（毫秒）" value={editRequestInterval} min={0} onChange={setEditRequestInterval} />
+            </Surface>
+          )}
         </div>
-      </section>
 
-      {/* ==================== 使用统计 ==================== */}
-      <section>
-        <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
-        >
-          <BarChart3 size={20} className="text-neon/60" />
-          使用统计
-        </h2>
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
+          <Button type="button" variant="primary" onClick={handleSaveConfig} loading={saving}>
+            {!saving && <Check size={15} />}
+            {saving ? '保存中...' : '保存配置'}
+          </Button>
+          <Button type="button" variant="secondary" onClick={handleTestConnection} loading={testing} disabled={!status?.api_configured}>
+            {!testing && <Zap size={15} />}
+            {testing ? '测试中...' : '测试已保存配置'}
+          </Button>
+          <span className="text-xs text-[var(--nv-text-tertiary)]">连接测试使用服务端已保存配置，不会测试尚未保存的表单草稿。</span>
+        </div>
 
-        <div className="glass-panel rounded-xl p-5">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-neon">{status?.monthly_calls || 0}</p>
-              <p className="mt-1 text-xs text-theme-muted">
-                本月请求次数
-              </p>
-              {status?.monthly_budget ? (
-                <div className="mt-2">
-                  <div className="h-1.5 w-full rounded-full" style={{ background: 'var(--progress-track-bg)' }}>
-                    <div
-                      className="h-1.5 rounded-full transition-all"
-                      style={{
-                        background: 'var(--neon-blue)',
-                        width: `${Math.min(100, ((status.monthly_calls || 0) / status.monthly_budget) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-surface-500">
-                    {Math.round(((status.monthly_calls || 0) / status.monthly_budget) * 100)}% 已用
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-theme-primary">
-                {((status?.total_prompt_tokens || 0) / 1000).toFixed(1)}K
-              </p>
-              <p className="mt-1 text-xs text-theme-muted">
-                输入 Token
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-theme-primary">
-                {((status?.total_completion_tokens || 0) / 1000).toFixed(1)}K
-              </p>
-              <p className="mt-1 text-xs text-theme-muted">
-                输出 Token
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-purple-400">
-                ${(((status?.total_tokens || 0) / 1000000) * 0.15).toFixed(4)}
-              </p>
-              <p className="mt-1 text-xs text-theme-muted">
-                费用估算 (gpt-4o-mini)
-              </p>
-            </div>
+        {testResult && <TestResultPanel result={testResult} />}
+      </AdminPanel>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AdminPanel title="使用统计" description="调用量与 Token 数据来自当前 AIStatus。" icon={<BarChart3 size={18} />}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
+            <MetricCard label="本月请求" value={(status?.monthly_calls || 0).toLocaleString()} />
+            <MetricCard label="输入 Token" value={`${((status?.total_prompt_tokens || 0) / 1000).toFixed(1)}K`} />
+            <MetricCard label="输出 Token" value={`${((status?.total_completion_tokens || 0) / 1000).toFixed(1)}K`} />
+            <MetricCard label="费用估算" value={`$${(((status?.total_tokens || 0) / 1_000_000) * 0.15).toFixed(4)}`} detail="按原 gpt-4o-mini 估算规则" />
           </div>
 
-          {/* 配额预警 */}
-          {status?.monthly_budget && status.monthly_calls >= status.monthly_budget * 0.8 ? (
-            <div className="mt-4 flex items-center gap-2 rounded-lg bg-yellow-500/10 px-4 py-2.5 text-sm text-yellow-400">
-              <AlertTriangle size={16} />
-              {status.monthly_calls >= status.monthly_budget
-                ? '月度配额已用尽，AI 功能暂停'
-                : `月度配额已使用 ${Math.round((status.monthly_calls / status.monthly_budget) * 100)}%，请注意用量`}
+          {status?.monthly_budget ? (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--nv-text-tertiary)]">
+                <span>月度调用预算</span>
+                <span>{status.monthly_calls} / {status.monthly_budget}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[var(--nv-bg-control)]">
+                <div
+                  className="h-full rounded-full bg-[var(--nv-action-primary)] transition-[width] duration-200"
+                  style={{ width: `${Math.min(100, (status.monthly_calls / status.monthly_budget) * 100)}%` }}
+                />
+              </div>
+              {status.monthly_calls >= status.monthly_budget * 0.8 && (
+                <div className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--nv-status-warning)]">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                  {status.monthly_calls >= status.monthly_budget
+                    ? '月度配额已用尽，AI 功能暂停。'
+                    : `月度配额已使用 ${Math.round((status.monthly_calls / status.monthly_budget) * 100)}%，请注意用量。`}
+                </div>
+              )}
             </div>
           ) : null}
-        </div>
-      </section>
+        </AdminPanel>
 
-      {/* ==================== 缓存管理 ==================== */}
-      <section>
-        <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
-        >
-          <DatabaseIcon size={20} className="text-neon/60" />
-          缓存管理
-        </h2>
-
-        <div className="glass-panel rounded-xl p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-sm font-medium text-theme-primary">
-                  {cacheStats?.active_entries || 0} 条有效缓存
-                </p>
-                <p className="text-xs text-theme-muted">
-                  共 {cacheStats?.total_entries || 0} 条 · {cacheStats?.expired_entries || 0} 条已过期 · TTL{' '}
-                  {cacheStats?.ttl_hours || 0}h
-                </p>
-              </div>
-            </div>
+        <AdminPanel
+          title="缓存管理"
+          description="清空后下次相同请求会重新调用 AI API。"
+          icon={<DatabaseIcon size={18} />}
+          actions={
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => fetchCacheStats()}
-                className="btn-ghost gap-1 px-3 py-1.5 text-xs"
-              >
-                <RefreshCw size={12} />
+              <Button size="sm" variant="secondary" onClick={() => void fetchCacheStats()}>
+                <RefreshCw size={13} />
                 刷新
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
                 onClick={handleClearCache}
-                disabled={clearingCache || !cacheStats?.total_entries}
-                className="btn-ghost gap-1 px-3 py-1.5 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                loading={clearingCache}
+                disabled={!cacheStats?.total_entries}
               >
-                {clearingCache ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                {!clearingCache && <Trash2 size={13} />}
                 清空缓存
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ==================== 功能测试 ==================== */}
-      <section>
-        <h2
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide text-theme-primary"
+          }
         >
-          <Play size={20} className="text-neon/60" />
-          功能测试
-        </h2>
-
-        <div className="space-y-4">
-          {/* 智能搜索测试 */}
-          <div className="glass-panel rounded-xl p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-theme-primary">
-              <Search size={16} className="text-neon/60" />
-              智能搜索测试
-            </h3>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={searchTestQuery}
-                onChange={(e) => setSearchTestQuery(e.target.value)}
-                className="input flex-1 text-sm"
-                placeholder="输入自然语言查询..."
-                onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
-              />
-              <button
-                onClick={() => handleTestSearch()}
-                disabled={testingSearch || !searchTestQuery.trim()}
-                className="btn-primary gap-1.5 px-4 py-2 text-sm whitespace-nowrap"
-              >
-                {testingSearch ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                测试
-              </button>
-            </div>
-
-            {/* 预设用例 */}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {SEARCH_TEST_CASES.map((tc) => (
-                <button
-                  key={tc}
-                  onClick={() => handleTestSearch(tc)}
-                  disabled={testingSearch}
-                  className="rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-white/[0.05]"
-                  style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
-                >
-                  {tc}
-                </button>
-              ))}
-            </div>
-
-            {/* 搜索测试结果 */}
-            {searchTestResult && (
-              <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--nav-hover-bg)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  {searchTestResult.success ? (
-                    <Check size={14} className="text-green-400" />
-                  ) : (
-                    <X size={14} className="text-red-400" />
-                  )}
-                  <span className="text-xs text-surface-400">
-                    {searchTestResult.latency_ms}ms
-                  </span>
-                </div>
-                {searchTestResult.intent && (
-                  <pre className="text-xs font-mono text-surface-300 overflow-x-auto">
-                    {JSON.stringify(searchTestResult.intent, null, 2)}
-                  </pre>
-                )}
-                {searchTestResult.error && (
-                  <p className="text-xs text-red-400">{searchTestResult.error}</p>
-                )}
-              </div>
-            )}
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard label="有效" value={(cacheStats?.active_entries || 0).toLocaleString()} />
+            <MetricCard label="总计" value={(cacheStats?.total_entries || 0).toLocaleString()} />
+            <MetricCard label="已过期" value={(cacheStats?.expired_entries || 0).toLocaleString()} detail={`TTL ${cacheStats?.ttl_hours || 0}h`} />
           </div>
+        </AdminPanel>
+      </div>
 
-          {/* 推荐理由测试 */}
-          <div className="glass-panel rounded-xl p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-theme-primary">
-              <MessageSquare size={16} className="text-neon/60" />
-              推荐理由测试
-            </h3>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={recommendTestTitle}
-                onChange={(e) => setRecommendTestTitle(e.target.value)}
-                className="input flex-1 text-sm"
-                placeholder="影片名称"
-              />
-              <input
-                type="text"
-                value={recommendTestGenres}
-                onChange={(e) => setRecommendTestGenres(e.target.value)}
-                className="input w-40 text-sm"
-                placeholder="类型（逗号分隔）"
-              />
-              <button
-                onClick={() => handleTestRecommend()}
-                disabled={testingRecommend || !recommendTestTitle.trim()}
-                className="btn-primary gap-1.5 px-4 py-2 text-sm whitespace-nowrap"
-              >
-                {testingRecommend ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                测试
-              </button>
-            </div>
-
-            {/* 预设用例 */}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {RECOMMEND_TEST_CASES.map((tc) => (
-                <button
-                  key={tc.title}
-                  onClick={() => handleTestRecommend(tc.title, tc.genres)}
-                  disabled={testingRecommend}
-                  className="rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-white/[0.05]"
-                  style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
-                >
-                  {tc.title}
-                </button>
-              ))}
-            </div>
-
-            {/* 推荐理由测试结果 */}
-            {recommendTestResult && (
-              <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--nav-hover-bg)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  {recommendTestResult.success ? (
-                    <Check size={14} className="text-green-400" />
-                  ) : (
-                    <X size={14} className="text-red-400" />
-                  )}
-                  <span className="text-xs text-surface-400">
-                    {recommendTestResult.latency_ms}ms
-                  </span>
-                </div>
-                {recommendTestResult.reason && (
-                  <p className="text-sm text-theme-primary">
-                    💡 {recommendTestResult.reason}
-                  </p>
-                )}
-                {recommendTestResult.error && (
-                  <p className="text-xs text-red-400">{recommendTestResult.error}</p>
-                )}
-              </div>
-            )}
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AdminPanel title="智能搜索测试" description="使用已保存的 AI 配置解析自然语言查询。" icon={<Search size={18} />} bodyClassName="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              type="text"
+              value={searchTestQuery}
+              onChange={(event) => setSearchTestQuery(event.target.value)}
+              placeholder="输入自然语言查询..."
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleTestSearch()
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleTestSearch()}
+              loading={testingSearch}
+              disabled={!searchTestQuery.trim()}
+              className="shrink-0"
+            >
+              {!testingSearch && <Play size={14} />}
+              测试
+            </Button>
           </div>
-        </div>
-      </section>
+          <PresetButtons
+            values={SEARCH_TEST_CASES}
+            disabled={testingSearch}
+            onSelect={(value) => void handleTestSearch(value)}
+          />
+          {searchTestResult && <TestResultPanel result={searchTestResult} showPayload />}
+        </AdminPanel>
 
-      {/* ==================== 错误日志 ==================== */}
-      <section>
-        <button
-          onClick={() => {
-            setShowErrors(!showErrors)
-            if (!showErrors) fetchErrorLogs()
-          }}
-          className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide transition-colors text-theme-primary"
-        >
-          <AlertTriangle size={20} className="text-neon/60" />
-          错误日志
-          {errorLogs.length > 0 && (
-            <span className="ml-1 rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
-              {errorLogs.length}
-            </span>
-          )}
-          {showErrors ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
+        <AdminPanel title="推荐理由测试" description="输入影片名称和类型，验证推荐文案生成。" icon={<MessageSquare size={18} />} bodyClassName="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
+            <Input
+              type="text"
+              value={recommendTestTitle}
+              onChange={(event) => setRecommendTestTitle(event.target.value)}
+              placeholder="影片名称"
+            />
+            <Input
+              type="text"
+              value={recommendTestGenres}
+              onChange={(event) => setRecommendTestGenres(event.target.value)}
+              placeholder="类型（逗号分隔）"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleTestRecommend()}
+              loading={testingRecommend}
+              disabled={!recommendTestTitle.trim()}
+            >
+              {!testingRecommend && <Play size={14} />}
+              测试
+            </Button>
+          </div>
+          <PresetButtons
+            values={RECOMMEND_TEST_CASES.map((item) => item.title)}
+            disabled={testingRecommend}
+            onSelect={(title) => {
+              const preset = RECOMMEND_TEST_CASES.find((item) => item.title === title)
+              if (preset) void handleTestRecommend(preset.title, preset.genres)
+            }}
+          />
+          {recommendTestResult && <TestResultPanel result={recommendTestResult} />}
+        </AdminPanel>
+      </div>
 
-        {showErrors && (
-          <div className="glass-panel rounded-xl overflow-hidden">
-            {errorLogs.length === 0 ? (
-              <div className="py-8 text-center">
-                <Check size={24} className="mx-auto mb-2 text-green-400" />
-                <p className="text-sm text-theme-muted">
-                  暂无错误记录
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-                {errorLogs.map((log, i) => (
-                  <div key={i} className="flex items-start gap-3 px-5 py-3">
-                    <X size={14} className="mt-0.5 text-red-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-mono text-red-400">
-                          {log.action}
-                        </span>
-                        <span className="text-[10px] text-surface-500">
-                          <Clock size={10} className="inline mr-0.5" />
-                          {log.time}
-                        </span>
-                        <span className="text-[10px] text-surface-500">{log.latency_ms}ms</span>
-                      </div>
-                      <p className="mt-1 text-xs text-surface-400 break-all">{log.error}</p>
+      <AdminPanel
+        title="错误日志"
+        description="最近的 AI 调用错误，按需展开查看。"
+        icon={<AlertTriangle size={18} />}
+        actions={
+          <Button
+            size="sm"
+            variant={showErrors ? 'primary' : 'secondary'}
+            onClick={() => {
+              setShowErrors((value) => !value)
+              if (!showErrors) void fetchErrorLogs()
+            }}
+          >
+            {showErrors ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {showErrors ? '收起' : '展开'}
+            {errorLogs.length > 0 && <Tag tone="danger">{errorLogs.length}</Tag>}
+          </Button>
+        }
+      >
+        {showErrors ? (
+          errorLogs.length === 0 ? (
+            <EmptyState
+              icon={<Check size={24} />}
+              title="暂无错误记录"
+              description="当前没有可展示的 AI 错误日志。"
+              className="min-h-40"
+            />
+          ) : (
+            <div className="divide-y divide-[var(--nv-border-subtle)] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)]">
+              {errorLogs.map((log, index) => (
+                <div key={`${log.time}-${index}`} className="flex items-start gap-3 bg-[var(--nv-bg-surface)] px-4 py-3">
+                  <X size={14} className="mt-0.5 shrink-0 text-[var(--nv-status-danger)]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tag tone="danger" className="font-mono">{log.action}</Tag>
+                      <span className="flex items-center gap-1 text-xs text-[var(--nv-text-tertiary)]">
+                        <Clock size={11} />
+                        {log.time}
+                      </span>
+                      <AdminStatus tone={latencyTone(log.latency_ms)}>{log.latency_ms}ms</AdminStatus>
                     </div>
+                    <p className="mt-2 break-all text-xs leading-5 text-[var(--nv-text-secondary)]">{log.error}</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          <p className="text-sm text-[var(--nv-text-tertiary)]">展开后读取并展示最近 AI 错误。</p>
         )}
-      </section>
+      </AdminPanel>
 
-      {/* ==================== 权限说明 ==================== */}
-      <section className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
+      <Surface className="p-4">
         <div className="flex items-start gap-3">
-          <Shield size={16} className="mt-0.5 text-neon/50 flex-shrink-0" />
+          <Shield size={17} className="mt-0.5 shrink-0 text-[var(--nv-action-primary)]" />
           <div>
-            <p className="text-xs font-medium text-theme-secondary">
-              权限说明
-            </p>
-            <p className="mt-1 text-xs text-theme-muted">
-              AI 配置仅管理员可修改。所有配置变更将实时生效，API 密钥以加密方式存储。
-              AI 功能调用不会上传任何用户隐私数据，仅发送影片标题和类型等公开信息。
+            <p className="text-sm font-medium text-[var(--nv-text-primary)]">权限与生效说明</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+              AI 配置仅管理员可修改，API 密钥由服务端安全存储。可热加载的参数按后端策略生效；涉及进程级能力装配的开关，以 capabilities.ai.pending_restart 的提示为准。AI 调用仅发送业务所需的媒体标题、类型等信息。
             </p>
           </div>
         </div>
-      </section>
+      </Surface>
     </div>
   )
+}
+
+function CapabilityStateCard({
+  icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: ReactNode
+  label: string
+  value: string
+  detail: string
+  tone: AdminStatusTone
+}) {
+  return (
+    <Surface className="p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-action-primary)]">
+          {icon}
+        </div>
+        <AdminStatus tone={tone}>{value}</AdminStatus>
+      </div>
+      <p className="mt-3 text-sm font-medium text-[var(--nv-text-primary)]">{label}</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{detail}</p>
+    </Surface>
+  )
+}
+
+function SemanticSwitch({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  label: string
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked
+          ? 'border-[var(--nv-action-primary)] bg-[var(--nv-action-primary)]'
+          : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-control)]'
+      }`}
+    >
+      <span
+        className={`h-5 w-5 rounded-full bg-[var(--nv-text-on-brand)] shadow-sm transition-transform duration-200 ${
+          checked ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  )
+}
+
+function FeatureToggle({
+  icon,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  icon: ReactNode
+  label: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <Surface className="flex items-center justify-between gap-3 p-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 text-[var(--nv-action-primary)]">{icon}</span>
+        <div>
+          <p className="text-sm font-medium text-[var(--nv-text-primary)]">{label}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{description}</p>
+        </div>
+      </div>
+      <SemanticSwitch checked={checked} onChange={onChange} label={label} />
+    </Surface>
+  )
+}
+
+function FieldGroup({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-[var(--nv-text-secondary)]">{label}</label>
+      {description && <p className="mb-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{description}</p>}
+      {children}
+    </div>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min?: number
+  max?: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-[var(--nv-text-tertiary)]">{label}</span>
+      <Input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
+  )
+}
+
+function MetricCard({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <Surface className="p-3 text-center">
+      <p className="text-xl font-semibold tracking-tight text-[var(--nv-text-primary)]">{value}</p>
+      <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">{label}</p>
+      {detail && <p className="mt-1 text-[10px] leading-4 text-[var(--nv-text-tertiary)]">{detail}</p>}
+    </Surface>
+  )
+}
+
+function PresetButtons({
+  values,
+  disabled,
+  onSelect,
+}: {
+  values: string[]
+  disabled: boolean
+  onSelect: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {values.map((value) => (
+        <Button key={value} type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => onSelect(value)}>
+          {value}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+function TestResultPanel({ result, showPayload = false }: { result: AITestResult; showPayload?: boolean }) {
+  const tone: TagTone = result.success ? 'success' : 'danger'
+  return (
+    <Surface className="p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Tag tone={tone}>
+          {result.success ? <Check size={12} /> : <X size={12} />}
+          {result.success ? '成功' : '失败'}
+        </Tag>
+        <span className="text-xs text-[var(--nv-text-tertiary)]">{result.latency_ms}ms</span>
+        {result.provider && <Tag tone="neutral">{result.provider}</Tag>}
+        {result.model && <Tag tone="neutral">{result.model}</Tag>}
+      </div>
+      {result.reason && <p className="mt-3 text-sm leading-6 text-[var(--nv-text-secondary)]">{result.reason}</p>}
+      {result.response && <p className="mt-3 text-sm leading-6 text-[var(--nv-text-secondary)]">{result.response}</p>}
+      {showPayload && result.intent && (
+        <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] p-3 font-mono text-[11px] leading-5 text-[var(--nv-text-secondary)]">
+          {JSON.stringify(result.intent, null, 2)}
+        </pre>
+      )}
+      {result.error && <p className="mt-3 break-all text-xs leading-5 text-[var(--nv-status-danger)]">{result.error}</p>}
+    </Surface>
+  )
+}
+
+function latencyTone(latencyMs: number): AdminStatusTone {
+  if (latencyMs > 1000) return 'danger'
+  if (latencyMs > 300) return 'warning'
+  return 'neutral'
 }

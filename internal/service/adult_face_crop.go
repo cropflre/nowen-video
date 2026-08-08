@@ -9,9 +9,9 @@ package service
 import (
 	"fmt"
 	"image"
+	_ "image/gif" // 注册 GIF 解码
 	"image/jpeg"
-	_ "image/png"  // 注册 PNG 解码
-	_ "image/gif"  // 注册 GIF 解码
+	_ "image/png" // 注册 PNG 解码
 	"os"
 	"path/filepath"
 )

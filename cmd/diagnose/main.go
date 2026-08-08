@@ -22,17 +22,17 @@ import (
 
 // DiagnoseItem 单个媒体的诊断结果
 type DiagnoseItem struct {
-	MediaID       string `json:"media_id"`
-	Title         string `json:"title"`
-	OrigTitle     string `json:"orig_title"`
-	FilePath      string `json:"file_path"`
-	CollectionID  string `json:"collection_id"`
+	MediaID        string `json:"media_id"`
+	Title          string `json:"title"`
+	OrigTitle      string `json:"orig_title"`
+	FilePath       string `json:"file_path"`
+	CollectionID   string `json:"collection_id"`
 	CollectionName string `json:"collection_name,omitempty"`
-	Year          int    `json:"year"`
-	MediaType     string `json:"media_type"`
+	Year           int    `json:"year"`
+	MediaType      string `json:"media_type"`
 
 	// 诊断结果
-	ExtractedBaseName    string   `json:"extracted_base_name,omitempty"`
+	ExtractedBaseName   string   `json:"extracted_base_name,omitempty"`
 	MatchLayer          string   `json:"match_layer,omitempty"` // L1序号/L2连接词/L2人名后缀/未匹配
 	FailureReason       string   `json:"failure_reason,omitempty"`
 	SuggestedBaseName   string   `json:"suggested_base_name,omitempty"`
@@ -42,14 +42,14 @@ type DiagnoseItem struct {
 
 // DiagnoseReport 诊断报告
 type DiagnoseReport struct {
-	TotalMovies    int                    `json:"total_movies"`
-	MatchedCount   int                    `json:"matched_count"`
-	UnmatchedCount int                    `json:"unmatched_count"`
-	FixableCount   int                    `json:"fixable_count"`
-	Items          []DiagnoseItem         `json:"items"`
-	PatternStats   map[string]int         `json:"pattern_stats"`
-	GroupPreview   map[string][]string    `json:"group_preview"` // baseName -> []title
-	Suggestions    []string               `json:"suggestions"`
+	TotalMovies    int                 `json:"total_movies"`
+	MatchedCount   int                 `json:"matched_count"`
+	UnmatchedCount int                 `json:"unmatched_count"`
+	FixableCount   int                 `json:"fixable_count"`
+	Items          []DiagnoseItem      `json:"items"`
+	PatternStats   map[string]int      `json:"pattern_stats"`
+	GroupPreview   map[string][]string `json:"group_preview"` // baseName -> []title
+	Suggestions    []string            `json:"suggestions"`
 }
 
 // ==================== 匹配算法 ====================
@@ -181,13 +181,13 @@ func diagnose(db *gorm.DB, fixMode bool) *DiagnoseReport {
 		report.PatternStats[layer]++
 
 		item := DiagnoseItem{
-			MediaID:     m.ID,
-			Title:       m.Title,
-			OrigTitle:   m.OrigTitle,
-			FilePath:    m.FilePath,
+			MediaID:      m.ID,
+			Title:        m.Title,
+			OrigTitle:    m.OrigTitle,
+			FilePath:     m.FilePath,
 			CollectionID: m.CollectionID,
-			Year:        m.Year,
-			MediaType:   m.MediaType,
+			Year:         m.Year,
+			MediaType:    m.MediaType,
 		}
 
 		if baseName != "" {
