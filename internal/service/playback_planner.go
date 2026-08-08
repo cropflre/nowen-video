@@ -18,12 +18,24 @@ const (
 )
 
 type PlaybackClientCapabilities struct {
-	UserAgent          string `json:"user_agent,omitempty"`
-	SupportsDirectPlay bool   `json:"supports_direct_play"`
-	SupportsRemux      bool   `json:"supports_remux"`
-	SupportsHEVC       bool   `json:"supports_hevc"`
-	ForceTranscode     bool   `json:"force_transcode"`
-	MaxBitrate         int    `json:"max_bitrate,omitempty"`
+	UserAgent          string `json:"user_agent,omitempty"          form:"user_agent"`
+	SupportsDirectPlay bool   `json:"supports_direct_play"          form:"supports_direct"`
+	SupportsRemux      bool   `json:"supports_remux"                form:"supports_remux"`
+	SupportsHEVC       bool   `json:"supports_hevc"                 form:"supports_hevc"`
+	ForceTranscode     bool   `json:"force_transcode"               form:"force_transcode"`
+	MaxBitrate         int    `json:"max_bitrate,omitempty"         form:"max_bitrate"`
+
+	// 扩展精确能力参数（来自前端 media-capabilities 模块）
+	HEVCHardware        bool   `json:"hevc_hardware,omitempty"          form:"hevc_hardware"`
+	AudioSupportsAC3    bool   `json:"audio_supports_ac3,omitempty"     form:"audio_supports_ac3"`
+	AudioSupportsEAC3   bool   `json:"audio_supports_eac3,omitempty"    form:"audio_supports_eac3"`
+	AudioSupportsFLAC   bool   `json:"audio_supports_flac,omitempty"    form:"audio_supports_flac"`
+	AudioSupportsOpus   bool   `json:"audio_supports_opus,omitempty"    form:"audio_supports_opus"`
+	ContainerSupportsMP4 bool  `json:"container_supports_mp4,omitempty" form:"container_supports_mp4"`
+	ContainerSupportsWebM bool `json:"container_supports_webm,omitempty" form:"container_supports_webm"`
+	MSEH264             bool   `json:"mse_h264,omitempty"               form:"mse_h264"`
+	MSEHEVC             bool   `json:"mse_hevc,omitempty"               form:"mse_hevc"`
+	Platform            string `json:"platform,omitempty"               form:"platform"`
 }
 
 type PlaybackSourceTechnical struct {
@@ -95,7 +107,7 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	if s != nil && s.mediaRepo != nil && s.execution != nil {
 		if media, err := s.mediaRepo.FindByID(mediaID); err == nil {
 			if probe := s.execution.GetCachedMediaProbe(media); probe != nil {
-				sourceTechnical = applyProbeToPlaybackInfo(mediaID, &effectiveInfo, probe)
+				sourceTechnical = applyProbeToPlaybackInfoWithCaps(mediaID, &effectiveInfo, probe, caps)
 			}
 		}
 	}
@@ -154,7 +166,8 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 	// Smart Remux keeps compatible video bit-for-bit and only converts an
 	// incompatible audio track to AAC. This is dramatically cheaper than full
 	// video transcoding and covers common H.264+DTS/TrueHD/FLAC libraries.
-	if caps.SupportsRemux && canSmartRemuxInfo(info, caps) {
+	// Uses client-reported audio capabilities for more accurate decisions.
+	if caps.SupportsRemux && canSmartRemuxInfoWithCaps(info, caps) {
 		plan.Method = PlaybackMethodSmartRemux
 		plan.URL = remuxURL
 		plan.ReasonCode = "audio_transcode_only"
@@ -183,6 +196,10 @@ func (s *StreamService) PlanPlaybackWithInfo(mediaID string, info *MediaPlayInfo
 }
 
 func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.MediaProbeRecord) *PlaybackSourceTechnical {
+	return applyProbeToPlaybackInfoWithCaps(mediaID, info, probe, PlaybackClientCapabilities{})
+}
+
+func applyProbeToPlaybackInfoWithCaps(mediaID string, info *MediaPlayInfo, probe *model.MediaProbeRecord, caps PlaybackClientCapabilities) *PlaybackSourceTechnical {
 	technical, preferredAudio := playbackTechnicalFromProbe(probe)
 	if info == nil || probe == nil {
 		return technical
@@ -199,7 +216,7 @@ func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.
 
 	videoCompatible := browserCompatibleVideoCodecs[strings.ToLower(strings.TrimSpace(info.VideoCodec))]
 	audioCodec := strings.ToLower(strings.TrimSpace(info.AudioCodec))
-	audioCompatible := audioCodec == "" || browserCompatibleAudioCodecs[audioCodec]
+	audioCompatible := audioCodec == "" || audioCodecCompatibleWithCaps(audioCodec, caps)
 	info.CanDirectPlay = directPlayableExts[strings.ToLower(info.FileExt)] && videoCompatible && audioCompatible
 	info.CanRemux = !info.CanDirectPlay && remuxableExts[strings.ToLower(info.FileExt)] && videoCompatible && audioCompatible
 	if info.CanDirectPlay {
@@ -213,6 +230,47 @@ func applyProbeToPlaybackInfo(mediaID string, info *MediaPlayInfo, probe *model.
 		info.RemuxURL = ""
 	}
 	return technical
+}
+
+// audioCodecCompatibleWithCaps 根据客户端报告的精确音频能力判断音频编码兼容性。
+// 客户端报告的优先级高于服务端保守白名单。
+func audioCodecCompatibleWithCaps(codec string, caps PlaybackClientCapabilities) bool {
+	codec = strings.ToLower(strings.TrimSpace(codec))
+	// 基础白名单（始终保持安全）
+	if browserCompatibleAudioCodecs[codec] {
+		return true
+	}
+	// 客户端精确能力覆盖
+	switch codec {
+	case "ac3", "ac-3":
+		return caps.AudioSupportsAC3
+	case "eac3", "ec-3", "e-ac3":
+		return caps.AudioSupportsEAC3
+	case "flac":
+		return caps.AudioSupportsFLAC
+	case "opus":
+		return caps.AudioSupportsOpus
+	}
+	return false
+}
+
+// canSmartRemuxInfoWithCaps 使用客户端精确音频能力判断是否需要 Smart Remux。
+func canSmartRemuxInfoWithCaps(info *MediaPlayInfo, caps PlaybackClientCapabilities) bool {
+	if info == nil || info.IsSTRM || !smartRemuxVideoCodec(info.VideoCodec) {
+		return false
+	}
+	if isHEVCCodec(info.VideoCodec) && !caps.SupportsHEVC {
+		return false
+	}
+	audio := strings.ToLower(strings.TrimSpace(info.AudioCodec))
+	if audio == "" {
+		return false
+	}
+	// 如果客户端报告支持该音频编码，则不需要 smart remux
+	if audioCodecCompatibleWithCaps(audio, caps) {
+		return false
+	}
+	return true
 }
 
 func playbackTechnicalFromProbe(probe *model.MediaProbeRecord) (*PlaybackSourceTechnical, string) {

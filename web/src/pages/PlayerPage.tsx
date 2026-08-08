@@ -20,19 +20,14 @@ import {
   type MediaProfile,
 } from '@/desktop'
 
-/** 检测浏览器是否支持 HEVC 硬解（Safari / Chrome macOS 116+） */
-function canPlayHEVC(): boolean {
-  try {
-    const video = document.createElement('video')
-    return (
-      video.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hev1"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hvc1"') !== ''
-    )
-  } catch {
-    return false
-  }
+import {
+  getMediaCapabilities,
+  type BrowserMediaCapability,
+} from '@/utils/media-capabilities'
+
+/** 获取浏览器精确能力（延迟初始化 + 缓存） */
+function getBrowserCaps(): BrowserMediaCapability {
+  return getMediaCapabilities()
 }
 
 export default function PlayerPage() {
@@ -139,7 +134,9 @@ export default function PlayerPage() {
   }, [])
 
   const handlePlaybackTransition = useCallback((transition: PlaybackTransition) => {
-    const target = transition.to === 'remux' ? 'Remux 兼容播放' : 'HLS 转码播放'
+    const target = transition.to === 'remux' ? 'Remux 兼容播放'
+      : transition.to === 'smart_remux' ? 'Smart Remux（音频转码）'
+      : 'HLS 转码播放'
     toast.info(`当前播放方式不兼容，已自动切换到${target}`)
   }, [toast])
 
@@ -179,7 +176,8 @@ export default function PlayerPage() {
   const isPreprocessed = playInfo.is_preprocessed && playInfo.preprocessed_url
   const videoCodecLower = (playInfo.video_codec || '').toLowerCase()
   const isHEVCSource = videoCodecLower.includes('hevc') || videoCodecLower.includes('h265') || videoCodecLower === 'h265'
-  const browserSupportsHEVC = canPlayHEVC()
+  const browserCaps = getBrowserCaps()
+  const browserSupportsHEVC = browserCaps.video.hevc.main !== 'unsupported'
 
   // 决策：HEVC 源 + 浏览器支持 HEVC + 后端确认容器/音频均可直放 → 直接播放（无需转码）
   const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed && playInfo.can_direct_play
@@ -286,7 +284,7 @@ export default function PlayerPage() {
           streamUrl={streamApi.getDirectUrl(id)}
           playOptions={{ title: playerTitle }}
         />
-        {(mode === 'webcodecs' || effectiveBrowserMode === 'remux' || effectiveBrowserMode === 'hls' ||
+        {(mode === 'webcodecs' || effectiveBrowserMode === 'remux' || effectiveBrowserMode === 'smart_remux' || effectiveBrowserMode === 'hls' ||
           (effectiveBrowserMode === 'direct' && canDirectHEVC) || isPreprocessed ||
           playInfo.preprocess_status === 'running' ||
           playInfo.preprocess_status === 'pending' ||
@@ -312,6 +310,11 @@ export default function PlayerPage() {
               <>
                 <Cpu size={12} className="text-cyan-400" />
                 <span className="text-cyan-400">Remux 兼容播放</span>
+              </>
+            ) : effectiveBrowserMode === 'smart_remux' ? (
+              <>
+                <Cpu size={12} className="text-green-400" />
+                <span className="text-green-400">Smart Remux（音频转码）</span>
               </>
             ) : effectiveBrowserMode === 'hls' ? (
               <>

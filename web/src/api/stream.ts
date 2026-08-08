@@ -3,6 +3,11 @@ import type {
   MediaPlayInfo,
 } from '@/types'
 import api from './client'
+import {
+  getMediaCapabilities,
+  buildClientCapabilities,
+  type BrowserMediaCapability,
+} from '@/utils/media-capabilities'
 
 export type PlaybackMethod = 'direct' | 'remux' | 'smart_remux' | 'startup_stream' | 'transcode'
 
@@ -13,6 +18,17 @@ export interface PlaybackClientCapabilities {
   supports_hevc: boolean
   force_transcode: boolean
   max_bitrate?: number
+  /** 扩展：浏览器精确能力参数 */
+  hevc_hardware?: boolean
+  audio_supports_ac3?: boolean
+  audio_supports_eac3?: boolean
+  audio_supports_flac?: boolean
+  audio_supports_opus?: boolean
+  container_supports_mp4?: boolean
+  container_supports_webm?: boolean
+  mse_h264?: boolean
+  mse_hevc?: boolean
+  platform?: string
 }
 
 export interface PlaybackStartupStream {
@@ -43,6 +59,17 @@ export interface PlaybackPlan {
   fallback_method?: PlaybackMethod
   fallback_url?: string
   client_capabilities: PlaybackClientCapabilities
+  source_technical?: {
+    probe_version?: string
+    video_codec?: string
+    audio_codecs?: string[]
+    width?: number
+    height?: number
+    frame_rate?: number
+    pixel_format?: string
+    bit_depth?: number
+    hdr?: boolean
+  }
   startup_stream?: PlaybackStartupStream
 }
 
@@ -149,18 +176,36 @@ type PlannedMediaPlayInfo = MediaPlayInfo & {
 
 const playbackPlanCache = new Map<string, PlaybackPlan>()
 
-function browserSupportsHEVC(): boolean {
-  if (typeof document === 'undefined') return false
-  try {
-    const video = document.createElement('video')
-    return (
-      video.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hev1"') !== '' ||
-      video.canPlayType('video/mp4; codecs="hvc1"') !== ''
-    )
-  } catch {
-    return false
+/** 获取当前浏览器精确能力（延迟初始化 + 缓存） */
+function getCaps(): BrowserMediaCapability {
+  return getMediaCapabilities()
+}
+
+/** 构建发送给后端的完整能力参数 */
+function planParams(caps: BrowserMediaCapability, overrides?: {
+  supportsDirect?: boolean
+  supportsRemux?: boolean
+  forceTranscode?: boolean
+  maxBitrate?: number
+}) {
+  const base = buildClientCapabilities(caps)
+  return {
+    supports_direct: overrides?.supportsDirect ?? true,
+    supports_remux: overrides?.supportsRemux ?? true,
+    supports_hevc: base.supports_hevc,
+    force_transcode: overrides?.forceTranscode ?? false,
+    max_bitrate: overrides?.maxBitrate,
+    // 扩展精确能力参数
+    hevc_hardware: base.hevc_hardware,
+    audio_supports_ac3: base.audio_supports_ac3,
+    audio_supports_eac3: base.audio_supports_eac3,
+    audio_supports_flac: base.audio_supports_flac,
+    audio_supports_opus: base.audio_supports_opus,
+    container_supports_mp4: base.container_supports_mp4,
+    container_supports_webm: base.container_supports_webm,
+    mse_h264: base.mse_h264,
+    mse_hevc: base.mse_hevc,
+    platform: base.platform,
   }
 }
 
@@ -201,14 +246,9 @@ function playbackSessionEndpoint(sessionId: string, suffix = ''): string {
 
 export const streamApi = {
   getPlayInfo: async (mediaId: string) => {
-    const supportsHEVC = browserSupportsHEVC()
-    const response = await api.get<{ data: PlannedMediaPlayInfo }>(`/stream/${mediaId}/info`, {
-      params: {
-        supports_direct: true,
-        supports_remux: true,
-        supports_hevc: supportsHEVC,
-      },
-    })
+    const caps = getCaps()
+    const params = planParams(caps)
+    const response = await api.get<{ data: PlannedMediaPlayInfo }>(`/stream/${mediaId}/info`, { params })
 
     const embeddedPlan = response.data.data.playback_plan
     if (embeddedPlan) {
@@ -218,13 +258,7 @@ export const streamApi = {
     }
 
     try {
-      const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
-        params: {
-          supports_direct: true,
-          supports_remux: true,
-          supports_hevc: supportsHEVC,
-        },
-      })
+      const planResponse = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, { params })
       const plan = planResponse.data.data
       playbackPlanCache.set(mediaId, plan)
       response.data.data = applyPlaybackPlan(response.data.data, plan) as PlannedMediaPlayInfo
@@ -243,15 +277,14 @@ export const streamApi = {
     forceTranscode?: boolean
     maxBitrate?: number
   }) => {
-    const response = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, {
-      params: {
-        supports_direct: capabilities?.supportsDirect ?? true,
-        supports_remux: capabilities?.supportsRemux ?? true,
-        supports_hevc: capabilities?.supportsHEVC,
-        force_transcode: capabilities?.forceTranscode,
-        max_bitrate: capabilities?.maxBitrate,
-      },
+    const caps = getCaps()
+    const params = planParams(caps, {
+      supportsDirect: capabilities?.supportsDirect,
+      supportsRemux: capabilities?.supportsRemux,
+      forceTranscode: capabilities?.forceTranscode,
+      maxBitrate: capabilities?.maxBitrate,
     })
+    const response = await api.get<{ data: PlaybackPlan }>(`/stream/${mediaId}/plan`, { params })
     playbackPlanCache.set(mediaId, response.data.data)
     return response
   },

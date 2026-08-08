@@ -88,6 +88,19 @@ func (h *PlaybackPlanHandler) clientCapabilities(c *gin.Context) service.Playbac
 	caps.SupportsHEVC = queryBool(c, "supports_hevc", caps.SupportsHEVC)
 	caps.ForceTranscode = queryBool(c, "force_transcode", false)
 	caps.MaxBitrate = queryPositiveInt(c, "max_bitrate")
+
+	// 扩展精确能力参数（来自前端 media-capabilities 探测）
+	caps.HEVCHardware = queryBool(c, "hevc_hardware", false)
+	caps.AudioSupportsAC3 = queryBool(c, "audio_supports_ac3", false)
+	caps.AudioSupportsEAC3 = queryBool(c, "audio_supports_eac3", false)
+	caps.AudioSupportsFLAC = queryBool(c, "audio_supports_flac", false)
+	caps.AudioSupportsOpus = queryBool(c, "audio_supports_opus", false)
+	caps.ContainerSupportsMP4 = queryBool(c, "container_supports_mp4", true)
+	caps.ContainerSupportsWebM = queryBool(c, "container_supports_webm", false)
+	caps.MSEH264 = queryBool(c, "mse_h264", false)
+	caps.MSEHEVC = queryBool(c, "mse_hevc", false)
+	caps.Platform = strings.TrimSpace(c.Query("platform"))
+
 	return caps
 }
 

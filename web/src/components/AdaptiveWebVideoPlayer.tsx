@@ -8,8 +8,12 @@ import {
   type PlaybackPlan,
 } from '@/api/stream'
 import { usePlayerStore } from '@/stores/player'
+import {
+  getMediaCapabilities,
+  analyzeMediaError,
+} from '@/utils/media-capabilities'
 
-export type BrowserPlaybackMode = 'direct' | 'remux' | 'hls'
+export type BrowserPlaybackMode = 'direct' | 'remux' | 'smart_remux' | 'hls'
 
 interface PlaybackSnapshot {
   position: number
@@ -49,7 +53,8 @@ interface AdaptiveWebVideoPlayerProps {
 const PLAYBACK_MODE_RANK: Record<BrowserPlaybackMode, number> = {
   direct: 0,
   remux: 1,
-  hls: 2,
+  smart_remux: 2,
+  hls: 3,
 }
 
 function modeForMethod(method?: PlaybackMethod): BrowserPlaybackMode | null {
@@ -57,8 +62,9 @@ function modeForMethod(method?: PlaybackMethod): BrowserPlaybackMode | null {
     case 'direct':
       return 'direct'
     case 'remux':
-    case 'smart_remux':
       return 'remux'
+    case 'smart_remux':
+      return 'smart_remux'
     case 'startup_stream':
     case 'transcode':
       return 'hls'
@@ -98,6 +104,7 @@ function planHasUsableSource(plan: PlaybackPlan): boolean {
 function labelForMode(mode: BrowserPlaybackMode): string {
   if (mode === 'direct') return '直接播放'
   if (mode === 'remux') return 'Remux 兼容播放'
+  if (mode === 'smart_remux') return 'Smart Remux（音频转码）'
   return 'HLS 转码播放'
 }
 
@@ -182,34 +189,88 @@ export default function AdaptiveWebVideoPlayer({
     const position = Math.max(storePosition, elementPosition)
     const reason = mediaErrorReason(video.error)
 
+    // 使用精确能力矩阵 + 源文件信息分析错误根因
+    const caps = getMediaCapabilities()
+    const st = activePlan?.source_technical
+    const sourceInfo = st ? {
+      container: 'mkv', // Remux 场景默认 MKV（实际容器不影响 analyzeMediaError 判断）
+      videoCodec: st.video_codec || '',
+      audioCodec: st.audio_codecs?.[0] || '',
+    } : undefined
+    const analysis = analyzeMediaError(video.error, caps, sourceInfo as { container: string; videoCodec: string; audioCodec: string } | undefined)
+
     snapshotRef.current = {
       position,
       volume: video.volume,
       muted: video.muted,
       playbackRate: video.playbackRate || 1,
-      // Initial source failures happen before playback starts and should still
-      // autoplay after fallback. A non-zero paused position represents a real
-      // user pause and is restored as paused.
       paused: video.paused && position > 0 && !store.isPlaying,
     }
     setResumePosition(position)
     setTransitioning(true)
     setTerminalError(null)
 
+    // 网络错误先重试一次（不降级），避免 SMB 断连等临时问题误触 HLS
+    if (analysis.suggestedFallback === 'retry' && from === 'direct') {
+      failedModesRef.current.delete(from) // 允许重试
+      transitionInFlightRef.current = false
+      setTransitioning(false)
+      // 延迟 500ms 后重试加载
+      setTimeout(() => {
+        if (operationRef.current === operation) {
+          video.load()
+          void video.play().catch(() => undefined)
+        }
+      }, 500)
+      return
+    }
+
     try {
-      const response = await streamApi.getPlaybackPlan(mediaId, from === 'direct'
-        ? {
-            supportsDirect: false,
-            supportsRemux: true,
-            supportsHEVC,
-            forceTranscode: false,
-          }
-        : {
-            supportsDirect: false,
-            supportsRemux: false,
-            supportsHEVC,
-            forceTranscode: true,
-          })
+      // 根据根因分析选择降级策略
+      let nextDirect = false
+      let nextRemux = false
+      let nextForceTranscode = false
+
+      if (from === 'direct') {
+        if (analysis.suggestedFallback === 'remux') {
+          // 容器不兼容 → Remux
+          nextDirect = false
+          nextRemux = true
+          nextForceTranscode = false
+        } else if (analysis.suggestedFallback === 'smart_remux') {
+          // 音频不兼容 → Smart Remux（视频 copy + 音频转码）
+          nextDirect = false
+          nextRemux = true
+          nextForceTranscode = false
+        } else {
+          // 默认：direct → remux
+          nextDirect = false
+          nextRemux = true
+          nextForceTranscode = false
+        }
+      } else if (from === 'remux') {
+        // remux 失败 → smart_remux（如果音频不兼容）或 transcode
+        if (analysis.suggestedFallback === 'smart_remux' && !failedModesRef.current.has('smart_remux')) {
+          nextDirect = false
+          nextRemux = true
+          nextForceTranscode = false
+        } else {
+          nextDirect = false
+          nextRemux = false
+          nextForceTranscode = true
+        }
+      } else if (from === 'smart_remux') {
+        // smart_remux 失败 → full transcode
+        nextDirect = false
+        nextRemux = false
+        nextForceTranscode = true
+      }
+
+      const response = await streamApi.getPlaybackPlan(mediaId, {
+        supportsDirect: nextDirect,
+        supportsRemux: nextRemux,
+        forceTranscode: nextForceTranscode,
+      })
 
       if (operationRef.current !== operation) return
 
@@ -239,7 +300,7 @@ export default function AdaptiveWebVideoPlayer({
         transitionInFlightRef.current = false
       }
     }
-  }, [activeMode, mediaId, onTransition, supportsHEVC])
+  }, [activeMode, activePlan, mediaId, onTransition, supportsHEVC])
 
   // Native media errors do not bubble, but they participate in capture. A
   // single parent listener covers both direct and remux player generations.

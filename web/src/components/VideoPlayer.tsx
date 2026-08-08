@@ -33,7 +33,7 @@ import SubtitleContentSearch from './SubtitleContentSearch'
 
 interface VideoPlayerProps {
   src: string
-  mode?: 'direct' | 'hls' | 'remux'
+  mode?: 'direct' | 'hls' | 'remux' | 'smart_remux'
   mediaId: string
   title?: string
   startPosition?: number
@@ -482,7 +482,7 @@ export default function VideoPlayer({
       hlsRef.current.destroy()
       hlsRef.current = null
     }
-    if (mode === 'direct' || mode === 'remux') {
+    if (mode === 'direct' || mode === 'remux' || mode === 'smart_remux') {
       video.src = src
       setQualities([])
       video.addEventListener('loadedmetadata', () => {
@@ -492,7 +492,7 @@ export default function VideoPlayer({
       video.addEventListener('error', () => {
         const err = video.error
         // Remux 模式下播放失败（如浏览器不支持 HEVC 10-bit），自动降级到 HLS
-        if (mode === 'remux' && onRemuxFallback) {
+        if ((mode === 'remux' || mode === 'smart_remux') && onRemuxFallback) {
           console.warn('Remux 播放失败，自动降级到 HLS 转码:', err?.message)
           onRemuxFallback()
           return
@@ -707,7 +707,7 @@ export default function VideoPlayer({
     if (!video) return
 
     // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现快进/快退
-    if (mode === 'remux') {
+    if (mode === 'remux' || mode === 'smart_remux') {
       const currentPos = remuxOffsetRef.current + (video.currentTime || 0)
       const targetTime = Math.max(0, Math.min(displayDuration, currentPos + seconds))
       remuxSeek(targetTime)
@@ -726,7 +726,7 @@ export default function VideoPlayer({
   // 类似 Emby 的拖动进度条体验，中止当前流并从新位置开始转封装
   const remuxSeek = useCallback((targetTime: number) => {
     const video = videoRef.current
-    if (!video || mode !== 'remux' || !src) return
+    if (!video || (mode !== 'remux' && mode !== 'smart_remux') || !src) return
     // 从 src 中提取基础 URL（去掉已有的 start 参数）
     const baseUrl = src.replace(/[&?]start=[^&]*/g, '')
     const sep = baseUrl.includes('?') ? '&' : '?'
@@ -750,7 +750,7 @@ export default function VideoPlayer({
     const targetTime = pos * displayDuration
 
     // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现 Seek
-    if (mode === 'remux') {
+    if (mode === 'remux' || mode === 'smart_remux') {
       remuxSeek(targetTime)
       return
     }
@@ -1259,7 +1259,7 @@ export default function VideoPlayer({
               {title}
             </h2>
             <span className="badge-neon text-[10px]">
-              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : mode === 'remux' ? 'Remux播放' : 'HLS转码'}
+              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : (mode === 'remux' || mode === 'smart_remux') ? 'Remux播放' : 'HLS转码'}
             </span>
             {playbackRate !== 1 && (
               <span className="badge-neon text-[10px]">{playbackRate}x</span>
@@ -1884,7 +1884,7 @@ export default function VideoPlayer({
                   ))}
 
                   {/* 实时状态面板：仅 HLS 转码模式有意义 */}
-                  {mode !== 'direct' && mode !== 'remux' && (
+                  {mode !== 'direct' && mode !== 'remux' && mode !== 'smart_remux' && (
                     <div className="mt-1 border-t border-white/10 px-4 py-2.5 text-[11px] leading-relaxed text-surface-400">
                       <div className="mb-1 text-surface-300">实时状态</div>
                       {currentBitrate > 0 && (
