@@ -2,7 +2,8 @@ import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { RecommendedMedia } from '@/types'
-import { Film, Play, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button, Tag } from '@/components/design-system'
+import { Film, Play, ChevronLeft, ChevronRight, Star } from 'lucide-react'
 
 interface RecommendationCarouselProps {
   recommendations: RecommendedMedia[]
@@ -12,40 +13,32 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scroll = (direction: 'left' | 'right') => {
-    const el = scrollRef.current
-    if (!el) return
-    const scrollAmount = 300
-    el.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' })
+    const element = scrollRef.current
+    if (!element) return
+    element.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' })
   }
 
   if (recommendations.length === 0) return null
 
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <Film size={16} className="text-neon/60" />
-          相关推荐
-        </h3>
-        <div className="flex gap-1">
-          <button
-            onClick={() => scroll('left')}
-            className="rounded-lg p-1.5 transition-colors hover:bg-neon-blue/5"
-            style={{ color: 'var(--text-muted)' }}
-            aria-label="向左滚动"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            onClick={() => scroll('right')}
-            className="rounded-lg p-1.5 transition-colors hover:bg-neon-blue/5"
-            style={{ color: 'var(--text-muted)' }}
-            aria-label="向右滚动"
-          >
-            <ChevronRight size={18} />
-          </button>
+    <section aria-labelledby="recommendation-title">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Film size={16} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          <h2 id="recommendation-title" className="text-base font-semibold text-[var(--nv-text-primary)]">
+            相关推荐
+          </h2>
+        </div>
+        <div className="flex items-center gap-1" role="group" aria-label="相关推荐滚动控制">
+          <Button variant="ghost" size="sm" iconOnly onClick={() => scroll('left')} aria-label="向左滚动">
+            <ChevronLeft size={17} aria-hidden="true" />
+          </Button>
+          <Button variant="ghost" size="sm" iconOnly onClick={() => scroll('right')} aria-label="向右滚动">
+            <ChevronRight size={17} aria-hidden="true" />
+          </Button>
         </div>
       </div>
+
       <div
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide"
@@ -57,54 +50,47 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
           <Link
             key={item.media.id}
             to={`/media/${item.media.id}`}
-            className="media-card group w-36 flex-shrink-0"
+            className="group w-36 flex-shrink-0 rounded-[var(--nv-radius-card)] border border-transparent transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-surface-soft)] hover:shadow-[var(--nv-shadow-card)]"
             role="listitem"
           >
-            <div className="relative aspect-[2/3] overflow-hidden rounded-t-xl" style={{ background: 'var(--bg-surface)' }}>
+            <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] bg-[var(--nv-bg-surface-soft)]">
               <img
                 src={streamApi.getPosterUrl(item.media.id)}
                 alt={item.media.title}
-                className="h-full w-full object-cover transition-all duration-500 group-hover:scale-110"
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
                 loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                onError={(event) => { event.currentTarget.style.display = 'none' }}
               />
-              <div className="absolute inset-0 -z-10 flex items-center justify-center" style={{ color: 'var(--text-muted)' }}>
-                <Film size={32} />
+
+              <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center text-[var(--nv-text-tertiary)]">
+                <Film size={30} aria-hidden="true" />
               </div>
-              {/* 悬停播放图标 */}
-              <div className="gradient-overlay opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <div className="absolute bottom-2 left-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full"
-                    style={{
-                      background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                      boxShadow: '0 0 12px var(--neon-blue-40)',
-                    }}
-                  >
-                    <Play size={14} className="ml-0.5 text-white" fill="white" />
-                  </div>
-                </div>
+
+              <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 via-black/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+              <div className="absolute bottom-2 right-2 flex h-8 w-8 scale-95 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] opacity-0 shadow-[var(--nv-shadow-card)] transition-[opacity,transform] duration-200 group-hover:scale-100 group-hover:opacity-100">
+                <Play size={13} className="ml-0.5" fill="currentColor" aria-hidden="true" />
               </div>
-              {/* 推荐理由 */}
-              <div className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)]">
-                <span className="block truncate rounded-md px-1.5 py-0.5 text-[9px] font-medium leading-tight backdrop-blur-md"
-                  style={{
-                    background: 'rgba(0,0,0,0.65)',
-                    color: 'rgba(255,255,255,0.9)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                  }}
-                >{item.reason}</span>
-              </div>
+
+              {item.reason && (
+                <Tag tone="quality" className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)]">
+                  <span className="truncate">{item.reason}</span>
+                </Tag>
+              )}
             </div>
-            <div className="p-2.5">
-              <h4 className="truncate text-xs font-medium transition-colors group-hover:text-neon" style={{ color: 'var(--text-primary)' }}>
+
+            <div className="px-1 pb-2 pt-2.5">
+              <h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]">
                 {item.media.title}
-              </h4>
-              <div className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              </h3>
+              <div className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--nv-text-tertiary)]">
                 {item.media.year > 0 && <span>{item.media.year}</span>}
                 {item.media.rating > 0 && (
                   <>
-                    <span className="text-neon-blue/20">·</span>
-                    <span className="text-yellow-400">★{item.media.rating.toFixed(1)}</span>
+                    {item.media.year > 0 && <span aria-hidden="true">·</span>}
+                    <span className="inline-flex items-center gap-0.5 text-[var(--nv-status-rating)]">
+                      <Star size={9} fill="currentColor" aria-hidden="true" />
+                      {item.media.rating.toFixed(1)}
+                    </span>
                   </>
                 )}
               </div>
