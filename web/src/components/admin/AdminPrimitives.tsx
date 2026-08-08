@@ -32,7 +32,7 @@ export function AdminPanel({
   className,
   bodyClassName,
   ...props
-}: HTMLAttributes<HTMLElement> & {
+}: Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   title?: ReactNode
   description?: ReactNode
   icon?: ReactNode
