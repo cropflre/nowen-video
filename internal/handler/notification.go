@@ -61,25 +61,37 @@ func (h *SubtitleSearchHandler) SearchSubtitles(c *gin.Context) {
 	mediaID := c.Param("id")
 	language := c.DefaultQuery("language", "zh-cn,en")
 
-	// 获取媒体信息
+	// 获取媒体信息，同时确保请求关联的是有效媒体。
 	filePath, _, err := h.streamService.GetDirectStreamInfo(mediaID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "媒体不存在"})
 		return
 	}
 
-	// 先尝试哈希搜索
+	yearStr := c.Query("year")
+	year := 0
+	if yearStr != "" {
+		fmt.Sscanf(yearStr, "%d", &year)
+	}
+	mediaType := c.DefaultQuery("type", "movie")
+
+	// 手动关键词代表明确用户意图，必须直接使用该关键词搜索 Provider，
+	// 不能先执行文件 hash/文件名搜索后因为已有结果而吞掉用户输入。
+	if query := c.Query("query"); query != "" {
+		results, searchErr := h.subtitleSearch.SearchByTitle(query, year, language, mediaType)
+		if searchErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "字幕搜索失败: " + searchErr.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": results})
+		return
+	}
+
+	// 自动模式优先使用当前媒体文件名/hash 搜索。
 	results, err := h.subtitleSearch.SearchByHash(filePath, language)
 	if err != nil || len(results) == 0 {
-		// 回退到标题搜索（需要从数据库获取标题信息）
+		// 回退到播放器传入的媒体标题。
 		title := c.Query("title")
-		yearStr := c.Query("year")
-		year := 0
-		if yearStr != "" {
-			fmt.Sscanf(yearStr, "%d", &year)
-		}
-		mediaType := c.DefaultQuery("type", "movie")
-
 		if title != "" {
 			results, err = h.subtitleSearch.SearchByTitle(title, year, language, mediaType)
 			if err != nil {
