@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
-import { Button } from './index'
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'video'
 
@@ -111,9 +110,14 @@ export function ModalHeader({ title, description, onClose, icon, className, ...p
         {description && <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)] sm:text-sm">{description}</div>}
       </div>
       {onClose && (
-        <Button type="button" variant="ghost" size="sm" iconOnly onClick={onClose} aria-label="关闭">
+        <button
+          type="button"
+          onClick={onClose}
+          className="nv-button nv-button--ghost nv-button--sm nv-button--icon-only"
+          aria-label="关闭"
+        >
           <X size={18} aria-hidden="true" />
-        </Button>
+        </button>
       )}
     </div>
   )
