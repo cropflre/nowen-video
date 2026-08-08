@@ -11,39 +11,33 @@ interface SubtitleCue {
 interface SubtitleContentSearchProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
   onClose: () => void
-  /** 是否有已加载的字幕 */
   hasActiveSubtitle: boolean
 }
 
 const HISTORY_KEY = 'subtitle-search-history'
 const MAX_HISTORY = 10
 
-/** 格式化秒数为 HH:MM:SS 或 MM:SS */
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/** 高亮关键词 */
 function highlightText(text: string, keyword: string): React.ReactNode {
   if (!keyword) return text
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const parts = text.split(new RegExp(`(${escaped})`, 'gi'))
-  return parts.map((part, i) =>
+  return parts.map((part, index) =>
     part.toLowerCase() === keyword.toLowerCase() ? (
-      <span key={i} className="text-neon-blue font-semibold bg-neon-blue/10 rounded px-0.5">{part}</span>
+      <span key={index} className="rounded bg-cyan-300/10 px-0.5 font-semibold text-cyan-200">{part}</span>
     ) : (
-      <span key={i}>{part}</span>
+      <span key={index}>{part}</span>
     )
   )
 }
 
-/** 从 localStorage 读取搜索历史 */
 function getSearchHistory(): string[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY)
@@ -53,7 +47,6 @@ function getSearchHistory(): string[] {
   }
 }
 
-/** 保存搜索历史到 localStorage */
 function saveSearchHistory(history: string[]) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)))
@@ -74,12 +67,11 @@ export default function SubtitleContentSearch({
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
-  // 自动聚焦输入框
   useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 100)
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 100)
+    return () => window.clearTimeout(timer)
   }, [])
 
-  /** 从 video 元素获取当前字幕的所有 cues */
   const getCues = useCallback((): SubtitleCue[] => {
     const video = videoRef.current
     if (!video) return []
@@ -93,7 +85,7 @@ export default function SubtitleContentSearch({
           cues.push({
             startTime: cue.startTime,
             endTime: cue.endTime,
-            text: cue.text.replace(/<[^>]*>/g, ''), // 去除 HTML 标签
+            text: cue.text.replace(/<[^>]*>/g, ''),
           })
         }
       }
@@ -101,7 +93,6 @@ export default function SubtitleContentSearch({
     return cues
   }, [videoRef])
 
-  /** 执行搜索 */
   const doSearch = useCallback((searchKeyword: string) => {
     const trimmed = searchKeyword.trim()
     if (!trimmed) {
@@ -110,100 +101,95 @@ export default function SubtitleContentSearch({
       return
     }
 
-    const cues = getCues()
-    const matched = cues.filter(cue =>
-      cue.text.toLowerCase().includes(trimmed.toLowerCase())
-    )
+    const matched = getCues().filter(cue => cue.text.toLowerCase().includes(trimmed.toLowerCase()))
     setResults(matched)
     setSearched(true)
     setActiveIndex(-1)
 
-    // 保存到搜索历史
-    const newHistory = [trimmed, ...history.filter(h => h !== trimmed)].slice(0, MAX_HISTORY)
-    setHistory(newHistory)
-    saveSearchHistory(newHistory)
+    const nextHistory = [trimmed, ...history.filter(item => item !== trimmed)].slice(0, MAX_HISTORY)
+    setHistory(nextHistory)
+    saveSearchHistory(nextHistory)
     setShowHistory(false)
   }, [getCues, history])
 
-  /** 跳转到指定时间点 */
   const jumpTo = useCallback((cue: SubtitleCue) => {
     const video = videoRef.current
     if (!video) return
     video.currentTime = cue.startTime
-    if (video.paused) {
-      video.play().catch(() => {})
-    }
+    if (video.paused) video.play().catch(() => {})
   }, [videoRef])
 
-  /** 键盘导航 */
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (activeIndex >= 0 && activeIndex < results.length) {
-        jumpTo(results[activeIndex])
-      } else {
-        doSearch(keyword)
-      }
-    } else if (e.key === 'ArrowDown') {
+      if (activeIndex >= 0 && activeIndex < results.length) jumpTo(results[activeIndex])
+      else doSearch(keyword)
+      return
+    }
+
+    if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (results.length > 0) {
         const next = activeIndex < results.length - 1 ? activeIndex + 1 : 0
         setActiveIndex(next)
-        // 滚动到可见
-        const el = resultsRef.current?.children[next] as HTMLElement
-        el?.scrollIntoView({ block: 'nearest' })
+        ;(resultsRef.current?.children[next] as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest' })
       }
-    } else if (e.key === 'ArrowUp') {
+      return
+    }
+
+    if (e.key === 'ArrowUp') {
       e.preventDefault()
       if (results.length > 0) {
         const prev = activeIndex > 0 ? activeIndex - 1 : results.length - 1
         setActiveIndex(prev)
-        const el = resultsRef.current?.children[prev] as HTMLElement
-        el?.scrollIntoView({ block: 'nearest' })
+        ;(resultsRef.current?.children[prev] as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest' })
       }
-    } else if (e.key === 'Escape') {
+      return
+    }
+
+    if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
     }
-  }, [keyword, results, activeIndex, doSearch, jumpTo, onClose])
+  }, [activeIndex, doSearch, jumpTo, keyword, onClose, results])
 
-  /** 删除单条历史 */
   const removeHistory = (item: string) => {
-    const newHistory = history.filter(h => h !== item)
-    setHistory(newHistory)
-    saveSearchHistory(newHistory)
+    const nextHistory = history.filter(historyItem => historyItem !== item)
+    setHistory(nextHistory)
+    saveSearchHistory(nextHistory)
   }
 
-  /** 清空全部历史 */
   const clearHistory = () => {
     setHistory([])
     saveSearchHistory([])
   }
 
-  // 无字幕时的提示
   if (!hasActiveSubtitle) {
     return (
       <div
-        className="absolute bottom-full right-0 mb-2 w-[340px] rounded-xl p-4 shadow-2xl"
-        style={{
-          background: 'rgba(11, 17, 32, 0.95)',
-          border: '1px solid rgba(0, 240, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
-        }}
+        className="player-overlay-panel absolute bottom-full right-0 mb-3 w-[360px] max-w-[calc(100vw-24px)]"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#ffffff' }}>
-            <Search size={14} className="text-neon-blue" />
-            字幕搜索
+        <div className="player-overlay-panel-header">
+          <div className="player-overlay-panel-heading">
+            <div className="player-overlay-panel-title">
+              <Search size={16} />
+              <span>字幕搜索</span>
+            </div>
+            <div className="player-overlay-panel-subtitle">在当前字幕轨道中快速定位对白</div>
           </div>
-          <button onClick={onClose} className="hover:text-white transition-colors" style={{ color: '#627d98' }}>
-            <X size={14} />
+          <button onClick={onClose} className="player-overlay-close" title="关闭">
+            <X size={16} />
           </button>
         </div>
-        <div className="text-center py-6">
-          <Subtitles className="h-8 w-8 mx-auto mb-2" style={{ color: '#486581' }} />
-          <p className="text-sm" style={{ color: '#829ab1' }}>请先选择一个字幕轨道</p>
-          <p className="text-xs mt-1" style={{ color: '#486581' }}>加载字幕后即可搜索字幕内容</p>
+        <div className="player-overlay-body">
+          <div className="player-overlay-empty">
+            <div className="player-overlay-empty-inner">
+              <div className="player-overlay-empty-icon"><Subtitles size={24} /></div>
+              <div className="player-overlay-empty-title">请先选择一个字幕轨道</div>
+              <div className="player-overlay-empty-desc">加载字幕后即可搜索文本并跳转到对应时间点</div>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -211,34 +197,30 @@ export default function SubtitleContentSearch({
 
   return (
     <div
-      className="absolute bottom-full right-0 mb-2 w-[380px] rounded-xl shadow-2xl"
-      style={{
-        background: 'rgba(11, 17, 32, 0.95)',
-        border: '1px solid rgba(0, 240, 255, 0.1)',
-        backdropFilter: 'blur(20px)',
-      }}
+      className="player-overlay-panel absolute bottom-full right-0 mb-3 w-[440px] max-w-[calc(100vw-24px)]"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#ffffff' }}>
-          <Search size={14} className="text-neon-blue" />
-          字幕搜索
+      <div className="player-overlay-panel-header">
+        <div className="player-overlay-panel-heading">
+          <div className="player-overlay-panel-title">
+            <Search size={16} />
+            <span>字幕搜索</span>
+          </div>
+          <div className="player-overlay-panel-subtitle">搜索当前字幕内容并快速跳转</div>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] mr-1" style={{ color: '#486581' }}>
-            <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ background: 'rgba(18, 26, 39, 0.8)', color: '#829ab1' }}>↑↓</kbd> 导航
-            <kbd className="ml-1 px-1 py-0.5 rounded text-[10px]" style={{ background: 'rgba(18, 26, 39, 0.8)', color: '#829ab1' }}>↵</kbd> 跳转
-          </span>
-          <button onClick={onClose} className="hover:text-white transition-colors p-1" style={{ color: '#627d98' }}>
-            <X size={14} />
+
+        <div className="player-overlay-inline-actions">
+          <span className="player-overlay-chip"><kbd>↑↓</kbd> 导航</span>
+          <span className="player-overlay-chip"><kbd>↵</kbd> 跳转</span>
+          <button onClick={onClose} className="player-overlay-close" title="关闭">
+            <X size={16} />
           </button>
         </div>
       </div>
 
-      {/* 搜索输入框 */}
-      <div className="px-4 pb-2">
-        <div className="relative">
+      <div className="player-overlay-body">
+        <div className="player-overlay-input-wrap">
+          <Search size={15} />
           <input
             ref={inputRef}
             type="text"
@@ -253,151 +235,122 @@ export default function SubtitleContentSearch({
             onKeyDown={handleKeyDown}
             onFocus={() => { if (!keyword && history.length > 0) setShowHistory(true) }}
             placeholder="输入关键词搜索字幕内容..."
-            className="w-full rounded-lg px-3 py-2 pl-9 pr-20 text-sm outline-none ring-1 ring-transparent focus:ring-neon-blue/30 transition-all"
-            style={{ background: 'rgba(18, 26, 39, 0.8)', color: '#ffffff' }}
           />
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#627d98' }} />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            {keyword && (
-              <button
-                onClick={() => { setKeyword(''); setResults([]); setSearched(false); inputRef.current?.focus() }}
-                className="hover:text-white p-0.5 transition-colors"
-                style={{ color: '#627d98' }}
-              >
-                <X size={12} />
-              </button>
-            )}
+          {keyword && (
             <button
-              onClick={() => doSearch(keyword)}
-              disabled={!keyword.trim()}
-              className={clsx(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-all',
-                keyword.trim()
-                  ? 'bg-neon-blue/20 text-neon-blue hover:bg-neon-blue/30'
-                  : 'cursor-not-allowed'
-              )}
-            style={!keyword.trim() ? { background: 'rgba(18, 26, 39, 0.5)', color: '#486581' } : {}}
+              onClick={() => {
+                setKeyword('')
+                setResults([])
+                setSearched(false)
+                setShowHistory(history.length > 0)
+                inputRef.current?.focus()
+              }}
+              className="player-overlay-input-clear"
+              title="清空"
             >
-              搜索
+              <X size={13} />
             </button>
-          </div>
+          )}
+          <button
+            onClick={() => doSearch(keyword)}
+            disabled={!keyword.trim()}
+            className="player-overlay-input-action"
+          >
+            搜索
+          </button>
         </div>
-      </div>
 
-      {/* 搜索历史 */}
-      {showHistory && !searched && history.length > 0 && (
-        <div className="px-4 pb-2">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#627d98' }}>
-              <Clock size={10} className="inline mr-1" />搜索历史
-            </span>
-            <button onClick={clearHistory} className="text-[10px] hover:text-red-400 transition-colors" style={{ color: '#486581' }}>
-              清空
-            </button>
+        {showHistory && !searched && history.length > 0 && (
+          <div className="mt-4">
+            <div className="player-overlay-section-label">
+              <span className="inline-flex items-center gap-1.5"><Clock size={11} />搜索历史</span>
+              <button onClick={clearHistory} className="normal-case tracking-normal text-white/30 transition-colors hover:text-rose-300/80">清空</button>
+            </div>
+            <div className="player-overlay-list player-overlay-scroll max-h-[220px] overflow-y-auto pr-1">
+              {history.map((item) => (
+                <div key={item} className="group flex items-center gap-1">
+                  <button
+                    onClick={() => { setKeyword(item); doSearch(item) }}
+                    className="player-overlay-item flex-1"
+                  >
+                    <div className="player-overlay-item-primary">
+                      <Clock size={13} className="shrink-0 text-white/30" />
+                      <div className="player-overlay-item-title">{item}</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => removeHistory(item)}
+                    className="player-overlay-close opacity-0 transition-opacity group-hover:opacity-100"
+                    title="删除记录"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-0.5">
-            {history.map((item) => (
-              <div key={item} className="flex items-center group">
-                <button
-                  onClick={() => { setKeyword(item); doSearch(item) }}
-                  className="flex-1 text-left text-xs hover:text-white px-2 py-1.5 rounded-md transition-colors truncate"
-                  style={{ color: '#829ab1' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(18, 26, 39, 0.6)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <Clock size={10} className="inline mr-1.5" style={{ color: '#486581' }} />
-                  {item}
-                </button>
-                <button
-                  onClick={() => removeHistory(item)}
-                  className="opacity-0 group-hover:opacity-100 hover:text-red-400 p-1 transition-all"
-                  style={{ color: '#486581' }}
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* 搜索结果 */}
-      {searched && (
-        <div className="border-t border-neon-blue/5">
-          <div className="px-4 py-2 flex items-center justify-between">
-            <span className="text-xs" style={{ color: '#627d98' }}>
-              {results.length > 0 ? (
-                <>找到 <span className="text-neon-blue font-medium">{results.length}</span> 条结果</>
-              ) : (
-                '未找到匹配结果'
+        {searched && (
+          <div className="mt-4">
+            <div className="player-overlay-section-label">
+              <span>{results.length > 0 ? `搜索结果 · ${results.length}` : '搜索结果'}</span>
+              {results.length > 0 && activeIndex >= 0 && (
+                <span className="normal-case tracking-normal">{activeIndex + 1} / {results.length}</span>
               )}
-            </span>
-            {results.length > 0 && activeIndex >= 0 && (
-              <span className="text-[10px]" style={{ color: '#486581' }}>
-                {activeIndex + 1} / {results.length}
-              </span>
+            </div>
+
+            {results.length > 0 ? (
+              <div ref={resultsRef} className="player-overlay-list player-overlay-scroll max-h-[300px] overflow-y-auto pr-1">
+                {results.map((cue, index) => (
+                  <button
+                    key={`${cue.startTime}-${index}`}
+                    onClick={() => {
+                      setActiveIndex(index)
+                      jumpTo(cue)
+                    }}
+                    className={clsx('player-overlay-item group/item', activeIndex === index && 'is-active')}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="font-mono text-[10px] tabular-nums text-white/38">{formatTime(cue.startTime)}</span>
+                        <span className="text-white/15">—</span>
+                        <span className="font-mono text-[10px] tabular-nums text-white/25">{formatTime(cue.endTime)}</span>
+                      </div>
+                      <div className={clsx('text-[12px] leading-relaxed', activeIndex === index ? 'text-white' : 'text-white/68')}>
+                        {highlightText(cue.text, keyword)}
+                      </div>
+                    </div>
+                    <ChevronRight
+                      size={13}
+                      className={clsx(
+                        'shrink-0 transition-all',
+                        activeIndex === index
+                          ? 'translate-x-0 text-cyan-200'
+                          : '-translate-x-1 text-white/25 opacity-0 group-hover/item:translate-x-0 group-hover/item:opacity-100'
+                      )}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="player-overlay-empty min-h-[150px]">
+                <div className="player-overlay-empty-inner">
+                  <div className="player-overlay-empty-icon"><Search size={22} /></div>
+                  <div className="player-overlay-empty-title">未找到「{keyword}」</div>
+                  <div className="player-overlay-empty-desc">请尝试更短的关键词或其他表达</div>
+                </div>
+              </div>
             )}
           </div>
+        )}
 
-          <div
-            ref={resultsRef}
-            className="max-h-[280px] overflow-y-auto px-2 pb-2 space-y-0.5"
-            style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(55, 65, 81, 0.5) transparent' }}
-          >
-            {results.map((cue, index) => (
-              <button
-                key={`${cue.startTime}-${index}`}
-                onClick={() => { setActiveIndex(index); jumpTo(cue) }}
-                className={clsx(
-                  'w-full text-left rounded-lg px-3 py-2.5 transition-all group/item',
-                    activeIndex === index
-                    ? 'bg-neon-blue/10 ring-1 ring-neon-blue/20'
-                    : ''
-                )}
-              >
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className={clsx(
-                    'text-[11px] font-mono tabular-nums',
-                    activeIndex === index ? 'text-neon-blue' : ''
-                  )} style={activeIndex !== index ? { color: '#627d98' } : {}}>
-                    {formatTime(cue.startTime)}
-                  </span>
-                  <span style={{ color: '#334155' }}>—</span>
-                  <span className="text-[11px] font-mono tabular-nums" style={{ color: '#486581' }}>
-                    {formatTime(cue.endTime)}
-                  </span>
-                  <ChevronRight size={10} className={clsx(
-                    'ml-auto transition-transform',
-                    activeIndex === index ? 'text-neon-blue translate-x-0' : '-translate-x-1 opacity-0 group-hover/item:opacity-100 group-hover/item:translate-x-0'
-                  )} style={activeIndex !== index ? { color: '#334155' } : {}} />
-                </div>
-                <p className={clsx(
-                  'text-sm leading-relaxed',
-                  activeIndex === index ? '' : ''
-                )} style={{ color: activeIndex === index ? '#ffffff' : '#bcccdc' }}>
-                  {highlightText(cue.text, keyword)}
-                </p>
-              </button>
-            ))}
+        {!searched && !showHistory && (
+          <div className="player-overlay-helper">
+            输入关键词搜索当前字幕内容<br />点击结果即可跳转到对应时间点
           </div>
-
-          {results.length === 0 && (
-            <div className="text-center py-6 px-4">
-              <Search className="h-6 w-6 mx-auto mb-2" style={{ color: '#334155' }} />
-              <p className="text-xs" style={{ color: '#627d98' }}>未在当前字幕中找到「{keyword}」</p>
-              <p className="text-[10px] mt-1" style={{ color: '#486581' }}>请尝试其他关键词</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 空状态 */}
-      {!searched && !showHistory && (
-        <div className="text-center py-4 px-4 border-t border-neon-blue/5">
-          <p className="text-xs" style={{ color: '#627d98' }}>输入关键词搜索当前字幕内容</p>
-          <p className="text-[10px] mt-0.5" style={{ color: '#486581' }}>点击结果可跳转到对应时间点</p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
