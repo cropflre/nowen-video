@@ -37,6 +37,20 @@ const providerName = (source: string) => {
   return source || 'Online'
 }
 
+// 媒体标题经常包含长描述（例如「CAND-181 女体育大学生 ...」）。
+// 在线字幕搜索优先提取片号/番号作为可编辑初始值，避免把整段展示标题传给 Provider。
+const initialSearchTitle = (title?: string) => {
+  const value = title?.trim() || ''
+  if (!value) return ''
+
+  const catalogCode = value.match(/(?:^|[\s[(])([A-Za-z]{2,12})[-_\s]?(\d{2,6})(?=$|[\s)\]._\-])/)
+  if (catalogCode) {
+    return `${catalogCode[1].toUpperCase()}-${catalogCode[2]}`
+  }
+
+  return value
+}
+
 async function activateDownloadedSubtitle(result: SubtitleDownloadResult) {
   const video = document.querySelector<HTMLVideoElement>('.group\\/player video') || document.querySelector<HTMLVideoElement>('video')
   if (!video || !result.file_path) return
@@ -81,7 +95,7 @@ async function activateDownloadedSubtitle(result: SubtitleDownloadResult) {
 export default function SubtitleSearchPanel({
   mediaId, title, year, type, onClose, onDownloaded,
 }: SubtitleSearchPanelProps) {
-  const [query, setQuery] = useState('')
+  const [searchTitle, setSearchTitle] = useState(() => initialSearchTitle(title))
   const [language, setLanguage] = useState('zh-CN,zh-TW,en')
   const [results, setResults] = useState<OnlineSubtitleResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -94,20 +108,21 @@ export default function SubtitleSearchPanel({
     setSearching(true)
     setMessage(null)
     try {
-      const manualQuery = query.trim()
+      const keyword = searchTitle.trim()
+      const synchronizedTitle = keyword || undefined
       const res = await subtitleSearchApi.search(mediaId, {
         language,
-        title,
+        title: synchronizedTitle,
         year,
         type,
-        query: manualQuery || undefined,
+        query: synchronizedTitle,
       })
       const data = (res.data.data || []) as OnlineSubtitleResult[]
       setResults(data)
       if (!data.length) {
         setMessage({
           type: 'error',
-          text: manualQuery ? `未找到「${manualQuery}」的在线字幕` : '未找到与当前视频匹配的在线字幕',
+          text: keyword ? `未找到「${keyword}」的在线字幕` : '未找到与当前视频匹配的在线字幕',
         })
       }
     } catch (err: any) {
@@ -117,7 +132,7 @@ export default function SubtitleSearchPanel({
     } finally {
       setSearching(false)
     }
-  }, [language, mediaId, query, title, type, year])
+  }, [language, mediaId, searchTitle, type, year])
 
   useEffect(() => {
     if (didAutoSearch.current) return
@@ -171,27 +186,31 @@ export default function SubtitleSearchPanel({
         </div>
 
         <div className="border-b border-white/[0.06] px-6 py-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/32">搜索标题</span>
+            <span className="text-[10px] text-white/24">title / query 同步</span>
+          </div>
           <div className="flex gap-2">
             <div className="relative flex min-w-0 flex-1 items-center">
               <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-white/32" />
               <input
                 ref={inputRef}
-                value={query}
-                onChange={event => setQuery(event.target.value)}
+                value={searchTitle}
+                onChange={event => setSearchTitle(event.target.value)}
                 onKeyDown={event => {
                   if (event.key === 'Enter' && !searching) {
                     event.preventDefault()
                     void handleSearch()
                   }
                 }}
-                placeholder="输入片名 / 番号，例如 JUNY-146；留空则自动匹配文件名"
+                placeholder="输入片名 / 番号，例如 JUNY-146"
                 className="h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] pl-10 pr-9 text-sm text-white/90 outline-none transition-colors placeholder:text-white/24 focus:border-cyan-300/25 focus:bg-white/[0.045]"
               />
-              {query && (
+              {searchTitle && (
                 <button
                   type="button"
                   onClick={() => {
-                    setQuery('')
+                    setSearchTitle('')
                     inputRef.current?.focus()
                   }}
                   className="absolute right-3 flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.05] hover:text-white/65"
@@ -211,7 +230,7 @@ export default function SubtitleSearchPanel({
             </button>
           </div>
           <p className="mt-2 text-[10px] leading-relaxed text-white/28">
-            留空搜索会根据当前视频文件名自动生成关键词；手动输入时会直接用你的关键词请求在线字幕源。
+            可直接修改搜索标题。请求时会把当前输入值同时传给 title 和 query；清空后则回退到当前视频文件名自动匹配。
           </p>
         </div>
 
