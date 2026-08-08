@@ -36,6 +36,22 @@ func TestParseSubtitleCatSearchHTML(t *testing.T) {
 	assert.Equal(t, 103, items[0].LanguageCount)
 }
 
+func TestParseSubtitleCatSearchHTMLRelativeDetailLinks(t *testing.T) {
+	body := []byte(`<html><body><table><tr>
+		<td><a href="subs/801/JUNY-146-SH-OCR.en-zh-CN.html">JUNY-146-SH-OCR.en-zh-CN</a></td>
+		<td>SIZE 68 KB</td><td>14 downloads</td><td>14 languages</td>
+	</tr><tr>
+		<td><a href="./subs/802/JUNY-146-SH-OCR.en.html">JUNY-146-SH-OCR.en</a></td>
+		<td>SIZE 69 KB</td><td>23 downloads</td><td>23 languages</td>
+	</tr></table></body></html>`)
+
+	items, err := parseSubtitleCatSearchHTML(body)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	assert.Equal(t, "/subs/801/JUNY-146-SH-OCR.en-zh-CN.html", items[0].DetailPath)
+	assert.Equal(t, "/subs/802/JUNY-146-SH-OCR.en.html", items[1].DetailPath)
+}
+
 func TestParseSubtitleCatDetailHTMLLanguagePriority(t *testing.T) {
 	provider := NewSubtitleCatProvider(zap.NewNop().Sugar())
 	pageURL, err := url.Parse("https://www.subtitlecat.com/subs/18/Interstellar.2014.720p.BluRay.x264.YIFY.html")
@@ -97,6 +113,9 @@ func TestSubtitleCatSearchAndDownloadWithFixtureServer(t *testing.T) {
 		switch {
 		case r.URL.Path == "/index.php":
 			assert.NotEmpty(t, r.URL.Query().Get("search"))
+			assert.Contains(t, r.UserAgent(), "Mozilla/5.0")
+			assert.Contains(t, r.UserAgent(), "Chrome/")
+			assert.Contains(t, r.Header.Get("Accept-Language"), "en")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write(searchFixture)
 		case strings.HasSuffix(r.URL.Path, ".html"):
