@@ -1,9 +1,10 @@
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
 
@@ -37,7 +38,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
 }
 
-export function Button({
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   variant = 'secondary',
   size = 'md',
   iconOnly = false,
@@ -46,10 +47,11 @@ export function Button({
   disabled,
   children,
   ...props
-}: ButtonProps) {
+}, ref) {
   return (
     <button
       {...props}
+      ref={ref}
       className={buttonClassName({ variant, size, iconOnly, className })}
       data-variant={variant}
       data-size={size}
@@ -60,7 +62,7 @@ export function Button({
       {children}
     </button>
   )
-}
+})
 
 export type TagTone = 'neutral' | 'brand' | 'quality' | 'success' | 'warning' | 'rating' | 'danger'
 
@@ -80,10 +82,11 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   invalid?: boolean
 }
 
-export function Input({ invalid = false, className, ...props }: InputProps) {
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ invalid = false, className, ...props }, ref) {
   return (
     <input
       {...props}
+      ref={ref}
       className={clsx(
         'h-10 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
         invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
@@ -92,16 +95,17 @@ export function Input({ invalid = false, className, ...props }: InputProps) {
       aria-invalid={invalid || props['aria-invalid'] || undefined}
     />
   )
-}
+})
 
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   invalid?: boolean
 }
 
-export function Select({ invalid = false, className, children, ...props }: SelectProps) {
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select({ invalid = false, className, children, ...props }, ref) {
   return (
     <select
       {...props}
+      ref={ref}
       className={clsx(
         'h-10 rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
         invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
@@ -112,7 +116,7 @@ export function Select({ invalid = false, className, children, ...props }: Selec
       {children}
     </select>
   )
-}
+})
 
 interface SurfaceProps extends HTMLAttributes<HTMLDivElement> {
   as?: 'div' | 'section' | 'article'
