@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	subtitleCatDetailPathPattern   = regexp.MustCompile(`^/subs/\d+/[^?#]+\.html$`)
-	subtitleCatDownloadPathPattern = regexp.MustCompile(`^/subs/\d+/[^?#]+\.srt$`)
+	subtitleCatDetailPathPattern   = regexp.MustCompile(`(?i)^/subs/\d+/[^?#]+\.html$`)
+	subtitleCatDownloadPathPattern = regexp.MustCompile(`(?i)^/subs/\d+/[^?#]+\.srt$`)
 	subtitleCatSizePattern         = regexp.MustCompile(`(?i)\bSIZE\s+([0-9.]+\s*(?:KB|MB|GB))\b`)
 	subtitleCatDownloadsPattern    = regexp.MustCompile(`(?i)\b(\d+)\s+downloads?\b`)
 	subtitleCatLanguagesPattern    = regexp.MustCompile(`(?i)\b(\d+)\s+languages?\b`)
@@ -385,7 +385,11 @@ func (p *SubtitleCatProvider) fetch(ctx context.Context, u *url.URL, subtitle bo
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; NowenVideo/1.0; +https://github.com/cropflre/nowen-video)")
+	// 使用普通浏览器兼容请求头，避免站点基于 User-Agent 返回精简/兼容页面。
+	// 403/429/Cloudflare challenge 仍然按 Provider unavailable 处理，不做任何绕过。
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Referer", subtitleCatBaseURL+"/")
 	if subtitle {
 		req.Header.Set("Accept", "application/x-subrip,text/plain;q=0.9,*/*;q=0.1")
 	} else {
@@ -423,6 +427,31 @@ func (p *SubtitleCatProvider) fetch(ctx context.Context, u *url.URL, subtitle bo
 	return body, nil
 }
 
+// normalizeSubtitleCatDetailPath 将 SubtitleCat 当前页面可能出现的
+// /subs/..., subs/...、./subs/... 或绝对 URL 统一成安全的 /subs/... 路径。
+func normalizeSubtitleCatDetailPath(href string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(href))
+	if err != nil {
+		return "", false
+	}
+	candidate := strings.TrimSpace(u.Path)
+	if candidate == "" {
+		return "", false
+	}
+	candidate = strings.TrimPrefix(candidate, "./")
+	if !strings.HasPrefix(candidate, "/") {
+		candidate = "/" + candidate
+	}
+	candidate = path.Clean(candidate)
+	if decoded, err := url.PathUnescape(candidate); err == nil {
+		candidate = decoded
+	}
+	if !subtitleCatDetailPathPattern.MatchString(candidate) {
+		return "", false
+	}
+	return candidate, true
+}
+
 func parseSubtitleCatSearchHTML(body []byte) ([]subtitleCatSearchItem, error) {
 	doc, err := html.Parse(strings.NewReader(string(body)))
 	if err != nil {
@@ -434,18 +463,17 @@ func parseSubtitleCatSearchHTML(body []byte) ([]subtitleCatSearchItem, error) {
 		if n.Type != html.ElementNode || n.Data != "a" {
 			return
 		}
-		href := htmlAttr(n, "href")
-		u, err := url.Parse(href)
-		if err != nil || !subtitleCatDetailPathPattern.MatchString(u.Path) || seen[u.Path] {
+		detailPath, ok := normalizeSubtitleCatDetailPath(htmlAttr(n, "href"))
+		if !ok || seen[detailPath] {
 			return
 		}
 		title := strings.TrimSpace(htmlNodeText(n))
 		if title == "" {
 			return
 		}
-		seen[u.Path] = true
+		seen[detailPath] = true
 		rowText := htmlNodeText(nearestHTMLAncestor(n, "tr"))
-		item := subtitleCatSearchItem{Title: title, DetailPath: u.Path}
+		item := subtitleCatSearchItem{Title: title, DetailPath: detailPath}
 		if m := subtitleCatSizePattern.FindStringSubmatch(rowText); len(m) > 1 {
 			item.FileSize = strings.TrimSpace(m[1])
 		}
