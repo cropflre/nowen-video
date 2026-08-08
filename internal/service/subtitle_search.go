@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -10,15 +12,19 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/saintfish/chardet"
 	"go.uber.org/zap"
+	"golang.org/x/net/html/charset"
 )
 
-// SubtitleSearchService 字幕在线搜索服务
-// 集成 OpenSubtitles 等主流字幕源，支持自动搜索和下载
+// SubtitleSearchService 字幕在线搜索服务。
+// OpenSubtitles 保留为可选 API Provider；SubtitleCat 无需 API Key，默认始终可用。
 type SubtitleSearchService struct {
 	logger      *zap.SugaredLogger
 	client      *http.Client
@@ -28,33 +34,40 @@ type SubtitleSearchService struct {
 	token       string
 	tokenExpiry time.Time
 	cacheDir    string
+	subtitleCat SubtitleProvider
 }
 
-// SubtitleSearchResult 字幕搜索结果
+// SubtitleSearchResult 字幕搜索结果。
+// DownloadURL 保留兼容字段，但外部 Provider 不会把真实下载 URL 暴露给前端。
 type SubtitleSearchResult struct {
-	ID            string  `json:"id"`
-	Title         string  `json:"title"`
-	FileName      string  `json:"file_name"`
-	Language      string  `json:"language"`
-	LanguageName  string  `json:"language_name"`
-	Format        string  `json:"format"`
-	Rating        float64 `json:"rating"`
-	DownloadCount int     `json:"download_count"`
-	Source        string  `json:"source"`
-	DownloadURL   string  `json:"download_url"`
-	MovieHash     string  `json:"movie_hash,omitempty"`
-	MatchType     string  `json:"match_type"` // hash / title / imdb
+	ID                 string   `json:"id"`
+	Title              string   `json:"title"`
+	FileName           string   `json:"file_name"`
+	Language           string   `json:"language"`
+	LanguageName       string   `json:"language_name"`
+	Format             string   `json:"format"`
+	Rating             float64  `json:"rating"`
+	DownloadCount      int      `json:"download_count"`
+	Source             string   `json:"source"`
+	DownloadURL        string   `json:"download_url"`
+	MovieHash          string   `json:"movie_hash,omitempty"`
+	MatchType          string   `json:"match_type"` // hash / title / imdb / filename / episode
+	FileSize           string   `json:"file_size,omitempty"`
+	MatchScore         int      `json:"match_score,omitempty"`
+	SourceURL          string   `json:"source_url,omitempty"`
+	AvailableLanguages []string `json:"available_languages,omitempty"`
 }
 
-// SubtitleDownloadResult 字幕下载结果
+// SubtitleDownloadResult 字幕下载结果。
 type SubtitleDownloadResult struct {
 	FilePath string `json:"file_path"`
 	FileName string `json:"file_name"`
 	Language string `json:"language"`
 	Format   string `json:"format"`
+	Source   string `json:"source,omitempty"`
 }
 
-// OpenSubtitles API 响应结构
+// OpenSubtitles API 响应结构。
 type osSearchResponse struct {
 	TotalPages int              `json:"total_pages"`
 	TotalCount int              `json:"total_count"`
@@ -96,38 +109,129 @@ type osDownloadResponse struct {
 	Remaining int    `json:"remaining"`
 }
 
+var srtTimestampPattern = regexp.MustCompile(`(?m)\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}`)
+
 func NewSubtitleSearchService(apiKey string, cacheDir string, logger *zap.SugaredLogger) *SubtitleSearchService {
 	return &SubtitleSearchService{
 		logger: logger,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		apiKey:   apiKey,
-		apiBase:  "https://api.opensubtitles.com/api/v1",
+		client: &http.Client{Timeout: 30 * time.Second},
+		apiKey: apiKey,
+		apiBase: "https://api.opensubtitles.com/api/v1",
 		cacheDir: filepath.Join(cacheDir, "subtitles"),
+		subtitleCat: NewSubtitleCatProvider(logger),
 	}
 }
 
-// SetAPIKey 设置 OpenSubtitles API Key
+// SetAPIKey 设置 OpenSubtitles API Key。
 func (s *SubtitleSearchService) SetAPIKey(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.apiKey = key
 }
 
-// IsConfigured 检查是否已配置 API Key
+// IsConfigured 检查 OpenSubtitles 是否已配置 API Key。
 func (s *SubtitleSearchService) IsConfigured() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.apiKey != ""
 }
 
-// SearchByTitle 根据标题搜索字幕
+// SearchByTitle 根据标题搜索字幕。
+// SubtitleCat 总是参与；OpenSubtitles 仅在 API Key 已配置时参与。
 func (s *SubtitleSearchService) SearchByTitle(title string, year int, language string, mediaType string) ([]SubtitleSearchResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	languages := parseSubtitleLanguages(language)
+	queries := []string{}
+	if strings.TrimSpace(title) != "" && year > 0 {
+		queries = append(queries, fmt.Sprintf("%s %d", strings.TrimSpace(title), year))
+	}
+	if strings.TrimSpace(title) != "" {
+		queries = append(queries, strings.TrimSpace(title))
+	}
+
+	catResults, catErr := s.subtitleCat.Search(ctx, SubtitleProviderSearchRequest{
+		Queries: queries,
+		FileName: title,
+		Title: title,
+		Year: year,
+		MediaType: mediaType,
+		Languages: languages,
+	})
+
+	var osResults []SubtitleSearchResult
+	var osErr error
+	if s.IsConfigured() {
+		osResults, osErr = s.searchOpenSubtitlesByTitle(title, year, language, mediaType)
+	}
+
+	results := mergeSubtitleResults(catResults, osResults)
+	if len(results) > 0 {
+		return results, nil
+	}
+	if catErr != nil {
+		return nil, catErr
+	}
+	if osErr != nil {
+		return nil, osErr
+	}
+	return nil, nil
+}
+
+// SearchByHash 根据媒体文件搜索字幕。
+// 对 SubtitleCat 使用当前视频文件名生成多级搜索词；OpenSubtitles 仍保留原有 hash 搜索。
+func (s *SubtitleSearchService) SearchByHash(filePath string, language string) ([]SubtitleSearchResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	fileName := filepath.Base(filePath)
+	ep := ParseEpisodeFilename(fileName)
+	mediaType := "movie"
+	title := ""
+	year := 0
+	if ep.EpisodeNum > 0 {
+		mediaType = "episode"
+		title = ep.SeriesTitle
+		year = ep.Year
+	} else {
+		parsed := ParseMovieFilename(fileName)
+		title = parsed.Title
+		year = parsed.Year
+	}
+	queries := BuildSubtitleSearchQueries(filePath, title, year, mediaType)
+	catResults, catErr := s.subtitleCat.Search(ctx, SubtitleProviderSearchRequest{
+		Queries: queries,
+		FileName: fileName,
+		Title: title,
+		Year: year,
+		MediaType: mediaType,
+		Languages: parseSubtitleLanguages(language),
+	})
+
+	var osResults []SubtitleSearchResult
+	var osErr error
+	if s.IsConfigured() {
+		osResults, osErr = s.searchOpenSubtitlesByHash(filePath, language)
+	}
+
+	results := mergeSubtitleResults(catResults, osResults)
+	if len(results) > 0 {
+		return results, nil
+	}
+	if catErr != nil {
+		return nil, catErr
+	}
+	if osErr != nil {
+		return nil, osErr
+	}
+	return nil, nil
+}
+
+func (s *SubtitleSearchService) searchOpenSubtitlesByTitle(title string, year int, language string, mediaType string) ([]SubtitleSearchResult, error) {
 	s.mu.RLock()
 	apiKey := s.apiKey
 	s.mu.RUnlock()
-
 	if apiKey == "" {
 		return nil, fmt.Errorf("OpenSubtitles API Key 未配置")
 	}
@@ -145,64 +249,38 @@ func (s *SubtitleSearchService) SearchByTitle(title string, year int, language s
 	} else {
 		params.Set("type", "movie")
 	}
-
-	reqURL := fmt.Sprintf("%s/subtitles?%s", s.apiBase, params.Encode())
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	req.Header.Set("Api-Key", apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "nowen-video v1.0")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("OpenSubtitles API 返回错误: HTTP %d", resp.StatusCode)
-	}
-
-	var osResp osSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&osResp); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
-	}
-
-	return s.convertResults(osResp.Data), nil
+	return s.doOpenSubtitlesSearch(params)
 }
 
-// SearchByHash 根据文件哈希搜索字幕（更精确）
-func (s *SubtitleSearchService) SearchByHash(filePath string, language string) ([]SubtitleSearchResult, error) {
-	s.mu.RLock()
-	apiKey := s.apiKey
-	s.mu.RUnlock()
-
-	if apiKey == "" {
-		return nil, fmt.Errorf("OpenSubtitles API Key 未配置")
-	}
-
-	// 计算文件哈希
+func (s *SubtitleSearchService) searchOpenSubtitlesByHash(filePath string, language string) ([]SubtitleSearchResult, error) {
 	hash, err := computeOpenSubtitlesHash(filePath)
 	if err != nil {
-		s.logger.Warnf("计算文件哈希失败: %v，回退到标题搜索", err)
+		if s.logger != nil {
+			s.logger.Warnf("计算文件哈希失败: %v，OpenSubtitles hash 搜索跳过", err)
+		}
 		return nil, err
 	}
-
 	params := url.Values{}
 	params.Set("moviehash", hash)
 	if language != "" {
 		params.Set("languages", language)
 	}
+	return s.doOpenSubtitlesSearch(params)
+}
+
+func (s *SubtitleSearchService) doOpenSubtitlesSearch(params url.Values) ([]SubtitleSearchResult, error) {
+	s.mu.RLock()
+	apiKey := s.apiKey
+	s.mu.RUnlock()
+	if apiKey == "" {
+		return nil, fmt.Errorf("OpenSubtitles API Key 未配置")
+	}
 
 	reqURL := fmt.Sprintf("%s/subtitles?%s", s.apiBase, params.Encode())
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
-
 	req.Header.Set("Api-Key", apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "nowen-video v1.0")
@@ -212,41 +290,50 @@ func (s *SubtitleSearchService) SearchByHash(filePath string, language string) (
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("OpenSubtitles API 返回错误: HTTP %d", resp.StatusCode)
 	}
-
 	var osResp osSearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&osResp); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w", err)
 	}
-
 	return s.convertResults(osResp.Data), nil
 }
 
-// Download 下载字幕文件
+// Download 下载字幕文件。
+// SubtitleCat 使用 opaque ID 在服务端解析真实 URL；OpenSubtitles 保持原有 file_id 流程。
 func (s *SubtitleSearchService) Download(fileID string, mediaFilePath string) (*SubtitleDownloadResult, error) {
+	if strings.HasPrefix(fileID, subtitleCatProviderName+":download:") {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		download, err := s.subtitleCat.Download(ctx, fileID)
+		if err != nil {
+			return nil, err
+		}
+		content, err := normalizeDownloadedSRT(download.Content)
+		if err != nil {
+			return nil, fmt.Errorf("SubtitleCat 字幕校验失败: %w", err)
+		}
+		return s.saveSubtitleCatSidecar(mediaFilePath, download.FileName, download.Language, content)
+	}
+	return s.downloadOpenSubtitles(fileID, mediaFilePath)
+}
+
+func (s *SubtitleSearchService) downloadOpenSubtitles(fileID string, mediaFilePath string) (*SubtitleDownloadResult, error) {
 	s.mu.RLock()
 	apiKey := s.apiKey
 	s.mu.RUnlock()
-
 	if apiKey == "" {
 		return nil, fmt.Errorf("OpenSubtitles API Key 未配置")
 	}
 
-	// 请求下载链接
-	payload := map[string]interface{}{
-		"file_id": fileID,
-	}
+	payload := map[string]interface{}{"file_id": fileID}
 	body, _ := json.Marshal(payload)
-
 	reqURL := fmt.Sprintf("%s/download", s.apiBase)
-	req, err := http.NewRequest("POST", reqURL, strings.NewReader(string(body)))
+	req, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(string(body)))
 	if err != nil {
 		return nil, fmt.Errorf("创建下载请求失败: %w", err)
 	}
-
 	req.Header.Set("Api-Key", apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "nowen-video v1.0")
@@ -256,40 +343,36 @@ func (s *SubtitleSearchService) Download(fileID string, mediaFilePath string) (*
 		return nil, fmt.Errorf("下载请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("下载请求返回错误: HTTP %d", resp.StatusCode)
 	}
-
 	var dlResp osDownloadResponse
 	if err := json.NewDecoder(resp.Body).Decode(&dlResp); err != nil {
 		return nil, fmt.Errorf("解析下载响应失败: %w", err)
 	}
 
-	// 下载字幕文件
 	subResp, err := s.client.Get(dlResp.Link)
 	if err != nil {
 		return nil, fmt.Errorf("下载字幕文件失败: %w", err)
 	}
 	defer subResp.Body.Close()
+	if subResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("下载字幕文件返回错误: HTTP %d", subResp.StatusCode)
+	}
 
-	// 确定保存路径（与媒体文件同目录）
 	mediaDir := filepath.Dir(mediaFilePath)
 	mediaBase := strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath))
 	subExt := filepath.Ext(dlResp.FileName)
 	if subExt == "" {
 		subExt = ".srt"
 	}
-
-	// 生成字幕文件名：视频名.语言.srt
 	subFileName := fmt.Sprintf("%s%s", mediaBase, subExt)
 	subFilePath := filepath.Join(mediaDir, subFileName)
-
-	// 写入文件
 	outFile, err := os.Create(subFilePath)
 	if err != nil {
-		// 如果媒体目录不可写，保存到缓存目录
-		os.MkdirAll(s.cacheDir, 0755)
+		if mkErr := os.MkdirAll(s.cacheDir, 0755); mkErr != nil {
+			return nil, fmt.Errorf("创建字幕缓存目录失败: %w", mkErr)
+		}
 		subFilePath = filepath.Join(s.cacheDir, subFileName)
 		outFile, err = os.Create(subFilePath)
 		if err != nil {
@@ -297,25 +380,176 @@ func (s *SubtitleSearchService) Download(fileID string, mediaFilePath string) (*
 		}
 	}
 	defer outFile.Close()
-
-	if _, err := io.Copy(outFile, subResp.Body); err != nil {
+	if _, err := io.Copy(outFile, io.LimitReader(subResp.Body, subtitleCatMaxSRTBytes+1)); err != nil {
 		return nil, fmt.Errorf("写入字幕文件失败: %w", err)
 	}
-
-	s.logger.Infof("字幕下载成功: %s -> %s", dlResp.FileName, subFilePath)
-
+	if s.logger != nil {
+		s.logger.Infof("字幕下载成功: %s -> %s", dlResp.FileName, subFilePath)
+	}
 	return &SubtitleDownloadResult{
 		FilePath: subFilePath,
 		FileName: subFileName,
 		Language: "",
-		Format:   strings.TrimPrefix(subExt, "."),
+		Format: strings.TrimPrefix(subExt, "."),
+		Source: "opensubtitles",
 	}, nil
 }
 
-// convertResults 转换 OpenSubtitles 结果为统一格式
+func (s *SubtitleSearchService) saveSubtitleCatSidecar(mediaFilePath, sourceName, language string, content []byte) (*SubtitleDownloadResult, error) {
+	if strings.TrimSpace(mediaFilePath) == "" || mediaFilePath == "__strm__" {
+		return nil, fmt.Errorf("当前媒体不是可写的本地文件，无法保存外挂字幕")
+	}
+	mediaDir := filepath.Dir(mediaFilePath)
+	mediaBase := strings.TrimSuffix(filepath.Base(mediaFilePath), filepath.Ext(mediaFilePath))
+	langTag := subtitleSidecarLanguageTag(language)
+	subFileName := fmt.Sprintf("%s.%s.subtitlecat.srt", mediaBase, langTag)
+	subFilePath := filepath.Join(mediaDir, subFileName)
+
+	tmp, err := os.CreateTemp(mediaDir, ".nowen-subtitle-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("媒体目录不可写，无法持久化外挂字幕: %w", err)
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		_ = tmp.Close()
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(content); err != nil {
+		return nil, fmt.Errorf("写入字幕临时文件失败: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return nil, fmt.Errorf("同步字幕文件失败: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("关闭字幕临时文件失败: %w", err)
+	}
+	_ = os.Chmod(tmpPath, 0644)
+	_ = os.Remove(subFilePath)
+	if err := os.Rename(tmpPath, subFilePath); err != nil {
+		return nil, fmt.Errorf("保存外挂字幕失败: %w", err)
+	}
+	committed = true
+	if s.logger != nil {
+		s.logger.Infow("subtitle provider download saved",
+			"provider", subtitleCatProviderName,
+			"operation", "download",
+			"source_file", sourceName,
+			"language", language,
+			"path", subFilePath,
+		)
+	}
+	return &SubtitleDownloadResult{
+		FilePath: subFilePath,
+		FileName: subFileName,
+		Language: normalizeSubtitleLanguageCode(language),
+		Format: "srt",
+		Source: subtitleCatProviderName,
+	}, nil
+}
+
+func normalizeDownloadedSRT(raw []byte) ([]byte, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("字幕内容为空")
+	}
+	if int64(len(raw)) > subtitleCatMaxSRTBytes {
+		return nil, fmt.Errorf("字幕文件超过大小限制")
+	}
+	trimmed := bytes.TrimSpace(raw)
+	lowerPrefix := strings.ToLower(string(trimmed[:minInt(len(trimmed), 512)]))
+	if strings.HasPrefix(lowerPrefix, "<!doctype html") || strings.HasPrefix(lowerPrefix, "<html") || strings.Contains(lowerPrefix, "<body") {
+		return nil, fmt.Errorf("返回内容是 HTML 页面而不是 SRT")
+	}
+
+	text, err := decodeSubtitleBytes(raw)
+	if err != nil {
+		return nil, err
+	}
+	text = strings.TrimPrefix(text, "\ufeff")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.TrimSpace(text) + "\n"
+	if !srtTimestampPattern.MatchString(text) {
+		return nil, fmt.Errorf("内容不符合 SRT 时间轴格式")
+	}
+	return []byte(text), nil
+}
+
+func decodeSubtitleBytes(raw []byte) (string, error) {
+	data := raw
+	if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
+		data = data[3:]
+	}
+	if utf8.Valid(data) {
+		return string(data), nil
+	}
+
+	detector := chardet.NewTextDetector()
+	if result, err := detector.DetectBest(raw); err == nil && result != nil && result.Charset != "" {
+		if reader, convErr := charset.NewReaderLabel(result.Charset, bytes.NewReader(raw)); convErr == nil {
+			converted, readErr := io.ReadAll(io.LimitReader(reader, subtitleCatMaxSRTBytes+1))
+			if readErr == nil && utf8.Valid(converted) {
+				return string(converted), nil
+			}
+		}
+	}
+	for _, label := range []string{"utf-16le", "utf-16be", "gb18030", "big5"} {
+		reader, err := charset.NewReaderLabel(label, bytes.NewReader(raw))
+		if err != nil {
+			continue
+		}
+		converted, err := io.ReadAll(io.LimitReader(reader, subtitleCatMaxSRTBytes+1))
+		if err == nil && utf8.Valid(converted) && srtTimestampPattern.Match(converted) {
+			return string(converted), nil
+		}
+	}
+	return "", fmt.Errorf("无法识别字幕字符编码")
+}
+
+func subtitleSidecarLanguageTag(language string) string {
+	switch normalizeSubtitleLanguageCode(language) {
+	case "zh-CN":
+		return "chs"
+	case "zh-TW":
+		return "cht"
+	case "en":
+		return "eng"
+	case "ja":
+		return "jpn"
+	case "ko":
+		return "kor"
+	default:
+		tag := regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(language, "-")
+		tag = strings.Trim(strings.ToLower(tag), "-")
+		if tag == "" {
+			return "und"
+		}
+		return tag
+	}
+}
+
+func mergeSubtitleResults(groups ...[]SubtitleSearchResult) []SubtitleSearchResult {
+	seen := make(map[string]bool)
+	merged := make([]SubtitleSearchResult, 0)
+	for _, group := range groups {
+		for _, item := range group {
+			key := strings.ToLower(item.Source + "|" + item.ID)
+			if key == "|" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged = append(merged, item)
+		}
+	}
+	sortSubtitleSearchResults(merged)
+	return merged
+}
+
+// convertResults 转换 OpenSubtitles 结果为统一格式。
 func (s *SubtitleSearchService) convertResults(data []osSearchResult) []SubtitleSearchResult {
 	results := make([]SubtitleSearchResult, 0, len(data))
-
 	for _, item := range data {
 		attrs := item.Attributes
 		fileName := ""
@@ -324,58 +558,52 @@ func (s *SubtitleSearchService) convertResults(data []osSearchResult) []Subtitle
 			fileName = attrs.Files[0].FileName
 			fileID = fmt.Sprintf("%d", attrs.Files[0].FileID)
 		}
-
 		matchType := "title"
+		matchScore := 70
 		if attrs.MovieHashMatch {
 			matchType = "hash"
+			matchScore = 100
 		}
-
 		results = append(results, SubtitleSearchResult{
-			ID:            fileID,
-			Title:         attrs.FeatureDetails.Title,
-			FileName:      fileName,
-			Language:      attrs.Language,
-			LanguageName:  getLanguageName(attrs.Language),
-			Format:        getSubtitleFormat(fileName),
-			Rating:        attrs.Ratings,
+			ID: fileID,
+			Title: attrs.FeatureDetails.Title,
+			FileName: fileName,
+			Language: normalizeSubtitleLanguageCode(attrs.Language),
+			LanguageName: getLanguageName(attrs.Language),
+			Format: getSubtitleFormat(fileName),
+			Rating: attrs.Ratings,
 			DownloadCount: attrs.DownloadCount,
-			Source:        "opensubtitles",
-			DownloadURL:   "",
-			MatchType:     matchType,
+			Source: "opensubtitles",
+			DownloadURL: "",
+			MatchType: matchType,
+			MatchScore: matchScore,
+			AvailableLanguages: []string{normalizeSubtitleLanguageCode(attrs.Language)},
 		})
 	}
-
 	return results
 }
 
-// computeOpenSubtitlesHash 计算 OpenSubtitles 文件哈希
-// 使用文件前后各 64KB 的 MD5 作为简化哈希
+// computeOpenSubtitlesHash 计算 OpenSubtitles 文件哈希。
+// 这是项目现有实现，保持兼容；SubtitleCat 不依赖该哈希。
 func computeOpenSubtitlesHash(filePath string) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-
 	fi, err := f.Stat()
 	if err != nil {
 		return "", err
 	}
-
-	if fi.Size() < 131072 { // 文件太小
+	if fi.Size() < 131072 {
 		return "", fmt.Errorf("文件太小，无法计算哈希")
 	}
-
 	h := md5.New()
-
-	// 读取前 64KB
 	buf := make([]byte, 65536)
 	if _, err := io.ReadFull(f, buf); err != nil {
 		return "", err
 	}
 	h.Write(buf)
-
-	// 读取后 64KB
 	if _, err := f.Seek(-65536, io.SeekEnd); err != nil {
 		return "", err
 	}
@@ -383,11 +611,9 @@ func computeOpenSubtitlesHash(filePath string) (string, error) {
 		return "", err
 	}
 	h.Write(buf)
-
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// getLanguageName 获取语言显示名称
 func getLanguageName(code string) string {
 	names := map[string]string{
 		"zh-cn": "简体中文", "zh-tw": "繁体中文", "en": "English",
@@ -396,13 +622,12 @@ func getLanguageName(code string) string {
 		"ru": "Русский", "it": "Italiano", "ar": "العربية",
 		"th": "ไทย", "vi": "Tiếng Việt",
 	}
-	if name, ok := names[strings.ToLower(code)]; ok {
+	if name, ok := names[strings.ToLower(normalizeSubtitleLanguageCode(code))]; ok {
 		return name
 	}
 	return code
 }
 
-// getSubtitleFormat 从文件名获取字幕格式
 func getSubtitleFormat(fileName string) string {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	switch ext {
@@ -417,4 +642,11 @@ func getSubtitleFormat(fileName string) string {
 	default:
 		return "srt"
 	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
