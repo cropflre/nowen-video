@@ -19,9 +19,13 @@ export function buttonClassName({
   iconOnly?: boolean
   className?: string
 } = {}) {
-  return clsx('nv-button', className, {
-    'nv-button--icon-only': iconOnly,
-  })
+  return clsx(
+    'nv-button',
+    `nv-button--${variant}`,
+    `nv-button--${size}`,
+    iconOnly && 'nv-button--icon-only',
+    className,
+  )
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
