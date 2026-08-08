@@ -93,7 +93,7 @@ export default function Layout() {
             >
               <Menu size={20} />
             </Button>
-            <h1 className="font-brand text-base font-bold tracking-[0.12em] text-[var(--nv-text-primary)]">
+            <h1 className="font-display text-base font-bold tracking-[0.12em] text-[var(--nv-text-primary)]">
               <span className="text-[var(--nv-action-primary)]">N</span>OWEN
             </h1>
           </div>
