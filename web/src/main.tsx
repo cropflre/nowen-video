@@ -13,6 +13,7 @@ import './styles/player-cinema.css'
 import './styles/player-speed-menu.css'
 import './styles/player-overlay-panels.css'
 import './styles/player-design-system.css'
+import './styles/player-subtitles.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
