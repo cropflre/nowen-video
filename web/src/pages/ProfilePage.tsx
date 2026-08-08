@@ -1,18 +1,11 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { AtSign, Key, Loader2, LogOut, Save, Shield, User } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authApi, userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
-import {
-  User,
-  Key,
-  Shield,
-  Save,
-  Loader2,
-  LogOut,
-  AtSign,
-} from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Button, Input, PageContainer, Section, Surface, Tag } from '@/components/design-system'
 
 export default function ProfilePage() {
   const { user, setAuth, updateUser, logout } = useAuthStore()
@@ -20,58 +13,45 @@ export default function ProfilePage() {
   const toast = useToast()
   const { t } = useTranslation()
 
-  // 修改用户名
   const [newUsername, setNewUsername] = useState(user?.username ?? '')
   const [savingUsername, setSavingUsername] = useState(false)
-
-  // 修改密码
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPwd, setChangingPwd] = useState(false)
 
-  const handleChangeUsername = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleChangeUsername = async (event: React.FormEvent) => {
+    event.preventDefault()
     const trimmed = newUsername.trim()
     if (trimmed.length < 3 || trimmed.length > 32) {
       toast.error(t('profile.usernameInvalid'))
       return
     }
-    if (trimmed === user?.username) {
-      return
-    }
+    if (trimmed === user?.username) return
 
     setSavingUsername(true)
     try {
       const res = await userApi.updateProfile({ username: trimmed })
       const updatedUser = res.data.data
-      // 若后端一并下发新 Token，则直接替换认证信息，避免因 token_version 自增而掉线
-      if (res.data.token) {
-        setAuth(res.data.token, updatedUser)
-      } else {
-        updateUser(updatedUser)
-      }
+      if (res.data.token) setAuth(res.data.token, updatedUser)
+      else updateUser(updatedUser)
       toast.success(t('profile.usernameChangeSuccess'))
     } catch (err: any) {
-      if (err?.response?.status === 409) {
-        toast.error(t('profile.usernameTaken'))
-      } else {
-        const msg = err?.response?.data?.error
-        toast.error(msg || t('profile.usernameChangeFailed'))
-      }
+      if (err?.response?.status === 409) toast.error(t('profile.usernameTaken'))
+      else toast.error(err?.response?.data?.error || t('profile.usernameChangeFailed'))
     } finally {
       setSavingUsername(false)
     }
   }
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault()
     if (newPassword.length < 6) {
-toast.error(t('profile.passwordMinLength'))
+      toast.error(t('profile.passwordMinLength'))
       return
     }
     if (newPassword !== confirmPassword) {
-toast.error(t('profile.passwordMismatch'))
+      toast.error(t('profile.passwordMismatch'))
       return
     }
 
@@ -79,8 +59,6 @@ toast.error(t('profile.passwordMismatch'))
     try {
       const res = await authApi.changePassword(oldPassword, newPassword)
       const tokenData = res.data.data
-      // 后端改密后会递增 token_version，旧 Token 已经失效；必须在继续访问
-      // 其它接口前换成新会话，否则下一次请求会 401 并跳回登录页。
       if (!tokenData?.token || !tokenData.user) {
         toast.error(res.data.message || t('profile.passwordChangeFailed'))
         return
@@ -92,11 +70,8 @@ toast.error(t('profile.passwordMismatch'))
       setConfirmPassword('')
     } catch (err: any) {
       const errorMsg = err?.response?.data?.error
-      if (err?.response?.status === 401) {
-        toast.error(t('profile.passwordVerifyFailed'))
-      } else {
-        toast.error(errorMsg || t('profile.passwordChangeFailed'))
-      }
+      if (err?.response?.status === 401) toast.error(t('profile.passwordVerifyFailed'))
+      else toast.error(errorMsg || t('profile.passwordChangeFailed'))
     } finally {
       setChangingPwd(false)
     }
@@ -108,163 +83,143 @@ toast.error(t('profile.passwordMismatch'))
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      {/* 用户资料卡片 */}
-      <section>
-        <h1 className="mb-6 flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <User size={24} className="text-neon" />
-          {t('profile.title')}
-        </h1>
+    <PageContainer className="max-w-3xl">
+      <div className="space-y-8">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--nv-action-primary)]">
+            <User size={17} aria-hidden="true" />
+            {t('profile.title')}
+          </div>
+          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--nv-text-primary)]">{t('profile.title')}</h1>
+          <p className="mt-2 text-sm text-[var(--nv-text-tertiary)]">管理账号身份、登录凭据与会话。</p>
+        </div>
 
-        <div className="glass-panel rounded-2xl p-6">
-          <div className="flex items-center gap-5">
-            {/* 大头像 */}
-            <div
-              className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl text-2xl font-bold"
-              style={{
-                background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                boxShadow: '0 0 30px var(--neon-blue-20)',
-                color: 'var(--text-on-neon)',
-              }}
-            >
+        <Surface className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[var(--nv-radius-container)] bg-[var(--nv-action-primary)] text-2xl font-bold text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]">
               {user?.username?.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <h2 className="font-display text-xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-                {user?.username}
-              </h2>
-              <div className="mt-1 flex items-center gap-3">
-                <span className="flex items-center gap-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                  <Shield size={14} />
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-xl font-semibold text-[var(--nv-text-primary)]">{user?.username}</h2>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Tag tone={user?.role === 'admin' ? 'brand' : 'neutral'}>
+                  <Shield size={12} aria-hidden="true" />
                   {user?.role === 'admin' ? t('profile.roleAdmin') : t('profile.roleUser')}
-                </span>
+                </Tag>
                 {user?.created_at && (
-                  <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-xs text-[var(--nv-text-tertiary)]">
                     {t('profile.registeredAt', { date: new Date(user.created_at).toLocaleDateString() })}
                   </span>
                 )}
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </Surface>
 
-      {/* 修改用户名 */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <AtSign size={20} className="text-neon/60" />
-          {t('profile.updateUsername')}
-        </h2>
-        <form onSubmit={handleChangeUsername} className="glass-panel rounded-2xl p-6 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {t('profile.username')}
-            </label>
-            <input
-              type="text"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              className="input w-full"
-              placeholder={t('profile.usernamePlaceholder')}
-              minLength={3}
-              maxLength={32}
-              required
-            />
-            <p className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-              {t('profile.usernameHint')}
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
-            className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
-          >
-            {savingUsername ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {t('profile.saveUsername')}
-          </button>
-        </form>
-      </section>
+        <Section
+          title={t('profile.updateUsername')}
+          description={t('profile.usernameHint')}
+          action={<AtSign size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />}
+        >
+          <Surface className="p-5 sm:p-6">
+            <form onSubmit={handleChangeUsername} className="space-y-4">
+              <FormField label={t('profile.username')} htmlFor="profile-username">
+                <Input
+                  id="profile-username"
+                  type="text"
+                  value={newUsername}
+                  onChange={(event) => setNewUsername(event.target.value)}
+                  placeholder={t('profile.usernamePlaceholder')}
+                  minLength={3}
+                  maxLength={32}
+                  required
+                  autoComplete="username"
+                />
+              </FormField>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
+              >
+                {savingUsername ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+                {t('profile.saveUsername')}
+              </Button>
+            </form>
+          </Surface>
+        </Section>
 
-      {/* 修改密码 */}
-      <section>
-        <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <Key size={20} className="text-neon/60" />
-          {t('profile.changePassword')}
-        </h2>
-        <form onSubmit={handleChangePassword} className="glass-panel rounded-2xl p-6 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {t('profile.currentPassword')}
-            </label>
-            <input
-              type="password"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              className="input w-full"
-              placeholder={t('profile.currentPasswordPlaceholder')}
-              required
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {t('profile.newPassword')}
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="input w-full"
-              placeholder={t('profile.newPasswordPlaceholder')}
-              required
-              minLength={6}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {t('profile.confirmPassword')}
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input w-full"
-              placeholder={t('profile.confirmPasswordPlaceholder')}
-              required
-              minLength={6}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={changingPwd || !oldPassword || !newPassword}
-            className="btn-primary gap-1.5 px-5 py-2.5 text-sm"
-          >
-            {changingPwd ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {t('profile.verifyAndChange')}
-          </button>
-        </form>
-      </section>
+        <Section
+          title={t('profile.changePassword')}
+          description="更新密码后会刷新当前登录会话。"
+          action={<Key size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />}
+        >
+          <Surface className="p-5 sm:p-6">
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <FormField label={t('profile.currentPassword')} htmlFor="profile-current-password">
+                <Input
+                  id="profile-current-password"
+                  type="password"
+                  value={oldPassword}
+                  onChange={(event) => setOldPassword(event.target.value)}
+                  placeholder={t('profile.currentPasswordPlaceholder')}
+                  required
+                  autoComplete="current-password"
+                />
+              </FormField>
+              <FormField label={t('profile.newPassword')} htmlFor="profile-new-password">
+                <Input
+                  id="profile-new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder={t('profile.newPasswordPlaceholder')}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </FormField>
+              <FormField label={t('profile.confirmPassword')} htmlFor="profile-confirm-password">
+                <Input
+                  id="profile-confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder={t('profile.confirmPasswordPlaceholder')}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </FormField>
+              <Button type="submit" variant="primary" disabled={changingPwd || !oldPassword || !newPassword}>
+                {changingPwd ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+                {t('profile.verifyAndChange')}
+              </Button>
+            </form>
+          </Surface>
+        </Section>
 
-      {/* 登出 */}
-      <section>
-        <div className="glass-panel rounded-2xl p-6">
-          <div className="flex items-center justify-between">
+        <Surface className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{t('profile.logout')}</h3>
-              <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                {t('profile.logoutHint')}
-              </p>
+              <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">{t('profile.logout')}</h3>
+              <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{t('profile.logoutHint')}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-red-400 transition-all hover:bg-red-400/5"
-              style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}
-            >
-              <LogOut size={16} />
+            <Button type="button" variant="danger" onClick={handleLogout}>
+              <LogOut size={16} aria-hidden="true" />
               {t('profile.logout')}
-            </button>
+            </Button>
           </div>
-        </div>
-      </section>
+        </Surface>
+      </div>
+    </PageContainer>
+  )
+}
+
+function FormField({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--nv-text-secondary)]">{label}</label>
+      {children}
     </div>
   )
 }
