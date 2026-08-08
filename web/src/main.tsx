@@ -5,6 +5,7 @@ import App from './App'
 import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
 import { initI18n } from './i18n'
+import { installSubtitleTrackActivationGuard } from './utils/subtitleTrackActivation'
 import './index.css'
 import './styles/fluent.css'
 import './styles/design-system.css'
@@ -96,6 +97,10 @@ if ('serviceWorker' in navigator) {
     void cleanupDevelopmentServiceWorker()
   }
 }
+
+// 动态 blob: WebVTT <track> 默认处于 disabled。先安装兼容层，确保在线字幕和
+// 字幕菜单选择都能触发浏览器实际加载并进入 showing 状态。
+installSubtitleTrackActivationGuard()
 
 // 在渲染前初始化主题和国际化，避免闪烁
 initTheme()
