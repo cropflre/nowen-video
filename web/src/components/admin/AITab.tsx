@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Cpu,
   Database as DatabaseIcon,
   Eye,
   EyeOff,
@@ -33,7 +32,6 @@ import {
   Button,
   EmptyState,
   Input,
-  Select,
   Surface,
   Tag,
   type TagTone,
@@ -43,7 +41,6 @@ import { useServerProfileStore } from '@/stores/serverProfile'
 import type { AICacheStats, AIErrorLog, AIStatus, AITestResult } from '@/types'
 import {
   AdminPanel,
-  AdminSectionTitle,
   AdminStatus,
   type AdminStatusTone,
 } from './AdminPrimitives'
