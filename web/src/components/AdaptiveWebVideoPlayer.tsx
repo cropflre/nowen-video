@@ -57,6 +57,9 @@ const PLAYBACK_MODE_RANK: Record<BrowserPlaybackMode, number> = {
   hls: 3,
 }
 
+const MAX_NETWORK_RETRIES = 1
+const NETWORK_RETRY_DELAY_MS = 500
+
 function modeForMethod(method?: PlaybackMethod): BrowserPlaybackMode | null {
   switch (method) {
     case 'direct':
@@ -115,7 +118,6 @@ export default function AdaptiveWebVideoPlayer({
   initialSrc,
   initialRequiresSession,
   resetKey,
-  supportsHEVC,
   title,
   startPosition = 0,
   onBack,
@@ -132,6 +134,7 @@ export default function AdaptiveWebVideoPlayer({
   const operationRef = useRef(0)
   const transitionInFlightRef = useRef(false)
   const failedModesRef = useRef<Set<BrowserPlaybackMode>>(new Set())
+  const networkRetryCountRef = useRef<Map<BrowserPlaybackMode, number>>(new Map())
   const snapshotRef = useRef<PlaybackSnapshot | null>(null)
   const resetConfigRef = useRef({ initialPlan, startPosition })
   resetConfigRef.current = { initialPlan, startPosition }
@@ -149,6 +152,7 @@ export default function AdaptiveWebVideoPlayer({
     operationRef.current += 1
     transitionInFlightRef.current = false
     failedModesRef.current.clear()
+    networkRetryCountRef.current.clear()
     snapshotRef.current = null
     setActivePlan(resetConfig.initialPlan)
     setResumePosition(Math.max(0, resetConfig.startPosition))
@@ -189,15 +193,11 @@ export default function AdaptiveWebVideoPlayer({
     const position = Math.max(storePosition, elementPosition)
     const reason = mediaErrorReason(video.error)
 
-    // 使用精确能力矩阵 + 源文件信息分析错误根因
+    // The frontend must not invent a container such as "mkv". The server has
+    // the authoritative probe/container information and will choose remux,
+    // smart-remux, or full transcode after direct playback is disabled.
     const caps = getMediaCapabilities()
-    const st = activePlan?.source_technical
-    const sourceInfo = st ? {
-      container: 'mkv', // Remux 场景默认 MKV（实际容器不影响 analyzeMediaError 判断）
-      videoCodec: st.video_codec || '',
-      audioCodec: st.audio_codecs?.[0] || '',
-    } : undefined
-    const analysis = analyzeMediaError(video.error, caps, sourceInfo as { container: string; videoCodec: string; audioCodec: string } | undefined)
+    const analysis = analyzeMediaError(video.error, caps)
 
     snapshotRef.current = {
       position,
@@ -210,61 +210,48 @@ export default function AdaptiveWebVideoPlayer({
     setTransitioning(true)
     setTerminalError(null)
 
-    // 网络错误先重试一次（不降级），避免 SMB 断连等临时问题误触 HLS
-    if (analysis.suggestedFallback === 'retry' && from === 'direct') {
-      failedModesRef.current.delete(from) // 允许重试
+    // Source swaps/unmounts can produce MEDIA_ERR_ABORTED. They are not a
+    // codec signal and must never trigger remux/transcode escalation.
+    if (analysis.errorType === 'aborted') {
+      failedModesRef.current.delete(from)
       transitionInFlightRef.current = false
       setTransitioning(false)
-      // 延迟 500ms 后重试加载
-      setTimeout(() => {
-        if (operationRef.current === operation) {
-          video.load()
-          void video.play().catch(() => undefined)
-        }
-      }, 500)
+      return
+    }
+
+    // Network errors are transport/storage problems, not codec problems. Retry
+    // once in every native mode; after that, surface the network failure rather
+    // than wasting CPU/GPU on HLS transcoding that cannot fix the transport.
+    if (analysis.suggestedFallback === 'retry') {
+      const retries = networkRetryCountRef.current.get(from) ?? 0
+      if (retries < MAX_NETWORK_RETRIES) {
+        networkRetryCountRef.current.set(from, retries + 1)
+        failedModesRef.current.delete(from)
+        transitionInFlightRef.current = false
+        setTransitioning(false)
+        window.setTimeout(() => {
+          if (operationRef.current === operation) {
+            video.load()
+            void video.play().catch(() => undefined)
+          }
+        }, NETWORK_RETRY_DELAY_MS)
+        return
+      }
+
+      failedModesRef.current.delete(from)
+      transitionInFlightRef.current = false
+      setTransitioning(false)
+      setTerminalError(`${reason}；网络重试失败，请检查网络或媒体存储连接后重试`)
       return
     }
 
     try {
-      // 根据根因分析选择降级策略
-      let nextDirect = false
-      let nextRemux = false
-      let nextForceTranscode = false
-
-      if (from === 'direct') {
-        if (analysis.suggestedFallback === 'remux') {
-          // 容器不兼容 → Remux
-          nextDirect = false
-          nextRemux = true
-          nextForceTranscode = false
-        } else if (analysis.suggestedFallback === 'smart_remux') {
-          // 音频不兼容 → Smart Remux（视频 copy + 音频转码）
-          nextDirect = false
-          nextRemux = true
-          nextForceTranscode = false
-        } else {
-          // 默认：direct → remux
-          nextDirect = false
-          nextRemux = true
-          nextForceTranscode = false
-        }
-      } else if (from === 'remux') {
-        // remux 失败 → smart_remux（如果音频不兼容）或 transcode
-        if (analysis.suggestedFallback === 'smart_remux' && !failedModesRef.current.has('smart_remux')) {
-          nextDirect = false
-          nextRemux = true
-          nextForceTranscode = false
-        } else {
-          nextDirect = false
-          nextRemux = false
-          nextForceTranscode = true
-        }
-      } else if (from === 'smart_remux') {
-        // smart_remux 失败 → full transcode
-        nextDirect = false
-        nextRemux = false
-        nextForceTranscode = true
-      }
+      // Direct playback failures are replanned by the server with direct play
+      // disabled. The server then chooses the cheapest valid next step based
+      // on the actual file: remux, smart-remux, or a session transcode.
+      const nextDirect = false
+      const nextRemux = from === 'direct'
+      const nextForceTranscode = from !== 'direct'
 
       const response = await streamApi.getPlaybackPlan(mediaId, {
         supportsDirect: nextDirect,
@@ -300,10 +287,10 @@ export default function AdaptiveWebVideoPlayer({
         transitionInFlightRef.current = false
       }
     }
-  }, [activeMode, activePlan, mediaId, onTransition, supportsHEVC])
+  }, [activeMode, mediaId, onTransition])
 
   // Native media errors do not bubble, but they participate in capture. A
-  // single parent listener covers both direct and remux player generations.
+  // single parent listener covers direct, remux, and smart-remux generations.
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
@@ -324,6 +311,7 @@ export default function AdaptiveWebVideoPlayer({
 
     const restorePlaybackState = (event: Event) => {
       if (!(event.target instanceof HTMLVideoElement)) return
+      networkRetryCountRef.current.delete(activeMode)
       const snapshot = snapshotRef.current
       if (!snapshot) return
       const video = event.target
