@@ -23,7 +23,6 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
   const [viewMode, setViewMode] = useState<ViewMode>('season')
   const [displayMode, setDisplayMode] = useState<DisplayMode>('slide')
   const [activeSeason, setActiveSeason] = useState<number>(() => seasons[0]?.season_num ?? 1)
-  const sliderRef = useRef<HTMLDivElement>(null)
   const pagination = usePagination({ initialSize: 50 })
 
   useEffect(() => {
@@ -107,7 +106,6 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
               seriesTitle={seriesTitle}
               historyMap={historyMap}
               posterVersion={posterVersion}
-              sliderRef={sliderRef}
             />
           ) : (
             <div className="space-y-2">
@@ -155,14 +153,13 @@ function EpisodeSlider({
   seriesTitle,
   historyMap,
   posterVersion,
-  sliderRef,
 }: {
   episodes: Media[]
   seriesTitle: string
   historyMap: Record<string, WatchHistory>
   posterVersion: number
-  sliderRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const sliderRef = useRef<HTMLDivElement>(null)
   const scrollBy = (left: number) => sliderRef.current?.scrollBy({ left, behavior: 'smooth' })
 
   if (episodes.length === 0) {
