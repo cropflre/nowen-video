@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Calendar, ChevronDown, Clock, Copy, Film, Grid3X3, LayoutList, Play, Star } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { streamApi } from '@/api'
-import type { Media } from '@/types'
+import type { CollectionMediaItem } from '@/types'
 import { groupByMovie, versionLabel, type GroupedMovieItem } from '@/utils/collectionGroup'
 import { Button, Select, Tag } from '@/components/design-system'
 import Pagination from '@/components/Pagination'
@@ -18,7 +18,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ]
 
 interface CollectionMovieBrowserProps {
-  media: Media[]
+  media: CollectionMediaItem[]
 }
 
 export default function CollectionMovieBrowser({ media }: CollectionMovieBrowserProps) {
@@ -174,7 +174,7 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
   return (
-    <article className="overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)]">
+    <article className="group overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)]">
       <div className="flex items-center gap-3 p-3 transition-colors hover:bg-[var(--nv-bg-hover)]">
         <span className="w-7 shrink-0 text-center text-xs font-semibold text-[var(--nv-text-tertiary)]">{index}</span>
         <Link to={`/media/${item.id}`} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]">
@@ -213,7 +213,7 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
   )
 }
 
-function VersionMenu({ versions, currentId }: { versions: Media[]; currentId: string }) {
+function VersionMenu({ versions, currentId }: { versions: CollectionMediaItem[]; currentId: string }) {
   return (
     <div className="absolute left-0 right-0 top-full z-[var(--nv-z-dropdown)] mt-1 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-2 shadow-[var(--nv-shadow-elevated)]">
       <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">{versions.length} 个版本</div>
@@ -222,7 +222,7 @@ function VersionMenu({ versions, currentId }: { versions: Media[]; currentId: st
   )
 }
 
-function VersionRow({ version, currentId }: { version: Media; currentId: string }) {
+function VersionRow({ version, currentId }: { version: CollectionMediaItem; currentId: string }) {
   const current = version.id === currentId
   return (
     <Link to={`/media/${version.id}`} className={`flex items-center justify-between gap-2 rounded-[var(--nv-radius-control)] px-2.5 py-2 text-xs transition-colors ${current ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'}`}>
