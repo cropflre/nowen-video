@@ -248,7 +248,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                 className="pl-9 sm:w-64"
               />
             </div>
-            <Button onClick={() => setShowCreateModal(true)}>
+            <Button variant="primary" onClick={() => setShowCreateModal(true)}>
               <UserPlus size={15} />
               新建用户
             </Button>
@@ -415,7 +415,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
 
                         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
                           <Button variant="ghost" onClick={() => setEditingUser(null)}>取消</Button>
-                          <Button loading={savingPerm} onClick={savePerm}>
+                          <Button variant="primary" loading={savingPerm} onClick={savePerm}>
                             {!savingPerm && <Check size={14} />}
                             {savingPerm ? '保存中...' : '保存权限'}
                           </Button>
@@ -430,7 +430,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         )}
       </AdminPanel>
 
-      <Surface className="flex items-start gap-2 border-[var(--nv-status-warning)]/25 bg-[var(--nv-bg-surface-soft)] p-4 text-xs leading-5 text-[var(--nv-text-secondary)]">
+      <Surface className="flex items-start gap-2 border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] p-4 text-xs leading-5 text-[var(--nv-text-secondary)]">
         <AlertCircle size={15} className="mt-0.5 shrink-0 text-[var(--nv-status-warning)]" />
         <span>管理员可直接创建账号，默认要求首次登录强制改密；也可让用户通过邀请码自行注册。禁用账号会立即吊销该用户持有的登录凭证。</span>
       </Surface>
@@ -486,7 +486,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" onClick={() => setShowCreateModal(false)} disabled={creatingUser}>取消</Button>
-          <Button loading={creatingUser} onClick={handleCreateUser}>
+          <Button variant="primary" loading={creatingUser} onClick={handleCreateUser}>
             {!creatingUser && <Check size={14} />}
             {creatingUser ? '创建中...' : '创建'}
           </Button>
@@ -526,6 +526,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         <ModalFooter>
           <Button variant="ghost" onClick={() => setResetPwdUser(null)} disabled={resettingPwd}>取消</Button>
           <Button
+            variant="primary"
             loading={resettingPwd}
             disabled={resetPwdValue.length < 6}
             onClick={handleResetPassword}
