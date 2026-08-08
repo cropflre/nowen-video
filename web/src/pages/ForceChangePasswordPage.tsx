@@ -74,6 +74,7 @@ export default function ForceChangePasswordPage() {
           value={newPwd}
           onChange={setNewPwd}
           autoComplete="new-password"
+          minLength={6}
         />
         <PasswordField
           id="confirm-password"
@@ -81,6 +82,7 @@ export default function ForceChangePasswordPage() {
           value={newPwd2}
           onChange={setNewPwd2}
           autoComplete="new-password"
+          minLength={6}
         />
 
         <Button type="submit" variant="primary" size="lg" className="w-full" disabled={loading}>
@@ -106,6 +108,7 @@ function PasswordField({
   onChange,
   autoComplete,
   autoFocus = false,
+  minLength,
 }: {
   id: string
   label: string
@@ -113,6 +116,7 @@ function PasswordField({
   onChange: (value: string) => void
   autoComplete: string
   autoFocus?: boolean
+  minLength?: number
 }) {
   return (
     <div className="space-y-1.5">
@@ -125,7 +129,7 @@ function PasswordField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required
-        minLength={6}
+        minLength={minLength}
         maxLength={64}
         autoFocus={autoFocus}
       />
