@@ -1470,6 +1470,7 @@ export default function VideoPlayer({
                   setShowSubtitleMenu(!showSubtitleMenu)
                   setShowQuality(false)
                   setShowCastPanel(false)
+                  setShowContentSearch(false)
                 }}
                 className={clsx(
                   'rounded-lg p-2 transition-all hover:bg-white/5',
@@ -1720,26 +1721,35 @@ export default function VideoPlayer({
                     </>
                   )}
 
-                  {/* 在线字幕搜索入口 */}
+                  {/* 在线字幕与字幕内容搜索入口 */}
                   <div className="mx-3 my-1 border-t border-neon-blue/10" />
                   <button
-                    onClick={() => { setShowSubtitleSearch(true); setShowSubtitleMenu(false) }}
+                    onClick={() => { setShowSubtitleSearch(true); setShowContentSearch(false); setShowSubtitleMenu(false) }}
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
                   >
                     <Search size={12} className="text-neon-blue/60" />
                     在线搜索字幕...
+                  </button>
+                  <button
+                    onClick={() => { setShowContentSearch(true); setShowSubtitleSearch(false); setShowSubtitleMenu(false) }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
+                  >
+                    <Search size={12} className="text-white/35" />
+                    <span className="flex-1">搜索当前字幕内容...</span>
+                    <span className="text-[10px] text-surface-600">Ctrl+F</span>
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* 字幕内容搜索按钮 */}
+          {/* 在线字幕搜索按钮；Ctrl+F 仍保留当前字幕内容搜索 */}
           {!isStrm && (
             <div className="relative">
               <button
                 onClick={() => {
-                  setShowContentSearch(!showContentSearch)
+                  setShowSubtitleSearch(true)
+                  setShowContentSearch(false)
                   setShowQuality(false)
                   setShowSubtitleMenu(false)
                   setShowCastPanel(false)
@@ -1747,9 +1757,9 @@ export default function VideoPlayer({
                 }}
                 className={clsx(
                   'rounded-lg p-2 transition-all hover:bg-white/5',
-                  showContentSearch ? 'text-neon-blue' : 'text-white/70 hover:text-white'
+                  showSubtitleSearch ? 'text-neon-blue' : 'text-white/70 hover:text-white'
                 )}
-                title="字幕搜索 (Ctrl+F)"
+                title="在线字幕搜索"
               >
                 <Search size={18} />
               </button>
