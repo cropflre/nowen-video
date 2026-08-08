@@ -486,26 +486,79 @@ func decodeSubtitleBytes(raw []byte) (string, error) {
 		return string(data), nil
 	}
 
-	detector := chardet.NewTextDetector()
-	if result, err := detector.DetectBest(raw); err == nil && result != nil && result.Charset != "" {
-		if reader, convErr := charset.NewReaderLabel(result.Charset, bytes.NewReader(raw)); convErr == nil {
-			converted, readErr := io.ReadAll(io.LimitReader(reader, subtitleCatMaxSRTBytes+1))
-			if readErr == nil && utf8.Valid(converted) {
-				return string(converted), nil
+	labels := make([]string, 0, 8)
+	appendLabel := func(label string) {
+		label = strings.TrimSpace(strings.ToLower(label))
+		if label == "" {
+			return
+		}
+		for _, existing := range labels {
+			if existing == label {
+				return
 			}
 		}
+		labels = append(labels, label)
 	}
-	for _, label := range []string{"utf-16le", "utf-16be", "gb18030", "big5"} {
+
+	// BOM 是最强信号，必须优先于统计探测器。
+	if bytes.HasPrefix(raw, []byte{0xFF, 0xFE}) {
+		appendLabel("utf-16le")
+	}
+	if bytes.HasPrefix(raw, []byte{0xFE, 0xFF}) {
+		appendLabel("utf-16be")
+	}
+
+	detected := ""
+	if result, err := chardet.NewTextDetector().DetectBest(raw); err == nil && result != nil {
+		detected = strings.ToLower(strings.TrimSpace(result.Charset))
+	}
+
+	// 小型中文字幕经常被统计探测器误判为 windows-1252 / ISO-8859-*，
+	// 这种解码会产生典型的“×ÖÄ»”乱码但仍是合法 UTF-8。对包含高位字节的
+	// SRT 先尝试常见中文编码，再回落到西文单字节编码。
+	if isWesternSingleByteCharset(detected) && containsHighByte(raw) {
+		appendLabel("gb18030")
+		appendLabel("big5")
+		appendLabel(detected)
+	} else {
+		appendLabel(detected)
+		appendLabel("gb18030")
+		appendLabel("big5")
+	}
+	appendLabel("utf-16le")
+	appendLabel("utf-16be")
+
+	for _, label := range labels {
 		reader, err := charset.NewReaderLabel(label, bytes.NewReader(raw))
 		if err != nil {
 			continue
 		}
 		converted, err := io.ReadAll(io.LimitReader(reader, subtitleCatMaxSRTBytes+1))
-		if err == nil && utf8.Valid(converted) && srtTimestampPattern.Match(converted) {
+		if err != nil || int64(len(converted)) > subtitleCatMaxSRTBytes || !utf8.Valid(converted) {
+			continue
+		}
+		if srtTimestampPattern.Match(converted) {
 			return string(converted), nil
 		}
 	}
 	return "", fmt.Errorf("无法识别字幕字符编码")
+}
+
+func isWesternSingleByteCharset(label string) bool {
+	label = strings.ToLower(strings.TrimSpace(label))
+	return strings.Contains(label, "windows-125") ||
+		strings.Contains(label, "iso-8859") ||
+		strings.Contains(label, "latin-1") ||
+		strings.Contains(label, "latin1")
+}
+
+func containsHighByte(raw []byte) bool {
+	for _, b := range raw {
+		if b >= 0x80 {
+			return true
+		}
+	}
+	return false
 }
 
 func subtitleSidecarLanguageTag(language string) string {
