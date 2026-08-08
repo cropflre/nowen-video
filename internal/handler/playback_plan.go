@@ -40,7 +40,8 @@ func (h *PlaybackPlanHandler) GetInfo(c *gin.Context) {
 		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
-	plan, err := h.stream.PlanPlaybackWithInfo(mediaID, info, h.clientCapabilities(c))
+	caps := h.clientCapabilities(c)
+	plan, err := h.stream.PlanPlaybackWithInfoAuthoritative(mediaID, info, caps)
 	if err != nil {
 		if h.logger != nil {
 			h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
@@ -48,6 +49,7 @@ func (h *PlaybackPlanHandler) GetInfo(c *gin.Context) {
 		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+	h.logPlaybackPlan(mediaID, info, plan, caps)
 
 	c.JSON(http.StatusOK, gin.H{"data": PlannedMediaPlayInfo{
 		MediaPlayInfo: info,
@@ -63,7 +65,8 @@ func (h *PlaybackPlanHandler) Get(c *gin.Context) {
 		return
 	}
 
-	plan, err := h.stream.PlanPlayback(mediaID, h.clientCapabilities(c))
+	caps := h.clientCapabilities(c)
+	plan, err := h.stream.PlanPlaybackAuthoritative(mediaID, caps)
 	if err != nil {
 		if h.logger != nil {
 			h.logger.Warnf("生成播放规划失败 media_id=%s: %v", mediaID, err)
@@ -71,7 +74,33 @@ func (h *PlaybackPlanHandler) Get(c *gin.Context) {
 		c.JSON(playbackPlanErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+	h.logPlaybackPlan(mediaID, nil, plan, caps)
 	c.JSON(http.StatusOK, gin.H{"data": plan})
+}
+
+func (h *PlaybackPlanHandler) logPlaybackPlan(mediaID string, info *service.MediaPlayInfo, plan *service.PlaybackPlan, caps service.PlaybackClientCapabilities) {
+	if h.logger == nil || plan == nil {
+		return
+	}
+	fields := []interface{}{
+		"media_id", mediaID,
+		"method", plan.Method,
+		"reason_code", plan.ReasonCode,
+		"session_required", plan.SessionRequired,
+		"platform", caps.Platform,
+		"supports_hevc", caps.SupportsHEVC,
+		"probe_verified", plan.SourceTechnical != nil,
+	}
+	if info != nil {
+		fields = append(fields,
+			"file_ext", info.FileExt,
+			"video_codec", info.VideoCodec,
+			"audio_codec", info.AudioCodec,
+			"can_direct", info.CanDirectPlay,
+			"can_remux", info.CanRemux,
+		)
+	}
+	h.logger.Infow("playback plan selected", fields...)
 }
 
 func playbackPlanErrorStatus(err error) int {
