@@ -81,22 +81,34 @@ async function activateDownloadedSubtitle(result: SubtitleDownloadResult) {
 export default function SubtitleSearchPanel({
   mediaId, title, year, type, onClose, onDownloaded,
 }: SubtitleSearchPanelProps) {
+  const [query, setQuery] = useState('')
   const [language, setLanguage] = useState('zh-CN,zh-TW,en')
   const [results, setResults] = useState<OnlineSubtitleResult[]>([])
   const [searching, setSearching] = useState(false)
   const [downloading, setDownloading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const didAutoSearch = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const handleSearch = useCallback(async () => {
     setSearching(true)
     setMessage(null)
     try {
-      const res = await subtitleSearchApi.search(mediaId, { language, title, year, type })
+      const manualQuery = query.trim()
+      const res = await subtitleSearchApi.search(mediaId, {
+        language,
+        title,
+        year,
+        type,
+        query: manualQuery || undefined,
+      })
       const data = (res.data.data || []) as OnlineSubtitleResult[]
       setResults(data)
       if (!data.length) {
-        setMessage({ type: 'error', text: '未找到匹配的在线字幕' })
+        setMessage({
+          type: 'error',
+          text: manualQuery ? `未找到「${manualQuery}」的在线字幕` : '未找到与当前视频匹配的在线字幕',
+        })
       }
     } catch (err: any) {
       setResults([])
@@ -105,13 +117,18 @@ export default function SubtitleSearchPanel({
     } finally {
       setSearching(false)
     }
-  }, [language, mediaId, title, type, year])
+  }, [language, mediaId, query, title, type, year])
 
   useEffect(() => {
     if (didAutoSearch.current) return
     didAutoSearch.current = true
     void handleSearch()
   }, [handleSearch])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 120)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const handleDownload = async (sub: OnlineSubtitleResult) => {
     setDownloading(sub.id)
@@ -144,7 +161,7 @@ export default function SubtitleSearchPanel({
             <div className="min-w-0">
               <h3 className="font-display text-base font-semibold text-white">在线字幕搜索</h3>
               <p className="mt-0.5 truncate text-[11px] text-white/38">
-                {title || '当前视频'}{year ? ` · ${year}` : ''} · 根据视频文件名自动匹配
+                SubtitleCat · {title || '当前视频'}{year ? ` · ${year}` : ''}
               </p>
             </div>
           </div>
@@ -153,11 +170,56 @@ export default function SubtitleSearchPanel({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.06] px-6 py-4">
+        <div className="border-b border-white/[0.06] px-6 py-4">
+          <div className="flex gap-2">
+            <div className="relative flex min-w-0 flex-1 items-center">
+              <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-white/32" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && !searching) {
+                    event.preventDefault()
+                    void handleSearch()
+                  }
+                }}
+                placeholder="输入片名 / 番号，例如 JUNY-146；留空则自动匹配文件名"
+                className="h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] pl-10 pr-9 text-sm text-white/90 outline-none transition-colors placeholder:text-white/24 focus:border-cyan-300/25 focus:bg-white/[0.045]"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('')
+                    inputRef.current?.focus()
+                  }}
+                  className="absolute right-3 flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.05] hover:text-white/65"
+                  title="清空"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => void handleSearch()}
+              disabled={searching}
+              className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.08] px-4 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {searching ? '搜索中...' : '搜索'}
+            </button>
+          </div>
+          <p className="mt-2 text-[10px] leading-relaxed text-white/28">
+            留空搜索会根据当前视频文件名自动生成关键词；手动输入时会直接用你的关键词请求在线字幕源。
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.06] px-6 py-3">
           <select
             value={language}
             onChange={event => setLanguage(event.target.value)}
-            className="h-10 rounded-xl border border-white/[0.07] bg-white/[0.04] px-3 text-xs text-white/75 outline-none transition-colors focus:border-cyan-300/25"
+            className="h-9 rounded-xl border border-white/[0.07] bg-white/[0.04] px-3 text-xs text-white/75 outline-none transition-colors focus:border-cyan-300/25"
           >
             <option value="zh-CN,zh-TW,en" className="bg-[#10131b]">简中 + 繁中 + English</option>
             <option value="zh-CN" className="bg-[#10131b]">简体中文</option>
@@ -166,14 +228,6 @@ export default function SubtitleSearchPanel({
             <option value="ja" className="bg-[#10131b]">日本語</option>
             <option value="ko" className="bg-[#10131b]">한국어</option>
           </select>
-          <button
-            onClick={() => void handleSearch()}
-            disabled={searching}
-            className="flex h-10 items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.08] px-4 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            {searching ? '正在匹配...' : '重新搜索'}
-          </button>
           <div className="ml-auto flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[10px] text-white/42">
             <Database className="h-3 w-3 text-cyan-200/70" />
             SubtitleCat
@@ -238,7 +292,7 @@ export default function SubtitleSearchPanel({
           {searching && results.length === 0 && (
             <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
               <Loader2 className="mb-3 h-7 w-7 animate-spin text-cyan-200/60" />
-              <p className="text-sm text-white/55">正在根据视频文件名匹配字幕</p>
+              <p className="text-sm text-white/55">正在请求在线字幕源</p>
               <p className="mt-1 text-[11px] text-white/28">优先查找简体中文、繁体中文和 English</p>
             </div>
           )}
@@ -247,7 +301,7 @@ export default function SubtitleSearchPanel({
             <div className="flex min-h-[220px] flex-col items-center justify-center text-center text-white/35">
               <Subtitles className="mb-3 h-10 w-10 opacity-30" />
               <p className="text-sm">没有可用的在线字幕</p>
-              <p className="mt-1 text-[11px] text-white/25">可以切换语言后重新搜索</p>
+              <p className="mt-1 text-[11px] text-white/25">可以输入更精确的片名或番号重新搜索</p>
             </div>
           )}
         </div>
