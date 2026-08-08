@@ -68,8 +68,8 @@ export const subtitleApi = {
 
 // ==================== 字幕在线搜索 ====================
 export const subtitleSearchApi = {
-  // 搜索字幕
-  search: (mediaId: string, params: { language?: string; title?: string; year?: number; type?: string }) =>
+  // 搜索字幕。query 非空时表示用户手动输入的明确关键词，后端会绕过自动 hash/文件名搜索。
+  search: (mediaId: string, params: { language?: string; title?: string; year?: number; type?: string; query?: string }) =>
     api.get<{ data: import('@/types').SubtitleSearchResult[] }>(`/subtitle/${mediaId}/search`, { params }),
 
   // 下载字幕
