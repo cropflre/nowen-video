@@ -74,21 +74,42 @@ async function activateDownloadedSubtitle(result: SubtitleDownloadResult) {
   track.src = blobURL
 
   await new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error('字幕轨道加载超时')), 5000)
-    track.addEventListener('load', () => {
+    let settled = false
+    const cleanup = () => {
       window.clearTimeout(timer)
+      track.removeEventListener('load', onTrackLoad)
+      track.removeEventListener('error', onTrackError)
+    }
+    const finishWithError = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      if (track.parentNode) track.parentNode.removeChild(track)
+      URL.revokeObjectURL(blobURL)
+      reject(error)
+    }
+    const onTrackLoad = () => {
+      if (settled) return
+      settled = true
+      cleanup()
       for (let i = 0; i < video.textTracks.length; i += 1) {
-        video.textTracks[i].mode = video.textTracks[i].label === track.label ? 'showing' : 'hidden'
+        const textTrack = video.textTracks[i]
+        textTrack.mode = textTrack === track.track ? 'showing' : 'disabled'
       }
       URL.revokeObjectURL(blobURL)
       resolve()
-    }, { once: true })
-    track.addEventListener('error', () => {
-      window.clearTimeout(timer)
-      URL.revokeObjectURL(blobURL)
-      reject(new Error('浏览器无法解析字幕轨道'))
-    }, { once: true })
+    }
+    const onTrackError = () => finishWithError(new Error('浏览器无法解析字幕轨道'))
+    const timer = window.setTimeout(() => finishWithError(new Error('字幕轨道加载超时')), 8000)
+
+    track.addEventListener('load', onTrackLoad)
+    track.addEventListener('error', onTrackError)
     video.appendChild(track)
+
+    // HTMLTrackElement 新建时默认 mode=disabled。Chromium 在 disabled 状态下可能不会
+    // 真正加载 track.src，因此如果等 load 事件后才切 showing，会形成“等加载→才启用”的死锁。
+    // 先切 showing 触发 WebVTT 加载，load 事件只负责确认解析完成与资源清理。
+    track.track.mode = 'showing'
   })
 }
 
