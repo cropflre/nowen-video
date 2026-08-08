@@ -9,6 +9,7 @@ import { installSubtitleTrackActivationGuard } from './utils/subtitleTrackActiva
 import './index.css'
 import './styles/fluent.css'
 import './styles/design-system.css'
+import './styles/design-system-compat.css'
 import './styles/player-cinema.css'
 import './styles/player-speed-menu.css'
 import './styles/player-overlay-panels.css'
