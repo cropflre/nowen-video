@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -425,7 +425,7 @@ export default function LogsTab() {
             />
             <span className="text-sm text-[var(--nv-text-tertiary)]">天的日志</span>
           </div>
-          <div className="mt-4 rounded-[var(--nv-radius-control)] border border-[color:var(--nv-status-warning)]/30 bg-[var(--nv-bg-surface-soft)] p-3 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+          <div className="mt-4 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] p-3 text-xs leading-5 text-[var(--nv-text-tertiary)]">
             清理只影响系统日志记录，不会修改媒体库、用户、播放历史或转码任务。
           </div>
         </ModalBody>
@@ -448,7 +448,7 @@ function StatCard({
   detail,
   tone = 'neutral',
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   value: string
   detail: string
@@ -469,7 +469,7 @@ function StatCard({
   )
 }
 
-function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-medium text-[var(--nv-text-tertiary)]">{label}</span>
@@ -586,7 +586,7 @@ function DetailItem({
   value: string
   mono?: boolean
   breakAll?: boolean
-  icon?: React.ReactNode
+  icon?: ReactNode
 }) {
   return (
     <div className="min-w-0">
