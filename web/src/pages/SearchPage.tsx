@@ -14,7 +14,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
-  Tv,
   X,
 } from 'lucide-react'
 import { useTranslation } from '@/i18n'
