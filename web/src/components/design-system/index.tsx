@@ -114,7 +114,7 @@ export function Stack({ gap = '4', className, children, ...props }: StackProps) 
   )
 }
 
-interface SectionProps extends HTMLAttributes<HTMLElement> {
+interface SectionProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   title?: ReactNode
   description?: ReactNode
   action?: ReactNode
@@ -137,7 +137,7 @@ export function Section({ title, description, action, className, children, ...pr
   )
 }
 
-interface EmptyStateProps extends HTMLAttributes<HTMLDivElement> {
+interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   icon?: ReactNode
   title: ReactNode
   description?: ReactNode
