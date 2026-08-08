@@ -314,13 +314,21 @@ export default function AdminPage() {
       addMessage(`🎥 ${data.message}`)
     }
     const handleTranscodeProgress = (data: TranscodeProgressData) => setTranscodeProgress((previous) => ({ ...previous, [data.task_id]: data }))
-    const clearTranscodeProgress = (data: TranscodeProgressData, prefix: string) => {
+    const handleTranscodeCompleted = (data: TranscodeProgressData) => {
       setTranscodeProgress((previous) => {
         const next = { ...previous }
         delete next[data.task_id]
         return next
       })
-      addMessage(`${prefix} ${data.message}`)
+      addMessage(`✅ ${data.message}`)
+    }
+    const handleTranscodeFailed = (data: TranscodeProgressData) => {
+      setTranscodeProgress((previous) => {
+        const next = { ...previous }
+        delete next[data.task_id]
+        return next
+      })
+      addMessage(`❌ ${data.message}`)
     }
     const handleScanPhase = (data: ScanPhaseData) => {
       if (data.phase === 'completed') {
@@ -351,8 +359,8 @@ export default function AdminPage() {
     on(WS_EVENTS.SCRAPE_COMPLETED, handleScrapeCompleted)
     on(WS_EVENTS.TRANSCODE_STARTED, handleTranscodeStarted)
     on(WS_EVENTS.TRANSCODE_PROGRESS, handleTranscodeProgress)
-    on(WS_EVENTS.TRANSCODE_COMPLETED, (data: TranscodeProgressData) => clearTranscodeProgress(data, '✅'))
-    on(WS_EVENTS.TRANSCODE_FAILED, (data: TranscodeProgressData) => clearTranscodeProgress(data, '❌'))
+    on(WS_EVENTS.TRANSCODE_COMPLETED, handleTranscodeCompleted)
+    on(WS_EVENTS.TRANSCODE_FAILED, handleTranscodeFailed)
     on(WS_EVENTS.SCAN_PHASE, handleScanPhase)
 
     return () => {
@@ -365,8 +373,8 @@ export default function AdminPage() {
       off(WS_EVENTS.SCRAPE_COMPLETED, handleScrapeCompleted)
       off(WS_EVENTS.TRANSCODE_STARTED, handleTranscodeStarted)
       off(WS_EVENTS.TRANSCODE_PROGRESS, handleTranscodeProgress)
-      off(WS_EVENTS.TRANSCODE_COMPLETED)
-      off(WS_EVENTS.TRANSCODE_FAILED)
+      off(WS_EVENTS.TRANSCODE_COMPLETED, handleTranscodeCompleted)
+      off(WS_EVENTS.TRANSCODE_FAILED, handleTranscodeFailed)
       off(WS_EVENTS.SCAN_PHASE, handleScanPhase)
     }
   }, [addMessage, off, on])
