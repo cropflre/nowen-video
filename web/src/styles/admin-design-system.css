@@ -125,6 +125,82 @@
   color: var(--nv-status-danger);
 }
 
+.nv-admin-tab {
+  position: relative;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nv-space-2);
+  padding: .6rem .85rem;
+  border: 1px solid transparent;
+  border-radius: var(--nv-radius-control);
+  background: transparent;
+  color: var(--nv-text-secondary);
+  box-shadow: none;
+  font-family: var(--nv-font-sans);
+  font-size: var(--nv-type-body-sm);
+  font-weight: 620;
+  letter-spacing: var(--nv-tracking-normal);
+  transition:
+    background-color var(--nv-motion-normal) var(--nv-ease-standard),
+    border-color var(--nv-motion-normal) var(--nv-ease-standard),
+    color var(--nv-motion-normal) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-admin-tab:hover {
+  background: var(--nv-bg-hover);
+  border-color: var(--nv-border-subtle);
+  color: var(--nv-text-primary);
+}
+
+.nv-admin-tab.is-active {
+  background: var(--nv-bg-active);
+  border-color: color-mix(in srgb, var(--nv-action-primary) 22%, var(--nv-border-subtle));
+  color: var(--nv-action-primary);
+  box-shadow: none;
+}
+
+.nv-admin-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: .85rem;
+  right: .85rem;
+  bottom: -.12rem;
+  height: 2px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-action-primary);
+  box-shadow: none;
+}
+
+.nv-admin-tab svg {
+  flex: 0 0 auto;
+}
+
+.nv-admin-content-enter {
+  animation: nv-admin-content-in var(--nv-motion-normal) var(--nv-ease-standard);
+}
+
+@keyframes nv-admin-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-admin-tab,
+  .nv-admin-content-enter {
+    transition: none;
+    animation: none;
+  }
+}
+
 @media (max-width: 47.99rem) {
   .nv-admin-header {
     flex-direction: column;
@@ -133,5 +209,10 @@
 
   .nv-admin-toolbar {
     width: 100%;
+  }
+
+  .nv-admin-tab {
+    min-height: 2.375rem;
+    padding-inline: .7rem;
   }
 }
