@@ -1,31 +1,31 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type { Media } from '@/types'
 import {
-  CheckSquare,
-  Square,
-  Film,
-  Tv,
-  FileVideo,
-  Eye,
-  Edit3,
-  Sparkles,
-  Trash2,
-  Check,
   AlertCircle,
-  FolderOpen,
-  Folder,
-  Loader2,
+  Check,
+  CheckSquare,
   ChevronRight,
-  Play,
   Copy,
+  Edit3,
+  Eye,
+  FileVideo,
+  Film,
+  Folder,
+  FolderOpen,
   FolderPlus,
+  Loader2,
   Pencil,
+  Play,
   RefreshCw,
+  Sparkles,
+  Square,
+  Trash2,
+  Tv,
 } from 'lucide-react'
-import clsx from 'clsx'
 import { formatFileSize } from './constants'
 import { streamApi } from '@/api/stream'
 import Pagination from '@/components/Pagination'
+import { Button, EmptyState, Surface, Tag } from '@/components/design-system'
 import ContextMenu from './ContextMenu'
 import type { ContextMenuItem } from './ContextMenu'
 
@@ -40,7 +40,6 @@ interface FileListViewProps {
   onEdit: (media: Media) => void
   onScrape: (id: string) => void
   onDelete: (id: string) => void
-  // 分页
   page: number
   totalPages: number
   total: number
@@ -48,11 +47,9 @@ interface FileListViewProps {
   pageSizeOptions: number[]
   onPageChange: (page: number) => void
   onPageSizeChange: (size: number) => void
-  // 文件夹导航
   subFolders?: string[]
   currentFolderPath?: string
   onNavigateFolder?: (path: string) => void
-  // 右键菜单回调
   onPlayFile?: (media: Media) => void
   onCopyFilePath?: (path: string) => void
   onCreateSubFolder?: (parentPath: string) => void
@@ -63,37 +60,59 @@ interface FileListViewProps {
 }
 
 export default function FileListView({
-  files, loading, viewMode, selectedIds,
-  onToggleSelect, onToggleSelectAll,
-  onViewDetail, onEdit, onScrape, onDelete,
-  page, totalPages, total, pageSize, pageSizeOptions, onPageChange, onPageSizeChange,
-  subFolders, currentFolderPath, onNavigateFolder,
-  onPlayFile, onCopyFilePath,
-  onCreateSubFolder, onRenameSubFolder, onDeleteSubFolder, onRefreshSubFolder, onCopyFolderPath,
+  files,
+  loading,
+  viewMode,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onViewDetail,
+  onEdit,
+  onScrape,
+  onDelete,
+  page,
+  totalPages,
+  total,
+  pageSize,
+  pageSizeOptions,
+  onPageChange,
+  onPageSizeChange,
+  subFolders,
+  currentFolderPath,
+  onNavigateFolder,
+  onPlayFile,
+  onCopyFilePath,
+  onCreateSubFolder,
+  onRenameSubFolder,
+  onDeleteSubFolder,
+  onRefreshSubFolder,
+  onCopyFolderPath,
 }: FileListViewProps) {
-  // 右键菜单状态
   const [ctxMenu, setCtxMenu] = useState<{
-    visible: boolean; x: number; y: number;
-    type: 'file' | 'folder'; media?: Media; folderPath?: string
+    visible: boolean
+    x: number
+    y: number
+    type: 'file' | 'folder'
+    media?: Media
+    folderPath?: string
   }>({ visible: false, x: 0, y: 0, type: 'file' })
 
   const closeCtxMenu = useCallback(() => {
-    setCtxMenu(prev => ({ ...prev, visible: false }))
+    setCtxMenu((prev) => ({ ...prev, visible: false }))
   }, [])
 
-  const handleFileContextMenu = useCallback((e: React.MouseEvent, file: Media) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'file', media: file })
+  const handleFileContextMenu = useCallback((event: React.MouseEvent, file: Media) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setCtxMenu({ visible: true, x: event.clientX, y: event.clientY, type: 'file', media: file })
   }, [])
 
-  const handleFolderContextMenu = useCallback((e: React.MouseEvent, folderFullPath: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setCtxMenu({ visible: true, x: e.clientX, y: e.clientY, type: 'folder', folderPath: folderFullPath })
+  const handleFolderContextMenu = useCallback((event: React.MouseEvent, folderFullPath: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setCtxMenu({ visible: true, x: event.clientX, y: event.clientY, type: 'folder', folderPath: folderFullPath })
   }, [])
 
-  // 构建文件右键菜单项
   const getFileMenuItems = useCallback((): ContextMenuItem[] => {
     const file = ctxMenu.media
     if (!file) return []
@@ -141,16 +160,15 @@ export default function FileListView({
     ]
   }, [ctxMenu.media, onPlayFile, onViewDetail, onEdit, onScrape, onDelete, onCopyFilePath])
 
-  // 构建子文件夹右键菜单项
   const getFolderMenuItems = useCallback((): ContextMenuItem[] => {
-    const fp = ctxMenu.folderPath
-    if (!fp) return []
+    const folderPath = ctxMenu.folderPath
+    if (!folderPath) return []
     return [
       {
         key: 'open',
         label: '打开文件夹',
         icon: <FolderOpen size={14} />,
-        onClick: () => onNavigateFolder?.(fp),
+        onClick: () => onNavigateFolder?.(folderPath),
       },
       {
         key: 'create',
@@ -158,14 +176,14 @@ export default function FileListView({
         icon: <FolderPlus size={14} />,
         divider: true,
         disabled: !onCreateSubFolder,
-        onClick: () => onCreateSubFolder?.(fp),
+        onClick: () => onCreateSubFolder?.(folderPath),
       },
       {
         key: 'rename',
         label: '重命名',
         icon: <Pencil size={14} />,
         disabled: !onRenameSubFolder,
-        onClick: () => onRenameSubFolder?.(fp),
+        onClick: () => onRenameSubFolder?.(folderPath),
       },
       {
         key: 'refresh',
@@ -179,7 +197,7 @@ export default function FileListView({
         key: 'copy-path',
         label: '复制路径',
         icon: <Copy size={14} />,
-        onClick: () => onCopyFolderPath?.(fp),
+        onClick: () => onCopyFolderPath?.(folderPath),
       },
       {
         key: 'delete',
@@ -188,89 +206,82 @@ export default function FileListView({
         danger: true,
         divider: true,
         disabled: !onDeleteSubFolder,
-        onClick: () => onDeleteSubFolder?.(fp),
+        onClick: () => onDeleteSubFolder?.(folderPath),
       },
     ]
   }, [ctxMenu.folderPath, onNavigateFolder, onCreateSubFolder, onRenameSubFolder, onDeleteSubFolder, onRefreshSubFolder, onCopyFolderPath])
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={32} className="animate-spin text-neon" />
+      <div className="flex min-h-52 items-center justify-center" role="status" aria-live="polite">
+        <div className="flex flex-col items-center gap-3 text-[var(--nv-text-tertiary)]">
+          <Loader2 size={28} className="animate-spin text-[var(--nv-action-primary)] motion-reduce:animate-none" aria-hidden="true" />
+          <span className="text-sm">正在加载文件...</span>
+        </div>
       </div>
     )
   }
 
-  const hasSubFolders = subFolders && subFolders.length > 0
+  const hasSubFolders = Boolean(subFolders?.length)
 
   if (files.length === 0 && !hasSubFolders) {
     return (
-      <div className="glass-panel rounded-xl p-12 text-center">
-        <FolderOpen size={48} className="mx-auto mb-4 text-surface-500" />
-        <p className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>暂无影视文件</p>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>点击"导入文件"或"扫描目录"开始添加</p>
-      </div>
+      <Surface>
+        <EmptyState
+          icon={<FolderOpen size={28} />}
+          title="暂无影视文件"
+          description={'点击“导入文件”或“扫描目录”开始添加'}
+        />
+      </Surface>
     )
   }
 
   const isScraped = (file: Media) => {
-    const st = file.scrape_status
-    if (st === 'scraped' || st === 'partial' || st === 'manual') return true
-    // 兼容旧数据（旧版记录无 scrape_status）：任一ID存在也视为已刮削
-    if (!st) return file.tmdb_id > 0 || file.bangumi_id > 0 || (file.douban_id && file.douban_id !== '')
+    const status = file.scrape_status
+    if (status === 'scraped' || status === 'partial' || status === 'manual') return true
+    if (!status) return file.tmdb_id > 0 || file.bangumi_id > 0 || (file.douban_id && file.douban_id !== '')
     return false
   }
 
-  // 渲染刮削状态徽章（三态：已刮削 / 部分 / 失败 / 未刮削）
-  const renderScrapeBadge = (file: Media, size: 'sm' | 'md' = 'md') => {
-    const st = file.scrape_status
-    const cls = size === 'sm' ? 'text-[10px] px-1.5 py-0.5 rounded' : 'inline-flex items-center gap-1 text-xs'
-    if (st === 'partial') {
-      return size === 'sm'
-        ? <span className={clsx(cls, 'bg-orange-500/80 text-white')}>部分刮削</span>
-        : <span className={clsx(cls, 'text-orange-400')}><AlertCircle size={12} /> 部分刮削</span>
+  const renderScrapeBadge = (file: Media) => {
+    const status = file.scrape_status
+    if (status === 'partial') {
+      return <Tag tone="warning"><AlertCircle size={11} />部分刮削</Tag>
     }
-    if (st === 'failed') {
-      return size === 'sm'
-        ? <span className={clsx(cls, 'bg-red-500/80 text-white')}>刮削失败</span>
-        : <span className={clsx(cls, 'text-red-400')}><AlertCircle size={12} /> 刮削失败</span>
+    if (status === 'failed') {
+      return <Tag tone="danger"><AlertCircle size={11} />刮削失败</Tag>
     }
-    if (st === 'manual') {
-      return size === 'sm'
-        ? <span className={clsx(cls, 'bg-blue-500/80 text-white')}>手动锁定</span>
-        : <span className={clsx(cls, 'text-blue-400')}><Check size={12} /> 手动锁定</span>
+    if (status === 'manual') {
+      return <Tag tone="brand"><Check size={11} />手动锁定</Tag>
     }
     if (isScraped(file)) {
-      return size === 'sm'
-        ? <span className={clsx(cls, 'bg-green-500/80 text-white')}>已刮削</span>
-        : <span className={clsx(cls, 'text-green-400')}><Check size={12} /> 已刮削</span>
+      return <Tag tone="success"><Check size={11} />已刮削</Tag>
     }
-    return size === 'sm'
-      ? <span className={clsx(cls, 'bg-amber-500/80 text-white')}>未刮削</span>
-      : <span className={clsx(cls, 'text-amber-400')}><AlertCircle size={12} /> 未刮削</span>
+    return <Tag tone="warning"><AlertCircle size={11} />未刮削</Tag>
   }
 
-  // 子文件夹卡片区域
   const SubFolderCards = () => {
     if (!hasSubFolders || !onNavigateFolder || !currentFolderPath) return null
     const normalizedCurrent = currentFolderPath.replace(/\\/g, '/')
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 mb-4">
-        {subFolders!.map(folder => (
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+        {subFolders!.map((folder) => (
           <button
             key={folder}
+            type="button"
             onClick={() => {
-              const sep = normalizedCurrent.endsWith('/') ? '' : '/'
-              onNavigateFolder(normalizedCurrent + sep + folder)
+              const separator = normalizedCurrent.endsWith('/') ? '' : '/'
+              onNavigateFolder(normalizedCurrent + separator + folder)
             }}
-            onContextMenu={(e) => {
-              const sep = normalizedCurrent.endsWith('/') ? '' : '/'
-              handleFolderContextMenu(e, normalizedCurrent + sep + folder)
+            onContextMenu={(event) => {
+              const separator = normalizedCurrent.endsWith('/') ? '' : '/'
+              handleFolderContextMenu(event, normalizedCurrent + separator + folder)
             }}
-            className="glass-panel rounded-lg p-3 flex items-center gap-2 hover:bg-white/[0.04] transition-colors text-left group"
+            className="group flex min-w-0 items-center gap-2 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 text-left shadow-[var(--nv-shadow-card)] transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
           >
-            <Folder size={20} className="text-amber-400/70 flex-shrink-0 group-hover:text-amber-400" />
-            <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{folder}</span>
-            <ChevronRight size={14} className="text-surface-500 flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Folder size={20} className="shrink-0 text-[var(--nv-action-primary)]" aria-hidden="true" />
+            <span className="truncate text-sm font-medium text-[var(--nv-text-primary)]">{folder}</span>
+            <ChevronRight size={14} className="ml-auto shrink-0 text-[var(--nv-text-tertiary)] opacity-60 transition-opacity group-hover:opacity-100" aria-hidden="true" />
           </button>
         ))}
       </div>
@@ -279,211 +290,252 @@ export default function FileListView({
 
   return (
     <>
-      {/* 子文件夹 */}
       <SubFolderCards />
 
       {files.length === 0 ? (
-        /* 当前文件夹下无直接文件（但有子文件夹） */
-        <div className="glass-panel rounded-xl p-8 text-center">
-          <FolderOpen size={36} className="mx-auto mb-3 text-surface-500" />
-          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>当前文件夹下无直接文件，请浏览子文件夹</p>
-        </div>
+        <Surface>
+          <EmptyState
+            className="min-h-40 py-8"
+            icon={<FolderOpen size={24} />}
+            title="当前文件夹下无直接文件"
+            description="请继续浏览子文件夹。"
+          />
+        </Surface>
       ) : viewMode === 'table' ? (
-        /* 表格视图 */
-        <div className="glass-panel rounded-xl overflow-hidden">
+        <Surface className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b" style={{ borderColor: 'var(--border-default)' }}>
-                  <th className="px-3 py-3 text-left w-10">
-                    <button onClick={onToggleSelectAll}>
-                      {selectedIds.size === files.length ? <CheckSquare size={16} className="text-neon" /> : <Square size={16} className="text-surface-500" />}
+              <thead className="bg-[var(--nv-bg-surface-soft)]">
+                <tr className="border-b border-[var(--nv-border-subtle)] text-[var(--nv-text-secondary)]">
+                  <th className="w-10 px-3 py-3 text-left">
+                    <button
+                      type="button"
+                      onClick={onToggleSelectAll}
+                      className="rounded-[var(--nv-radius-sm)] p-1 text-[var(--nv-text-tertiary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]"
+                      aria-label={selectedIds.size === files.length ? '取消全选' : '全选当前页'}
+                      aria-pressed={selectedIds.size === files.length}
+                    >
+                      {selectedIds.size === files.length
+                        ? <CheckSquare size={16} className="text-[var(--nv-action-primary)]" />
+                        : <Square size={16} />}
                     </button>
                   </th>
-                  <th className="px-3 py-3 text-left" style={{ color: 'var(--text-secondary)' }}>标题</th>
-                  <th className="px-3 py-3 text-left hidden md:table-cell" style={{ color: 'var(--text-secondary)' }}>类型</th>
-                  <th className="px-3 py-3 text-left hidden lg:table-cell" style={{ color: 'var(--text-secondary)' }}>年份</th>
-                  <th className="px-3 py-3 text-left hidden lg:table-cell" style={{ color: 'var(--text-secondary)' }}>评分</th>
-                  <th className="px-3 py-3 text-left hidden xl:table-cell" style={{ color: 'var(--text-secondary)' }}>大小</th>
-                  <th className="px-3 py-3 text-left hidden xl:table-cell" style={{ color: 'var(--text-secondary)' }}>状态</th>
-                  <th className="px-3 py-3 text-right" style={{ color: 'var(--text-secondary)' }}>操作</th>
+                  <th className="px-3 py-3 text-left font-semibold">标题</th>
+                  <th className="hidden px-3 py-3 text-left font-semibold md:table-cell">类型</th>
+                  <th className="hidden px-3 py-3 text-left font-semibold lg:table-cell">年份</th>
+                  <th className="hidden px-3 py-3 text-left font-semibold lg:table-cell">评分</th>
+                  <th className="hidden px-3 py-3 text-left font-semibold xl:table-cell">大小</th>
+                  <th className="hidden px-3 py-3 text-left font-semibold xl:table-cell">状态</th>
+                  <th className="px-3 py-3 text-right font-semibold">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {files.map(file => (
-                  <tr key={file.id} className="border-b transition-colors hover:bg-white/[0.02]" style={{ borderColor: 'var(--border-default)' }}
-                    onContextMenu={(e) => handleFileContextMenu(e, file)}
-                  >
-                    <td className="px-3 py-3">
-                      <button onClick={() => onToggleSelect(file.id)}>
-                        {selectedIds.has(file.id) ? <CheckSquare size={16} className="text-neon" /> : <Square size={16} className="text-surface-500" />}
-                      </button>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={streamApi.getPosterUrl(file.id)}
-                          alt=""
-                          className="w-8 h-12 rounded object-cover flex-shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
-                        />
-                        <div className="w-8 h-12 rounded bg-surface-800 items-center justify-center flex-shrink-0 hidden">
-                          <FileVideo size={16} className="text-surface-500" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                              {file.title}
-                            </span>
-                            {file.media_type === 'episode' && file.episode_num > 0 && (
-                              <span className="shrink-0 inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-neon-blue/10 text-neon-blue">
-                                {file.season_num > 0 ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}` : `EP${String(file.episode_num).padStart(2, '0')}`}
-                              </span>
-                            )}
+                {files.map((file) => {
+                  const selected = selectedIds.has(file.id)
+                  return (
+                    <tr
+                      key={file.id}
+                      className={`border-b border-[var(--nv-border-subtle)] transition-colors last:border-b-0 ${selected ? 'bg-[var(--nv-bg-active)]' : 'hover:bg-[var(--nv-bg-hover)]'}`}
+                      onContextMenu={(event) => handleFileContextMenu(event, file)}
+                    >
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => onToggleSelect(file.id)}
+                          className="rounded-[var(--nv-radius-sm)] p-1 text-[var(--nv-text-tertiary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]"
+                          aria-label={selected ? `取消选择 ${file.title}` : `选择 ${file.title}`}
+                          aria-pressed={selected}
+                        >
+                          {selected
+                            ? <CheckSquare size={16} className="text-[var(--nv-action-primary)]" />
+                            : <Square size={16} />}
+                        </button>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={streamApi.getPosterUrl(file.id)}
+                            alt=""
+                            className="h-12 w-8 shrink-0 rounded-[var(--nv-radius-sm)] object-cover"
+                            onError={(event) => {
+                              const image = event.target as HTMLImageElement
+                              image.style.display = 'none'
+                              image.nextElementSibling?.classList.remove('hidden')
+                            }}
+                          />
+                          <div className="hidden h-12 w-8 shrink-0 items-center justify-center rounded-[var(--nv-radius-sm)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)]">
+                            <FileVideo size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
                           </div>
-                          {file.media_type === 'episode' && file.episode_title ? (
-                            <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>{file.episode_title}</div>
-                          ) : file.orig_title && file.orig_title !== file.title ? (
-                            <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{file.orig_title}</div>
-                          ) : null}
-                          <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                            {file.file_path.split(/[\\/]/).pop()}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate font-medium text-[var(--nv-text-primary)]">{file.title}</span>
+                              {file.media_type === 'episode' && file.episode_num > 0 && (
+                                <Tag tone="brand" className="shrink-0 text-[10px]">
+                                  {file.season_num > 0
+                                    ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}`
+                                    : `EP${String(file.episode_num).padStart(2, '0')}`}
+                                </Tag>
+                              )}
+                            </div>
+                            {file.media_type === 'episode' && file.episode_title ? (
+                              <div className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{file.episode_title}</div>
+                            ) : file.orig_title && file.orig_title !== file.title ? (
+                              <div className="mt-0.5 truncate text-xs text-[var(--nv-text-tertiary)]">{file.orig_title}</div>
+                            ) : null}
+                            <div className="mt-0.5 truncate text-xs text-[var(--nv-text-tertiary)]">
+                              {file.file_path.split(/[\\/]/).pop()}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 hidden md:table-cell">
-                      <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs',
-                        file.media_type === 'movie' ? 'bg-purple-500/10 text-purple-400' : 'bg-green-500/10 text-green-400'
-                      )}>
-                        {file.media_type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
-                        {file.media_type === 'movie' ? '电影' : '剧集'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 hidden lg:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                      {file.year || '-'}
-                    </td>
-                    <td className="px-3 py-3 hidden lg:table-cell">
-                      {file.rating > 0 ? (
-                        <span className="text-amber-400">★ {file.rating.toFixed(1)}</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-tertiary)' }}>-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 hidden xl:table-cell" style={{ color: 'var(--text-secondary)' }}>
-                      {file.file_size > 0 ? formatFileSize(file.file_size) : '-'}
-                    </td>
-                    <td className="px-3 py-3 hidden xl:table-cell">
-                      {renderScrapeBadge(file, 'md')}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => onViewDetail(file)}
-                          className="p-1.5 rounded hover:bg-white/5 text-surface-400 hover:text-blue-400" title="查看详情">
-                          <Eye size={14} />
-                        </button>
-                        <button onClick={() => onEdit(file)}
-                          className="p-1.5 rounded hover:bg-white/5 text-surface-400 hover:text-amber-400" title="编辑">
-                          <Edit3 size={14} />
-                        </button>
-                        <button onClick={() => onScrape(file.id)}
-                          className="p-1.5 rounded hover:bg-white/5 text-surface-400 hover:text-purple-400" title="刮削">
-                          <Sparkles size={14} />
-                        </button>
-                        <button onClick={() => onDelete(file.id)}
-                          className="p-1.5 rounded hover:bg-white/5 text-surface-400 hover:text-red-400" title="删除">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="hidden px-3 py-3 md:table-cell">
+                        <Tag tone="neutral">
+                          {file.media_type === 'movie' ? <Film size={12} /> : <Tv size={12} />}
+                          {file.media_type === 'movie' ? '电影' : '剧集'}
+                        </Tag>
+                      </td>
+                      <td className="hidden px-3 py-3 text-[var(--nv-text-secondary)] lg:table-cell">{file.year || '-'}</td>
+                      <td className="hidden px-3 py-3 lg:table-cell">
+                        {file.rating > 0
+                          ? <span className="font-medium text-[var(--nv-status-rating)]">★ {file.rating.toFixed(1)}</span>
+                          : <span className="text-[var(--nv-text-tertiary)]">-</span>}
+                      </td>
+                      <td className="hidden px-3 py-3 text-[var(--nv-text-secondary)] xl:table-cell">
+                        {file.file_size > 0 ? formatFileSize(file.file_size) : '-'}
+                      </td>
+                      <td className="hidden px-3 py-3 xl:table-cell">{renderScrapeBadge(file)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" iconOnly onClick={() => onViewDetail(file)} title="查看详情" aria-label={`查看 ${file.title} 详情`}>
+                            <Eye size={14} />
+                          </Button>
+                          <Button variant="ghost" size="sm" iconOnly onClick={() => onEdit(file)} title="编辑" aria-label={`编辑 ${file.title}`}>
+                            <Edit3 size={14} />
+                          </Button>
+                          <Button variant="ghost" size="sm" iconOnly onClick={() => onScrape(file.id)} title="刮削" aria-label={`刮削 ${file.title}`}>
+                            <Sparkles size={14} />
+                          </Button>
+                          <Button variant="danger" size="sm" iconOnly onClick={() => onDelete(file.id)} title="删除" aria-label={`删除 ${file.title}`}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
-        </div>
+        </Surface>
       ) : (
-        /* 网格视图 */
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {files.map(file => (
-            <div key={file.id} className="glass-panel rounded-xl overflow-hidden group relative cursor-pointer"
-              onClick={() => onViewDetail(file)}
-              onContextMenu={(e) => handleFileContextMenu(e, file)}
-            >
-              {/* 选择框 */}
-              <button className="absolute top-2 left-2 z-10" onClick={e => { e.stopPropagation(); onToggleSelect(file.id) }}>
-                {selectedIds.has(file.id) ? <CheckSquare size={18} className="text-neon" /> : <Square size={18} className="text-white/50 group-hover:text-white/80" />}
-              </button>
-              {/* 海报 */}
-              <div className="aspect-[2/3] bg-surface-800 relative">
-                <img
-                  src={streamApi.getPosterUrl(file.id)}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-                {/* 状态标签 */}
-                <div className="absolute top-2 right-2">
-                  {renderScrapeBadge(file, 'sm')}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {files.map((file) => {
+            const selected = selectedIds.has(file.id)
+            return (
+              <Surface
+                key={file.id}
+                as="article"
+                className={`group relative cursor-pointer overflow-hidden transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)] ${selected ? 'ring-1 ring-[var(--nv-action-primary)]' : ''}`}
+                onClick={() => onViewDetail(file)}
+                onContextMenu={(event) => handleFileContextMenu(event, file)}
+              >
+                <button
+                  type="button"
+                  className="absolute left-2 top-2 z-10 rounded-[var(--nv-radius-sm)] bg-black/55 p-1.5 text-white/75 backdrop-blur-sm transition-colors hover:text-white"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleSelect(file.id)
+                  }}
+                  aria-label={selected ? `取消选择 ${file.title}` : `选择 ${file.title}`}
+                  aria-pressed={selected}
+                >
+                  {selected ? <CheckSquare size={18} className="text-[var(--nv-brand-cyan-300)]" /> : <Square size={18} />}
+                </button>
+
+                <div className="relative aspect-[2/3] overflow-hidden bg-[var(--nv-bg-surface-soft)]">
+                  <img
+                    src={streamApi.getPosterUrl(file.id)}
+                    alt=""
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+                    onError={(event) => { (event.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="absolute right-2 top-2">{renderScrapeBadge(file)}</div>
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconOnly
+                      onClick={(event) => { event.stopPropagation(); onEdit(file) }}
+                      title="编辑"
+                      aria-label={`编辑 ${file.title}`}
+                    >
+                      <Edit3 size={16} />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconOnly
+                      onClick={(event) => { event.stopPropagation(); onScrape(file.id) }}
+                      title="刮削"
+                      aria-label={`刮削 ${file.title}`}
+                    >
+                      <Sparkles size={16} />
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      iconOnly
+                      onClick={(event) => { event.stopPropagation(); onDelete(file.id) }}
+                      title="删除"
+                      aria-label={`删除 ${file.title}`}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
                 </div>
-                {/* 悬浮操作 */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button onClick={e => { e.stopPropagation(); onEdit(file) }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white" title="编辑">
-                    <Edit3 size={16} />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); onScrape(file.id) }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white" title="刮削">
-                    <Sparkles size={16} />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); onDelete(file.id) }}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white" title="删除">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-              {/* 信息 */}
-              <div className="p-2.5">
-                <div className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                  {file.title}
-                  {file.media_type === 'episode' && file.episode_num > 0 && (
-                    <span className="ml-1 text-[10px] font-medium text-neon-blue">
-                      {file.season_num > 0 ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}` : `EP${String(file.episode_num).padStart(2, '0')}`}
-                    </span>
+
+                <div className="p-3">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="truncate text-sm font-medium text-[var(--nv-text-primary)]">{file.title}</div>
+                    {file.media_type === 'episode' && file.episode_num > 0 && (
+                      <span className="shrink-0 text-[10px] font-semibold text-[var(--nv-action-primary)]">
+                        {file.season_num > 0
+                          ? `S${String(file.season_num).padStart(2, '0')}E${String(file.episode_num).padStart(2, '0')}`
+                          : `EP${String(file.episode_num).padStart(2, '0')}`}
+                      </span>
+                    )}
+                  </div>
+                  {file.media_type === 'episode' && file.episode_title && (
+                    <div className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{file.episode_title}</div>
                   )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
+                    <span>{file.year || '-'}</span>
+                    {file.rating > 0 && <span className="text-[var(--nv-status-rating)]">★ {file.rating.toFixed(1)}</span>}
+                    <Tag tone="neutral" className="min-h-0 px-1.5 py-0.5 text-[10px]">
+                      {file.media_type === 'movie' ? '电影' : '剧集'}
+                    </Tag>
+                  </div>
                 </div>
-                {file.media_type === 'episode' && file.episode_title && (
-                  <div className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>{file.episode_title}</div>
-                )}
-                <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  <span>{file.year || '-'}</span>
-                  {file.rating > 0 && <span className="text-amber-400">★ {file.rating.toFixed(1)}</span>}
-                  <span className={file.media_type === 'movie' ? 'text-purple-400' : 'text-green-400'}>
-                    {file.media_type === 'movie' ? '电影' : '剧集'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+              </Surface>
+            )
+          })}
         </div>
       )}
 
-      {/* 分页 */}
       {files.length > 0 && (
         <Pagination
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        pageSize={pageSize}
-        pageSizeOptions={pageSizeOptions}
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-        showTotal
-        showJumper
-      />
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+          showTotal
+          showJumper
+        />
       )}
 
-      {/* 右键菜单 */}
       <ContextMenu
         visible={ctxMenu.visible}
         x={ctxMenu.x}
