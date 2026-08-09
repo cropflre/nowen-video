@@ -22,12 +22,11 @@ interface FileDetailModalProps {
 interface DetailItemProps {
   label: string
   children: ReactNode
-  wide?: boolean
 }
 
-function DetailItem({ label, children, wide = false }: DetailItemProps) {
+function DetailItem({ label, children }: DetailItemProps) {
   return (
-    <div className={wide ? 'min-w-0 sm:col-span-2' : 'min-w-0'}>
+    <div className="min-w-0">
       <dt className="text-xs font-medium text-[var(--nv-text-tertiary)]">{label}</dt>
       <dd className="mt-1 break-words text-sm leading-5 text-[var(--nv-text-secondary)]">
         {children}
@@ -52,7 +51,7 @@ export default function FileDetailModal({ media, onClose, onEdit, onScrape }: Fi
       <ModalBody>
         <div className="grid gap-6 sm:grid-cols-[10rem_minmax(0,1fr)]">
           <div className="mx-auto w-36 sm:mx-0 sm:w-40">
-            <div className="aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
+            <div className="aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)]">
               {!posterFailed ? (
                 <img
                   src={streamApi.getPosterUrl(media.id)}
