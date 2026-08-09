@@ -3,8 +3,8 @@ import {
   Check,
   CheckSquare,
   FileVideo,
-  FolderSearch,
   Loader2,
+  ScanLine,
   Search,
   Square,
   Upload,
@@ -127,7 +127,7 @@ export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: Sc
         <ModalHeader
           title="扫描目录导入"
           description="扫描服务器可访问的目录，选择未导入的视频后批量加入媒体库。"
-          icon={<FolderSearch size={18} aria-hidden="true" />}
+          icon={<ScanLine size={18} aria-hidden="true" />}
           onClose={onClose}
         />
 
@@ -262,7 +262,7 @@ export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: Sc
             ) : (
               <div className="flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] text-[var(--nv-text-tertiary)]">
-                  <FolderSearch size={20} aria-hidden="true" />
+                  <ScanLine size={20} aria-hidden="true" />
                 </div>
                 <div className="text-sm font-medium text-[var(--nv-text-secondary)]">
                   {scanning ? '正在扫描目录...' : '输入目录路径后开始扫描'}
