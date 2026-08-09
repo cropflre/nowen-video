@@ -45,36 +45,20 @@ function ServerProfileLoader() {
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh] animate-fade-in">
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative h-12 w-12">
-          <div
-            className="absolute inset-0 rounded-full animate-glow-pulse"
-            style={{ border: '2px solid var(--neon-blue-20)' }}
-          />
-          <div
-            className="absolute inset-0 rounded-full animate-spin"
-            style={{
-              border: '2px solid transparent',
-              borderTopColor: 'var(--neon-blue)',
-              borderRightColor: 'var(--neon-blue-40)',
-            }}
-          />
-          <div
-            className="absolute inset-2 rounded-full"
-            style={{
-              border: '1.5px solid transparent',
-              borderBottomColor: 'var(--neon-purple)',
-              animation: 'spin 1.5s linear infinite reverse',
-            }}
+    <div
+      className="flex min-h-[60vh] items-center justify-center px-6"
+      role="status"
+      aria-live="polite"
+      aria-label="页面加载中"
+    >
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
+          <span
+            className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--nv-border-default)] border-t-[var(--nv-action-primary)] motion-reduce:animate-none"
+            aria-hidden="true"
           />
         </div>
-        <span
-          className="text-sm font-medium animate-neon-breathe"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          加载中...
-        </span>
+        <span className="text-sm font-medium text-[var(--nv-text-tertiary)]">加载中...</span>
       </div>
     </div>
   )
