@@ -58,7 +58,13 @@ export default function FolderOperationModal({
           onClose={onClose}
         />
         <ModalBody className="space-y-4">
-          <div className="flex items-start gap-3 rounded-[var(--nv-radius-container)] border border-[color-mix(in_srgb,var(--nv-status-danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--nv-status-danger)_8%,transparent)] p-4">
+          <div
+            className="flex items-start gap-3 rounded-[var(--nv-radius-container)] border p-4"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--nv-status-danger) 24%, transparent)',
+              background: 'color-mix(in srgb, var(--nv-status-danger) 8%, transparent)',
+            }}
+          >
             <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--nv-status-danger)]" aria-hidden="true" />
             <div className="min-w-0">
               <div className="text-sm font-semibold text-[var(--nv-text-primary)]">强制删除不可恢复</div>
