@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import type { Media, Library, FileOperationLog, RenamePreview, RenameTemplate } from '@/types'
+import type { Library, FileOperationLog, RenamePreview, RenameTemplate } from '@/types'
 import { fileManagerApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import {
-  Plus, Upload, Loader2, Check, X, Eye, Edit3,
-  Sparkles, Wand2, HardDrive, History, Languages, ChevronsUpDown, Trash2,
+  Plus, Upload, Loader2, Check, Eye, Edit3,
+  Sparkles, Wand2, History, Languages, ChevronsUpDown, Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { formatFileSize, LANGUAGE_OPTIONS } from './constants'
-import { streamApi } from '@/api/stream'
+import { LANGUAGE_OPTIONS } from './constants'
 
 // ==================== 导入文件对话框 ====================
 interface ImportFileModalProps {
@@ -85,76 +84,6 @@ export function ImportFileModal({ libraries, onClose, onSuccess }: ImportFileMod
             className="btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm">
             {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {importing ? '导入中...' : '导入'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ==================== 详情对话框 ====================
-interface FileDetailModalProps {
-  media: Media
-  onClose: () => void
-  onEdit: () => void
-  onScrape: () => void
-}
-
-export function FileDetailModal({ media, onClose, onEdit, onScrape }: FileDetailModalProps) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="glass-panel-strong rounded-2xl p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-4">
-          <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-            <Eye className="inline-block mr-2 mb-0.5" size={20} /> 文件详情
-          </h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><X size={18} /></button>
-        </div>
-        <div className="flex gap-4">
-          <div className="w-32 h-48 rounded-lg overflow-hidden flex-shrink-0 bg-surface-800">
-            <img
-              src={streamApi.getPosterUrl(media.id)}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          </div>
-          <div className="flex-1 space-y-2 text-sm">
-            <div><span style={{ color: 'var(--text-tertiary)' }}>标题：</span><span style={{ color: 'var(--text-primary)' }}>{media.title}</span></div>
-            {media.orig_title && <div><span style={{ color: 'var(--text-tertiary)' }}>原始标题：</span><span style={{ color: 'var(--text-secondary)' }}>{media.orig_title}</span></div>}
-            <div><span style={{ color: 'var(--text-tertiary)' }}>年份：</span><span style={{ color: 'var(--text-secondary)' }}>{media.year || '-'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>评分：</span>{media.rating > 0 ? <span className="text-amber-400">★ {media.rating.toFixed(1)}</span> : <span style={{ color: 'var(--text-secondary)' }}>-</span>}</div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>类型：</span><span style={{ color: 'var(--text-secondary)' }}>{media.genres || '-'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>媒体类型：</span><span className={media.media_type === 'movie' ? 'text-purple-400' : 'text-green-400'}>{media.media_type === 'movie' ? '电影' : '剧集'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>分辨率：</span><span style={{ color: 'var(--text-secondary)' }}>{media.resolution || '-'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>文件大小：</span><span style={{ color: 'var(--text-secondary)' }}>{media.file_size > 0 ? formatFileSize(media.file_size) : '-'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>国家：</span><span style={{ color: 'var(--text-secondary)' }}>{media.country || '-'}</span></div>
-            <div><span style={{ color: 'var(--text-tertiary)' }}>语言：</span><span style={{ color: 'var(--text-secondary)' }}>{media.language || '-'}</span></div>
-            <div className="flex items-center gap-2">
-              <span style={{ color: 'var(--text-tertiary)' }}>TMDb ID：</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{media.tmdb_id || '-'}</span>
-              {media.bangumi_id > 0 && <><span style={{ color: 'var(--text-tertiary)' }}>Bangumi：</span><span style={{ color: 'var(--text-secondary)' }}>{media.bangumi_id}</span></>}
-            </div>
-          </div>
-        </div>
-        {media.overview && (
-          <div className="mt-4">
-            <div className="text-sm mb-1" style={{ color: 'var(--text-tertiary)' }}>简介</div>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{media.overview}</p>
-          </div>
-        )}
-        <div className="mt-4 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
-          <div className="text-xs flex items-center gap-1 mb-1" style={{ color: 'var(--text-tertiary)' }}>
-            <HardDrive size={12} /> 文件路径
-          </div>
-          <div className="text-xs font-mono break-all" style={{ color: 'var(--text-secondary)' }}>{media.file_path}</div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onEdit} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-            <Edit3 size={14} /> 编辑
-          </button>
-          <button onClick={onScrape} className="btn-primary flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-            <Sparkles size={14} /> 刮削元数据
           </button>
         </div>
       </div>
