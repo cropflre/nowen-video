@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import type { Media, Library, ScannedFile, FileImportRequest, FileOperationLog, RenamePreview, RenameTemplate } from '@/types'
+import type { Media, Library, FileOperationLog, RenamePreview, RenameTemplate } from '@/types'
 import { fileManagerApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import {
-  Plus, Upload, Search, Loader2, Check, X, Eye, Edit3,
-  FileVideo, Sparkles, Wand2, ScanLine, CheckSquare, Square,
-  HardDrive, History, Languages, ChevronsUpDown, Trash2,
+  Plus, Upload, Loader2, Check, X, Eye, Edit3,
+  Sparkles, Wand2, HardDrive, History, Languages, ChevronsUpDown, Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatFileSize, LANGUAGE_OPTIONS } from './constants'
@@ -86,138 +85,6 @@ export function ImportFileModal({ libraries, onClose, onSuccess }: ImportFileMod
             className="btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm">
             {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {importing ? '导入中...' : '导入'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ==================== 扫描目录对话框 ====================
-interface ScanDirectoryModalProps {
-  libraries: Library[]
-  onClose: () => void
-  onSuccess: () => void
-}
-
-export function ScanDirectoryModal({ libraries, onClose, onSuccess }: ScanDirectoryModalProps) {
-  const toast = useToast()
-  const [scanPath, setScanPath] = useState('')
-  const [scannedFiles, setScannedFiles] = useState<ScannedFile[]>([])
-  const [scanning, setScanning] = useState(false)
-  const [scanSelectedPaths, setScanSelectedPaths] = useState<Set<string>>(new Set())
-  const [importMediaType, setImportMediaType] = useState('movie')
-  const [importLibraryId, setImportLibraryId] = useState('')
-  const [importing, setImporting] = useState(false)
-
-  const handleScan = async () => {
-    if (!scanPath) { toast.error('请输入目录路径'); return }
-    setScanning(true)
-    try {
-      const res = await fileManagerApi.scanDirectory(scanPath)
-      setScannedFiles(res.data.data || [])
-      setScanSelectedPaths(new Set())
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || '扫描失败')
-    } finally {
-      setScanning(false)
-    }
-  }
-
-  const handleBatchImport = async () => {
-    const filesToImport: FileImportRequest[] = Array.from(scanSelectedPaths).map(path => {
-      const file = scannedFiles.find(f => f.path === path)
-      return { file_path: path, title: file?.title || '', media_type: importMediaType, library_id: importLibraryId || undefined }
-    })
-    if (filesToImport.length === 0) { toast.error('请选择要导入的文件'); return }
-    setImporting(true)
-    try {
-      const res = await fileManagerApi.batchImportFiles(filesToImport)
-      const result = res.data.data
-      toast.success(`导入完成: 成功 ${result.success}, 跳过 ${result.skipped}, 失败 ${result.failed}`)
-      onClose()
-      onSuccess()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || '批量导入失败')
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="glass-panel-strong rounded-2xl p-6 w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-          <ScanLine className="inline-block mr-2 mb-0.5" size={20} /> 扫描目录导入
-        </h3>
-        <div className="flex gap-2 mb-4">
-          <input type="text" value={scanPath} onChange={e => setScanPath(e.target.value)}
-            placeholder="输入目录路径，如 /media/movies" className="input-field flex-1 px-3 py-2 rounded-lg text-sm" />
-          <button onClick={handleScan} disabled={scanning}
-            className="btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm whitespace-nowrap">
-            {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-            扫描
-          </button>
-        </div>
-        <div className="flex items-center gap-3 mb-3">
-          <select value={importMediaType} onChange={e => setImportMediaType(e.target.value)}
-            className="input-field px-2 py-1 text-xs rounded">
-            <option value="movie">电影</option>
-            <option value="episode">剧集</option>
-          </select>
-          <select value={importLibraryId} onChange={e => setImportLibraryId(e.target.value)}
-            className="input-field px-2 py-1 text-xs rounded">
-            <option value="">不指定媒体库</option>
-            {libraries.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
-          </select>
-          {scannedFiles.length > 0 && (
-            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              找到 {scannedFiles.length} 个视频文件，已选 {scanSelectedPaths.size} 个
-            </span>
-          )}
-        </div>
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {scannedFiles.length > 0 ? (
-            <div className="space-y-1">
-              <button onClick={() => {
-                const unimported = scannedFiles.filter(f => !f.imported).map(f => f.path)
-                setScanSelectedPaths(prev => prev.size === unimported.length ? new Set() : new Set(unimported))
-              }} className="text-xs text-neon hover:underline mb-2">
-                {scanSelectedPaths.size === scannedFiles.filter(f => !f.imported).length ? '取消全选' : '全选未导入'}
-              </button>
-              {scannedFiles.map((file, i) => (
-                <div key={i} className={clsx('flex items-center gap-3 px-3 py-2 rounded-lg text-sm', file.imported ? 'opacity-50' : 'hover:bg-white/[0.02]')}>
-                  <button onClick={() => {
-                    if (file.imported) return
-                    setScanSelectedPaths(prev => {
-                      const next = new Set(prev)
-                      if (next.has(file.path)) next.delete(file.path); else next.add(file.path)
-                      return next
-                    })
-                  }} disabled={file.imported}>
-                    {file.imported ? <Check size={16} className="text-green-400" /> :
-                      scanSelectedPaths.has(file.path) ? <CheckSquare size={16} className="text-neon" /> : <Square size={16} className="text-surface-500" />}
-                  </button>
-                  <FileVideo size={16} className="text-surface-400 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate" style={{ color: 'var(--text-primary)' }}>{file.name}</div>
-                    <div className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>{file.path}</div>
-                  </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{formatFileSize(file.size)}</span>
-                  {file.imported && <span className="text-xs text-green-400 flex-shrink-0">已导入</span>}
-                </div>
-              ))}
-            </div>
-          ) : !scanning && (
-            <div className="text-center py-8" style={{ color: 'var(--text-tertiary)' }}>输入目录路径后点击扫描</div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-default)' }}>
-          <button onClick={onClose} className="btn-ghost px-4 py-2 rounded-lg text-sm">取消</button>
-          <button onClick={handleBatchImport} disabled={importing || scanSelectedPaths.size === 0}
-            className="btn-primary flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm">
-            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            导入选中 ({scanSelectedPaths.size})
           </button>
         </div>
       </div>
