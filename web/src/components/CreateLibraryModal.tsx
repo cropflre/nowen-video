@@ -1,69 +1,40 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CreateLibraryRequest, LibraryAdvancedSettings } from '@/types'
 import { adminApi, adultScraperApi } from '@/api'
 import {
-  X,
-  Film,
-  Tv,
-  Layers,
-  Video,
-  FolderPlus,
-  ChevronDown,
-  ChevronUp,
   AlertCircle,
-  Loader2,
-  Globe,
   Eye,
-  Search,
-  Plus,
-  Trash2,
-  Sparkles,
+  Film,
+  FolderPlus,
   Info,
+  Layers,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  Tv,
+  Video,
 } from 'lucide-react'
 import FileBrowser from './FileBrowser'
+import {
+  Button,
+  Input,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Select,
+  Surface,
+  Tag,
+} from './design-system'
 
-
-// 内容类型配置
 const LIBRARY_TYPES = [
-  {
-    value: 'movie' as const,
-    label: '电影',
-    desc: '各种类型电影',
-    icon: Film,
-    color: 'var(--neon-blue)',
-    bg: 'var(--neon-blue-8)',
-    border: 'var(--neon-blue-20)',
-  },
-  {
-    value: 'tvshow' as const,
-    label: '电视节目',
-    desc: '电视剧、综艺等',
-    icon: Tv,
-    color: 'var(--neon-purple)',
-    bg: 'var(--neon-purple-8)',
-    border: 'var(--neon-purple-20)',
-  },
-  {
-    value: 'mixed' as const,
-    label: '混合影片',
-    desc: '电影和电视节目',
-    icon: Layers,
-    color: '#F59E0B',
-    bg: 'rgba(245, 158, 11, 0.08)',
-    border: 'rgba(245, 158, 11, 0.2)',
-  },
-  {
-    value: 'other' as const,
-    label: '其他视频',
-    desc: '个人视频、课程等',
-    icon: Video,
-    color: '#10B981',
-    bg: 'rgba(16, 185, 129, 0.08)',
-    border: 'rgba(16, 185, 129, 0.2)',
-  },
+  { value: 'movie' as const, label: '电影', desc: '各种类型电影', icon: Film },
+  { value: 'tvshow' as const, label: '电视节目', desc: '电视剧、综艺等', icon: Tv },
+  { value: 'mixed' as const, label: '混合影片', desc: '电影和电视节目', icon: Layers },
+  { value: 'other' as const, label: '其他视频', desc: '个人视频、课程等', icon: Video },
 ]
 
-// 元数据语言选项
 const METADATA_LANG_OPTIONS = [
   { value: 'zh-CN', label: '中文简体' },
   { value: 'zh-TW', label: '中文繁體' },
@@ -75,7 +46,6 @@ const METADATA_LANG_OPTIONS = [
   { value: 'es', label: 'Español' },
 ]
 
-// 默认高级设置（媒体库级别）
 const DEFAULT_ADVANCED: LibraryAdvancedSettings = {
   prefer_local_nfo: true,
   enable_file_filter: true,
@@ -97,7 +67,12 @@ const DEFAULT_METADATA_SOURCE_TOOLTIP = [
   '说明：此开关只决定搜索/下载元数据时是否允许成人结果。',
 ].join('\n')
 
-function buildMetadataSourceTooltip(tmdbApiURL: string, tmdbImageURL: string, adultSourceLines: string[], adultEnabled: boolean) {
+function buildMetadataSourceTooltip(
+  tmdbApiURL: string,
+  tmdbImageURL: string,
+  adultSourceLines: string[],
+  adultEnabled: boolean,
+) {
   const lines = [
     '当前元数据来源链接：',
     `• TMDb API：${tmdbApiURL}`,
@@ -119,14 +94,13 @@ interface CreateLibraryModalProps {
   onCreate: (data: CreateLibraryRequest) => Promise<void>
 }
 
-// ===== 可复用的 Toggle 开关组件 =====
 function ToggleSwitch({
   checked,
   onChange,
   disabled,
 }: {
   checked: boolean
-  onChange: (val: boolean) => void
+  onChange: (value: boolean) => void
   disabled?: boolean
 }) {
   return (
@@ -136,53 +110,82 @@ function ToggleSwitch({
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-300 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+      className="relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors duration-200 focus:outline-none focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50"
       style={{
-        background: checked
-          ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))'
-          : 'var(--border-default)',
-        boxShadow: checked ? 'var(--neon-glow-shadow-md)' : 'none',
+        background: checked ? 'var(--nv-action-primary)' : 'var(--nv-bg-control)',
+        borderColor: checked ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
       }}
     >
       <span
-        className="pointer-events-none inline-block h-5 w-5 rounded-full shadow-lg transition-transform duration-300"
-        style={{
-          transform: checked ? 'translateX(20px) translateY(2px)' : 'translateX(2px) translateY(2px)',
-          background: checked ? '#fff' : 'var(--text-muted)',
-        }}
+        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200"
+        style={{ transform: checked ? 'translateX(20px)' : 'translateX(2px)' }}
       />
     </button>
+  )
+}
+
+function FieldBlock({ label, description, children }: { label: string; description?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <div className="text-sm font-medium text-[var(--nv-text-primary)]">{label}</div>
+        {description && (
+          <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{description}</div>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function SettingRow({
+  title,
+  description,
+  icon,
+  checked,
+  onChange,
+}: {
+  title: string
+  description: ReactNode
+  icon?: ReactNode
+  checked: boolean
+  onChange: (value: boolean) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-1">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-sm font-medium text-[var(--nv-text-primary)]">
+          {icon && <span className="text-[var(--nv-action-primary)]">{icon}</span>}
+          {title}
+        </div>
+        <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{description}</div>
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} />
+    </div>
   )
 }
 
 export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryModalProps) {
   const [selectedType, setSelectedType] = useState<CreateLibraryRequest['type']>('movie')
   const [name, setName] = useState('')
-  // 多路径模式：第一个是主路径，其余是附加路径
   const [paths, setPaths] = useState<string[]>([''])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [advanced, setAdvanced] = useState<LibraryAdvancedSettings>({ ...DEFAULT_ADVANCED })
-  const [showLangDropdown, setShowLangDropdown] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  // 当前打开文件浏览器的路径索引，null 表示未打开
   const [browsingIndex, setBrowsingIndex] = useState<number | null>(null)
   const [metadataSourceTooltip, setMetadataSourceTooltip] = useState(DEFAULT_METADATA_SOURCE_TOOLTIP)
   const nameInputRef = useRef<HTMLInputElement>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
 
-  // 打开时重置状态
   useEffect(() => {
-    if (open) {
-      setSelectedType('movie')
-      setName('')
-      setPaths([''])
-      setShowAdvanced(false)
-      setAdvanced({ ...DEFAULT_ADVANCED })
-      setShowLangDropdown(false)
-      setError('')
-      setTimeout(() => nameInputRef.current?.focus(), 100)
-    }
+    if (!open) return
+    setSelectedType('movie')
+    setName('')
+    setPaths([''])
+    setShowAdvanced(false)
+    setAdvanced({ ...DEFAULT_ADVANCED })
+    setError('')
+    setTimeout(() => nameInputRef.current?.focus(), 100)
   }, [open])
 
   useEffect(() => {
@@ -205,40 +208,27 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
             .map((source) => `${source.name || source.id}：${source.url}`)
         : []
 
-      setMetadataSourceTooltip(buildMetadataSourceTooltip(
-        tmdb?.api_proxy || 'https://api.themoviedb.org',
-        tmdb?.image_proxy || 'https://image.tmdb.org',
-        adultSourceLines,
-        Boolean(adult?.enabled),
-      ))
+      setMetadataSourceTooltip(
+        buildMetadataSourceTooltip(
+          tmdb?.api_proxy || 'https://api.themoviedb.org',
+          tmdb?.image_proxy || 'https://image.tmdb.org',
+          adultSourceLines,
+          Boolean(adult?.enabled),
+        ),
+      )
     }
 
     loadMetadataSourceTooltip().catch(() => {
       if (!cancelled) setMetadataSourceTooltip(DEFAULT_METADATA_SOURCE_TOOLTIP)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [open])
 
-  // 点击遮罩关闭
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) {
-      onClose()
-    }
-  }
-
-  // ESC关闭
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) onClose()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [open, onClose])
-
-  // 更新高级设置的辅助函数
   const updateAdvanced = <K extends keyof LibraryAdvancedSettings>(
     key: K,
-    value: LibraryAdvancedSettings[K]
+    value: LibraryAdvancedSettings[K],
   ) => {
     setAdvanced((prev) => ({ ...prev, [key]: value }))
   }
@@ -249,756 +239,390 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
       nameInputRef.current?.focus()
       return
     }
-    const cleanedPaths = paths.map((p) => p.trim()).filter((p) => p.length > 0)
+
+    const cleanedPaths = paths.map((path) => path.trim()).filter(Boolean)
     if (cleanedPaths.length === 0) {
       setError('请至少添加一个媒体文件夹路径')
       return
     }
-    // 去重检查
-    const dedup = Array.from(new Set(cleanedPaths))
-    if (dedup.length !== cleanedPaths.length) {
+
+    const dedupedPaths = Array.from(new Set(cleanedPaths))
+    if (dedupedPaths.length !== cleanedPaths.length) {
       setError('存在重复的路径，请删除重复项')
       return
     }
+
     setError('')
     setSubmitting(true)
     try {
       await onCreate({
         name: name.trim(),
-        paths: dedup,
+        paths: dedupedPaths,
         type: selectedType,
-        // 高级设置
         ...advanced,
       })
       onClose()
     } catch (err: any) {
-      const serverMsg = err?.response?.data?.error
-      setError(serverMsg || '创建媒体库失败，请检查路径是否正确')
+      setError(err?.response?.data?.error || '创建媒体库失败，请检查路径是否正确')
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (!open) return null
-
-  const selectedLangLabel =
-    METADATA_LANG_OPTIONS.find((l) => l.value === advanced.metadata_lang)?.label || advanced.metadata_lang
+  const organizeOptions = [
+    {
+      value: 'ai_assisted' as const,
+      title: 'AI 辅助',
+      tag: '推荐',
+      description: '规则识别 + 低置信度时调用 AI 兜底',
+    },
+    {
+      value: 'rule_only' as const,
+      title: '仅规则',
+      tag: '半自动',
+      description: '只做规则识别与命名建议，不调用 AI',
+    },
+    {
+      value: 'off' as const,
+      title: '关闭',
+      tag: '手动',
+      description: '扫描后不做任何自动整理',
+    },
+  ]
 
   return (
-    <div
-      ref={overlayRef}
-      className="modal-overlay flex items-center justify-center animate-fade-in"
-      onClick={handleOverlayClick}
-    >
-      <div
-        className="relative w-full max-w-xl mx-4 rounded-2xl overflow-hidden animate-slide-up"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-elevated), var(--modal-panel-glow)',
-          backdropFilter: 'blur(30px)',
-          maxHeight: '90vh',
-        }}
-      >
-        {/* 顶部霓虹光条 */}
-        <div
-          className="absolute top-0 left-0 right-0 h-[2px] z-10"
-          style={{
-            background: 'linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-purple), transparent)',
-          }}
+    <>
+      <Modal open={open} onClose={onClose} size="lg" ariaLabel="创建媒体库">
+        <ModalHeader
+          title="创建媒体库"
+          description="选择内容类型、添加一个或多个媒体目录，并按需配置扫描与整理策略。"
+          icon={<FolderPlus size={18} />}
+          onClose={onClose}
         />
 
-        {/* 可滚动内容容器 */}
-        <div className="overflow-y-auto" style={{ maxHeight: '90vh' }}>
-          {/* 头部 */}
-          <div className="flex items-center justify-between px-6 pt-6 pb-4 sticky top-0 z-10" style={{ background: 'var(--bg-elevated)' }}>
-            <h2
-              className="font-display text-lg font-bold tracking-wide"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              创建媒体库
-            </h2>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 transition-all hover:bg-[var(--nav-hover-bg)]"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* 内容区域 */}
-          <div className="px-6 pb-6 space-y-5">
-            {/* ===== 内容类型选择 ===== */}
-            <div>
-              <label
-                className="mb-3 block text-sm font-semibold"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                内容类型
-              </label>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {LIBRARY_TYPES.map((type) => {
-                  const Icon = type.icon
-                  const isSelected = selectedType === type.value
-                  return (
-                    <button
-                      key={type.value}
-                      onClick={() => setSelectedType(type.value)}
-                      className="group relative flex flex-col items-center gap-2 rounded-xl p-3.5 transition-all duration-300"
+        <ModalBody className="space-y-6">
+          <FieldBlock label="内容类型" description="类型只影响媒体识别策略，选中状态统一使用主品牌色。">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {LIBRARY_TYPES.map((type) => {
+                const Icon = type.icon
+                const selected = selectedType === type.value
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setSelectedType(type.value)}
+                    className="rounded-[var(--nv-radius-card)] border p-3 text-left transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5"
+                    style={{
+                      background: selected ? 'var(--nv-bg-active)' : 'var(--nv-bg-surface-soft)',
+                      borderColor: selected ? 'var(--nv-action-primary)' : 'var(--nv-border-subtle)',
+                    }}
+                  >
+                    <div
+                      className="mb-3 flex h-9 w-9 items-center justify-center rounded-[var(--nv-radius-control)]"
                       style={{
-                        background: isSelected ? type.bg : 'transparent',
-                        border: `1.5px solid ${isSelected ? type.border : 'var(--border-default)'}`,
-                        boxShadow: isSelected ? `0 0 20px ${type.bg}` : 'none',
+                        background: selected ? 'var(--nv-ambient-cyan)' : 'var(--nv-bg-control)',
+                        color: selected ? 'var(--nv-action-primary)' : 'var(--nv-text-tertiary)',
                       }}
                     >
-                      {isSelected && (
-                        <div
-                          className="absolute -top-px left-1/4 right-1/4 h-[2px] rounded-b"
-                          style={{ background: type.color, boxShadow: `0 0 8px ${type.color}` }}
-                        />
-                      )}
-                      <div
-                        className="flex h-10 w-10 items-center justify-center rounded-lg transition-all duration-300"
-                        style={{
-                          background: isSelected ? `${type.bg}` : 'var(--nav-hover-bg)',
-                          color: isSelected ? type.color : 'var(--text-tertiary)',
-                        }}
-                      >
-                        <Icon size={22} />
-                      </div>
-                      <div className="text-center">
-                        <p
-                          className="text-sm font-semibold transition-colors"
-                          style={{ color: isSelected ? type.color : 'var(--text-primary)' }}
-                        >
-                          {type.label}
-                        </p>
-                        <p
-                          className="mt-0.5 text-[11px] leading-tight"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          {type.desc}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                      <Icon size={18} />
+                    </div>
+                    <div className="text-sm font-semibold text-[var(--nv-text-primary)]">{type.label}</div>
+                    <div className="mt-1 text-[11px] leading-4 text-[var(--nv-text-tertiary)]">{type.desc}</div>
+                  </button>
+                )
+              })}
             </div>
+          </FieldBlock>
 
-            {/* ===== 媒体库名称 ===== */}
-            <div>
-              <label
-                className="mb-2 block text-sm font-semibold"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                媒体库名称
-              </label>
-              <div className="relative">
-                <input
-                  ref={nameInputRef}
-                  type="text"
-                  value={name}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 32) {
-                      setName(e.target.value)
+          <FieldBlock label="媒体库名称">
+            <div className="relative">
+              <Input
+                ref={nameInputRef}
+                value={name}
+                invalid={Boolean(error && !name.trim())}
+                onChange={(event) => {
+                  if (event.target.value.length <= 32) {
+                    setName(event.target.value)
+                    setError('')
+                  }
+                }}
+                placeholder="请输入媒体库名称"
+                className="pr-16"
+                onKeyDown={(event) => event.key === 'Enter' && handleSubmit()}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-[var(--nv-text-tertiary)]">
+                {name.length} / 32
+              </span>
+            </div>
+          </FieldBlock>
+
+          <FieldBlock
+            label="媒体文件夹"
+            description={
+              <>
+                支持多个目录，第一个路径作为主路径。例如{' '}
+                <code className="rounded bg-[var(--nv-bg-control)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nv-action-primary)]">
+                  /media/movies
+                </code>
+                。
+              </>
+            }
+          >
+            <div className="space-y-2">
+              {paths.map((path, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    iconOnly
+                    onClick={() => setBrowsingIndex(index)}
+                    title="浏览服务器目录"
+                  >
+                    <FolderPlus size={17} />
+                  </Button>
+                  <Input
+                    value={path}
+                    invalid={Boolean(error && paths.every((item) => !item.trim()))}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setPaths((prev) => prev.map((item, itemIndex) => (itemIndex === index ? value : item)))
                       setError('')
-                    }
-                  }}
-                  className="input pr-16"
-                  placeholder="请输入媒体库名称"
-                  onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                />
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {name.length} / 32
-                </span>
-              </div>
-            </div>
-
-            {/* ===== 媒体文件夹 ===== */}
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
-                  媒体文件夹
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setPaths((prev) => [...prev, ''])}
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors hover:bg-[var(--nav-hover-bg)]"
-                  style={{ color: 'var(--neon-blue)' }}
-                  title="添加另一个文件夹"
-                >
-                  <Plus size={14} />
-                  添加文件夹
-                </button>
-              </div>
-              <p
-                className="mb-2.5 text-xs leading-relaxed"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
-                可添加多个媒体文件夹路径，如 <code className="rounded px-1 py-0.5 text-neon" style={{ background: 'var(--nav-hover-bg)' }}>/media/movies</code>。第一个路径将作为主路径。
-              </p>
-              <div className="space-y-2">
-                {paths.map((p, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <button
+                    }}
+                    className="flex-1"
+                    placeholder={index === 0 ? '主路径，如 /media/movies 或 D:\\Videos' : '额外路径'}
+                    onKeyDown={(event) => event.key === 'Enter' && handleSubmit()}
+                  />
+                  {paths.length > 1 && (
+                    <Button
                       type="button"
-                      onClick={() => setBrowsingIndex(idx)}
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors cursor-pointer hover:bg-[var(--nav-hover-bg)]"
-                      style={{
-                        border: '1.5px dashed var(--border-hover)',
-                        color: 'var(--text-tertiary)',
-                      }}
-                      title="浏览服务器目录"
-                    >
-                      <FolderPlus size={18} />
-                    </button>
-                    <input
-                      type="text"
-                      value={p}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setPaths((prev) => prev.map((x, i) => (i === idx ? v : x)))
+                      variant="ghost"
+                      iconOnly
+                      onClick={() => {
+                        setPaths((prev) => prev.filter((_, itemIndex) => itemIndex !== index))
                         setError('')
                       }}
-                      className="input flex-1"
-                      placeholder={idx === 0 ? '主路径，如: /media/movies 或 D:\\Videos' : '额外路径'}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                    />
-                    {paths.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaths((prev) => prev.filter((_, i) => i !== idx))
-                          setError('')
-                        }}
-                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-red-500/5"
-                        style={{ color: 'var(--text-tertiary)' }}
-                        title="移除该路径"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ===== 高级设置（可展开） — 飞牛影视风格 ===== */}
-            <div>
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-1.5 text-sm font-semibold transition-colors"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                高级设置
-              </button>
-
-              {showAdvanced && (
-                <div className="mt-4 space-y-6 animate-slide-up">
-
-                  {/* ———— 1. 优先读取本地 NFO 和图片 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h4
-                        className="text-sm font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        优先读取本地 NFO 和图片
-                      </h4>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        优先读取本地 NFO 文件中的信息和本地图片，仅从互联网上获取缺失的信息。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.prefer_local_nfo}
-                      onChange={(v) => updateAdvanced('prefer_local_nfo', v)}
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 2. 文件过滤 ———— */}
-                  <div>
-                    <h4
-                      className="text-sm font-semibold mb-2.5"
-                      style={{ color: 'var(--text-primary)' }}
+                      title="移除该路径"
+                      className="text-[var(--nv-status-danger)]"
                     >
-                      文件过滤
-                    </h4>
-                    <div className="flex items-center gap-3">
-                      {/* Checkbox */}
-                      <button
-                        type="button"
-                        onClick={() => updateAdvanced('enable_file_filter', !advanced.enable_file_filter)}
-                        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-all"
-                        style={{
-                          background: advanced.enable_file_filter
-                            ? 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))'
-                            : 'transparent',
-                          border: advanced.enable_file_filter
-                            ? 'none'
-                            : '2px solid var(--border-hover)',
-                          boxShadow: advanced.enable_file_filter
-                            ? '0 0 8px var(--neon-blue-25)'
-                            : 'none',
-                        }}
-                      >
-                        {advanced.enable_file_filter && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </button>
-                      <span
-                        className="text-sm"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        排除小于
-                      </span>
-                      <input
+                      <Trash2 size={16} />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPaths((prev) => [...prev, ''])}>
+              <Plus size={14} />
+              添加文件夹
+            </Button>
+          </FieldBlock>
+
+          <Surface className="overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)]">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+            >
+              <div>
+                <div className="text-sm font-semibold text-[var(--nv-text-primary)]">高级设置</div>
+                <div className="mt-1 text-xs text-[var(--nv-text-tertiary)]">扫描、元数据、自动整理与文件监控策略</div>
+              </div>
+              <Tag tone={showAdvanced ? 'brand' : 'neutral'}>{showAdvanced ? '已展开' : '展开'}</Tag>
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-5 border-t border-[var(--nv-border-subtle)] px-4 py-4">
+                <SettingRow
+                  title="优先读取本地 NFO 和图片"
+                  description="优先读取本地 NFO 与图片，仅从互联网补充缺失信息。"
+                  checked={advanced.prefer_local_nfo}
+                  onChange={(value) => updateAdvanced('prefer_local_nfo', value)}
+                />
+
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <FieldBlock label="文件过滤" description="扫描时排除过小的视频文件。">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <ToggleSwitch
+                        checked={advanced.enable_file_filter}
+                        onChange={(value) => updateAdvanced('enable_file_filter', value)}
+                      />
+                      <span className="text-sm text-[var(--nv-text-secondary)]">排除小于</span>
+                      <Input
                         type="number"
-                        value={advanced.min_file_size}
-                        onChange={(e) => {
-                          const v = Math.max(0, Math.min(999, parseInt(e.target.value) || 0))
-                          updateAdvanced('min_file_size', v)
-                        }}
-                        disabled={!advanced.enable_file_filter}
-                        className="input w-20 text-center tabular-nums disabled:opacity-40"
                         min={0}
                         max={999}
+                        value={advanced.min_file_size}
+                        disabled={!advanced.enable_file_filter}
+                        onChange={(event) => {
+                          const value = Math.max(0, Math.min(999, Number.parseInt(event.target.value) || 0))
+                          updateAdvanced('min_file_size', value)
+                        }}
+                        className="w-24 text-center tabular-nums"
                       />
-                      <span
-                        className="text-sm"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
-                        MB 的视频文件
-                      </span>
+                      <span className="text-sm text-[var(--nv-text-secondary)]">MB 的视频文件</span>
                     </div>
-                  </div>
+                  </FieldBlock>
+                </div>
 
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 3. 媒体元数据下载语言 ———— */}
-                  <div>
-                    <h4
-                      className="text-sm font-semibold"
-                      style={{ color: 'var(--text-primary)' }}
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <FieldBlock label="媒体元数据下载语言" description="优先使用所选语言下载影片、演员与海报信息。">
+                    <Select
+                      value={advanced.metadata_lang}
+                      onChange={(event) => updateAdvanced('metadata_lang', event.target.value)}
+                      className="w-full"
                     >
-                      媒体元数据下载语言
-                    </h4>
-                    <p
-                      className="mt-1 mb-3 text-xs leading-relaxed"
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      优先使用首选语言下载元数据，如影片信息、演员信息、海报等。
-                    </p>
-                    {/* 下拉选择框 */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setShowLangDropdown(!showLangDropdown)}
-                        className="input flex w-full items-center justify-between gap-2 text-left"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Globe size={16} style={{ color: 'var(--text-muted)' }} />
-                          <span style={{ color: 'var(--text-primary)' }}>{selectedLangLabel}</span>
-                        </div>
-                        <ChevronDown
-                          size={16}
-                          style={{ color: 'var(--text-muted)' }}
-                          className={`transition-transform ${showLangDropdown ? 'rotate-180' : ''}`}
-                        />
-                      </button>
-                      {showLangDropdown && (
-                        <>
-                          <div className="fixed inset-0 z-30" onClick={() => setShowLangDropdown(false)} />
-                          <div
-                            className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-xl py-1 animate-slide-up"
-                            style={{
-                              background: 'var(--bg-elevated)',
-                              border: '1px solid var(--border-strong)',
-                              boxShadow: 'var(--shadow-elevated)',
-                            }}
-                          >
-                            {METADATA_LANG_OPTIONS.map((lang) => (
-                              <button
-                                key={lang.value}
-                                onClick={() => {
-                                  updateAdvanced('metadata_lang', lang.value)
-                                  setShowLangDropdown(false)
-                                }}
-                                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--nav-hover-bg)]"
-                                style={{
-                                  color: advanced.metadata_lang === lang.value
-                                    ? 'var(--neon-blue)'
-                                    : 'var(--text-secondary)',
-                                  background: advanced.metadata_lang === lang.value
-                                    ? 'var(--nav-active-bg)'
-                                    : undefined,
-                                }}
-                              >
-                                {lang.label}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                      {METADATA_LANG_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldBlock>
+                </div>
 
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 4. 媒体元数据允许成人内容 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <h4
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          媒体元数据允许成人内容
-                        </h4>
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <SettingRow
+                    title="媒体元数据允许成人内容"
+                    description={
+                      <span className="inline-flex items-start gap-1.5">
+                        <span>允许第三方公开数据库返回成人内容。</span>
                         <button
                           type="button"
                           title={metadataSourceTooltip}
                           aria-label="查看元数据来源链接"
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors hover:bg-[var(--nav-hover-bg)]"
-                          style={{ color: 'var(--text-tertiary)' }}
+                          className="mt-0.5 inline-flex text-[var(--nv-text-tertiary)] hover:text-[var(--nv-text-primary)]"
                         >
                           <Info size={13} />
                         </button>
-                      </div>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        从第三方公开数据库搜索、下载元数据时，允许成人内容。悬停信息图标可查看当前使用的元数据链接。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.allow_adult_content}
-                      onChange={(v) => updateAdvanced('allow_adult_content', v)}
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 5. 自动下载字幕 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h4
-                        className="text-sm font-semibold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        自动下载字幕
-                      </h4>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        对未内嵌字幕的媒体文件，自动从互联网上下载字幕。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.auto_download_sub}
-                      onChange={(v) => updateAdvanced('auto_download_sub', v)}
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 6. 扫描后自动刮削元数据 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Search size={16} style={{ color: '#06B6D4' }} />
-                        <h4
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          扫描后自动刮削元数据
-                        </h4>
-                      </div>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        扫描媒体库后自动从 TMDb、豆瓣等数据源识别并下载影片信息（海报、简介、评分等）。关闭后需在媒体详情页手动触发刮削。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.auto_scrape_metadata}
-                      onChange={(v) => updateAdvanced('auto_scrape_metadata', v)}
-                    />
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 7. AI 自动整理（扫描后处理：识别 / 归类 / 命名映射） ———— */}
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-2">
-                      <Sparkles size={16} style={{ color: 'var(--neon-purple)', marginTop: 2 }} />
-                      <div className="flex-1">
-                        <h4
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          AI 自动整理
-                        </h4>
-                        <p
-                          className="mt-1 text-xs leading-relaxed"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          扫描入库后自动执行：智能识别 → 虚拟归类 → Jellyfin/Emby 风格命名建议。
-                          <span className="font-medium" style={{ color: 'var(--neon-green)' }}>
-                            所有结果仅写入数据库
-                          </span>
-                          ，绝不修改任何磁盘文件。可选配置输出目录以自动创建硬链接。
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* 三选一卡片 */}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {(
-                        [
-                          {
-                            value: 'ai_assisted' as const,
-                            title: 'AI 辅助',
-                            tag: '推荐',
-                            desc: '规则识别 + 低置信度时调用 AI 兜底',
-                            color: 'var(--neon-purple)',
-                          },
-                          {
-                            value: 'rule_only' as const,
-                            title: '仅规则',
-                            tag: '半自动',
-                            desc: '只做规则识别与命名建议，不调用 AI',
-                            color: '#06B6D4',
-                          },
-                          {
-                            value: 'off' as const,
-                            title: '关闭',
-                            tag: '手动',
-                            desc: '扫描后不做任何自动整理',
-                            color: 'var(--text-tertiary)',
-                          },
-                        ]
-                      ).map((opt) => {
-                        const active = advanced.auto_organize_mode === opt.value
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => updateAdvanced('auto_organize_mode', opt.value)}
-                            className="group rounded-lg border p-3 text-left transition-all"
-                            style={{
-                              borderColor: active ? opt.color : 'var(--border-default)',
-                              background: active ? `${opt.color}14` : 'transparent',
-                            }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span
-                                className="text-sm font-semibold"
-                                style={{ color: active ? opt.color : 'var(--text-primary)' }}
-                              >
-                                {opt.title}
-                              </span>
-                              <span
-                                className="rounded px-1.5 py-0.5 text-[10px]"
-                                style={{
-                                  background: active ? `${opt.color}33` : 'var(--bg-secondary)',
-                                  color: active ? opt.color : 'var(--text-tertiary)',
-                                }}
-                              >
-                                {opt.tag}
-                              </span>
-                            </div>
-                            <p
-                              className="mt-1 text-xs leading-relaxed"
-                              style={{ color: 'var(--text-tertiary)' }}
-                            >
-                              {opt.desc}
-                            </p>
-                          </button>
-                        )
-                      })}
-                    </div>
-
-                    {/* 下文提示根据选择自适应 */}
-                    {advanced.auto_organize_mode === 'off' && (
-                      <p
-                        className="rounded-md px-2.5 py-1.5 text-[11px]"
-                        style={{
-                          background: 'var(--bg-secondary)',
-                          color: 'var(--text-tertiary)',
-                        }}
-                      >
-                        关闭后扫描和重建索引都不会触发 AI 整理。后续如需启用，可在媒体库 → 编辑中重新打开，然后重新扫描或重建索引。
-                      </p>
-                    )}
-                    {advanced.auto_organize_mode === 'rule_only' && (
-                      <p
-                        className="rounded-md px-2.5 py-1.5 text-[11px]"
-                        style={{
-                          background: 'var(--bg-secondary)',
-                          color: 'var(--text-tertiary)',
-                        }}
-                      >
-                        将仅使用规则解析（基于文件名 + DB 字段）做识别与命名建议，不会产生任何 AI 调用费用。
-                      </p>
-                    )}
-
-                    {/* 硬链接输出目录（仅在非 off 时显示） */}
-                    {advanced.auto_organize_mode !== 'off' && (
-                      <div className="mt-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <FolderPlus size={14} style={{ color: 'var(--neon-green)' }} />
-                          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                            虚拟化目录（硬链接输出）
-                          </span>
-                        </div>
-                        <p
-                          className="text-[11px] leading-relaxed"
-                          style={{ color: 'var(--text-tertiary)' }}
-                        >
-                          配置后将按分类结果在此目录下创建硬链接目录树（如：电影/华语/2020s/科幻/片名.mkv）。
-                          源文件不变，零额外空间占用。留空则不创建硬链接。
-                        </p>
-                        <input
-                          type="text"
-                          value={advanced.organize_output_dir}
-                          onChange={(e) => updateAdvanced('organize_output_dir', e.target.value)}
-                          className="input w-full text-sm"
-                          placeholder="如: /media/organized 或 D:\Media\Organized（留空=仅写数据库）"
-                        />
-                        {advanced.organize_output_dir && (
-                          <p
-                            className="rounded-md px-2.5 py-1.5 text-[11px] flex items-center gap-1.5"
-                            style={{ background: 'rgba(16, 185, 129, 0.08)', color: 'var(--neon-green)' }}
-                          >
-                            <span>✓</span>
-                            AI 整理完成后将在该目录下自动创建硬链接，文件按虚拟分类路径组织。
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 分割线 */}
-                  <div style={{ borderTop: '1px solid var(--border-default)' }} />
-
-                  {/* ———— 8. 实时文件监控 ———— */}
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Eye size={16} style={{ color: 'var(--neon-purple)' }} />
-                        <h4
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          实时文件监控
-                        </h4>
-                      </div>
-                      <p
-                        className="mt-1 text-xs leading-relaxed"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
-                        实时监控媒体文件夹的变化，自动检测并同步新增、修改或删除的媒体文件，无需手动扫描。
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      checked={advanced.enable_file_watch}
-                      onChange={(v) => updateAdvanced('enable_file_watch', v)}
-                    />
-                  </div>
+                      </span>
+                    }
+                    checked={advanced.allow_adult_content}
+                    onChange={(value) => updateAdvanced('allow_adult_content', value)}
+                  />
                 </div>
-              )}
-            </div>
 
-            {/* 错误提示 */}
-            {error && (
-              <div
-                className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm"
-                style={{
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.15)',
-                  color: '#EF4444',
-                }}
-              >
-                <AlertCircle size={16} />
-                {error}
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <SettingRow
+                    title="自动下载字幕"
+                    description="对未内嵌字幕的媒体文件，自动从互联网下载字幕。"
+                    checked={advanced.auto_download_sub}
+                    onChange={(value) => updateAdvanced('auto_download_sub', value)}
+                  />
+                </div>
+
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <SettingRow
+                    title="扫描后自动刮削元数据"
+                    description="扫描后自动从 TMDb、豆瓣等数据源识别并下载海报、简介和评分。"
+                    icon={<Search size={15} />}
+                    checked={advanced.auto_scrape_metadata}
+                    onChange={(value) => updateAdvanced('auto_scrape_metadata', value)}
+                  />
+                </div>
+
+                <div className="space-y-3 border-t border-[var(--nv-border-subtle)] pt-5">
+                  <div className="flex items-start gap-2">
+                    <Sparkles size={16} className="mt-0.5 text-[var(--nv-action-primary)]" />
+                    <div>
+                      <div className="text-sm font-medium text-[var(--nv-text-primary)]">AI 自动整理</div>
+                      <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                        扫描入库后执行智能识别、虚拟归类和命名建议。所有结果默认仅写入数据库，不修改源文件。
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {organizeOptions.map((option) => {
+                      const active = advanced.auto_organize_mode === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => updateAdvanced('auto_organize_mode', option.value)}
+                          className="rounded-[var(--nv-radius-control)] border p-3 text-left transition-colors"
+                          style={{
+                            borderColor: active ? 'var(--nv-action-primary)' : 'var(--nv-border-subtle)',
+                            background: active ? 'var(--nv-bg-active)' : 'var(--nv-bg-control)',
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-[var(--nv-text-primary)]">{option.title}</span>
+                            <Tag tone={active ? 'brand' : 'neutral'}>{option.tag}</Tag>
+                          </div>
+                          <div className="mt-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{option.description}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {advanced.auto_organize_mode === 'off' && (
+                    <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                      关闭后扫描和重建索引都不会触发 AI 整理。后续可在媒体库编辑中重新开启。
+                    </div>
+                  )}
+                  {advanced.auto_organize_mode === 'rule_only' && (
+                    <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                      仅使用规则解析文件名与数据库字段，不会产生 AI 调用费用。
+                    </div>
+                  )}
+
+                  {advanced.auto_organize_mode !== 'off' && (
+                    <FieldBlock label="虚拟化目录（硬链接输出）" description="留空则只写数据库；配置后按分类结果创建硬链接目录树，源文件不变。">
+                      <Input
+                        value={advanced.organize_output_dir}
+                        onChange={(event) => updateAdvanced('organize_output_dir', event.target.value)}
+                        placeholder="如 /media/organized 或 D:\\Media\\Organized"
+                      />
+                      {advanced.organize_output_dir && (
+                        <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-status-success)] bg-[var(--nv-bg-surface)] px-3 py-2 text-xs text-[var(--nv-status-success)]">
+                          已配置输出目录，整理完成后会在此创建硬链接。
+                        </div>
+                      )}
+                    </FieldBlock>
+                  )}
+                </div>
+
+                <div className="border-t border-[var(--nv-border-subtle)] pt-5">
+                  <SettingRow
+                    title="实时文件监控"
+                    description="实时监控媒体目录变化，自动同步新增、修改或删除的文件。"
+                    icon={<Eye size={15} />}
+                    checked={advanced.enable_file_watch}
+                    onChange={(value) => updateAdvanced('enable_file_watch', value)}
+                  />
+                </div>
               </div>
             )}
-          </div>
+          </Surface>
 
-          {/* 底部按钮 */}
-          <div
-            className="flex items-center justify-end gap-3 px-6 py-4 sticky bottom-0"
-            style={{
-              borderTop: '1px solid var(--border-default)',
-              background: 'var(--bg-elevated)',
-            }}
-          >
-            <button
-              onClick={onClose}
-              className="rounded-xl px-6 py-2.5 text-sm font-medium transition-all"
-              style={{
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-default)',
-                background: 'transparent',
-              }}
-            >
-              取消
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="btn-primary gap-2 px-6 py-2.5 text-sm"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  创建中...
-                </>
-              ) : (
-                '确认创建'
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+          {error && (
+            <div className="flex items-start gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-status-danger)] bg-[var(--nv-bg-surface-soft)] px-4 py-3 text-sm text-[var(--nv-status-danger)]">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </ModalBody>
 
-      {/* 服务端文件浏览器 */}
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>
+            取消
+          </Button>
+          <Button type="button" variant="primary" onClick={handleSubmit} loading={submitting}>
+            {submitting ? '创建中...' : '确认创建'}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
       <FileBrowser
         open={browsingIndex !== null}
         onClose={() => setBrowsingIndex(null)}
         onSelect={(selectedPath) => {
           if (browsingIndex !== null) {
-            setPaths((prev) => prev.map((x, i) => (i === browsingIndex ? selectedPath : x)))
+            setPaths((prev) => prev.map((path, index) => (index === browsingIndex ? selectedPath : path)))
             setError('')
           }
         }}
         initialPath={(browsingIndex !== null ? paths[browsingIndex] : '') || '/'}
       />
-    </div>
+    </>
   )
 }
