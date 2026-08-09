@@ -8,7 +8,8 @@
  * - ImportFileModal: 独立语义化导入弹窗
  * - ScanDirectoryModal: 独立语义化目录扫描弹窗
  * - EditFileModal: 独立语义化文件信息编辑弹窗
- * - FileModals: 其余历史弹窗（详情/重命名/日志），按阶段继续迁移
+ * - FileDetailModal: 独立语义化文件详情弹窗
+ * - FileModals: 其余历史弹窗（重命名/日志），按阶段继续迁移
  * - constants: 共享常量、类型、工具函数
  */
 
@@ -22,8 +23,8 @@ export type { ContextMenuItem } from './ContextMenu'
 export { default as ImportFileModal } from './ImportFileModal'
 export { default as ScanDirectoryModal } from './ScanDirectoryModal'
 export { default as EditFileModal } from './EditFileModal'
+export { default as FileDetailModal } from './FileDetailModal'
 export {
-  FileDetailModal,
   RenameModal,
   OperationLogsModal,
 } from './FileModals'
