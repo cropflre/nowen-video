@@ -1,6 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import clsx from 'clsx'
 
 export interface ContextMenuItem {
   key: string
@@ -8,7 +7,7 @@ export interface ContextMenuItem {
   icon?: React.ReactNode
   danger?: boolean
   disabled?: boolean
-  divider?: boolean // 在此项前显示分割线
+  divider?: boolean
   onClick: () => void
 }
 
@@ -23,23 +22,24 @@ interface ContextMenuProps {
 export default function ContextMenu({ visible, x, y, items, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // 点击外部关闭
   useEffect(() => {
     if (!visible) return
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         onClose()
       }
     }
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
     }
-    // 延迟绑定，避免触发右键的 click 事件立即关闭
+
     const timer = setTimeout(() => {
       document.addEventListener('click', handleClick)
       document.addEventListener('contextmenu', handleClick)
       document.addEventListener('keydown', handleKeyDown)
     }, 0)
+
     return () => {
       clearTimeout(timer)
       document.removeEventListener('click', handleClick)
@@ -48,22 +48,22 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
     }
   }, [visible, onClose])
 
-  // 自动调整位置，防止超出视口
   useEffect(() => {
     if (!visible || !menuRef.current) return
+
     const menu = menuRef.current
     const rect = menu.getBoundingClientRect()
-    const vw = window.innerWidth
-    const vh = window.innerHeight
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
 
     let adjustedX = x
     let adjustedY = y
 
-    if (x + rect.width > vw - 8) {
-      adjustedX = vw - rect.width - 8
+    if (x + rect.width > viewportWidth - 8) {
+      adjustedX = viewportWidth - rect.width - 8
     }
-    if (y + rect.height > vh - 8) {
-      adjustedY = vh - rect.height - 8
+    if (y + rect.height > viewportHeight - 8) {
+      adjustedY = viewportHeight - rect.height - 8
     }
     if (adjustedX < 8) adjustedX = 8
     if (adjustedY < 8) adjustedY = 8
@@ -72,48 +72,50 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
     menu.style.top = `${adjustedY}px`
   }, [visible, x, y])
 
-  // 键盘导航
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
+  const handleMenuKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
       const focused = document.activeElement
       const buttons = menuRef.current?.querySelectorAll('button:not(:disabled)')
       if (!buttons || buttons.length === 0) return
-      const arr = Array.from(buttons)
-      const idx = arr.indexOf(focused as Element)
-      const next = e.key === 'ArrowDown'
-        ? (idx + 1) % arr.length
-        : (idx - 1 + arr.length) % arr.length
-      ;(arr[next] as HTMLElement).focus()
+
+      const items = Array.from(buttons)
+      const index = items.indexOf(focused as Element)
+      const next = event.key === 'ArrowDown'
+        ? (index + 1) % items.length
+        : (index - 1 + items.length) % items.length
+      ;(items[next] as HTMLElement).focus()
     }
-    if (e.key === 'Enter') {
+
+    if (event.key === 'Enter') {
       const focused = document.activeElement as HTMLButtonElement
       focused?.click()
     }
-  }, [items])
+  }, [])
 
   if (!visible) return null
 
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[180px] py-1.5 rounded-xl shadow-2xl border animate-in fade-in zoom-in-95 duration-150"
+      role="menu"
+      aria-label="文件操作菜单"
+      className="fixed min-w-[180px] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1.5 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
       style={{
         left: `${x}px`,
         top: `${y}px`,
-        background: 'var(--bg-elevated, rgba(30, 32, 40, 0.98))',
-        borderColor: 'var(--border-default, rgba(255,255,255,0.08))',
-        backdropFilter: 'blur(20px)',
+        zIndex: 'var(--nv-z-dropdown)',
       }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={handleMenuKeyDown}
     >
-      {items.map((item, idx) => (
+      {items.map((item, index) => (
         <div key={item.key}>
-          {/* 分割线 */}
-          {item.divider && idx > 0 && (
-            <div className="my-1 mx-2 border-t" style={{ borderColor: 'var(--border-default, rgba(255,255,255,0.06))' }} />
+          {item.divider && index > 0 && (
+            <div className="mx-2 my-1 border-t border-[var(--nv-border-subtle)]" role="separator" />
           )}
           <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               if (!item.disabled) {
                 item.onClick()
@@ -121,18 +123,14 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
               }
             }}
             disabled={item.disabled}
-            className={clsx(
-              'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors',
-              item.disabled
-                ? 'opacity-40 cursor-not-allowed'
-                : item.danger
-                  ? 'text-red-400 hover:bg-red-500/10'
-                  : 'hover:bg-white/[0.06]',
-              !item.danger && !item.disabled && 'text-surface-200'
-            )}
+            className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
+              item.danger
+                ? 'text-[var(--nv-status-danger)] hover:bg-[color-mix(in_srgb,var(--nv-status-danger)_10%,transparent)]'
+                : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'
+            }`}
           >
             {item.icon && (
-              <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
                 {item.icon}
               </span>
             )}
@@ -141,6 +139,6 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
         </div>
       ))}
     </div>,
-    document.body
+    document.body,
   )
 }
