@@ -5,6 +5,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
 
@@ -89,6 +90,25 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ i
       ref={ref}
       className={clsx(
         'h-10 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
+        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
+        className,
+      )}
+      aria-invalid={invalid || props['aria-invalid'] || undefined}
+    />
+  )
+})
+
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  invalid?: boolean
+}
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({ invalid = false, className, ...props }, ref) {
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      className={clsx(
+        'min-h-24 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 py-2.5 text-sm leading-6 text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
         invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
         className,
       )}
