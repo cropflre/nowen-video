@@ -5,7 +5,8 @@
  * - FileStatsBar: 统计卡片栏
  * - FileToolbar: 搜索/筛选/批量操作工具栏
  * - FileListView: 文件列表（表格+网格视图+分页）
- * - FileModals: 所有弹窗（导入/扫描/编辑/详情/重命名/日志）
+ * - ImportFileModal: 独立语义化导入弹窗
+ * - FileModals: 其余历史弹窗（扫描/编辑/详情/重命名/日志），按阶段继续迁移
  * - constants: 共享常量、类型、工具函数
  */
 
@@ -16,8 +17,8 @@ export { default as FolderTree } from './FolderTree'
 export { default as Breadcrumb } from './Breadcrumb'
 export { default as ContextMenu } from './ContextMenu'
 export type { ContextMenuItem } from './ContextMenu'
+export { default as ImportFileModal } from './ImportFileModal'
 export {
-  ImportFileModal,
   ScanDirectoryModal,
   EditFileModal,
   FileDetailModal,
