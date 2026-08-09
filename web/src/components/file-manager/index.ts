@@ -10,7 +10,7 @@
  * - EditFileModal: 独立语义化文件信息编辑弹窗
  * - FileDetailModal: 独立语义化文件详情弹窗
  * - RenameModal: 独立语义化批量重命名弹窗
- * - FileModals: 剩余历史弹窗（操作日志），按阶段继续迁移
+ * - OperationLogsModal: 独立语义化操作日志弹窗
  * - constants: 共享常量、类型、工具函数
  */
 
@@ -26,5 +26,5 @@ export { default as ScanDirectoryModal } from './ScanDirectoryModal'
 export { default as EditFileModal } from './EditFileModal'
 export { default as FileDetailModal } from './FileDetailModal'
 export { default as RenameModal } from './RenameModal'
-export { OperationLogsModal } from './FileModals'
+export { default as OperationLogsModal } from './OperationLogsModal'
 export * from './constants'
