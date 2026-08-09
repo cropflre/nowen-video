@@ -1,20 +1,19 @@
 import type { Library } from '@/types'
 import {
-  Search,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
   Filter,
   Plus,
   ScanLine,
-  ChevronDown,
-  ChevronRight,
-  ArrowUpDown,
+  Search,
+  Sparkles,
+  Trash2,
+  Wand2,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { Button, Input, Select, Surface, Tag } from '@/components/design-system'
 import { SORT_OPTIONS, SOURCE_OPTIONS } from './constants'
-import {
-  Sparkles,
-  Wand2,
-  Trash2,
-} from 'lucide-react'
 
 interface FileToolbarProps {
   // 搜索
@@ -52,6 +51,13 @@ interface FileToolbarProps {
   children?: React.ReactNode
 }
 
+const viewButtonClassName = (active: boolean) => clsx(
+  'min-h-8 px-3 py-1.5 text-xs font-medium transition-colors duration-200',
+  active
+    ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]'
+    : 'text-[var(--nv-text-tertiary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
+)
+
 export default function FileToolbar({
   keyword, onKeywordChange,
   showFilters, onToggleFilters,
@@ -69,53 +75,72 @@ export default function FileToolbar({
   children,
 }: FileToolbarProps) {
   return (
-    <div className="glass-panel rounded-xl p-4 space-y-3">
+    <Surface className="space-y-3 p-4">
       {/* 第一行：搜索和操作按钮 */}
       <div className="flex flex-wrap items-center gap-2">
         {/* 搜索 */}
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
-          <input
+        <div className="relative min-w-[200px] max-w-md flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]"
+            aria-hidden="true"
+          />
+          <Input
             type="text"
             placeholder="搜索标题、原始标题、文件路径..."
             value={keyword}
-            onChange={e => onKeywordChange(e.target.value)}
-            className="input-field w-full pl-9 pr-3 py-2 text-sm rounded-lg"
+            onChange={(event) => onKeywordChange(event.target.value)}
+            className="pl-9"
           />
         </div>
 
         {/* 筛选切换 */}
-        <button
+        <Button
+          type="button"
+          size="sm"
+          variant={showFilters ? 'secondary' : 'ghost'}
           onClick={onToggleFilters}
-          className={clsx('btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm', showFilters && 'text-neon')}
+          className={showFilters ? 'text-[var(--nv-action-primary)]' : undefined}
+          aria-expanded={showFilters}
         >
-          <Filter size={16} /> 筛选
-          {showFilters ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
+          <Filter size={15} aria-hidden="true" />
+          筛选
+          {showFilters ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+        </Button>
 
-        <div className="h-6 w-px bg-surface-700" />
+        <div className="hidden h-6 w-px bg-[var(--nv-border-subtle)] sm:block" aria-hidden="true" />
 
         {/* 导入按钮 */}
-        <button onClick={onImport} className="btn-primary flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-          <Plus size={16} /> 导入文件
-        </button>
-        <button onClick={onScanDir} className="btn-ghost flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm">
-          <ScanLine size={16} /> 扫描目录
-        </button>
+        <Button type="button" size="sm" variant="primary" onClick={onImport}>
+          <Plus size={15} aria-hidden="true" />
+          导入文件
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onScanDir}>
+          <ScanLine size={15} aria-hidden="true" />
+          扫描目录
+        </Button>
 
-        <div className="h-6 w-px bg-surface-700" />
+        <div className="hidden h-6 w-px bg-[var(--nv-border-subtle)] sm:block" aria-hidden="true" />
 
         {/* 视图切换 */}
-        <div className="flex items-center rounded-lg overflow-hidden border" style={{ borderColor: 'var(--border-default)' }}>
+        <div
+          className="flex items-center overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)]"
+          role="group"
+          aria-label="文件视图"
+        >
           <button
+            type="button"
             onClick={() => onViewModeChange('table')}
-            className={clsx('px-2.5 py-1.5 text-xs', viewMode === 'table' ? 'bg-neon-blue/20 text-neon' : 'text-surface-400')}
+            className={viewButtonClassName(viewMode === 'table')}
+            aria-pressed={viewMode === 'table'}
           >
             列表
           </button>
           <button
+            type="button"
             onClick={() => onViewModeChange('grid')}
-            className={clsx('px-2.5 py-1.5 text-xs', viewMode === 'grid' ? 'bg-neon-blue/20 text-neon' : 'text-surface-400')}
+            className={clsx(viewButtonClassName(viewMode === 'grid'), 'border-l border-[var(--nv-border-subtle)]')}
+            aria-pressed={viewMode === 'grid'}
           >
             网格
           </button>
@@ -127,59 +152,61 @@ export default function FileToolbar({
 
       {/* 筛选行 */}
       {showFilters && (
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t" style={{ borderColor: 'var(--border-default)' }}>
-          <select value={filterLibrary} onChange={e => onFilterLibraryChange(e.target.value)}
-            className="input-field px-3 py-1.5 text-sm rounded-lg">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--nv-border-subtle)] pt-3">
+          <Select value={filterLibrary} onChange={(event) => onFilterLibraryChange(event.target.value)} aria-label="媒体库筛选">
             <option value="">全部媒体库</option>
-            {libraries.map(lib => <option key={lib.id} value={lib.id}>{lib.name}</option>)}
-          </select>
-          <select value={filterMediaType} onChange={e => onFilterMediaTypeChange(e.target.value)}
-            className="input-field px-3 py-1.5 text-sm rounded-lg">
+            {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
+          </Select>
+          <Select value={filterMediaType} onChange={(event) => onFilterMediaTypeChange(event.target.value)} aria-label="媒体类型筛选">
             <option value="">全部类型</option>
             <option value="movie">电影</option>
             <option value="episode">剧集</option>
-          </select>
-          <select value={filterScraped} onChange={e => onFilterScrapedChange(e.target.value)}
-            className="input-field px-3 py-1.5 text-sm rounded-lg">
+          </Select>
+          <Select value={filterScraped} onChange={(event) => onFilterScrapedChange(event.target.value)} aria-label="刮削状态筛选">
             <option value="">全部状态</option>
             <option value="true">已刮削</option>
             <option value="false">未刮削</option>
-          </select>
-          <select value={sortBy} onChange={e => onSortByChange(e.target.value)}
-            className="input-field px-3 py-1.5 text-sm rounded-lg">
-            {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-          <button onClick={onToggleSortOrder}
-            className="btn-ghost flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm">
-            <ArrowUpDown size={14} /> {sortOrder === 'desc' ? '降序' : '升序'}
-          </button>
+          </Select>
+          <Select value={sortBy} onChange={(event) => onSortByChange(event.target.value)} aria-label="排序字段">
+            {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+          <Button type="button" size="sm" variant="ghost" onClick={onToggleSortOrder}>
+            <ArrowUpDown size={14} aria-hidden="true" />
+            {sortOrder === 'desc' ? '降序' : '升序'}
+          </Button>
         </div>
       )}
 
       {/* 批量操作栏 */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: 'var(--border-default)' }}>
-          <span className="text-sm text-neon font-medium">已选 {selectedCount} 项</span>
-          <div className="h-4 w-px bg-surface-700" />
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--nv-border-subtle)] pt-3">
+          <Tag tone="brand">已选 {selectedCount} 项</Tag>
 
-          <select value={scrapeSource} onChange={e => onScrapeSourceChange(e.target.value)}
-            className="input-field px-2 py-1 text-xs rounded">
-            {SOURCE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-          <button onClick={onBatchScrape} className="btn-ghost flex items-center gap-1 px-2.5 py-1.5 rounded text-xs text-blue-400 hover:bg-blue-400/10">
-            <Sparkles size={14} /> 批量刮削
-          </button>
-          <button onClick={onBatchRename} className="btn-ghost flex items-center gap-1 px-2.5 py-1.5 rounded text-xs text-purple-400 hover:bg-purple-400/10">
-            <Wand2 size={14} /> 批量重命名
-          </button>
-          <button onClick={onBatchDelete} className="btn-ghost flex items-center gap-1 px-2.5 py-1.5 rounded text-xs text-red-400 hover:bg-red-400/10">
-            <Trash2 size={14} /> 批量删除
-          </button>
-          <button onClick={onClearSelection} className="btn-ghost px-2.5 py-1.5 rounded text-xs">
+          <Select
+            value={scrapeSource}
+            onChange={(event) => onScrapeSourceChange(event.target.value)}
+            aria-label="批量刮削源"
+            className="h-9 text-xs"
+          >
+            {SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+          <Button type="button" size="sm" variant="secondary" onClick={onBatchScrape}>
+            <Sparkles size={14} aria-hidden="true" />
+            批量刮削
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={onBatchRename}>
+            <Wand2 size={14} aria-hidden="true" />
+            批量重命名
+          </Button>
+          <Button type="button" size="sm" variant="danger" onClick={onBatchDelete}>
+            <Trash2 size={14} aria-hidden="true" />
+            批量删除
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onClearSelection}>
             取消选择
-          </button>
+          </Button>
         </div>
       )}
-    </div>
+    </Surface>
   )
 }
