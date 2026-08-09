@@ -6,7 +6,8 @@
  * - FileToolbar: 搜索/筛选/批量操作工具栏
  * - FileListView: 文件列表（表格+网格视图+分页）
  * - ImportFileModal: 独立语义化导入弹窗
- * - FileModals: 其余历史弹窗（扫描/编辑/详情/重命名/日志），按阶段继续迁移
+ * - ScanDirectoryModal: 独立语义化目录扫描弹窗
+ * - FileModals: 其余历史弹窗（编辑/详情/重命名/日志），按阶段继续迁移
  * - constants: 共享常量、类型、工具函数
  */
 
@@ -18,8 +19,8 @@ export { default as Breadcrumb } from './Breadcrumb'
 export { default as ContextMenu } from './ContextMenu'
 export type { ContextMenuItem } from './ContextMenu'
 export { default as ImportFileModal } from './ImportFileModal'
+export { default as ScanDirectoryModal } from './ScanDirectoryModal'
 export {
-  ScanDirectoryModal,
   EditFileModal,
   FileDetailModal,
   RenameModal,
