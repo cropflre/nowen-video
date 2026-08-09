@@ -141,7 +141,7 @@ function TabScrollNav({
               key={tab.id}
               data-tab-id={tab.id}
               onClick={() => switchTab(tab.id)}
-              className={clsx('admin-tab whitespace-nowrap', isActive && 'active')}
+              className={clsx('nv-admin-tab whitespace-nowrap', isActive && 'is-active')}
             >
               <Icon size={16} />
               <span className="hidden sm:inline">{t(tab.labelKey)}</span>
@@ -490,7 +490,7 @@ export default function AdminPage() {
         <TabScrollNav activeTab={activeTab} switchTab={switchTab} hasActiveProgress={hasActiveProgress} t={t} />
       </div>
 
-      <div className="tab-content-enter" key={activeTab}>
+      <div className="nv-admin-content-enter" key={activeTab}>
         {activeTab === 'dashboard' && (
           <DashboardTab
             systemInfo={systemInfo}
