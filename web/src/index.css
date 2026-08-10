@@ -305,9 +305,6 @@
 
   /* 全局主题切换过渡 — 仅对关键容器元素生效，避免对所有元素添加 transition 导致性能问题 */
   body,
-  .glass-panel,
-  .glass-panel-strong,
-  .glass-panel-subtle,
   .nav-item,
   .media-card,
   .btn-primary,
@@ -374,32 +371,8 @@
   }
 }
 
-/* ==================== 玻璃拟态系统 ==================== */
+/* ==================== 全局组件样式 ==================== */
 @layer components {
-
-  /* === 通用玻璃面板 === */
-  .glass-panel {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    box-shadow: var(--shadow-card), var(--glass-panel-inset);
-  }
-
-  .glass-panel-strong {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    backdrop-filter: blur(30px);
-    -webkit-backdrop-filter: blur(30px);
-    box-shadow: var(--shadow-elevated), var(--glass-panel-strong-inset);
-  }
-
-  .glass-panel-subtle {
-    background: var(--bg-subtle);
-    border: 1px solid var(--border-default);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
 
   /* === 霓虹边框 === */
   .neon-border {
@@ -1018,10 +991,6 @@
 
 /* 小屏手机 (< 480px) */
 @media (max-width: 479px) {
-  .card-glass {
-    border-radius: 12px !important;
-  }
-
   /* 媒体网格：单列或双列 */
   .media-grid {
     grid-template-columns: repeat(2, 1fr) !important;
