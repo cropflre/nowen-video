@@ -1,10 +1,9 @@
-@import './admin-legacy-compat.css';
-
 /* Nowen Video Admin Design System
  *
- * Semantic primitives for the administration workspace. Historical selectors
- * are intentionally isolated in admin-legacy-compat.css so this file contains
- * only the current nv-admin-* contract.
+ * Semantic primitives for the administration workspace. This stylesheet now
+ * contains only the current nv-admin-* contract and has no legacy selector
+ * dependency. The remaining global compatibility bridge is loaded explicitly
+ * by the application entry until non-admin legacy callers are retired.
  */
 
 .nv-admin-page {
