@@ -1,15 +1,22 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { adminApi } from '@/api'
 import {
-  Folder,
-  FolderOpen,
+  Check,
   ChevronRight,
   ChevronUp,
-  X,
-  Loader2,
-  Check,
+  Folder,
+  FolderOpen,
   HardDrive,
+  Loader2,
 } from 'lucide-react'
+import {
+  Button,
+  EmptyState,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+} from '@/components/design-system'
 
 interface FsEntry {
   name: string
@@ -49,159 +56,103 @@ export default function FileBrowser({ open, onClose, onSelect, initialPath }: Fi
   }, [])
 
   useEffect(() => {
-    if (open) {
-      browse(initialPath || '/')
-    }
+    if (open) void browse(initialPath || '/')
   }, [open, initialPath, browse])
 
-  // ESC 关闭
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) onClose()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [open, onClose])
-
-  if (!open) return null
+  const selectCurrentFolder = () => {
+    onSelect(currentPath)
+    onClose()
+  }
 
   return (
-    <div
-      className="modal-overlay flex items-center justify-center animate-fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div
-        className="relative w-full max-w-lg mx-4 rounded-2xl overflow-hidden animate-slide-up"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-strong)',
-          boxShadow: 'var(--shadow-elevated), var(--modal-panel-glow)',
-          backdropFilter: 'blur(30px)',
-          maxHeight: '80vh',
-        }}
-      >
-        {/* 顶部霓虹光条 */}
-        <div
-          className="absolute top-0 left-0 right-0 h-[2px] z-10"
-          style={{
-            background: 'linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-purple), transparent)',
-          }}
-        />
+    <Modal open={open} onClose={onClose} size="md" ariaLabel="选择文件夹">
+      <ModalHeader
+        title="选择文件夹"
+        description="浏览服务器目录并选择要使用的文件夹。"
+        icon={<FolderOpen size={18} aria-hidden="true" />}
+        onClose={onClose}
+      />
 
-        {/* 头部 */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <h2
-            className="font-display text-base font-bold tracking-wide"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            选择文件夹
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 transition-all hover:bg-[var(--nav-hover-bg)]"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* 当前路径栏 */}
-        <div className="mx-5 mb-3 flex items-center gap-2 rounded-lg px-3 py-2"
-          style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}
-        >
-          <HardDrive size={14} className="flex-shrink-0 text-neon/60" />
-          <span
-            className="flex-1 truncate text-sm font-mono"
-            style={{ color: 'var(--text-primary)' }}
-          >
+      <ModalBody className="space-y-4">
+        <div className="flex items-center gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-3 py-2.5">
+          <HardDrive size={15} className="shrink-0 text-[var(--nv-action-primary)]" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate font-mono text-sm text-[var(--nv-text-primary)]" title={currentPath}>
             {currentPath}
           </span>
         </div>
 
-        {/* 目录列表 */}
-        <div className="mx-5 overflow-y-auto" style={{ maxHeight: 'calc(80vh - 200px)' }}>
-          {/* 上级目录 */}
-          {parentPath && (
+        <div className="min-h-56 space-y-1">
+          {parentPath && !loading && (
             <button
-              onClick={() => browse(parentPath)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--nav-hover-bg)]"
+              type="button"
+              onClick={() => void browse(parentPath)}
+              className="flex w-full items-center gap-3 rounded-[var(--nv-radius-control)] px-3 py-2.5 text-left text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]"
             >
-              <ChevronUp size={16} className="text-neon/60" />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                上级目录
-              </span>
+              <ChevronUp size={16} className="shrink-0 text-[var(--nv-action-primary)]" aria-hidden="true" />
+              上级目录
             </button>
           )}
 
           {loading && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={24} className="animate-spin text-neon/40" />
+            <div className="flex min-h-56 flex-col items-center justify-center gap-3 text-[var(--nv-text-tertiary)]" aria-live="polite">
+              <Loader2 size={22} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <span className="text-sm">正在读取目录...</span>
             </div>
           )}
 
-          {error && (
-            <div className="rounded-lg px-4 py-3 text-sm" style={{
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.15)',
-              color: '#EF4444',
-            }}>
+          {!loading && error && (
+            <div
+              role="alert"
+              className="rounded-[var(--nv-radius-control)] border px-4 py-3 text-sm leading-6 text-[var(--nv-status-danger)]"
+              style={{
+                background: 'color-mix(in srgb, var(--nv-status-danger) 8%, var(--nv-bg-surface))',
+                borderColor: 'color-mix(in srgb, var(--nv-status-danger) 28%, var(--nv-border-subtle))',
+              }}
+            >
               {error}
             </div>
           )}
 
           {!loading && !error && items.length === 0 && (
-            <div className="py-12 text-center">
-              <Folder size={32} className="mx-auto mb-2 text-surface-600" />
-              <p className="text-sm text-surface-500">此目录下没有子文件夹</p>
-            </div>
+            <EmptyState
+              icon={<Folder size={24} aria-hidden="true" />}
+              title="没有子文件夹"
+              description="可以选择当前目录，或返回上级目录继续浏览。"
+            />
           )}
 
-          {!loading && items.map((item) => (
+          {!loading && !error && items.map((item) => (
             <button
               key={item.path}
-              onClick={() => browse(item.path)}
-              className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--nav-hover-bg)]"
+              type="button"
+              onClick={() => void browse(item.path)}
+              className="group flex w-full items-center gap-3 rounded-[var(--nv-radius-control)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--nv-bg-hover)]"
+              title={item.path}
             >
-              <FolderOpen size={16} className="flex-shrink-0 text-amber-400/70 transition-colors group-hover:text-amber-400" />
-              <span className="flex-1 truncate text-sm" style={{ color: 'var(--text-primary)' }}>
-                {item.name}
-              </span>
-              <ChevronRight size={14} className="flex-shrink-0 text-surface-600 opacity-0 transition-opacity group-hover:opacity-100" />
+              <FolderOpen size={16} className="shrink-0 text-[var(--nv-status-warning)]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate text-sm text-[var(--nv-text-primary)]">{item.name}</span>
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-[var(--nv-text-tertiary)] opacity-60 transition-opacity group-hover:opacity-100"
+                aria-hidden="true"
+              />
             </button>
           ))}
         </div>
+      </ModalBody>
 
-        {/* 底部操作栏 */}
-        <div
-          className="flex items-center justify-between gap-3 px-5 py-4 mt-2"
-          style={{
-            borderTop: '1px solid var(--border-default)',
-          }}
-        >
-          <p className="truncate text-xs" style={{ color: 'var(--text-muted)' }}>
-            已选择: {currentPath}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-xl px-4 py-2 text-sm font-medium transition-all"
-              style={{
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-default)',
-              }}
-            >
-              取消
-            </button>
-            <button
-              onClick={() => { onSelect(currentPath); onClose() }}
-              className="btn-primary gap-1.5 px-4 py-2 text-sm"
-            >
-              <Check size={14} />
-              选择此文件夹
-            </button>
-          </div>
+      <ModalFooter className="justify-between">
+        <p className="min-w-0 flex-1 truncate text-xs text-[var(--nv-text-tertiary)]" title={currentPath}>
+          已选择：{currentPath}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>取消</Button>
+          <Button type="button" variant="primary" onClick={selectCurrentFolder}>
+            <Check size={14} aria-hidden="true" />
+            选择此文件夹
+          </Button>
         </div>
-      </div>
-    </div>
+      </ModalFooter>
+    </Modal>
   )
 }
