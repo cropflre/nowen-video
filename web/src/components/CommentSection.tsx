@@ -1,18 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { commentApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import { useDialog } from '@/components/Dialog'
 import { useTranslation } from '@/i18n'
 import type { Comment } from '@/types'
-import { MessageSquare, Star, Send, Trash2 } from 'lucide-react'
+import { MessageSquare, Send, Star, Trash2 } from 'lucide-react'
+import { Button, EmptyState, Input, Surface, Tag } from '@/components/design-system'
 
 interface CommentSectionProps {
   mediaId: string
 }
 
 export default function CommentSection({ mediaId }: CommentSectionProps) {
-  const user = useAuthStore((s) => s.user)
+  const user = useAuthStore((state) => state.user)
   const { t } = useTranslation()
   const [comments, setComments] = useState<Comment[]>([])
   const [total, setTotal] = useState(0)
@@ -27,7 +28,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
   const dialog = useDialog()
 
   useEffect(() => {
-    loadComments()
+    void loadComments()
   }, [mediaId, page])
 
   const loadComments = async () => {
@@ -54,7 +55,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       })
       setContent('')
       setRating(0)
-      loadComments()
+      await loadComments()
     } catch {
       toast.error(t('comment.submitFailed'))
     }
@@ -70,161 +71,159 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
     if (!ok) return
     try {
       await commentApi.delete(id)
-      loadComments()
+      await loadComments()
     } catch {
       toast.error(t('comment.deleteFailed'))
     }
   }
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr)
-    const loc = t('common.confirm') !== 'Confirm' ? 'zh-CN' : 'en-US' // 简单判断当前语言
-    return d.toLocaleDateString(loc === 'zh-CN' ? 'zh-CN' : undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    const date = new Date(dateStr)
+    const locale = t('common.confirm') !== 'Confirm' ? 'zh-CN' : undefined
+    return date.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
   const totalPages = Math.ceil(total / 10)
+  const activeRating = hoverRating || rating
 
   return (
-    <section className="space-y-4">
-      <h3 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-        <MessageSquare size={20} className="text-neon" />
-        {t('comment.title')}
+    <section className="space-y-4" aria-labelledby="comment-section-title">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="comment-section-title" className="flex items-center gap-2 text-lg font-semibold text-[var(--nv-text-primary)]">
+          <MessageSquare size={19} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          {t('comment.title')}
+        </h3>
         {ratingCount > 0 && (
-          <span className="ml-2 flex items-center gap-1 text-sm font-normal text-yellow-400">
-            <Star size={14} fill="currentColor" />
-            {avgRating.toFixed(1)}
-            <span className="text-surface-500">({t('comment.ratingCount', { count: ratingCount })})</span>
-          </span>
+          <Tag tone="quality">
+            <Star size={12} fill="currentColor" aria-hidden="true" />
+            {avgRating.toFixed(1)} · {t('comment.ratingCount', { count: ratingCount })}
+          </Tag>
         )}
-      </h3>
-
-      {/* 发表评论 */}
-      <div className="glass-panel rounded-xl p-4 space-y-3">
-        {/* 评分 */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-surface-400">{t('media.rating')}：</span>
-          <div className="flex gap-0.5">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => (
-              <button
-                key={v}
-                onClick={() => setRating(v === rating ? 0 : v)}
-                onMouseEnter={() => setHoverRating(v)}
-                onMouseLeave={() => setHoverRating(0)}
-                className="p-0.5"
-              >
-                <Star
-                  size={16}
-                  className={
-                    v <= (hoverRating || rating)
-                      ? 'text-yellow-400'
-                      : 'text-surface-600'
-                  }
-                  fill={v <= (hoverRating || rating) ? 'currentColor' : 'none'}
-                />
-              </button>
-            ))}
-          </div>
-          {rating > 0 && <span className="text-sm text-yellow-400">{rating}/10</span>}
-        </div>
-
-        {/* 评论输入 */}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder={t('comment.placeholder')}
-            className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white placeholder-surface-500 outline-none"
-            style={{ background: 'var(--bg-input)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)' }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          />
-          <button
-            onClick={handleSubmit}
-            disabled={!content.trim()}
-            className="rounded-xl px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 transition-all"
-style={{ background: 'linear-gradient(135deg, var(--neon-blue-90), var(--neon-blue-mid))', boxShadow: 'var(--shadow-neon)' }}
-          >
-            <Send size={16} />
-          </button>
-        </div>
       </div>
 
-      {/* 评论列表 */}
+      <Surface className="space-y-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-[var(--nv-text-secondary)]">{t('media.rating')}：</span>
+          <div className="flex flex-wrap gap-0.5" role="radiogroup" aria-label={t('media.rating')}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => {
+              const active = value <= activeRating
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={rating === value}
+                  aria-label={`${value}/10`}
+                  onClick={() => setRating(value === rating ? 0 : value)}
+                  onMouseEnter={() => setHoverRating(value)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  className="rounded p-0.5 transition-[background-color,color,transform] hover:scale-[1.025] hover:bg-[var(--nv-bg-hover)] focus-visible:outline-none focus-visible:shadow-[var(--nv-shadow-focus)]"
+                  style={{ color: active ? 'var(--nv-status-rating)' : 'var(--nv-text-tertiary)' }}
+                >
+                  <Star size={16} fill={active ? 'currentColor' : 'none'} aria-hidden="true" />
+                </button>
+              )
+            })}
+          </div>
+          {rating > 0 && <Tag tone="quality">{rating}/10</Tag>}
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            type="text"
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder={t('comment.placeholder')}
+            className="flex-1"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void handleSubmit()
+            }}
+          />
+          <Button type="button" variant="primary" onClick={() => void handleSubmit()} disabled={!content.trim()}>
+            <Send size={15} aria-hidden="true" />
+            {t('comment.submit') || '发表'}
+          </Button>
+        </div>
+      </Surface>
+
       {loading ? (
-        <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton h-20 rounded-xl" />
+        <div className="space-y-3" aria-label="正在加载评论">
+          {[1, 2, 3].map((index) => (
+            <div key={index} className="skeleton h-24 rounded-[var(--nv-radius-card)]" />
           ))}
         </div>
       ) : comments.length === 0 ? (
-        <div className="py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-          {t('comment.noComments')}
-        </div>
+        <EmptyState
+          icon={<MessageSquare size={24} aria-hidden="true" />}
+          title={t('comment.noComments')}
+          description="成为第一个留下评分或评论的人。"
+        />
       ) : (
         <div className="space-y-3">
           {comments.map((comment) => (
-            <div key={comment.id} className="glass-panel-subtle group rounded-xl p-4">
-              <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold" style={{ background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))', boxShadow: 'var(--shadow-neon)', color: 'var(--text-on-neon)' }}>
+            <Surface key={comment.id} as="article" className="group p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-sm font-bold text-[var(--nv-text-on-brand)]">
                     {comment.user?.username?.charAt(0).toUpperCase() || '?'}
                   </div>
-                  <div>
-                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {comment.user?.username || '未知用户'}
-                    </span>
-                    <span className="ml-2 text-xs text-surface-500">{formatDate(comment.created_at)}</span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="truncate text-sm font-medium text-[var(--nv-text-primary)]">
+                        {comment.user?.username || '未知用户'}
+                      </span>
+                      <time className="text-xs text-[var(--nv-text-tertiary)]" dateTime={comment.created_at}>
+                        {formatDate(comment.created_at)}
+                      </time>
+                      {comment.rating > 0 && (
+                        <Tag tone="quality">
+                          <Star size={11} fill="currentColor" aria-hidden="true" />
+                          {comment.rating}
+                        </Tag>
+                      )}
+                    </div>
                   </div>
-                  {comment.rating > 0 && (
-                    <span className="flex items-center gap-0.5 text-xs text-yellow-400">
-                      <Star size={12} fill="currentColor" />
-                      {comment.rating}
-                    </span>
-                  )}
                 </div>
 
-                {/* 删除按钮（本人或管理员可见） */}
                 {(comment.user_id === user?.id || user?.role === 'admin') && (
-                  <button
-                    onClick={() => handleDelete(comment.id)}
-                    className="rounded p-1 text-surface-600 opacity-0 group-hover:opacity-100 hover:text-red-400"
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    onClick={() => void handleDelete(comment.id)}
+                    className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                    aria-label={t('common.delete') ?? '删除'}
+                    title={t('common.delete') ?? '删除'}
                   >
-                    <Trash2 size={14} />
-                  </button>
+                    <Trash2 size={14} aria-hidden="true" />
+                  </Button>
                 )}
               </div>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{comment.content}</p>
-            </div>
+              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[var(--nv-text-secondary)]">
+                {comment.content}
+              </p>
+            </Surface>
           ))}
         </div>
       )}
 
-      {/* 分页 */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 pt-2">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className={`rounded-lg px-3 py-1 text-sm transition-all ${
-                p === page
-                  ? ''
-                  : 'hover:opacity-80'
-              }`}
-              style={p === page ? {
-                background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-purple))',
-                boxShadow: 'var(--shadow-neon)',
-                color: 'var(--text-on-neon)',
-              } : {
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-default)',
-                color: 'var(--text-secondary)',
-              }}
+        <nav className="flex flex-wrap justify-center gap-1.5 pt-2" aria-label="评论分页">
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+            <Button
+              key={pageNumber}
+              type="button"
+              variant={pageNumber === page ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setPage(pageNumber)}
+              className={pageNumber === page ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
+              aria-current={pageNumber === page ? 'page' : undefined}
             >
-              {p}
-            </button>
+              {pageNumber}
+            </Button>
           ))}
-        </div>
+        </nav>
       )}
     </section>
   )
