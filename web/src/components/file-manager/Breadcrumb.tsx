@@ -1,65 +1,68 @@
 import { ChevronRight, Home } from 'lucide-react'
 
 interface BreadcrumbProps {
-  /** 当前选中的文件夹路径 */
   folderPath: string
-  /** 点击面包屑项时的回调 */
   onNavigate: (path: string) => void
-  /** 点击"全部"回到根目录 */
   onGoHome: () => void
 }
 
 export default function Breadcrumb({ folderPath, onNavigate, onGoHome }: BreadcrumbProps) {
   if (!folderPath) return null
 
-  // 标准化路径分隔符
   const normalized = folderPath.replace(/\\/g, '/')
   const parts = normalized.split('/').filter(Boolean)
-
-  // 构建面包屑项
-  const items: { name: string; path: string }[] = []
-  for (let i = 0; i < parts.length; i++) {
-    const path = parts.slice(0, i + 1).join('/')
-    // 如果原始路径以 / 开头（Linux），需要加回去
-    const fullPath = normalized.startsWith('/') ? '/' + path : path
-    items.push({ name: parts[i], path: fullPath })
-  }
+  const items = parts.map((name, index) => {
+    const path = parts.slice(0, index + 1).join('/')
+    return {
+      name,
+      path: normalized.startsWith('/') ? `/${path}` : path,
+    }
+  })
 
   return (
-    <div className="flex items-center gap-1 text-sm flex-wrap">
-      {/* 根目录 */}
-      <button
-        onClick={onGoHome}
-        className="flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-white/[0.06]"
-        style={{ color: 'var(--text-secondary)' }}
-      >
-        <Home size={14} />
-        <span>全部</span>
-      </button>
+    <nav
+      aria-label="当前文件夹路径"
+      className="max-w-full overflow-x-auto rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-1.5 py-1"
+    >
+      <ol className="flex min-w-max items-center gap-0.5 text-sm">
+        <li>
+          <button
+            type="button"
+            onClick={onGoHome}
+            className="flex items-center gap-1.5 rounded-[var(--nv-radius-control)] px-2 py-1.5 text-[var(--nv-text-secondary)] outline-none transition-[background-color,color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)]"
+          >
+            <Home size={14} aria-hidden="true" />
+            <span>全部</span>
+          </button>
+        </li>
 
-      {/* 路径项 */}
-      {items.map((item, idx) => (
-        <div key={item.path} className="flex items-center gap-1">
-          <ChevronRight size={14} className="text-surface-500 flex-shrink-0" />
-          {idx === items.length - 1 ? (
-            // 最后一项（当前目录）不可点击
-            <span
-              className="px-2 py-1 rounded-md font-medium"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {item.name}
-            </span>
-          ) : (
-            <button
-              onClick={() => onNavigate(item.path)}
-              className="px-2 py-1 rounded-md transition-colors hover:bg-white/[0.06]"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              {item.name}
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
+        {items.map((item, index) => {
+          const isCurrent = index === items.length - 1
+          return (
+            <li key={item.path} className="flex items-center gap-0.5">
+              <ChevronRight size={14} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+              {isCurrent ? (
+                <span
+                  aria-current="page"
+                  className="max-w-52 truncate rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-active)] px-2 py-1.5 font-medium text-[var(--nv-action-primary)] sm:max-w-72"
+                  title={item.name}
+                >
+                  {item.name}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNavigate(item.path)}
+                  className="max-w-44 truncate rounded-[var(--nv-radius-control)] px-2 py-1.5 text-[var(--nv-text-secondary)] outline-none transition-[background-color,color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)] sm:max-w-60"
+                  title={item.name}
+                >
+                  {item.name}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    </nav>
   )
 }
