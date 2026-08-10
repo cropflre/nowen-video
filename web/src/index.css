@@ -118,7 +118,7 @@
   --accent-amber-soft-bg: rgba(245, 158, 11, 0.10);
   --accent-amber-soft-border: rgba(245, 158, 11, 0.22);
   --accent-amber-soft-bg-hover: rgba(245, 158, 11, 0.18);
-  --accent-amber-soft-border-hover: rgba(245, 158, 11, 0.36);
+  --accent-amber-soft-border-hover: rgba(180, 83, 9, 0.36);
   /* 翠绿色：用于"勾选 / 启用"的 toggle */
   --accent-emerald: #10b981;
   --accent-emerald-text: #6ee7b7;
@@ -307,11 +307,6 @@
   body,
   .nav-item,
   .media-card,
-  .btn-primary,
-  .btn-secondary,
-  .btn-danger,
-  .btn-ghost,
-  .btn-icon,
   .badge-neon,
   .badge-accent,
   .admin-tab,
@@ -515,112 +510,6 @@
     background: var(--neon-blue);
     border-radius: 0 2px 2px 0;
     box-shadow: var(--neon-glow-shadow-md);
-  }
-
-  /* === 按钮系统 === */
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl;
-    @apply px-5 py-2.5 text-sm font-semibold;
-    color: var(--text-on-neon);
-    @apply transition-all duration-300;
-    background: linear-gradient(135deg, var(--neon-blue-90), var(--neon-blue-mid));
-    box-shadow: var(--shadow-neon);
-    @apply focus:outline-none;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    box-shadow: var(--neon-glow-shadow-lg), var(--shadow-neon);
-    transform: translateY(-1px);
-  }
-
-  .btn-primary:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: var(--neon-glow-shadow-md);
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl;
-    @apply px-4 py-2.5 text-sm font-medium text-surface-300;
-    @apply transition-all duration-300;
-    @apply focus:outline-none;
-  }
-
-  .btn-ghost:hover {
-    color: var(--text-primary);
-    background: var(--nav-hover-bg);
-    border-color: var(--border-hover) !important;
-  }
-
-  /* === 次要按钮 === */
-  .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl;
-    @apply px-5 py-2.5 text-sm font-semibold;
-    color: var(--text-primary);
-    @apply transition-all duration-300;
-    background: var(--nav-hover-bg);
-    border: 1px solid var(--border-default);
-    backdrop-filter: blur(12px);
-    @apply focus:outline-none;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--nav-active-bg);
-    border-color: var(--border-hover);
-    transform: translateY(-1px);
-  }
-
-  .btn-secondary:active:not(:disabled) {
-    transform: translateY(0);
-  }
-
-  /* === 危险按钮 === */
-  .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl;
-    @apply px-5 py-2.5 text-sm font-semibold;
-    color: #fca5a5;
-    @apply transition-all duration-300;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    @apply focus:outline-none;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none;
-  }
-
-  .btn-danger:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.18);
-    border-color: rgba(239, 68, 68, 0.35);
-    color: #fecaca;
-    transform: translateY(-1px);
-    box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
-  }
-
-  .btn-danger:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: none;
-  }
-
-  /* === 图标按钮 === */
-  .btn-icon {
-    @apply inline-flex items-center justify-center rounded-2xl;
-    @apply h-12 w-12;
-    @apply transition-all duration-300;
-    background: var(--nav-hover-bg);
-    border: 1px solid var(--border-default);
-    backdrop-filter: blur(12px);
-    color: var(--text-secondary);
-    @apply focus:outline-none;
-  }
-
-  .btn-icon:hover {
-    background: var(--nav-active-bg);
-    border-color: var(--border-hover);
-    color: var(--text-primary);
-    transform: scale(1.05);
-  }
-
-  .btn-icon:active {
-    transform: scale(0.98);
   }
 
   /* === Toggle 开关 === */
