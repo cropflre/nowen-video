@@ -312,7 +312,6 @@
   .btn-danger,
   .btn-ghost,
   .btn-icon,
-  .input,
   .badge-neon,
   .badge-accent,
   .admin-tab,
@@ -624,16 +623,6 @@
     transform: scale(0.98);
   }
 
-  /* === 输入框 === */
-  .input {
-    @apply w-full rounded-xl px-4 py-2.5;
-    @apply text-sm;
-    color: var(--text-primary);
-    @apply transition-all duration-300;
-    background: var(--bg-input);
-    border: 1px solid var(--glass-border);
-  }
-
   /* === Toggle 开关 === */
   .toggle-switch {
     @apply relative inline-flex items-center rounded-full cursor-pointer;
@@ -686,19 +675,9 @@
     outline-offset: 2px;
   }
 
-  .input::placeholder {
-    color: var(--text-tertiary);
-  }
-
   /* Storage 模块专用输入框 placeholder — 主题感知 */
   .storage-input::placeholder {
     color: var(--text-muted);
-  }
-
-  .input:focus {
-    @apply outline-none;
-    border-color: var(--neon-blue);
-    box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.08), 0 0 15px rgba(8, 145, 178, 0.06);
   }
 
   /* === 标签/徽章 === */
