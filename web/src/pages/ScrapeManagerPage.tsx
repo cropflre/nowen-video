@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { ScrapeTask, ScrapeStatistics, ScrapeHistory } from '@/types'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import type { ScrapeHistory, ScrapeStatistics, ScrapeTask } from '@/types'
 import { scrapeApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useDialog } from '@/components/Dialog'
@@ -7,30 +7,43 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { usePagination } from '@/hooks/usePagination'
 import Pagination from '@/components/Pagination'
 import {
-  Globe,
-  Plus,
-  Upload,
-  Play,
-  Languages,
-  Trash2,
-  Download,
-  RefreshCw,
-  Loader2,
-  Check,
-  X,
   AlertCircle,
-  Edit3,
-  Clock,
   BarChart3,
-  FileText,
-  ExternalLink,
-  Filter,
+  Check,
   CheckSquare,
+  Clock,
+  Download,
+  Edit3,
+  ExternalLink,
+  FileText,
+  Filter,
+  Globe,
+  Languages,
+  Loader2,
+  Play,
+  Plus,
+  RefreshCw,
   Square,
+  Trash2,
+  Upload,
+  X,
 } from 'lucide-react'
 import clsx from 'clsx'
+import {
+  Button,
+  EmptyState,
+  Input,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Select,
+  Surface,
+  Tag,
+  Textarea,
+  type TagTone,
+} from '@/components/design-system'
 
-// 数据源选项
 const SOURCE_OPTIONS = [
   { value: '', label: '自动识别' },
   { value: 'tmdb', label: 'TMDb' },
@@ -39,7 +52,6 @@ const SOURCE_OPTIONS = [
   { value: 'url', label: '通用URL' },
 ]
 
-// 翻译语言选项
 const LANG_OPTIONS = [
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁体中文' },
@@ -48,27 +60,45 @@ const LANG_OPTIONS = [
   { value: 'ko', label: '한국어' },
 ]
 
-// 状态标签
-const STATUS_LABELS: Record<string, { label: string; color: string; icon: typeof Check }> = {
-  pending: { label: '待处理', color: 'text-surface-400', icon: Clock },
-  scraping: { label: '刮削中', color: 'text-amber-400', icon: Loader2 },
-  scraped: { label: '已刮削', color: 'text-blue-400', icon: Check },
-  failed: { label: '失败', color: 'text-red-400', icon: X },
-  translating: { label: '翻译中', color: 'text-purple-400', icon: Loader2 },
-  completed: { label: '已完成', color: 'text-green-400', icon: Check },
+const TRANSLATE_FIELDS = [
+  { value: 'title', label: '标题' },
+  { value: 'overview', label: '简介' },
+  { value: 'genres', label: '类型' },
+  { value: 'tagline', label: '宣传语' },
+]
+
+const STATUS_CONFIG: Record<string, { label: string; tone: TagTone; icon: typeof Check }> = {
+  pending: { label: '待处理', tone: 'neutral', icon: Clock },
+  scraping: { label: '刮削中', tone: 'warning', icon: Loader2 },
+  scraped: { label: '已刮削', tone: 'brand', icon: Check },
+  failed: { label: '失败', tone: 'danger', icon: X },
+  translating: { label: '翻译中', tone: 'brand', icon: Loader2 },
+  completed: { label: '已完成', tone: 'success', icon: Check },
 }
 
-const TRANSLATE_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  none: { label: '未翻译', color: 'text-surface-500' },
-  pending: { label: '待翻译', color: 'text-surface-400' },
-  translating: { label: '翻译中', color: 'text-purple-400' },
-  done: { label: '已翻译', color: 'text-green-400' },
-  failed: { label: '翻译失败', color: 'text-red-400' },
+const TRANSLATE_STATUS_CONFIG: Record<string, { label: string; tone: TagTone }> = {
+  none: { label: '未翻译', tone: 'neutral' },
+  pending: { label: '待翻译', tone: 'neutral' },
+  translating: { label: '翻译中', tone: 'brand' },
+  done: { label: '已翻译', tone: 'success' },
+  failed: { label: '翻译失败', tone: 'danger' },
 }
 
 interface ScrapeManagerPageProps {
-  /** 是否作为嵌入组件使用（隐藏独立页面标题） */
   embedded?: boolean
+}
+
+function qualityTone(score: number): TagTone {
+  if (score >= 80) return 'success'
+  if (score >= 50) return 'warning'
+  if (score > 0) return 'danger'
+  return 'neutral'
+}
+
+function historyTone(action: string): TagTone {
+  if (action.includes('fail')) return 'danger'
+  if (action.includes('done') || action === 'created') return 'success'
+  return 'neutral'
 }
 
 export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPageProps) {
@@ -76,21 +106,16 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
   const dialog = useDialog()
   const { on, off } = useWebSocket()
 
-  // 数据状态
   const [tasks, setTasks] = useState<ScrapeTask[]>([])
   const [total, setTotal] = useState(0)
   const { page, size: pageSize, setPage, setSize, totalPages } = usePagination({ initialSize: 20 })
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<ScrapeStatistics | null>(null)
 
-  // 筛选
   const [filterStatus, setFilterStatus] = useState('')
   const [filterSource, setFilterSource] = useState('')
-
-  // 选择
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  // 创建表单
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createMode, setCreateMode] = useState<'single' | 'batch'>('single')
   const [urlInput, setUrlInput] = useState('')
@@ -99,18 +124,15 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
   const [createMediaType, setCreateMediaType] = useState('movie')
   const [creating, setCreating] = useState(false)
 
-  // 翻译对话框
   const [showTranslateDialog, setShowTranslateDialog] = useState(false)
   const [translateTargetLang, setTranslateTargetLang] = useState('zh-CN')
   const [translateFields, setTranslateFields] = useState<string[]>([])
   const [translateTaskIds, setTranslateTaskIds] = useState<string[]>([])
 
-  // 详情/编辑
   const [editingTask, setEditingTask] = useState<ScrapeTask | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<ScrapeHistory[]>([])
 
-  // 加载任务列表
   const fetchTasks = useCallback(async () => {
     try {
       const res = await scrapeApi.listTasks({
@@ -128,27 +150,24 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     }
   }, [page, pageSize, filterStatus, filterSource])
 
-  // 加载统计
   const fetchStats = useCallback(async () => {
     try {
       const res = await scrapeApi.getStatistics()
       setStats(res.data.data)
     } catch {
-      // 静默
+      // 保持原来的统计静默失败行为。
     }
   }, [])
 
   useEffect(() => {
-    fetchTasks()
-    fetchStats()
+    void fetchTasks()
+    void fetchStats()
   }, [fetchTasks, fetchStats])
 
-  // WebSocket 实时更新
   useEffect(() => {
     const handleTaskUpdate = (data: ScrapeTask) => {
-      setTasks(prev => prev.map(t => t.id === data.id ? data : t))
-      // 刷新统计
-      fetchStats()
+      setTasks((previous) => previous.map((task) => task.id === data.id ? data : task))
+      void fetchStats()
     }
 
     on('scrape_task_update' as any, handleTaskUpdate)
@@ -157,7 +176,6 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     }
   }, [on, off, fetchStats])
 
-  // ==================== 创建任务 ====================
   const handleCreate = async () => {
     if (createMode === 'single') {
       if (!urlInput.trim()) {
@@ -174,45 +192,46 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
         toast.success('刮削任务已创建')
         setUrlInput('')
         setShowCreateForm(false)
-        fetchTasks()
-        fetchStats()
+        void fetchTasks()
+        void fetchStats()
       } catch (err: any) {
         toast.error(err?.response?.data?.error || '创建失败')
       } finally {
         setCreating(false)
       }
-    } else {
-      const urls = batchUrlInput.split('\n').map(u => u.trim()).filter(Boolean)
-      if (urls.length === 0) {
-        toast.error('请输入至少一个URL')
-        return
-      }
-      setCreating(true)
-      try {
-        const res = await scrapeApi.batchCreateTasks({
-          urls,
-          source: createSource || undefined,
-          media_type: createMediaType,
-        })
-        toast.success(`批量创建完成: 成功 ${res.data.created}, 跳过 ${res.data.skipped}`)
-        setBatchUrlInput('')
-        setShowCreateForm(false)
-        fetchTasks()
-        fetchStats()
-      } catch {
-        toast.error('批量创建失败')
-      } finally {
-        setCreating(false)
-      }
+      return
+    }
+
+    const urls = batchUrlInput.split('\n').map((url) => url.trim()).filter(Boolean)
+    if (urls.length === 0) {
+      toast.error('请输入至少一个URL')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await scrapeApi.batchCreateTasks({
+        urls,
+        source: createSource || undefined,
+        media_type: createMediaType,
+      })
+      toast.success(`批量创建完成: 成功 ${res.data.created}, 跳过 ${res.data.skipped}`)
+      setBatchUrlInput('')
+      setShowCreateForm(false)
+      void fetchTasks()
+      void fetchStats()
+    } catch {
+      toast.error('批量创建失败')
+    } finally {
+      setCreating(false)
     }
   }
 
-  // ==================== 刮削操作 ====================
   const handleStartScrape = async (id: string) => {
     try {
       await scrapeApi.startScrape(id)
       toast.success('刮削已启动')
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'scraping' as const } : t))
+      setTasks((previous) => previous.map((task) => task.id === id ? { ...task, status: 'scraping' as const } : task))
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '启动失败')
     }
@@ -227,13 +246,12 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
       const res = await scrapeApi.batchStartScrape(Array.from(selectedIds))
       toast.success(`批量刮削已启动: ${res.data.started} 个任务`)
       setSelectedIds(new Set())
-      fetchTasks()
+      void fetchTasks()
     } catch {
       toast.error('批量刮削失败')
     }
   }
 
-  // ==================== 翻译操作 ====================
   const openTranslateDialog = (taskIds: string[]) => {
     setTranslateTaskIds(taskIds)
     setShowTranslateDialog(true)
@@ -257,13 +275,12 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
       }
       setShowTranslateDialog(false)
       setSelectedIds(new Set())
-      fetchTasks()
+      void fetchTasks()
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '翻译启动失败')
     }
   }
 
-  // ==================== 删除操作 ====================
   const handleDelete = async (id: string) => {
     const ok = await dialog.confirm({
       title: '删除刮削任务',
@@ -275,8 +292,8 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     try {
       await scrapeApi.deleteTask(id)
       toast.success('已删除')
-      fetchTasks()
-      fetchStats()
+      void fetchTasks()
+      void fetchStats()
     } catch {
       toast.error('删除失败')
     }
@@ -295,24 +312,23 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
       await scrapeApi.batchDeleteTasks(Array.from(selectedIds))
       toast.success('批量删除完成')
       setSelectedIds(new Set())
-      fetchTasks()
-      fetchStats()
+      void fetchTasks()
+      void fetchStats()
     } catch {
       toast.error('批量删除失败')
     }
   }
 
-  // ==================== 导出 ====================
   const handleExport = async () => {
-    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : tasks.map(t => t.id)
+    const ids = selectedIds.size > 0 ? Array.from(selectedIds) : tasks.map((task) => task.id)
     try {
       const res = await scrapeApi.exportTasks(ids)
       const blob = new Blob([JSON.stringify(res.data.data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `scrape-export-${new Date().toISOString().slice(0, 10)}.json`
-      a.click()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `scrape-export-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
       URL.revokeObjectURL(url)
       toast.success('导出成功')
     } catch {
@@ -320,7 +336,6 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     }
   }
 
-  // ==================== 编辑 ====================
   const handleSaveEdit = async () => {
     if (!editingTask) return
     try {
@@ -336,13 +351,12 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
       })
       toast.success('保存成功')
       setEditingTask(null)
-      fetchTasks()
+      void fetchTasks()
     } catch {
       toast.error('保存失败')
     }
   }
 
-  // ==================== 历史 ====================
   const loadHistory = async (taskId?: string) => {
     try {
       const res = await scrapeApi.getHistory({ task_id: taskId, limit: 50 })
@@ -353,10 +367,9 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
     }
   }
 
-  // ==================== 选择 ====================
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
+    setSelectedIds((previous) => {
+      const next = new Set(previous)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
@@ -364,188 +377,122 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === tasks.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(tasks.map(t => t.id)))
-    }
+    setSelectedIds((previous) => previous.size === tasks.length ? new Set() : new Set(tasks.map((task) => task.id)))
   }
 
-  // 质量评分颜色
-  const qualityColor = (score: number) => {
-    if (score >= 80) return 'text-green-400'
-    if (score >= 50) return 'text-amber-400'
-    return 'text-red-400'
+  const refresh = () => {
+    void fetchTasks()
+    void fetchStats()
   }
 
   return (
     <div className={clsx('space-y-6', embedded && 'pt-0')}>
-      {/* ==================== 页面标题（独立页面模式下显示） ==================== */}
       {!embedded && (
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-            <Globe className="inline-block mr-2 text-neon" size={24} />
-            刮削数据管理
-          </h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>
-            管理元数据刮削任务，支持多数据源、AI增强和多语言翻译
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => loadHistory()} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
-            <Clock size={14} />
-            操作历史
-          </button>
-          <button onClick={handleExport} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
-            <Download size={14} />
-            导出
-          </button>
-          <button onClick={() => { fetchTasks(); fetchStats() }} className="btn-ghost p-2 text-surface-400 hover:text-neon">
-            <RefreshCw size={16} />
-          </button>
-          <button onClick={() => setShowCreateForm(!showCreateForm)} className="btn-primary gap-1.5 px-3.5 py-2 text-xs">
-            <Plus size={14} />
-            新建任务
-          </button>
-        </div>
-      </div>
-      )}
-
-      {/* 嵌入模式下的精简操作栏 */}
-      {embedded && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={() => loadHistory()} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
-              <Clock size={14} />
-              操作历史
-            </button>
-            <button onClick={handleExport} className="btn-ghost gap-1.5 px-3 py-2 text-xs">
-              <Download size={14} />
-              导出
-            </button>
-            <button onClick={() => { fetchTasks(); fetchStats() }} className="btn-ghost p-2 text-surface-400 hover:text-neon">
-              <RefreshCw size={16} />
-            </button>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-[var(--nv-text-primary)]">
+              <Globe size={23} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+              刮削数据管理
+            </h1>
+            <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
+              管理元数据刮削任务，支持多数据源、AI 增强和多语言翻译。
+            </p>
           </div>
-          <button onClick={() => setShowCreateForm(!showCreateForm)} className="btn-primary gap-1.5 px-3.5 py-2 text-xs">
-            <Plus size={14} />
-            新建任务
-          </button>
+          <ScrapeActions
+            onHistory={() => void loadHistory()}
+            onExport={() => void handleExport()}
+            onRefresh={refresh}
+            onCreate={() => setShowCreateForm((value) => !value)}
+            createOpen={showCreateForm}
+          />
+        </header>
+      )}
+
+      {embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ScrapeActions
+            onHistory={() => void loadHistory()}
+            onExport={() => void handleExport()}
+            onRefresh={refresh}
+            onCreate={() => setShowCreateForm((value) => !value)}
+            createOpen={showCreateForm}
+          />
         </div>
       )}
 
-      {/* ==================== 统计卡片 ==================== */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-          {[
-            { label: '总计', value: stats.total, color: 'text-neon' },
-            { label: '待处理', value: stats.pending, color: 'text-surface-400' },
-            { label: '刮削中', value: stats.scraping, color: 'text-amber-400' },
-            { label: '已刮削', value: stats.scraped, color: 'text-blue-400' },
-            { label: '翻译中', value: stats.translating, color: 'text-purple-400' },
-            { label: '已完成', value: stats.completed, color: 'text-green-400' },
-            { label: '失败', value: stats.failed, color: 'text-red-400' },
-          ].map(item => (
-            <div key={item.label} className="glass-panel-subtle rounded-xl p-3 text-center">
-              <p className={clsx('text-xl font-bold', item.color)}>{item.value || 0}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {stats && <StatisticsGrid stats={stats} />}
 
-      {/* ==================== 创建表单 ==================== */}
       {showCreateForm && (
-        <div className="glass-panel animate-slide-up rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              新建刮削任务
-            </h3>
-            <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--nav-hover-bg)' }}>
-              <button
-                onClick={() => setCreateMode('single')}
-                className={clsx('rounded-md px-3 py-1 text-xs font-medium transition-all', createMode === 'single' ? 'bg-neon text-white' : '')}
-                style={createMode !== 'single' ? { color: 'var(--text-secondary)' } : undefined}
-              >
-                单条输入
-              </button>
-              <button
-                onClick={() => setCreateMode('batch')}
-                className={clsx('rounded-md px-3 py-1 text-xs font-medium transition-all', createMode === 'batch' ? 'bg-neon text-white' : '')}
-                style={createMode !== 'batch' ? { color: 'var(--text-secondary)' } : undefined}
-              >
-                <Upload size={12} className="inline mr-1" />
+        <Surface className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">新建刮削任务</h3>
+              <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">支持单条 URL 或每行一个 URL 的批量创建。</p>
+            </div>
+            <div className="flex overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)] p-1" role="group" aria-label="创建模式">
+              <ModeButton selected={createMode === 'single'} onClick={() => setCreateMode('single')}>单条输入</ModeButton>
+              <ModeButton selected={createMode === 'batch'} onClick={() => setCreateMode('batch')}>
+                <Upload size={12} aria-hidden="true" />
                 批量导入
-              </button>
+              </ModeButton>
             </div>
           </div>
 
           {createMode === 'single' ? (
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>URL 地址</label>
-              <input
+            <Field label="URL 地址">
+              <Input
                 type="text"
                 value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                className="input w-full"
-                placeholder="输入 TMDb / 豆瓣 / IMDb / Bangumi 链接或任意URL"
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                onChange={(event) => setUrlInput(event.target.value)}
+                placeholder="输入 TMDb / 豆瓣 / IMDb / Bangumi 链接或任意 URL"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void handleCreate()
+                }}
               />
-            </div>
+            </Field>
           ) : (
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                URL 列表（每行一个）
-              </label>
-              <textarea
+            <Field label="URL 列表（每行一个）" hint={`已输入 ${batchUrlInput.split('\n').filter((url) => url.trim()).length} 条 URL`}>
+              <Textarea
                 value={batchUrlInput}
-                onChange={e => setBatchUrlInput(e.target.value)}
-                className="input w-full h-32 resize-y font-mono text-xs"
+                onChange={(event) => setBatchUrlInput(event.target.value)}
+                className="min-h-32 resize-y font-mono text-xs"
                 placeholder={'https://www.themoviedb.org/movie/550\nhttps://movie.douban.com/subject/1292052/\nhttps://bgm.tv/subject/12345'}
               />
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                已输入 {batchUrlInput.split('\n').filter(u => u.trim()).length} 条URL
-              </p>
-            </div>
+            </Field>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>数据源</label>
-              <select value={createSource} onChange={e => setCreateSource(e.target.value)} className="input w-full">
-                {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>媒体类型</label>
-              <select value={createMediaType} onChange={e => setCreateMediaType(e.target.value)} className="input w-full">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="数据源">
+              <Select value={createSource} onChange={(event) => setCreateSource(event.target.value)} className="w-full">
+                {SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="媒体类型">
+              <Select value={createMediaType} onChange={(event) => setCreateMediaType(event.target.value)} className="w-full">
                 <option value="movie">电影</option>
                 <option value="tvshow">电视剧</option>
-              </select>
-            </div>
+              </Select>
+            </Field>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button onClick={() => setShowCreateForm(false)} className="rounded-xl px-4 py-2 text-sm font-medium transition-all" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}>
-              取消
-            </button>
-            <button onClick={handleCreate} disabled={creating} className="btn-primary gap-1.5 px-4 py-2 text-sm">
-              {creating ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          <div className="flex justify-end gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
+            <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)}>取消</Button>
+            <Button type="button" variant="primary" onClick={() => void handleCreate()} loading={creating}>
+              {!creating && <Check size={14} aria-hidden="true" />}
               {createMode === 'single' ? '创建任务' : '批量创建'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Surface>
       )}
 
-      {/* ==================== 筛选和批量操作栏 ==================== */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-          <select
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter size={14} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+          <Select
             value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
-            className="input py-1.5 text-xs"
+            onChange={(event) => { setFilterStatus(event.target.value); setPage(1) }}
+            className="h-9 text-xs"
+            aria-label="状态筛选"
           >
             <option value="">全部状态</option>
             <option value="pending">待处理</option>
@@ -554,173 +501,91 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
             <option value="failed">失败</option>
             <option value="translating">翻译中</option>
             <option value="completed">已完成</option>
-          </select>
-          <select
+          </Select>
+          <Select
             value={filterSource}
-            onChange={e => { setFilterSource(e.target.value); setPage(1) }}
-            className="input py-1.5 text-xs"
+            onChange={(event) => { setFilterSource(event.target.value); setPage(1) }}
+            className="h-9 text-xs"
+            aria-label="来源筛选"
           >
             <option value="">全部来源</option>
             <option value="tmdb">TMDb</option>
             <option value="douban">豆瓣</option>
             <option value="bangumi">Bangumi</option>
             <option value="url">通用URL</option>
-          </select>
+          </Select>
         </div>
 
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              已选 {selectedIds.size} 项
-            </span>
-            <button onClick={handleBatchScrape} className="btn-ghost gap-1 px-2.5 py-1.5 text-xs text-neon">
-              <Play size={12} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag tone="brand">已选 {selectedIds.size} 项</Tag>
+            <Button type="button" size="sm" variant="secondary" onClick={() => void handleBatchScrape()}>
+              <Play size={12} aria-hidden="true" />
               批量刮削
-            </button>
-            <button
-              onClick={() => openTranslateDialog(Array.from(selectedIds))}
-              className="btn-ghost gap-1 px-2.5 py-1.5 text-xs text-purple-400"
-            >
-              <Languages size={12} />
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => openTranslateDialog(Array.from(selectedIds))}>
+              <Languages size={12} aria-hidden="true" />
               批量翻译
-            </button>
-            <button onClick={handleBatchDelete} className="btn-ghost gap-1 px-2.5 py-1.5 text-xs text-red-400">
-              <Trash2 size={12} />
+            </Button>
+            <Button type="button" size="sm" variant="danger" onClick={() => void handleBatchDelete()}>
+              <Trash2 size={12} aria-hidden="true" />
               批量删除
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
-      {/* ==================== 任务列表 ==================== */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-neon/40" />
-        </div>
-      ) : tasks.length > 0 ? (
-        <div className="space-y-2">
-          {/* 表头 */}
-          <div className="flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-            <button onClick={toggleSelectAll} className="flex-shrink-0">
-              {selectedIds.size === tasks.length ? <CheckSquare size={14} className="text-neon" /> : <Square size={14} />}
-            </button>
-            <span className="w-48 flex-shrink-0">标题 / URL</span>
-            <span className="w-16 flex-shrink-0 text-center">来源</span>
-            <span className="w-16 flex-shrink-0 text-center">状态</span>
-            <span className="w-16 flex-shrink-0 text-center">翻译</span>
-            <span className="w-12 flex-shrink-0 text-center">质量</span>
-            <span className="flex-1" />
-            <span className="w-24 flex-shrink-0 text-right">操作</span>
+      <Surface className="overflow-hidden p-0">
+        {loading ? (
+          <div className="flex min-h-64 items-center justify-center gap-3 text-sm text-[var(--nv-text-tertiary)]">
+            <Loader2 size={22} className="animate-spin text-[var(--nv-action-primary)]" aria-hidden="true" />
+            加载刮削任务中...
           </div>
+        ) : tasks.length > 0 ? (
+          <>
+            <div className="hidden grid-cols-[32px_minmax(170px,1.4fr)_72px_94px_82px_64px_minmax(120px,1fr)_132px] items-center gap-3 border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-4 py-3 text-[10px] font-semibold uppercase tracking-wide text-[var(--nv-text-tertiary)] lg:grid">
+              <button type="button" onClick={toggleSelectAll} className="text-[var(--nv-text-tertiary)] hover:text-[var(--nv-action-primary)]" aria-label="全选刮削任务">
+                {selectedIds.size === tasks.length ? <CheckSquare size={14} /> : <Square size={14} />}
+              </button>
+              <span>标题 / URL</span>
+              <span className="text-center">来源</span>
+              <span className="text-center">状态</span>
+              <span className="text-center">翻译</span>
+              <span className="text-center">质量</span>
+              <span>错误</span>
+              <span className="text-right">操作</span>
+            </div>
 
-          {/* 任务行 */}
-          {tasks.map(task => {
-            const statusInfo = STATUS_LABELS[task.status] || STATUS_LABELS.pending
-            const StatusIcon = statusInfo.icon
-            const translateInfo = TRANSLATE_STATUS_LABELS[task.translate_status] || TRANSLATE_STATUS_LABELS.none
+            <div className="divide-y divide-[var(--nv-border-subtle)]">
+              {tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  selected={selectedIds.has(task.id)}
+                  onToggle={() => toggleSelect(task.id)}
+                  onScrape={() => void handleStartScrape(task.id)}
+                  onTranslate={() => openTranslateDialog([task.id])}
+                  onEdit={() => setEditingTask({ ...task })}
+                  onDelete={() => void handleDelete(task.id)}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <EmptyState
+            icon={<Globe size={25} />}
+            title="暂无刮削任务"
+            description="点击「新建任务」开始添加需要处理的元数据来源。"
+            action={(
+              <Button type="button" variant="primary" size="sm" onClick={() => setShowCreateForm(true)}>
+                <Plus size={14} aria-hidden="true" />
+                新建任务
+              </Button>
+            )}
+          />
+        )}
+      </Surface>
 
-            return (
-              <div
-                key={task.id}
-                className={clsx(
-                  'glass-panel-subtle group flex items-center gap-3 rounded-xl px-4 py-3 transition-all hover:border-neon-blue/20',
-                  selectedIds.has(task.id) && 'border-neon-blue/30'
-                )}
-              >
-                {/* 选择框 */}
-                <button onClick={() => toggleSelect(task.id)} className="flex-shrink-0">
-                  {selectedIds.has(task.id) ? <CheckSquare size={14} className="text-neon" /> : <Square size={14} className="text-surface-600" />}
-                </button>
-
-                {/* 标题/URL */}
-                <div className="w-48 flex-shrink-0 min-w-0">
-                  <p className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {task.result_title || task.title || '未识别'}
-                  </p>
-                  <p className="truncate text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    {task.url}
-                  </p>
-                </div>
-
-                {/* 来源 */}
-                <div className="w-16 flex-shrink-0 text-center">
-                  <span className="rounded-md px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--nav-hover-bg)', color: 'var(--text-tertiary)' }}>
-                    {task.source.toUpperCase()}
-                  </span>
-                </div>
-
-                {/* 状态 */}
-                <div className="w-16 flex-shrink-0 text-center">
-                  <span className={clsx('inline-flex items-center gap-1 text-[10px] font-medium', statusInfo.color)}>
-                    <StatusIcon size={10} className={task.status === 'scraping' || task.status === 'translating' ? 'animate-spin' : ''} />
-                    {statusInfo.label}
-                  </span>
-                </div>
-
-                {/* 翻译状态 */}
-                <div className="w-16 flex-shrink-0 text-center">
-                  <span className={clsx('text-[10px] font-medium', translateInfo.color)}>
-                    {translateInfo.label}
-                  </span>
-                </div>
-
-                {/* 质量评分 */}
-                <div className="w-12 flex-shrink-0 text-center">
-                  {task.quality_score > 0 ? (
-                    <span className={clsx('text-xs font-bold', qualityColor(task.quality_score))}>
-                      {task.quality_score}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-surface-600">—</span>
-                  )}
-                </div>
-
-                {/* 错误信息 */}
-                <div className="flex-1 min-w-0">
-                  {task.error_message && (
-                    <span className="flex items-center gap-1 text-[10px] text-red-400 truncate">
-                      <AlertCircle size={10} />
-                      {task.error_message}
-                    </span>
-                  )}
-                </div>
-
-                {/* 操作按钮 */}
-                <div className="w-24 flex-shrink-0 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                  {(task.status === 'pending' || task.status === 'failed') && (
-                    <button onClick={() => handleStartScrape(task.id)} className="rounded-lg p-1.5 text-surface-400 hover:text-neon hover:bg-neon-blue/5" title="开始刮削">
-                      <Play size={13} />
-                    </button>
-                  )}
-                  {(task.status === 'scraped' || task.status === 'completed') && (
-                    <button onClick={() => openTranslateDialog([task.id])} className="rounded-lg p-1.5 text-surface-400 hover:text-purple-400 hover:bg-purple-400/5" title="翻译">
-                      <Languages size={13} />
-                    </button>
-                  )}
-                  <button onClick={() => setEditingTask({ ...task })} className="rounded-lg p-1.5 text-surface-400 hover:text-blue-400 hover:bg-blue-400/5" title="查看/编辑">
-                    <Edit3 size={13} />
-                  </button>
-                  <button onClick={() => handleDelete(task.id)} className="rounded-lg p-1.5 text-surface-400 hover:text-red-400 hover:bg-red-400/5" title="删除">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="glass-panel-subtle flex items-center justify-center rounded-xl py-20 text-center">
-          <div>
-            <Globe size={40} className="mx-auto mb-3 text-surface-600" />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>暂无刮削任务</p>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              点击「新建任务」开始添加刮削数据
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 分页 ==================== */}
       <Pagination
         page={page}
         totalPages={totalPages(total)}
@@ -731,194 +596,343 @@ export default function ScrapeManagerPage({ embedded = false }: ScrapeManagerPag
         onPageSizeChange={setSize}
       />
 
-      {/* ==================== 翻译对话框 ==================== */}
       {showTranslateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowTranslateDialog(false)}>
-          <div className="glass-panel w-full max-w-md rounded-2xl p-6 space-y-4 animate-slide-up" onClick={e => e.stopPropagation()}>
-            <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-              <Languages size={18} className="text-purple-400" />
-              翻译设置
-            </h3>
+        <Modal open onClose={() => setShowTranslateDialog(false)} size="sm" ariaLabel="翻译设置">
+          <ModalHeader
+            title="翻译设置"
+            description={`将对 ${translateTaskIds.length} 个任务执行翻译，需要 AI 服务支持。`}
+            icon={<Languages size={18} aria-hidden="true" />}
+            onClose={() => setShowTranslateDialog(false)}
+          />
+          <ModalBody className="space-y-4">
+            <Field label="目标语言">
+              <Select value={translateTargetLang} onChange={(event) => setTranslateTargetLang(event.target.value)} className="w-full">
+                {LANG_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+            </Field>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>目标语言</label>
-              <select value={translateTargetLang} onChange={e => setTranslateTargetLang(e.target.value)} className="input w-full">
-                {LANG_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>翻译字段（留空翻译全部）</label>
+            <Field label="翻译字段" hint="不选择字段时翻译全部可翻译内容。">
               <div className="flex flex-wrap gap-2">
-                {['title', 'overview', 'genres', 'tagline'].map(field => (
-                  <button
-                    key={field}
-                    onClick={() => setTranslateFields(prev =>
-                      prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field]
-                    )}
-                    className={clsx(
-                      'rounded-lg px-3 py-1.5 text-xs font-medium transition-all',
-                      translateFields.includes(field) ? 'bg-purple-500/20 text-purple-400' : ''
-                    )}
-                    style={!translateFields.includes(field) ? { background: 'var(--nav-hover-bg)', color: 'var(--text-secondary)' } : undefined}
-                  >
-                    {{ title: '标题', overview: '简介', genres: '类型', tagline: '宣传语' }[field]}
-                  </button>
-                ))}
+                {TRANSLATE_FIELDS.map((field) => {
+                  const selected = translateFields.includes(field.value)
+                  return (
+                    <button
+                      key={field.value}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setTranslateFields((previous) =>
+                        previous.includes(field.value)
+                          ? previous.filter((value) => value !== field.value)
+                          : [...previous, field.value]
+                      )}
+                      className="rounded-[var(--nv-radius-control)] border px-3 py-1.5 text-xs font-medium outline-none transition-[background-color,border-color,color,box-shadow] focus-visible:shadow-[var(--nv-shadow-focus)]"
+                      style={{
+                        borderColor: selected ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
+                        background: selected ? 'var(--nv-bg-active)' : 'var(--nv-bg-control)',
+                        color: selected ? 'var(--nv-action-primary)' : 'var(--nv-text-secondary)',
+                      }}
+                    >
+                      {field.label}
+                    </button>
+                  )
+                })}
               </div>
-            </div>
-
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              将对 {translateTaskIds.length} 个任务执行翻译，需要 AI 服务支持
-            </p>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button onClick={() => setShowTranslateDialog(false)} className="rounded-xl px-4 py-2 text-sm font-medium" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}>
-                取消
-              </button>
-              <button onClick={handleTranslate} className="btn-primary gap-1.5 px-4 py-2 text-sm" style={{ background: 'linear-gradient(135deg, #a855f7, #6366f1)' }}>
-                <Languages size={14} />
-                开始翻译
-              </button>
-            </div>
-          </div>
-        </div>
+            </Field>
+          </ModalBody>
+          <ModalFooter>
+            <Button type="button" variant="ghost" onClick={() => setShowTranslateDialog(false)}>取消</Button>
+            <Button type="button" variant="primary" onClick={() => void handleTranslate()}>
+              <Languages size={14} aria-hidden="true" />
+              开始翻译
+            </Button>
+          </ModalFooter>
+        </Modal>
       )}
 
-      {/* ==================== 编辑/详情对话框 ==================== */}
       {editingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setEditingTask(null)}>
-          <div className="glass-panel w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl p-6 space-y-4 animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                <Edit3 size={18} className="text-blue-400" />
-                编辑刮削结果
-              </h3>
-              <button onClick={() => setEditingTask(null)} className="rounded-lg p-1.5 text-surface-400 hover:text-surface-200">
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* URL信息 */}
-            <div className="rounded-lg p-3 text-xs" style={{ background: 'var(--nav-hover-bg)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>URL: </span>
-              <a href={editingTask.url} target="_blank" rel="noopener noreferrer" className="text-neon hover:underline inline-flex items-center gap-1">
+        <Modal open onClose={() => setEditingTask(null)} size="lg" ariaLabel="编辑刮削结果">
+          <ModalHeader
+            title="编辑刮削结果"
+            description="查看来源并修正已识别的元数据。"
+            icon={<Edit3 size={18} aria-hidden="true" />}
+            onClose={() => setEditingTask(null)}
+          />
+          <ModalBody className="space-y-4">
+            <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3 text-xs">
+              <span className="text-[var(--nv-text-tertiary)]">URL：</span>
+              <a
+                href={editingTask.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex max-w-full items-center gap-1 break-all text-[var(--nv-action-primary)] hover:underline"
+              >
                 {editingTask.url}
-                <ExternalLink size={10} />
+                <ExternalLink size={10} className="shrink-0" aria-hidden="true" />
               </a>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>标题</label>
-                <input type="text" value={editingTask.result_title} onChange={e => setEditingTask({ ...editingTask, result_title: e.target.value })} className="input w-full" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>原始标题</label>
-                <input type="text" value={editingTask.result_orig_title} onChange={e => setEditingTask({ ...editingTask, result_orig_title: e.target.value })} className="input w-full" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>年份</label>
-                <input type="number" value={editingTask.result_year || ''} onChange={e => setEditingTask({ ...editingTask, result_year: parseInt(e.target.value) || 0 })} className="input w-full" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>评分</label>
-                <input type="number" step="0.1" value={editingTask.result_rating || ''} onChange={e => setEditingTask({ ...editingTask, result_rating: parseFloat(e.target.value) || 0 })} className="input w-full" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>类型</label>
-                <input type="text" value={editingTask.result_genres} onChange={e => setEditingTask({ ...editingTask, result_genres: e.target.value })} className="input w-full" placeholder="动作,科幻,冒险" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>国家</label>
-                <input type="text" value={editingTask.result_country} onChange={e => setEditingTask({ ...editingTask, result_country: e.target.value })} className="input w-full" />
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="标题">
+                <Input value={editingTask.result_title} onChange={(event) => setEditingTask({ ...editingTask, result_title: event.target.value })} />
+              </Field>
+              <Field label="原始标题">
+                <Input value={editingTask.result_orig_title} onChange={(event) => setEditingTask({ ...editingTask, result_orig_title: event.target.value })} />
+              </Field>
+              <Field label="年份">
+                <Input type="number" value={editingTask.result_year || ''} onChange={(event) => setEditingTask({ ...editingTask, result_year: Number.parseInt(event.target.value, 10) || 0 })} />
+              </Field>
+              <Field label="评分">
+                <Input type="number" step="0.1" value={editingTask.result_rating || ''} onChange={(event) => setEditingTask({ ...editingTask, result_rating: Number.parseFloat(event.target.value) || 0 })} />
+              </Field>
+              <Field label="类型">
+                <Input value={editingTask.result_genres} onChange={(event) => setEditingTask({ ...editingTask, result_genres: event.target.value })} placeholder="动作,科幻,冒险" />
+              </Field>
+              <Field label="国家">
+                <Input value={editingTask.result_country} onChange={(event) => setEditingTask({ ...editingTask, result_country: event.target.value })} />
+              </Field>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>简介</label>
-              <textarea value={editingTask.result_overview} onChange={e => setEditingTask({ ...editingTask, result_overview: e.target.value })} className="input w-full h-24 resize-y text-xs" />
-            </div>
+            <Field label="简介">
+              <Textarea value={editingTask.result_overview} onChange={(event) => setEditingTask({ ...editingTask, result_overview: event.target.value })} className="min-h-28 resize-y text-xs" />
+            </Field>
 
-            {/* 翻译结果预览 */}
             {editingTask.translate_status === 'done' && (
-              <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(168, 85, 247, 0.05)', border: '1px solid rgba(168, 85, 247, 0.15)' }}>
-                <h4 className="text-xs font-semibold text-purple-400 flex items-center gap-1.5">
-                  <Languages size={12} />
+              <div className="space-y-2 rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--nv-action-primary)]">
+                  <Languages size={13} aria-hidden="true" />
                   翻译结果 ({editingTask.translate_lang})
-                </h4>
+                </div>
                 {editingTask.translated_title && (
-                  <p className="text-xs"><span style={{ color: 'var(--text-muted)' }}>标题: </span><span style={{ color: 'var(--text-primary)' }}>{editingTask.translated_title}</span></p>
+                  <PreviewLine label="标题">{editingTask.translated_title}</PreviewLine>
                 )}
                 {editingTask.translated_overview && (
-                  <p className="text-xs"><span style={{ color: 'var(--text-muted)' }}>简介: </span><span style={{ color: 'var(--text-secondary)' }}>{editingTask.translated_overview}</span></p>
+                  <PreviewLine label="简介">{editingTask.translated_overview}</PreviewLine>
                 )}
                 {editingTask.translated_genres && (
-                  <p className="text-xs"><span style={{ color: 'var(--text-muted)' }}>类型: </span><span style={{ color: 'var(--text-secondary)' }}>{editingTask.translated_genres}</span></p>
+                  <PreviewLine label="类型">{editingTask.translated_genres}</PreviewLine>
                 )}
               </div>
             )}
-
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-2">
-                <span className={clsx('text-xs font-medium', qualityColor(editingTask.quality_score))}>
-                  <BarChart3 size={12} className="inline mr-1" />
-                  质量评分: {editingTask.quality_score}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setEditingTask(null)} className="rounded-xl px-4 py-2 text-sm font-medium" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}>
-                  取消
-                </button>
-                <button onClick={handleSaveEdit} className="btn-primary gap-1.5 px-4 py-2 text-sm">
-                  <Check size={14} />
-                  保存修改
-                </button>
-              </div>
+          </ModalBody>
+          <ModalFooter className="justify-between">
+            <Tag tone={qualityTone(editingTask.quality_score)}>
+              <BarChart3 size={12} aria-hidden="true" />
+              质量评分：{editingTask.quality_score}
+            </Tag>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditingTask(null)}>取消</Button>
+              <Button type="button" variant="primary" onClick={() => void handleSaveEdit()}>
+                <Check size={14} aria-hidden="true" />
+                保存修改
+              </Button>
             </div>
-          </div>
-        </div>
+          </ModalFooter>
+        </Modal>
       )}
 
-      {/* ==================== 操作历史对话框 ==================== */}
       {showHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
-          <div className="glass-panel w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-6 space-y-4 animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                <FileText size={18} className="text-neon" />
-                操作历史
-              </h3>
-              <button onClick={() => setShowHistory(false)} className="rounded-lg p-1.5 text-surface-400 hover:text-surface-200">
-                <X size={16} />
-              </button>
-            </div>
-
+        <Modal open onClose={() => setShowHistory(false)} size="md" ariaLabel="操作历史">
+          <ModalHeader
+            title="操作历史"
+            description="最近 50 条刮削任务操作记录。"
+            icon={<FileText size={18} aria-hidden="true" />}
+            onClose={() => setShowHistory(false)}
+          />
+          <ModalBody>
             {history.length > 0 ? (
               <div className="space-y-2">
-                {history.map(h => (
-                  <div key={h.id} className="flex items-start gap-3 rounded-lg p-3" style={{ background: 'var(--nav-hover-bg)' }}>
-                    <div className="mt-0.5">
-                      {h.action.includes('fail') ? <X size={12} className="text-red-400" /> :
-                       h.action.includes('done') || h.action === 'created' ? <Check size={12} className="text-green-400" /> :
-                       <Clock size={12} className="text-surface-400" />}
+                {history.map((item) => (
+                  <div key={item.id} className="flex items-start gap-3 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
+                    <Tag tone={historyTone(item.action)} className="shrink-0">{item.action}</Tag>
+                    <div className="min-w-0 flex-1">
+                      {item.detail && <p className="break-words text-xs leading-5 text-[var(--nv-text-secondary)]">{item.detail}</p>}
+                      <time className="mt-1 block text-[10px] text-[var(--nv-text-tertiary)]" dateTime={item.created_at}>
+                        {new Date(item.created_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </time>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{h.action}</p>
-                      {h.detail && <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>{h.detail}</p>}
-                    </div>
-                    <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {new Date(h.created_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-sm py-8" style={{ color: 'var(--text-muted)' }}>暂无操作记录</p>
+              <EmptyState icon={<Clock size={24} />} title="暂无操作记录" className="min-h-52" />
             )}
-          </div>
-        </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button type="button" variant="ghost" onClick={() => setShowHistory(false)}>关闭</Button>
+          </ModalFooter>
+        </Modal>
       )}
     </div>
+  )
+}
+
+function ScrapeActions({
+  onHistory,
+  onExport,
+  onRefresh,
+  onCreate,
+  createOpen,
+}: {
+  onHistory: () => void
+  onExport: () => void
+  onRefresh: () => void
+  onCreate: () => void
+  createOpen: boolean
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button type="button" variant="secondary" size="sm" onClick={onHistory}>
+        <Clock size={14} aria-hidden="true" />
+        操作历史
+      </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={onExport}>
+        <Download size={14} aria-hidden="true" />
+        导出
+      </Button>
+      <Button type="button" variant="ghost" size="sm" iconOnly onClick={onRefresh} aria-label="刷新刮削任务" title="刷新">
+        <RefreshCw size={15} aria-hidden="true" />
+      </Button>
+      <Button type="button" variant={createOpen ? 'secondary' : 'primary'} size="sm" onClick={onCreate}>
+        <Plus size={14} aria-hidden="true" />
+        {createOpen ? '收起创建' : '新建任务'}
+      </Button>
+    </div>
+  )
+}
+
+function StatisticsGrid({ stats }: { stats: ScrapeStatistics }) {
+  const items: Array<{ label: string; value: number; tone: TagTone }> = [
+    { label: '总计', value: stats.total, tone: 'brand' },
+    { label: '待处理', value: stats.pending, tone: 'neutral' },
+    { label: '刮削中', value: stats.scraping, tone: 'warning' },
+    { label: '已刮削', value: stats.scraped, tone: 'brand' },
+    { label: '翻译中', value: stats.translating, tone: 'brand' },
+    { label: '已完成', value: stats.completed, tone: 'success' },
+    { label: '失败', value: stats.failed, tone: 'danger' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      {items.map((item) => (
+        <Surface key={item.label} className="p-3 text-center">
+          <div className="flex justify-center"><Tag tone={item.tone}>{item.label}</Tag></div>
+          <p className="mt-2 text-xl font-semibold text-[var(--nv-text-primary)]">{item.value || 0}</p>
+        </Surface>
+      ))}
+    </div>
+  )
+}
+
+function ModeButton({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className="flex items-center gap-1.5 rounded-[var(--nv-radius-control)] px-3 py-1.5 text-xs font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:shadow-[var(--nv-shadow-focus)]"
+      style={{
+        background: selected ? 'var(--nv-bg-active)' : 'transparent',
+        color: selected ? 'var(--nv-action-primary)' : 'var(--nv-text-secondary)',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium text-[var(--nv-text-secondary)]">{label}</span>
+      {children}
+      {hint && <span className="block text-xs text-[var(--nv-text-tertiary)]">{hint}</span>}
+    </label>
+  )
+}
+
+function TaskRow({
+  task,
+  selected,
+  onToggle,
+  onScrape,
+  onTranslate,
+  onEdit,
+  onDelete,
+}: {
+  task: ScrapeTask
+  selected: boolean
+  onToggle: () => void
+  onScrape: () => void
+  onTranslate: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const status = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
+  const translateStatus = TRANSLATE_STATUS_CONFIG[task.translate_status] || TRANSLATE_STATUS_CONFIG.none
+  const StatusIcon = status.icon
+
+  return (
+    <article
+      className={clsx(
+        'grid gap-3 px-4 py-3 transition-colors hover:bg-[var(--nv-bg-hover)] lg:grid-cols-[32px_minmax(170px,1.4fr)_72px_94px_82px_64px_minmax(120px,1fr)_132px] lg:items-center',
+        selected && 'bg-[var(--nv-bg-active)]',
+      )}
+    >
+      <button type="button" onClick={onToggle} className="text-left text-[var(--nv-text-tertiary)] hover:text-[var(--nv-action-primary)]" aria-label={selected ? '取消选择任务' : '选择任务'}>
+        {selected ? <CheckSquare size={15} className="text-[var(--nv-action-primary)]" /> : <Square size={15} />}
+      </button>
+
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-[var(--nv-text-primary)]">{task.result_title || task.title || '未识别'}</p>
+        <p className="mt-0.5 truncate text-[10px] text-[var(--nv-text-tertiary)]">{task.url}</p>
+      </div>
+
+      <div><Tag tone="neutral">{task.source.toUpperCase()}</Tag></div>
+      <div>
+        <Tag tone={status.tone}>
+          <StatusIcon size={10} className={task.status === 'scraping' || task.status === 'translating' ? 'animate-spin' : undefined} />
+          {status.label}
+        </Tag>
+      </div>
+      <div><Tag tone={translateStatus.tone}>{translateStatus.label}</Tag></div>
+      <div><Tag tone={qualityTone(task.quality_score)}>{task.quality_score > 0 ? task.quality_score : '—'}</Tag></div>
+
+      <div className="min-w-0">
+        {task.error_message && (
+          <span className="flex items-center gap-1 truncate text-[10px] text-[var(--nv-status-danger)]">
+            <AlertCircle size={10} className="shrink-0" aria-hidden="true" />
+            {task.error_message}
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1 lg:justify-end">
+        {(task.status === 'pending' || task.status === 'failed') && (
+          <Button type="button" variant="ghost" size="sm" iconOnly onClick={onScrape} title="开始刮削" aria-label="开始刮削">
+            <Play size={13} />
+          </Button>
+        )}
+        {(task.status === 'scraped' || task.status === 'completed') && (
+          <Button type="button" variant="ghost" size="sm" iconOnly onClick={onTranslate} title="翻译" aria-label="翻译">
+            <Languages size={13} />
+          </Button>
+        )}
+        <Button type="button" variant="ghost" size="sm" iconOnly onClick={onEdit} title="查看/编辑" aria-label="查看或编辑">
+          <Edit3 size={13} />
+        </Button>
+        <Button type="button" variant="danger" size="sm" iconOnly onClick={onDelete} title="删除" aria-label="删除任务">
+          <Trash2 size={13} />
+        </Button>
+      </div>
+    </article>
+  )
+}
+
+function PreviewLine({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <p className="text-xs leading-5">
+      <span className="text-[var(--nv-text-tertiary)]">{label}：</span>
+      <span className="text-[var(--nv-text-secondary)]">{children}</span>
+    </p>
   )
 }
