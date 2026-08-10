@@ -278,10 +278,15 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
     </>
   )
 
+  const sidebarShellClassName = 'border-r border-[var(--nv-border-subtle)] bg-[var(--nv-bg-elevated)] shadow-[var(--nv-shadow-card)]'
+
   return (
     <>
       <motion.aside
-        className="glass-panel-strong relative z-20 hidden h-screen flex-shrink-0 flex-col overflow-hidden border-r border-[var(--nv-border-subtle)] md:flex"
+        className={clsx(
+          sidebarShellClassName,
+          'relative z-20 hidden h-screen flex-shrink-0 flex-col overflow-hidden md:flex',
+        )}
         animate={collapsed ? 'collapsed' : 'expanded'}
         variants={sidebarVariants}
         style={{ willChange: 'width' }}
@@ -296,7 +301,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             {isMobileOpen && (
               <motion.div
                 key="sidebar-overlay"
-                className="fixed inset-0 z-[9998] bg-black/55 md:hidden"
+                className="fixed inset-0 z-[9998] bg-[var(--nv-bg-overlay)] md:hidden"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -310,7 +315,10 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
             {isMobileOpen && (
               <motion.aside
                 key="sidebar-drawer"
-                className="glass-panel-strong fixed inset-y-0 left-0 z-[9999] flex w-64 flex-col border-r border-[var(--nv-border-subtle)] md:hidden"
+                className={clsx(
+                  sidebarShellClassName,
+                  'fixed inset-y-0 left-0 z-[9999] flex w-64 flex-col md:hidden',
+                )}
                 variants={sidebarMobileVariants}
                 initial="hidden"
                 animate="visible"
