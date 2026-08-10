@@ -1,19 +1,20 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FolderNode } from '@/types'
 import {
   ChevronRight,
+  Copy,
   Folder,
   FolderOpen,
   FolderPlus,
-  Loader2,
   FolderTree as FolderTreeIcon,
   Home,
+  Loader2,
   Pencil,
-  Trash2,
   RefreshCw,
-  Copy,
+  Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { Surface } from '@/components/design-system'
 import ContextMenu from './ContextMenu'
 import type { ContextMenuItem } from './ContextMenu'
 
@@ -30,7 +31,6 @@ interface FolderTreeProps {
   onCopyPath?: (path: string) => void
 }
 
-// 单个树节点
 function TreeNode({
   node,
   selectedPath,
@@ -42,105 +42,129 @@ function TreeNode({
   node: FolderNode
   selectedPath: string
   onSelect: (path: string) => void
-  onContextMenu: (e: React.MouseEvent, node: FolderNode) => void
+  onContextMenu: (event: React.MouseEvent, node: FolderNode) => void
   depth?: number
   scrollIntoView?: boolean
 }) {
-  const [expanded, setExpanded] = useState(depth < 1) // 默认展开第一层
+  const [expanded, setExpanded] = useState(depth < 1)
   const isSelected = selectedPath === node.path
-  const hasChildren = node.children && node.children.length > 0
+  const hasChildren = Boolean(node.children?.length)
   const nodeRef = useRef<HTMLDivElement>(null)
 
-  // 选中节点自动滚动到可视区域
   useEffect(() => {
     if (isSelected && scrollIntoView && nodeRef.current) {
       nodeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [isSelected, scrollIntoView])
 
-  // 当选中路径是当前节点的子路径时，自动展开
   useEffect(() => {
     if (selectedPath && hasChildren && selectedPath.startsWith(node.path + '/')) {
       setExpanded(true)
     }
   }, [selectedPath, node.path, hasChildren])
 
-  const handleToggle = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    setExpanded(!expanded)
-  }, [expanded])
+  const handleToggle = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation()
+    setExpanded((value) => !value)
+  }, [])
 
   const handleSelect = useCallback(() => {
     onSelect(node.path)
-    if (hasChildren && !expanded) {
-      setExpanded(true)
-    }
+    if (hasChildren && !expanded) setExpanded(true)
   }, [node.path, onSelect, hasChildren, expanded])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
     onSelect(node.path)
-    onContextMenu(e, node)
+    onContextMenu(event, node)
   }, [node, onSelect, onContextMenu])
 
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleSelect()
+    }
+    if (event.key === 'ArrowRight' && hasChildren) {
+      event.preventDefault()
+      setExpanded(true)
+    }
+    if (event.key === 'ArrowLeft' && hasChildren) {
+      event.preventDefault()
+      setExpanded(false)
+    }
+  }, [handleSelect, hasChildren])
+
   return (
-    <div>
+    <div role="none">
       <div
         ref={nodeRef}
+        role="treeitem"
+        tabIndex={0}
+        aria-selected={isSelected}
+        aria-expanded={hasChildren ? expanded : undefined}
         onClick={handleSelect}
+        onKeyDown={handleKeyDown}
         onContextMenu={handleContextMenu}
         className={clsx(
-          'flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer text-sm transition-all group',
+          'group flex cursor-pointer items-center gap-1.5 rounded-[var(--nv-radius-control)] py-1.5 pr-2 text-sm outline-none transition-[background-color,color,box-shadow] duration-200 focus-visible:shadow-[var(--nv-shadow-focus)]',
           isSelected
-            ? 'bg-neon-blue/10 text-neon'
-            : 'hover:bg-white/[0.04] text-surface-300 hover:text-surface-100'
+            ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]'
+            : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         title={node.path}
       >
-        {/* 展开/收起箭头 */}
         {hasChildren ? (
           <button
+            type="button"
             onClick={handleToggle}
-            className="flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-transform"
+            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[var(--nv-radius-sm)] text-[var(--nv-text-tertiary)] outline-none transition-[background-color,color] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)]"
+            aria-label={expanded ? `收起 ${node.name}` : `展开 ${node.name}`}
+            aria-expanded={expanded}
           >
             <ChevronRight
               size={14}
-              className={clsx(
-                'text-surface-400 transition-transform duration-200',
-                expanded && 'rotate-90'
-              )}
+              className={clsx('transition-transform duration-200 motion-reduce:transition-none', expanded && 'rotate-90')}
+              aria-hidden="true"
             />
           </button>
         ) : (
-          <span className="w-[18px] flex-shrink-0" />
+          <span className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
         )}
 
-        {/* 文件夹图标 */}
         {isSelected || expanded ? (
-          <FolderOpen size={16} className={clsx('flex-shrink-0', isSelected ? 'text-neon' : 'text-amber-400/70')} />
+          <FolderOpen
+            size={16}
+            className={clsx('shrink-0', isSelected ? 'text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-tertiary)]')}
+            aria-hidden="true"
+          />
         ) : (
-          <Folder size={16} className="flex-shrink-0 text-amber-400/50 group-hover:text-amber-400/70" />
+          <Folder
+            size={16}
+            className="shrink-0 text-[var(--nv-text-tertiary)] transition-colors group-hover:text-[var(--nv-text-secondary)]"
+            aria-hidden="true"
+          />
         )}
 
-        {/* 文件夹名称 */}
-        <span className="truncate flex-1 min-w-0">{node.name}</span>
+        <span className="min-w-0 flex-1 truncate">{node.name}</span>
 
-        {/* 文件数量 */}
         {node.file_count > 0 && (
-          <span className={clsx(
-            'flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full',
-            isSelected ? 'bg-neon-blue/20 text-neon' : 'bg-surface-700/50 text-surface-400'
-          )}>
+          <span
+            className={clsx(
+              'shrink-0 rounded-[var(--nv-radius-pill)] border px-1.5 py-0.5 text-[10px] leading-none',
+              isSelected
+                ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-control)] text-[var(--nv-action-primary)]'
+                : 'border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-text-tertiary)]',
+            )}
+          >
             {node.file_count}
           </span>
         )}
       </div>
 
-      {/* 子节点 - 带展开/收起动画 */}
       {expanded && hasChildren && (
-        <div className="animate-slide-down">
+        <div role="group" className="animate-slide-down motion-reduce:animate-none">
           {node.children.map((child) => (
             <TreeNode
               key={child.path}
@@ -170,42 +194,44 @@ export default function FolderTree({
   onRefreshFolder,
   onCopyPath,
 }: FolderTreeProps) {
-  // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{
-    visible: boolean; x: number; y: number; node: FolderNode | null
+    visible: boolean
+    x: number
+    y: number
+    node: FolderNode | null
   }>({ visible: false, x: 0, y: 0, node: null })
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, node: FolderNode) => {
-    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, node })
+  const handleContextMenu = useCallback((event: React.MouseEvent, node: FolderNode) => {
+    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, node })
   }, [])
 
   const closeContextMenu = useCallback(() => {
-    setContextMenu(prev => ({ ...prev, visible: false }))
+    setContextMenu((value) => ({ ...value, visible: false }))
   }, [])
 
-  // 构建右键菜单项
   const getContextMenuItems = useCallback((): ContextMenuItem[] => {
     const node = contextMenu.node
     if (!node) return []
+
     return [
       {
         key: 'create',
         label: '新建子文件夹',
-        icon: <FolderPlus size={14} />,
+        icon: <FolderPlus size={14} aria-hidden="true" />,
         disabled: !onCreateFolder,
         onClick: () => onCreateFolder?.(node.path),
       },
       {
         key: 'rename',
         label: '重命名',
-        icon: <Pencil size={14} />,
+        icon: <Pencil size={14} aria-hidden="true" />,
         disabled: !onRenameFolder,
         onClick: () => onRenameFolder?.(node.path),
       },
       {
         key: 'refresh',
         label: '刷新',
-        icon: <RefreshCw size={14} />,
+        icon: <RefreshCw size={14} aria-hidden="true" />,
         divider: true,
         disabled: !onRefreshFolder,
         onClick: () => onRefreshFolder?.(),
@@ -213,13 +239,14 @@ export default function FolderTree({
       {
         key: 'copy-path',
         label: '复制路径',
-        icon: <Copy size={14} />,
+        icon: <Copy size={14} aria-hidden="true" />,
+        disabled: !onCopyPath,
         onClick: () => onCopyPath?.(node.path),
       },
       {
         key: 'delete',
         label: '删除文件夹',
-        icon: <Trash2 size={14} />,
+        icon: <Trash2 size={14} aria-hidden="true" />,
         danger: true,
         divider: true,
         disabled: !onDeleteFolder,
@@ -228,51 +255,42 @@ export default function FolderTree({
     ]
   }, [contextMenu.node, onCreateFolder, onRenameFolder, onDeleteFolder, onRefreshFolder, onCopyPath])
 
-  // 滚动容器引用，用于自动滚动到选中节点
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
   return (
-    <div className="glass-panel rounded-xl flex flex-col h-full overflow-hidden">
-      {/* 标题栏 */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: 'var(--border-default)' }}>
-        <FolderTreeIcon size={16} className="text-neon flex-shrink-0" />
-        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>文件夹导航</span>
+    <Surface className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--nv-border-subtle)] px-3 py-2.5">
+        <FolderTreeIcon size={16} className="shrink-0 text-[var(--nv-action-primary)]" aria-hidden="true" />
+        <span className="text-sm font-semibold text-[var(--nv-text-primary)]">文件夹导航</span>
       </div>
 
-      {/* 全部文件按钮 */}
-      <div className="flex-shrink-0 px-2 pt-2">
+      <div className="shrink-0 px-2 pt-2">
         <button
+          type="button"
           onClick={onClearFolder}
+          aria-current={!selectedPath ? 'page' : undefined}
           className={clsx(
-            'flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-sm transition-all',
+            'flex w-full items-center gap-2 rounded-[var(--nv-radius-control)] px-2 py-1.5 text-sm outline-none transition-[background-color,color,box-shadow] duration-200 focus-visible:shadow-[var(--nv-shadow-focus)]',
             !selectedPath
-              ? 'bg-neon-blue/10 text-neon'
-              : 'hover:bg-white/[0.04] text-surface-300 hover:text-surface-100'
+              ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]'
+              : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
           )}
         >
-          <Home size={16} />
+          <Home size={16} aria-hidden="true" />
           <span>全部文件</span>
         </button>
       </div>
 
-      {/* 树形列表 - 可滚动区域 */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-2 py-1 min-h-0"
-        style={{
-          scrollBehavior: 'smooth',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255,255,255,0.15) transparent',
-        }}
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1" role="tree" aria-label="文件夹目录">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-surface-400" />
+          <div className="flex items-center justify-center py-8 text-[var(--nv-text-tertiary)]">
+            <Loader2 size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <span className="sr-only">正在加载文件夹</span>
           </div>
         ) : tree.length === 0 ? (
-          <div className="text-center py-8">
-            <Folder size={32} className="mx-auto mb-2 text-surface-600" />
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>暂无文件夹</p>
+          <div className="px-4 py-8 text-center text-[var(--nv-text-tertiary)]">
+            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)]">
+              <Folder size={20} aria-hidden="true" />
+            </div>
+            <p className="text-xs">暂无文件夹</p>
           </div>
         ) : (
           tree.map((node) => (
@@ -288,7 +306,6 @@ export default function FolderTree({
         )}
       </div>
 
-      {/* 右键菜单 */}
       <ContextMenu
         visible={contextMenu.visible}
         x={contextMenu.x}
@@ -296,6 +313,6 @@ export default function FolderTree({
         items={getContextMenuItems()}
         onClose={closeContextMenu}
       />
-    </div>
+    </Surface>
   )
 }
