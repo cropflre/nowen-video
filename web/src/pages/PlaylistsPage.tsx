@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronDown, ChevronUp, ListVideo, Play, Plus, Trash2, X } from 'lucide-react'
 import { playlistApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useDialog } from '@/components/Dialog'
@@ -7,15 +8,7 @@ import { useTranslation } from '@/i18n'
 import { usePagination } from '@/hooks/usePagination'
 import Pagination from '@/components/Pagination'
 import type { Playlist } from '@/types'
-import {
-  ListVideo,
-  Plus,
-  Trash2,
-  Play,
-  ChevronDown,
-  ChevronUp,
-  X,
-} from 'lucide-react'
+import { Button, EmptyState, Input, Surface, Tag } from '@/components/design-system'
 
 export default function PlaylistsPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -42,7 +35,7 @@ export default function PlaylistsPage() {
   }
 
   useEffect(() => {
-    fetchPlaylists()
+    void fetchPlaylists()
   }, [])
 
   const handleCreate = async () => {
@@ -51,7 +44,7 @@ export default function PlaylistsPage() {
       await playlistApi.create({ name: newName.trim() })
       setNewName('')
       setShowCreate(false)
-      fetchPlaylists()
+      void fetchPlaylists()
     } catch {
       toast.error(t('playlists.createFailed'))
     }
@@ -67,7 +60,7 @@ export default function PlaylistsPage() {
     if (!ok) return
     try {
       await playlistApi.delete(id)
-      setPlaylists((p) => p.filter((pl) => pl.id !== id))
+      setPlaylists((previous) => previous.filter((playlist) => playlist.id !== id))
     } catch {
       toast.error(t('playlists.deleteFailed'))
     }
@@ -76,13 +69,12 @@ export default function PlaylistsPage() {
   const handleRemoveItem = async (playlistId: string, mediaId: string) => {
     try {
       await playlistApi.removeItem(playlistId, mediaId)
-      fetchPlaylists()
+      void fetchPlaylists()
     } catch {
       toast.error(t('playlists.removeFailed'))
     }
   }
 
-  // 当前页数据（前端分页）
   const pagedPlaylists = useMemo(() => {
     const start = (page - 1) * size
     return playlists.slice(start, start + size)
@@ -92,177 +84,191 @@ export default function PlaylistsPage() {
   const pages = totalPages(total)
 
   return (
-    <div>
-      {/* 标题栏 */}
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-          <ListVideo size={24} className="text-neon" />
-          {t('playlists.title')}
-        </h1>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="btn-primary gap-1.5 px-3 py-2 text-sm"
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-[var(--nv-text-primary)]">
+            <ListVideo size={23} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+            {t('playlists.title')}
+          </h1>
+          <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
+            整理常看内容，快速进入播放，并管理列表中的媒体项目。
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => setShowCreate((current) => !current)}
+          aria-expanded={showCreate}
         >
-          <Plus size={16} />
+          <Plus size={16} aria-hidden="true" />
           {t('playlists.create')}
-        </button>
-      </div>
+        </Button>
+      </header>
 
-      {/* 创建表单 */}
       {showCreate && (
-        <div className="glass-panel mb-6 animate-slide-up rounded-xl p-4">
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="input flex-1"
-              placeholder={t('playlists.namePlaceholder')}
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            />
-            <button onClick={handleCreate} className="btn-primary px-4 py-2 text-sm">
-              {t('playlists.createBtn')}
-            </button>
-            <button
-              onClick={() => setShowCreate(false)}
-              className="btn-ghost px-4 py-2 text-sm"
-            >
-              {t('playlists.cancelBtn')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 加载状态 */}
-      {loading && (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="rounded-xl p-4" style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border-default)',
-            }}>
-              <div className="skeleton h-6 w-1/4 rounded" />
-              <div className="skeleton mt-2 h-4 w-1/3 rounded" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 播放列表 */}
-      {!loading && (
-        <div className="space-y-4">
-          {pagedPlaylists.map((playlist) => (
-            <div
-              key={playlist.id}
-              className="glass-panel overflow-hidden rounded-xl"
-            >
-              {/* 列表头 */}
-              <div className="flex items-center justify-between p-4">
-                <button
-                  onClick={() =>
-                    setExpandedId(expandedId === playlist.id ? null : playlist.id)
-                  }
-                  className="flex flex-1 items-center gap-3 text-left"
-                >
-                  <ListVideo size={20} className="text-neon" />
-                  <div>
-                    <h3 className="font-medium" style={{ color: 'var(--text-primary)' }}>{playlist.name}</h3>
-                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      {t('playlists.itemCount', { count: String(playlist.items?.length || 0) })}
-                    </p>
-                  </div>
-                  {expandedId === playlist.id ? (
-                    <ChevronUp size={18} className="text-surface-400" />
-                  ) : (
-                    <ChevronDown size={18} className="text-surface-400" />
-                  )}
-                </button>
-                <button
-                  onClick={() => handleDelete(playlist.id)}
-                  className="rounded-lg p-2 text-surface-500 transition-colors hover:text-red-400 hover:bg-red-400/5"
-                  title={t('playlists.deletePlaylist')}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-
-              {/* 展开的项目列表 */}
-              {expandedId === playlist.id && (
-                <div style={{ borderTop: '1px solid var(--border-default)' }}>
-                  {(!playlist.items || playlist.items.length === 0) && (
-                    <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                      {t('playlists.emptyList')}
-                    </div>
-                  )}
-                  {playlist.items?.map((item) => (
-                    <div
-                      key={item.id}
-                      className="group flex items-center gap-3 px-4 py-3 last:border-b-0 transition-colors hover:bg-neon-blue/3"
-                      style={{ borderBottom: '1px solid var(--border-default)' }}
-                    >
-                      {/* 缩略图 */}
-                      <Link
-                        to={`/play/${item.media_id}`}
-                        className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--bg-surface)' }}
-                      >
-                        <img
-                          src={streamApi.getPosterUrl(item.media_id)}
-                          alt={item.media?.title}
-                          className="h-full w-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none'
-                          }}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                          <Play size={16} className="text-white" fill="white" />
-                        </div>
-                      </Link>
-
-                      {/* 信息 */}
-                      <Link
-                        to={`/media/${item.media_id}`}
-                        className="flex-1 text-sm font-medium transition-colors hover:text-neon"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {item.media?.title || t('history.unknownMedia')}
-                      </Link>
-
-                      {/* 移除 */}
-                      <button
-                        onClick={() => handleRemoveItem(playlist.id, item.media_id)}
-                        className="rounded-lg p-1.5 text-surface-500 opacity-0 transition-all hover:text-red-400 group-hover:opacity-100"
-                        title={t('playlists.removeFromList')}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* 空状态 */}
-          {playlists.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div
-                className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl animate-float"
-                style={{
-                  background: 'var(--neon-blue-5)',
-                  border: '1px solid var(--neon-blue-8)',
+        <Surface className="p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <label htmlFor="playlist-name" className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">
+                {t('playlists.namePlaceholder')}
+              </label>
+              <Input
+                id="playlist-name"
+                type="text"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder={t('playlists.namePlaceholder')}
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void handleCreate()
                 }}
-              >
-                <ListVideo size={36} className="text-surface-600" />
-              </div>
-              <p className="font-display text-base font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>{t('playlists.empty')}</p>
-              <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                {t('playlists.emptyHint')}
-              </p>
+              />
             </div>
-          )}
+            <div className="flex flex-wrap gap-2 sm:self-end">
+              <Button type="button" variant="primary" onClick={() => void handleCreate()} disabled={!newName.trim()}>
+                {t('playlists.createBtn')}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
+                {t('playlists.cancelBtn')}
+              </Button>
+            </div>
+          </div>
+        </Surface>
+      )}
 
-          {/* 分页 */}
+      {loading ? (
+        <div className="space-y-3" aria-label="正在加载播放列表">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Surface key={index} className="p-4">
+              <div className="skeleton h-5 w-1/4 rounded-[var(--nv-radius-control)]" />
+              <div className="skeleton mt-2 h-4 w-1/3 rounded-[var(--nv-radius-control)]" />
+            </Surface>
+          ))}
+        </div>
+      ) : playlists.length === 0 ? (
+        <Surface className="overflow-hidden p-0">
+          <EmptyState
+            icon={<ListVideo size={26} />}
+            title={t('playlists.empty')}
+            description={t('playlists.emptyHint')}
+            action={(
+              <Button type="button" variant="primary" onClick={() => setShowCreate(true)}>
+                <Plus size={15} aria-hidden="true" />
+                {t('playlists.create')}
+              </Button>
+            )}
+          />
+        </Surface>
+      ) : (
+        <div className="space-y-4">
+          {pagedPlaylists.map((playlist) => {
+            const expanded = expandedId === playlist.id
+            const itemCount = playlist.items?.length || 0
+
+            return (
+              <Surface key={playlist.id} className="overflow-hidden p-0">
+                <div className="flex items-center gap-2 px-4 py-3 sm:px-5 sm:py-4">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(expanded ? null : playlist.id)}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-[var(--nv-radius-control)] text-left outline-none transition-colors focus-visible:shadow-[var(--nv-shadow-focus)]"
+                    aria-expanded={expanded}
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
+                      <ListVideo size={19} aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)] sm:text-base">
+                          {playlist.name}
+                        </h3>
+                        <Tag tone="neutral">{itemCount}</Tag>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">
+                        {t('playlists.itemCount', { count: String(itemCount) })}
+                      </p>
+                    </div>
+                    {expanded ? (
+                      <ChevronUp size={18} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown size={18} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+                    )}
+                  </button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    iconOnly
+                    onClick={() => void handleDelete(playlist.id)}
+                    aria-label={t('playlists.deletePlaylist')}
+                    title={t('playlists.deletePlaylist')}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </Button>
+                </div>
+
+                {expanded && (
+                  <div className="border-t border-[var(--nv-border-subtle)]">
+                    {!playlist.items || playlist.items.length === 0 ? (
+                      <div className="px-5 py-8 text-center text-sm text-[var(--nv-text-tertiary)]">
+                        {t('playlists.emptyList')}
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[var(--nv-border-subtle)]">
+                        {playlist.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--nv-bg-hover)] sm:px-5"
+                          >
+                            <Link
+                              to={`/play/${item.media_id}`}
+                              className="relative h-14 w-24 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]"
+                              aria-label={`播放 ${item.media?.title || t('history.unknownMedia')}`}
+                            >
+                              <img
+                                src={streamApi.getPosterUrl(item.media_id)}
+                                alt={item.media?.title || ''}
+                                className="h-full w-full object-cover"
+                                onError={(event) => {
+                                  (event.currentTarget as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                                <Play size={16} className="text-white" fill="currentColor" aria-hidden="true" />
+                              </div>
+                            </Link>
+
+                            <Link
+                              to={`/media/${item.media_id}`}
+                              className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--nv-text-primary)] transition-colors hover:text-[var(--nv-action-primary)] focus-visible:text-[var(--nv-action-primary)]"
+                            >
+                              {item.media?.title || t('history.unknownMedia')}
+                            </Link>
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              iconOnly
+                              onClick={() => void handleRemoveItem(playlist.id, item.media_id)}
+                              className="shrink-0 text-[var(--nv-text-tertiary)] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                              aria-label={t('playlists.removeFromList')}
+                              title={t('playlists.removeFromList')}
+                            >
+                              <X size={14} aria-hidden="true" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Surface>
+            )
+          })}
+
           <Pagination
             page={page}
             totalPages={pages}
