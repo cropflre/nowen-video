@@ -10,9 +10,6 @@ import './index.css'
 import './styles/fluent.css'
 import './styles/design-system.css'
 import './styles/design-system-compat.css'
-// Remaining non-admin legacy callers still use generic .input/.btn-*/.glass-panel selectors.
-// Keep the bridge explicit at the app entry until those callers are migrated and the file can be deleted.
-import './styles/admin-legacy-compat.css'
 import './styles/admin-design-system.css'
 import './styles/player-cinema.css'
 import './styles/player-speed-menu.css'
