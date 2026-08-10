@@ -14,8 +14,6 @@ import type {
   FolderBatchTask,
   FolderScanResult,
 } from '@/api/adultScraper'
-
-
 import {
   AlertTriangle,
   BarChart3,
@@ -36,14 +34,12 @@ import {
   XCircle,
   Zap,
 } from 'lucide-react'
-
 import clsx from 'clsx'
 import FileBrowser from '@/components/FileBrowser'
+import { Button, Input, Surface, Tag, type TagTone } from '@/components/design-system'
+import { AdminStatus, type AdminStatusTone } from '@/components/admin/AdminPrimitives'
 
 type Notice = { type: 'success' | 'error' | 'info'; text: string }
-
-
-
 
 const LAZY_DEFAULTS = {
   minRequestInterval: 1500,
@@ -71,12 +67,22 @@ function progressOf(task?: AdultLazyTaskView | null) {
   return Math.min(100, Math.round((task.current / task.total) * 100))
 }
 
-
-
-
 function isScraperUsable(config: AdultScraperConfig | null) {
   if (!config?.enabled) return false
   return (config.sources || []).some((source) => source.enabled)
+}
+
+function resultTone(status: string): TagTone {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'warning'
+}
+
+function taskTone(status?: string): TagTone {
+  if (status === 'completed') return 'success'
+  if (status === 'failed' || status === 'cancelled') return 'danger'
+  if (status === 'running') return 'brand'
+  return 'warning'
 }
 
 export default function AdultScraperSection() {
@@ -151,8 +157,6 @@ export default function AdultScraperSection() {
     }
   }, [applyLazyStatus])
 
-
-
   useEffect(() => {
     let mounted = true
     const init = async () => {
@@ -160,7 +164,7 @@ export default function AdultScraperSection() {
       await Promise.all([loadConfig(), loadTasks()])
       if (mounted) setLoading(false)
     }
-    init()
+    void init()
     return () => { mounted = false }
   }, [loadConfig, loadTasks])
 
@@ -174,7 +178,7 @@ export default function AdultScraperSection() {
     const refresh = () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
       refreshTimer = window.setTimeout(() => {
-        loadTasks()
+        void loadTasks()
       }, 250)
     }
     const events = [
@@ -197,7 +201,7 @@ export default function AdultScraperSection() {
   }, [loadTasks, off, on])
 
   useEffect(() => {
-    if (showAdvanced) loadOperations()
+    if (showAdvanced) void loadOperations()
   }, [loadOperations, showAdvanced])
 
   const unifiedTasks = useMemo<AdultLazyTaskView[]>(() => {
@@ -231,18 +235,17 @@ export default function AdultScraperSection() {
     }))
     return [...folder, ...media].sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
   }, [mediaTasks, tasks])
-  const runningTask = currentTaskView?.status === 'running' ? currentTaskView : unifiedTasks.find((task) => task.status === 'running') || null
+
+  const runningTask = currentTaskView?.status === 'running'
+    ? currentTaskView
+    : unifiedTasks.find((task) => task.status === 'running') || null
   const currentTask = currentTaskView || runningTask || unifiedTasks[0] || null
   const results = recentResultViews
-
   const successCount = results.filter((item) => item.status === 'success').length
   const failedCount = results.filter((item) => item.status === 'failed').length
   const skippedCount = results.filter((item) => item.status === 'skipped').length
   const taskProgress = progressOf(currentTask)
   const usable = isScraperUsable(config)
-
-
-
 
   const scanCurrentFolder = async (silent = false) => {
     const path = folderPath.trim()
@@ -300,7 +303,6 @@ export default function AdultScraperSection() {
     }
   }
 
-
   const stopRunningTask = async () => {
     if (!runningTask) return
     setStopping(true)
@@ -322,7 +324,11 @@ export default function AdultScraperSection() {
   const retryFailedItems = async () => {
     setRetryingFailed(true)
     try {
-      const res = await adultScraperApi.retryLazyFailed({ days: 7, concurrency: LAZY_DEFAULTS.concurrency, aggregated: LAZY_DEFAULTS.aggregated })
+      const res = await adultScraperApi.retryLazyFailed({
+        days: 7,
+        concurrency: LAZY_DEFAULTS.concurrency,
+        aggregated: LAZY_DEFAULTS.aggregated,
+      })
       const data = res.data.data
       if (data.retry_count === 0) {
         showNotice('info', '没有可重试的失败项')
@@ -336,7 +342,6 @@ export default function AdultScraperSection() {
       setRetryingFailed(false)
     }
   }
-
 
   const triggerSchedulerNow = async () => {
     setTriggeringSchedule(true)
@@ -365,7 +370,6 @@ export default function AdultScraperSection() {
   }
 
   const resetLazyDefaults = async () => {
-
     try {
       await adultScraperApi.updateConfig({
         enabled: true,
@@ -383,129 +387,152 @@ export default function AdultScraperSection() {
 
   if (loading) {
     return (
-      <section className="glass-panel rounded-xl p-8">
-        <div className="flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <Loader2 size={18} className="animate-spin text-neon" />
+      <Surface className="flex min-h-40 items-center justify-center p-8">
+        <div className="flex items-center gap-2 text-sm text-[var(--nv-text-tertiary)]">
+          <Loader2 size={18} className="animate-spin text-[var(--nv-action-primary)]" aria-hidden="true" />
           加载懒人刮削模块中...
         </div>
-      </section>
+      </Surface>
     )
   }
+
+  const noticeTone: AdminStatusTone = notice?.type === 'success'
+    ? 'success'
+    : notice?.type === 'error'
+      ? 'danger'
+      : 'active'
 
   return (
     <>
       <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="flex items-center gap-2 font-display text-lg font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
-              <Shield size={20} className="text-neon/70" />
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--nv-text-primary)]">
+              <Shield size={20} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
               懒人刮削
             </h2>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              只需要选择目录并点击开始。系统会自动识别番号、跳过已完成文件，并在后台写入 NFO / 图片 / 元数据。
+            <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+              选择目录并开始后，系统会自动识别番号、跳过已完成文件，并在后台写入 NFO、图片与元数据。
             </p>
           </div>
-          <div className={clsx(
-            'rounded-full px-3 py-1 text-xs font-medium',
-            usable ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400',
-          )}>
+          <Tag tone={usable ? 'success' : 'warning'}>
             {usable ? '开箱即用已就绪' : '首次开始时自动初始化'}
-          </div>
+          </Tag>
         </div>
 
         {notice && (
-          <div className={clsx(
-            'flex items-center gap-2 rounded-lg px-4 py-3 text-sm animate-slide-up',
-            notice.type === 'success' && 'bg-green-500/10 text-green-400',
-            notice.type === 'error' && 'bg-red-500/10 text-red-400',
-            notice.type === 'info' && 'bg-blue-500/10 text-blue-400',
-          )}>
-            {notice.type === 'success' ? <CheckCircle2 size={16} /> : notice.type === 'error' ? <XCircle size={16} /> : <AlertTriangle size={16} />}
+          <AdminStatus tone={noticeTone} className="w-full justify-start px-3.5 py-2.5">
+            {notice.type === 'success'
+              ? <CheckCircle2 size={15} aria-hidden="true" />
+              : notice.type === 'error'
+                ? <XCircle size={15} aria-hidden="true" />
+                : <AlertTriangle size={15} aria-hidden="true" />}
             {notice.text}
-          </div>
+          </AdminStatus>
         )}
 
-        <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: 'var(--shadow-elevated)' }}>
-          <div className="border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
+        <Surface className="overflow-hidden p-0">
+          <div className="border-b border-[var(--nv-border-subtle)] p-4 sm:p-5">
             <div className="flex flex-col gap-3 lg:flex-row">
-              <div className="relative flex-1">
-                <FolderOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500" />
-                <input
+              <div className="relative min-w-0 flex-1">
+                <FolderOpen
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[var(--nv-text-tertiary)]"
+                  aria-hidden="true"
+                />
+                <Input
                   value={folderPath}
-                  onChange={(e) => {
-                    setFolderPath(e.target.value)
+                  onChange={(event) => {
+                    setFolderPath(event.target.value)
                     setFolderScan(null)
                   }}
-                  className="input pl-9 text-sm"
+                  className="pl-9"
                   placeholder="选择或输入待刮削目录，例如 D:\\video"
                 />
               </div>
-              <button onClick={() => setShowFolderBrowser(true)} className="btn-ghost gap-2 px-4 py-2 text-sm">
-                <FolderOpen size={16} />
-                选择目录
-              </button>
-              <button onClick={() => scanCurrentFolder(false)} disabled={scanning || !folderPath.trim()} className="btn-ghost gap-2 px-4 py-2 text-sm">
-                {scanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-                预扫描
-              </button>
-              <button onClick={startLazyScrape} disabled={starting || scanning || Boolean(runningTask)} className="btn-primary gap-2 px-6 py-2 text-sm">
-                {starting ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                一键开始
-              </button>
-              {runningTask && (
-                <button onClick={stopRunningTask} disabled={stopping} className="btn-ghost gap-2 px-4 py-2 text-sm text-red-400">
-                  {stopping ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                  停止
-                </button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => setShowFolderBrowser(true)}>
+                  <FolderOpen size={15} aria-hidden="true" />
+                  选择目录
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void scanCurrentFolder(false)}
+                  disabled={scanning || !folderPath.trim()}
+                >
+                  {scanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                  预扫描
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void startLazyScrape()}
+                  disabled={starting || scanning || Boolean(runningTask)}
+                >
+                  {starting ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  一键开始
+                </Button>
+                {runningTask && (
+                  <Button type="button" variant="danger" onClick={() => void stopRunningTask()} disabled={stopping}>
+                    {stopping ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                    停止
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-4">
-                <StatCard label="视频总数" value={folderScan?.total ?? currentTask?.total ?? 0} accent="text-neon" />
-                <StatCard label="识别番号" value={folderScan?.with_code ?? 0} accent="text-green-400" />
-                <StatCard label="已跳过" value={currentTask?.skipped ?? skippedCount} accent="text-yellow-400" />
-                <StatCard label="失败" value={currentTask?.failed ?? failedCount} accent="text-red-400" />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="视频总数" value={folderScan?.total ?? currentTask?.total ?? 0} tone="brand" />
+                <StatCard label="识别番号" value={folderScan?.with_code ?? 0} tone="success" />
+                <StatCard label="已跳过" value={currentTask?.skipped ?? skippedCount} tone="warning" />
+                <StatCard label="失败" value={currentTask?.failed ?? failedCount} tone="danger" />
               </div>
 
-              <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <div className={clsx(
-                      'flex h-9 w-9 items-center justify-center rounded-full',
-                      runningTask ? 'bg-green-500/10 text-green-400' : 'bg-surface-700 text-surface-400',
+                      'flex h-9 w-9 items-center justify-center rounded-full border',
+                      runningTask
+                        ? 'border-[var(--nv-border-default)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]'
+                        : 'border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] text-[var(--nv-text-tertiary)]',
                     )}>
                       {runningTask ? <Loader2 size={18} className="animate-spin" /> : <Database size={17} />}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-sm font-semibold text-[var(--nv-text-primary)]">
                         {currentTask ? taskStatusLabel[currentTask.status] || currentTask.status : '等待开始'}
                       </p>
-                      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-xs text-[var(--nv-text-tertiary)]">
                         {currentTask ? `开始时间：${formatTime(currentTask.started_at)}` : '选择目录后一键开始，后续自动后台运行'}
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full bg-neon/10 px-2.5 py-1 text-xs font-medium text-neon">{taskProgress}%</span>
+                  <Tag tone={taskTone(currentTask?.status)}>{taskProgress}%</Tag>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-surface-800">
-                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all" style={{ width: `${taskProgress}%` }} />
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--nv-bg-control)]">
+                  <div
+                    className="h-full rounded-full bg-[var(--nv-action-primary)] transition-[width] duration-300 motion-reduce:transition-none"
+                    style={{ width: `${taskProgress}%` }}
+                  />
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                  <span>成功 <b className="font-mono text-green-400">{currentTask?.success ?? successCount}</b></span>
-                  <span>失败 <b className="font-mono text-red-400">{currentTask?.failed ?? failedCount}</b></span>
-                  <span>跳过 <b className="font-mono text-yellow-400">{currentTask?.skipped ?? skippedCount}</b></span>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-[var(--nv-text-secondary)]">
+                  <span>成功 <b className="font-mono text-[var(--nv-status-success)]">{currentTask?.success ?? successCount}</b></span>
+                  <span>失败 <b className="font-mono text-[var(--nv-status-danger)]">{currentTask?.failed ?? failedCount}</b></span>
+                  <span>跳过 <b className="font-mono text-[var(--nv-status-warning)]">{currentTask?.skipped ?? skippedCount}</b></span>
                 </div>
               </div>
 
-              <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  <Zap size={15} className="text-neon" />
+              <div className="rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--nv-text-primary)]">
+                  <Zap size={15} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
                   默认自动化策略
                 </div>
-                <div className="grid gap-2 text-xs md:grid-cols-2" style={{ color: 'var(--text-secondary)' }}>
+                <div className="grid gap-2 text-xs text-[var(--nv-text-secondary)] md:grid-cols-2">
                   <LazyRule text="自动启用通用数据源，无需手动配置镜像" />
                   <LazyRule text="递归扫描目录，自动识别番号文件" />
                   <LazyRule text="已有 NFO 的视频自动跳过，避免重复刮削" />
@@ -516,123 +543,156 @@ export default function AdultScraperSection() {
               </div>
             </div>
 
-            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  <Clock size={15} />
+            <div className="rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--nv-text-primary)]">
+                  <Clock size={15} aria-hidden="true" />
                   最近结果
                 </div>
-                <button onClick={loadTasks} className="text-xs text-neon hover:underline">
+                <Button type="button" variant="ghost" size="sm" onClick={() => void loadTasks()}>
+                  <RefreshCw size={13} aria-hidden="true" />
                   刷新
-                </button>
+                </Button>
               </div>
               <div className="max-h-[520px] space-y-1 overflow-auto pr-1 text-xs">
                 {results.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-8 text-center" style={{ borderColor: 'var(--border-default)', color: 'var(--text-tertiary)' }}>
+                  <div className="rounded-[var(--nv-radius-control)] border border-dashed border-[var(--nv-border-default)] p-8 text-center text-[var(--nv-text-tertiary)]">
                     暂无刮削记录
                   </div>
                 ) : results.slice(0, 100).map((item, index) => (
                   <div
                     key={`${item.code}-${item.path}-${index}`}
-                    className="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-white/5"
+                    className="flex items-start gap-2 rounded-[var(--nv-radius-control)] px-2 py-2 transition-colors hover:bg-[var(--nv-bg-hover)]"
                     title={item.message || item.path}
                   >
-                    <span className={clsx(
-                      'mt-1.5 h-2 w-2 shrink-0 rounded-full',
-                      item.status === 'success' ? 'bg-green-400' : item.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400',
-                    )} />
+                    <span
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        background: item.status === 'success'
+                          ? 'var(--nv-status-success)'
+                          : item.status === 'failed'
+                            ? 'var(--nv-status-danger)'
+                            : 'var(--nv-status-warning)',
+                      }}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate font-mono" style={{ color: item.status === 'success' ? '#4ade80' : item.status === 'failed' ? '#f87171' : '#facc15' }}>
+                        <span className="truncate font-mono font-medium text-[var(--nv-text-primary)]">
                           {item.code || 'UNKNOWN'}
                         </span>
-                        {item.source && <span className="rounded bg-surface-700 px-1.5 py-0.5 text-[10px] text-surface-400">{item.source}</span>}
+                        {item.source && <Tag tone="neutral" className="text-[10px]">{item.source}</Tag>}
                       </div>
-                      <div className="truncate" style={{ color: 'var(--text-tertiary)' }}>
+                      <div className="truncate text-[var(--nv-text-tertiary)]">
                         {item.status === 'failed' ? (item.message || item.title || item.path) : (item.title || item.message || item.path)}
                       </div>
                     </div>
+                    <Tag tone={resultTone(item.status)} className="shrink-0 text-[10px]">
+                      {item.status === 'success' ? '成功' : item.status === 'failed' ? '失败' : '跳过'}
+                    </Tag>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-        </div>
+        </Surface>
 
         <CollapsibleSection
           open={showAdvanced}
-          onToggle={() => setShowAdvanced((v) => !v)}
+          onToggle={() => setShowAdvanced((value) => !value)}
           icon={<Settings size={15} />}
           title="进阶运营中心"
           hint="默认隐藏；用于失败重试、报表、调度、缓存和诊断"
         >
           {opsLoading && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-blue-400 bg-blue-500/10">
+            <AdminStatus tone="active" className="mb-3 w-full justify-start px-3 py-2">
               <Loader2 size={13} className="animate-spin" />
               正在加载运营数据...
-            </div>
+            </AdminStatus>
           )}
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <OperationCard icon={<BarChart3 size={15} />} title="7 天报表">
-              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <p>处理：<b className="font-mono text-neon">{report?.total_processed ?? 0}</b></p>
-                <p>成功：<b className="font-mono text-green-400">{report?.total_success ?? 0}</b></p>
-                <p>失败：<b className="font-mono text-red-400">{report?.total_failed ?? 0}</b></p>
-                <p>成功率：<b className="font-mono text-surface-100">{Math.round((report?.overall_rate || 0) * 100)}%</b></p>
+              <div className="space-y-1 text-xs text-[var(--nv-text-secondary)]">
+                <p>处理：<b className="font-mono text-[var(--nv-action-primary)]">{report?.total_processed ?? 0}</b></p>
+                <p>成功：<b className="font-mono text-[var(--nv-status-success)]">{report?.total_success ?? 0}</b></p>
+                <p>失败：<b className="font-mono text-[var(--nv-status-danger)]">{report?.total_failed ?? 0}</b></p>
+                <p>成功率：<b className="font-mono text-[var(--nv-text-primary)]">{Math.round((report?.overall_rate || 0) * 100)}%</b></p>
               </div>
             </OperationCard>
 
             <OperationCard icon={<RotateCcw size={15} />} title="失败重试">
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                最近 7 天失败项：<b className="font-mono text-red-400">{failedItems.length + folderFailedCount}</b>
+              <p className="text-xs text-[var(--nv-text-tertiary)]">
+                最近 7 天失败项：<b className="font-mono text-[var(--nv-status-danger)]">{failedItems.length + folderFailedCount}</b>
                 <span className="ml-1 text-[10px]">目录 {folderFailedCount} / 媒体库 {failedItems.length}</span>
               </p>
-              <button onClick={retryFailedItems} disabled={retryingFailed || failedItems.length + folderFailedCount === 0} className="btn-primary mt-3 gap-2 px-3 py-1.5 text-xs">
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="mt-3"
+                onClick={() => void retryFailedItems()}
+                disabled={retryingFailed || failedItems.length + folderFailedCount === 0}
+              >
                 {retryingFailed ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                 一键重试失败
-              </button>
+              </Button>
             </OperationCard>
 
             <OperationCard icon={<Clock size={15} />} title="定时调度">
-              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <p>状态：<b className={schedulerInfo?.config?.Enabled ? 'text-green-400' : 'text-surface-400'}>{schedulerInfo?.config?.Enabled ? '启用' : '关闭'}</b></p>
+              <div className="space-y-1 text-xs text-[var(--nv-text-secondary)]">
+                <p>状态：<b className={schedulerInfo?.config?.Enabled ? 'text-[var(--nv-status-success)]' : 'text-[var(--nv-text-tertiary)]'}>{schedulerInfo?.config?.Enabled ? '启用' : '关闭'}</b></p>
                 <p>上次运行：{formatTime(schedulerInfo?.last_run_at)}</p>
               </div>
-              <button onClick={triggerSchedulerNow} disabled={triggeringSchedule} className="btn-ghost mt-3 gap-2 px-3 py-1.5 text-xs">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                onClick={() => void triggerSchedulerNow()}
+                disabled={triggeringSchedule}
+              >
                 {triggeringSchedule ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 立即运行一次
-              </button>
+              </Button>
             </OperationCard>
 
             <OperationCard icon={<Database size={15} />} title="缓存">
-              <div className="space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                <p>条目：<b className="font-mono text-neon">{cacheStats?.size ?? 0}</b> / {cacheStats?.max_size ?? 0}</p>
-                <p>命中：<b className="font-mono text-green-400">{cacheStats?.total_hit ?? 0}</b></p>
+              <div className="space-y-1 text-xs text-[var(--nv-text-secondary)]">
+                <p>条目：<b className="font-mono text-[var(--nv-action-primary)]">{cacheStats?.size ?? 0}</b> / {cacheStats?.max_size ?? 0}</p>
+                <p>命中：<b className="font-mono text-[var(--nv-status-success)]">{cacheStats?.total_hit ?? 0}</b></p>
               </div>
-              <button onClick={clearMetadataCache} disabled={clearingCache} className="btn-ghost mt-3 gap-2 px-3 py-1.5 text-xs text-red-400">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                className="mt-3"
+                onClick={() => void clearMetadataCache()}
+                disabled={clearingCache}
+              >
                 {clearingCache ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 清空缓存
-              </button>
+              </Button>
             </OperationCard>
           </div>
 
           <div className="mt-3 grid gap-3 xl:grid-cols-2">
-            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>历史任务</p>
-                <button onClick={() => Promise.all([loadTasks(), loadOperations()])} className="text-xs text-neon hover:underline">刷新</button>
+            <OperationCard title="历史任务" icon={<Clock size={15} />}>
+              <div className="mb-3 flex justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={() => void Promise.all([loadTasks(), loadOperations()])}>
+                  <RefreshCw size={12} aria-hidden="true" />
+                  刷新
+                </Button>
               </div>
               <div className="max-h-56 space-y-2 overflow-auto text-xs">
                 {unifiedTasks.length === 0 ? (
-                  <p style={{ color: 'var(--text-tertiary)' }}>暂无历史任务</p>
+                  <p className="text-[var(--nv-text-tertiary)]">暂无历史任务</p>
                 ) : unifiedTasks.slice(0, 12).map((task) => (
-                  <div key={`${task.kind}-${task.id}`} className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-primary)' }}>
+                  <div key={`${task.kind}-${task.id}`} className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{task.kind === 'folder' ? '目录刮削' : '媒体库批量'}</span>
-                      <span className={task.status === 'completed' ? 'text-green-400' : task.status === 'failed' ? 'text-red-400' : 'text-yellow-400'}>{taskStatusLabel[task.status] || task.status}</span>
+                      <span className="truncate text-[var(--nv-text-secondary)]">{task.kind === 'folder' ? '目录刮削' : '媒体库批量'}</span>
+                      <Tag tone={taskTone(task.status)}>{taskStatusLabel[task.status] || task.status}</Tag>
                     </div>
-                    <div className="mt-1 flex gap-3 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                    <div className="mt-1 flex flex-wrap gap-3 font-mono text-[var(--nv-text-tertiary)]">
                       <span>{task.current}/{task.total}</span>
                       <span>成功 {task.success}</span>
                       <span>失败 {task.failed}</span>
@@ -640,45 +700,41 @@ export default function AdultScraperSection() {
                   </div>
                 ))}
               </div>
-            </div>
+            </OperationCard>
 
-            <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>配置与数据源诊断</p>
-                <button onClick={() => setShowDiagnostics((v) => !v)} className="text-xs text-neon hover:underline">
-                  {showDiagnostics ? '收起' : '展开'}
-                </button>
-              </div>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            <OperationCard title="配置与数据源诊断" icon={<Settings size={15} />}>
+              <p className="text-xs leading-5 text-[var(--nv-text-tertiary)]">
                 普通用户无需配置；遇到连接失败、数据源失效时再展开查看。
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={resetLazyDefaults} className="btn-primary gap-2 px-3 py-1.5 text-xs">
+                <Button type="button" variant="primary" size="sm" onClick={() => void resetLazyDefaults()}>
                   <RefreshCw size={12} />
                   恢复懒人默认
-                </button>
-                <button onClick={() => Promise.all([loadConfig(), loadOperations()])} className="btn-ghost gap-2 px-3 py-1.5 text-xs">
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void Promise.all([loadConfig(), loadOperations()])}>
                   <RefreshCw size={12} />
                   重新加载
-                </button>
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowDiagnostics((value) => !value)}>
+                  {showDiagnostics ? '收起诊断' : '展开诊断'}
+                </Button>
               </div>
               {showDiagnostics && (
                 <div className="mt-3 space-y-2">
                   {(config?.sources || []).map((source) => (
-                    <div key={source.id} className="flex items-center justify-between rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-primary)' }}>
+                    <div key={source.id} className="flex items-center justify-between gap-3 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2 text-xs">
                       <div className="min-w-0">
-                        <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>{source.name}</p>
-                        <p className="truncate" style={{ color: 'var(--text-tertiary)' }}>{source.url || '未配置'}</p>
+                        <p className="font-medium text-[var(--nv-text-secondary)]">{source.name}</p>
+                        <p className="truncate text-[var(--nv-text-tertiary)]">{source.url || '未配置'}</p>
                       </div>
-                      <span className={source.enabled ? 'text-green-400' : 'text-surface-500'}>{source.enabled ? '启用' : '关闭'}</span>
+                      <Tag tone={source.enabled ? 'success' : 'neutral'}>{source.enabled ? '启用' : '关闭'}</Tag>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </OperationCard>
           </div>
         </CollapsibleSection>
-
       </section>
 
       <FileBrowser
@@ -695,19 +751,29 @@ export default function AdultScraperSection() {
   )
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+function StatCard({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: TagTone }) {
+  const valueColor = tone === 'brand'
+    ? 'var(--nv-action-primary)'
+    : tone === 'success'
+      ? 'var(--nv-status-success)'
+      : tone === 'warning'
+        ? 'var(--nv-status-warning)'
+        : tone === 'danger'
+          ? 'var(--nv-status-danger)'
+          : 'var(--nv-text-primary)'
+
   return (
-    <div className="rounded-xl px-4 py-3" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-      <p className={clsx('mt-1 font-mono text-2xl font-semibold', accent)}>{value}</p>
+    <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-4 py-3">
+      <p className="text-xs text-[var(--nv-text-tertiary)]">{label}</p>
+      <p className="mt-1 font-mono text-2xl font-semibold" style={{ color: valueColor }}>{value}</p>
     </div>
   )
 }
 
 function LazyRule({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--bg-primary)' }}>
-      <CheckCircle2 size={13} className="shrink-0 text-green-400" />
+    <div className="flex items-center gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2">
+      <CheckCircle2 size={13} className="shrink-0 text-[var(--nv-status-success)]" aria-hidden="true" />
       <span>{text}</span>
     </div>
   )
@@ -715,9 +781,9 @@ function LazyRule({ text }: { text: string }) {
 
 function OperationCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: 'var(--nav-hover-bg)', border: '1px solid var(--border-default)' }}>
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-        {icon}
+    <div className="rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--nv-text-primary)]">
+        <span className="text-[var(--nv-action-primary)]">{icon}</span>
         {title}
       </div>
       {children}
@@ -741,16 +807,25 @@ function CollapsibleSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
-      <button onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left">
-        <span className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-          {icon}
-          {title}
-          <span className="text-[10px] font-normal" style={{ color: 'var(--text-tertiary)' }}>{hint}</span>
+    <Surface className="p-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 rounded-[var(--nv-radius-control)] text-left outline-none focus-visible:shadow-[var(--nv-shadow-focus)]"
+        aria-expanded={open}
+      >
+        <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--nv-text-secondary)]">
+          <span className="text-[var(--nv-action-primary)]">{icon}</span>
+          <span>{title}</span>
+          <span className="hidden text-[10px] font-normal text-[var(--nv-text-tertiary)] sm:inline">{hint}</span>
         </span>
-        <ChevronDown size={15} className={clsx('transition-transform text-surface-500', open && 'rotate-180')} />
+        <ChevronDown
+          size={15}
+          className={clsx('shrink-0 text-[var(--nv-text-tertiary)] transition-transform duration-200 motion-reduce:transition-none', open && 'rotate-180')}
+          aria-hidden="true"
+        />
       </button>
       {open && <div className="mt-4">{children}</div>}
-    </div>
+    </Surface>
   )
 }
