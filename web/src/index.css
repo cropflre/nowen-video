@@ -118,7 +118,7 @@
   --accent-amber-soft-bg: rgba(245, 158, 11, 0.10);
   --accent-amber-soft-border: rgba(245, 158, 11, 0.22);
   --accent-amber-soft-bg-hover: rgba(245, 158, 11, 0.18);
-  --accent-amber-soft-border-hover: rgba(180, 83, 9, 0.36);
+  --accent-amber-soft-border-hover: rgba(245, 158, 11, 0.36);
   /* 翠绿色：用于"勾选 / 启用"的 toggle */
   --accent-emerald: #10b981;
   --accent-emerald-text: #6ee7b7;
