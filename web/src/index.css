@@ -34,8 +34,6 @@
   --text-tertiary: #627d98;
   --text-muted: #486581;
   --text-on-neon: #060a13;
-  /* 海报角标专用：在深色半透明底上的高对比文字色（暗色模式下用更亮的青） */
-  --badge-overlay-text: #7DEFFF;
   --border-default: rgba(0, 240, 255, 0.06);
   --border-hover: rgba(0, 240, 255, 0.2);
   --border-strong: rgba(0, 240, 255, 0.12);
@@ -44,12 +42,6 @@
   --shadow-card-hover: 0 8px 32px rgba(0, 240, 255, 0.12), 0 0 1px rgba(0, 240, 255, 0.4);
   --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.4);
   --shadow-neon: 0 0 15px rgba(0, 240, 255, 0.2);
-  /* Hero 海报容器：暗色模式 — 霓虹细描边 + 深阴影 + 浅蓝内描边 */
-  --hero-poster-border: rgba(0, 240, 255, 0.30);
-  --hero-poster-border-hover: rgba(0, 240, 255, 0.55);
-  --hero-poster-inner: rgba(0, 240, 255, 0.10);
-  --hero-poster-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 240, 255, 0.15), 0 0 24px rgba(0, 240, 255, 0.18);
-  --hero-poster-shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 240, 255, 0.30), 0 0 36px rgba(0, 240, 255, 0.32);
   --gradient-overlay-from: rgba(6, 10, 19, 0.95);
   --gradient-overlay-mid: rgba(6, 10, 19, 0.5);
   --selection-bg: rgba(0, 240, 255, 0.2);
@@ -175,8 +167,6 @@
   --text-tertiary: #4b5563;
   --text-muted: #6b7280;
   --text-on-neon: #ffffff;
-  /* 海报角标专用：在深色半透明底上的高对比文字色（日间模式下也保持青亮可读） */
-  --badge-overlay-text: #5EEAFF;
   --border-default: rgba(0, 0, 0, 0.10);
   --border-hover: rgba(8, 145, 178, 0.30);
   --border-strong: rgba(8, 145, 178, 0.22);
@@ -185,12 +175,6 @@
   --shadow-card-hover: 0 8px 24px rgba(8, 145, 178, 0.12), 0 0 1px rgba(8, 145, 178, 0.25);
   --shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
   --shadow-neon: 0 0 12px rgba(8, 145, 178, 0.18);
-  /* Hero 海报容器：日间模式 — 浅色背景下需要更厚的描边 + 浓阴影把白底海报"切"出来 */
-  --hero-poster-border: rgba(8, 145, 178, 0.45);
-  --hero-poster-border-hover: rgba(8, 145, 178, 0.70);
-  --hero-poster-inner: rgba(255, 255, 255, 0.65);
-  --hero-poster-shadow: 0 14px 40px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(8, 145, 178, 0.18);
-  --hero-poster-shadow-hover: 0 22px 56px rgba(15, 23, 42, 0.32), 0 8px 18px rgba(15, 23, 42, 0.20), 0 0 0 1px rgba(8, 145, 178, 0.35);
   --gradient-overlay-from: rgba(240, 242, 245, 0.95);
   --gradient-overlay-mid: rgba(240, 242, 245, 0.5);
   --selection-bg: rgba(8, 145, 178, 0.18);
@@ -306,9 +290,7 @@
   /* 全局主题切换过渡 — 仅对关键容器元素生效，避免对所有元素添加 transition 导致性能问题 */
   body,
   .nav-item,
-  .media-card,
   .badge-neon,
-  .badge-accent,
   .admin-tab,
   .modal-panel,
   .tooltip {
@@ -386,41 +368,6 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
-  }
-
-  /* === 媒体卡片 - 3D光影版 === */
-  .media-card {
-    @apply relative overflow-hidden rounded-xl transition-all duration-300;
-    background: var(--bg-card);
-    border: 1px solid var(--border-default);
-    transform-style: preserve-3d;
-    perspective: 1000px;
-    /* 确保卡片在网格中完整填充 */
-    width: 100%;
-    min-width: 0;
-  }
-
-  .media-card:hover {
-    border-color: var(--border-hover);
-    box-shadow: var(--shadow-card-hover), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
-
-  /* 卡片顶部霓虹光条 */
-  .media-card::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--neon-blue), var(--neon-purple), transparent);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 10;
-  }
-
-  .media-card:hover::after {
-    opacity: 1;
   }
 
   /* === 渐变遮罩 === */
@@ -575,58 +522,6 @@
     background: var(--neon-blue-10);
     color: var(--neon-blue);
     border: 1px solid var(--neon-blue-15);
-  }
-
-  /* 海报/视频缩略图上的角标变体
-   *
-   * 普通 .badge-neon 在海报上对比度差：
-   *   - 暗色模式：浅色海报 + 10% 透明背 + 青色文字 → 看不清
-   *   - 日间模式：浅色海报 + 浅青色文字 → 几乎隐形
-   *
-   * .badge-neon-overlay 给一个不依赖父级颜色的强对比方案：
-   *   - 深色半透明底（黑色 78%）+ 模糊背景 → 在任何海报上都稳定可读
-   *   - 文字使用对应主题下"足够亮"的霓虹色变体
-   *   - 边框使用白色低透明度，提升边缘清晰度
-   */
-  .badge-neon-overlay {
-    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
-    background: rgba(0, 0, 0, 0.78);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    color: var(--badge-overlay-text);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
-    letter-spacing: 0.01em;
-  }
-
-  .badge-accent {
-    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
-    background: var(--neon-purple-15);
-    color: var(--neon-purple-glow-text);
-    border: 1px solid var(--neon-purple-20);
-  }
-
-  /* === Hero 海报容器 ===
-   *
-   * 详情页 Hero 区的小海报：
-   *   - 暗色模式：弱阴影 + 霓虹蓝细描边 + 浮起感
-   *   - 日间模式：因为 hero 背景被浅色海报糊化成"白蒙版"，海报本身的白底容易和背景融为一体，
-   *     需要更粗的描边 + 更浓的投影 + 一圈深色内描边把海报"切"出来。
-   *
-   * 改成 class 而非内联，便于按主题分别覆写并支持悬停加深。
-   */
-  .hero-poster-frame {
-    background: var(--bg-card);
-    border: 1px solid var(--hero-poster-border);
-    box-shadow: var(--hero-poster-shadow);
-    /* 内描边：模拟一圈高光勾边，让海报和背景有清晰分界 */
-    outline: 1px solid var(--hero-poster-inner);
-    outline-offset: -2px;
-    transition: box-shadow 0.4s ease, transform 0.5s ease, border-color 0.3s ease;
-  }
-  .hero-poster-frame:hover {
-    box-shadow: var(--hero-poster-shadow-hover);
-    border-color: var(--hero-poster-border-hover);
   }
 
   /* === 骨架屏加载 === */
