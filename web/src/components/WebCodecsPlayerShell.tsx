@@ -24,6 +24,7 @@ import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForwar
 import WebCodecsPlayer, { type WebCodecsPlayerHandle } from './WebCodecsPlayer'
 import { usePlayerStore } from '@/stores/player'
 import { userApi } from '@/api'
+import { Tag } from '@/components/design-system'
 
 interface WebCodecsPlayerShellProps {
   src: string
@@ -318,14 +319,11 @@ export default function WebCodecsPlayerShell({
             <h2 className="font-display text-base font-medium tracking-wide text-white drop-shadow-lg">
               {title}
             </h2>
-            <span
-              className="rounded-md px-2 py-0.5 text-[10px] flex items-center gap-1"
-              style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: '#67e8f9' }}
-            >
-              <Cpu size={10} /> WebCodecs 硬解
-            </span>
+            <Tag tone="brand" className="text-[10px]">
+              <Cpu size={10} aria-hidden="true" /> WebCodecs 硬解
+            </Tag>
             {playbackRate !== 1 && (
-              <span className="badge-neon text-[10px]">{playbackRate}x</span>
+              <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>
             )}
           </div>
         )}
