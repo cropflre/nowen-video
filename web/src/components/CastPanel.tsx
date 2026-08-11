@@ -133,21 +133,21 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
               <span className="player-overlay-item-meta">{session.device?.name || '未知设备'}</span>
             </div>
 
-            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.035] p-3">
-              <p className="truncate text-sm font-semibold text-white/90">{mediaTitle || '正在播放'}</p>
-              <p className="mt-1 truncate text-[11px] text-white/35">{session.device?.name || '未知设备'}</p>
+            <div className="rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] p-3">
+              <p className="truncate text-sm font-semibold text-[var(--nv-player-text-primary)]">{mediaTitle || '正在播放'}</p>
+              <p className="mt-1 truncate text-[11px] text-[var(--nv-player-text-tertiary)]">{session.device?.name || '未知设备'}</p>
 
               <div className="mt-4 flex items-center justify-center gap-8">
                 <button
                   onClick={() => controlCast(session.status === 'playing' ? 'pause' : 'play')}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-300/15 bg-cyan-300/10 text-cyan-100 transition-all hover:bg-cyan-300/15"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)] transition-[background-color,border-color,transform] hover:bg-[var(--nv-player-accent-soft-hover)] active:scale-[0.98]"
                   title={session.status === 'playing' ? '暂停' : '播放'}
                 >
                   {session.status === 'playing' ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
                 </button>
                 <button
                   onClick={() => controlCast('stop')}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.07] bg-white/[0.04] text-white/55 transition-colors hover:bg-white/[0.08] hover:text-white"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-subtle)] text-[var(--nv-player-text-tertiary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]"
                   title="停止投屏"
                 >
                   <Square size={15} />
@@ -155,16 +155,16 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
               </div>
 
               <div className="mt-4 flex items-center gap-3">
-                <Volume2 size={14} className="shrink-0 text-white/35" />
+                <Volume2 size={14} className="shrink-0 text-[var(--nv-player-text-tertiary)]" />
                 <input
                   type="range"
                   min="0"
                   max="100"
                   value={Math.round(session.volume * 100)}
                   onChange={(e) => controlCast('volume', parseInt(e.target.value))}
-                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full"
+                  className="player-cast-volume-slider flex-1 cursor-pointer appearance-none"
                   style={{
-                    background: `linear-gradient(to right, var(--neon-blue) ${session.volume * 100}%, rgba(255,255,255,0.12) ${session.volume * 100}%)`,
+                    background: `linear-gradient(to right, var(--nv-player-accent) ${session.volume * 100}%, color-mix(in srgb, var(--nv-player-text-primary) 12%, transparent) ${session.volume * 100}%)`,
                   }}
                 />
               </div>
@@ -218,7 +218,7 @@ export default function CastPanel({ mediaId, mediaTitle, onClose }: CastPanelPro
                         </div>
                       </div>
                     </div>
-                    {casting && <Loader2 size={14} className="animate-spin text-cyan-200/80" />}
+                    {casting && <Loader2 size={14} className="animate-spin text-[var(--nv-player-accent)]" />}
                   </button>
                 ))}
               </div>
