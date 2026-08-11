@@ -80,7 +80,7 @@ function TitleBarImpl() {
         paddingLeft: 12,
         paddingRight: 0,
         background: 'transparent',
-        borderBottom: '1px solid var(--border-default)',
+        borderBottom: '1px solid var(--nv-border-subtle)',
         position: 'relative',
         zIndex: 1000,
         userSelect: 'none',
@@ -96,14 +96,14 @@ function TitleBarImpl() {
           fontSize: 12,
           fontWeight: 600,
           letterSpacing: '0.12em',
-          color: 'var(--text-primary)',
+          color: 'var(--nv-text-primary)',
           pointerEvents: 'none',
         }}
       >
-        <span className="text-neon text-neon-glow" style={{ fontSize: 13 }}>
+        <span className="text-[var(--nv-action-primary)]" style={{ fontSize: 13 }}>
           N
         </span>
-        <span style={{ color: 'var(--text-secondary)' }}>OWEN · VIDEO</span>
+        <span style={{ color: 'var(--nv-text-secondary)' }}>OWEN · VIDEO</span>
       </div>
 
       {/* 中间搜索条（Hills 的核心视觉之一） */}
@@ -127,9 +127,9 @@ function TitleBarImpl() {
             height: 26,
             padding: '0 10px',
             borderRadius: 999,
-            background: 'rgba(11, 17, 32, 0.6)',
-            border: '1px solid var(--border-default)',
-            color: 'var(--text-tertiary)',
+            background: 'var(--nv-bg-control)',
+            border: '1px solid var(--nv-border-default)',
+            color: 'var(--nv-text-tertiary)',
             fontSize: 12,
             transition: 'all .2s ease',
           }}
@@ -144,7 +144,7 @@ function TitleBarImpl() {
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              color: 'var(--text-primary)',
+              color: 'var(--nv-text-primary)',
               fontSize: 12,
             }}
           />
@@ -189,9 +189,9 @@ function TitleBarButton({ label, icon, onClick, danger }: TitleBarButtonProps) {
   const bg = hover
     ? danger
       ? '#e81123'
-      : 'rgba(255, 255, 255, 0.08)'
+      : 'var(--nv-bg-hover)'
     : 'transparent'
-  const color = hover && danger ? '#ffffff' : 'var(--text-secondary)'
+  const color = hover && danger ? '#ffffff' : 'var(--nv-text-secondary)'
   return (
     <button
       type="button"
