@@ -1,9 +1,8 @@
 /* Nowen Video Player semantic boundary
  *
- * The player is intentionally always immersive/dark, including when the
- * surrounding application is using the light theme. Player components should
- * consume the --nv-player-* contract below; legacy aliases remain only as a
- * temporary bridge until the remaining VideoPlayer/WebCodecs callers migrate.
+ * Player UI is intentionally immersive/dark even when the application uses
+ * the light theme. All player-facing components consume this --nv-player-*
+ * contract directly; there is no Neon/Glass or app-theme compatibility bridge.
  */
 
 .group\/player {
@@ -16,6 +15,7 @@
   --nv-player-text-secondary: rgba(255, 255, 255, .74);
   --nv-player-text-tertiary: rgba(255, 255, 255, .52);
   --nv-player-text-faint: rgba(255, 255, 255, .32);
+  --nv-player-text-on-accent: #041014;
   --nv-player-border-subtle: rgba(255, 255, 255, .07);
   --nv-player-border: rgba(255, 255, 255, .11);
   --nv-player-border-strong: rgba(255, 255, 255, .18);
@@ -33,66 +33,9 @@
   --nv-player-shadow: 0 20px 54px rgba(0, 0, 0, .48);
   --nv-player-radius-control: var(--nv-radius-control);
   --nv-player-radius-panel: var(--nv-radius-container);
-
-  /* Compatibility bridge. Keep local to the player root so the app theme
-     cannot recolor the playback UI. Remove aliases individually as callers
-     migrate to --nv-player-* tokens. */
-  --neon-blue: var(--nv-player-accent);
-  --neon-blue-mid: var(--nv-player-accent);
-  --neon-blue-4: color-mix(in srgb, var(--nv-player-accent) 4%, transparent);
-  --neon-blue-5: color-mix(in srgb, var(--nv-player-accent) 5%, transparent);
-  --neon-blue-8: color-mix(in srgb, var(--nv-player-accent) 8%, transparent);
-  --neon-blue-10: color-mix(in srgb, var(--nv-player-accent) 10%, transparent);
-  --neon-blue-12: color-mix(in srgb, var(--nv-player-accent) 12%, transparent);
-  --neon-blue-15: color-mix(in srgb, var(--nv-player-accent) 15%, transparent);
-  --neon-blue-20: color-mix(in srgb, var(--nv-player-accent) 20%, transparent);
-  --neon-blue-25: color-mix(in srgb, var(--nv-player-accent) 25%, transparent);
-  --neon-blue-30: color-mix(in srgb, var(--nv-player-accent) 30%, transparent);
-  --neon-blue-40: color-mix(in srgb, var(--nv-player-accent) 40%, transparent);
-  --neon-blue-50: color-mix(in srgb, var(--nv-player-accent) 50%, transparent);
-  --neon-purple: var(--nv-ambient-purple);
-  --neon-purple-8: color-mix(in srgb, var(--nv-ambient-purple) 8%, transparent);
-  --neon-purple-10: color-mix(in srgb, var(--nv-ambient-purple) 10%, transparent);
-  --neon-purple-15: color-mix(in srgb, var(--nv-ambient-purple) 15%, transparent);
-  --neon-purple-20: color-mix(in srgb, var(--nv-ambient-purple) 20%, transparent);
-
-  --bg-base: var(--nv-player-canvas);
-  --bg-surface: var(--nv-player-surface-soft);
-  --bg-elevated: var(--nv-player-surface);
-  --bg-subtle: var(--nv-player-surface-subtle);
-  --bg-card: var(--nv-player-surface-soft);
-  --bg-input: var(--nv-player-surface-soft);
-  --bg-overlay: rgba(0, 0, 0, .64);
-  --bg-tooltip: var(--nv-player-surface);
-
-  --text-primary: var(--nv-player-text-primary);
-  --text-secondary: var(--nv-player-text-secondary);
-  --text-tertiary: var(--nv-player-text-tertiary);
-  --text-muted: var(--nv-player-text-tertiary);
-  --text-on-neon: #041014;
-
-  --border-default: var(--nv-player-border);
-  --border-hover: var(--nv-player-border-hover);
-  --border-strong: var(--nv-player-border-strong);
-  --border-subtle: var(--nv-player-border-subtle);
-  --glass-border: var(--nv-player-border);
-  --nav-hover-bg: var(--nv-player-surface-hover);
-  --nav-active-bg: var(--nv-player-accent-soft);
-
-  --shadow-card: none;
-  --shadow-card-hover: none;
-  --shadow-elevated: var(--nv-player-shadow);
-  --shadow-neon: none;
-  --focus-ring: var(--nv-player-focus);
-
-  --cinema-control-text: var(--nv-player-text-secondary);
-  --cinema-control-muted: var(--nv-player-text-tertiary);
-  --cinema-control-hover: var(--nv-player-surface-hover);
-  --cinema-panel: var(--nv-player-surface);
-  --cinema-panel-border: var(--nv-player-border);
 }
 
-.group\/player :where(button, input, [role='button'], [role='menuitem']):focus-visible {
+.group\/player :where(button, input, select, textarea, [role='button'], [role='menuitem']):focus-visible {
   outline: 2px solid var(--nv-player-focus);
   outline-offset: 2px;
 }
@@ -102,42 +45,72 @@
   font-family: var(--nv-font-sans);
 }
 
+/* Base progress geometry. Cinema layout controls final positioning. */
+.group\/player .progress-bar {
+  position: relative;
+  height: 4px;
+  cursor: pointer;
+  border-radius: var(--nv-radius-pill);
+  background: color-mix(in srgb, var(--nv-player-text-primary) 18%, transparent);
+}
+
 .group\/player .progress-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
   background: var(--nv-player-accent);
 }
 
 .group\/player .progress-bar-thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--nv-radius-pill);
   background: var(--nv-player-text-primary);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity var(--nv-motion-fast) var(--nv-ease-standard);
 }
 
-/* CastPanel owns its slider visual instead of inheriting the legacy global
-   range thumb, which is still shared with non-player screens. */
-.group\/player .player-cast-volume-slider {
+.group\/player .progress-bar:hover .progress-bar-thumb,
+.group\/player .progress-bar:focus-within .progress-bar-thumb {
+  opacity: 1;
+}
+
+/* Player-owned range styles. They intentionally do not inherit the app-wide
+   legacy range rules, which are retired independently after caller audit. */
+.group\/player :where(.player-volume-slider, .player-cast-volume-slider) {
   height: 4px;
   border-radius: var(--nv-radius-pill);
+  outline: none;
 }
 
-.group\/player .player-cast-volume-slider::-webkit-slider-thumb {
+.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
+  appearance: none;
   border: 2px solid var(--nv-player-text-primary);
+  border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
+  transition: transform var(--nv-motion-fast) var(--nv-ease-standard), box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
 }
 
-.group\/player .player-cast-volume-slider::-webkit-slider-thumb:hover {
+.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb:hover {
   transform: scale(1.02);
   box-shadow: 0 3px 12px rgba(0, 0, 0, .48);
 }
 
-.group\/player .player-cast-volume-slider::-webkit-slider-thumb:active {
+.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb:active {
   transform: scale(.98);
 }
 
-.group\/player .player-cast-volume-slider::-moz-range-thumb {
+.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border: 2px solid var(--nv-player-text-primary);
+  border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
 }
@@ -151,8 +124,8 @@
   .group\/player *,
   .group\/player *::before,
   .group\/player *::after {
-    animation-duration: .01ms;
-    animation-iteration-count: 1;
-    transition-duration: .01ms;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }
