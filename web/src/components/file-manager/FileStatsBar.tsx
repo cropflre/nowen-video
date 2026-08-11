@@ -1,4 +1,3 @@
-import type { ComponentType } from 'react'
 import type { FileManagerStats } from '@/types'
 import {
   AlertCircle,
@@ -11,6 +10,7 @@ import {
   HardDrive,
   Tv,
   XCircle,
+  type LucideIcon,
 } from 'lucide-react'
 import { Surface, type TagTone } from '@/components/design-system'
 import { formatFileSize } from './constants'
@@ -22,7 +22,7 @@ interface FileStatsBarProps {
 interface StatItem {
   label: string
   value: string | number
-  icon: ComponentType<{ size?: number; className?: string; 'aria-hidden'?: boolean }>
+  icon: LucideIcon
   tone?: TagTone
 }
 
@@ -88,7 +88,7 @@ export default function FileStatsBar({ stats }: FileStatsBarProps) {
             <div
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] ${toneClassName(item.tone)}`}
             >
-              <Icon size={15} aria-hidden="true" />
+              <Icon size={15} aria-hidden={true} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold leading-5 text-[var(--nv-text-primary)]">
