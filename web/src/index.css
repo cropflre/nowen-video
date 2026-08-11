@@ -511,11 +511,6 @@
 
 /* ==================== 工具类 ==================== */
 @layer utilities {
-  /* 霓虹蓝文字 */
-  .text-neon {
-    color: var(--neon-blue);
-  }
-
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
