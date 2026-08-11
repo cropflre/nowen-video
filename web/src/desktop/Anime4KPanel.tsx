@@ -1,16 +1,7 @@
 /**
  * Anime4KPanel
  *
- * Anime4K 超分档位选择：off / low / medium / high
- *
- * 背后对应不同的 GLSL shader 链，在父组件 MpvEmbedPlayer 里
- * 通过 mpv 属性 `glsl-shaders` 应用到 libmpv 渲染管线。
- *
- * 档位选择依据（基于 Anime4K v4.0.1 官方推荐）：
- *  - off    → 原图，不做任何处理
- *  - low    → CNN_M 系，GPU 开销 ~10%，1080p->4K 约 5ms/帧
- *  - medium → CNN_VL 系，GPU 开销 ~25%，质量明显提升
- *  - high   → CNN_UL + AutoDownscale，GPU 开销 ~50%，最高质量
+ * Anime4K 超分档位选择：off / low / medium / high。
  */
 
 import { CheckCircle2, Zap } from 'lucide-react'
@@ -39,61 +30,53 @@ const LEVELS: LevelMeta[] = [
 
 export default function Anime4KPanel({ value, onChange }: Props) {
   return (
-    <div
-      className="rounded-2xl p-3 min-w-[280px] shadow-2xl backdrop-blur-xl"
-      style={{
-        background: 'rgba(20, 20, 28, 0.88)',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
-    >
-      <div className="flex items-center gap-2 mb-2 px-1">
-        <Zap className="w-4 h-4 text-violet-400" />
-        <span className="text-sm font-semibold text-white/90">Anime4K 超分</span>
-        <span className="ml-auto text-[10px] text-white/40 uppercase tracking-wider">
-          GPU Shader
-        </span>
+    <div className="min-w-[280px] rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-3 shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+      <div className="mb-2 flex items-center gap-2 px-1">
+        <Zap className="h-4 w-4 text-[var(--nv-player-accent)]" aria-hidden="true" />
+        <span className="text-sm font-semibold text-[var(--nv-player-text-primary)]">Anime4K 超分</span>
+        <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--nv-player-text-faint)]">GPU Shader</span>
       </div>
 
       <div className="space-y-1">
-        {LEVELS.map((lv) => {
-          const active = value === lv.key
+        {LEVELS.map((level) => {
+          const active = value === level.key
+          const badgeColor = level.key === 'medium'
+            ? 'var(--nv-player-success)'
+            : level.key === 'high'
+              ? 'var(--nv-player-warning)'
+              : 'var(--nv-player-accent)'
           return (
             <button
-              key={lv.key}
-              onClick={() => onChange(lv.key)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition
-                ${active
-                  ? 'bg-gradient-to-r from-violet-500/40 to-fuchsia-500/30 border border-violet-400/40'
-                  : 'bg-white/[0.03] hover:bg-white/10 border border-transparent'}`}
+              key={level.key}
+              type="button"
+              onClick={() => onChange(level.key)}
+              className={`flex w-full items-center gap-3 rounded-[var(--nv-player-radius-control)] border px-3 py-2 text-left transition-[background-color,border-color,color] ${active
+                ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)]'
+                : 'border-transparent bg-[var(--nv-player-surface-subtle)] hover:bg-[var(--nv-player-surface-hover)]'}`}
+              aria-pressed={active}
             >
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm ${active ? 'text-white' : 'text-white/85'} font-medium`}>
-                    {lv.label}
-                  </span>
-                  {lv.badge && (
+                  <span className="text-sm font-medium text-[var(--nv-player-text-primary)]">{level.label}</span>
+                  {level.badge && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded
-                        ${lv.key === 'medium'
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : lv.key === 'high'
-                            ? 'bg-red-500/20 text-red-300'
-                            : 'bg-blue-500/20 text-blue-300'}`}
+                      className="rounded px-1.5 py-0.5 text-[10px]"
+                      style={{ color: badgeColor, background: `color-mix(in srgb, ${badgeColor} 12%, transparent)` }}
                     >
-                      {lv.badge}
+                      {level.badge}
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-white/50 mt-0.5 truncate">{lv.desc}</div>
+                <div className="mt-0.5 truncate text-[11px] text-[var(--nv-player-text-tertiary)]">{level.desc}</div>
               </div>
-              {active && <CheckCircle2 className="w-4 h-4 text-violet-300 shrink-0" />}
+              {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--nv-player-accent)]" aria-hidden="true" />}
             </button>
           )
         })}
       </div>
 
-      <div className="mt-2 px-1 text-[10px] text-white/40 leading-relaxed">
-        适合动漫和 2D 插画。3D 真人影片建议"关闭"，实时超分对人脸会产生伪影。
+      <div className="mt-2 px-1 text-[10px] leading-relaxed text-[var(--nv-player-text-faint)]">
+        适合动漫和 2D 插画。3D 真人影片建议“关闭”，实时超分对人脸会产生伪影。
       </div>
     </div>
   )
