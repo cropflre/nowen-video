@@ -2,20 +2,21 @@
    PLAYER-UI-V2 · Overlay Panel System
    ------------------------------------------------------------
    统一投屏、字幕搜索、字幕选择等播放器浮层的视觉语言。
+   所有功能色从 --nv-player-* 语义边界读取，避免重新引入 Neon/Glass。
    ============================================================ */
 
 .group\/player {
-  --player-panel-bg: rgba(12, 14, 20, 0.94);
-  --player-panel-border: rgba(255, 255, 255, 0.09);
-  --player-panel-shadow: 0 22px 60px rgba(0, 0, 0, 0.50);
-  --player-panel-radius: 18px;
-  --player-panel-text: rgba(255, 255, 255, 0.92);
-  --player-panel-muted: rgba(255, 255, 255, 0.48);
-  --player-panel-faint: rgba(255, 255, 255, 0.30);
-  --player-panel-soft: rgba(255, 255, 255, 0.055);
-  --player-panel-soft-hover: rgba(255, 255, 255, 0.095);
-  --player-panel-accent-soft: rgba(0, 240, 255, 0.09);
-  --player-panel-accent-border: rgba(0, 240, 255, 0.18);
+  --player-panel-bg: var(--nv-player-surface);
+  --player-panel-border: var(--nv-player-border);
+  --player-panel-shadow: var(--nv-player-shadow);
+  --player-panel-radius: var(--nv-player-radius-panel);
+  --player-panel-text: var(--nv-player-text-primary);
+  --player-panel-muted: var(--nv-player-text-tertiary);
+  --player-panel-faint: var(--nv-player-text-faint);
+  --player-panel-soft: var(--nv-player-surface-subtle);
+  --player-panel-soft-hover: var(--nv-player-surface-hover);
+  --player-panel-accent-soft: var(--nv-player-accent-soft);
+  --player-panel-accent-border: var(--nv-player-accent-border);
 }
 
 .group\/player .player-overlay-panel {
@@ -36,7 +37,7 @@
   gap: 12px;
   min-height: 56px;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+  border-bottom: 1px solid var(--nv-player-border-subtle);
 }
 
 .group\/player .player-overlay-panel-heading {
@@ -48,22 +49,22 @@
   align-items: center;
   gap: 9px;
   min-width: 0;
+  color: var(--nv-player-text-primary);
   font-size: 15px;
   font-weight: 650;
   line-height: 1.2;
-  color: #fff;
 }
 
 .group\/player .player-overlay-panel-title > svg {
   flex: 0 0 auto;
-  color: #7defff;
+  color: var(--nv-player-accent);
 }
 
 .group\/player .player-overlay-panel-subtitle {
   margin-top: 4px;
+  color: var(--player-panel-muted);
   font-size: 11px;
   line-height: 1.45;
-  color: var(--player-panel-muted);
 }
 
 .group\/player .player-overlay-inline-actions {
@@ -82,12 +83,12 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 10px;
+  border-radius: var(--nv-player-radius-control);
   background: transparent;
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--nv-player-text-tertiary);
   font-size: 11px;
   line-height: 1;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: background-color var(--nv-motion-normal) var(--nv-ease-standard), color var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 .group\/player .player-overlay-close {
@@ -97,11 +98,11 @@
 .group\/player .player-overlay-close:hover,
 .group\/player .player-overlay-toolbar-btn:hover {
   background: var(--player-panel-soft-hover);
-  color: #fff;
+  color: var(--nv-player-text-primary);
 }
 
 .group\/player .player-overlay-toolbar-btn:disabled {
-  opacity: 0.45;
+  opacity: .45;
   cursor: not-allowed;
 }
 
@@ -112,17 +113,17 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  background: rgba(255, 255, 255, 0.035);
-  color: rgba(255, 255, 255, 0.43);
+  border-radius: var(--nv-radius-pill);
+  border: 1px solid var(--nv-player-border-subtle);
+  background: var(--nv-player-surface-subtle);
+  color: var(--nv-player-text-tertiary);
   font-size: 10px;
   line-height: 1;
   white-space: nowrap;
 }
 
 .group\/player .player-overlay-chip kbd {
-  color: rgba(125, 239, 255, 0.86);
+  color: var(--nv-player-accent);
   font: inherit;
   font-weight: 700;
 }
@@ -137,11 +138,11 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 9px;
+  color: var(--player-panel-faint);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  color: var(--player-panel-faint);
 }
 
 .group\/player .player-overlay-input-wrap {
@@ -150,21 +151,21 @@
   align-items: center;
   gap: 10px;
   padding: 0 12px;
-  border-radius: 13px;
-  background: rgba(7, 12, 22, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+  border-radius: calc(var(--nv-player-radius-control) + 3px);
+  background: var(--nv-player-surface-soft);
+  border: 1px solid var(--nv-player-border-subtle);
+  transition: border-color var(--nv-motion-normal) var(--nv-ease-standard), box-shadow var(--nv-motion-normal) var(--nv-ease-standard), background-color var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 .group\/player .player-overlay-input-wrap:focus-within {
-  background: rgba(7, 14, 26, 0.86);
-  border-color: rgba(0, 240, 255, 0.34);
-  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.055);
+  background: var(--nv-player-surface);
+  border-color: var(--nv-player-border-hover);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nv-player-accent) 7%, transparent);
 }
 
 .group\/player .player-overlay-input-wrap > svg {
   flex: 0 0 auto;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--nv-player-text-faint);
 }
 
 .group\/player .player-overlay-input-wrap input {
@@ -175,13 +176,13 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #fff;
+  color: var(--nv-player-text-primary);
   font-size: 13px;
   line-height: 1;
 }
 
 .group\/player .player-overlay-input-wrap input::placeholder {
-  color: rgba(255, 255, 255, 0.31);
+  color: var(--nv-player-text-faint);
 }
 
 .group\/player .player-overlay-input-action,
@@ -191,46 +192,47 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 9px;
+  border-radius: var(--nv-player-radius-control);
 }
 
 .group\/player .player-overlay-input-clear {
   width: 28px;
-  color: rgba(255, 255, 255, 0.38);
+  color: var(--nv-player-text-faint);
 }
 
 .group\/player .player-overlay-input-clear:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--nv-player-text-primary);
+  background: var(--nv-player-surface-hover);
 }
 
 .group\/player .player-overlay-input-action {
   padding: 0 10px;
-  color: #7defff;
-  background: rgba(0, 240, 255, 0.075);
-  border: 1px solid rgba(0, 240, 255, 0.11);
+  color: var(--nv-player-accent);
+  background: var(--nv-player-accent-soft);
+  border: 1px solid var(--nv-player-accent-border);
   font-size: 11px;
   font-weight: 650;
 }
 
 .group\/player .player-overlay-input-action:hover:not(:disabled) {
-  background: rgba(0, 240, 255, 0.12);
-  border-color: rgba(0, 240, 255, 0.19);
+  background: var(--nv-player-accent-soft-hover);
+  border-color: var(--nv-player-border-hover);
 }
 
 .group\/player .player-overlay-input-action:disabled {
-  color: rgba(255, 255, 255, 0.23);
-  background: rgba(255, 255, 255, 0.025);
-  border-color: rgba(255, 255, 255, 0.045);
+  color: var(--nv-player-text-faint);
+  background: var(--nv-player-surface-subtle);
+  border-color: var(--nv-player-border-subtle);
   cursor: not-allowed;
+  opacity: .6;
 }
 
 .group\/player .player-overlay-helper {
   padding: 18px 10px 2px;
   text-align: center;
+  color: var(--nv-player-text-tertiary);
   font-size: 11px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.38);
 }
 
 .group\/player .player-overlay-empty {
@@ -257,23 +259,23 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 2px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  color: rgba(255, 255, 255, 0.55);
+  border-radius: var(--nv-player-radius-panel);
+  background: var(--nv-player-surface-subtle);
+  border: 1px solid var(--nv-player-border-subtle);
+  color: var(--nv-player-text-tertiary);
 }
 
 .group\/player .player-overlay-empty-title {
+  color: var(--nv-player-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
-  color: rgba(255, 255, 255, 0.80);
 }
 
 .group\/player .player-overlay-empty-desc {
+  color: var(--nv-player-text-tertiary);
   font-size: 11px;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.40);
 }
 
 .group\/player .player-overlay-list {
@@ -291,26 +293,26 @@
   justify-content: space-between;
   gap: 10px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: calc(var(--nv-player-radius-control) + 2px);
   background: transparent;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--nv-player-text-secondary);
   text-align: left;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background-color var(--nv-motion-normal) var(--nv-ease-standard), border-color var(--nv-motion-normal) var(--nv-ease-standard), color var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 .group\/player .player-overlay-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: var(--nv-player-surface-hover);
+  color: var(--nv-player-text-primary);
 }
 
 .group\/player .player-overlay-item.is-active {
   background: var(--player-panel-accent-soft);
   border-color: var(--player-panel-accent-border);
-  color: #7defff;
+  color: var(--nv-player-accent);
 }
 
 .group\/player .player-overlay-item:disabled {
-  opacity: 0.45;
+  opacity: .45;
   cursor: not-allowed;
 }
 
@@ -329,16 +331,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  color: rgba(255, 255, 255, 0.62);
+  border-radius: calc(var(--nv-player-radius-control) + 1px);
+  background: var(--nv-player-surface-subtle);
+  border: 1px solid var(--nv-player-border-subtle);
+  color: var(--nv-player-text-secondary);
 }
 
 .group\/player .player-overlay-item.is-active .player-overlay-item-icon {
-  background: rgba(0, 240, 255, 0.075);
-  border-color: rgba(0, 240, 255, 0.13);
-  color: #7defff;
+  background: var(--nv-player-accent-soft);
+  border-color: var(--nv-player-accent-border);
+  color: var(--nv-player-accent);
 }
 
 .group\/player .player-overlay-item-copy {
@@ -350,10 +352,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: inherit;
   font-size: 13px;
   font-weight: 540;
   line-height: 1.3;
-  color: inherit;
 }
 
 .group\/player .player-overlay-item-desc,
@@ -362,9 +364,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--nv-player-text-faint);
   font-size: 10px;
   line-height: 1.3;
-  color: rgba(255, 255, 255, 0.34);
 }
 
 .group\/player .player-overlay-item-meta {
@@ -376,40 +378,40 @@
 .group\/player .player-overlay-divider {
   height: 1px;
   margin: 10px 0;
-  background: rgba(255, 255, 255, 0.065);
+  background: var(--nv-player-border-subtle);
 }
 
 .group\/player .player-overlay-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--nv-player-text-tertiary);
   font-size: 10px;
   line-height: 1;
-  color: rgba(255, 255, 255, 0.43);
 }
 
 .group\/player .player-overlay-status-dot {
   width: 7px;
   height: 7px;
-  border-radius: 999px;
-  background: #5ee6a8;
-  box-shadow: 0 0 10px rgba(94, 230, 168, 0.38);
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-player-success);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--nv-player-success) 38%, transparent);
 }
 
 .group\/player .player-overlay-alert {
   margin-top: 10px;
   padding: 9px 11px;
-  border-radius: 11px;
-  background: rgba(244, 63, 94, 0.075);
-  border: 1px solid rgba(244, 63, 94, 0.13);
-  color: rgba(253, 164, 175, 0.86);
+  border-radius: calc(var(--nv-player-radius-control) + 1px);
+  background: var(--nv-player-danger-soft);
+  border: 1px solid var(--nv-player-danger-border);
+  color: color-mix(in srgb, var(--nv-player-danger) 55%, var(--nv-player-text-primary));
   font-size: 11px;
   line-height: 1.45;
 }
 
 .group\/player .player-overlay-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 240, 255, 0.19) transparent;
+  scrollbar-color: color-mix(in srgb, var(--nv-player-accent) 20%, transparent) transparent;
 }
 
 .group\/player .player-overlay-scroll::-webkit-scrollbar {
@@ -421,8 +423,8 @@
 }
 
 .group\/player .player-overlay-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 240, 255, 0.19);
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--nv-player-accent) 20%, transparent);
+  border-radius: var(--nv-radius-pill);
 }
 
 /* ==================== VideoPlayer 字幕菜单统一 ==================== */
@@ -439,7 +441,7 @@
   backdrop-filter: blur(22px) saturate(135%) !important;
   -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 240, 255, 0.19) transparent;
+  scrollbar-color: color-mix(in srgb, var(--nv-player-accent) 20%, transparent) transparent;
 }
 
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button,
@@ -448,49 +450,49 @@
   padding: 0 11px !important;
   display: flex !important;
   align-items: center !important;
-  border-radius: 11px !important;
+  border-radius: calc(var(--nv-player-radius-control) + 1px) !important;
   border: 1px solid transparent !important;
   background: transparent !important;
-  color: rgba(255, 255, 255, 0.67) !important;
+  color: var(--nv-player-text-secondary) !important;
   font-size: 13px !important;
   line-height: 1.25 !important;
 }
 
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button:hover,
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
-  color: #fff !important;
+  background: var(--nv-player-surface-hover) !important;
+  color: var(--nv-player-text-primary) !important;
 }
 
+/* VideoPlayer 暂时继续用 text-neon-blue 标记 active，视觉已转为正式 player token。 */
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button.text-neon-blue,
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button.text-neon-blue {
   background: var(--player-panel-accent-soft) !important;
   border-color: var(--player-panel-accent-border) !important;
-  color: #7defff !important;
+  color: var(--nv-player-accent) !important;
 }
 
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='border-t'] {
   margin: 8px 4px !important;
-  border-color: rgba(255, 255, 255, 0.065) !important;
+  border-color: var(--nv-player-border-subtle) !important;
 }
 
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='uppercase'] {
   padding: 4px 9px 6px !important;
-  color: rgba(255, 255, 255, 0.28) !important;
+  color: var(--nv-player-text-faint) !important;
   font-size: 9px !important;
-  letter-spacing: 0.15em !important;
+  letter-spacing: .15em !important;
 }
 
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-surface-600,
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-emerald-400\/60 {
-  color: rgba(255, 255, 255, 0.32) !important;
+  color: var(--nv-player-text-faint) !important;
 }
 
-/* 翻译二级列表和主字幕菜单保持一致。 */
 .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > div {
-  border-radius: 11px !important;
-  background: rgba(5, 8, 14, 0.56) !important;
-  border-color: rgba(255, 255, 255, 0.055) !important;
+  border-radius: calc(var(--nv-player-radius-control) + 1px) !important;
+  background: var(--nv-player-surface-soft) !important;
+  border-color: var(--nv-player-border-subtle) !important;
 }
 
 @media (max-width: 768px) {
@@ -517,6 +519,6 @@
 @media (prefers-reduced-motion: reduce) {
   .group\/player .player-overlay-panel *,
   .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full * {
-    transition-duration: 0.01ms !important;
+    transition-duration: .01ms !important;
   }
 }
