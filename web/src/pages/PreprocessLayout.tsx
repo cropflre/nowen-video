@@ -9,12 +9,11 @@ import clsx from 'clsx'
  *
  * 设计要点：
  * 1) 路由级 Tab，URL 与页面状态强一致，浏览器前进/后退、刷新、深链分享均工作正常
- * 2) 不嵌套大组件，避免 PreprocessPage(113KB) 与 SubtitlePreprocessPage(44KB) 同屏挂载
+ * 2) 不嵌套大组件，避免 PreprocessPage 与 SubtitlePreprocessPage 同屏挂载
  * 3) 子页面保持独立，WS 订阅自然按 Tab 切换 mount/unmount
  */
 export default function PreprocessLayout() {
   const location = useLocation()
-  // 子 Tab 命中：以路径前缀判定
   const isSubtitle = location.pathname.startsWith('/preprocess/subtitle')
   const isVideo = !isSubtitle
 
@@ -25,41 +24,34 @@ export default function PreprocessLayout() {
 
   return (
     <div className="space-y-3">
-      {/* 一级 Tab 头：模块切换
-          - 背景使用 var(--bg-elevated)：暗色下半透明深底，亮色下纯白，与正文背景天然过渡
-          - 配合 backdrop-blur 让滚动内容透出柔和质感，亮/暗双模均不刺眼 */}
-      <div
-        className="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 backdrop-blur-md"
-        style={{
-          background: 'var(--bg-elevated)',
-          borderBottom: '1px solid var(--border-default)',
-        }}
-      >
-        <div className="flex items-center gap-1 flex-wrap">
-          {tabs.map((t) => {
-            const Icon = t.icon
+      <div className="sticky top-0 z-10 -mx-4 border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-elevated)] px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-center gap-1">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
             return (
               <NavLink
-                key={t.to}
-                to={t.to}
-                end={t.end}
+                key={tab.to}
+                to={tab.to}
+                end={tab.end}
                 className={clsx(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-all duration-200',
-                  t.active && 'font-medium',
+                  'inline-flex min-h-8 items-center gap-1.5 rounded-[var(--nv-radius-control)] border px-3 py-1.5 text-sm transition-[background-color,border-color,color] duration-200',
+                  tab.active
+                    ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] font-medium text-[var(--nv-action-primary)]'
+                    : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-control)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
                 )}
-                style={t.active
-                  ? { background: 'var(--neon-blue-15)', border: '1px solid var(--neon-blue-30)', color: 'var(--text-primary)' }
-                  : { background: 'var(--glass-bg)', border: '1px solid var(--neon-blue-6)', color: 'var(--text-muted)' }}
               >
-                <Icon size={14} className={t.active ? 'text-neon-blue' : ''} />
-                <span>{t.label}</span>
+                <Icon
+                  size={14}
+                  className={tab.active ? 'text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-tertiary)]'}
+                  aria-hidden="true"
+                />
+                <span>{tab.label}</span>
               </NavLink>
             )
           })}
         </div>
       </div>
 
-      {/* 子路由出口 */}
       <Outlet />
     </div>
   )
