@@ -137,7 +137,7 @@ export default function HeroSection({
 
         <div className="relative mx-auto grid min-h-[clamp(24rem,48vw,39rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[11rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
           <div className="hidden sm:block">
-            <div className="hero-poster-frame relative aspect-[2/3] w-full overflow-hidden bg-[var(--nv-bg-surface-soft)]">
+            <div className="relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
               <img
                 src={streamApi.getPosterUrl(media.id, posterVersion)}
                 alt={media.title}
