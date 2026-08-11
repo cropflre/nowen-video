@@ -30,6 +30,7 @@ import clsx from 'clsx'
 import CastPanel from './CastPanel'
 import SubtitleSearchPanel from './SubtitleSearchPanel'
 import SubtitleContentSearch from './SubtitleContentSearch'
+import { Tag } from '@/components/design-system'
 
 interface VideoPlayerProps {
   src: string
@@ -1258,11 +1259,11 @@ export default function VideoPlayer({
             <h2 className="font-display text-base font-medium tracking-wide text-white drop-shadow-lg">
               {title}
             </h2>
-            <span className="badge-neon text-[10px]">
+            <Tag tone="brand" className="text-[10px]">
               {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : (mode === 'remux' || mode === 'smart_remux') ? 'Remux播放' : 'HLS转码'}
-            </span>
+            </Tag>
             {playbackRate !== 1 && (
-              <span className="badge-neon text-[10px]">{playbackRate}x</span>
+              <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>
             )}
           </div>
         )}
