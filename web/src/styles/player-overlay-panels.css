@@ -1,54 +1,38 @@
 /* ============================================================
-   PLAYER-UI-V2 · Overlay Panel System
+   PLAYER-UI · Shared Overlay Panels
    ------------------------------------------------------------
-   统一投屏、字幕搜索、字幕选择等播放器浮层的视觉语言。
-   所有功能色从 --nv-player-* 语义边界读取，避免重新引入 Neon/Glass。
+   投屏、字幕内容搜索等共享浮层直接消费 --nv-player-*。
+   VideoPlayer 自身菜单已由组件语义 class 管理，不再需要旧 DOM 兼容选择器。
    ============================================================ */
 
-.group\/player {
-  --player-panel-bg: var(--nv-player-surface);
-  --player-panel-border: var(--nv-player-border);
-  --player-panel-shadow: var(--nv-player-shadow);
-  --player-panel-radius: var(--nv-player-radius-panel);
-  --player-panel-text: var(--nv-player-text-primary);
-  --player-panel-muted: var(--nv-player-text-tertiary);
-  --player-panel-faint: var(--nv-player-text-faint);
-  --player-panel-soft: var(--nv-player-surface-subtle);
-  --player-panel-soft-hover: var(--nv-player-surface-hover);
-  --player-panel-accent-soft: var(--nv-player-accent-soft);
-  --player-panel-accent-border: var(--nv-player-accent-border);
-}
-
 .group\/player .player-overlay-panel {
-  background: var(--player-panel-bg) !important;
-  border: 1px solid var(--player-panel-border) !important;
-  border-radius: var(--player-panel-radius) !important;
-  box-shadow: var(--player-panel-shadow) !important;
+  overflow: hidden;
+  border: 1px solid var(--nv-player-border) !important;
+  border-radius: var(--nv-player-radius-panel) !important;
+  background: var(--nv-player-surface) !important;
+  color: var(--nv-player-text-primary);
+  box-shadow: var(--nv-player-shadow) !important;
   backdrop-filter: blur(22px) saturate(135%) !important;
   -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
-  color: var(--player-panel-text);
-  overflow: hidden;
 }
 
 .group\/player .player-overlay-panel-header {
   display: flex;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 56px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--nv-player-border-subtle);
 }
 
-.group\/player .player-overlay-panel-heading {
-  min-width: 0;
-}
+.group\/player .player-overlay-panel-heading { min-width: 0; }
 
 .group\/player .player-overlay-panel-title {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 9px;
-  min-width: 0;
   color: var(--nv-player-text-primary);
   font-size: 15px;
   font-weight: 650;
@@ -62,27 +46,27 @@
 
 .group\/player .player-overlay-panel-subtitle {
   margin-top: 4px;
-  color: var(--player-panel-muted);
+  color: var(--nv-player-text-tertiary);
   font-size: 11px;
   line-height: 1.45;
 }
 
 .group\/player .player-overlay-inline-actions {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
 }
 
 .group\/player .player-overlay-close,
 .group\/player .player-overlay-toolbar-btn {
+  display: inline-flex;
   height: 32px;
   min-width: 32px;
-  padding: 0 9px;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  padding: 0 9px;
   border-radius: var(--nv-player-radius-control);
   background: transparent;
   color: var(--nv-player-text-tertiary);
@@ -91,30 +75,28 @@
   transition: background-color var(--nv-motion-normal) var(--nv-ease-standard), color var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
-.group\/player .player-overlay-close {
-  padding: 0;
-}
+.group\/player .player-overlay-close { padding: 0; }
 
 .group\/player .player-overlay-close:hover,
 .group\/player .player-overlay-toolbar-btn:hover {
-  background: var(--player-panel-soft-hover);
+  background: var(--nv-player-surface-hover);
   color: var(--nv-player-text-primary);
 }
 
 .group\/player .player-overlay-toolbar-btn:disabled {
-  opacity: .45;
   cursor: not-allowed;
+  opacity: .45;
 }
 
 .group\/player .player-overlay-chip {
-  height: 28px;
-  padding: 0 9px;
   display: inline-flex;
+  height: 28px;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border-radius: var(--nv-radius-pill);
+  padding: 0 9px;
   border: 1px solid var(--nv-player-border-subtle);
+  border-radius: var(--nv-radius-pill);
   background: var(--nv-player-surface-subtle);
   color: var(--nv-player-text-tertiary);
   font-size: 10px;
@@ -128,9 +110,7 @@
   font-weight: 700;
 }
 
-.group\/player .player-overlay-body {
-  padding: 14px 16px 16px;
-}
+.group\/player .player-overlay-body { padding: 14px 16px 16px; }
 
 .group\/player .player-overlay-section-label {
   display: flex;
@@ -138,7 +118,7 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 9px;
-  color: var(--player-panel-faint);
+  color: var(--nv-player-text-faint);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .14em;
@@ -146,20 +126,20 @@
 }
 
 .group\/player .player-overlay-input-wrap {
-  min-height: 46px;
   display: flex;
+  min-height: 46px;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
+  border: 1px solid var(--nv-player-border-subtle);
   border-radius: calc(var(--nv-player-radius-control) + 3px);
   background: var(--nv-player-surface-soft);
-  border: 1px solid var(--nv-player-border-subtle);
   transition: border-color var(--nv-motion-normal) var(--nv-ease-standard), box-shadow var(--nv-motion-normal) var(--nv-ease-standard), background-color var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 .group\/player .player-overlay-input-wrap:focus-within {
-  background: var(--nv-player-surface);
   border-color: var(--nv-player-border-hover);
+  background: var(--nv-player-surface);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--nv-player-accent) 7%, transparent);
 }
 
@@ -169,9 +149,9 @@
 }
 
 .group\/player .player-overlay-input-wrap input {
-  flex: 1;
   min-width: 0;
   height: 44px;
+  flex: 1;
   padding: 0;
   border: 0;
   outline: 0;
@@ -181,15 +161,13 @@
   line-height: 1;
 }
 
-.group\/player .player-overlay-input-wrap input::placeholder {
-  color: var(--nv-player-text-faint);
-}
+.group\/player .player-overlay-input-wrap input::placeholder { color: var(--nv-player-text-faint); }
 
 .group\/player .player-overlay-input-action,
 .group\/player .player-overlay-input-clear {
-  flex: 0 0 auto;
-  height: 30px;
   display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   border-radius: var(--nv-player-radius-control);
@@ -201,43 +179,43 @@
 }
 
 .group\/player .player-overlay-input-clear:hover {
-  color: var(--nv-player-text-primary);
   background: var(--nv-player-surface-hover);
+  color: var(--nv-player-text-primary);
 }
 
 .group\/player .player-overlay-input-action {
   padding: 0 10px;
-  color: var(--nv-player-accent);
-  background: var(--nv-player-accent-soft);
   border: 1px solid var(--nv-player-accent-border);
+  background: var(--nv-player-accent-soft);
+  color: var(--nv-player-accent);
   font-size: 11px;
   font-weight: 650;
 }
 
 .group\/player .player-overlay-input-action:hover:not(:disabled) {
-  background: var(--nv-player-accent-soft-hover);
   border-color: var(--nv-player-border-hover);
+  background: var(--nv-player-accent-soft-hover);
 }
 
 .group\/player .player-overlay-input-action:disabled {
-  color: var(--nv-player-text-faint);
-  background: var(--nv-player-surface-subtle);
-  border-color: var(--nv-player-border-subtle);
   cursor: not-allowed;
+  border-color: var(--nv-player-border-subtle);
+  background: var(--nv-player-surface-subtle);
+  color: var(--nv-player-text-faint);
   opacity: .6;
 }
 
 .group\/player .player-overlay-helper {
   padding: 18px 10px 2px;
-  text-align: center;
   color: var(--nv-player-text-tertiary);
   font-size: 11px;
   line-height: 1.6;
+  text-align: center;
 }
 
 .group\/player .player-overlay-empty {
-  min-height: 180px;
   display: flex;
+  min-height: 180px;
   align-items: center;
   justify-content: center;
   padding: 8px 8px 2px;
@@ -245,23 +223,23 @@
 
 .group\/player .player-overlay-empty-inner {
   display: flex;
+  max-width: 260px;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  max-width: 260px;
   text-align: center;
 }
 
 .group\/player .player-overlay-empty-icon {
+  display: flex;
   width: 48px;
   height: 48px;
-  display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 2px;
+  border: 1px solid var(--nv-player-border-subtle);
   border-radius: var(--nv-player-radius-panel);
   background: var(--nv-player-surface-subtle);
-  border: 1px solid var(--nv-player-border-subtle);
   color: var(--nv-player-text-tertiary);
 }
 
@@ -285,13 +263,13 @@
 }
 
 .group\/player .player-overlay-item {
+  display: flex;
   width: 100%;
   min-height: 44px;
-  padding: 9px 11px;
-  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  padding: 9px 11px;
   border: 1px solid transparent;
   border-radius: calc(var(--nv-player-radius-control) + 2px);
   background: transparent;
@@ -306,40 +284,40 @@
 }
 
 .group\/player .player-overlay-item.is-active {
-  background: var(--player-panel-accent-soft);
-  border-color: var(--player-panel-accent-border);
+  border-color: var(--nv-player-accent-border);
+  background: var(--nv-player-accent-soft);
   color: var(--nv-player-accent);
 }
 
 .group\/player .player-overlay-item:disabled {
-  opacity: .45;
   cursor: not-allowed;
+  opacity: .45;
 }
 
 .group\/player .player-overlay-item-primary {
   display: flex;
-  align-items: center;
-  gap: 9px;
   min-width: 0;
   flex: 1;
+  align-items: center;
+  gap: 9px;
 }
 
 .group\/player .player-overlay-item-icon {
+  display: flex;
   width: 34px;
   height: 34px;
   flex: 0 0 auto;
-  display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--nv-player-border-subtle);
   border-radius: calc(var(--nv-player-radius-control) + 1px);
   background: var(--nv-player-surface-subtle);
-  border: 1px solid var(--nv-player-border-subtle);
   color: var(--nv-player-text-secondary);
 }
 
 .group\/player .player-overlay-item.is-active .player-overlay-item-icon {
-  background: var(--nv-player-accent-soft);
   border-color: var(--nv-player-accent-border);
+  background: var(--nv-player-accent-soft);
   color: var(--nv-player-accent);
 }
 
@@ -350,23 +328,23 @@
 
 .group\/player .player-overlay-item-title {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: inherit;
   font-size: 13px;
   font-weight: 540;
   line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group\/player .player-overlay-item-desc,
 .group\/player .player-overlay-item-meta {
   margin-top: 3px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--nv-player-text-faint);
   font-size: 10px;
   line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group\/player .player-overlay-item-meta {
@@ -401,9 +379,9 @@
 .group\/player .player-overlay-alert {
   margin-top: 10px;
   padding: 9px 11px;
+  border: 1px solid var(--nv-player-danger-border);
   border-radius: calc(var(--nv-player-radius-control) + 1px);
   background: var(--nv-player-danger-soft);
-  border: 1px solid var(--nv-player-danger-border);
   color: color-mix(in srgb, var(--nv-player-danger) 55%, var(--nv-player-text-primary));
   font-size: 11px;
   line-height: 1.45;
@@ -414,85 +392,11 @@
   scrollbar-color: color-mix(in srgb, var(--nv-player-accent) 20%, transparent) transparent;
 }
 
-.group\/player .player-overlay-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.group\/player .player-overlay-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+.group\/player .player-overlay-scroll::-webkit-scrollbar { width: 6px; }
+.group\/player .player-overlay-scroll::-webkit-scrollbar-track { background: transparent; }
 .group\/player .player-overlay-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--nv-player-accent) 20%, transparent);
   border-radius: var(--nv-radius-pill);
-}
-
-/* ==================== VideoPlayer 字幕菜单统一 ==================== */
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full {
-  width: 264px !important;
-  min-width: 264px !important;
-  max-height: min(480px, calc(100vh - 120px));
-  overflow-y: auto;
-  padding: 8px !important;
-  border-radius: var(--player-panel-radius) !important;
-  background: var(--player-panel-bg) !important;
-  border: 1px solid var(--player-panel-border) !important;
-  box-shadow: var(--player-panel-shadow) !important;
-  backdrop-filter: blur(22px) saturate(135%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--nv-player-accent) 20%, transparent) transparent;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button,
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button {
-  min-height: 42px;
-  padding: 0 11px !important;
-  display: flex !important;
-  align-items: center !important;
-  border-radius: calc(var(--nv-player-radius-control) + 1px) !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  color: var(--nv-player-text-secondary) !important;
-  font-size: 13px !important;
-  line-height: 1.25 !important;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button:hover,
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button:hover {
-  background: var(--nv-player-surface-hover) !important;
-  color: var(--nv-player-text-primary) !important;
-}
-
-/* VideoPlayer 暂时继续用 text-neon-blue 标记 active，视觉已转为正式 player token。 */
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > button.text-neon-blue,
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > button.text-neon-blue {
-  background: var(--player-panel-accent-soft) !important;
-  border-color: var(--player-panel-accent-border) !important;
-  color: var(--nv-player-accent) !important;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='border-t'] {
-  margin: 8px 4px !important;
-  border-color: var(--nv-player-border-subtle) !important;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div[class*='uppercase'] {
-  padding: 4px 9px 6px !important;
-  color: var(--nv-player-text-faint) !important;
-  font-size: 9px !important;
-  letter-spacing: .15em !important;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-surface-600,
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full span.text-emerald-400\/60 {
-  color: var(--nv-player-text-faint) !important;
-}
-
-.group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full > div.relative > div {
-  border-radius: calc(var(--nv-player-radius-control) + 1px) !important;
-  background: var(--nv-player-surface-soft) !important;
-  border-color: var(--nv-player-border-subtle) !important;
+  background: color-mix(in srgb, var(--nv-player-accent) 20%, transparent);
 }
 
 @media (max-width: 768px) {
@@ -501,24 +405,12 @@
     padding: 12px 14px;
   }
 
-  .group\/player .player-overlay-body {
-    padding: 12px 14px 14px;
-  }
-
-  .group\/player .player-overlay-chip {
-    display: none;
-  }
-
-  .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full {
-    width: min(260px, calc(100vw - 24px)) !important;
-    min-width: 0 !important;
-    max-height: min(420px, calc(100vh - 100px));
-  }
+  .group\/player .player-overlay-body { padding: 12px 14px 14px; }
+  .group\/player .player-overlay-chip { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .group\/player .player-overlay-panel *,
-  .group\/player .player-controls div.relative:has(> button svg.lucide-subtitles) > div.absolute.bottom-full * {
+  .group\/player .player-overlay-panel * {
     transition-duration: .01ms !important;
   }
 }
