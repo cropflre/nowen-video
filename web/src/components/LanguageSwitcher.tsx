@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
-import { useI18nStore, SUPPORTED_LOCALES } from '@/i18n'
+import { useEffect, useRef, useState } from 'react'
 import { Globe } from 'lucide-react'
 import clsx from 'clsx'
+import { useI18nStore, SUPPORTED_LOCALES } from '@/i18n'
+import { Button } from '@/components/design-system'
 
 export default function LanguageSwitcher() {
   const { locale, setLocale } = useI18nStore()
@@ -9,8 +10,8 @@ export default function LanguageSwitcher() {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+    const handleClick = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
         setOpen(false)
       }
     }
@@ -18,42 +19,54 @@ export default function LanguageSwitcher() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const currentLang = SUPPORTED_LOCALES.find(l => l.code === locale)
+  const currentLang = SUPPORTED_LOCALES.find((lang) => lang.code === locale)
 
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-surface-400 hover:text-white hover:bg-white/5 transition-colors w-full"
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((value) => !value)}
+        className="w-full justify-start"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
-        <Globe className="h-4 w-4" />
-        <span>{currentLang?.flag} {currentLang?.name}</span>
-      </button>
+        <Globe size={16} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+        <span className="truncate">{currentLang?.flag} {currentLang?.name}</span>
+      </Button>
 
       {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-48 rounded-xl py-1 z-50" style={{
-          background: 'var(--glass-bg)',
-          border: '1px solid var(--neon-blue-15)',
-          backdropFilter: 'blur(20px)',
-        }}>
-          {SUPPORTED_LOCALES.map(lang => (
-            <button
-              key={lang.code}
-              onClick={() => { setLocale(lang.code); setOpen(false) }}
-              className={clsx(
-                'flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors',
-                locale === lang.code
-                  ? 'text-neon-blue bg-neon-blue/5'
-                  : 'text-surface-300 hover:text-white hover:bg-white/5'
-              )}
-            >
-              <span className="text-base">{lang.flag}</span>
-              <span>{lang.name}</span>
-              {locale === lang.code && (
-                <span className="ml-auto text-xs text-neon-blue">✓</span>
-              )}
-            </button>
-          ))}
+        <div
+          className="nv-surface absolute bottom-full left-0 z-[var(--nv-z-dropdown)] mb-2 w-48 overflow-hidden py-1 shadow-[var(--nv-shadow-elevated)]"
+          role="menu"
+          aria-label="选择语言"
+        >
+          {SUPPORTED_LOCALES.map((lang) => {
+            const active = locale === lang.code
+            return (
+              <button
+                key={lang.code}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                onClick={() => {
+                  setLocale(lang.code)
+                  setOpen(false)
+                }}
+                className={clsx(
+                  'flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                  active
+                    ? 'bg-[var(--nv-bg-active)] font-medium text-[var(--nv-action-primary)]'
+                    : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
+                )}
+              >
+                <span className="text-base" aria-hidden="true">{lang.flag}</span>
+                <span className="min-w-0 flex-1 truncate text-left">{lang.name}</span>
+                {active && <span className="text-xs text-[var(--nv-action-primary)]" aria-hidden="true">✓</span>}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
