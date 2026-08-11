@@ -4,7 +4,6 @@
    只重构倍速入口和倍速弹层的视觉信息架构，不改变播放器倍速逻辑。
    ============================================================ */
 
-/* 底部倍速入口直接显示当前值，使用稳定的等宽数字。 */
 .group\/player button[title='播放速度'] {
   width: auto !important;
   min-width: 48px !important;
@@ -15,7 +14,6 @@
   font-weight: 700 !important;
 }
 
-/* 1 倍时 VideoPlayer 仍渲染 Gauge 图标；沿用 Cinema 模式的文字化入口，统一为 1x。 */
 .group\/player button[title='播放速度']:has(> svg) svg {
   display: none !important;
 }
@@ -29,7 +27,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ==================== Compact Speed Menu ==================== */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] {
   width: 244px !important;
   min-width: 244px !important;
@@ -41,14 +38,14 @@
   gap: 6px !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
-  border-radius: 16px !important;
-  background: rgba(13, 15, 19, 0.94) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55) !important;
+  border-radius: var(--nv-player-radius-panel) !important;
+  background: var(--nv-player-surface) !important;
+  border: 1px solid var(--nv-player-border) !important;
+  box-shadow: var(--nv-player-shadow) !important;
   backdrop-filter: blur(24px) saturate(130%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 240, 255, 0.24) transparent;
+  scrollbar-color: color-mix(in srgb, var(--nv-player-accent) 24%, transparent) transparent;
   overscroll-behavior: contain;
 }
 
@@ -59,7 +56,7 @@
   align-items: center;
   min-height: 24px;
   padding: 0 4px 2px;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--nv-player-text-tertiary);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -75,11 +72,10 @@
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full']::-webkit-scrollbar-thumb {
-  background: rgba(0, 240, 255, 0.24);
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--nv-player-accent) 24%, transparent);
+  border-radius: var(--nv-radius-pill);
 }
 
-/* 所有速度项改成双列卡片，避免 0.5x ~ 8x 形成一条过长纵向列表。 */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block {
   width: 100% !important;
   min-height: 38px;
@@ -87,44 +83,43 @@
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  border: 1px solid rgba(255, 255, 255, 0.045) !important;
-  border-radius: 10px !important;
-  background: rgba(255, 255, 255, 0.025) !important;
-  color: rgba(255, 255, 255, 0.64) !important;
+  border: 1px solid var(--nv-player-border-subtle) !important;
+  border-radius: var(--nv-player-radius-control) !important;
+  background: var(--nv-player-surface-subtle) !important;
+  color: var(--nv-player-text-secondary) !important;
   font-size: 13px !important;
   font-weight: 560;
   line-height: 1 !important;
   font-variant-numeric: tabular-nums;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease !important;
+  transition: background-color var(--nv-motion-normal) var(--nv-ease-standard), border-color var(--nv-motion-normal) var(--nv-ease-standard), color var(--nv-motion-normal) var(--nv-ease-standard), transform var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block:hover {
-  color: #fff !important;
-  background: rgba(255, 255, 255, 0.07) !important;
-  border-color: rgba(255, 255, 255, 0.09) !important;
+  color: var(--nv-player-text-primary) !important;
+  background: var(--nv-player-surface-hover) !important;
+  border-color: var(--nv-player-border) !important;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block:active {
-  transform: scale(0.97);
+  transform: scale(.98);
 }
 
-/* 当前倍速：品牌青只用于选中状态，并加一个轻量勾选标记。 */
+/* VideoPlayer 仍用 text-neon-blue 标记当前倍速；本文件只把它解释为正式播放器品牌态。 */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block.text-neon-blue {
-  color: #7defff !important;
-  background: rgba(0, 240, 255, 0.095) !important;
-  border-color: rgba(0, 240, 255, 0.18) !important;
-  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.025);
+  color: var(--nv-player-accent) !important;
+  background: var(--nv-player-accent-soft) !important;
+  border-color: var(--nv-player-accent-border) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-player-accent) 3%, transparent);
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block.text-neon-blue::after {
   content: '✓';
   margin-left: 8px;
-  color: rgba(125, 239, 255, 0.82);
+  color: var(--nv-player-accent);
   font-size: 11px;
   font-weight: 800;
 }
 
-/* 非 1x 时出现的“恢复正常”独占整行，不再被 140px 菜单挤成两行。 */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.flex.w-full.items-center.justify-between {
   grid-column: 1 / -1;
   width: 100% !important;
@@ -135,46 +130,45 @@
   align-items: center !important;
   justify-content: space-between !important;
   gap: 14px;
-  border-radius: 10px !important;
-  border: 1px solid rgba(0, 240, 255, 0.13) !important;
-  background: rgba(0, 240, 255, 0.055) !important;
-  color: #7defff !important;
+  border-radius: var(--nv-player-radius-control) !important;
+  border: 1px solid var(--nv-player-accent-border) !important;
+  background: var(--nv-player-accent-soft) !important;
+  color: var(--nv-player-accent) !important;
   white-space: nowrap !important;
   font-size: 12px !important;
   font-weight: 650;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.flex.w-full.items-center.justify-between:hover {
-  background: rgba(0, 240, 255, 0.10) !important;
-  border-color: rgba(0, 240, 255, 0.22) !important;
+  background: var(--nv-player-accent-soft-hover) !important;
+  border-color: var(--nv-player-border-hover) !important;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.flex.w-full.items-center.justify-between > span:first-child {
-  color: #9cf4ff;
+  color: var(--nv-player-accent);
   font-size: 12px;
   line-height: 1 !important;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.flex.w-full.items-center.justify-between > span:last-child {
-  color: rgba(255, 255, 255, 0.34) !important;
+  color: var(--nv-player-text-faint) !important;
   font-size: 10px !important;
   font-weight: 500;
   line-height: 1 !important;
 }
 
-/* 分隔线与底部快捷键说明横跨两列。 */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > div.border-t {
   grid-column: 1 / -1;
   width: auto !important;
   margin: 2px 2px !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: var(--nv-player-border-subtle) !important;
 }
 
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > div[class*='text-[10px]'] {
   grid-column: 1 / -1;
   min-height: 26px;
   padding: 4px 4px 0 !important;
-  color: rgba(255, 255, 255, 0.34) !important;
+  color: var(--nv-player-text-faint) !important;
   font-size: 0 !important;
   line-height: 1.35 !important;
   white-space: nowrap;
@@ -186,9 +180,8 @@
   letter-spacing: 0.01em;
 }
 
-/* 选中项滚动到视区时更容易被识别，但不使用强光晕。 */
 .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button.block.text-neon-blue:focus-visible {
-  outline: 1px solid rgba(125, 239, 255, 0.55);
+  outline: 1px solid var(--nv-player-focus);
   outline-offset: 1px;
 }
 
@@ -228,6 +221,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .group\/player button[title='播放速度'] + div[class*='bottom-full'] > button {
-    transition-duration: 0.01ms !important;
+    transition-duration: .01ms !important;
   }
 }
