@@ -49,6 +49,7 @@ function formatTime(seconds: number): string {
 }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2]
+const CONTROL_CLASS = 'flex h-9 min-w-9 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-secondary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]'
 
 export default function WebCodecsPlayerShell({
   src,
@@ -82,7 +83,6 @@ export default function WebCodecsPlayerShell({
   const displayDuration = (knownDuration && knownDuration > duration) ? knownDuration : duration
   const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
-  // ===== 播放器事件桥接 =====
   const handleTimeUpdate = useCallback((t: number) => {
     setCurrentTime(t)
     setStoreTime(t)
@@ -105,16 +105,12 @@ export default function WebCodecsPlayerShell({
     onFallback?.()
   }, [onFallback])
 
-  // ===== 控制函数 =====
   const togglePlay = useCallback(() => {
     const p = playerRef.current
     if (!p) return
     if (nextCountdown !== null) setNextCountdown(null)
-    if (isPlaying) {
-      p.pause()
-    } else {
-      p.play().catch(() => {})
-    }
+    if (isPlaying) p.pause()
+    else p.play().catch(() => {})
   }, [isPlaying, nextCountdown])
 
   const seek = useCallback((seconds: number) => {
@@ -129,8 +125,7 @@ export default function WebCodecsPlayerShell({
     if (!p) return
     const rect = e.currentTarget.getBoundingClientRect()
     const pos = (e.clientX - rect.left) / rect.width
-    const target = pos * (displayDuration || p.getDuration())
-    p.seek(target)
+    p.seek(pos * (displayDuration || p.getDuration()))
   }, [displayDuration])
 
   const handleVolumeChange = useCallback((v: number) => {
@@ -150,11 +145,8 @@ export default function WebCodecsPlayerShell({
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen?.()
-    } else {
-      document.exitFullscreen?.()
-    }
+    if (!document.fullscreenElement) containerRef.current.requestFullscreen?.()
+    else document.exitFullscreen?.()
   }, [])
 
   const changePlaybackRate = useCallback((r: number) => {
@@ -163,20 +155,17 @@ export default function WebCodecsPlayerShell({
     setShowSpeedMenu(false)
   }, [])
 
-  // ===== 副作用 =====
   useEffect(() => {
     const onFs = () => setIsFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', onFs)
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
 
-  // 初始音量
   useEffect(() => {
     playerRef.current?.setVolume(volume)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 自动隐藏控制栏
   const resetControlsTimer = useCallback(() => {
     setShowControls(true)
     clearTimeout(controlsTimerRef.current)
@@ -185,7 +174,6 @@ export default function WebCodecsPlayerShell({
     }, 3000)
   }, [isPlaying])
 
-  // 观看历史每 15 秒写入一次；WebCodecs 不依赖媒体级 Runtime 遥测。
   useEffect(() => {
     let tick = 0
     const timer = window.setInterval(() => {
@@ -199,7 +187,6 @@ export default function WebCodecsPlayerShell({
     return () => clearInterval(timer)
   }, [mediaId, isPlaying, currentTime, displayDuration, duration])
 
-  // 下一集倒计时
   useEffect(() => {
     if (nextCountdown === null) return
     if (nextCountdown <= 0) {
@@ -207,13 +194,12 @@ export default function WebCodecsPlayerShell({
       onNext?.()
       return
     }
-    const t = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setNextCountdown(prev => (prev !== null ? prev - 1 : null))
     }, 1000)
-    return () => clearTimeout(t)
+    return () => clearTimeout(timer)
   }, [nextCountdown, onNext])
 
-  // 键盘快捷键
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
@@ -255,11 +241,10 @@ export default function WebCodecsPlayerShell({
   return (
     <div
       ref={containerRef}
-      className="group/player relative h-full w-full bg-black"
+      className="group/player relative h-full w-full bg-[var(--nv-player-canvas)]"
       onMouseMove={resetControlsTimer}
       onMouseLeave={() => { if (isPlaying) setShowControls(false) }}
     >
-      {/* WebCodecs 核心播放器 */}
       <div className="absolute inset-0 cursor-pointer" onClick={togglePlay} onDoubleClick={toggleFullscreen}>
         <WebCodecsPlayer
           ref={playerRef}
@@ -275,23 +260,22 @@ export default function WebCodecsPlayerShell({
         />
       </div>
 
-      {/* 下一集倒计时浮层 */}
       {nextCountdown !== null && nextTitle && (
-        <div className="absolute right-4 bottom-24 z-40 rounded-xl p-4 backdrop-blur-md"
-          style={{ background: 'rgba(11,17,32,0.85)', border: '1px solid var(--neon-blue-20)' }}>
-          <p className="text-xs text-surface-400 mb-1">即将播放</p>
-          <p className="text-sm text-white mb-2">{nextTitle}</p>
-          <div className="flex items-center gap-2">
+        <div className="absolute bottom-24 right-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-4 shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+          <p className="text-xs text-[var(--nv-player-text-tertiary)]">即将播放</p>
+          <p className="mt-1 truncate text-sm font-medium text-[var(--nv-player-text-primary)]">{nextTitle}</p>
+          <div className="mt-3 flex items-center gap-2">
             <button
+              type="button"
               onClick={() => { setNextCountdown(null); onNext?.() }}
-              className="rounded-md px-3 py-1 text-xs text-white"
-              style={{ background: 'var(--neon-blue-20)' }}
+              className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent)] px-3 py-2 text-xs font-semibold text-[var(--nv-text-on-brand)] transition-[background-color,transform] hover:bg-[var(--nv-action-primary-hover)] active:scale-[0.98]"
             >
               立即播放 ({nextCountdown})
             </button>
             <button
+              type="button"
               onClick={() => setNextCountdown(null)}
-              className="rounded-md px-3 py-1 text-xs text-surface-400 hover:text-white"
+              className="rounded-[var(--nv-player-radius-control)] px-3 py-2 text-xs text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]"
             >
               取消
             </button>
@@ -299,107 +283,111 @@ export default function WebCodecsPlayerShell({
         </div>
       )}
 
-      {/* 控制栏 */}
       <div className={clsx(
         'absolute inset-0 transition-opacity duration-300',
-        showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        showControls ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}>
-        {/* 顶部标题栏 */}
         {title && (
-          <div className="absolute left-4 top-4 flex items-center gap-3 z-30">
+          <div className="absolute left-4 top-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-3">
             {onBack && (
               <button
+                type="button"
                 onClick={onBack}
-                className="rounded-full p-2 text-white backdrop-blur-md transition-all hover:scale-105"
-                style={{ background: 'var(--neon-blue-8)', border: '1px solid var(--neon-blue-10)' }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md transition-[background-color,border-color,transform] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]"
+                aria-label="返回"
               >
-                <SkipBack size={18} />
+                <SkipBack size={18} aria-hidden="true" />
               </button>
             )}
-            <h2 className="font-display text-base font-medium tracking-wide text-white drop-shadow-lg">
+            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-wide text-[var(--nv-player-text-primary)] drop-shadow-lg">
               {title}
             </h2>
-            <Tag tone="brand" className="text-[10px]">
+            <Tag tone="brand" className="shrink-0 text-[10px]">
               <Cpu size={10} aria-hidden="true" /> WebCodecs 硬解
             </Tag>
             {playbackRate !== 1 && (
-              <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>
+              <Tag tone="quality" className="shrink-0 text-[10px]">{playbackRate}x</Tag>
             )}
           </div>
         )}
 
-        {/* 底部控制 */}
-        <div className="absolute inset-x-0 bottom-0 z-30 px-6 pb-4 pt-16"
-          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)' }}
+        <div
+          className="absolute inset-x-0 bottom-0 z-30 px-4 pb-4 pt-16 sm:px-6"
+          style={{ background: 'linear-gradient(to top, color-mix(in srgb, var(--nv-player-canvas) 92%, transparent), transparent)' }}
         >
-          {/* 进度条 */}
           <div
-            className="relative h-1 cursor-pointer rounded-full mb-3 group/progress"
-            style={{ background: 'rgba(255,255,255,0.15)' }}
+            className="group/progress relative mb-3 h-1.5 cursor-pointer overflow-visible rounded-full bg-[color-mix(in_srgb,var(--nv-player-text-primary)_16%,transparent)]"
             onClick={handleProgressClick}
+            role="slider"
+            aria-label="播放进度"
+            aria-valuemin={0}
+            aria-valuemax={Math.max(displayDuration, 0)}
+            aria-valuenow={Math.max(currentTime, 0)}
           >
             <div
-              className="absolute left-0 top-0 h-full rounded-full transition-all"
-              style={{ width: `${progress}%`, background: 'var(--neon-blue, #06b6d4)' }}
+              className="absolute left-0 top-0 h-full rounded-full bg-[var(--nv-player-accent)] transition-[width] duration-150"
+              style={{ width: `${progress}%` }}
             />
             <div
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity"
-              style={{ left: `${progress}%`, background: 'var(--neon-blue, #06b6d4)', boxShadow: '0 0 8px rgba(6,182,212,0.6)' }}
+              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--nv-player-text-primary)] bg-[var(--nv-player-accent)] opacity-0 shadow-[0_2px_8px_rgba(0,0,0,.45)] transition-opacity group-hover/progress:opacity-100"
+              style={{ left: `${progress}%` }}
             />
           </div>
 
-          {/* 控制按钮行 */}
-          <div className="flex items-center gap-3 text-white">
-            <button onClick={togglePlay} className="p-1 hover:scale-110 transition-transform">
-              {isPlaying ? <Pause size={22} /> : <Play size={22} />}
+          <div className="flex items-center gap-1 text-[var(--nv-player-text-primary)] sm:gap-2">
+            <button type="button" onClick={togglePlay} className={CONTROL_CLASS} aria-label={isPlaying ? '暂停' : '播放'}>
+              {isPlaying ? <Pause size={22} aria-hidden="true" /> : <Play size={22} aria-hidden="true" />}
             </button>
-            <button onClick={() => seek(-10)} className="p-1 hover:scale-110 transition-transform">
-              <SkipBack size={18} />
+            <button type="button" onClick={() => seek(-10)} className={CONTROL_CLASS} aria-label="后退 10 秒">
+              <SkipBack size={18} aria-hidden="true" />
             </button>
-            <button onClick={() => seek(10)} className="p-1 hover:scale-110 transition-transform">
-              <SkipForward size={18} />
+            <button type="button" onClick={() => seek(10)} className={CONTROL_CLASS} aria-label="前进 10 秒">
+              <SkipForward size={18} aria-hidden="true" />
             </button>
 
-            {/* 时间 */}
-            <span className="text-xs font-mono text-surface-300">
-              {formatTime(currentTime)} / {formatTime(displayDuration)}
+            <span className="ml-1 whitespace-nowrap font-mono text-xs text-[var(--nv-player-text-tertiary)]">
+              {formatTime(currentTime)} <span className="text-[var(--nv-player-text-faint)]">/</span> {formatTime(displayDuration)}
             </span>
 
             <div className="flex-1" />
 
-            {/* 倍速 */}
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setShowSpeedMenu(v => !v)}
-                className="flex items-center gap-1 p-1 hover:scale-110 transition-transform"
+                className={clsx(CONTROL_CLASS, 'gap-1 px-2', playbackRate !== 1 && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')}
+                title="播放速度"
+                aria-expanded={showSpeedMenu}
               >
-                <Gauge size={18} />
-                <span className="text-xs">{playbackRate}x</span>
+                <Gauge size={18} aria-hidden="true" />
+                <span className="text-xs font-semibold tabular-nums">{playbackRate}x</span>
               </button>
               {showSpeedMenu && (
-                <div className="absolute bottom-full right-0 mb-2 rounded-md py-1 min-w-[80px]"
-                  style={{ background: 'rgba(11,17,32,0.95)', border: '1px solid var(--neon-blue-15)', backdropFilter: 'blur(8px)' }}
-                >
-                  {SPEED_OPTIONS.map(r => (
+                <div className="absolute bottom-full right-0 mb-2 grid min-w-[176px] grid-cols-2 gap-1.5 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2 shadow-[var(--nv-player-shadow)] backdrop-blur-xl" role="menu">
+                  {SPEED_OPTIONS.map(rate => (
                     <button
-                      key={r}
-                      onClick={() => changePlaybackRate(r)}
+                      key={rate}
+                      type="button"
+                      onClick={() => changePlaybackRate(rate)}
                       className={clsx(
-                        'block w-full px-3 py-1 text-xs text-left hover:bg-white/10',
-                        playbackRate === r ? 'text-cyan-400' : 'text-white',
+                        'rounded-[var(--nv-player-radius-control)] border px-3 py-2 text-left text-xs font-medium tabular-nums transition-[background-color,border-color,color]',
+                        playbackRate === rate
+                          ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]'
+                          : 'border-[var(--nv-player-border-subtle)] bg-[var(--nv-player-surface-subtle)] text-[var(--nv-player-text-secondary)] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]',
                       )}
+                      role="menuitemradio"
+                      aria-checked={playbackRate === rate}
                     >
-                      {r}x
+                      {rate}x
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* 音量 */}
-            <div className="flex items-center gap-2">
-              <button onClick={toggleMute} className="p-1 hover:scale-110 transition-transform">
-                {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            <div className="hidden items-center gap-2 sm:flex">
+              <button type="button" onClick={toggleMute} className={CONTROL_CLASS} aria-label={muted ? '取消静音' : '静音'}>
+                {muted || volume === 0 ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
               </button>
               <input
                 type="range"
@@ -408,12 +396,16 @@ export default function WebCodecsPlayerShell({
                 step="0.01"
                 value={muted ? 0 : volume}
                 onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                className="w-20 accent-cyan-400"
+                className="player-volume-slider w-20 cursor-pointer appearance-none"
+                style={{
+                  background: `linear-gradient(to right, var(--nv-player-accent) ${(muted ? 0 : volume) * 100}%, color-mix(in srgb, var(--nv-player-text-primary) 16%, transparent) ${(muted ? 0 : volume) * 100}%)`,
+                }}
+                aria-label="音量"
               />
             </div>
 
-            <button onClick={toggleFullscreen} className="p-1 hover:scale-110 transition-transform">
-              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+            <button type="button" onClick={toggleFullscreen} className={CONTROL_CLASS} aria-label={isFullscreen ? '退出全屏' : '进入全屏'}>
+              {isFullscreen ? <Minimize size={18} aria-hidden="true" /> : <Maximize size={18} aria-hidden="true" />}
             </button>
           </div>
         </div>
