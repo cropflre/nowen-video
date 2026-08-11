@@ -16,17 +16,8 @@ import {
   Loader2,
 } from 'lucide-react'
 import { strmApi, type STRMGlobalConfig } from '@/api'
+import { Button, Input, Surface } from '@/components/design-system'
 
-/**
- * STRM 全局配置区块
- *
- * 可嵌入到媒体库/影视文件管理页面，用于统一管理 .strm 远程流的默认请求头与行为。
- * 核心配置：
- *  - 默认 User-Agent / Referer（当 media 自身未指定时使用）
- *  - HLS 重写开关（让分片继承媒体的鉴权头）
- *  - 远程 FFprobe 开关（扫描时获取真实时长/分辨率）
- *  - 域名级白名单（针对 115/阿里云盘等特定源自动应用 UA/Referer）
- */
 export default function STRMConfigSection() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -35,8 +26,7 @@ export default function STRMConfigSection() {
   const [tip, setTip] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
 
   const defaultCfg: STRMGlobalConfig = {
-    default_user_agent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    default_user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     default_referer: '',
     connect_timeout: 30,
     rewrite_hls: true,
@@ -49,19 +39,17 @@ export default function STRMConfigSection() {
   const load = async () => {
     setLoading(true)
     try {
-      const res = await strmApi.getConfig()
-      setCfg({ ...defaultCfg, ...(res.data.data || {}) })
-    } catch (e: unknown) {
-      setTip({ kind: 'err', msg: e instanceof Error ? e.message : '加载配置失败' })
+      const response = await strmApi.getConfig()
+      setCfg({ ...defaultCfg, ...(response.data.data || {}) })
+    } catch (error: unknown) {
+      setTip({ kind: 'err', msg: error instanceof Error ? error.message : '加载配置失败' })
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (open && !cfg) {
-      load()
-    }
+    if (open && !cfg) void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -77,12 +65,12 @@ export default function STRMConfigSection() {
     }
     setSaving(true)
     try {
-      const res = await strmApi.updateConfig(cfg)
-      setCfg({ ...defaultCfg, ...(res.data.data || {}) })
+      const response = await strmApi.updateConfig(cfg)
+      setCfg({ ...defaultCfg, ...(response.data.data || {}) })
       setTip({ kind: 'ok', msg: '配置已保存' })
-      setTimeout(() => setTip(null), 2500)
-    } catch (e: unknown) {
-      setTip({ kind: 'err', msg: e instanceof Error ? e.message : '保存失败' })
+      window.setTimeout(() => setTip(null), 2500)
+    } catch (error: unknown) {
+      setTip({ kind: 'err', msg: error instanceof Error ? error.message : '保存失败' })
     } finally {
       setSaving(false)
     }
@@ -90,15 +78,11 @@ export default function STRMConfigSection() {
 
   const reset = () => setCfg({ ...defaultCfg })
 
-  // ---- 域名表格操作 ----
   const addDomain = (target: 'ua' | 'ref') => {
     if (!cfg) return
     const key = `新域名-${Date.now()}`
-    if (target === 'ua') {
-      setCfg({ ...cfg, domain_user_agents: { ...cfg.domain_user_agents, [key]: '' } })
-    } else {
-      setCfg({ ...cfg, domain_referers: { ...cfg.domain_referers, [key]: '' } })
-    }
+    if (target === 'ua') setCfg({ ...cfg, domain_user_agents: { ...cfg.domain_user_agents, [key]: '' } })
+    else setCfg({ ...cfg, domain_referers: { ...cfg.domain_referers, [key]: '' } })
   }
 
   const removeDomain = (target: 'ua' | 'ref', domain: string) => {
@@ -114,292 +98,144 @@ export default function STRMConfigSection() {
     }
   }
 
-  const renameDomain = (target: 'ua' | 'ref', oldK: string, newK: string) => {
-    if (!cfg || oldK === newK || !newK) return
-    const src = target === 'ua' ? cfg.domain_user_agents : cfg.domain_referers
-    if (src[newK] !== undefined) return
-    const value = src[oldK] || ''
-    const next = { ...src }
-    delete next[oldK]
-    next[newK] = value
+  const renameDomain = (target: 'ua' | 'ref', oldKey: string, newKey: string) => {
+    if (!cfg || oldKey === newKey || !newKey) return
+    const source = target === 'ua' ? cfg.domain_user_agents : cfg.domain_referers
+    if (source[newKey] !== undefined) return
+    const next = { ...source }
+    const value = next[oldKey] || ''
+    delete next[oldKey]
+    next[newKey] = value
     if (target === 'ua') setCfg({ ...cfg, domain_user_agents: next })
     else setCfg({ ...cfg, domain_referers: next })
   }
 
-  const setDomainValue = (target: 'ua' | 'ref', domain: string, v: string) => {
+  const setDomainValue = (target: 'ua' | 'ref', domain: string, value: string) => {
     if (!cfg) return
-    if (target === 'ua') {
-      setCfg({ ...cfg, domain_user_agents: { ...cfg.domain_user_agents, [domain]: v } })
-    } else {
-      setCfg({ ...cfg, domain_referers: { ...cfg.domain_referers, [domain]: v } })
-    }
-  }
-
-  // ---- 样式（复用主题变量，兼容日夜模式） ----
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border-default)',
-    color: 'var(--text-primary)',
-  }
-  const inputStyle: React.CSSProperties = {
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--border-default)',
-    color: 'var(--text-primary)',
+    if (target === 'ua') setCfg({ ...cfg, domain_user_agents: { ...cfg.domain_user_agents, [domain]: value } })
+    else setCfg({ ...cfg, domain_referers: { ...cfg.domain_referers, [domain]: value } })
   }
 
   return (
-    <div className="rounded-xl p-4 md:p-5" style={cardStyle}>
-      {/* 头部：可折叠 */}
+    <Surface className="p-4 md:p-5">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-3 text-left"
+        aria-expanded={open}
       >
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-lg"
-          style={{ background: 'var(--neon-blue-15)' }}
-        >
-          <Radio size={18} className="text-cyan-400" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
+          <Radio size={18} aria-hidden="true" />
         </div>
-        <div className="flex-1">
-          <div className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-            STRM 远程流配置
-          </div>
-          <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            针对 .strm 云盘/CDN 远程流的统一代理、HLS 重写、FFprobe 探测与域名级白名单
-          </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold text-[var(--nv-text-primary)]">STRM 远程流配置</div>
+          <div className="text-xs text-[var(--nv-text-tertiary)]">针对 .strm 云盘/CDN 远程流的统一代理、HLS 重写、FFprobe 探测与域名级白名单</div>
         </div>
-        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        {open ? <ChevronUp size={18} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" /> : <ChevronDown size={18} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />}
       </button>
 
       {open && (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 border-t border-[var(--nv-border-subtle)] pt-4">
           {loading || !cfg ? (
-            <div className="flex items-center gap-2 py-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              <Loader2 size={14} className="animate-spin" />
-              正在加载配置...
+            <div className="flex items-center gap-2 py-6 text-sm text-[var(--nv-text-tertiary)]">
+              <Loader2 size={14} className="animate-spin text-[var(--nv-action-primary)]" aria-hidden="true" />正在加载配置...
             </div>
           ) : (
             <>
-              {/* 提示条 */}
               {tip && (
                 <div
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-                  style={{
-                    background:
-                      tip.kind === 'ok' ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)',
-                    border:
-                      '1px solid ' +
-                      (tip.kind === 'ok' ? 'rgba(16,185,129,0.35)' : 'rgba(244,63,94,0.35)'),
-                    color: tip.kind === 'ok' ? '#10b981' : '#f43f5e',
-                  }}
+                  className="flex items-center gap-2 rounded-[var(--nv-radius-control)] border px-3 py-2 text-sm"
+                  style={tip.kind === 'ok'
+                    ? {
+                        color: 'var(--nv-status-success)',
+                        borderColor: 'color-mix(in srgb, var(--nv-status-success) 30%, transparent)',
+                        background: 'color-mix(in srgb, var(--nv-status-success) 8%, transparent)',
+                      }
+                    : {
+                        color: 'var(--nv-status-danger)',
+                        borderColor: 'color-mix(in srgb, var(--nv-status-danger) 30%, transparent)',
+                        background: 'color-mix(in srgb, var(--nv-status-danger) 8%, transparent)',
+                      }}
                 >
-                  {tip.kind === 'ok' ? (
-                    <CheckCircle2 size={14} />
-                  ) : (
-                    <AlertCircle size={14} />
-                  )}
+                  {tip.kind === 'ok' ? <CheckCircle2 size={14} aria-hidden="true" /> : <AlertCircle size={14} aria-hidden="true" />}
                   <span>{tip.msg}</span>
                 </div>
               )}
 
-              {/* 基础 Header */}
               <div className="grid gap-3 md:grid-cols-2">
-                <div>
-                  <label
-                    className="mb-1 flex items-center gap-1.5 text-xs font-medium"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <Globe size={12} /> 默认 User-Agent
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none"
-                    style={inputStyle}
-                    value={cfg.default_user_agent}
-                    onChange={(e) =>
-                      setCfg({ ...cfg, default_user_agent: e.target.value })
-                    }
-                    placeholder="Mozilla/5.0 ..."
-                  />
-                </div>
-                <div>
-                  <label
-                    className="mb-1 flex items-center gap-1.5 text-xs font-medium"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <Globe size={12} /> 默认 Referer
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none"
-                    style={inputStyle}
-                    value={cfg.default_referer}
-                    onChange={(e) => setCfg({ ...cfg, default_referer: e.target.value })}
-                    placeholder="https://example.com/"
-                  />
-                </div>
-                <div>
-                  <label
-                    className="mb-1 flex items-center gap-1.5 text-xs font-medium"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <Clock size={12} /> 连接超时（秒）
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={600}
-                    className="w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none"
-                    style={inputStyle}
-                    value={cfg.connect_timeout}
-                    onChange={(e) =>
-                      setCfg({ ...cfg, connect_timeout: parseInt(e.target.value) || 0 })
-                    }
-                  />
-                </div>
-                <div>
-                  <label
-                    className="mb-1 flex items-center gap-1.5 text-xs font-medium"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <Clock size={12} /> 远程 FFprobe 超时（秒）
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={120}
-                    className="w-full rounded-md px-2.5 py-1.5 text-xs focus:outline-none"
-                    style={inputStyle}
-                    value={cfg.remote_probe_timeout}
-                    onChange={(e) =>
-                      setCfg({ ...cfg, remote_probe_timeout: parseInt(e.target.value) || 0 })
-                    }
-                  />
-                </div>
+                <ConfigField icon={<Globe size={12} />} label="默认 User-Agent">
+                  <Input value={cfg.default_user_agent} onChange={(event) => setCfg({ ...cfg, default_user_agent: event.target.value })} placeholder="Mozilla/5.0 ..." className="font-mono text-xs" />
+                </ConfigField>
+                <ConfigField icon={<Globe size={12} />} label="默认 Referer">
+                  <Input value={cfg.default_referer} onChange={(event) => setCfg({ ...cfg, default_referer: event.target.value })} placeholder="https://example.com/" className="font-mono text-xs" />
+                </ConfigField>
+                <ConfigField icon={<Clock size={12} />} label="连接超时（秒）">
+                  <Input type="number" min={0} max={600} value={cfg.connect_timeout} onChange={(event) => setCfg({ ...cfg, connect_timeout: parseInt(event.target.value) || 0 })} className="text-xs" />
+                </ConfigField>
+                <ConfigField icon={<Clock size={12} />} label="远程 FFprobe 超时（秒）">
+                  <Input type="number" min={0} max={120} value={cfg.remote_probe_timeout} onChange={(event) => setCfg({ ...cfg, remote_probe_timeout: parseInt(event.target.value) || 0 })} className="text-xs" />
+                </ConfigField>
               </div>
 
-              {/* 开关 */}
               <div className="grid gap-3 md:grid-cols-2">
-                <Toggle
-                  icon={<Film size={14} />}
-                  label="HLS 主清单重写"
-                  hint="让分片走后端代理，统一继承媒体的 UA/Referer/Cookie（解决跨域/鉴权）"
-                  checked={cfg.rewrite_hls}
-                  onChange={(v) => setCfg({ ...cfg, rewrite_hls: v })}
-                />
-                <Toggle
-                  icon={<Zap size={14} />}
-                  label="扫描时远程 FFprobe 探测"
-                  hint="对 mp4/mkv 直链启用，可获取真实时长/分辨率/编码（耗时+1~3s/条）"
-                  checked={cfg.remote_probe}
-                  onChange={(v) => setCfg({ ...cfg, remote_probe: v })}
-                />
+                <Toggle icon={<Film size={14} />} label="HLS 主清单重写" hint="让分片走后端代理，统一继承媒体的 UA/Referer/Cookie（解决跨域/鉴权）" checked={cfg.rewrite_hls} onChange={(value) => setCfg({ ...cfg, rewrite_hls: value })} />
+                <Toggle icon={<Zap size={14} />} label="扫描时远程 FFprobe 探测" hint="对 mp4/mkv 直链启用，可获取真实时长/分辨率/编码（耗时+1~3s/条）" checked={cfg.remote_probe} onChange={(value) => setCfg({ ...cfg, remote_probe: value })} />
               </div>
 
-              {/* 域名白名单 */}
-              <DomainTable
-                title="域名级 User-Agent 白名单"
-                hint="当远程 URL 的 host 命中某个域名时，自动应用对应 UA（Media 级自定义优先）"
-                rows={cfg.domain_user_agents}
-                onAdd={() => addDomain('ua')}
-                onRemove={(d) => removeDomain('ua', d)}
-                onRename={(o, n) => renameDomain('ua', o, n)}
-                onSetValue={(d, v) => setDomainValue('ua', d, v)}
-                placeholder="Mozilla/5.0 ..."
-              />
-              <DomainTable
-                title="域名级 Referer 白名单"
-                hint="同上，匹配 host 时自动注入 Referer"
-                rows={cfg.domain_referers}
-                onAdd={() => addDomain('ref')}
-                onRemove={(d) => removeDomain('ref', d)}
-                onRename={(o, n) => renameDomain('ref', o, n)}
-                onSetValue={(d, v) => setDomainValue('ref', d, v)}
-                placeholder="https://example.com/"
-              />
+              <DomainTable title="域名级 User-Agent 白名单" hint="当远程 URL 的 host 命中某个域名时，自动应用对应 UA（Media 级自定义优先）" rows={cfg.domain_user_agents} onAdd={() => addDomain('ua')} onRemove={(domain) => removeDomain('ua', domain)} onRename={(oldKey, newKey) => renameDomain('ua', oldKey, newKey)} onSetValue={(domain, value) => setDomainValue('ua', domain, value)} placeholder="Mozilla/5.0 ..." />
+              <DomainTable title="域名级 Referer 白名单" hint="匹配 host 时自动注入 Referer" rows={cfg.domain_referers} onAdd={() => addDomain('ref')} onRemove={(domain) => removeDomain('ref', domain)} onRename={(oldKey, newKey) => renameDomain('ref', oldKey, newKey)} onSetValue={(domain, value) => setDomainValue('ref', domain, value)} placeholder="https://example.com/" />
 
-              {/* 底部按钮 */}
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-                  style={{ background: 'var(--neon-blue)' }}
-                >
-                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                  保存配置
-                </button>
-                <button
-                  type="button"
-                  onClick={reset}
-                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs"
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-default)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <RotateCcw size={12} />
-                  重置为默认
-                </button>
-                <span className="ml-auto text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                  提示：Media 级 UA/Referer/Cookie 优先级高于全局；全局又高于域名白名单
-                </span>
+              <div className="flex flex-wrap items-center gap-2 pt-2">
+                <Button type="button" variant="primary" size="sm" onClick={save} loading={saving} disabled={saving}>
+                  {!saving && <Save size={12} aria-hidden="true" />}保存配置
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={reset}>
+                  <RotateCcw size={12} aria-hidden="true" />重置为默认
+                </Button>
+                <span className="ml-auto text-[11px] text-[var(--nv-text-tertiary)]">Media 级 UA/Referer/Cookie 优先级高于全局；全局又高于域名白名单</span>
               </div>
             </>
           )}
         </div>
       )}
-    </div>
+    </Surface>
   )
 }
 
-// ---------- 子组件 ----------
+function ConfigField({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-secondary)]">{icon}{label}</label>
+      {children}
+    </div>
+  )
+}
 
 interface ToggleProps {
   icon: React.ReactNode
   label: string
   hint?: string
   checked: boolean
-  onChange: (v: boolean) => void
+  onChange: (value: boolean) => void
 }
 
 function Toggle({ icon, label, hint, checked, onChange }: ToggleProps) {
   return (
-    <div
-      className="flex items-center justify-between gap-3 rounded-md p-2.5"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
-    >
+    <Surface className="flex items-center justify-between gap-3 bg-[var(--nv-bg-surface-soft)] p-3 shadow-none">
       <div>
-        <div
-          className="flex items-center gap-1.5 text-xs font-medium"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          {icon}
-          {label}
-        </div>
-        {hint && (
-          <div className="mt-0.5 text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
-            {hint}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-primary)]">{icon}{label}</div>
+        {hint && <div className="mt-0.5 text-[11px] leading-snug text-[var(--nv-text-tertiary)]">{hint}</div>}
       </div>
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className="relative h-5 w-9 flex-shrink-0 rounded-full transition-colors"
-        style={{
-          background: checked ? 'var(--neon-blue)' : 'var(--border-default)',
-        }}
+        className={`relative h-6 w-10 shrink-0 rounded-full border transition-[background-color,border-color] ${checked ? 'border-[var(--nv-border-hover)] bg-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-control)]'}`}
+        role="switch"
+        aria-checked={checked}
       >
-        <span
-          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-          style={{ left: checked ? 'calc(100% - 18px)' : '2px' }}
-        />
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
       </button>
-    </div>
+    </Surface>
   )
 }
 
@@ -409,92 +245,40 @@ interface DomainTableProps {
   rows: Record<string, string>
   onAdd: () => void
   onRemove: (domain: string) => void
-  onRename: (oldK: string, newK: string) => void
-  onSetValue: (domain: string, v: string) => void
+  onRename: (oldKey: string, newKey: string) => void
+  onSetValue: (domain: string, value: string) => void
   placeholder?: string
 }
 
-function DomainTable({
-  title,
-  hint,
-  rows,
-  onAdd,
-  onRemove,
-  onRename,
-  onSetValue,
-  placeholder,
-}: DomainTableProps) {
+function DomainTable({ title, hint, rows, onAdd, onRemove, onRename, onSetValue, placeholder }: DomainTableProps) {
   const entries = Object.entries(rows)
   return (
-    <div
-      className="rounded-md p-3"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
-    >
-      <div className="mb-2 flex items-center">
-        <div>
-          <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-            {title}
-          </div>
-          {hint && (
-            <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              {hint}
-            </div>
-          )}
+    <Surface className="bg-[var(--nv-bg-surface-soft)] p-3 shadow-none">
+      <div className="mb-2 flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-[var(--nv-text-primary)]">{title}</div>
+          {hint && <div className="text-[11px] text-[var(--nv-text-tertiary)]">{hint}</div>}
         </div>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-[11px]"
-          style={{ background: 'var(--neon-blue-15)', color: '#22d3ee' }}
-        >
-          <Plus size={10} /> 新增
-        </button>
+        <Button type="button" variant="secondary" size="sm" onClick={onAdd}>
+          <Plus size={10} aria-hidden="true" />新增
+        </Button>
       </div>
+
       {entries.length === 0 ? (
-        <div className="py-2 text-center text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          暂无规则
-        </div>
+        <div className="py-2 text-center text-[11px] text-[var(--nv-text-tertiary)]">暂无规则</div>
       ) : (
         <div className="space-y-1.5">
           {entries.map(([domain, value]) => (
             <div key={domain} className="flex items-center gap-1.5">
-              <input
-                type="text"
-                defaultValue={domain}
-                onBlur={(e) => onRename(domain, e.target.value.trim())}
-                className="w-32 flex-shrink-0 rounded-md px-2 py-1 text-[11px] focus:outline-none"
-                style={{
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                }}
-                placeholder="115.com"
-              />
-              <input
-                type="text"
-                value={value}
-                onChange={(e) => onSetValue(domain, e.target.value)}
-                className="flex-1 rounded-md px-2 py-1 text-[11px] focus:outline-none"
-                style={{
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                }}
-                placeholder={placeholder}
-              />
-              <button
-                type="button"
-                onClick={() => onRemove(domain)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-400 hover:text-rose-300"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-default)' }}
-                title="删除"
-              >
-                <Trash2 size={12} />
-              </button>
+              <Input defaultValue={domain} onBlur={(event) => onRename(domain, event.target.value.trim())} className="w-32 shrink-0 font-mono text-[11px]" placeholder="115.com" />
+              <Input value={value} onChange={(event) => onSetValue(domain, event.target.value)} className="min-w-0 flex-1 font-mono text-[11px]" placeholder={placeholder} />
+              <Button type="button" variant="danger" size="sm" iconOnly onClick={() => onRemove(domain)} title="删除" aria-label={`删除 ${domain}`}>
+                <Trash2 size={12} aria-hidden="true" />
+              </Button>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Surface>
   )
 }
