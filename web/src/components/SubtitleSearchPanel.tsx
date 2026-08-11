@@ -106,9 +106,8 @@ async function activateDownloadedSubtitle(result: SubtitleDownloadResult) {
     track.addEventListener('error', onTrackError)
     video.appendChild(track)
 
-    // HTMLTrackElement 新建时默认 mode=disabled。Chromium 在 disabled 状态下可能不会
-    // 真正加载 track.src，因此如果等 load 事件后才切 showing，会形成“等加载→才启用”的死锁。
-    // 先切 showing 触发 WebVTT 加载，load 事件只负责确认解析完成与资源清理。
+    // HTMLTrackElement 新建时默认 mode=disabled。先切 showing 触发 WebVTT 加载，
+    // load 事件只负责确认解析完成与资源清理。
     track.track.mode = 'showing'
   })
 }
@@ -184,36 +183,45 @@ export default function SubtitleSearchPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm"
+      style={{ background: 'color-mix(in srgb, var(--nv-player-canvas) 68%, transparent)' }}
+    >
       <div
-        className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0c0e14]/95 shadow-2xl backdrop-blur-2xl"
+        className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] shadow-[var(--nv-player-shadow)] backdrop-blur-2xl"
         onClick={event => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-5">
+        <div className="flex items-center justify-between border-b border-[var(--nv-player-border-subtle)] px-6 py-5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/10 bg-cyan-300/[0.06] text-cyan-200">
-              <Subtitles className="h-[18px] w-[18px]" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]">
+              <Subtitles className="h-[18px] w-[18px]" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-display text-base font-semibold text-white">在线字幕搜索</h3>
-              <p className="mt-0.5 truncate text-[11px] text-white/38">
+              <h3 className="font-display text-base font-semibold text-[var(--nv-player-text-primary)]">在线字幕搜索</h3>
+              <p className="mt-0.5 truncate text-[11px] text-[var(--nv-player-text-tertiary)]">
                 SubtitleCat · {title || '当前视频'}{year ? ` · ${year}` : ''}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white" title="关闭">
-            <X className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-tertiary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]"
+            title="关闭"
+            aria-label="关闭在线字幕搜索"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="border-b border-white/[0.06] px-6 py-4">
+        <div className="border-b border-[var(--nv-player-border-subtle)] px-6 py-4">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/32">搜索标题</span>
-            <span className="text-[10px] text-white/24">title / query 同步</span>
+            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--nv-player-text-faint)]">搜索标题</span>
+            <span className="text-[10px] text-[var(--nv-player-text-faint)]">title / query 同步</span>
           </div>
           <div className="flex gap-2">
             <div className="relative flex min-w-0 flex-1 items-center">
-              <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-white/32" />
+              <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-[var(--nv-player-text-faint)]" aria-hidden="true" />
               <input
                 ref={inputRef}
                 value={searchTitle}
@@ -225,7 +233,7 @@ export default function SubtitleSearchPanel({
                   }
                 }}
                 placeholder="输入片名 / 番号，例如 JUNY-146"
-                className="h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] pl-10 pr-9 text-sm text-white/90 outline-none transition-colors placeholder:text-white/24 focus:border-cyan-300/25 focus:bg-white/[0.045]"
+                className="h-11 w-full rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] pl-10 pr-9 text-sm text-[var(--nv-player-text-primary)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[var(--nv-player-text-faint)] focus:border-[var(--nv-player-border-hover)] focus:bg-[var(--nv-player-surface)] focus:shadow-[0_0_0_3px_var(--nv-player-accent-soft)]"
               />
               {searchTitle && (
                 <button
@@ -234,53 +242,63 @@ export default function SubtitleSearchPanel({
                     setSearchTitle('')
                     inputRef.current?.focus()
                   }}
-                  className="absolute right-3 flex h-6 w-6 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.05] hover:text-white/65"
+                  className="absolute right-3 flex h-6 w-6 items-center justify-center rounded-[var(--nv-radius-sm)] text-[var(--nv-player-text-faint)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-secondary)]"
                   title="清空"
+                  aria-label="清空搜索标题"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               )}
             </div>
             <button
+              type="button"
               onClick={() => void handleSearch()}
               disabled={searching}
-              className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.08] px-4 text-xs font-medium text-cyan-100 transition-colors hover:bg-cyan-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 shrink-0 items-center gap-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] px-4 text-xs font-medium text-[var(--nv-player-accent)] transition-[background-color,border-color] hover:bg-[var(--nv-player-accent-soft-hover)] hover:border-[var(--nv-player-border-hover)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Search className="h-4 w-4" aria-hidden="true" />}
               {searching ? '搜索中...' : '搜索'}
             </button>
           </div>
-          <p className="mt-2 text-[10px] leading-relaxed text-white/28">
+          <p className="mt-2 text-[10px] leading-relaxed text-[var(--nv-player-text-faint)]">
             可直接修改搜索标题。请求时会把当前输入值同时传给 title 和 query；清空后则回退到当前视频文件名自动匹配。
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.06] px-6 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--nv-player-border-subtle)] px-6 py-3">
           <select
             value={language}
             onChange={event => setLanguage(event.target.value)}
-            className="h-9 rounded-xl border border-white/[0.07] bg-white/[0.04] px-3 text-xs text-white/75 outline-none transition-colors focus:border-cyan-300/25"
+            className="h-9 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 text-xs text-[var(--nv-player-text-secondary)] outline-none transition-colors focus:border-[var(--nv-player-border-hover)]"
           >
-            <option value="zh-CN,zh-TW,en" className="bg-[#10131b]">简中 + 繁中 + English</option>
-            <option value="zh-CN" className="bg-[#10131b]">简体中文</option>
-            <option value="zh-TW" className="bg-[#10131b]">繁体中文</option>
-            <option value="en" className="bg-[#10131b]">English</option>
-            <option value="ja" className="bg-[#10131b]">日本語</option>
-            <option value="ko" className="bg-[#10131b]">한국어</option>
+            <option value="zh-CN,zh-TW,en">简中 + 繁中 + English</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁体中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
           </select>
-          <div className="ml-auto flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[10px] text-white/42">
-            <Database className="h-3 w-3 text-cyan-200/70" />
+          <div className="ml-auto flex items-center gap-1.5 rounded-[var(--nv-radius-pill)] border border-[var(--nv-player-border-subtle)] bg-[var(--nv-player-surface-subtle)] px-2.5 py-1 text-[10px] text-[var(--nv-player-text-tertiary)]">
+            <Database className="h-3 w-3 text-[var(--nv-player-accent)]" aria-hidden="true" />
             SubtitleCat
           </div>
         </div>
 
         {message && (
-          <div className={clsx(
-            'mx-6 mt-4 rounded-xl border px-4 py-2.5 text-xs',
-            message.type === 'success'
-              ? 'border-emerald-400/15 bg-emerald-400/[0.06] text-emerald-200'
-              : 'border-rose-400/15 bg-rose-400/[0.06] text-rose-200'
-          )}>
+          <div
+            className={clsx('mx-6 mt-4 rounded-[var(--nv-player-radius-control)] border px-4 py-2.5 text-xs')}
+            style={message.type === 'success'
+              ? {
+                  color: 'var(--nv-player-success)',
+                  background: 'color-mix(in srgb, var(--nv-player-success) 8%, transparent)',
+                  borderColor: 'color-mix(in srgb, var(--nv-player-success) 22%, transparent)',
+                }
+              : {
+                  color: 'var(--nv-player-danger)',
+                  background: 'var(--nv-player-danger-soft)',
+                  borderColor: 'var(--nv-player-danger-border)',
+                }}
+          >
             {message.text}
           </div>
         )}
@@ -290,27 +308,30 @@ export default function SubtitleSearchPanel({
             const available = sub.available_languages || []
             const visibleLanguages = available.slice(0, 3)
             return (
-              <div key={`${sub.source}:${sub.id}`} className="flex items-center gap-4 rounded-2xl border border-white/[0.05] bg-white/[0.025] p-4 transition-colors hover:border-white/[0.09] hover:bg-white/[0.04]">
+              <div
+                key={`${sub.source}:${sub.id}`}
+                className="flex items-center gap-4 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border-subtle)] bg-[var(--nv-player-surface-subtle)] p-4 transition-[background-color,border-color] hover:border-[var(--nv-player-border)] hover:bg-[var(--nv-player-surface-hover)]"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-medium text-white/90">{sub.title || sub.file_name}</p>
-                    <span className="shrink-0 rounded-full border border-cyan-300/10 bg-cyan-300/[0.06] px-2 py-0.5 text-[9px] font-semibold text-cyan-200/85">
+                    <p className="truncate text-sm font-medium text-[var(--nv-player-text-primary)]">{sub.title || sub.file_name}</p>
+                    <span className="shrink-0 rounded-[var(--nv-radius-pill)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--nv-player-accent)]">
                       {providerName(sub.source)}
                     </span>
                   </div>
-                  <p className="mt-1 truncate text-[11px] text-white/35">{sub.file_name}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] text-white/40">
-                    <span className="inline-flex items-center gap-1 text-white/68">
-                      <Globe className="h-3 w-3 text-cyan-200/65" />
+                  <p className="mt-1 truncate text-[11px] text-[var(--nv-player-text-faint)]">{sub.file_name}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] text-[var(--nv-player-text-tertiary)]">
+                    <span className="inline-flex items-center gap-1 text-[var(--nv-player-text-secondary)]">
+                      <Globe className="h-3 w-3 text-[var(--nv-player-accent)]" aria-hidden="true" />
                       {sub.language_name || languageName(sub.language)}
                     </span>
                     {sub.file_size && <span>{sub.file_size}</span>}
                     {typeof sub.match_score === 'number' && sub.match_score > 0 && <span>匹配度 {sub.match_score}%</span>}
                     {sub.download_count > 0 && <span>{sub.download_count} 下载</span>}
-                    <span className="uppercase text-white/28">{sub.format}</span>
+                    <span className="uppercase text-[var(--nv-player-text-faint)]">{sub.format}</span>
                     {available.length > 0 && (
                       <span className="inline-flex items-center gap-1">
-                        <Languages className="h-3 w-3" />
+                        <Languages className="h-3 w-3" aria-hidden="true" />
                         支持 {visibleLanguages.map(languageName).join(' / ')}
                         {available.length > visibleLanguages.length ? ` / +${available.length - visibleLanguages.length}` : ''}
                       </span>
@@ -318,11 +339,12 @@ export default function SubtitleSearchPanel({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => void handleDownload(sub)}
                   disabled={downloading === sub.id}
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-cyan-300/12 bg-cyan-300/[0.06] px-3 text-[11px] font-medium text-white/70 transition-colors hover:bg-cyan-300/[0.11] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] px-3 text-[11px] font-medium text-[var(--nv-player-text-secondary)] transition-[background-color,border-color,color] hover:bg-[var(--nv-player-accent-soft-hover)] hover:border-[var(--nv-player-border-hover)] hover:text-[var(--nv-player-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {downloading === sub.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  {downloading === sub.id ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" /> : <Download className="h-3.5 w-3.5 text-[var(--nv-player-accent)]" aria-hidden="true" />}
                   下载并使用
                 </button>
               </div>
@@ -331,17 +353,17 @@ export default function SubtitleSearchPanel({
 
           {searching && results.length === 0 && (
             <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
-              <Loader2 className="mb-3 h-7 w-7 animate-spin text-cyan-200/60" />
-              <p className="text-sm text-white/55">正在请求在线字幕源</p>
-              <p className="mt-1 text-[11px] text-white/28">优先查找简体中文、繁体中文和 English</p>
+              <Loader2 className="mb-3 h-7 w-7 animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
+              <p className="text-sm text-[var(--nv-player-text-secondary)]">正在请求在线字幕源</p>
+              <p className="mt-1 text-[11px] text-[var(--nv-player-text-faint)]">优先查找简体中文、繁体中文和 English</p>
             </div>
           )}
 
           {!searching && results.length === 0 && !message && (
-            <div className="flex min-h-[220px] flex-col items-center justify-center text-center text-white/35">
-              <Subtitles className="mb-3 h-10 w-10 opacity-30" />
+            <div className="flex min-h-[220px] flex-col items-center justify-center text-center text-[var(--nv-player-text-tertiary)]">
+              <Subtitles className="mb-3 h-10 w-10 opacity-30" aria-hidden="true" />
               <p className="text-sm">没有可用的在线字幕</p>
-              <p className="mt-1 text-[11px] text-white/25">可以输入更精确的片名或番号重新搜索</p>
+              <p className="mt-1 text-[11px] text-[var(--nv-player-text-faint)]">可以输入更精确的片名或番号重新搜索</p>
             </div>
           )}
         </div>
