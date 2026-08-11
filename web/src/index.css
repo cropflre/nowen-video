@@ -290,7 +290,6 @@
   /* 全局主题切换过渡 — 仅对关键容器元素生效，避免对所有元素添加 transition 导致性能问题 */
   body,
   .nav-item,
-  .badge-neon,
   .admin-tab,
   .modal-panel,
   .tooltip {
@@ -514,14 +513,6 @@
   /* Storage 模块专用输入框 placeholder — 主题感知 */
   .storage-input::placeholder {
     color: var(--text-muted);
-  }
-
-  /* === 标签/徽章 === */
-  .badge-neon {
-    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
-    background: var(--neon-blue-10);
-    color: var(--neon-blue);
-    border: 1px solid var(--neon-blue-15);
   }
 
   /* === 骨架屏加载 === */

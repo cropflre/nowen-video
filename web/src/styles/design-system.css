@@ -477,12 +477,6 @@ body {
   box-shadow: inset 2px 0 0 var(--nv-action-primary);
 }
 
-.badge-neon {
-  border-radius: var(--nv-radius-sm);
-  box-shadow: none;
-  text-shadow: none;
-}
-
 .skeleton {
   border-radius: var(--nv-radius-sm);
   background: linear-gradient(90deg, var(--nv-bg-surface-soft), var(--nv-bg-elevated), var(--nv-bg-surface-soft));
