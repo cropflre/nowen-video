@@ -1,37 +1,26 @@
 /**
- * DesktopServerPicker —— 桌面端首次启动"服务器地址"引导
- *
- * 触发条件（同时满足）：
- * 1. 运行在 Tauri 桌面端
- * 2. localStorage.nowen_server_url 未设置（用户从未配置）
- * 3. 默认地址（内嵌 sidecar 或当前 API_BASE）探活失败
- *
- * 用户输入后写入 localStorage 并整页 reload，确保 axios 基址被重新计算。
- *
- * 为什么需要：
- * - 用户可能已在本机 8080 端口独立运行 Go server（开发调试 / 老安装），
- *   内嵌 sidecar 抢不到 8080 就会失败，前端若仍请求 127.0.0.1:<sidecar_port>
- *   会全部 404，海报 / 播放全挂。
- * - 用户可能把 server 部署在 NAS / 其他机器，需要填局域网地址（例：http://192.168.1.10:8080）。
+ * DesktopServerPicker —— 桌面端首次启动“服务器地址”引导。
+ * 探活、localStorage 写入与 reload 行为保持不变，仅统一视觉语义。
  */
 import { useEffect, useState, useCallback } from 'react'
+import { Server, Wifi } from 'lucide-react'
 import { desktop } from './bridge'
+import { Button, Input, Surface } from '@/components/design-system'
 
 const LS_KEY = 'nowen_server_url'
 const DEFAULT_CANDIDATES = [
-  'http://127.0.0.1:21114', // 内嵌 sidecar
-  'http://127.0.0.1:8080', // 本机独立 Go server
+  'http://127.0.0.1:21114',
+  'http://127.0.0.1:8080',
 ]
 
-/** 探活 /api/health 接口 */
 async function probe(base: string, timeoutMs = 1500): Promise<boolean> {
   try {
-    const ctl = new AbortController()
-    const tid = setTimeout(() => ctl.abort(), timeoutMs)
-    const url = base.replace(/\/+$/, '') + '/api/health'
-    const resp = await fetch(url, { signal: ctl.signal, cache: 'no-store' })
-    clearTimeout(tid)
-    return resp.ok
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    const url = `${base.replace(/\/+$/, '')}/api/health`
+    const response = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+    window.clearTimeout(timer)
+    return response.ok
   } catch {
     return false
   }
@@ -48,24 +37,17 @@ export default function DesktopServerPicker() {
     let cancelled = false
 
     ;(async () => {
-      // 用户已配置 → 不打扰
       try {
         if (localStorage.getItem(LS_KEY)) return
       } catch {
-        /* ignore */
+        // ignore
       }
 
-      // 依次探活候选地址
       for (const base of DEFAULT_CANDIDATES) {
         if (cancelled) return
-        if (await probe(base)) {
-          // 默认 sidecar 可通 —— 不需要弹窗
-          return
-        }
+        if (await probe(base)) return
       }
-      if (!cancelled) {
-        setNeed(true)
-      }
+      if (!cancelled) setNeed(true)
     })()
 
     return () => {
@@ -73,146 +55,78 @@ export default function DesktopServerPicker() {
     }
   }, [])
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-      setError(null)
-      const value = input.trim().replace(/\/+$/, '')
-      if (!/^https?:\/\//i.test(value)) {
-        setError('请输入完整地址，例如 http://192.168.1.10:8080')
-        return
-      }
-      setSubmitting(true)
-      const ok = await probe(value, 3000)
-      setSubmitting(false)
-      if (!ok) {
-        setError('无法连接到该服务器，请检查地址与网络')
-        return
-      }
-      try {
-        localStorage.setItem(LS_KEY, value)
-      } catch {
-        setError('写入本地配置失败')
-        return
-      }
-      // 整页 reload，让 axios baseURL 重新计算
-      window.location.reload()
-    },
-    [input],
-  )
+  const handleSubmit = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    const value = input.trim().replace(/\/+$/, '')
+    if (!/^https?:\/\//i.test(value)) {
+      setError('请输入完整地址，例如 http://192.168.1.10:8080')
+      return
+    }
+
+    setSubmitting(true)
+    const ok = await probe(value, 3000)
+    setSubmitting(false)
+    if (!ok) {
+      setError('无法连接到该服务器，请检查地址与网络')
+      return
+    }
+
+    try {
+      localStorage.setItem(LS_KEY, value)
+    } catch {
+      setError('写入本地配置失败')
+      return
+    }
+    window.location.reload()
+  }, [input])
 
   if (!need) return null
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 99999,
-        background: 'rgba(5, 10, 20, 0.92)',
-        backdropFilter: 'blur(12px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          width: 'min(480px, 100%)',
-          background: 'rgba(15, 22, 40, 0.96)',
-          border: '1px solid var(--border-default, rgba(255,255,255,0.08))',
-          borderRadius: 16,
-          padding: '28px 28px 24px',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-          color: 'var(--text-primary, #e6eaf2)',
-        }}
-      >
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-          连接到 nowen-video 服务器
-        </h2>
-        <p
-          style={{
-            fontSize: 13,
-            lineHeight: 1.6,
-            color: 'var(--text-secondary, #9aa3b2)',
-            marginBottom: 18,
-          }}
-        >
-          未检测到可用的后端服务。请填写你本机或局域网内运行的 nowen-video
-          服务器地址（包含协议与端口）。
-        </p>
+    <div className="fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center p-6 backdrop-blur-md" style={{ background: 'var(--nv-bg-overlay)' }}>
+      <Surface as="form" onSubmit={handleSubmit} className="w-full max-w-[30rem] border-[var(--nv-border-strong)] bg-[var(--nv-bg-elevated)] p-7 shadow-[var(--nv-shadow-elevated)]">
+        <div className="mb-5 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
+            <Server size={20} aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-[var(--nv-text-primary)]">连接到 nowen-video 服务器</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
+              未检测到可用后端。请填写本机或局域网内运行的 nowen-video 服务器地址（包含协议与端口）。
+            </p>
+          </div>
+        </div>
 
-        <label style={{ display: 'block', fontSize: 12, marginBottom: 6, opacity: 0.75 }}>
-          服务器地址
-        </label>
-        <input
+        <label htmlFor="desktop-server-url" className="mb-1.5 block text-xs font-semibold text-[var(--nv-text-secondary)]">服务器地址</label>
+        <Input
+          id="desktop-server-url"
           autoFocus
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
           placeholder="http://192.168.1.10:8080"
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            borderRadius: 8,
-            border: '1px solid var(--border-default, rgba(255,255,255,0.12))',
-            background: 'rgba(0,0,0,0.35)',
-            color: 'inherit',
-            fontSize: 14,
-            outline: 'none',
-          }}
+          className="font-mono"
         />
+
         {error && (
-          <div style={{ marginTop: 10, fontSize: 12, color: '#f87171' }}>{error}</div>
+          <div className="mt-3 rounded-[var(--nv-radius-control)] border px-3 py-2 text-xs text-[var(--nv-status-danger)]" style={{ borderColor: 'color-mix(in srgb, var(--nv-status-danger) 28%, transparent)', background: 'color-mix(in srgb, var(--nv-status-danger) 8%, transparent)' }} role="alert">
+            {error}
+          </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => setInput('http://127.0.0.1:8080')}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--border-default, rgba(255,255,255,0.12))',
-              background: 'transparent',
-              color: 'inherit',
-              fontSize: 13,
-              cursor: 'pointer',
-            }}
-          >
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={() => setInput('http://127.0.0.1:8080')}>
             使用本机 8080
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              padding: '8px 18px',
-              borderRadius: 8,
-              border: 'none',
-              background: submitting ? 'rgba(86, 134, 255, 0.4)' : 'var(--neon-blue, #5686ff)',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: submitting ? 'wait' : 'pointer',
-            }}
-          >
+          </Button>
+          <Button type="submit" variant="primary" loading={submitting} disabled={submitting}>
+            {!submitting && <Wifi size={15} aria-hidden="true" />}
             {submitting ? '连接中...' : '连接并保存'}
-          </button>
+          </Button>
         </div>
 
-        <p
-          style={{
-            marginTop: 14,
-            fontSize: 11,
-            lineHeight: 1.5,
-            color: 'var(--text-tertiary, #6b7280)',
-          }}
-        >
-          提示：保存后将写入本地配置。随时可在"设置 / 关于"里重置。
-        </p>
-      </form>
+        <p className="mt-4 text-xs leading-5 text-[var(--nv-text-tertiary)]">保存后会写入本地配置并重新加载页面；之后可在设置中重置服务器地址。</p>
+      </Surface>
     </div>
   )
 }
