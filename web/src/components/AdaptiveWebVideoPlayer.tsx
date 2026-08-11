@@ -2,16 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, ShieldCheck } from 'lucide-react'
 import VideoPlayer from './VideoPlayer'
 import SessionVideoPlayer from './SessionVideoPlayer'
-import {
-  streamApi,
-  type PlaybackMethod,
-  type PlaybackPlan,
-} from '@/api/stream'
+import { streamApi, type PlaybackMethod, type PlaybackPlan } from '@/api/stream'
 import { usePlayerStore } from '@/stores/player'
-import {
-  getMediaCapabilities,
-  analyzeMediaError,
-} from '@/utils/media-capabilities'
+import { getMediaCapabilities, analyzeMediaError } from '@/utils/media-capabilities'
 
 export type BrowserPlaybackMode = 'direct' | 'remux' | 'smart_remux' | 'hls'
 
@@ -62,33 +55,23 @@ const NETWORK_RETRY_DELAY_MS = 500
 
 function modeForMethod(method?: PlaybackMethod): BrowserPlaybackMode | null {
   switch (method) {
-    case 'direct':
-      return 'direct'
-    case 'remux':
-      return 'remux'
-    case 'smart_remux':
-      return 'smart_remux'
+    case 'direct': return 'direct'
+    case 'remux': return 'remux'
+    case 'smart_remux': return 'smart_remux'
     case 'startup_stream':
-    case 'transcode':
-      return 'hls'
-    default:
-      return null
+    case 'transcode': return 'hls'
+    default: return null
   }
 }
 
 function mediaErrorReason(error: MediaError | null): string {
   if (!error) return '浏览器未提供媒体错误详情'
   switch (error.code) {
-    case error.MEDIA_ERR_ABORTED:
-      return '媒体请求被浏览器中止'
-    case error.MEDIA_ERR_NETWORK:
-      return '媒体网络读取失败'
-    case error.MEDIA_ERR_DECODE:
-      return '浏览器解码失败'
-    case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-      return '浏览器不支持当前媒体源或编码'
-    default:
-      return error.message || `媒体错误 ${error.code}`
+    case error.MEDIA_ERR_ABORTED: return '媒体请求被浏览器中止'
+    case error.MEDIA_ERR_NETWORK: return '媒体网络读取失败'
+    case error.MEDIA_ERR_DECODE: return '浏览器解码失败'
+    case error.MEDIA_ERR_SRC_NOT_SUPPORTED: return '浏览器不支持当前媒体源或编码'
+    default: return error.message || `媒体错误 ${error.code}`
   }
 }
 
@@ -98,9 +81,7 @@ function errorMessage(cause: unknown): string {
 }
 
 function planHasUsableSource(plan: PlaybackPlan): boolean {
-  if (plan.method === 'transcode' && plan.session_required) {
-    return Boolean(plan.session_template)
-  }
+  if (plan.method === 'transcode' && plan.session_required) return Boolean(plan.session_template)
   return Boolean(plan.url)
 }
 
@@ -145,8 +126,6 @@ export default function AdaptiveWebVideoPlayer({
   const [terminalError, setTerminalError] = useState<string | null>(null)
   const [lastTransition, setLastTransition] = useState<PlaybackTransition | null>(null)
 
-  // resetKey represents a real media/source generation change. Playback-plan
-  // cache updates during runtime fallback must not reset the captured snapshot.
   useEffect(() => {
     const resetConfig = resetConfigRef.current
     operationRef.current += 1
@@ -161,10 +140,7 @@ export default function AdaptiveWebVideoPlayer({
     setLastTransition(null)
   }, [mediaId, resetKey])
 
-  const activeMode = useMemo(
-    () => modeForMethod(activePlan?.method) || initialMode,
-    [activePlan?.method, initialMode],
-  )
+  const activeMode = useMemo(() => modeForMethod(activePlan?.method) || initialMode, [activePlan?.method, initialMode])
 
   const requiresSession = useMemo(() => {
     if (!activePlan) return initialRequiresSession
@@ -176,9 +152,7 @@ export default function AdaptiveWebVideoPlayer({
     return activePlan.url ? streamApi.withTokenUrl(activePlan.url) : initialSrc
   }, [activePlan, initialSrc, requiresSession])
 
-  useEffect(() => {
-    onModeChange?.(activeMode, activePlan)
-  }, [activeMode, activePlan, onModeChange])
+  useEffect(() => { onModeChange?.(activeMode, activePlan) }, [activeMode, activePlan, onModeChange])
 
   const requestFallback = useCallback(async (video: HTMLVideoElement) => {
     const from = activeMode
@@ -192,10 +166,6 @@ export default function AdaptiveWebVideoPlayer({
     const elementPosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
     const position = Math.max(storePosition, elementPosition)
     const reason = mediaErrorReason(video.error)
-
-    // The frontend must not invent a container such as "mkv". The server has
-    // the authoritative probe/container information and will choose remux,
-    // smart-remux, or full transcode after direct playback is disabled.
     const caps = getMediaCapabilities()
     const analysis = analyzeMediaError(video.error, caps)
 
@@ -210,8 +180,6 @@ export default function AdaptiveWebVideoPlayer({
     setTransitioning(true)
     setTerminalError(null)
 
-    // Source swaps/unmounts can produce MEDIA_ERR_ABORTED. They are not a
-    // codec signal and must never trigger remux/transcode escalation.
     if (analysis.errorType === 'aborted') {
       failedModesRef.current.delete(from)
       transitionInFlightRef.current = false
@@ -219,9 +187,6 @@ export default function AdaptiveWebVideoPlayer({
       return
     }
 
-    // Network errors are transport/storage problems, not codec problems. Retry
-    // once in every native mode; after that, surface the network failure rather
-    // than wasting CPU/GPU on HLS transcoding that cannot fix the transport.
     if (analysis.suggestedFallback === 'retry') {
       const retries = networkRetryCountRef.current.get(from) ?? 0
       if (retries < MAX_NETWORK_RETRIES) {
@@ -237,7 +202,6 @@ export default function AdaptiveWebVideoPlayer({
         }, NETWORK_RETRY_DELAY_MS)
         return
       }
-
       failedModesRef.current.delete(from)
       transitionInFlightRef.current = false
       setTransitioning(false)
@@ -246,41 +210,23 @@ export default function AdaptiveWebVideoPlayer({
     }
 
     try {
-      // Direct playback failures are replanned by the server with direct play
-      // disabled. The server then chooses the cheapest valid next step based
-      // on the actual file: remux, smart-remux, or a session transcode.
-      const nextDirect = false
-      const nextRemux = from === 'direct'
-      const nextForceTranscode = from !== 'direct'
-
       const response = await streamApi.getPlaybackPlan(mediaId, {
-        supportsDirect: nextDirect,
-        supportsRemux: nextRemux,
-        forceTranscode: nextForceTranscode,
+        supportsDirect: false,
+        supportsRemux: from === 'direct',
+        forceTranscode: from !== 'direct',
       })
-
       if (operationRef.current !== operation) return
-
       const nextPlan = response.data.data
       const to = modeForMethod(nextPlan.method)
-      if (!to || PLAYBACK_MODE_RANK[to] <= PLAYBACK_MODE_RANK[from]) {
-        throw new Error(`服务端返回了无效的降级方案：${nextPlan.method}`)
-      }
-      if (failedModesRef.current.has(to)) {
-        throw new Error(`兼容播放方案 ${nextPlan.method} 已经失败，已阻止循环重试`)
-      }
-      if (!planHasUsableSource(nextPlan)) {
-        throw new Error(`兼容播放方案 ${nextPlan.method} 没有可用地址或会话模板`)
-      }
-
+      if (!to || PLAYBACK_MODE_RANK[to] <= PLAYBACK_MODE_RANK[from]) throw new Error(`服务端返回了无效的降级方案：${nextPlan.method}`)
+      if (failedModesRef.current.has(to)) throw new Error(`兼容播放方案 ${nextPlan.method} 已经失败，已阻止循环重试`)
+      if (!planHasUsableSource(nextPlan)) throw new Error(`兼容播放方案 ${nextPlan.method} 没有可用地址或会话模板`)
       const transition = { from, to, reason }
       setActivePlan(nextPlan)
       setLastTransition(transition)
       onTransition?.(transition)
     } catch (cause) {
-      if (operationRef.current === operation) {
-        setTerminalError(`${reason}；${errorMessage(cause)}`)
-      }
+      if (operationRef.current === operation) setTerminalError(`${reason}；${errorMessage(cause)}`)
     } finally {
       if (operationRef.current === operation) {
         setTransitioning(false)
@@ -289,18 +235,13 @@ export default function AdaptiveWebVideoPlayer({
     }
   }, [activeMode, mediaId, onTransition])
 
-  // Native media errors do not bubble, but they participate in capture. A
-  // single parent listener covers direct, remux, and smart-remux generations.
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
-
     const handleMediaError = (event: Event) => {
-      if (!(event.target instanceof HTMLVideoElement)) return
-      if (activeMode === 'hls') return
+      if (!(event.target instanceof HTMLVideoElement) || activeMode === 'hls') return
       void requestFallback(event.target)
     }
-
     root.addEventListener('error', handleMediaError, true)
     return () => root.removeEventListener('error', handleMediaError, true)
   }, [activeMode, requestFallback])
@@ -308,27 +249,21 @@ export default function AdaptiveWebVideoPlayer({
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
-
     const restorePlaybackState = (event: Event) => {
       if (!(event.target instanceof HTMLVideoElement)) return
       networkRetryCountRef.current.delete(activeMode)
       const snapshot = snapshotRef.current
       if (!snapshot) return
       const video = event.target
-
       window.setTimeout(() => {
         if (!root.contains(video)) return
         video.volume = snapshot.volume
         video.muted = snapshot.muted
         video.playbackRate = snapshot.playbackRate
-        if (snapshot.paused) {
-          video.pause()
-        } else {
-          void video.play().catch(() => undefined)
-        }
+        if (snapshot.paused) video.pause()
+        else void video.play().catch(() => undefined)
       }, 0)
     }
-
     root.addEventListener('loadedmetadata', restorePlaybackState, true)
     return () => root.removeEventListener('loadedmetadata', restorePlaybackState, true)
   }, [activeMode, activeSrc, requiresSession])
@@ -340,25 +275,17 @@ export default function AdaptiveWebVideoPlayer({
 
   if (terminalError) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-black px-6 text-center text-white">
-        <AlertTriangle className="text-red-400" size={34} />
+      <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]">
+        <AlertTriangle className="text-[var(--nv-player-danger)]" size={34} aria-hidden="true" />
         <p className="text-base font-medium">所有兼容播放方式都失败了</p>
-        <p className="max-w-2xl text-sm text-surface-400">{terminalError}</p>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="mt-2 rounded-lg bg-white/10 px-4 py-2 text-sm transition hover:bg-white/20"
-          >
-            返回
-          </button>
-        )}
+        <p className="max-w-2xl text-sm text-[var(--nv-player-text-tertiary)]">{terminalError}</p>
+        {onBack && <button type="button" onClick={onBack} className="mt-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm transition-colors hover:bg-[var(--nv-player-surface-hover)]">返回</button>}
       </div>
     )
   }
 
   return (
-    <div ref={rootRef} className="relative h-full w-full">
+    <div ref={rootRef} className="group/player relative h-full w-full bg-[var(--nv-player-canvas)]">
       {requiresSession ? (
         <SessionVideoPlayer
           key={`${mediaId}:${activePlan?.method || activeMode}:${activePlan?.url || 'session'}`}
@@ -391,15 +318,15 @@ export default function AdaptiveWebVideoPlayer({
       )}
 
       {transitioning && (
-        <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-black/80 text-white backdrop-blur-sm">
-          <Loader2 className="animate-spin text-neon-blue" size={32} />
-          <p className="text-sm text-surface-300">当前方式播放失败，正在切换兼容方案...</p>
+        <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-[color-mix(in_srgb,var(--nv-player-canvas)_80%,transparent)] text-[var(--nv-player-text-primary)] backdrop-blur-sm">
+          <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={32} aria-hidden="true" />
+          <p className="text-sm text-[var(--nv-player-text-secondary)]">当前方式播放失败，正在切换兼容方案...</p>
         </div>
       )}
 
       {!transitioning && lastTransition && (
-        <div className="pointer-events-none absolute bottom-20 right-4 z-[65] flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-black/70 px-3 py-2 text-xs text-emerald-300 backdrop-blur-md">
-          <ShieldCheck size={14} />
+        <div className="pointer-events-none absolute bottom-20 right-4 z-[65] flex items-center gap-2 rounded-[var(--nv-player-radius-control)] border px-3 py-2 text-xs backdrop-blur-md" style={{ borderColor: 'color-mix(in srgb, var(--nv-player-success) 25%, transparent)', background: 'color-mix(in srgb, var(--nv-player-canvas) 70%, transparent)', color: 'var(--nv-player-success)' }}>
+          <ShieldCheck size={14} aria-hidden="true" />
           <span>已自动切换为{labelForMode(lastTransition.to)}</span>
         </div>
       )}
