@@ -39,21 +39,21 @@ interface VideoPlayerProps {
   title?: string
   startPosition?: number
   onBack?: () => void
-  /** 下一集回调，存在时显示「下一集」按钮，播放结束自动触发 */
   onNext?: () => void
-  /** 下一集标题（用于提示） */
   nextTitle?: string
-  /** 是否为 STRM 远程流 */
   isStrm?: boolean
-  /** API 返回的完整视频时长（秒），用于在实时转码 EVENT 模式下显示完整时长 */
   knownDuration?: number
-  /** Remux 播放失败回调，触发后 PlayerPage 会自动降级到 HLS 转码模式 */
   onRemuxFallback?: () => void
-  /** 预处理完成回调，播放器会自动切换到预处理流 */
   onPreprocessReady?: () => void
-  /** 进度条雪碧图 WebVTT 索引地址（预处理完成后可用） */
   spriteVttUrl?: string
 }
+
+const PLAYER_CONTROL_CLASS = 'flex h-9 min-w-9 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-secondary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]'
+const PLAYER_MENU_CLASS = 'absolute bottom-full right-0 mb-2 min-w-[200px] overflow-hidden rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2 shadow-[var(--nv-player-shadow)] backdrop-blur-xl'
+const PLAYER_MENU_ITEM = 'flex min-h-10 w-full items-center gap-2 rounded-[var(--nv-player-radius-control)] border border-transparent px-3 py-2 text-left text-sm text-[var(--nv-player-text-secondary)] transition-[background-color,border-color,color] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]'
+const PLAYER_MENU_ACTIVE = 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]'
+const PLAYER_MENU_LABEL = 'px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--nv-player-text-faint)]'
+const PLAYER_DIVIDER = 'mx-2 my-1.5 border-t border-[var(--nv-player-border-subtle)]'
 
 export default function VideoPlayer({
   src,
@@ -98,77 +98,55 @@ export default function VideoPlayer({
   const [qualities, setQualities] = useState<{ index: number; label: string; bitrate?: number; height?: number }[]>([])
   const [currentQuality, setCurrentQuality] = useState(-1)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [currentBitrate, setCurrentBitrate] = useState(0)
+  const [bandwidthEstimate, setBandwidthEstimate] = useState(0)
 
-  // HLS 本地播放指标（不再调用媒体级 Runtime 遥测接口）
-  const [currentBitrate, setCurrentBitrate] = useState(0) // 当前播放档位码率 bit/s
-  const [bandwidthEstimate, setBandwidthEstimate] = useState(0) // hls.js EWMA 平滑带宽 bit/s
-
-  // 字幕状态
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
   const [embeddedSubs, setEmbeddedSubs] = useState<SubtitleTrack[]>([])
   const [externalSubs, setExternalSubs] = useState<ExternalSubtitle[]>([])
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null)
-  // 用户主动关闭字幕的标志：为 true 时不自动选中第一条字幕
   const userDisabledSubtitleRef = useRef(false)
   const [showCastPanel, setShowCastPanel] = useState(false)
 
-  // AI 字幕状态
   const [aiSubtitleStatus, setAiSubtitleStatus] = useState<ASRTask | null>(null)
   const [aiGenerating, setAiGenerating] = useState(false)
-
-  // 字幕预处理状态
   const [subtitlePreprocessStatus, setSubtitlePreprocessStatus] = useState<SubtitlePreprocessTask | null>(null)
 
-  // Phase 4: 字幕翻译状态
   const [translatedSubs, setTranslatedSubs] = useState<TranslatedSubtitle[]>([])
   const [translateStatus, setTranslateStatus] = useState<ASRTask | null>(null)
   const [translating, setTranslating] = useState(false)
   const [showTranslateMenu, setShowTranslateMenu] = useState(false)
 
-  // 字幕搜索状态
   const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
   const [showContentSearch, setShowContentSearch] = useState(false)
 
-  // JavDB 短评弹幕
   const [danmakuItems, setDanmakuItems] = useState<DanmakuComment[]>([])
   const [danmakuEnabled, setDanmakuEnabled] = useState(true)
 
-  // 倍速播放
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 7, 8]
 
-  // 优先使用 API 返回的完整时长（解决实时转码 EVENT 模式下时长逐步增长的问题）
-  // 必须在所有 useEffect 之前声明，避免 TDZ（暂时性死区）错误
   const displayDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
   const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
-  // 自动下一集倒计时
   const [nextCountdown, setNextCountdown] = useState<number | null>(null)
   const nextCountdownTimerRef = useRef<number>(0)
   const activeDanmaku = danmakuEnabled
     ? danmakuItems.filter((item) => currentTime >= item.position && currentTime < item.position + 8).slice(0, 10)
     : []
 
-  // 快进/快退提示
   const [seekHint, setSeekHint] = useState<{ text: string; visible: boolean }>({ text: '', visible: false })
   const seekHintTimer = useRef<number>(0)
-
-  // 进度条hover预览
   const [hoverProgress, setHoverProgress] = useState<number | null>(null)
   const [hoverTime, setHoverTime] = useState('')
-  // 进度条雪碧图预览
-  const [spriteVttCues, setSpriteVttCues] = useState<Array<{ start: number; end: number; x: number; y: number; w: number; h: number }>>([]
-  )
+  const [spriteVttCues, setSpriteVttCues] = useState<Array<{ start: number; end: number; x: number; y: number; w: number; h: number }>>([])
   const [hoverSprite, setHoverSprite] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
-  // 多音轨
-  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; name: string; lang: string }>>([]
-  )
+  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; name: string; lang: string }>>([])
   const [currentAudioTrack, setCurrentAudioTrack] = useState(-1)
   const [showAudioMenu, setShowAudioMenu] = useState(false)
 
-  // 手势控制状态
   const [gestureOverlay, setGestureOverlay] = useState<{ type: string; value: string } | null>(null)
   const gestureRef = useRef<{
     startX: number
@@ -180,16 +158,13 @@ export default function VideoPlayer({
   } | null>(null)
   const gestureOverlayTimer = useRef<number>(0)
 
-  // WebSocket 监听 AI 字幕进度
   const { on, off } = useWebSocket()
 
   useEffect(() => {
     const handleASRProgress = (data: any) => {
       if (data.media_id === mediaId) {
         setAiSubtitleStatus(data as ASRTask)
-        if (data.status === 'completed' || data.status === 'failed') {
-          setAiGenerating(false)
-        }
+        if (data.status === 'completed' || data.status === 'failed') setAiGenerating(false)
       }
     }
     const handleASRCompleted = (data: any) => {
@@ -204,40 +179,26 @@ export default function VideoPlayer({
         setAiGenerating(false)
       }
     }
-
-    // 监听预处理完成事件：后台预处理完成后自动通知，实现无缝切换
     const handlePreprocessCompleted = (data: any) => {
-      if (data.media_id === mediaId && onPreprocessReady) {
-        onPreprocessReady()
-      }
+      if (data.media_id === mediaId && onPreprocessReady) onPreprocessReady()
     }
-
-    // 监听字幕预处理完成事件：预处理完成后自动刷新 AI 字幕状态
     const handleSubPreprocessCompleted = (data: any) => {
       if (data.media_id === mediaId) {
         setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
-        // 字幕预处理完成后，刷新 AI 字幕状态（预处理会生成 AI 字幕）
         subtitleApi.getAIStatus(mediaId).then((res) => {
-          const d = res.data.data
-          if (d && d.status !== 'none') {
-            setAiSubtitleStatus(d)
-          }
+          const data = res.data.data
+          if (data && data.status !== 'none') setAiSubtitleStatus(data)
         }).catch(() => {})
-        // 同时刷新翻译字幕列表（预处理可能包含翻译步骤）
         subtitleApi.listTranslated(mediaId).then((res) => {
           if (Array.isArray(res.data.data)) setTranslatedSubs(res.data.data)
         }).catch(() => {})
       }
     }
     const handleSubPreprocessProgress = (data: any) => {
-      if (data.media_id === mediaId) {
-        setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
-      }
+      if (data.media_id === mediaId) setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
     }
     const handleSubPreprocessFailed = (data: any) => {
-      if (data.media_id === mediaId) {
-        setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
-      }
+      if (data.media_id === mediaId) setSubtitlePreprocessStatus(data as SubtitlePreprocessTask)
     }
 
     on(WS_EVENTS.PREPROCESS_COMPLETED, handlePreprocessCompleted)
@@ -248,17 +209,13 @@ export default function VideoPlayer({
     on(WS_EVENTS.SUB_PREPROCESS_PROGRESS, handleSubPreprocessProgress)
     on(WS_EVENTS.SUB_PREPROCESS_FAILED, handleSubPreprocessFailed)
 
-    // Phase 4: 翻译事件监听
     const handleTranslateProgress = (data: any) => {
-      if (data.media_id === mediaId) {
-        setTranslateStatus(data as ASRTask)
-      }
+      if (data.media_id === mediaId) setTranslateStatus(data as ASRTask)
     }
     const handleTranslateCompleted = (data: any) => {
       if (data.media_id === mediaId) {
         setTranslateStatus(data as ASRTask)
         setTranslating(false)
-        // 刷新已翻译字幕列表
         subtitleApi.listTranslated(mediaId).then((res) => {
           if (Array.isArray(res.data.data)) setTranslatedSubs(res.data.data)
         }).catch(() => {})
@@ -289,7 +246,6 @@ export default function VideoPlayer({
     }
   }, [mediaId, on, off, onPreprocessReady])
 
-  // 加载字幕轨道列表 + 检查 AI 字幕状态
   useEffect(() => {
     if (!mediaId) return
     subtitleApi.getTracks(mediaId).then((res) => {
@@ -300,55 +256,38 @@ export default function VideoPlayer({
       }
     }).catch(() => {})
 
-    // 检查是否已有 AI 字幕
     subtitleApi.getAIStatus(mediaId).then((res) => {
       const data = res.data.data
       if (data && data.status !== 'none') {
         setAiSubtitleStatus(data)
-        if (data.status === 'extracting' || data.status === 'transcribing' || data.status === 'converting') {
-          setAiGenerating(true)
-        }
+        if (data.status === 'extracting' || data.status === 'transcribing' || data.status === 'converting') setAiGenerating(true)
       }
     }).catch(() => {})
 
-    // Phase 4: 加载已翻译的字幕列表
     subtitleApi.listTranslated(mediaId).then((res) => {
       if (Array.isArray(res.data.data)) setTranslatedSubs(res.data.data)
     }).catch(() => {})
 
-    // 查询字幕预处理状态
     subtitlePreprocessApi.getMediaStatus(mediaId).then((res) => {
-      if (res.data.data) {
-        setSubtitlePreprocessStatus(res.data.data)
-      }
+      if (res.data.data) setSubtitlePreprocessStatus(res.data.data)
     }).catch(() => {})
   }, [mediaId])
 
-  // 加载本地弹幕（JavDB 短评导入后会在这里展示）
   useEffect(() => {
     if (!mediaId) return
     mediaApi.danmaku(mediaId, 200)
-      .then((res) => {
-        const items = res.data.data || []
-        setDanmakuItems(items.filter((item) => item.content))
-      })
+      .then((res) => setDanmakuItems((res.data.data || []).filter((item) => item.content)))
       .catch(() => setDanmakuItems([]))
   }, [mediaId])
 
-  // 加载字幕到video元素
   const loadSubtitle = useCallback((type: string, id: string) => {
     const video = videoRef.current
     if (!video) return
-    // 清除之前手动添加的 <track> 元素
-    video.querySelectorAll('track').forEach(t => t.remove())
-    // 将所有 textTrack 设为 disabled（比 hidden 更彻底，阻止渲染器解析轨道）
-    for (let i = 0; i < video.textTracks.length; i++) {
-      video.textTracks[i].mode = 'disabled'
-    }
+    video.querySelectorAll('track').forEach(track => track.remove())
+    for (let i = 0; i < video.textTracks.length; i++) video.textTracks[i].mode = 'disabled'
+
     if (type === 'off') {
-      // 用户主动关闭：设置标志避免随后 useEffect 自动选中字幕
       userDisabledSubtitleRef.current = true
-      // 若使用 HLS.js，额外关闭其内部字幕轨道
       try {
         if (hlsRef.current) {
           hlsRef.current.subtitleTrack = -1
@@ -358,24 +297,23 @@ export default function VideoPlayer({
       setActiveSubtitle(null)
       return
     }
-    // 选择了具体字幕，清除用户禁用标志
+
     userDisabledSubtitleRef.current = false
     let subtitleUrl = ''
     let label = '字幕'
     if (type === 'embedded') {
       const index = parseInt(id)
       subtitleUrl = subtitleApi.getExtractUrl(mediaId, index)
-      const track = embeddedSubs.find(s => s.index === index)
+      const track = embeddedSubs.find(subtitle => subtitle.index === index)
       label = track?.title || track?.language || `轨道 ${index}`
     } else if (type === 'external') {
       subtitleUrl = subtitleApi.getExternalUrl(id)
-      const sub = externalSubs.find(s => s.path === id)
-      label = sub?.language || sub?.filename || '外挂字幕'
+      const subtitle = externalSubs.find(item => item.path === id)
+      label = subtitle?.language || subtitle?.filename || '外挂字幕'
     } else if (type === 'ai') {
       subtitleUrl = subtitleApi.getAISubtitleUrl(mediaId)
       label = 'AI 生成字幕'
     } else if (type === 'translated') {
-      // Phase 4: 翻译字幕
       subtitleUrl = subtitleApi.getTranslatedSubtitleUrl(mediaId, id)
       const langNames: Record<string, string> = {
         zh: '中文', en: '英文', ja: '日文', ko: '韩文',
@@ -384,71 +322,54 @@ export default function VideoPlayer({
       }
       label = `翻译字幕（${langNames[id] || id}）`
     }
-    if (subtitleUrl) {
-      // 使用 fetch + addTextTrack 代替 <track> 元素，避免跨域和 HLS.js 干扰
-      const token = useAuthStore.getState().token
-      const headers: Record<string, string> = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
 
-      // 记录本次加载的 blobUrl 和 trackEl，便于失败/卸载时清理
-      let createdBlobUrl: string | null = null
-      let createdTrackEl: HTMLTrackElement | null = null
+    if (!subtitleUrl) return
+    const token = useAuthStore.getState().token
+    const headers: Record<string, string> = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    let createdBlobUrl: string | null = null
+    let createdTrackEl: HTMLTrackElement | null = null
 
-      fetch(subtitleUrl, { headers })
-        .then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          return res.text()
-        })
-        .then(vttText => {
-          const blob = new Blob([vttText], { type: 'text/vtt' })
-          const blobUrl = URL.createObjectURL(blob)
-          createdBlobUrl = blobUrl
-          const trackEl = document.createElement('track')
-          createdTrackEl = trackEl
-          trackEl.kind = 'subtitles'
-          trackEl.label = label
-          trackEl.srclang = 'und'
-          trackEl.src = blobUrl
-          // 不设置 default=true，避免浏览器在 track 重建时自动 showing，
-          // 我们在 onTrackLoad 里显式按 label 激活目标 track。
-          // 监听 track load 事件，在浏览器解析完 VTT 后再释放 blob URL，避免过早 revoke 导致字幕无法显示
-          const onTrackLoad = () => {
-            // 激活对应 textTrack
-            for (let i = 0; i < video.textTracks.length; i++) {
-              const t = video.textTracks[i]
-              t.mode = t.label === label ? 'showing' : 'hidden'
-            }
-            // 字幕已解析完成，可以安全释放 blob URL
-            URL.revokeObjectURL(blobUrl)
-            trackEl.removeEventListener('load', onTrackLoad)
+    fetch(subtitleUrl, { headers })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.text()
+      })
+      .then((vttText) => {
+        const blobUrl = URL.createObjectURL(new Blob([vttText], { type: 'text/vtt' }))
+        createdBlobUrl = blobUrl
+        const trackEl = document.createElement('track')
+        createdTrackEl = trackEl
+        trackEl.kind = 'subtitles'
+        trackEl.label = label
+        trackEl.srclang = 'und'
+        trackEl.src = blobUrl
+        const onTrackLoad = () => {
+          for (let i = 0; i < video.textTracks.length; i++) {
+            const track = video.textTracks[i]
+            track.mode = track.label === label ? 'showing' : 'hidden'
           }
-          trackEl.addEventListener('load', onTrackLoad)
-          video.appendChild(trackEl)
-          // 只有字幕成功加载后才更新 activeSubtitle，避免 UI 显示为已选中但实际加载失败
-          setActiveSubtitle(`${type}:${id}`)
-        })
-        .catch(err => {
-          console.error('字幕加载失败:', err)
-          // 加载失败时重置激活状态，清理未完成的资源
-          if (createdTrackEl && createdTrackEl.parentNode) {
-            createdTrackEl.parentNode.removeChild(createdTrackEl)
-          }
-          if (createdBlobUrl) {
-            URL.revokeObjectURL(createdBlobUrl)
-          }
-          setActiveSubtitle(null)
-        })
-    }
+          URL.revokeObjectURL(blobUrl)
+          trackEl.removeEventListener('load', onTrackLoad)
+        }
+        trackEl.addEventListener('load', onTrackLoad)
+        video.appendChild(trackEl)
+        setActiveSubtitle(`${type}:${id}`)
+      })
+      .catch((error) => {
+        console.error('字幕加载失败:', error)
+        if (createdTrackEl?.parentNode) createdTrackEl.parentNode.removeChild(createdTrackEl)
+        if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl)
+        setActiveSubtitle(null)
+      })
   }, [mediaId, embeddedSubs, externalSubs])
 
-  // 自动选中第一个可用字幕
   const autoSelectSubtitle = useCallback(() => {
-    // 优先级：外挂字幕 > 内嵌非bitmap字幕 > AI字幕 > 翻译字幕
     if (externalSubs.length > 0) {
       loadSubtitle('external', externalSubs[0].path)
       return
     }
-    const firstPlayableEmbedded = embeddedSubs.find(s => !s.bitmap)
+    const firstPlayableEmbedded = embeddedSubs.find(subtitle => !subtitle.bitmap)
     if (firstPlayableEmbedded) {
       loadSubtitle('embedded', String(firstPlayableEmbedded.index))
       return
@@ -457,23 +378,16 @@ export default function VideoPlayer({
       loadSubtitle('ai', '')
       return
     }
-    if (translatedSubs.length > 0) {
-      loadSubtitle('translated', translatedSubs[0].language)
-      return
-    }
+    if (translatedSubs.length > 0) loadSubtitle('translated', translatedSubs[0].language)
   }, [externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, loadSubtitle])
 
-  // 字幕列表就绪后自动选中第一个
   useEffect(() => {
-    if (!mediaId || activeSubtitle) return // 已有选中字幕，不覆盖
-    if (userDisabledSubtitleRef.current) return // 用户主动关闭了字幕，不自动选中
-    // 有任何可用字幕时尝试自动选中
-    if (externalSubs.length > 0 || embeddedSubs.some(s => !s.bitmap) || aiSubtitleStatus?.status === 'completed' || translatedSubs.length > 0) {
+    if (!mediaId || activeSubtitle || userDisabledSubtitleRef.current) return
+    if (externalSubs.length > 0 || embeddedSubs.some(subtitle => !subtitle.bitmap) || aiSubtitleStatus?.status === 'completed' || translatedSubs.length > 0) {
       autoSelectSubtitle()
     }
   }, [mediaId, activeSubtitle, externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, autoSelectSubtitle])
 
-  // 初始化播放器
   useEffect(() => {
     const video = videoRef.current
     if (!video || !src) return
@@ -483,6 +397,7 @@ export default function VideoPlayer({
       hlsRef.current.destroy()
       hlsRef.current = null
     }
+
     if (mode === 'direct' || mode === 'remux' || mode === 'smart_remux') {
       video.src = src
       setQualities([])
@@ -491,134 +406,114 @@ export default function VideoPlayer({
         video.play().catch(() => {})
       }, { once: true })
       video.addEventListener('error', () => {
-        const err = video.error
-        // Remux 模式下播放失败（如浏览器不支持 HEVC 10-bit），自动降级到 HLS
+        const error = video.error
         if ((mode === 'remux' || mode === 'smart_remux') && onRemuxFallback) {
-          console.warn('Remux 播放失败，自动降级到 HLS 转码:', err?.message)
+          console.warn('Remux 播放失败，自动降级到 HLS 转码:', error?.message)
           onRemuxFallback()
           return
         }
-        setLoadError(`播放失败: ${err?.message || '未知错误'}`)
+        setLoadError(`播放失败: ${error?.message || '未知错误'}`)
       }, { once: true })
-    } else {
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          // Worker 线程解封装，避免主线程卡顿
-          enableWorker: true,
-          startLevel: -1,
-          capLevelToPlayerSize: true,
-          // 缓冲策略优化
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
-          maxBufferSize: 60 * 1000 * 1000, // 60MB 内存上限，防止长视频溢出
-          // ABR 带宽估算优化：保守估算避免频繁降级
-          abrBandWidthFactor: 0.95,
-          abrBandWidthUpFactor: 0.7,
-          // 首帧优化
-          testBandwidth: true,
-          xhrSetup: (xhr: XMLHttpRequest, _url: string) => {
-            // 为所有 HLS 请求（子 m3u8、.ts 分片）注入 JWT 认证头
-            const token = useAuthStore.getState().token
-            if (token) {
-              xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-            }
-          },
-        })
-        hls.loadSource(src)
-        hls.attachMedia(video)
-        hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-          const levels = data.levels.map((level, index) => ({
-            index,
-            label: `${level.height}p`,
-            bitrate: level.bitrate,
-            height: level.height,
-          }))
-          setQualities([{ index: -1, label: '自动' }, ...levels])
-          if (startPosition > 0) video.currentTime = startPosition
-          video.play().catch(() => {})
-        })
-        hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
-          setCurrentQuality(data.level)
-          // 记录当前档位码率，供 Settings 面板显示
-          const lv = hls.levels?.[data.level]
-          if (lv?.bitrate) setCurrentBitrate(lv.bitrate)
-        })
-        // 多音轨支持
-        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
-          const tracks = data.audioTracks.map((t, i) => ({
-            id: i,
-            name: t.name || `音轨 ${i + 1}`,
-            lang: t.lang || '',
-          }))
-          setAudioTracks(tracks)
-          setCurrentAudioTrack(hls.audioTrack)
-        })
-        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => {
-          setCurrentAudioTrack(data.id)
-        })
-        // 带宽上报（驱动服务端 ABR 档位过滤）
-        // hls.js 的 EWMA 仅用于本地诊断展示，不再上报媒体级 Runtime。
-        const updateBandwidthEstimate = () => {
-          const bw = Math.round((hls as unknown as { bandwidthEstimate: number }).bandwidthEstimate || 0)
-          if (bw > 0) setBandwidthEstimate(bw)
-        }
-        hls.on(Hls.Events.FRAG_LOADED, updateBandwidthEstimate)
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad()
-                break
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError()
-                break
-              default:
-                setLoadError('转码播放失败，请稍后重试')
-                hls.destroy()
-                break
-            }
-          }
-        })
-        hlsRef.current = hls
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = src
+    } else if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        startLevel: -1,
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000,
+        abrBandWidthFactor: 0.95,
+        abrBandWidthUpFactor: 0.7,
+        testBandwidth: true,
+        xhrSetup: (xhr: XMLHttpRequest) => {
+          const token = useAuthStore.getState().token
+          if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        },
+      })
+      hls.loadSource(src)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        const levels = data.levels.map((level, index) => ({
+          index,
+          label: `${level.height}p`,
+          bitrate: level.bitrate,
+          height: level.height,
+        }))
+        setQualities([{ index: -1, label: '自动' }, ...levels])
         if (startPosition > 0) video.currentTime = startPosition
         video.play().catch(() => {})
-      } else {
-        setLoadError('当前浏览器不支持HLS播放')
+      })
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        setCurrentQuality(data.level)
+        const level = hls.levels?.[data.level]
+        if (level?.bitrate) setCurrentBitrate(level.bitrate)
+      })
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_event, data) => {
+        const tracks = data.audioTracks.map((track, index) => ({
+          id: index,
+          name: track.name || `音轨 ${index + 1}`,
+          lang: track.lang || '',
+        }))
+        setAudioTracks(tracks)
+        setCurrentAudioTrack(hls.audioTrack)
+      })
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_event, data) => setCurrentAudioTrack(data.id))
+      const updateBandwidthEstimate = () => {
+        const estimate = Math.round((hls as unknown as { bandwidthEstimate: number }).bandwidthEstimate || 0)
+        if (estimate > 0) setBandwidthEstimate(estimate)
       }
+      hls.on(Hls.Events.FRAG_LOADED, updateBandwidthEstimate)
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            hls.startLoad()
+            break
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            hls.recoverMediaError()
+            break
+          default:
+            setLoadError('转码播放失败，请稍后重试')
+            hls.destroy()
+            break
+        }
+      })
+      hlsRef.current = hls
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src
+      if (startPosition > 0) video.currentTime = startPosition
+      video.play().catch(() => {})
+    } else {
+      setLoadError('当前浏览器不支持HLS播放')
     }
+
     return () => {
       hlsRef.current?.destroy()
       hlsRef.current = null
     }
   }, [src, mode, startPosition, reset, onRemuxFallback])
 
-  // 视频事件监听
+  const remuxOffsetRef = useRef(0)
+
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
-    // Remux 模式下，video.currentTime 是从 seek 点开始的相对时间，需要加上偏移量
     const onTimeUpdate = () => setCurrentTime(video.currentTime + remuxOffsetRef.current)
     const onDurationChange = () => setDuration(video.duration)
     const onVolumeChange = () => {
       setVolume(video.volume)
       setMuted(video.muted)
     }
-    // 播放结束 → 自动下一集
     const onEnded = () => {
       setPlaying(false)
-      if (onNext) {
-        // 开始 5 秒倒计时
-        setNextCountdown(5)
-      }
+      if (onNext) setNextCountdown(5)
     }
-    // Seek 完成立即通知后端新位置（非 Remux 路径），避免 throttleLoop 按旧位置误挂起/恢复
     const onSeeked = () => {
-      const pos = video.currentTime + remuxOffsetRef.current
-      if (pos > 0) {
+      const position = video.currentTime + remuxOffsetRef.current
+      if (position > 0) {
+        // Playback position is consumed by the reporting interval below.
       }
     }
     video.addEventListener('play', onPlay)
@@ -639,7 +534,6 @@ export default function VideoPlayer({
     }
   }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext, mediaId])
 
-  // 自动下一集倒计时逻辑
   useEffect(() => {
     if (nextCountdown === null) return
     if (nextCountdown <= 0) {
@@ -648,158 +542,112 @@ export default function VideoPlayer({
       return
     }
     nextCountdownTimerRef.current = window.setTimeout(() => {
-      setNextCountdown((prev) => (prev !== null ? prev - 1 : null))
+      setNextCountdown(prev => (prev !== null ? prev - 1 : null))
     }, 1000)
     return () => clearTimeout(nextCountdownTimerRef.current)
   }, [nextCountdown, onNext])
 
-  // 定期上报播放进度
-  // - 每 3s 向后端 /stream/:id/playback 上报一次，驱动 FFmpeg Throttling（挂起/恢复）
-  // - 每 ~15s 额外写一次数据库 WatchHistory
   useEffect(() => {
     let tick = 0
     progressReportRef.current = window.setInterval(() => {
       const video = videoRef.current
       if (!video || video.paused || video.currentTime <= 0) return
-      // Remux 模式下 video.currentTime 是相对 seek 点的时间，需要加上偏移
       const actualTime = video.currentTime + remuxOffsetRef.current
       const actualDuration = displayDuration > 0 ? displayDuration : video.duration
-      // 驱动后端节流（高频）
-      // 写观看历史（低频，每 5 次 = 15s）
       tick++
-      if (tick % 5 === 0) {
-        userApi.updateProgress(mediaId, actualTime, actualDuration).catch(() => {})
-      }
+      if (tick % 5 === 0) userApi.updateProgress(mediaId, actualTime, actualDuration).catch(() => {})
     }, 3000)
     return () => clearInterval(progressReportRef.current)
   }, [mediaId, displayDuration])
 
-  // 全屏变化监听
   useEffect(() => {
     const onFullscreenChange = () => setFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', onFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [setFullscreen])
 
-  // 自动隐藏控制栏
   const resetControlsTimer = useCallback(() => {
     setShowControls(true)
     clearTimeout(controlsTimerRef.current)
     controlsTimerRef.current = window.setTimeout(() => {
-      if (videoRef.current && !videoRef.current.paused) {
-        setShowControls(false)
-      }
+      if (videoRef.current && !videoRef.current.paused) setShowControls(false)
     }, 3000)
   }, [setShowControls])
 
   const togglePlay = () => {
     const video = videoRef.current
     if (!video) return
-    // 如果正在倒计时下一集，取消并重新播放
-    if (nextCountdown !== null) {
-      setNextCountdown(null)
-    }
+    if (nextCountdown !== null) setNextCountdown(null)
     if (video.paused) video.play()
     else video.pause()
   }
 
-  const seek = (seconds: number) => {
-    const video = videoRef.current
-    if (!video) return
-
-    // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现快进/快退
-    if (mode === 'remux' || mode === 'smart_remux') {
-      const currentPos = remuxOffsetRef.current + (video.currentTime || 0)
-      const targetTime = Math.max(0, Math.min(displayDuration, currentPos + seconds))
-      remuxSeek(targetTime)
-    } else {
-      video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
-    }
-    // 显示快进/快退提示
-    clearTimeout(seekHintTimer.current)
-    setSeekHint({ text: seconds > 0 ? `+${seconds}s` : `${seconds}s`, visible: true })
-    seekHintTimer.current = window.setTimeout(() => {
-      setSeekHint(prev => ({ ...prev, visible: false }))
-    }, 800)
-  }
-
-  // Remux Seek：通过重新加载带 ?start= 参数的 URL 实现进度跳转
-  // 类似 Emby 的拖动进度条体验，中止当前流并从新位置开始转封装
   const remuxSeek = useCallback((targetTime: number) => {
     const video = videoRef.current
     if (!video || (mode !== 'remux' && mode !== 'smart_remux') || !src) return
-    // 从 src 中提取基础 URL（去掉已有的 start 参数）
     const baseUrl = src.replace(/[&?]start=[^&]*/g, '')
-    const sep = baseUrl.includes('?') ? '&' : '?'
-    const newSrc = `${baseUrl}${sep}start=${Math.floor(targetTime)}`
-    // 记录目标时间偏移，用于显示正确的进度
+    const separator = baseUrl.includes('?') ? '&' : '?'
     remuxOffsetRef.current = targetTime
-    video.src = newSrc
+    video.src = `${baseUrl}${separator}start=${Math.floor(targetTime)}`
     video.play().catch(() => {})
-    // 立即通知后端新位置，避免 throttleLoop 按旧位置误挂起/恢复
   }, [src, mode, mediaId])
 
-
-  // Remux 时间偏移：记录 Seek 的起始时间，用于计算真实播放位置
-  const remuxOffsetRef = useRef(0)
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seek = (seconds: number) => {
     const video = videoRef.current
     if (!video) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const pos = (e.clientX - rect.left) / rect.width
-    const targetTime = pos * displayDuration
+    if (mode === 'remux' || mode === 'smart_remux') {
+      const currentPos = remuxOffsetRef.current + (video.currentTime || 0)
+      remuxSeek(Math.max(0, Math.min(displayDuration, currentPos + seconds)))
+    } else {
+      video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
+    }
+    clearTimeout(seekHintTimer.current)
+    setSeekHint({ text: seconds > 0 ? `+${seconds}s` : `${seconds}s`, visible: true })
+    seekHintTimer.current = window.setTimeout(() => setSeekHint(prev => ({ ...prev, visible: false })), 800)
+  }
 
-    // Remux 模式：通过重新请求带 ?start= 参数的 URL 实现 Seek
+  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const video = videoRef.current
+    if (!video) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const targetTime = ((event.clientX - rect.left) / rect.width) * displayDuration
     if (mode === 'remux' || mode === 'smart_remux') {
       remuxSeek(targetTime)
       return
     }
-
-    // 如果目标时间超出已加载范围，限制到当前可 seek 的最大位置
-    if (video.duration > 0 && targetTime <= video.duration) {
-      video.currentTime = targetTime
-    } else if (video.duration > 0) {
-      // 超出已转码范围，跳转到已转码的最末尾
-      video.currentTime = video.duration - 0.5
-    }
+    if (video.duration > 0 && targetTime <= video.duration) video.currentTime = targetTime
+    else if (video.duration > 0) video.currentTime = video.duration - 0.5
   }
 
-  const handleProgressHover = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const pos = (e.clientX - rect.left) / rect.width
-    setHoverProgress(pos * 100)
-    const hoverSec = pos * displayDuration
-    setHoverTime(formatTime(hoverSec))
-    // 查找对应的雪碧图帧
+  const handleProgressHover = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = (event.clientX - rect.left) / rect.width
+    setHoverProgress(position * 100)
+    const hoverSeconds = position * displayDuration
+    setHoverTime(formatTime(hoverSeconds))
     if (spriteVttCues.length > 0) {
-      const cue = spriteVttCues.find(c => hoverSec >= c.start && hoverSec < c.end)
-        || spriteVttCues[spriteVttCues.length - 1]
+      const cue = spriteVttCues.find(item => hoverSeconds >= item.start && hoverSeconds < item.end) || spriteVttCues[spriteVttCues.length - 1]
       setHoverSprite(cue ? { x: cue.x, y: cue.y, w: cue.w, h: cue.h } : null)
     }
   }
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVolumeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current
     if (!video) return
-    const vol = parseFloat(e.target.value)
-    video.volume = vol
-    video.muted = vol === 0
+    const nextVolume = parseFloat(event.target.value)
+    video.volume = nextVolume
+    video.muted = nextVolume === 0
   }
 
-  // 倍速切换
   const changeSpeed = useCallback((rate: number) => {
     const video = videoRef.current
     if (!video) return
     video.playbackRate = rate
     setPlaybackRate(rate)
     setShowSpeedMenu(false)
-    // 显示倍速切换提示
     clearTimeout(seekHintTimer.current)
     setSeekHint({ text: rate === 1 ? '正常速度' : `${rate}x 倍速`, visible: true })
-    seekHintTimer.current = window.setTimeout(() => {
-      setSeekHint(prev => ({ ...prev, visible: false }))
-    }, 800)
+    seekHintTimer.current = window.setTimeout(() => setSeekHint(prev => ({ ...prev, visible: false })), 800)
   }, [])
 
   const toggleFullscreen = () => {
@@ -815,7 +663,6 @@ export default function VideoPlayer({
     setShowQuality(false)
   }
 
-  // 切换音轨
   const switchAudioTrack = (id: number) => {
     if (hlsRef.current) {
       hlsRef.current.audioTrack = id
@@ -824,7 +671,6 @@ export default function VideoPlayer({
     setShowAudioMenu(false)
   }
 
-  // 解析 WebVTT sprite 索引文件
   useEffect(() => {
     if (!spriteVttUrl) {
       setSpriteVttCues([])
@@ -835,19 +681,17 @@ export default function VideoPlayer({
       ? `${spriteVttUrl}${spriteVttUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
       : spriteVttUrl
     fetch(url)
-      .then(r => r.text())
-      .then(text => {
+      .then(response => response.text())
+      .then((text) => {
         const cues: Array<{ start: number; end: number; x: number; y: number; w: number; h: number }> = []
-        // 解析 WebVTT：每个 cue 格式为 "HH:MM:SS.mmm --> HH:MM:SS.mmm\nsprite.jpg#xywh=x,y,w,h"
-        const blocks = text.split(/\n\n+/)
-        for (const block of blocks) {
+        for (const block of text.split(/\n\n+/)) {
           const lines = block.trim().split('\n')
-          const timeLine = lines.find(l => l.includes('-->'))
-          const coordLine = lines.find(l => l.includes('#xywh='))
+          const timeLine = lines.find(line => line.includes('-->'))
+          const coordLine = lines.find(line => line.includes('#xywh='))
           if (!timeLine || !coordLine) continue
-          const [startStr, endStr] = timeLine.split('-->').map(s => s.trim())
-          const parseVTTTime = (s: string) => {
-            const parts = s.split(':').map(Number)
+          const [startStr, endStr] = timeLine.split('-->').map(value => value.trim())
+          const parseVTTTime = (value: string) => {
+            const parts = value.split(':').map(Number)
             return parts[0] * 3600 + parts[1] * 60 + parts[2]
           }
           const match = coordLine.match(/#xywh=(\d+),(\d+),(\d+),(\d+)/)
@@ -868,88 +712,75 @@ export default function VideoPlayer({
 
   const formatTime = (seconds: number) => {
     if (isNaN(seconds)) return '0:00'
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    const s = Math.floor(seconds % 60)
-    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    return `${m}:${s.toString().padStart(2, '0')}`
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    return `${minutes}:${secs.toString().padStart(2, '0')}`
   }
 
-  // 键盘快捷键
   useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      switch (e.key) {
+    const handleKeydown = (event: KeyboardEvent) => {
+      switch (event.key) {
         case ' ':
         case 'k':
-          e.preventDefault()
+          event.preventDefault()
           togglePlay()
           break
         case 'ArrowLeft':
-          e.preventDefault()
+          event.preventDefault()
           seek(-10)
           break
         case 'ArrowRight':
-          e.preventDefault()
+          event.preventDefault()
           seek(10)
           break
         case 'ArrowUp':
-          e.preventDefault()
+          event.preventDefault()
           if (videoRef.current) videoRef.current.volume = Math.min(1, videoRef.current.volume + 0.1)
           break
         case 'ArrowDown':
-          e.preventDefault()
+          event.preventDefault()
           if (videoRef.current) videoRef.current.volume = Math.max(0, videoRef.current.volume - 0.1)
           break
-        case 'f': {
-          e.preventDefault()
-          if (e.ctrlKey || e.metaKey) {
-            setShowContentSearch(prev => !prev)
-          } else {
-            toggleFullscreen()
-          }
+        case 'f':
+          event.preventDefault()
+          if (event.ctrlKey || event.metaKey) setShowContentSearch(prev => !prev)
+          else toggleFullscreen()
           break
-        }
         case 'm':
-          e.preventDefault()
+          event.preventDefault()
           if (videoRef.current) videoRef.current.muted = !videoRef.current.muted
           break
         case 'Escape':
-          if (showContentSearch) {
-            setShowContentSearch(false)
-          } else if (showSubtitleSearch) {
-            setShowSubtitleSearch(false)
-          } else if (onBack) {
-            onBack()
-          }
+          if (showContentSearch) setShowContentSearch(false)
+          else if (showSubtitleSearch) setShowSubtitleSearch(false)
+          else if (onBack) onBack()
           break
-        // 倍速快捷键：< 减速，> 加速，Backspace 恢复正常速度
         case '<':
         case ',': {
-          e.preventDefault()
-          const idx = SPEED_OPTIONS.indexOf(playbackRate)
-          if (idx > 0) changeSpeed(SPEED_OPTIONS[idx - 1])
+          event.preventDefault()
+          const index = SPEED_OPTIONS.indexOf(playbackRate)
+          if (index > 0) changeSpeed(SPEED_OPTIONS[index - 1])
           break
         }
         case '>':
         case '.': {
-          e.preventDefault()
-          const idx = SPEED_OPTIONS.indexOf(playbackRate)
-          if (idx < SPEED_OPTIONS.length - 1) changeSpeed(SPEED_OPTIONS[idx + 1])
+          event.preventDefault()
+          const index = SPEED_OPTIONS.indexOf(playbackRate)
+          if (index < SPEED_OPTIONS.length - 1) changeSpeed(SPEED_OPTIONS[index + 1])
           break
         }
-        case 'Backspace': {
-          // 快速恢复正常速度
+        case 'Backspace':
           if (playbackRate !== 1) {
-            e.preventDefault()
+            event.preventDefault()
             changeSpeed(1)
           }
           break
-        }
-        // 下一集快捷键
         case 'n':
         case 'N':
           if (onNext) {
-            e.preventDefault()
+            event.preventDefault()
             setNextCountdown(null)
             onNext()
           }
@@ -958,15 +789,13 @@ export default function VideoPlayer({
     }
     window.addEventListener('keydown', handleKeydown)
     return () => window.removeEventListener('keydown', handleKeydown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackRate, onNext, showContentSearch, showSubtitleSearch])
 
-  // ==================== 手势控制 ====================
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0]
+  const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    const touch = event.touches[0]
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return
-
     gestureRef.current = {
       startX: touch.clientX,
       startY: touch.clientY,
@@ -977,82 +806,53 @@ export default function VideoPlayer({
     }
   }, [currentTime, volume])
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((event: React.TouchEvent) => {
     const gesture = gestureRef.current
     if (!gesture) return
-
-    const touch = e.touches[0]
+    const touch = event.touches[0]
     const deltaX = touch.clientX - gesture.startX
     const deltaY = touch.clientY - gesture.startY
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return
 
-    // 判断手势方向（首次移动超过10px时锁定方向）
     if (gesture.direction === 'none') {
-      if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
-        gesture.direction = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
-      } else {
-        return
-      }
+      if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) gesture.direction = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
+      else return
     }
 
     if (gesture.direction === 'horizontal') {
-      // 水平滑动 -> 快进/快退
       const effectiveDuration = (knownDuration && knownDuration > 0 && knownDuration > duration) ? knownDuration : duration
       const seekDelta = (deltaX / rect.width) * effectiveDuration * 0.3
       const newTime = Math.max(0, Math.min(effectiveDuration, gesture.startTime + seekDelta))
       const diff = newTime - gesture.startTime
-      const sign = diff >= 0 ? '+' : '-'
       setGestureOverlay({
         type: 'seek',
-        value: `${sign}${formatTime(Math.abs(diff))} / ${formatTime(newTime)}`,
+        value: `${diff >= 0 ? '+' : '-'}${formatTime(Math.abs(diff))} / ${formatTime(newTime)}`,
       })
-    } else if (gesture.direction === 'vertical') {
-      if (gesture.side === 'right') {
-        // 右侧上下滑动 -> 音量调节
-        const volumeDelta = -deltaY / rect.height
-        const newVolume = Math.max(0, Math.min(1, gesture.startVolume + volumeDelta))
-        setVolume(newVolume)
-        setGestureOverlay({
-          type: 'volume',
-          value: `${Math.round(newVolume * 100)}%`,
-        })
-      } else {
-        // 左侧上下滑动 -> 亮度调节（通过CSS filter模拟）
-        const brightnessDelta = -deltaY / rect.height
-        const brightness = Math.max(0.3, Math.min(1.5, 1 + brightnessDelta))
-        const video = videoRef.current
-        if (video) {
-          video.style.filter = `brightness(${brightness})`
-        }
-        setGestureOverlay({
-          type: 'brightness',
-          value: `${Math.round(brightness * 100)}%`,
-        })
-      }
+    } else if (gesture.side === 'right') {
+      const nextVolume = Math.max(0, Math.min(1, gesture.startVolume - deltaY / rect.height))
+      setVolume(nextVolume)
+      setGestureOverlay({ type: 'volume', value: `${Math.round(nextVolume * 100)}%` })
+    } else {
+      const brightness = Math.max(0.3, Math.min(1.5, 1 - deltaY / rect.height))
+      if (videoRef.current) videoRef.current.style.filter = `brightness(${brightness})`
+      setGestureOverlay({ type: 'brightness', value: `${Math.round(brightness * 100)}%` })
     }
   }, [duration, knownDuration, setVolume])
 
   const handleTouchEnd = useCallback(() => {
     const gesture = gestureRef.current
     if (!gesture) return
-
     if (gesture.direction === 'horizontal') {
-      // 应用快进/快退
       const video = videoRef.current
       const rect = containerRef.current?.getBoundingClientRect()
       if (video && rect) {
-        // 重新计算最终位置（从overlay中获取不太方便，重新算一次）
-        // 这里简单地让video跳转到gestureOverlay显示的时间
+        // Preserve existing behavior: gesture overlay previews the seek delta.
       }
     }
-
     gestureRef.current = null
-    // 延迟隐藏手势提示
     clearTimeout(gestureOverlayTimer.current)
-    gestureOverlayTimer.current = window.setTimeout(() => {
-      setGestureOverlay(null)
-    }, 500)
+    gestureOverlayTimer.current = window.setTimeout(() => setGestureOverlay(null), 500)
   }, [])
 
   const closeAllMenus = () => {
@@ -1065,17 +865,40 @@ export default function VideoPlayer({
     setShowAudioMenu(false)
   }
 
+  const openExclusive = (menu: 'speed' | 'subtitle' | 'cast' | 'audio' | 'quality') => {
+    setShowSpeedMenu(menu === 'speed' ? !showSpeedMenu : false)
+    setShowSubtitleMenu(menu === 'subtitle' ? !showSubtitleMenu : false)
+    setShowCastPanel(menu === 'cast' ? !showCastPanel : false)
+    setShowAudioMenu(menu === 'audio' ? !showAudioMenu : false)
+    setShowQuality(menu === 'quality' ? !showQuality : false)
+    if (menu !== 'subtitle') setShowTranslateMenu(false)
+    setShowContentSearch(false)
+  }
+
+  const menuItemClass = (active = false, disabled = false) => clsx(
+    PLAYER_MENU_ITEM,
+    active && PLAYER_MENU_ACTIVE,
+    disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[var(--nv-player-text-secondary)]',
+  )
+
+  const playbackLabel = isStrm
+    ? 'STRM远程流'
+    : mode === 'direct'
+      ? '直接播放'
+      : (mode === 'remux' || mode === 'smart_remux')
+        ? 'Remux播放'
+        : 'HLS转码'
+
   return (
     <div
       ref={containerRef}
-      className="group/player relative h-full w-full bg-black"
+      className="group/player relative h-full w-full bg-[var(--nv-player-canvas)]"
       onMouseMove={resetControlsTimer}
       onMouseLeave={() => { if (isPlaying) setShowControls(false) }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* 视频元素 */}
       <video
         ref={videoRef}
         className="h-full w-full cursor-pointer"
@@ -1085,7 +908,6 @@ export default function VideoPlayer({
         crossOrigin="anonymous"
       />
 
-      {/* JavDB 短评弹幕 */}
       {activeDanmaku.length > 0 && (
         <div className="pointer-events-none absolute left-0 right-0 top-12 z-10 h-[42%] overflow-hidden">
           {activeDanmaku.map((item, index) => (
@@ -1094,10 +916,10 @@ export default function VideoPlayer({
               className="danmaku-item absolute left-full whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold shadow-lg"
               style={{
                 top: `${(index % 7) * 14}%`,
-                color: item.color || '#ffffff',
-                background: 'rgba(0, 0, 0, 0.34)',
-                textShadow: '0 1px 2px rgba(0,0,0,0.9)',
-                animationDelay: `${(index % 3) * 0.35}s`,
+                color: item.color || 'var(--nv-player-text-primary)',
+                background: 'color-mix(in srgb, var(--nv-player-canvas) 68%, transparent)',
+                textShadow: '0 1px 2px rgba(0,0,0,.9)',
+                animationDelay: `${(index % 3) * .35}s`,
               }}
             >
               {item.content}
@@ -1106,99 +928,60 @@ export default function VideoPlayer({
         </div>
       )}
 
-      {/* 加载错误提示 */}
       {loadError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm">
-          <div className="rounded-2xl p-8 text-center" style={{
-            background: 'rgba(11, 17, 32, 0.8)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-          }}>
-            <p className="text-lg font-medium text-red-400">{loadError}</p>
-            <button
-              onClick={onBack}
-              className="btn-ghost mt-4 rounded-xl px-5 py-2.5 text-sm"
-              style={{ border: '1px solid var(--neon-blue-15)' }}
-            >
-              返回
-            </button>
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[color-mix(in_srgb,var(--nv-player-canvas)_90%,transparent)] p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-surface)] p-7 text-center shadow-[var(--nv-player-shadow)]">
+            <p className="text-lg font-medium text-[var(--nv-player-danger)]">{loadError}</p>
+            {onBack && (
+              <button type="button" onClick={onBack} className="mt-5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-5 py-2.5 text-sm text-[var(--nv-player-text-primary)] transition-[background-color,border-color] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)]">
+                返回
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* 手势控制提示浮层 */}
       {gestureOverlay && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="rounded-2xl px-8 py-4 text-center" style={{
-            background: 'rgba(11, 17, 32, 0.85)',
-            border: '1px solid var(--neon-blue-15)',
-            backdropFilter: 'blur(12px)',
-          }}>
-            <p className="text-xs text-surface-400 mb-1">
-              {gestureOverlay.type === 'seek' ? '⏩ 进度' :
-               gestureOverlay.type === 'volume' ? '🔊 音量' : '☀️ 亮度'}
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+          <div className="rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-8 py-4 text-center shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+            <p className="mb-1 text-xs text-[var(--nv-player-text-tertiary)]">
+              {gestureOverlay.type === 'seek' ? '⏩ 进度' : gestureOverlay.type === 'volume' ? '🔊 音量' : '☀️ 亮度'}
             </p>
-            <p className="font-display text-xl font-bold text-white">{gestureOverlay.value}</p>
+            <p className="font-display text-xl font-bold text-[var(--nv-player-text-primary)]">{gestureOverlay.value}</p>
           </div>
         </div>
       )}
 
-      {/* 自动下一集倒计时浮层 */}
       {nextCountdown !== null && onNext && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-5 rounded-2xl p-8 text-center"
-            style={{
-              background: 'rgba(11, 17, 32, 0.85)',
-              border: '1px solid var(--neon-blue-15)',
-              backdropFilter: 'blur(20px)',
-            }}
-          >
-            {/* 倒计时圆环 */}
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-[color-mix(in_srgb,var(--nv-player-canvas)_64%,transparent)] p-4 backdrop-blur-sm">
+          <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-8 text-center shadow-[var(--nv-player-shadow)]">
             <div className="relative flex h-20 w-20 items-center justify-center">
-              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="36" fill="none" stroke="var(--neon-blue-10)" strokeWidth="3" />
-                <circle cx="40" cy="40" r="36" fill="none" stroke="url(#neon-grad)" strokeWidth="3"
+              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+                <circle cx="40" cy="40" r="36" fill="none" stroke="var(--nv-player-border)" strokeWidth="3" />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="36"
+                  fill="none"
+                  stroke="var(--nv-player-accent)"
+                  strokeWidth="3"
                   strokeDasharray={`${2 * Math.PI * 36}`}
                   strokeDashoffset={`${2 * Math.PI * 36 * (1 - nextCountdown / 5)}`}
                   strokeLinecap="round"
                   className="transition-all duration-1000 ease-linear"
                 />
-                <defs>
-                  <linearGradient id="neon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--neon-blue)" />
-                    <stop offset="100%" stopColor="var(--neon-purple)" />
-                  </linearGradient>
-                </defs>
               </svg>
-              <span className="font-display text-3xl font-bold text-white">{nextCountdown}</span>
+              <span className="font-display text-3xl font-bold text-[var(--nv-player-text-primary)]">{nextCountdown}</span>
             </div>
-
             <div>
-              <p className="text-sm text-surface-400">即将播放下一集</p>
-              {nextTitle && (
-                <p className="mt-1 font-display text-base font-medium text-white">{nextTitle}</p>
-              )}
+              <p className="text-sm text-[var(--nv-player-text-tertiary)]">即将播放下一集</p>
+              {nextTitle && <p className="mt-1 font-display text-base font-medium text-[var(--nv-player-text-primary)]">{nextTitle}</p>}
             </div>
-
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setNextCountdown(null)}
-                className="rounded-xl px-5 py-2.5 text-sm font-medium text-surface-300 transition-all hover:text-white"
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-              >
+              <button type="button" onClick={() => setNextCountdown(null)} className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-5 py-2.5 text-sm font-medium text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]">
                 取消
               </button>
-              <button
-                onClick={() => { setNextCountdown(null); onNext() }}
-                className="rounded-xl px-5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5"
-                style={{
-                  background: 'linear-gradient(135deg, var(--neon-blue), var(--neon-blue-mid))',
-                  boxShadow: 'var(--shadow-neon)',
-                  color: 'var(--text-on-neon)',
-                }}
-              >
+              <button type="button" onClick={() => { setNextCountdown(null); onNext() }} className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent)] px-5 py-2.5 text-sm font-bold text-[var(--nv-text-on-brand)] transition-[background-color,transform] hover:bg-[var(--nv-action-primary-hover)] active:scale-[0.98]">
                 立即播放
               </button>
             </div>
@@ -1206,93 +989,59 @@ export default function VideoPlayer({
         </div>
       )}
 
-      {/* 快进/快退提示气泡 */}
       <div className={clsx(
-        'pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300',
-        seekHint.visible ? 'opacity-100 scale-100' : 'opacity-0 scale-75'
+        'pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-200',
+        seekHint.visible ? 'scale-100 opacity-100' : 'scale-[0.96] opacity-0',
       )}>
-        <div className="rounded-2xl px-6 py-3 font-display text-2xl font-bold tracking-wider text-white backdrop-blur-md"
-          style={{ background: 'var(--neon-blue-12)', border: '1px solid var(--neon-blue-20)' }}
-        >
+        <div className="rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-surface)] px-6 py-3 font-display text-2xl font-bold tracking-wider text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
           {seekHint.text}
         </div>
       </div>
 
-      {/* 中央播放按钮（暂停时显示） */}
       {!isPlaying && !loadError && nextCountdown === null && (
-        <div
-          className="absolute inset-0 flex items-center justify-center"
+        <button
+          type="button"
+          className="absolute left-1/2 top-1/2 z-10 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl transition-[background-color,border-color,transform] hover:bg-[var(--nv-player-accent-soft-hover)] active:scale-[0.98]"
           onClick={togglePlay}
+          aria-label="播放"
         >
-          <div className="flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 hover:scale-110"
-            style={{
-              background: 'linear-gradient(135deg, var(--neon-blue-20), var(--neon-purple-20))',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid var(--neon-blue-15)',
-              boxShadow: '0 0 40px var(--neon-blue-15), inset 0 0 20px var(--neon-blue-5)',
-            }}
-          >
-            <Play size={40} className="ml-1 text-white drop-shadow-lg" fill="white" />
-          </div>
-        </div>
+          <Play size={40} className="ml-1" fill="currentColor" aria-hidden="true" />
+        </button>
       )}
 
-      {/* 控制栏 */}
-      <div
-        className={clsx(
-          'player-controls transition-all duration-500',
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        )}
-      >
-        {/* 标题栏 */}
+      <div className={clsx('player-controls transition-opacity duration-300', showControls ? 'opacity-100' : 'pointer-events-none opacity-0')}>
         {title && (
-          <div className="absolute left-4 top-4 flex items-center gap-3">
+          <div className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] items-center gap-3">
             {onBack && (
-              <button
-                onClick={onBack}
-                className="rounded-full p-2 text-white backdrop-blur-md transition-all hover:scale-105"
-                style={{ background: 'var(--neon-blue-8)', border: '1px solid var(--neon-blue-10)' }}
-              >
-                <SkipBack size={18} />
+              <button type="button" onClick={onBack} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md transition-[background-color,border-color,transform] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]" aria-label="返回">
+                <SkipBack size={18} aria-hidden="true" />
               </button>
             )}
-            <h2 className="font-display text-base font-medium tracking-wide text-white drop-shadow-lg">
-              {title}
-            </h2>
-            <Tag tone="brand" className="text-[10px]">
-              {isStrm ? 'STRM远程流' : mode === 'direct' ? '直接播放' : (mode === 'remux' || mode === 'smart_remux') ? 'Remux播放' : 'HLS转码'}
-            </Tag>
-            {playbackRate !== 1 && (
-              <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>
-            )}
+            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-wide text-[var(--nv-player-text-primary)] drop-shadow-lg">{title}</h2>
+            <Tag tone="brand" className="shrink-0 text-[10px]">{playbackLabel}</Tag>
+            {playbackRate !== 1 && <Tag tone="quality" className="shrink-0 text-[10px]">{playbackRate}x</Tag>}
           </div>
         )}
 
-        {/* 进度条 */}
         <div
           className="progress-bar group/progress mb-4"
           onClick={handleProgressClick}
           onMouseMove={handleProgressHover}
           onMouseLeave={() => { setHoverProgress(null); setHoverSprite(null) }}
+          role="slider"
+          aria-label="播放进度"
+          aria-valuemin={0}
+          aria-valuemax={Math.max(displayDuration, 0)}
+          aria-valuenow={Math.max(currentTime, 0)}
         >
-          {/* 预览时间提示 + 雪碧图缩略图 */}
           {hoverProgress !== null && (
-            <div
-              className="absolute -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1"
-              style={{
-                left: `${hoverProgress}%`,
-                bottom: '100%',
-                marginBottom: '8px',
-              }}
-            >
-              {/* 雪碧图缩略图预览 */}
+            <div className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center gap-1" style={{ left: `${hoverProgress}%`, bottom: '100%', marginBottom: 8 }}>
               {hoverSprite && spriteVttUrl && (
                 <div
-                  className="rounded-md overflow-hidden shadow-2xl"
+                  className="overflow-hidden rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] shadow-[var(--nv-player-shadow)]"
                   style={{
-                    width: `${hoverSprite.w}px`,
-                    height: `${hoverSprite.h}px`,
-                    border: '1px solid var(--neon-blue-20)',
+                    width: hoverSprite.w,
+                    height: hoverSprite.h,
                     backgroundImage: `url(${spriteVttUrl.replace('sprite.vtt', 'sprite.jpg')}${spriteVttUrl.includes('?') ? '&' : '?'}token=${useAuthStore.getState().token || ''})`,
                     backgroundPosition: `-${hoverSprite.x}px -${hoverSprite.y}px`,
                     backgroundSize: 'auto',
@@ -1300,68 +1049,35 @@ export default function VideoPlayer({
                   }}
                 />
               )}
-              {/* 时间文字 */}
-              <div
-                className="rounded-md px-2 py-1 text-xs font-display text-white tracking-wide"
-                style={{
-                  background: 'var(--neon-blue-15)',
-                  border: '1px solid var(--neon-blue-20)',
-                  backdropFilter: 'blur(8px)',
-                }}
-              >
+              <div className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-2 py-1 font-display text-xs tracking-wide text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md">
                 {hoverTime}
               </div>
             </div>
           )}
-          {/* 已转码范围指示（实时转码 EVENT 模式下，显示已转码的区域） */}
           {knownDuration && knownDuration > 0 && duration > 0 && duration < knownDuration && (
-            <div
-              className="absolute left-0 top-0 h-full rounded-full opacity-30"
-              style={{
-                width: `${(duration / knownDuration) * 100}%`,
-                background: 'var(--neon-blue)',
-              }}
-            />
+            <div className="absolute left-0 top-0 h-full rounded-full bg-[var(--nv-player-accent)] opacity-30" style={{ width: `${(duration / knownDuration) * 100}%` }} />
           )}
           <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
           <div className="progress-bar-thumb" style={{ left: `${progress}%` }} />
         </div>
 
-        {/* 控制按钮 */}
-        <div className="flex items-center gap-1">
-          <button onClick={togglePlay} className="rounded-lg p-2 text-white/90 transition-all hover:text-white hover:bg-white/5">
-            {isPlaying ? <Pause size={22} /> : <Play size={22} />}
-          </button>
+        <div className="flex items-center gap-1 text-[var(--nv-player-text-primary)]">
+          <button type="button" onClick={togglePlay} className={PLAYER_CONTROL_CLASS} aria-label={isPlaying ? '暂停' : '播放'}>{isPlaying ? <Pause size={22} aria-hidden="true" /> : <Play size={22} aria-hidden="true" />}</button>
+          <button type="button" onClick={() => seek(-10)} className={PLAYER_CONTROL_CLASS} aria-label="后退 10 秒"><SkipBack size={18} aria-hidden="true" /></button>
+          <button type="button" onClick={() => seek(10)} className={PLAYER_CONTROL_CLASS} aria-label="前进 10 秒"><SkipForward size={18} aria-hidden="true" /></button>
 
-          <button onClick={() => seek(-10)} className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5">
-            <SkipBack size={18} />
-          </button>
-
-          <button onClick={() => seek(10)} className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5">
-            <SkipForward size={18} />
-          </button>
-
-          {/* 下一集按钮 */}
           {onNext && (
-            <button
-              onClick={() => { setNextCountdown(null); onNext() }}
-              className="flex items-center gap-1 rounded-lg px-2 py-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
-              title={nextTitle ? `下一集: ${nextTitle}` : '下一集'}
-            >
-              <ChevronRight size={18} />
+            <button type="button" onClick={() => { setNextCountdown(null); onNext() }} className={clsx(PLAYER_CONTROL_CLASS, 'gap-1 px-2')} title={nextTitle ? `下一集: ${nextTitle}` : '下一集'}>
+              <ChevronRight size={18} aria-hidden="true" />
               <span className="hidden text-xs sm:inline">下一集</span>
             </button>
           )}
 
-          {/* 音量 */}
-          <button
-            onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }}
-            className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
-          >
-            {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          <button type="button" onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} className={PLAYER_CONTROL_CLASS} aria-label={isMuted ? '取消静音' : '静音'}>
+            {isMuted || volume === 0 ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
           </button>
 
-          <div className="group/vol relative flex items-center">
+          <div className="group/vol hidden items-center sm:flex">
             <input
               type="range"
               min="0"
@@ -1369,166 +1085,74 @@ export default function VideoPlayer({
               step="0.05"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="h-1 w-20 cursor-pointer appearance-none rounded-full"
-              style={{
-                background: `linear-gradient(to right, var(--neon-blue) ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.15) ${(isMuted ? 0 : volume) * 100}%)`,
-              }}
+              className="player-volume-slider w-20 cursor-pointer appearance-none"
+              style={{ background: `linear-gradient(to right, var(--nv-player-accent) ${(isMuted ? 0 : volume) * 100}%, color-mix(in srgb, var(--nv-player-text-primary) 15%, transparent) ${(isMuted ? 0 : volume) * 100}%)` }}
+              aria-label="音量"
             />
           </div>
 
-          {/* 时间 */}
-          <span className="ml-3 font-display text-xs tracking-wide text-white/60">
-            {formatTime(currentTime)}
-            <span className="mx-1 text-neon-blue/30">/</span>
-            {formatTime(displayDuration)}
+          <span className="ml-2 hidden whitespace-nowrap font-display text-xs tracking-wide text-[var(--nv-player-text-tertiary)] md:inline">
+            {formatTime(currentTime)} <span className="mx-1 text-[var(--nv-player-text-faint)]">/</span> {formatTime(displayDuration)}
           </span>
 
           <div className="flex-1" />
 
-          {/* 倍速选择 */}
           <div className="relative">
-            <button
-              onClick={() => {
-                setShowSpeedMenu(!showSpeedMenu)
-                setShowQuality(false)
-                setShowSubtitleMenu(false)
-                setShowCastPanel(false)
-              }}
-              className={clsx(
-                'rounded-lg px-2 py-2 text-xs font-semibold transition-all hover:bg-white/5',
-                playbackRate !== 1 ? 'text-neon-blue' : 'text-white/70 hover:text-white'
-              )}
-              title="播放速度"
-            >
-              {playbackRate !== 1 ? `${playbackRate}x` : <Gauge size={18} />}
+            <button type="button" onClick={() => openExclusive('speed')} className={clsx(PLAYER_CONTROL_CLASS, 'px-2 text-xs font-semibold tabular-nums', playbackRate !== 1 && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="播放速度" aria-expanded={showSpeedMenu}>
+              {playbackRate !== 1 ? `${playbackRate}x` : <Gauge size={18} aria-hidden="true" />}
             </button>
-
             {showSpeedMenu && (
-              <div className="absolute bottom-full right-0 mb-2 min-w-[140px] max-h-[360px] overflow-y-auto rounded-xl py-1 shadow-2xl"
-                style={{
-                  background: 'rgba(11, 17, 32, 0.9)',
-                  border: '1px solid var(--neon-blue-10)',
-                  backdropFilter: 'blur(20px)',
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'var(--neon-blue-15) transparent',
-                }}
-              >
-                {/* 快速恢复正常速度按钮 */}
+              <div className={clsx(PLAYER_MENU_CLASS, 'grid max-h-[360px] min-w-[244px] grid-cols-2 gap-1.5 overflow-y-auto')} role="menu">
                 {playbackRate !== 1 && (
-                  <>
-                    <button
-                      onClick={() => changeSpeed(1)}
-                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-neon-blue transition-colors hover:bg-neon-blue/10"
-                    >
-                      <span>恢复正常</span>
-                      <span className="text-[10px] text-surface-500">Backspace</span>
-                    </button>
-                    <div className="mx-3 my-0.5 border-t border-neon-blue/10" />
-                  </>
+                  <button type="button" onClick={() => changeSpeed(1)} className={clsx(PLAYER_MENU_ITEM, PLAYER_MENU_ACTIVE, 'col-span-2 justify-between')}>
+                    <span>恢复正常</span><span className="text-[10px] text-[var(--nv-player-text-faint)]">Backspace</span>
+                  </button>
                 )}
                 {SPEED_OPTIONS.map((speed) => (
-                  <button
-                    key={speed}
-                    onClick={() => changeSpeed(speed)}
-                    className={clsx(
-                      'block w-full px-4 py-2 text-left text-sm transition-colors',
-                      speed === playbackRate
-                        ? 'text-neon-blue'
-                        : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                    )}
-                    style={speed === playbackRate ? { background: 'var(--neon-blue-6)' } : {}}
-                  >
+                  <button key={speed} type="button" onClick={() => changeSpeed(speed)} className={menuItemClass(speed === playbackRate)} role="menuitemradio" aria-checked={speed === playbackRate}>
                     {speed === 1 ? '正常' : `${speed}x`}
                   </button>
                 ))}
-                <div className="mx-3 my-0.5 border-t border-neon-blue/10" />
-                <div className="px-4 py-1.5 text-[10px] text-surface-500">
-                  快捷键: &lt; 减速 &gt; 加速
-                </div>
+                <div className="col-span-2 px-2 pt-1 text-[10px] text-[var(--nv-player-text-faint)]">‹ / › 调速 · Backspace 恢复</div>
               </div>
             )}
           </div>
 
-          {/* JavDB 短评弹幕开关 */}
           {danmakuItems.length > 0 && (
-            <button
-              onClick={() => setDanmakuEnabled(!danmakuEnabled)}
-              className={clsx(
-                'rounded-lg p-2 transition-all hover:bg-white/5',
-                danmakuEnabled ? 'text-neon-blue' : 'text-white/70 hover:text-white'
-              )}
-              title={danmakuEnabled ? '关闭短评弹幕' : '开启短评弹幕'}
-            >
-              <MessageCircle size={18} />
+            <button type="button" onClick={() => setDanmakuEnabled(!danmakuEnabled)} className={clsx(PLAYER_CONTROL_CLASS, danmakuEnabled && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title={danmakuEnabled ? '关闭短评弹幕' : '开启短评弹幕'} aria-pressed={danmakuEnabled}>
+              <MessageCircle size={18} aria-hidden="true" />
             </button>
           )}
 
-          {/* 字幕选择（始终显示，支持 AI 生成） */}
           {!isStrm && (
             <div className="relative">
-              <button
-                onClick={() => {
-                  setShowSubtitleMenu(!showSubtitleMenu)
-                  setShowQuality(false)
-                  setShowCastPanel(false)
-                  setShowContentSearch(false)
-                }}
-                className={clsx(
-                  'rounded-lg p-2 transition-all hover:bg-white/5',
-                  activeSubtitle ? 'text-neon-blue' : 'text-white/70 hover:text-white'
-                )}
-                title="字幕"
-              >
-                <Subtitles size={18} />
+              <button type="button" onClick={() => openExclusive('subtitle')} className={clsx(PLAYER_CONTROL_CLASS, activeSubtitle && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="字幕" aria-expanded={showSubtitleMenu}>
+                <Subtitles size={18} aria-hidden="true" />
               </button>
-
               {showSubtitleMenu && (
-                <div className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-xl py-1 shadow-2xl"
-                  style={{
-                    background: 'rgba(11, 17, 32, 0.9)',
-                    border: '1px solid var(--neon-blue-10)',
-                    backdropFilter: 'blur(20px)',
-                  }}
-                >
-                  <button
-                    onClick={() => { loadSubtitle('off', ''); setShowSubtitleMenu(false) }}
-                    className={clsx(
-                      'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                      !activeSubtitle ? 'text-neon-blue' : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                    )}
-                    style={!activeSubtitle ? { background: 'var(--neon-blue-6)' } : {}}
-                  >
-                    关闭字幕
-                  </button>
+                <div className={clsx(PLAYER_MENU_CLASS, 'max-h-[min(480px,calc(100vh-120px))] min-w-[270px] overflow-y-auto')} role="menu">
+                  <button type="button" onClick={() => { loadSubtitle('off', ''); setShowSubtitleMenu(false) }} className={menuItemClass(!activeSubtitle)}>关闭字幕</button>
 
                   {embeddedSubs.length > 0 && (
                     <>
-                      <div className="mx-3 my-1 border-t border-neon-blue/10" />
-                      <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">内嵌字幕</div>
+                      <div className={PLAYER_DIVIDER} />
+                      <div className={PLAYER_MENU_LABEL}>内嵌字幕</div>
                       {embeddedSubs.map((sub) => (
                         <button
                           key={sub.index}
+                          type="button"
                           onClick={() => {
-                            if (sub.bitmap) return // 图形字幕不可选
+                            if (sub.bitmap) return
                             loadSubtitle('embedded', String(sub.index))
                             setShowSubtitleMenu(false)
                           }}
                           disabled={sub.bitmap}
-                          className={clsx(
-                            'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                            sub.bitmap
-                              ? 'text-surface-600 cursor-not-allowed'
-                              : activeSubtitle === `embedded:${sub.index}`
-                                ? 'text-neon-blue'
-                                : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                          )}
-                          style={activeSubtitle === `embedded:${sub.index}` && !sub.bitmap ? { background: 'var(--neon-blue-6)' } : {}}
-                          title={sub.bitmap ? '图形字幕无法在浏览器中显示' : undefined}
+                          className={menuItemClass(activeSubtitle === `embedded:${sub.index}`, sub.bitmap)}
                         >
-                          {sub.title || sub.language || `轨道 ${sub.index}`}
-                          {sub.codec && <span className="ml-2 text-xs text-surface-600">[{sub.codec}]</span>}
-                          {sub.bitmap && <span className="ml-1 text-xs text-red-400/60">不可用</span>}
-                          {!sub.bitmap && sub.default && <span className="ml-1 text-xs text-neon-blue/60">默认</span>}
+                          <span className="min-w-0 flex-1 truncate">{sub.title || sub.language || `轨道 ${sub.index}`}</span>
+                          {sub.codec && <span className="text-xs text-[var(--nv-player-text-faint)]">[{sub.codec}]</span>}
+                          {sub.bitmap && <span className="text-xs text-[var(--nv-player-danger)]">不可用</span>}
+                          {!sub.bitmap && sub.default && <Tag tone="brand">默认</Tag>}
                         </button>
                       ))}
                     </>
@@ -1536,218 +1160,108 @@ export default function VideoPlayer({
 
                   {externalSubs.length > 0 && (
                     <>
-                      <div className="mx-3 my-1 border-t border-neon-blue/10" />
-                      <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">外挂字幕</div>
-                  {externalSubs.map((sub) => (
-                        <button
-                          key={sub.path}
-                          onClick={() => { loadSubtitle('external', sub.path); setShowSubtitleMenu(false) }}
-                          className={clsx(
-                            'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                            activeSubtitle === `external:${sub.path}`
-                              ? 'text-neon-blue'
-                              : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                          )}
-                          style={activeSubtitle === `external:${sub.path}` ? { background: 'var(--neon-blue-6)' } : {}}
-                        >
-                          {sub.language || sub.filename}
-                          <span className="ml-2 text-xs text-surface-600">[{sub.format}]</span>
+                      <div className={PLAYER_DIVIDER} />
+                      <div className={PLAYER_MENU_LABEL}>外挂字幕</div>
+                      {externalSubs.map((sub) => (
+                        <button key={sub.path} type="button" onClick={() => { loadSubtitle('external', sub.path); setShowSubtitleMenu(false) }} className={menuItemClass(activeSubtitle === `external:${sub.path}`)}>
+                          <span className="min-w-0 flex-1 truncate">{sub.language || sub.filename}</span>
+                          <span className="text-xs text-[var(--nv-player-text-faint)]">[{sub.format}]</span>
                         </button>
                       ))}
                     </>
                   )}
 
-                  {/* AI 字幕 — 仅在有可用字幕或正在处理时显示 */}
                   {(aiSubtitleStatus?.status === 'completed' || aiGenerating || subtitlePreprocessStatus?.status === 'running' || subtitlePreprocessStatus?.status === 'pending') && (
                     <>
-                  <div className="mx-3 my-1 border-t border-neon-blue/10" />
-                  <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">
-                    <Sparkles size={10} className="inline mr-1" />AI 字幕
-                  </div>
-
-                  {aiSubtitleStatus?.status === 'completed' ? (
-                    <button
-                      onClick={() => { loadSubtitle('ai', ''); setShowSubtitleMenu(false) }}
-                      className={clsx(
-                        'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                        activeSubtitle === 'ai:'
-                          ? 'text-neon-blue'
-                          : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                      )}
-                      style={activeSubtitle === 'ai:' ? { background: 'var(--neon-blue-6)' } : {}}
-                    >
-                      <Sparkles size={12} className="inline mr-1.5" />
-                      AI 生成字幕
-                      <span className="ml-2 text-xs text-emerald-400/60">✓ 已就绪</span>
-                    </button>
-                  ) : aiGenerating ? (
-                    <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-surface-400">
-                      <Loader2 size={14} className="animate-spin text-neon-blue" />
-                      <div className="flex-1">
-                        <div className="text-xs">{aiSubtitleStatus?.message || '正在生成...'}</div>
-                        {aiSubtitleStatus?.progress != null && aiSubtitleStatus.progress > 0 && (
-                          <div className="mt-1 h-1 w-full rounded-full bg-surface-700">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${aiSubtitleStatus.progress}%`,
-                                background: 'linear-gradient(90deg, var(--neon-blue), var(--neon-purple))',
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (subtitlePreprocessStatus?.status === 'running' || subtitlePreprocessStatus?.status === 'pending') ? (
-                    <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-surface-400">
-                      <Loader2 size={14} className="animate-spin text-yellow-400" />
-                      <div className="flex-1">
-                        <div className="text-xs">
-                          {subtitlePreprocessStatus.status === 'pending' ? '字幕预处理排队中...' : (subtitlePreprocessStatus.message || '字幕预处理中...')}
+                      <div className={PLAYER_DIVIDER} />
+                      <div className={PLAYER_MENU_LABEL}><Sparkles size={10} className="mr-1 inline" aria-hidden="true" />AI 字幕</div>
+                      {aiSubtitleStatus?.status === 'completed' ? (
+                        <button type="button" onClick={() => { loadSubtitle('ai', ''); setShowSubtitleMenu(false) }} className={menuItemClass(activeSubtitle === 'ai:')}>
+                          <Sparkles size={12} aria-hidden="true" /><span className="flex-1">AI 生成字幕</span><span className="text-xs text-[var(--nv-player-success)]">✓ 已就绪</span>
+                        </button>
+                      ) : aiGenerating ? (
+                        <div className="px-3 py-2.5 text-sm text-[var(--nv-player-text-tertiary)]">
+                          <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" /><span>{aiSubtitleStatus?.message || '正在生成...'}</span></div>
+                          {aiSubtitleStatus?.progress != null && aiSubtitleStatus.progress > 0 && (
+                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--nv-player-surface-hover)]"><div className="h-full rounded-full bg-[var(--nv-player-accent)] transition-[width] duration-500" style={{ width: `${aiSubtitleStatus.progress}%` }} /></div>
+                          )}
                         </div>
-                        {subtitlePreprocessStatus.progress > 0 && (
-                          <div className="mt-1 h-1 w-full rounded-full bg-surface-700">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${subtitlePreprocessStatus.progress}%`,
-                                background: 'linear-gradient(90deg, var(--yellow-400), var(--neon-blue))',
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
+                      ) : (subtitlePreprocessStatus?.status === 'running' || subtitlePreprocessStatus?.status === 'pending') ? (
+                        <div className="px-3 py-2.5 text-sm text-[var(--nv-player-text-tertiary)]">
+                          <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin text-[var(--nv-player-warning)]" aria-hidden="true" /><span>{subtitlePreprocessStatus.status === 'pending' ? '字幕预处理排队中...' : (subtitlePreprocessStatus.message || '字幕预处理中...')}</span></div>
+                          {subtitlePreprocessStatus.progress > 0 && (
+                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--nv-player-surface-hover)]"><div className="h-full rounded-full bg-[var(--nv-player-warning)] transition-[width] duration-500" style={{ width: `${subtitlePreprocessStatus.progress}%` }} /></div>
+                          )}
+                        </div>
+                      ) : null}
                     </>
                   )}
 
-                  {/* Phase 4: 字幕翻译 — 仅在有可用字幕源时显示 */}
                   {(translatedSubs.length > 0 || aiSubtitleStatus?.status === 'completed' || translating) && (
                     <>
-                  <div className="mx-3 my-1 border-t border-neon-blue/10" />
-                  <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-neon-blue/40">
-                    <Languages size={10} className="inline mr-1" />字幕翻译
-                  </div>
+                      <div className={PLAYER_DIVIDER} />
+                      <div className={PLAYER_MENU_LABEL}><Languages size={10} className="mr-1 inline" aria-hidden="true" />字幕翻译</div>
+                      {translatedSubs.map((sub) => {
+                        const langNames: Record<string, string> = {
+                          zh: '中文', en: '英文', ja: '日文', ko: '韩文', fr: '法文', de: '德文', es: '西班牙文', pt: '葡萄牙文', ru: '俄文', it: '意大利文', ar: '阿拉伯文', th: '泰文',
+                        }
+                        return (
+                          <button key={sub.language} type="button" onClick={() => { loadSubtitle('translated', sub.language); setShowSubtitleMenu(false) }} className={menuItemClass(activeSubtitle === `translated:${sub.language}`)}>
+                            <Languages size={12} aria-hidden="true" /><span className="flex-1">{langNames[sub.language] || sub.language}</span><span className="text-xs text-[var(--nv-player-success)]">✓</span>
+                          </button>
+                        )
+                      })}
 
-                  {/* 已翻译的字幕列表 */}
-                  {translatedSubs.map((sub) => {
-                    const langNames: Record<string, string> = {
-                      zh: '中文', en: '英文', ja: '日文', ko: '韩文',
-                      fr: '法文', de: '德文', es: '西班牙文', pt: '葡萄牙文',
-                      ru: '俄文', it: '意大利文', ar: '阿拉伯文', th: '泰文',
-                    }
-                    return (
-                      <button
-                        key={sub.language}
-                        onClick={() => { loadSubtitle('translated', sub.language); setShowSubtitleMenu(false) }}
-                        className={clsx(
-                          'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                          activeSubtitle === `translated:${sub.language}`
-                            ? 'text-neon-blue'
-                            : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                        )}
-                        style={activeSubtitle === `translated:${sub.language}` ? { background: 'var(--neon-blue-6)' } : {}}
-                      >
-                        <Languages size={12} className="inline mr-1.5" />
-                        {langNames[sub.language] || sub.language}
-                        <span className="ml-2 text-xs text-emerald-400/60">✓</span>
-                      </button>
-                    )
-                  })}
-
-                  {/* 翻译进度 */}
-                  {translating && translateStatus && (
-                    <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-surface-400">
-                      <Loader2 size={14} className="animate-spin text-neon-blue" />
-                      <div className="flex-1">
-                        <div className="text-xs">{translateStatus.message || '正在翻译...'}</div>
-                        {translateStatus.progress > 0 && (
-                          <div className="mt-1 h-1 w-full rounded-full bg-surface-700">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${translateStatus.progress}%`,
-                                background: 'linear-gradient(90deg, var(--neon-purple), var(--neon-blue))',
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 翻译按钮（需要有源字幕才能翻译） */}
-                  {!translating && aiSubtitleStatus?.status === 'completed' && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowTranslateMenu(!showTranslateMenu)}
-                        className="block w-full px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                      >
-                        <Languages size={12} className="inline mr-1.5" />
-                        翻译为其他语言...
-                      </button>
-
-                      {showTranslateMenu && (
-                        <div className="mx-2 mb-1 rounded-lg py-1" style={{
-                          background: 'rgba(0, 0, 0, 0.3)',
-                          border: '1px solid var(--neon-blue-6)',
-                        }}>
-                          {[
-                            { code: 'zh', name: '中文' },
-                            { code: 'en', name: '英文' },
-                            { code: 'ja', name: '日文' },
-                            { code: 'ko', name: '韩文' },
-                            { code: 'fr', name: '法文' },
-                            { code: 'de', name: '德文' },
-                            { code: 'es', name: '西班牙文' },
-                            { code: 'ru', name: '俄文' },
-                          ].filter(lang => !translatedSubs.some(s => s.language === lang.code)).map((lang) => (
-                            <button
-                              key={lang.code}
-                              onClick={() => {
-                                setTranslating(true)
-                                setShowTranslateMenu(false)
-                                subtitleApi.translate(mediaId, lang.code).catch(() => setTranslating(false))
-                              }}
-                              className="block w-full px-3 py-2 text-left text-xs text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                            >
-                              {lang.name}
-                            </button>
-                          ))}
+                      {translating && translateStatus && (
+                        <div className="px-3 py-2.5 text-sm text-[var(--nv-player-text-tertiary)]">
+                          <div className="flex items-center gap-2"><Loader2 size={14} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" /><span>{translateStatus.message || '正在翻译...'}</span></div>
+                          {translateStatus.progress > 0 && (
+                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--nv-player-surface-hover)]"><div className="h-full rounded-full bg-[var(--nv-player-accent)] transition-[width] duration-500" style={{ width: `${translateStatus.progress}%` }} /></div>
+                          )}
                         </div>
                       )}
-                    </div>
-                  )}
+
+                      {!translating && aiSubtitleStatus?.status === 'completed' && (
+                        <div className="relative">
+                          <button type="button" onClick={() => setShowTranslateMenu(!showTranslateMenu)} className={PLAYER_MENU_ITEM} aria-expanded={showTranslateMenu}><Languages size={12} aria-hidden="true" />翻译为其他语言...</button>
+                          {showTranslateMenu && (
+                            <div className="mx-2 mb-1 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border-subtle)] bg-[var(--nv-player-surface-soft)] p-1">
+                              {[
+                                { code: 'zh', name: '中文' }, { code: 'en', name: '英文' }, { code: 'ja', name: '日文' }, { code: 'ko', name: '韩文' },
+                                { code: 'fr', name: '法文' }, { code: 'de', name: '德文' }, { code: 'es', name: '西班牙文' }, { code: 'ru', name: '俄文' },
+                              ].filter(lang => !translatedSubs.some(sub => sub.language === lang.code)).map((lang) => (
+                                <button
+                                  key={lang.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setTranslating(true)
+                                    setShowTranslateMenu(false)
+                                    subtitleApi.translate(mediaId, lang.code).catch(() => setTranslating(false))
+                                  }}
+                                  className={clsx(PLAYER_MENU_ITEM, 'min-h-9 text-xs')}
+                                >
+                                  {lang.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
 
-                  {/* 在线字幕与字幕内容搜索入口 */}
-                  <div className="mx-3 my-1 border-t border-neon-blue/10" />
-                  <button
-                    onClick={() => { setShowSubtitleSearch(true); setShowContentSearch(false); setShowSubtitleMenu(false) }}
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                  >
-                    <Search size={12} className="text-neon-blue/60" />
-                    在线搜索字幕...
-                  </button>
-                  <button
-                    onClick={() => { setShowContentSearch(true); setShowSubtitleSearch(false); setShowSubtitleMenu(false) }}
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-surface-300 hover:text-white hover:bg-neon-blue/5 transition-colors"
-                  >
-                    <Search size={12} className="text-white/35" />
-                    <span className="flex-1">搜索当前字幕内容...</span>
-                    <span className="text-[10px] text-surface-600">Ctrl+F</span>
-                  </button>
+                  <div className={PLAYER_DIVIDER} />
+                  <button type="button" onClick={() => { setShowSubtitleSearch(true); setShowContentSearch(false); setShowSubtitleMenu(false) }} className={PLAYER_MENU_ITEM}><Search size={12} className="text-[var(--nv-player-accent)]" aria-hidden="true" />在线搜索字幕...</button>
+                  <button type="button" onClick={() => { setShowContentSearch(true); setShowSubtitleSearch(false); setShowSubtitleMenu(false) }} className={PLAYER_MENU_ITEM}><Search size={12} aria-hidden="true" /><span className="flex-1">搜索当前字幕内容...</span><span className="text-[10px] text-[var(--nv-player-text-faint)]">Ctrl+F</span></button>
                 </div>
               )}
             </div>
           )}
 
-          {/* 在线字幕搜索按钮；Ctrl+F 仍保留当前字幕内容搜索 */}
           {!isStrm && (
             <div className="relative">
               <button
+                type="button"
                 onClick={() => {
                   setShowSubtitleSearch(true)
                   setShowContentSearch(false)
@@ -1756,84 +1270,32 @@ export default function VideoPlayer({
                   setShowCastPanel(false)
                   setShowSpeedMenu(false)
                 }}
-                className={clsx(
-                  'rounded-lg p-2 transition-all hover:bg-white/5',
-                  showSubtitleSearch ? 'text-neon-blue' : 'text-white/70 hover:text-white'
-                )}
+                className={clsx(PLAYER_CONTROL_CLASS, showSubtitleSearch && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')}
                 title="在线字幕搜索"
+                aria-pressed={showSubtitleSearch}
               >
-                <Search size={18} />
+                <Search size={18} aria-hidden="true" />
               </button>
-
-              {showContentSearch && (
-                <SubtitleContentSearch
-                  videoRef={videoRef}
-                  onClose={() => setShowContentSearch(false)}
-                  hasActiveSubtitle={!!activeSubtitle}
-                />
-              )}
+              {showContentSearch && <SubtitleContentSearch videoRef={videoRef} onClose={() => setShowContentSearch(false)} hasActiveSubtitle={!!activeSubtitle} />}
             </div>
           )}
 
-          {/* 投屏按钮 */}
           <div className="relative">
-            <button
-              onClick={() => {
-                setShowCastPanel(!showCastPanel)
-                setShowQuality(false)
-                setShowSubtitleMenu(false)
-              }}
-              className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
-              title="投屏"
-            >
-              <Monitor size={18} />
+            <button type="button" onClick={() => openExclusive('cast')} className={clsx(PLAYER_CONTROL_CLASS, showCastPanel && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="投屏" aria-expanded={showCastPanel}>
+              <Monitor size={18} aria-hidden="true" />
             </button>
-            {showCastPanel && (
-              <CastPanel
-                mediaId={mediaId}
-                mediaTitle={title}
-                onClose={() => setShowCastPanel(false)}
-              />
-            )}
+            {showCastPanel && <CastPanel mediaId={mediaId} mediaTitle={title} onClose={() => setShowCastPanel(false)} />}
           </div>
 
-          {/* 多音轨切换 */}
           {audioTracks.length > 1 && (
             <div className="relative">
-              <button
-                onClick={() => {
-                  setShowAudioMenu(!showAudioMenu)
-                  setShowQuality(false)
-                  setShowSubtitleMenu(false)
-                  setShowCastPanel(false)
-                }}
-                className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
-                title="音轨"
-              >
-                <Languages size={18} />
-              </button>
+              <button type="button" onClick={() => openExclusive('audio')} className={clsx(PLAYER_CONTROL_CLASS, showAudioMenu && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="音轨" aria-expanded={showAudioMenu}><Languages size={18} aria-hidden="true" /></button>
               {showAudioMenu && (
-                <div className="absolute bottom-full right-0 mb-2 min-w-[160px] rounded-xl py-1 shadow-2xl"
-                  style={{
-                    background: 'rgba(11, 17, 32, 0.9)',
-                    border: '1px solid var(--neon-blue-10)',
-                    backdropFilter: 'blur(20px)',
-                  }}
-                >
-                  <div className="px-4 py-1.5 text-xs text-surface-500 border-b border-white/5">音轨</div>
-                  {audioTracks.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => switchAudioTrack(t.id)}
-                      className={clsx(
-                        'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                        t.id === currentAudioTrack
-                          ? 'text-neon-blue'
-                          : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                      )}
-                      style={t.id === currentAudioTrack ? { background: 'var(--neon-blue-6)' } : {}}
-                    >
-                      {t.name}{t.lang ? ` (${t.lang})` : ''}
+                <div className={clsx(PLAYER_MENU_CLASS, 'min-w-[180px]')} role="menu">
+                  <div className={PLAYER_MENU_LABEL}>音轨</div>
+                  {audioTracks.map((track) => (
+                    <button key={track.id} type="button" onClick={() => switchAudioTrack(track.id)} className={menuItemClass(track.id === currentAudioTrack)} role="menuitemradio" aria-checked={track.id === currentAudioTrack}>
+                      {track.name}{track.lang ? ` (${track.lang})` : ''}
                     </button>
                   ))}
                 </div>
@@ -1841,65 +1303,23 @@ export default function VideoPlayer({
             </div>
           )}
 
-          {/* 画质选择 */}
           {qualities.length > 1 && (
             <div className="relative">
-              <button
-                onClick={() => {
-                  setShowQuality(!showQuality)
-                  setShowSubtitleMenu(false)
-                  setShowCastPanel(false)
-                }}
-                className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
-              >
-                <Settings size={18} />
-              </button>
-
+              <button type="button" onClick={() => openExclusive('quality')} className={clsx(PLAYER_CONTROL_CLASS, showQuality && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="画质" aria-expanded={showQuality}><Settings size={18} aria-hidden="true" /></button>
               {showQuality && (
-                <div className="absolute bottom-full right-0 mb-2 min-w-[220px] rounded-xl py-1 shadow-2xl"
-                  style={{
-                    background: 'rgba(11, 17, 32, 0.9)',
-                    border: '1px solid var(--neon-blue-10)',
-                    backdropFilter: 'blur(20px)',
-                  }}
-                >
-                  {qualities.map((q) => (
-                    <button
-                      key={q.index}
-                      onClick={() => switchQuality(q.index)}
-                      className={clsx(
-                        'block w-full px-4 py-2.5 text-left text-sm transition-colors',
-                        q.index === currentQuality
-                          ? 'text-neon-blue'
-                          : 'text-surface-300 hover:text-white hover:bg-neon-blue/5'
-                      )}
-                      style={q.index === currentQuality ? { background: 'var(--neon-blue-6)' } : {}}
-                    >
-                      <span>{q.label}</span>
-                      {q.bitrate ? (
-                        <span className="ml-2 text-[11px] text-surface-400">
-                          {(q.bitrate / 1_000_000).toFixed(1)} Mbps
-                        </span>
-                      ) : null}
+                <div className={clsx(PLAYER_MENU_CLASS, 'min-w-[240px]')} role="menu">
+                  <div className={PLAYER_MENU_LABEL}>画质</div>
+                  {qualities.map((quality) => (
+                    <button key={quality.index} type="button" onClick={() => switchQuality(quality.index)} className={menuItemClass(quality.index === currentQuality)} role="menuitemradio" aria-checked={quality.index === currentQuality}>
+                      <span className="flex-1">{quality.label}</span>
+                      {quality.bitrate ? <span className="text-[11px] text-[var(--nv-player-text-faint)]">{(quality.bitrate / 1_000_000).toFixed(1)} Mbps</span> : null}
                     </button>
                   ))}
-
-                  {/* 实时状态面板：仅 HLS 转码模式有意义 */}
                   {mode !== 'direct' && mode !== 'remux' && mode !== 'smart_remux' && (
-                    <div className="mt-1 border-t border-white/10 px-4 py-2.5 text-[11px] leading-relaxed text-surface-400">
-                      <div className="mb-1 text-surface-300">实时状态</div>
-                      {currentBitrate > 0 && (
-                        <div className="flex justify-between">
-                          <span>当前码率</span>
-                          <span className="text-white">{(currentBitrate / 1_000_000).toFixed(2)} Mbps</span>
-                        </div>
-                      )}
-                      {bandwidthEstimate > 0 && (
-                        <div className="flex justify-between">
-                          <span>带宽评估</span>
-                          <span className="text-white">{(bandwidthEstimate / 1_000_000).toFixed(2)} Mbps</span>
-                        </div>
-                      )}
+                    <div className="mt-2 border-t border-[var(--nv-player-border-subtle)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nv-player-text-tertiary)]">
+                      <div className="mb-1 font-medium text-[var(--nv-player-text-secondary)]">实时状态</div>
+                      {currentBitrate > 0 && <div className="flex justify-between gap-4"><span>当前码率</span><span className="text-[var(--nv-player-text-primary)]">{(currentBitrate / 1_000_000).toFixed(2)} Mbps</span></div>}
+                      {bandwidthEstimate > 0 && <div className="flex justify-between gap-4"><span>带宽评估</span><span className="text-[var(--nv-player-text-primary)]">{(bandwidthEstimate / 1_000_000).toFixed(2)} Mbps</span></div>}
                     </div>
                   )}
                 </div>
@@ -1907,48 +1327,40 @@ export default function VideoPlayer({
             </div>
           )}
 
-          {/* 画中画 */}
           <button
+            type="button"
             onClick={() => {
               const video = videoRef.current
               if (!video) return
-              if (document.pictureInPictureElement) {
-                document.exitPictureInPicture().catch(() => {})
-              } else {
-                video.requestPictureInPicture().catch(() => {})
-              }
+              if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {})
+              else video.requestPictureInPicture().catch(() => {})
             }}
-            className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5"
+            className={PLAYER_CONTROL_CLASS}
             title="画中画"
+            aria-label="画中画"
           >
-            <PictureInPicture2 size={18} />
+            <PictureInPicture2 size={18} aria-hidden="true" />
           </button>
 
-          {/* 全屏 */}
-          <button onClick={toggleFullscreen} className="rounded-lg p-2 text-white/70 transition-all hover:text-white hover:bg-white/5">
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+          <button type="button" onClick={toggleFullscreen} className={PLAYER_CONTROL_CLASS} aria-label={isFullscreen ? '退出全屏' : '进入全屏'}>
+            {isFullscreen ? <Minimize size={18} aria-hidden="true" /> : <Maximize size={18} aria-hidden="true" />}
           </button>
         </div>
       </div>
 
-      {/* 点击空白关闭弹出菜单 */}
       {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch || showAudioMenu) && (
-        <div className="absolute inset-0 z-[-1]" onClick={closeAllMenus} />
+        <button type="button" className="absolute inset-0 z-[-1]" onClick={closeAllMenus} aria-label="关闭播放器菜单" />
       )}
 
-      {/* 在线字幕搜索弹窗 (P0) */}
       {showSubtitleSearch && (
         <SubtitleSearchPanel
           mediaId={mediaId}
           title={title}
           onClose={() => setShowSubtitleSearch(false)}
           onDownloaded={() => {
-            // 下载完成后刷新外挂字幕列表
             subtitleApi.getTracks(mediaId).then((res) => {
               const info = res.data.data
-              if (info) {
-                setExternalSubs(info.external || [])
-              }
+              if (info) setExternalSubs(info.external || [])
             }).catch(() => {})
           }}
         />
