@@ -349,26 +349,6 @@
 /* ==================== 全局组件样式 ==================== */
 @layer components {
 
-  /* === 霓虹边框 === */
-  .neon-border {
-    border: 1px solid transparent;
-    background-clip: padding-box;
-    position: relative;
-  }
-
-  .neon-border::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, var(--neon-blue-30), var(--neon-purple-20));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-
   /* === 渐变遮罩 === */
   .gradient-overlay {
     @apply absolute inset-0;
@@ -531,15 +511,6 @@
 
 /* ==================== 工具类 ==================== */
 @layer utilities {
-  /* 文字霓虹发光 */
-  .text-neon-glow {
-    text-shadow: 0 0 10px var(--neon-blue-50), 0 0 30px var(--neon-blue-20);
-  }
-
-  .text-accent-glow {
-    text-shadow: 0 0 10px var(--neon-purple-20), 0 0 30px var(--neon-purple-10);
-  }
-
   /* 霓虹蓝文字 */
   .text-neon {
     color: var(--neon-blue);
@@ -551,24 +522,6 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-  }
-
-  /* 能量环按钮效果 */
-  .energy-ring {
-    position: relative;
-  }
-
-  .energy-ring::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    background: conic-gradient(from 0deg, var(--neon-blue), var(--neon-purple), var(--neon-blue)) border-box;
-    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    animation: spin 3s linear infinite;
   }
 
   @keyframes spin {
@@ -954,8 +907,8 @@ html[data-runtime="tauri"] #root {
 
 /* 标题栏 hover 反馈 */
 .nv-titlebar-search:focus-within {
-  border-color: var(--border-hover) !important;
-  box-shadow: 0 0 0 1px var(--focus-ring);
+  border-color: var(--nv-border-hover) !important;
+  box-shadow: 0 0 0 1px var(--nv-focus-ring);
 }
 
 /* ==================== 日间模式语义色矫正 ====================
