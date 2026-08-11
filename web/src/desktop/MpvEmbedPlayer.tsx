@@ -1,15 +1,6 @@
-
 /**
- * MpvEmbedPlayer —— Hills 风格的嵌入式 libmpv 播放器
- *
- * 原理：
- * - 组件挂载时调用 Rust 创建无边框 mpv 子窗口（原生 HWND），
- *   libmpv 直接把解码后画面渲染到这个窗口，性能 ≈ 独立 mpv。
- * - 通过 ResizeObserver 同步占位 div 的位置/大小给子窗口。
- * - 组件销毁时回收子窗口。
- * - 控制条是 Web 层叠加（Fluent UI 风格），命令通过 IPC 发送到 libmpv。
- *
- * 仅在 Tauri 桌面端生效；浏览器环境显示占位提示。
+ * MpvEmbedPlayer —— 嵌入式 libmpv 播放器。
+ * Web 层只负责控制条；解码与渲染仍由原生 libmpv 子窗口完成。
  */
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
@@ -18,27 +9,18 @@ import { desktop, PlayOptions, MpvVideoInfo } from './bridge'
 import Anime4KPanel, { Anime4KLevel } from './Anime4KPanel'
 
 interface Props {
-  /** 播放 URL */
   streamUrl: string
-  /** 会话 ID，多实例时区分 */
   sessionId?: string
-  /** 标题（显示在控制条顶部） */
   title?: string
-  /** 播放选项 */
   playOptions?: PlayOptions
-  /** 初始音量 0-100 */
   initialVolume?: number
-  /** 自动销毁时机：组件卸载 / 手动 */
   autoDestroy?: boolean
-  /** 容器 className（不影响功能） */
   className?: string
   onReady?: () => void
   onError?: (e: string) => void
-  /** 点击返回 */
   onBack?: () => void
 }
 
-/** 外部可通过 ref 直接调用 */
 export interface MpvEmbedHandle {
   play(): Promise<void>
   pause(): Promise<void>
@@ -51,6 +33,9 @@ export interface MpvEmbedHandle {
   setAnime4K(level: Anime4KLevel): Promise<void>
   loadFile(url: string): Promise<void>
 }
+
+const MPV_CONTROL_CLASS = 'flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-[var(--nv-player-surface-subtle)] text-[var(--nv-player-text-primary)] transition-[background-color,border-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]'
+const MPV_ACTIVE_CLASS = 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]'
 
 function MpvEmbedPlayerInner(
   {
@@ -71,8 +56,6 @@ function MpvEmbedPlayerInner(
   const placeholderRef = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // UI 状态
   const [paused, setPaused] = useState(false)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(initialVolume)
@@ -80,199 +63,126 @@ function MpvEmbedPlayerInner(
   const [controlsVisible, setControlsVisible] = useState(true)
   const [showAnime4KPanel, setShowAnime4KPanel] = useState(false)
   const hideTimer = useRef<number | null>(null)
-
-  // 实时视频信息（2s 轮询 libmpv）
   const [videoInfo, setVideoInfo] = useState<MpvVideoInfo | null>(null)
   const [seeking, setSeeking] = useState(false)
   const [seekPreview, setSeekPreview] = useState<number | null>(null)
-  // M6: PiP & 置顶
   const [pipActive, setPipActive] = useState(false)
   const [pinned, setPinned] = useState(false)
 
-  // ========== 基础命令封装 ==========
   const cmd = useCallback(
-    (command: string, args?: string[]) =>
-      desktop.mpvEmbedCommand({ sessionId, command, args }),
+    (command: string, args?: string[]) => desktop.mpvEmbedCommand({ sessionId, command, args }),
     [sessionId],
   )
   const setProp = useCallback(
-    (name: string, value: string) =>
-      desktop.mpvEmbedSetProperty({ sessionId, name, value }),
+    (name: string, value: string) => desktop.mpvEmbedSetProperty({ sessionId, name, value }),
     [sessionId],
   )
 
-  // ========== 对外 API（ref 暴露） ==========
-  useImperativeHandle(
-    ref,
-    (): MpvEmbedHandle => ({
-      async play() {
-        await setProp('pause', 'no')
-        setPaused(false)
-      },
-      async pause() {
-        await setProp('pause', 'yes')
-        setPaused(true)
-      },
-      async togglePause() {
-        await cmd('cycle', ['pause'])
-        setPaused((p) => !p)
-      },
-      async seek(seconds, absolute = false) {
-        await cmd('seek', [String(seconds), absolute ? 'absolute' : 'relative'])
-      },
-      async setVolume(v) {
-        await setProp('volume', String(v))
-        setVolume(v)
-      },
-      async setMute(m) {
-        await setProp('mute', m ? 'yes' : 'no')
-        setMuted(m)
-      },
-      async setSubtitle(sid) {
-        await setProp('sid', String(sid))
-      },
-      async setAudioTrack(aid) {
-        await setProp('aid', String(aid))
-      },
-      async setAnime4K(level) {
-        await applyAnime4K(level)
-      },
-      async loadFile(url) {
-        await cmd('loadfile', [url, 'replace'])
-      },
-    }),
-    [cmd, setProp],
-  )
+  const applyAnime4K = useCallback(async (level: Anime4KLevel) => {
+    const ok = await desktop.mpvEmbedSetAnime4K({ sessionId, level })
+    if (ok) setAnime4kLevel(level)
+    else console.warn('[mpv] 切换 Anime4K 档位失败:', level)
+  }, [sessionId])
 
-  // ========== Anime4K 切换（直接走 Rust 侧命令，避免前端拼路径） ==========
-  const applyAnime4K = useCallback(
-    async (level: Anime4KLevel) => {
-      const ok = await desktop.mpvEmbedSetAnime4K({ sessionId, level })
-      if (ok) {
-        setAnime4kLevel(level)
-      } else {
-        console.warn('[mpv] 切换 Anime4K 档位失败:', level)
-      }
-    },
-    [sessionId],
-  )
+  useImperativeHandle(ref, (): MpvEmbedHandle => ({
+    async play() { await setProp('pause', 'no'); setPaused(false) },
+    async pause() { await setProp('pause', 'yes'); setPaused(true) },
+    async togglePause() { await cmd('cycle', ['pause']); setPaused((value) => !value) },
+    async seek(seconds, absolute = false) { await cmd('seek', [String(seconds), absolute ? 'absolute' : 'relative']) },
+    async setVolume(value) { await setProp('volume', String(value)); setVolume(value) },
+    async setMute(value) { await setProp('mute', value ? 'yes' : 'no'); setMuted(value) },
+    async setSubtitle(sid) { await setProp('sid', String(sid)) },
+    async setAudioTrack(aid) { await setProp('aid', String(aid)) },
+    async setAnime4K(level) { await applyAnime4K(level) },
+    async loadFile(url) { await cmd('loadfile', [url, 'replace']) },
+  }), [cmd, setProp, applyAnime4K])
 
-  // ========== 启动嵌入播放 ==========
   useEffect(() => {
     if (!desktop.isDesktop || !streamUrl) return
-
     let canceled = false
     ;(async () => {
       try {
-        const r = await desktop.mpvEmbedStart({
-          sessionId,
-          url: streamUrl,
-          options: playOptions,
-        })
+        const result = await desktop.mpvEmbedStart({ sessionId, url: streamUrl, options: playOptions })
         if (canceled) return
-        if (r) {
-          // 应用初始音量
+        if (result) {
           await setProp('volume', String(initialVolume))
           setReady(true)
           onReady?.()
         } else {
-          const msg = '无法启动嵌入式 mpv（请确认已启用 embed-mpv 且 libmpv-2.dll 存在）'
-          setError(msg)
-          onError?.(msg)
+          const message = '无法启动嵌入式 mpv（请确认已启用 embed-mpv 且 libmpv-2.dll 存在）'
+          setError(message)
+          onError?.(message)
         }
-      } catch (e: unknown) {
+      } catch (cause: unknown) {
         if (canceled) return
-        const msg = (e as Error)?.message || String(e)
-        setError(msg)
-        onError?.(msg)
+        const message = (cause as Error)?.message || String(cause)
+        setError(message)
+        onError?.(message)
       }
     })()
-
     return () => {
       canceled = true
-      if (autoDestroy) {
-        desktop.mpvEmbedDestroy().catch(() => {})
-      }
+      if (autoDestroy) desktop.mpvEmbedDestroy().catch(() => {})
     }
-    // 仅在关键 props 变化时重新启动
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl, sessionId])
 
-  // ========== 同步占位元素的位置/大小给子窗口 ==========
   useEffect(() => {
     if (!ready || !placeholderRef.current || !desktop.isDesktop) return
-
-    const el = placeholderRef.current
+    const element = placeholderRef.current
     let rafId = 0
-
     const sync = () => {
-      const rect = el.getBoundingClientRect()
+      const rect = element.getBoundingClientRect()
       const dpr = window.devicePixelRatio || 1
-      desktop
-        .mpvEmbedSync({
-          x: Math.round(rect.left * dpr),
-          y: Math.round(rect.top * dpr),
-          width: Math.max(1, Math.round(rect.width * dpr)),
-          height: Math.max(1, Math.round(rect.height * dpr)),
-          visible: rect.width > 0 && rect.height > 0,
-        })
-        .catch(() => {})
+      desktop.mpvEmbedSync({
+        x: Math.round(rect.left * dpr),
+        y: Math.round(rect.top * dpr),
+        width: Math.max(1, Math.round(rect.width * dpr)),
+        height: Math.max(1, Math.round(rect.height * dpr)),
+        visible: rect.width > 0 && rect.height > 0,
+      }).catch(() => {})
     }
-
     const scheduleSync = () => {
       cancelAnimationFrame(rafId)
       rafId = requestAnimationFrame(sync)
     }
-
-    const ro = new ResizeObserver(scheduleSync)
-    ro.observe(el)
-
+    const observer = new ResizeObserver(scheduleSync)
+    observer.observe(element)
     window.addEventListener('resize', scheduleSync)
     window.addEventListener('scroll', scheduleSync, true)
-
-    // 首次立即同步
     sync()
-
     return () => {
       cancelAnimationFrame(rafId)
-      ro.disconnect()
+      observer.disconnect()
       window.removeEventListener('resize', scheduleSync)
       window.removeEventListener('scroll', scheduleSync, true)
-      // 隐藏子窗口
       desktop.mpvEmbedSync({ x: 0, y: 0, width: 1, height: 1, visible: false }).catch(() => {})
     }
   }, [ready])
 
-  // ========== 视频信息轮询（进度条 + HDR 徽章） ==========
   useEffect(() => {
     if (!ready || !desktop.isDesktop) return
     let canceled = false
-
     const tick = async () => {
       if (canceled) return
       try {
         const info = await desktop.mpvEmbedVideoInfo(sessionId)
         if (info && !canceled) {
           setVideoInfo(info)
-          // 同步 paused/muted/volume 状态（外部快捷键等改了属性也能同步回 UI）
           if (info.paused !== paused) setPaused(info.paused)
           if (info.mute !== muted) setMuted(info.mute)
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     }
     tick()
-    const id = window.setInterval(tick, 1000)
+    const timer = window.setInterval(tick, 1000)
     return () => {
       canceled = true
-      window.clearInterval(id)
+      window.clearInterval(timer)
     }
-    // 仅依赖 ready + sessionId，paused/muted 仅用作入参比较
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, sessionId])
 
-  // ========== 控制条自动隐藏 ==========
   const resetHideTimer = useCallback(() => {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -285,18 +195,12 @@ function MpvEmbedPlayerInner(
   useEffect(() => {
     if (!ready) return
     resetHideTimer()
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current)
-    }
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current) }
   }, [ready, resetHideTimer])
 
-  // 鼠标移动唤起控制条
-  const handleMouseMove = useCallback(() => resetHideTimer(), [resetHideTimer])
-
-  // ========== 交互回调 ==========
   const togglePause = useCallback(async () => {
     await cmd('cycle', ['pause'])
-    setPaused((p) => !p)
+    setPaused((value) => !value)
     resetHideTimer()
   }, [cmd, resetHideTimer])
 
@@ -307,34 +211,26 @@ function MpvEmbedPlayerInner(
     resetHideTimer()
   }, [muted, setProp, resetHideTimer])
 
-  const onVolumeChange = useCallback(
-    async (v: number) => {
-      setVolume(v)
-      await setProp('volume', String(v))
-      if (v > 0 && muted) {
-        await setProp('mute', 'no')
-        setMuted(false)
-      }
-      resetHideTimer()
-    },
-    [setProp, muted, resetHideTimer],
-  )
+  const onVolumeChange = useCallback(async (value: number) => {
+    setVolume(value)
+    await setProp('volume', String(value))
+    if (value > 0 && muted) {
+      await setProp('mute', 'no')
+      setMuted(false)
+    }
+    resetHideTimer()
+  }, [setProp, muted, resetHideTimer])
 
   const toggleFullscreen = useCallback(async () => {
     await desktop.windowToggleFullscreen()
     resetHideTimer()
   }, [resetHideTimer])
 
-  // 绝对位置 seek（给进度条拖拽用）
-  const seekAbsolute = useCallback(
-    async (seconds: number) => {
-      await cmd('seek', [String(seconds), 'absolute'])
-      resetHideTimer()
-    },
-    [cmd, resetHideTimer],
-  )
+  const seekAbsolute = useCallback(async (seconds: number) => {
+    await cmd('seek', [String(seconds), 'absolute'])
+    resetHideTimer()
+  }, [cmd, resetHideTimer])
 
-  // M6: 画中画切换
   const togglePip = useCallback(async () => {
     try {
       if (pipActive) {
@@ -344,28 +240,26 @@ function MpvEmbedPlayerInner(
         await desktop.windowPipEnter()
         setPipActive(true)
       }
-    } catch (e) {
-      console.warn('[mpv] PiP 切换失败:', e)
+    } catch (cause) {
+      console.warn('[mpv] PiP 切换失败:', cause)
     }
     resetHideTimer()
   }, [pipActive, resetHideTimer])
 
-  // M6: 始终置顶切换
   const togglePin = useCallback(async () => {
     try {
       const next = !pinned
       await desktop.windowSetAlwaysOnTop(next)
       setPinned(next)
-    } catch (e) {
-      console.warn('[mpv] 始终置顶切换失败:', e)
+    } catch (cause) {
+      console.warn('[mpv] 始终置顶切换失败:', cause)
     }
     resetHideTimer()
   }, [pinned, resetHideTimer])
 
-  // ========== 渲染降级 ==========
   if (!desktop.isDesktop) {
     return (
-      <div className={`flex items-center justify-center bg-black text-white/60 ${className}`}>
+      <div className={`group/player flex items-center justify-center bg-[var(--nv-player-canvas)] text-[var(--nv-player-text-tertiary)] ${className}`}>
         <span className="text-sm">嵌入式 mpv 仅在桌面端可用</span>
       </div>
     )
@@ -373,247 +267,139 @@ function MpvEmbedPlayerInner(
 
   if (error) {
     return (
-      <div className={`flex flex-col items-center justify-center gap-3 bg-black text-red-300 ${className}`}>
+      <div className={`group/player flex flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] text-[var(--nv-player-danger)] ${className}`}>
         <span className="text-sm">mpv 启动失败</span>
-        <code className="text-xs text-red-400/80 px-3 py-1 bg-red-950/40 rounded">{error}</code>
+        <code className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] px-3 py-1 text-xs">{error}</code>
         {onBack && (
-          <button
-            onClick={onBack}
-            className="mt-2 px-3 py-1.5 text-xs rounded bg-white/10 hover:bg-white/20 text-white/80"
-          >
-            返回
-          </button>
+          <button type="button" onClick={onBack} className="mt-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 py-1.5 text-xs text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]">返回</button>
         )}
       </div>
     )
   }
 
+  const currentPosition = seeking && seekPreview !== null ? seekPreview : videoInfo?.position || 0
+  const progressPercent = videoInfo && videoInfo.duration > 0 ? (currentPosition / videoInfo.duration) * 100 : 0
+
   return (
     <div
       ref={wrapperRef}
-      className={`relative bg-black overflow-hidden ${className}`}
-      onMouseMove={handleMouseMove}
+      className={`group/player relative overflow-hidden bg-[var(--nv-player-canvas)] ${className}`}
+      onMouseMove={resetHideTimer}
       onDoubleClick={toggleFullscreen}
     >
-      {/* 视频占位区：libmpv 会把无边框子窗口贴到这个元素上方 */}
-      <div
-        ref={placeholderRef}
-        className="absolute inset-0"
-        data-mpv-embed-placeholder
-      />
+      <div ref={placeholderRef} className="absolute inset-0" data-mpv-embed-placeholder />
 
-      {/* 加载指示 */}
       {!ready && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/60 gap-3 pointer-events-none">
-          <Loader2 className="w-10 h-10 animate-spin" />
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-[var(--nv-player-text-tertiary)]">
+          <Loader2 className="h-10 w-10 animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
           <span className="text-sm">正在加载 libmpv 内核...</span>
         </div>
       )}
 
-      {/* 顶部标题栏 + 返回 */}
       {ready && (
         <div
-          className={`absolute top-0 left-0 right-0 p-4 flex items-center gap-3 transition-opacity duration-300
-            ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          style={{
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.65), transparent)',
-          }}
+          className={`absolute left-0 right-0 top-0 flex items-center gap-3 p-4 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--nv-player-canvas) 68%, transparent), transparent)' }}
         >
           {onBack && (
-            <button
-              onClick={onBack}
-              className="h-9 w-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-md"
-              title="返回"
-            >
-              ←
-            </button>
+            <button type="button" onClick={onBack} className={MPV_CONTROL_CLASS} title="返回" aria-label="返回">←</button>
           )}
-          {title && (
-            <div className="flex-1 text-white font-medium text-sm drop-shadow truncate">{title}</div>
-          )}
-          <div className="text-white/60 text-xs flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/10 backdrop-blur">
-            <Sparkles className="w-3.5 h-3.5 text-violet-300" />
-            libmpv · gpu-next
+          {title && <div className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--nv-player-text-primary)] drop-shadow">{title}</div>}
+          <div className="flex items-center gap-1.5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-subtle)] px-2 py-1 text-xs text-[var(--nv-player-text-tertiary)] backdrop-blur">
+            <Sparkles className="h-3.5 w-3.5 text-[var(--nv-player-accent)]" aria-hidden="true" />libmpv · gpu-next
           </div>
 
-          {/* 视频信息徽章（HDR / 分辨率） */}
           {videoInfo && videoInfo.width > 0 && (
             <>
               {videoInfo.hdr !== 'SDR' && videoInfo.hdr !== '' && (
-                <div
-                  className="text-xs px-2 py-1 rounded-md bg-gradient-to-r from-amber-500/30 to-orange-500/30 backdrop-blur border border-amber-400/40 text-amber-100 font-semibold tracking-wider"
-                  title={`色域 ${videoInfo.primaries} · Gamma ${videoInfo.gamma}`}
-                >
+                <div className="rounded-[var(--nv-player-radius-control)] border px-2 py-1 text-xs font-semibold tracking-wider backdrop-blur" style={{ borderColor: 'color-mix(in srgb, var(--nv-player-warning) 38%, transparent)', background: 'color-mix(in srgb, var(--nv-player-warning) 12%, transparent)', color: 'var(--nv-player-warning)' }} title={`色域 ${videoInfo.primaries} · Gamma ${videoInfo.gamma}`}>
                   {videoInfo.hdr}
                 </div>
               )}
-              <div
-                className="text-white/70 text-xs px-2 py-1 rounded-md bg-white/10 backdrop-blur font-mono"
-                title={videoInfo.codec}
-              >
-                {videoInfo.height >= 2160
-                  ? '4K'
-                  : videoInfo.height >= 1440
-                    ? '2K'
-                    : videoInfo.height >= 1080
-                      ? '1080p'
-                      : `${videoInfo.height}p`}
+              <div className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-subtle)] px-2 py-1 font-mono text-xs text-[var(--nv-player-text-secondary)] backdrop-blur" title={videoInfo.codec}>
+                {videoInfo.height >= 2160 ? '4K' : videoInfo.height >= 1440 ? '2K' : videoInfo.height >= 1080 ? '1080p' : `${videoInfo.height}p`}
               </div>
             </>
           )}
         </div>
       )}
 
-      {/* 底部控制条 */}
       {ready && (
         <div
-          className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300
-            ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
-          }}
+          className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          style={{ background: 'linear-gradient(to top, color-mix(in srgb, var(--nv-player-canvas) 72%, transparent), transparent)' }}
         >
-          {/* Anime4K 面板（悬浮在按钮上方） */}
-          {showAnime4KPanel && (
-            <div className="mb-3 flex justify-end">
-              <Anime4KPanel value={anime4kLevel} onChange={applyAnime4K} />
-            </div>
-          )}
+          {showAnime4KPanel && <div className="mb-3 flex justify-end"><Anime4KPanel value={anime4kLevel} onChange={applyAnime4K} /></div>}
 
-          {/* 进度条 */}
           {videoInfo && videoInfo.duration > 0 && (
-            <div className="mb-3 flex items-center gap-3 text-white/80 text-xs font-mono select-none">
-              <span className="w-14 text-right tabular-nums">
-                {formatTime(seeking && seekPreview !== null ? seekPreview : videoInfo.position)}
-              </span>
+            <div className="mb-3 flex select-none items-center gap-3 font-mono text-xs text-[var(--nv-player-text-secondary)]">
+              <span className="w-14 text-right tabular-nums">{formatTime(currentPosition)}</span>
               <input
                 type="range"
                 min={0}
                 max={Math.max(1, videoInfo.duration)}
                 step={0.1}
-                value={seeking && seekPreview !== null ? seekPreview : videoInfo.position}
-                onChange={(e) => {
-                  setSeeking(true)
-                  setSeekPreview(Number(e.target.value))
-                }}
-                onMouseUp={async (e) => {
-                  const v = Number((e.target as HTMLInputElement).value)
-                  await seekAbsolute(v)
+                value={currentPosition}
+                onChange={(event) => { setSeeking(true); setSeekPreview(Number(event.target.value)) }}
+                onMouseUp={async (event) => {
+                  await seekAbsolute(Number((event.target as HTMLInputElement).value))
                   setSeeking(false)
                   setSeekPreview(null)
                 }}
-                onTouchEnd={async (e) => {
-                  const v = Number((e.target as HTMLInputElement).value)
-                  await seekAbsolute(v)
+                onTouchEnd={async (event) => {
+                  await seekAbsolute(Number((event.target as HTMLInputElement).value))
                   setSeeking(false)
                   setSeekPreview(null)
                 }}
-                className="flex-1 h-1.5 accent-violet-400 cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right,
-                    rgba(167, 139, 250, 0.9) 0%,
-                    rgba(167, 139, 250, 0.9) ${((seeking && seekPreview !== null ? seekPreview : videoInfo.position) / videoInfo.duration) * 100}%,
-                    rgba(255,255,255,0.15) ${((seeking && seekPreview !== null ? seekPreview : videoInfo.position) / videoInfo.duration) * 100}%,
-                    rgba(255,255,255,0.15) 100%)`,
-                  borderRadius: 999,
-                  appearance: 'none',
-                }}
+                className="player-volume-slider h-1.5 flex-1 cursor-pointer appearance-none"
+                style={{ background: `linear-gradient(to right, var(--nv-player-accent) 0%, var(--nv-player-accent) ${progressPercent}%, color-mix(in srgb, var(--nv-player-text-primary) 15%, transparent) ${progressPercent}%, color-mix(in srgb, var(--nv-player-text-primary) 15%, transparent) 100%)` }}
+                aria-label="播放进度"
               />
-              <span className="w-14 tabular-nums text-white/60">
-                {formatTime(videoInfo.duration)}
-              </span>
+              <span className="w-14 tabular-nums text-[var(--nv-player-text-tertiary)]">{formatTime(videoInfo.duration)}</span>
             </div>
           )}
 
           <div className="flex items-center gap-3">
-            {/* 播放/暂停 */}
-            <button
-              onClick={togglePause}
-              className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-              title={paused ? '播放' : '暂停'}
-            >
-              {paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+            <button type="button" onClick={togglePause} className={`${MPV_CONTROL_CLASS} h-10 w-10`} title={paused ? '播放' : '暂停'} aria-label={paused ? '播放' : '暂停'}>
+              {paused ? <Play className="h-5 w-5" aria-hidden="true" /> : <Pause className="h-5 w-5" aria-hidden="true" />}
             </button>
-
-            {/* 静音切换 */}
-            <button
-              onClick={toggleMute}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-              title={muted ? '取消静音' : '静音'}
-            >
-              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            <button type="button" onClick={toggleMute} className={MPV_CONTROL_CLASS} title={muted ? '取消静音' : '静音'} aria-label={muted ? '取消静音' : '静音'}>
+              {muted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
             </button>
-
-            {/* 音量滑块 */}
             <input
               type="range"
               min={0}
               max={100}
               value={muted ? 0 : volume}
-              onChange={(e) => onVolumeChange(Number(e.target.value))}
-              className="w-28 accent-violet-400"
+              onChange={(event) => onVolumeChange(Number(event.target.value))}
+              className="player-volume-slider w-28 cursor-pointer appearance-none"
+              style={{ background: `linear-gradient(to right, var(--nv-player-accent) ${muted ? 0 : volume}%, color-mix(in srgb, var(--nv-player-text-primary) 15%, transparent) ${muted ? 0 : volume}%)` }}
+              aria-label="音量"
             />
-
-            {/* 字幕切换（演示：0/1/no 三档循环） */}
-            <button
-              onClick={async () => {
-                await cmd('cycle', ['sid'])
-                resetHideTimer()
-              }}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-              title="切换字幕"
-            >
-              <Subtitles className="w-4 h-4" />
+            <button type="button" onClick={async () => { await cmd('cycle', ['sid']); resetHideTimer() }} className={MPV_CONTROL_CLASS} title="切换字幕" aria-label="切换字幕">
+              <Subtitles className="h-4 w-4" aria-hidden="true" />
             </button>
 
             <div className="flex-1" />
 
-            {/* Anime4K 开关 */}
             <button
-              onClick={() => setShowAnime4KPanel((v) => !v)}
-              className={`px-3 h-9 rounded-full text-white flex items-center gap-1.5 text-xs font-medium transition
-                ${anime4kLevel !== 'off'
-                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500'
-                  : 'bg-white/10 hover:bg-white/20'}`}
+              type="button"
+              onClick={() => setShowAnime4KPanel((value) => !value)}
+              className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-[background-color,border-color,color] ${anime4kLevel !== 'off' ? MPV_ACTIVE_CLASS : 'border-transparent bg-[var(--nv-player-surface-subtle)] text-[var(--nv-player-text-primary)] hover:bg-[var(--nv-player-surface-hover)]'}`}
               title="Anime4K 超分"
+              aria-pressed={anime4kLevel !== 'off'}
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
               {anime4kLevel === 'off' ? 'Anime4K' : `Anime4K · ${anime4kLevel.toUpperCase()}`}
             </button>
-
-            {/* 始终置顶（PiP 姐妹态） */}
-            <button
-              onClick={togglePin}
-              className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
-                pinned
-                  ? 'bg-[color:var(--neon-blue,_#00F0FF)]/25 text-[color:var(--neon-blue,_#00F0FF)]'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-              title={pinned ? '取消置顶' : '始终置顶'}
-            >
-              <Pin className="w-4 h-4" />
+            <button type="button" onClick={togglePin} className={`${MPV_CONTROL_CLASS} ${pinned ? MPV_ACTIVE_CLASS : ''}`} title={pinned ? '取消置顶' : '始终置顶'} aria-pressed={pinned}>
+              <Pin className="h-4 w-4" aria-hidden="true" />
             </button>
-
-            {/* 画中画 */}
-            <button
-              onClick={togglePip}
-              className={`h-9 w-9 rounded-full flex items-center justify-center transition ${
-                pipActive
-                  ? 'bg-[color:var(--neon-blue,_#00F0FF)]/25 text-[color:var(--neon-blue,_#00F0FF)]'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-              title={pipActive ? '退出画中画' : '画中画'}
-            >
-              <PictureInPicture2 className="w-4 h-4" />
+            <button type="button" onClick={togglePip} className={`${MPV_CONTROL_CLASS} ${pipActive ? MPV_ACTIVE_CLASS : ''}`} title={pipActive ? '退出画中画' : '画中画'} aria-pressed={pipActive}>
+              <PictureInPicture2 className="h-4 w-4" aria-hidden="true" />
             </button>
-
-            {/* 全屏 */}
-            <button
-              onClick={toggleFullscreen}
-              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-              title="全屏"
-            >
-              <Maximize className="w-4 h-4" />
+            <button type="button" onClick={toggleFullscreen} className={MPV_CONTROL_CLASS} title="全屏" aria-label="全屏">
+              <Maximize className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -627,7 +413,6 @@ MpvEmbedPlayer.displayName = 'MpvEmbedPlayer'
 
 export default MpvEmbedPlayer
 
-/** 格式化秒数 → mm:ss / hh:mm:ss */
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '00:00'
   const s = Math.floor(sec % 60)
@@ -637,27 +422,18 @@ function formatTime(sec: number): string {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
-/** 便捷的无 ref 控制（通过 sessionId） */
 export const mpvControl = {
   togglePause(sessionId = 'main-player') {
     return desktop.mpvEmbedCommand({ sessionId, command: 'cycle', args: ['pause'] })
   },
   seek(sessionId: string, seconds: number, absolute = false) {
-    return desktop.mpvEmbedCommand({
-      sessionId,
-      command: 'seek',
-      args: [String(seconds), absolute ? 'absolute' : 'relative'],
-    })
+    return desktop.mpvEmbedCommand({ sessionId, command: 'seek', args: [String(seconds), absolute ? 'absolute' : 'relative'] })
   },
-  setVolume(sessionId: string, v: number) {
-    return desktop.mpvEmbedSetProperty({ sessionId, name: 'volume', value: String(v) })
+  setVolume(sessionId: string, value: number) {
+    return desktop.mpvEmbedSetProperty({ sessionId, name: 'volume', value: String(value) })
   },
   setMute(sessionId: string, mute: boolean) {
-    return desktop.mpvEmbedSetProperty({
-      sessionId,
-      name: 'mute',
-      value: mute ? 'yes' : 'no',
-    })
+    return desktop.mpvEmbedSetProperty({ sessionId, name: 'mute', value: mute ? 'yes' : 'no' })
   },
   setSubtitle(sessionId: string, sid: number | 'no') {
     return desktop.mpvEmbedSetProperty({ sessionId, name: 'sid', value: String(sid) })
