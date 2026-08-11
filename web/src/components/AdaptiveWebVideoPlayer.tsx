@@ -210,17 +210,23 @@ export default function AdaptiveWebVideoPlayer({
     }
 
     try {
+      const nextDirect = false
+      const nextRemux = from === 'direct'
+      const nextForceTranscode = from !== 'direct'
+
       const response = await streamApi.getPlaybackPlan(mediaId, {
-        supportsDirect: false,
-        supportsRemux: from === 'direct',
-        forceTranscode: from !== 'direct',
+        supportsDirect: nextDirect,
+        supportsRemux: nextRemux,
+        forceTranscode: nextForceTranscode,
       })
       if (operationRef.current !== operation) return
+
       const nextPlan = response.data.data
       const to = modeForMethod(nextPlan.method)
       if (!to || PLAYBACK_MODE_RANK[to] <= PLAYBACK_MODE_RANK[from]) throw new Error(`服务端返回了无效的降级方案：${nextPlan.method}`)
       if (failedModesRef.current.has(to)) throw new Error(`兼容播放方案 ${nextPlan.method} 已经失败，已阻止循环重试`)
       if (!planHasUsableSource(nextPlan)) throw new Error(`兼容播放方案 ${nextPlan.method} 没有可用地址或会话模板`)
+
       const transition = { from, to, reason }
       setActivePlan(nextPlan)
       setLastTransition(transition)
