@@ -516,14 +516,6 @@
     color: var(--neon-blue);
   }
 
-  /* 渐变文字 */
-  .text-gradient {
-    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
