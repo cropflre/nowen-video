@@ -2,8 +2,8 @@
  *
  * Semantic primitives for the administration workspace. This stylesheet now
  * contains only the current nv-admin-* contract and has no legacy selector
- * dependency. The remaining global compatibility bridge is loaded explicitly
- * by the application entry until non-admin legacy callers are retired.
+ * dependency. Application UI consumes the shared --nv-* semantic tokens
+ * directly; legacy compatibility bridges have been retired.
  */
 
 .nv-admin-page {
