@@ -1,9 +1,0 @@
-/* Transitional semantic alias.
- *
- * Some incrementally migrated views still refer to the earlier
- * --nv-text-on-action name. Keep it mapped to the canonical brand-action
- * foreground until those call sites are fully normalized.
- */
-:root {
-  --nv-text-on-action: var(--nv-text-on-brand);
-}
