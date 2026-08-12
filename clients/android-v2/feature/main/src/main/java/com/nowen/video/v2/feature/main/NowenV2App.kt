@@ -13,9 +13,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,6 +24,7 @@ import com.nowen.video.v2.core.designsystem.NowenTheme
 import com.nowen.video.v2.core.model.SessionSnapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -43,17 +41,29 @@ class AppViewModel @Inject constructor(
         SessionSnapshot(),
     )
 
+    private val _showMigrationNotice = MutableStateFlow(false)
+    val showMigrationNotice: StateFlow<Boolean> = _showMigrationNotice
+
     init {
         viewModelScope.launch {
-            legacyV1Migration.migrateIfNeeded()
+            val migration = legacyV1Migration.migrateIfNeeded()
+            // Fresh installs have no V1 state and should enter setup without an
+            // irrelevant upgrade dialog. Only users for whom we actually
+            // imported legacy server configuration need the migration notice.
+            _showMigrationNotice.value = migration.requiresLogin
             sessionStore.bootstrap()
         }
+    }
+
+    fun dismissMigrationNotice() {
+        _showMigrationNotice.value = false
     }
 }
 
 @Composable
 fun NowenV2App(viewModel: AppViewModel = hiltViewModel()) {
     val session by viewModel.session.collectAsState()
+    val showMigrationNotice by viewModel.showMigrationNotice.collectAsState()
 
     NowenTheme {
         AnimatedContent(
@@ -72,36 +82,30 @@ fun NowenV2App(viewModel: AppViewModel = hiltViewModel()) {
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
-                RootDestination.Server -> ServerSetupWithUpgradeNotice()
+                RootDestination.Server -> ServerSetupScreen()
                 RootDestination.Login -> LoginScreen()
                 RootDestination.Password -> ForcePasswordScreen()
                 RootDestination.Main -> MainShell()
             }
         }
-    }
-}
 
-@Composable
-private fun ServerSetupWithUpgradeNotice() {
-    var showUpgradeNotice by rememberSaveable { mutableStateOf(true) }
-
-    ServerSetupScreen()
-    if (showUpgradeNotice) {
-        AlertDialog(
-            onDismissRequest = { showUpgradeNotice = false },
-            title = { Text("Android 客户端已升级") },
-            text = {
-                Text(
-                    "新版 Android 客户端已经正式替换旧版。升级安装时会尽量自动导入旧版服务器地址，" +
-                        "但出于安全考虑不会迁移旧版明文 Token 或密码；如未保持登录状态，请重新登录。",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showUpgradeNotice = false }) {
-                    Text("我知道了")
-                }
-            },
-        )
+        if (showMigrationNotice) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissMigrationNotice,
+                title = { Text("已迁移旧版服务器") },
+                text = {
+                    Text(
+                        "新版 Android 客户端已经正式替换旧版，并已导入你的旧版服务器地址。" +
+                            "出于安全考虑，旧版明文 Token 和密码不会迁移，请重新登录一次。",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = viewModel::dismissMigrationNotice) {
+                        Text("我知道了")
+                    }
+                },
+            )
+        }
     }
 }
 
