@@ -1,4 +1,4 @@
-# Nowen Video Android V2 {{VERSION_NAME}}
+# Nowen Video Android {{VERSION_NAME}}
 
 > {{RELEASE_STATUS}}
 
@@ -8,11 +8,22 @@
 |---|---|
 | versionName | `{{VERSION_NAME}}` |
 | versionCode | `{{VERSION_CODE}}` |
-| applicationId | `com.nowen.video.v2` |
+| applicationId | `com.nowen.video` |
 | 最低系统 | Android 8.0 / API 26 |
 | 目标系统 | Android 15 / API 35 |
 | source commit | `{{SOURCE_COMMIT}}` |
 | 签名证书 SHA-256 | `{{CERTIFICATE_SHA256}}` |
+
+## 正式替换说明
+
+Android V2 的模块化实现已经正式接管 Nowen Video Android，发布包不再作为独立 V2 应用存在。
+
+- 正式包名恢复并固定为 `com.nowen.video`，与 Android V1 相同。
+- 正式发布必须使用 Android V1 原有签名证书；发布流水线会与历史 `v1.2.5` APK 的证书做强校验，不一致直接阻断发布。
+- versionCode 使用高于 V1 历史范围的保留区间，支持从 V1 原位覆盖升级。
+- 升级时会尽量迁移旧版服务器地址和当前服务器选择。
+- V1 中以明文形式保存的 Token、密码等敏感凭据不会导入；用户可能需要重新登录。
+- 旧的 `com.nowen.video.v2` 测试包仍是独立应用，不属于正式升级链路。
 
 ## 当前能力
 
@@ -40,26 +51,24 @@
 - WorkManager 前台下载、HTTP Range 断点续传、暂停、继续、重试和启动恢复。
 - 本地文件完全离线播放，恢复联网后同步播放进度。
 
-## 安装和迁移
+## 安装和升级
 
 普通用户安装 APK；AAB 仅用于应用商店或分发平台，不能直接在手机上安装。
 
 ```bash
-adb install -r nowen-video-android-v2-{{VERSION_NAME}}.apk
+adb install -r nowen-video-android-{{VERSION_NAME}}.apk
 ```
 
-- V2 正式包名为 `com.nowen.video.v2`，可与旧版 `com.nowen.video` 并行安装。
-- 旧版服务器、Token 和本地数据不会自动迁移，需要在 V2 中重新添加服务器并登录。
-- 后续 V2 覆盖升级必须保持相同 applicationId、相同正式签名并使用更高 versionCode。
-- 不要通过卸载 V2 完成升级；卸载会清除 V2 本地会话、偏好和下载记录。
+如果设备已经安装正式 Android V1，且该 V1 来自官方签名链，以上命令应直接原位升级，不需要卸载旧版。
 
-## 已知限制
+**不要为了升级先卸载 V1。** 卸载会先清除旧应用沙箱，使自动迁移服务器地址失去数据来源。
 
-- 局域网发现只扫描当前私有 IPv4 `/24` 和预设常用端口；跨 VLAN、访客 Wi-Fi、AP 隔离或复杂 IPv6 网络可能需要手动输入地址。
-- 路由器屏蔽组播时 mDNS 不可用，HTTP 回退探测不保证发现非标准端口。
-- 离线下载面向 Direct Play、Remux 或预处理后的单文件地址；仅返回 HLS/m3u8 的媒体不会下载为单文件。
-- 厂商后台限制、前台下载通知、部分媒体格式和覆盖升级仍需要持续真机验证。
-- Debug、RC 和 Stable 数据按 applicationId 隔离；Debug 数据不会自动迁移到正式 V2。
+## 已知边界
+
+- 局域网发现只扫描当前私有 IPv4 `/24` 和预设常用端口；复杂 VLAN/IPv6 网络可能需要手动输入地址。
+- 旧版 Token 不迁移是安全设计，不是迁移失败。
+- 旧独立 V2 测试包 `com.nowen.video.v2` 不会自动转换成正式 `com.nowen.video`；可在确认正式版可用后手动卸载测试包。
+- APK 降级不是正式回滚方案；发现问题应发布更高 versionCode 的修复版本。
 
 ## 产物完整性
 
@@ -68,23 +77,21 @@ adb install -r nowen-video-android-v2-{{VERSION_NAME}}.apk
 | APK | `{{APK_SHA256}}` |
 | AAB | `{{AAB_SHA256}}` |
 
-下载 APK、AAB、`SHA256SUMS.txt` 和 `release-manifest.json` 后执行：
-
 ```bash
 sha256sum -c SHA256SUMS.txt
-apksigner verify --verbose --print-certs nowen-video-android-v2-{{VERSION_NAME}}.apk
-jarsigner -verify nowen-video-android-v2-{{VERSION_NAME}}.aab
+apksigner verify --verbose --print-certs nowen-video-android-{{VERSION_NAME}}.apk
+jarsigner -verify nowen-video-android-{{VERSION_NAME}}.aab
 python3 -m json.tool release-manifest.json > /dev/null
 ```
 
-APK 签名证书 SHA-256 必须与本说明和 `release-manifest.json` 一致。
+APK 签名证书 SHA-256 必须与本说明、`release-manifest.json` 以及历史 V1 正式签名保持一致。
 
 ## 反馈模板
 
 ```text
-标题：[Android V2][设备/API][模块] 简短现象
+标题：[Android][设备/API][模块] 简短现象
 
-V2 版本 / commit：
+Android 版本 / commit：
 服务器版本 / commit：
 设备型号 / Android API：
 网络环境：
