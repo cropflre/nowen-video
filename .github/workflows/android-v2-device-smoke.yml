@@ -1,4 +1,4 @@
-name: Android V2 Device Smoke
+name: Android Device Smoke
 
 on:
   pull_request:
@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-v2-device-smoke-${{ github.ref }}
+  group: android-device-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -75,7 +75,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-v2-device-smoke-api-${{ matrix.api-level }}
+          name: android-device-smoke-api-${{ matrix.api-level }}
           path: |
             android-v2-device-smoke-api-${{ matrix.api-level }}.log
             clients/android-v2/app/build/reports/androidTests/connected/**
