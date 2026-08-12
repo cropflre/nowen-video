@@ -310,23 +310,6 @@ export const adminApi = {
       details: { table: string; cleared: number; status: string; message?: string }[]
     } }>('/admin/system/clear-data', { confirm }),
 
-  // ==================== 系统日志 ====================
-  listSystemLogs: (params?: {
-    page?: number; size?: number; type?: string; level?: string;
-    keyword?: string; method?: string; start?: string; end?: string;
-    min_status?: number; max_status?: number; user_id?: string; media_id?: string;
-  }) =>
-    api.get<{ data: import('@/types').SystemLog[]; total: number; page: number; size: number }>('/admin/system-logs', { params }),
-
-  getSystemLogStats: () =>
-    api.get<{ data: import('@/types').SystemLogStats }>('/admin/system-logs/stats'),
-
-  exportSystemLogs: (params?: { type?: string; level?: string; keyword?: string; method?: string; start?: string; end?: string; max_rows?: number }) =>
-    api.get('/admin/system-logs/export', { params, responseType: 'blob' }),
-
-  cleanSystemLogs: (days: number) =>
-    api.post<{ message: string; deleted: number }>('/admin/system-logs/clean', { days }),
-
   // 剧集合并（多季自动合并为一个整体）
   mergeSeries: (primaryId: string, secondaryIds: string[]) =>
     api.post<{ message: string; data: {
