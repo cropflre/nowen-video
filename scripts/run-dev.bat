@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 chcp 65001 >nul
 
 REM ============================================================
-REM  nowen-video 一键启动脚本（Server Lite + Vite）
+REM  nowen-video 一键启动脚本（正式后端 + Vite）
 REM
 REM  使用方法：
 REM    scripts\run-dev.bat
@@ -59,7 +59,7 @@ if not "%REQUESTED_WEB_PORT%"=="%WEB_PORT%" (
 
 echo.
 echo ============================================================
-echo  nowen-video 本地开发环境（Server Lite）
+echo  nowen-video 本地开发环境（正式版）
 echo  后端端口: %SERVER_PORT%
 echo  前端端口: %WEB_PORT%
 echo  前端代理: http://localhost:%SERVER_PORT%
@@ -67,7 +67,7 @@ echo ============================================================
 echo.
 
 echo [1/2] 启动后端服务窗口 ...
-start "nowen-video-server-lite (port %SERVER_PORT%)" /D "%PROJECT_DIR%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_DEBUG=%NOWEN_DEBUG%&& set NOWEN_SERVER_MODE=lite&& set NOWEN_PORT_RESOLVED=1&& call scripts\run-server.bat"
+start "nowen-video-server (port %SERVER_PORT%)" /D "%PROJECT_DIR%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_DEBUG=%NOWEN_DEBUG%&& set NOWEN_SERVER_MODE=official&& set NOWEN_PORT_RESOLVED=1&& call scripts\run-server.bat"
 
 REM 稍等一下，让后端先开始初始化
 timeout /t 2 /nobreak >nul
