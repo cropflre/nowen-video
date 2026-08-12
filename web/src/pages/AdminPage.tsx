@@ -4,7 +4,6 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
-  FileText,
   Film,
   FolderOpen,
   HardDrive,
@@ -26,7 +25,6 @@ import type { ScanPhaseData, ScanProgressData, ScrapeProgressData, TranscodeProg
 import LibraryManager from '@/components/LibraryManager'
 import AITab from '@/components/admin/AITab'
 import DashboardTab from '@/components/admin/DashboardTab'
-import LogsTab from '@/components/admin/LogsTab'
 import MetadataSettings from '@/components/admin/MetadataSettings'
 import StorageTab from '@/components/admin/StorageTab'
 import UsersTab from '@/components/admin/UsersTab'
@@ -38,7 +36,6 @@ const TABS = [
   { id: 'dashboard', labelKey: 'admin.tabDashboard', icon: LayoutDashboard, shortLabelKey: 'admin.shortDashboard' },
   { id: 'library', labelKey: 'admin.tabLibrary', icon: FolderOpen, shortLabelKey: 'admin.shortLibrary' },
   { id: 'users', labelKey: 'admin.tabUsers', icon: Users, shortLabelKey: 'admin.shortUsers' },
-  { id: 'logs', labelKey: 'admin.tabLogs', icon: FileText, shortLabelKey: 'admin.shortLogs' },
   { id: 'ai', labelKey: 'admin.tabAI', icon: Sparkles, shortLabelKey: 'admin.shortAI' },
   { id: 'storage', labelKey: 'admin.tabStorage', icon: HardDrive, shortLabelKey: 'admin.shortStorage' },
 ] as const
@@ -425,7 +422,6 @@ export default function AdminPage() {
       { label: t('admin.quickNavTMDb'), tab: 'library', icon: Film },
       { label: t('admin.quickNavUsers'), tab: 'users', icon: Users },
       { label: t('admin.quickNavTranscode'), href: '/preprocess#transcode', icon: Zap },
-      { label: t('admin.quickNavLogs'), tab: 'logs', icon: FileText },
       { label: t('admin.quickNavAI'), tab: 'ai', icon: Sparkles },
     ]
     const query = searchQuery.toLowerCase()
@@ -521,7 +517,6 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'users' && <UsersTab users={users} setUsers={setUsers} />}
-        {activeTab === 'logs' && <LogsTab />}
         {activeTab === 'ai' && <AITab />}
         {activeTab === 'storage' && <StorageTab />}
       </div>
