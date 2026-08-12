@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from typing import Any
 
-from android_v2_p0.common import PRODUCT, fail, sha256_file, write_json
+from android_v2_p0.common import PACKAGE_ID, PRODUCT, fail, sha256_file, write_json
 
 from .common import Candidate, verify_candidate, verify_matrix
 from .github import (
@@ -20,9 +20,10 @@ from .github import (
 )
 
 VERSION = "0.1.0-rc.1"
+VERSION_CODE = 10100501
 COMMIT = "8" * 40
 CERTIFICATE = "ab" * 32
-TAG = f"android-v2-v{VERSION}"
+TAG = f"v{VERSION}"
 
 
 class FakeGitHub(GitHubCLI):
@@ -92,8 +93,8 @@ class FakeGitHub(GitHubCLI):
 def fixture(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     candidate = root / "candidate"
     candidate.mkdir()
-    apk_name = f"nowen-video-android-v2-{VERSION}.apk"
-    aab_name = f"nowen-video-android-v2-{VERSION}.aab"
+    apk_name = f"nowen-video-android-{VERSION}.apk"
+    aab_name = f"nowen-video-android-{VERSION}.aab"
     (candidate / apk_name).write_bytes(b"tested-apk")
     (candidate / aab_name).write_bytes(b"tested-aab")
     apk_hash = sha256_file(candidate / apk_name)
@@ -102,8 +103,8 @@ def fixture(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
         "schema_version": 1,
         "product": PRODUCT,
         "channel": "rc",
-        "version": {"name": VERSION, "code": 100501},
-        "application": {"id": "com.nowen.video.v2", "min_sdk": 26, "target_sdk": 35},
+        "version": {"name": VERSION, "code": VERSION_CODE},
+        "application": {"id": PACKAGE_ID, "min_sdk": 26, "target_sdk": 35},
         "source": {"commit": COMMIT},
         "signing": {"certificate_sha256": CERTIFICATE},
         "artifacts": [
@@ -128,7 +129,7 @@ def fixture(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
         f"{apk_hash}  {apk_name}\n{aab_hash}  {aab_name}\n", encoding="utf-8"
     )
     (candidate / "RELEASE_NOTES.md").write_text(
-        f"# RC\n\n{VERSION}\n{COMMIT}\n{CERTIFICATE}\n{apk_hash}\n{aab_hash}\n", encoding="utf-8"
+        f"# Android RC\n\n{VERSION}\n{COMMIT}\n{CERTIFICATE}\n{apk_hash}\n{aab_hash}\n", encoding="utf-8"
     )
     matrix = root / "matrix"
     matrix.mkdir()
@@ -138,7 +139,7 @@ def fixture(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
         "verdict": "PASS",
         "candidate": {
             "version_name": VERSION,
-            "version_code": 100501,
+            "version_code": VERSION_CODE,
             "source_commit": COMMIT,
             "certificate_sha256": CERTIFICATE,
             "apk_sha256": apk_hash,
@@ -163,7 +164,7 @@ def fixture(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
 
 
 def run() -> int:
-    with tempfile.TemporaryDirectory(prefix="android-v2-promotion-self-test-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="android-promotion-self-test-") as temporary:
         root = pathlib.Path(temporary)
         candidate_dir, matrix_dir = fixture(root)
         candidate: Candidate = verify_candidate(candidate_dir, VERSION)
@@ -209,5 +210,5 @@ def run() -> int:
         gh.commit = "7" * 40
         if resolve_tag_commit(gh, TAG) == candidate.source_commit:
             fail("wrong tag commit should be rejected")
-    print("Android V2 release promotion fake-gh self-test passed")
+    print("Android release promotion fake-gh self-test passed")
     return 0
