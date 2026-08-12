@@ -11,7 +11,6 @@ import (
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
 	"github.com/nowen-video/nowen-video/internal/middleware"
-	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/serverprofile"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -43,8 +42,6 @@ func buildRouter(
 		Window:       time.Minute,
 		ExcludePaths: []string{"/api/ws"},
 	}))
-	r.Use(middleware.LogSanitizer())
-	r.Use(middleware.RequestLogger(repos.SystemLog))
 
 	if cfg.Secrets.JWTSecret == "" {
 		logger.Fatal("JWT Secret 未配置或自动生成失败，无法启动")
@@ -85,7 +82,7 @@ func buildRouter(
 		logger,
 	)
 
-	startMaintenanceJobs(repos, appVer)
+	startMaintenanceJobs(repos)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
 	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, runtimeHistoryHandler, jwtMiddleware)
@@ -116,7 +113,7 @@ func buildRouter(
 	return r
 }
 
-func startMaintenanceJobs(repos *repository.Repositories, appVer string) {
+func startMaintenanceJobs(repos *repository.Repositories) {
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -124,23 +121,6 @@ func startMaintenanceJobs(repos *repository.Repositories, appVer string) {
 		for range ticker.C {
 			_ = repos.LoginLog.CleanOlderThan(90)
 		}
-	}()
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		repos.SystemLog.CleanOlderThan(30)
-		for range ticker.C {
-			repos.SystemLog.CleanOlderThan(30)
-		}
-	}()
-	go func() {
-		_ = repos.SystemLog.Create(&model.SystemLog{
-			Type:    model.LogTypeSystem,
-			Level:   model.LogLevelInfo,
-			Message: "服务启动",
-			Source:  "startup-lite",
-			Detail:  fmt.Sprintf("profile: lite, version: %s, Go: %s, OS: %s/%s", appVer, runtime.Version(), runtime.GOOS, runtime.GOARCH),
-		})
 	}()
 }
 
