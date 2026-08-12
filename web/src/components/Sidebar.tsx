@@ -37,6 +37,13 @@ interface SidebarProps {
   onMobileClose?: () => void
 }
 
+const sidebarNavClassName = (isActive: boolean) => clsx(
+  'relative flex items-center gap-3 rounded-[var(--nv-radius-control)] px-3 py-2.5 text-sm font-medium transition-[color,background-color] duration-200',
+  isActive
+    ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)] before:absolute before:bottom-1/4 before:left-0 before:top-1/4 before:w-0.5 before:rounded-r-full before:bg-[var(--nv-action-primary)]'
+    : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
+)
+
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
@@ -103,7 +110,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
     <NavLink
       to={to}
       end={end}
-      className={({ isActive }) => clsx('nav-item flex items-center gap-3 px-3 text-sm font-medium', isActive && 'active')}
+      className={({ isActive }) => sidebarNavClassName(isActive)}
       onClick={onMobileClose}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
@@ -171,7 +178,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
               <NavLink
                 key={library.id}
                 to={`/library/${library.id}`}
-                className={({ isActive }) => clsx('nav-item flex items-center gap-3 px-3 text-sm font-medium', isActive && 'active')}
+                className={({ isActive }) => sidebarNavClassName(isActive)}
                 onClick={onMobileClose}
               >
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">{iconForType(library.type)}</span>
