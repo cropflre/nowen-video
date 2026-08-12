@@ -1,92 +1,53 @@
-# Android V2 版本与迁移策略
+# Android 正式替换与迁移策略
 
-本文档记录 Android V2 在 RC1 和首个稳定版本阶段的包名、签名、版本号、升级与旧版迁移决策。
+本文档记录原 Android V2 模块化客户端正式接管 Android V1 后的包名、签名、versionCode、数据迁移和回滚规则。
 
-## 决策摘要
+## 最终决策
 
-| 项目 | RC1 / 首个稳定版本决策 |
+| 项目 | 正式策略 |
 |---|---|
-| 旧版 applicationId | `com.nowen.video` |
-| V2 Release applicationId | `com.nowen.video.v2` |
-| V2 Debug applicationId | `com.nowen.video.v2.debug` |
-| V2 签名 | 使用同一份长期保存的 V2 release keystore |
-| 与旧版关系 | 独立安装、独立数据、互不覆盖 |
-| 服务器迁移 | 用户重新添加，支持手动、局域网发现和二维码 |
-| 登录迁移 | 不复制旧版 Token，用户重新登录 |
-| RC → Stable | 同一 V2 applicationId + 同一签名 + 递增 versionCode，支持覆盖升级 |
+| 历史 V1 applicationId | `com.nowen.video` |
+| 当前正式 Android applicationId | `com.nowen.video` |
+| 当前 Debug applicationId | `com.nowen.video.debug` |
+| 源码 namespace | `com.nowen.video.v2`（仅内部代码边界） |
+| 正式签名 | **必须继续使用 V1 原正式签名证书** |
+| V1 → 当前 Android | 原位覆盖升级 |
+| 服务器配置 | 首次升级自动尝试迁移 |
+| V1 Token / 密码 | 不迁移，必要时重新登录 |
+| 独立 V2 测试包 `com.nowen.video.v2` | 不属于正式升级链，可并行存在后手动卸载 |
 
-## 为什么 RC1 不切换到旧版包名
+## 为什么现在可以接管 `com.nowen.video`
 
-旧版客户端使用 `com.nowen.video`，V2 当前使用 `com.nowen.video.v2`。RC1 继续保留独立包名，原因如下：
+V2 的服务器发现、认证、媒体库、搜索、剧集、原生播放、字幕、历史/收藏、离线下载和多服务器能力已经形成稳定模块边界，并拥有 Android 8 / 13 / 15 的自动化与真机验证链路。继续保留第二个公开包名只会让用户面对“V1 / V2”两个产品入口，因此从本阶段开始：
 
-1. **避免覆盖尚未完成全量真机验证的旧版客户端。** 用户可以同时保留旧版和 V2，对比播放、下载和连接结果。
-2. **Android 应用数据按 applicationId 隔离。** 直接改成旧包名并不等于安全迁移，还必须拥有完全相同的签名，并处理旧版 DataStore、Room、缓存和偏好结构。
-3. **旧版会话模型与 V2 不同。** 旧版服务器资料中包含明文 Token；V2 使用 Android Keystore + AES/GCM 按服务器加密 Token，不能简单复制文件。
-4. **保留回退路径。** V2 出现设备兼容问题时，用户仍可打开旧版，不需要卸载、降级或清除数据。
+**V2 是代码代际名称，不再是产品名称。对外只有 Nowen Video Android。**
 
-在 V2 完成至少一个稳定版本周期、真机覆盖和迁移演练之前，不切换 `com.nowen.video`。
+## 覆盖升级的三个硬条件
 
-## 为什么不自动读取旧版数据
+Android 原位升级必须同时满足：
 
-旧版和 V2 处于不同 Android 沙箱：
+1. applicationId 相同：`com.nowen.video`；
+2. 签名证书相同；
+3. 新 APK versionCode 高于设备已安装版本。
 
-- 旧版 DataStore：`nowen_prefs`、`server_profiles`
-- V2 DataStore：`nowen_v2_session`
-- V2 凭据：`nowen_v2_credentials` + Android Keystore
+代码已经把这三项都纳入正式发布链路。
 
-不同 applicationId 默认无法读取对方的私有 DataStore、SharedPreferences 或数据库。为绕过系统隔离而增加导出组件、共享 UID 或宽泛文件权限，会扩大凭据泄露面，因此 RC1 不采用。
+### applicationId
 
-### RC1 迁移行为
+`clients/android-v2/app/build.gradle.kts` 的 Release applicationId 已接管 `com.nowen.video`。源码 package/namespace 暂时保留 `com.nowen.video.v2`，避免为了产品命名做大范围 Kotlin 包迁移而引入无意义回归。
 
-- V2 首次启动明确提示：不会覆盖或读取旧版数据。
-- 用户通过局域网发现、二维码或手动地址重新添加服务器。
-- 用户重新输入账号密码登录。
-- V2 登录后仅在自己的 Android Keystore 加密存储 Token。
-- 旧版数据保持原样，卸载 V2 不影响旧版。
+### 签名
 
-### 后续可选迁移能力
+正式发布 workflow 继续沿用现有 `ANDROID_V2_*` Secret 名称，避免仓库配置一次性迁移，但这些 Secret **现在必须装载历史 V1 的 release keystore**。
 
-未来如需降低迁移成本，只迁移非敏感信息：
+发布时不仅校验配置的 SHA-256，还会下载已经公开发布的 `v1.2.5` V1 APK，现场读取其签名证书并与新 APK 比对。两者不一致时发布直接失败，禁止生成“必须卸载旧版才能安装”的伪升级版本。
 
-- 由旧版显式导出服务器名称和 URL；
-- 使用带用户确认的二维码或 `nowen-video://server` 深链导入；
-- 不导出密码、JWT、刷新凭据或 Android Keystore 密钥；
-- 导入后仍执行服务器健康检测并要求重新登录。
+### versionCode
 
-## 版本名称规则
-
-允许以下格式：
+`scripts/android-v2-version.sh` 是唯一计算来源。当前公式在原模块化版本规则上增加 `10,000,000` 的正式接管偏移：
 
 ```text
-MAJOR.MINOR.PATCH-alpha.N
-MAJOR.MINOR.PATCH-beta.N
-MAJOR.MINOR.PATCH-rc.N
-MAJOR.MINOR.PATCH
-```
-
-约束：
-
-- `MAJOR`：0–199
-- `MINOR`：0–99
-- `PATCH`：0–99
-- 预发布序号 `N`：1–99
-- 不接受 `preview`、`snapshot`、无序号 RC 等自由格式
-
-示例：
-
-```text
-0.1.0-alpha.1
-0.1.0-beta.1
-0.1.0-rc.1
-0.1.0
-```
-
-## versionCode 规则
-
-`scripts/android-v2-version.sh` 是唯一计算来源：
-
-```text
-base = MAJOR * 10,000,000 + MINOR * 100,000 + PATCH * 1,000
+base = 10,000,000 + MAJOR * 10,000,000 + MINOR * 100,000 + PATCH * 1,000
 
 alpha.N = base + 100 + N
 beta.N  = base + 300 + N
@@ -94,7 +55,7 @@ rc.N    = base + 500 + N
 stable  = base + 999
 ```
 
-因此同一语义版本始终满足：
+这保证任何正式接管版本都高于历史 V1 的 versionCode 区间，同时保持：
 
 ```text
 alpha < beta < rc < stable
@@ -104,47 +65,77 @@ alpha < beta < rc < stable
 
 | versionName | versionCode |
 |---|---:|
-| `0.1.0-alpha.1` | `100101` |
-| `0.1.0-beta.1` | `100301` |
-| `0.1.0-rc.1` | `100501` |
-| `0.1.0` | `100999` |
-| `1.2.3-rc.4` | `10203504` |
-| `1.2.3` | `10203999` |
+| `0.1.0-alpha.1` | `10100101` |
+| `0.1.0-beta.1` | `10100301` |
+| `0.1.0-rc.1` | `10100501` |
+| `0.1.0` | `10100999` |
+| `1.2.3-rc.4` | `20203504` |
+| `1.2.3` | `20203999` |
 
-发布 workflow 不再允许手工填写 versionCode，防止覆盖升级失败或版本倒退。
+正式版本应与仓库产品版本保持一致，例如 `v1.2.9` 标签生成 Android `1.2.9`，而不是重新从 `0.1.0` 对用户计数。
 
-## 渠道与安装关系
+## V1 数据迁移
 
-| 构建 | applicationId | 签名 | 是否覆盖 V2 Release |
-|---|---|---|---|
-| Debug | `com.nowen.video.v2.debug` | Android debug key | 否，可并行安装 |
-| RC | `com.nowen.video.v2` | V2 release key | 是 |
-| Stable | `com.nowen.video.v2` | 同一 V2 release key | 是 |
-| 旧版 | `com.nowen.video` | 旧版 release key | 否，可并行安装 |
+切回相同 applicationId 后，新客户端会运行在原 V1 Android sandbox 中，因此可以读取 V1 私有 DataStore，而不需要共享 UID、导出组件或存储权限。
 
-RC 与 Stable 必须使用相同的正式 V2 keystore。临时 CI keystore 产物只用于构建验证，不能分发给用户。
+已支持读取：
 
-## 升级与回滚矩阵
+- `server_profiles`：多服务器名称、URL、活跃服务器；
+- `nowen_prefs`：非常旧版本保存的单一 `server_url` 作为兜底。
 
-| 场景 | 预期结果 | 验证要求 |
-|---|---|---|
-| 旧版 + V2 RC 并行安装 | 两个图标、数据互不影响 | 必测 |
-| V2 RC1 → RC2 | 原位升级，服务器和登录会话保留 | 必测 |
-| V2 RC → Stable | 原位升级，下载记录和偏好保留 | 必测 |
-| V2 Stable → 更高 Stable | 原位升级 | 必测 |
-| V2 高 versionCode → 低 versionCode | Android 默认拒绝安装 | 预期行为 |
-| 卸载 V2 后重装 | V2 本地数据清除，旧版不受影响 | 必测 |
-| V2 故障时打开旧版 | 旧版继续可用 | 必测 |
+迁移行为：
 
-不把 APK 降级作为正式回滚方案。发布失败时应修复并发布更高 versionCode；需要保留用户数据时不得要求卸载。
+1. 在当前会话初始化前执行一次；
+2. 对 URL 做当前客户端的标准化与合法性校验；
+3. 导入服务器名称、URL 和活跃服务器选择；
+4. 写入 `nowen_v2_session`；
+5. 写入一次性迁移标记，后续启动不重复导入。
 
-## 切换正式旧包名的前置条件
+### 为什么不迁移 Token
 
-只有同时满足以下条件，才重新评估 V2 是否接管 `com.nowen.video`：
+V1 的 `server_profiles` / `nowen_prefs` 曾以普通偏好值保存 JWT；当前 Android 使用 `Android Keystore + AES/GCM` 的 `nowen_v2_credentials`。把旧明文 Token 直接搬进新凭据层会扩大凭据暴露面，也可能把已经失效的会话带入新客户端。
 
-- V2 至少完成一个稳定版本周期；
-- P0 真机回归覆盖 Android 8、13、15；
-- 已确认旧版正式签名可安全用于 V2，或有明确的新包迁移方案；
-- 已设计并验证旧版数据导出/导入或明确放弃迁移的用户告知；
-- 覆盖升级、回滚、下载文件和会话恢复测试通过；
-- 发布说明明确告知用户风险与操作步骤。
+因此：
+
+- **服务器地址迁移；**
+- **Token、密码不迁移；**
+- 用户升级后如进入登录页，重新登录一次即可；
+- 新 Token 只进入 Android Keystore 保护的凭据仓库。
+
+## 安装矩阵
+
+| 场景 | 结果 |
+|---|---|
+| 官方 V1 → 当前正式 Android | `adb install -r` / 系统更新，原位覆盖 |
+| 当前正式 Android → 更高版本 | 原位覆盖，当前数据保留 |
+| 高 versionCode → 低 versionCode | Android 默认拒绝，预期行为 |
+| `com.nowen.video.v2` 旧测试包 + 当前正式版 | 两者可暂时并存，互不迁移 |
+| Debug + Release | `com.nowen.video.debug` 与 `com.nowen.video` 可并行 |
+| 先卸载 V1 再安装当前版 | 无法读取 V1 私有数据，不推荐 |
+
+## 回滚策略
+
+不使用 APK 降级作为生产回滚，也不要求用户卸载应用。
+
+如果正式 Android 出现严重问题：
+
+1. 停止继续放量；
+2. 修复问题；
+3. 用相同 V1 正式签名发布更高 versionCode；
+4. 用户直接覆盖升级到修复版本。
+
+旧 `android/` V1 源码继续保留在仓库中作为迁移、数据格式和历史兼容参考，但**不再参与正式 Android 发布**。
+
+## 发布验收
+
+正式 Android 发布至少满足：
+
+- Release applicationId 为 `com.nowen.video`；
+- versionCode 高于 V1 区间且与版本脚本一致；
+- APK / AAB 均成功签名；
+- APK 签名与历史 V1 正式 APK 一致；
+- release manifest、SHA256SUMS 与实际产物一致；
+- V1 覆盖安装成功，不要求卸载；
+- V1 服务器地址迁移成功；
+- 未迁移旧明文 Token；
+- Android 8 / 13 / 15 启动、登录、播放和下载关键链路通过。
