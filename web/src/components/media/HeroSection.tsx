@@ -112,7 +112,7 @@ export default function HeroSection({
 
   return (
     <>
-      <section className="relative isolate overflow-hidden border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+      <section className="relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
         <div className="absolute inset-x-0 top-0 h-[clamp(20rem,42vw,34rem)] overflow-hidden">
           <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
             <img
