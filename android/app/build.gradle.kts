@@ -1,93 +1,66 @@
-import java.io.ByteArrayOutputStream
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
 }
 
-fun String.normalizedAppVersion(): String? {
-    val cleaned = removePrefix("refs/tags/").removePrefix("v").trim()
-    return cleaned.takeIf { it.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$")) }
+fun environmentValue(name: String): String? =
+    providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = environmentValue("ANDROID_SIGNING_STORE_FILE")
+val releaseStorePassword = environmentValue("ANDROID_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = environmentValue("ANDROID_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = environmentValue("ANDROID_SIGNING_KEY_PASSWORD")
+val releaseSigningValues = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val hasAnyReleaseSigningValue = releaseSigningValues.any { it != null }
+val hasReleaseSigning = releaseSigningValues.all { it != null }
+
+check(!hasAnyReleaseSigningValue || hasReleaseSigning) {
+    "Android release signing is partially configured. Set ANDROID_SIGNING_STORE_FILE, " +
+        "ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS and ANDROID_SIGNING_KEY_PASSWORD together."
 }
 
-fun gitTagVersion(): String? = runCatching {
-    val output = ByteArrayOutputStream()
-    exec {
-        commandLine("git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*")
-        standardOutput = output
-        isIgnoreExitValue = true
-    }
-    output.toString().normalizedAppVersion()
-}.getOrNull()
-
-fun resolveAppVersion(): String = listOfNotNull(
-    System.getenv("NOWEN_VERSION"),
-    System.getenv("APP_VERSION"),
-    System.getenv("GITHUB_REF_NAME"),
-    gitTagVersion()
-).firstNotNullOfOrNull { it.normalizedAppVersion() } ?: "0.1.0"
-
-fun appVersionCode(version: String): Int {
-    val base = version.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-    val major = base.getOrElse(0) { 0 }.coerceIn(0, 999)
-    val minor = base.getOrElse(1) { 0 }.coerceIn(0, 999)
-    val patch = base.getOrElse(2) { 0 }.coerceIn(0, 999)
-    return major * 1_000_000 + minor * 1_000 + patch
+val versionNameInput = environmentValue("ANDROID_VERSION_NAME")
+val versionCodeInput = environmentValue("ANDROID_VERSION_CODE")
+check((versionNameInput == null) == (versionCodeInput == null)) {
+    "ANDROID_VERSION_NAME and ANDROID_VERSION_CODE must be configured together. " +
+        "Use scripts/android-version.sh to derive the version code."
 }
-
-val appVersionName = resolveAppVersion()
-
-// 读取 release signing 配置
-val keystorePropertiesFile = rootProject.file("local.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(keystorePropertiesFile.inputStream())
-}
+val resolvedVersionCode = versionCodeInput?.toIntOrNull()
+    ?: if (versionCodeInput == null) 10_209_999 else error("ANDROID_VERSION_CODE must be a positive integer.")
+check(resolvedVersionCode > 0) { "ANDROID_VERSION_CODE must be a positive integer." }
+val resolvedVersionName = versionNameInput ?: "1.2.9"
 
 android {
-    namespace = "com.nowen.video"
+    // The modular implementation keeps its existing source namespace to avoid a
+    // risky package-only rewrite. The public product identity is com.nowen.video.
+    namespace = "com.nowen.video.v2"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.nowen.video"
         minSdk = 26
         targetSdk = 35
-        versionCode = appVersionCode(appVersionName)
-        versionName = appVersionName
-
+        versionCode = resolvedVersionCode
+        versionName = resolvedVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        getByName("debug") {
-            // 使用 Android SDK 自带的 debug.keystore
-        }
-        create("release") {
-            // 从 local.properties 或环境变量读取签名配置
-            // 配置方式：在 local.properties 中添加：
-            //   RELEASE_STORE_FILE=path/to/nowen-release.keystore
-            //   RELEASE_STORE_PASSWORD=your-password
-            //   RELEASE_KEY_ALIAS=nowen-video
-            //   RELEASE_KEY_PASSWORD=your-password
-            val storeFilePath = keystoreProperties.getProperty("RELEASE_STORE_FILE")
-                ?: System.getenv("RELEASE_STORE_FILE")
-            if (storeFilePath != null) {
-                storeFile = file(storeFilePath)
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
-            storePassword = keystoreProperties.getProperty("RELEASE_STORE_PASSWORD")
-                ?: System.getenv("RELEASE_STORE_PASSWORD")
-                ?: ""
-            keyAlias = keystoreProperties.getProperty("RELEASE_KEY_ALIAS")
-                ?: System.getenv("RELEASE_KEY_ALIAS")
-                ?: ""
-            keyPassword = keystoreProperties.getProperty("RELEASE_KEY_PASSWORD")
-                ?: System.getenv("RELEASE_KEY_PASSWORD")
-                ?: ""
         }
     }
 
@@ -95,82 +68,59 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
         debug {
-            isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
 }
 
 dependencies {
-    // AndroidX 核心
+    implementation(project(":feature:main"))
+    implementation(project(":core:data"))
+    implementation(project(":core:model"))
+    implementation(project(":core:designsystem"))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
-
-    // Compose
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
-    debugImplementation(libs.androidx.ui.tooling)
-
-    // Navigation
-    implementation(libs.androidx.navigation.compose)
-
-    // Hilt DI
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.material3)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
-
-    // 网络
-    implementation(libs.retrofit)
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
-    implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit.kotlinx.serialization)
-
-    // 图片加载
-    implementation(libs.coil.compose)
-
-    // 播放器
     implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls)
-    implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.coil.compose)
+    implementation(libs.okhttp)
 
-    // Room 数据库
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
-    // DataStore
-    implementation(libs.datastore.preferences)
-
-    // 协程
-    implementation(libs.kotlinx.coroutines.android)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
