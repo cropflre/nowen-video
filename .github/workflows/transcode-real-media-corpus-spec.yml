@@ -3,7 +3,7 @@ name: Transcode Real Media Corpus Spec
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-real-media-corpus-spec/**'
       - 'internal/transcode/realmediacorpus/**'

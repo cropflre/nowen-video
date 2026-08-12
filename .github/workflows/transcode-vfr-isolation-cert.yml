@@ -3,7 +3,7 @@ name: Transcode VFR Layer Isolation Certification
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-vfr-isolation-cert/**'
       - 'internal/service/ffmpeg/**'

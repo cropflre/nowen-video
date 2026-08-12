@@ -3,7 +3,7 @@ name: Transcode Output Cadence Certification
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-output-cadence-cert/**'
       - 'internal/service/ffmpeg/**'

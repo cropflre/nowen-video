@@ -3,7 +3,7 @@ name: Transcode Encoder Time-Base Candidate Certification
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-encoder-time-base-cert/**'
       - 'internal/service/ffmpeg/**'

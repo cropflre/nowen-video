@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'internal/model/transcode_execution.go'
       - 'internal/model/transcode_storage_reservation.go'

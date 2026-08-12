@@ -3,7 +3,7 @@ name: Transcode A/V Boundary Sync Certification
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-fixture-cert/**'
       - 'internal/service/ffmpeg/**'
