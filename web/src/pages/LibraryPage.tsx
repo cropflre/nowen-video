@@ -6,7 +6,9 @@ import type { Media, MixedItem, Series } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
 import {
+  Calendar,
   Film,
+  Globe,
   Grid3X3,
   LayoutGrid,
   LayoutList,
@@ -14,6 +16,7 @@ import {
   Search,
   SlidersHorizontal,
   Star,
+  Tag as TagIcon,
   Tv,
   X,
 } from 'lucide-react'
@@ -40,6 +43,23 @@ const SORT_OPTIONS = [
   { value: 'year_asc', label: '年份最早' },
   { value: 'title_asc', label: '名称 A-Z' },
   { value: 'title_desc', label: '名称 Z-A' },
+]
+
+const YEAR_RANGES = [
+  { label: '全部', min: 0, max: 0 },
+  { label: '2024-2026', min: 2024, max: 2026 },
+  { label: '2020-2023', min: 2020, max: 2023 },
+  { label: '2010-2019', min: 2010, max: 2019 },
+  { label: '2000-2009', min: 2000, max: 2009 },
+  { label: '更早', min: 0, max: 1999 },
+]
+
+const RATING_OPTIONS = [
+  { label: '不限', value: 0 },
+  { label: '≥6分', value: 6 },
+  { label: '≥7分', value: 7 },
+  { label: '≥8分', value: 8 },
+  { label: '≥9分', value: 9 },
 ]
 
 type LibraryViewMode = 'grid' | 'list' | 'poster'
@@ -74,6 +94,29 @@ function FilterChip({
     >
       {children}
     </button>
+  )
+}
+
+function FilterGroup({
+  icon,
+  label,
+  count,
+  children,
+}: {
+  icon: ReactNode
+  label: string
+  count?: number
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2 text-xs font-semibold text-[var(--nv-text-secondary)]">
+        <span className="text-[var(--nv-text-tertiary)]" aria-hidden="true">{icon}</span>
+        <span>{label}</span>
+        {!!count && <Tag tone="brand">{count}</Tag>}
+      </div>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
   )
 }
 
@@ -149,7 +192,16 @@ export default function LibraryPage() {
   const viewMode = parseViewMode(searchParams.get('view'))
   const searchQuery = searchParams.get('q') || ''
   const sortValue = searchParams.get('sort') || 'created_desc'
-  const filterGenre = searchParams.get('genre') || ''
+  const selectedGenres = useMemo(() => {
+    const genres = searchParams.get('genres') || searchParams.get('genre') || ''
+    return genres.split(',').map((value) => value.trim()).filter(Boolean)
+  }, [searchParams])
+  const selectedCountry = searchParams.get('country') || ''
+  const yearRange = useMemo<{ min: number; max: number }>(() => ({
+    min: parseInt(searchParams.get('year_min') || '0', 10) || 0,
+    max: parseInt(searchParams.get('year_max') || '0', 10) || 0,
+  }), [searchParams])
+  const minRating = parseInt(searchParams.get('rating') || '0', 10) || 0
 
   const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
   const [seriesList, setSeriesList] = useState<Series[]>([])
@@ -164,6 +216,7 @@ export default function LibraryPage() {
       if (value === null) next.delete(key)
       else next.set(key, value)
     }
+    if ('genres' in changes) next.delete('genre')
     if (!('page' in changes)) next.delete('page')
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
@@ -183,6 +236,25 @@ export default function LibraryPage() {
   const setViewMode = useCallback((nextMode: LibraryViewMode) => {
     updateUrl({ view: nextMode === 'grid' ? null : nextMode })
   }, [updateUrl])
+
+  const clearAllFilters = useCallback(() => {
+    updateUrl({
+      q: null,
+      genres: null,
+      genre: null,
+      country: null,
+      year_min: null,
+      year_max: null,
+      rating: null,
+    })
+  }, [updateUrl])
+
+  const toggleGenre = useCallback((genre: string) => {
+    const next = selectedGenres.includes(genre)
+      ? selectedGenres.filter((value) => value !== genre)
+      : [...selectedGenres, genre]
+    updateUrl({ genres: next.length > 0 ? next.join(',') : null })
+  }, [selectedGenres, updateUrl])
 
   useEffect(() => {
     if (!id) return
@@ -220,27 +292,42 @@ export default function LibraryPage() {
     return () => { cancelled = true }
   }, [id, page, size, toast])
 
-  const allGenres = useMemo(() => {
+  const { allGenres, allCountries } = useMemo(() => {
     const genres = new Set<string>()
-    const collect = (value?: string) => {
-      if (!value) return
-      value.split(',').forEach((genre) => {
-        const trimmed = genre.trim()
-        if (trimmed) genres.add(trimmed)
-      })
+    const countries = new Set<string>()
+
+    const collect = (genreText?: string, countryText?: string) => {
+      if (genreText) {
+        genreText.split(',').forEach((genre) => {
+          const trimmed = genre.trim()
+          if (trimmed) genres.add(trimmed)
+        })
+      }
+      if (countryText) {
+        countryText.split(',').forEach((country) => {
+          const trimmed = country.trim()
+          if (trimmed) countries.add(trimmed)
+        })
+      }
     }
 
     mixedItems.forEach((item) => {
-      collect(item.type === 'series' ? item.series?.genres : item.media?.genres)
+      if (item.type === 'series' && item.series) collect(item.series.genres, item.series.country)
+      else if (item.media) collect(item.media.genres, item.media.country)
     })
-    seriesList.forEach((series) => collect(series.genres))
-    return Array.from(genres).sort()
+    seriesList.forEach((series) => collect(series.genres, series.country))
+
+    return {
+      allGenres: Array.from(genres).sort(),
+      allCountries: Array.from(countries).sort(),
+    }
   }, [mixedItems, seriesList])
 
   const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
   const getItemOrigTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.orig_title || '') : (item.media?.orig_title || '')
   const getItemOverview = (item: MixedItem) => item.type === 'series' ? (item.series?.overview || '') : (item.media?.overview || '')
   const getItemGenres = (item: MixedItem) => item.type === 'series' ? (item.series?.genres || '') : (item.media?.genres || '')
+  const getItemCountry = (item: MixedItem) => item.type === 'series' ? (item.series?.country || '') : (item.media?.country || '')
   const getItemYear = (item: MixedItem) => item.type === 'series' ? (item.series?.year || 0) : (item.media?.year || 0)
   const getItemRating = (item: MixedItem) => item.type === 'series' ? (item.series?.rating || 0) : (item.media?.rating || 0)
   const getItemTime = (item: MixedItem) => item.type === 'series' ? (item.series?.created_at || '') : (item.media?.created_at || '')
@@ -257,7 +344,30 @@ export default function LibraryPage() {
       )
     }
 
-    if (filterGenre) items = items.filter((item) => getItemGenres(item).includes(filterGenre))
+    if (selectedGenres.length > 0) {
+      items = items.filter((item) => {
+        const genres = getItemGenres(item)
+        return selectedGenres.every((genre) => genres.includes(genre))
+      })
+    }
+
+    if (selectedCountry) {
+      items = items.filter((item) => getItemCountry(item).includes(selectedCountry))
+    }
+
+    if (yearRange.min > 0 || yearRange.max > 0) {
+      items = items.filter((item) => {
+        const year = getItemYear(item)
+        if (year === 0) return false
+        if (yearRange.min > 0 && year < yearRange.min) return false
+        if (yearRange.max > 0 && year > yearRange.max) return false
+        return true
+      })
+    }
+
+    if (minRating > 0) {
+      items = items.filter((item) => getItemRating(item) >= minRating)
+    }
 
     const [field, direction] = sortValue.split('_')
     items.sort((a, b) => {
@@ -270,7 +380,7 @@ export default function LibraryPage() {
     })
 
     return items
-  }, [mixedItems, searchQuery, filterGenre, sortValue])
+  }, [mixedItems, searchQuery, selectedGenres, selectedCountry, yearRange, minRating, sortValue])
 
   const deduplicatedSeries = useMemo(() => {
     const normalize = (title: string) => title
@@ -330,7 +440,30 @@ export default function LibraryPage() {
       )
     }
 
-    if (filterGenre) items = items.filter((series) => (series.genres || '').includes(filterGenre))
+    if (selectedGenres.length > 0) {
+      items = items.filter((series) => {
+        const genres = series.genres || ''
+        return selectedGenres.every((genre) => genres.includes(genre))
+      })
+    }
+
+    if (selectedCountry) {
+      items = items.filter((series) => (series.country || '').includes(selectedCountry))
+    }
+
+    if (yearRange.min > 0 || yearRange.max > 0) {
+      items = items.filter((series) => {
+        const year = series.year || 0
+        if (year === 0) return false
+        if (yearRange.min > 0 && year < yearRange.min) return false
+        if (yearRange.max > 0 && year > yearRange.max) return false
+        return true
+      })
+    }
+
+    if (minRating > 0) {
+      items = items.filter((series) => (series.rating || 0) >= minRating)
+    }
 
     const [field, direction] = sortValue.split('_')
     items.sort((a, b) => {
@@ -343,7 +476,7 @@ export default function LibraryPage() {
     })
 
     return items
-  }, [deduplicatedSeries, searchQuery, filterGenre, sortValue])
+  }, [deduplicatedSeries, searchQuery, selectedGenres, selectedCountry, yearRange, minRating, sortValue])
 
   const pagedMixed = useMemo(() => {
     if (serverPaginated) return filteredMixed
@@ -356,10 +489,17 @@ export default function LibraryPage() {
     return filteredSeries.slice(start, start + size)
   }, [filteredSeries, page, size])
 
-  const allTotal = serverPaginated && !searchQuery && !filterGenre ? total : filteredMixed.length
+  const activeFilterCount = [
+    selectedGenres.length > 0,
+    selectedCountry !== '',
+    yearRange.min > 0 || yearRange.max > 0,
+    minRating > 0,
+  ].filter(Boolean).length
+
+  const hasLocalFilter = Boolean(searchQuery) || activeFilterCount > 0
+  const allTotal = serverPaginated && !hasLocalFilter ? total : filteredMixed.length
   const resultCount = viewTab === 'all' ? allTotal : filteredSeries.length
   const totalPages = Math.ceil(resultCount / size)
-  const hasLocalFilter = Boolean(searchQuery || filterGenre)
   const hasSeries = deduplicatedSeries.length > 0
 
   useEffect(() => {
@@ -427,20 +567,18 @@ export default function LibraryPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {allGenres.length > 0 && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowFilters((value) => !value)}
-                aria-expanded={showFilters}
-                className={filterGenre ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
-              >
-                <SlidersHorizontal size={14} aria-hidden="true" />
-                筛选
-                {filterGenre && <Tag tone="brand">1</Tag>}
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowFilters((value) => !value)}
+              aria-expanded={showFilters}
+              className={activeFilterCount > 0 ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
+            >
+              <SlidersHorizontal size={14} aria-hidden="true" />
+              筛选
+              {activeFilterCount > 0 && <Tag tone="brand">{activeFilterCount}</Tag>}
+            </Button>
 
             <Select
               value={sortValue}
@@ -473,7 +611,7 @@ export default function LibraryPage() {
       </Surface>
 
       <AnimatePresence initial={false}>
-        {showFilters && allGenres.length > 0 && (
+        {showFilters && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -481,31 +619,65 @@ export default function LibraryPage() {
             transition={{ duration: 0.2, ease: easeSmooth as unknown as [number, number, number, number] }}
             className="overflow-hidden"
           >
-            <Surface className="space-y-4 p-4 sm:p-5">
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--nv-text-secondary)]">
-                  <span>类型标签</span>
-                  {filterGenre && <Tag tone="brand">1</Tag>}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <FilterChip selected={!filterGenre} onClick={() => updateUrl({ genre: null })}>全部</FilterChip>
+            <Surface className="space-y-5 p-4 sm:p-5">
+              {allGenres.length > 0 && (
+                <FilterGroup icon={<TagIcon size={13} />} label="类型标签" count={selectedGenres.length}>
                   {allGenres.map((genre) => (
-                    <FilterChip
-                      key={genre}
-                      selected={filterGenre === genre}
-                      onClick={() => updateUrl({ genre: filterGenre === genre ? null : genre })}
-                    >
+                    <FilterChip key={genre} selected={selectedGenres.includes(genre)} onClick={() => toggleGenre(genre)}>
                       {genre}
                     </FilterChip>
                   ))}
-                </div>
-              </div>
+                </FilterGroup>
+              )}
 
-              {filterGenre && (
-                <div className="flex justify-end border-t border-[var(--nv-border-subtle)] pt-3">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => updateUrl({ genre: null })}>
+              {allCountries.length > 0 && (
+                <FilterGroup icon={<Globe size={13} />} label="地区">
+                  <FilterChip selected={!selectedCountry} onClick={() => updateUrl({ country: null })}>全部</FilterChip>
+                  {allCountries.map((country) => (
+                    <FilterChip
+                      key={country}
+                      selected={selectedCountry === country}
+                      onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}
+                    >
+                      {country}
+                    </FilterChip>
+                  ))}
+                </FilterGroup>
+              )}
+
+              <FilterGroup icon={<Calendar size={13} />} label="年份">
+                {YEAR_RANGES.map((range) => (
+                  <FilterChip
+                    key={range.label}
+                    selected={yearRange.min === range.min && yearRange.max === range.max}
+                    onClick={() => updateUrl({
+                      year_min: range.min > 0 ? String(range.min) : null,
+                      year_max: range.max > 0 ? String(range.max) : null,
+                    })}
+                  >
+                    {range.label}
+                  </FilterChip>
+                ))}
+              </FilterGroup>
+
+              <FilterGroup icon={<Star size={13} />} label="最低评分">
+                {RATING_OPTIONS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    selected={minRating === option.value}
+                    onClick={() => updateUrl({ rating: option.value > 0 ? String(option.value) : null })}
+                  >
+                    {option.label}
+                  </FilterChip>
+                ))}
+              </FilterGroup>
+
+              {activeFilterCount > 0 && (
+                <div className="flex flex-col gap-3 border-t border-[var(--nv-border-subtle)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-xs text-[var(--nv-text-tertiary)]">已选择 {activeFilterCount} 个筛选条件</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearAllFilters}>
                     <X size={13} aria-hidden="true" />
-                    清除筛选
+                    清除所有筛选
                   </Button>
                 </div>
               )}
@@ -514,15 +686,30 @@ export default function LibraryPage() {
         )}
       </AnimatePresence>
 
+      {selectedGenres.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" aria-label="已选类型标签">
+          <span className="text-xs text-[var(--nv-text-tertiary)]">已选标签</span>
+          {selectedGenres.map((genre) => (
+            <Tag key={genre} tone="brand">
+              {genre}
+              <button
+                type="button"
+                onClick={() => toggleGenre(genre)}
+                aria-label={`移除 ${genre} 标签`}
+                className="ml-0.5 inline-flex rounded-full p-0.5 hover:bg-[var(--nv-bg-hover)]"
+              >
+                <X size={10} aria-hidden="true" />
+              </button>
+            </Tag>
+          ))}
+          <Button type="button" variant="ghost" size="sm" onClick={() => updateUrl({ genres: null })}>清除</Button>
+        </div>
+      )}
+
       {hasLocalFilter && (
         <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--nv-text-secondary)]" aria-live="polite">
           <span>找到 <strong className="font-semibold text-[var(--nv-text-primary)]">{resultCount}</strong> 个结果</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => updateUrl({ q: null, genre: null })}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={clearAllFilters}>
             <X size={13} aria-hidden="true" />
             清除筛选
           </Button>
@@ -546,7 +733,7 @@ export default function LibraryPage() {
                 title={hasLocalFilter ? '没有找到匹配的内容' : '此媒体库暂无内容'}
                 description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '扫描媒体库后，内容会显示在这里。'}
                 action={hasLocalFilter ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={() => updateUrl({ q: null, genre: null })}>
+                  <Button type="button" variant="secondary" size="sm" onClick={clearAllFilters}>
                     清除所有筛选
                   </Button>
                 ) : undefined}
@@ -605,6 +792,11 @@ export default function LibraryPage() {
               icon={<Tv size={26} aria-hidden="true" />}
               title={hasLocalFilter ? '没有找到匹配的剧集' : '此媒体库暂无剧集合集'}
               description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '识别到剧集后，合集会显示在这里。'}
+              action={hasLocalFilter ? (
+                <Button type="button" variant="secondary" size="sm" onClick={clearAllFilters}>
+                  清除所有筛选
+                </Button>
+              ) : undefined}
             />
           ) : viewMode === 'grid' ? (
             <motion.div
