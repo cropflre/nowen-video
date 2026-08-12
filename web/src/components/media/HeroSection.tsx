@@ -23,7 +23,6 @@ import {
   Star,
   Trash2,
   Unlink,
-  Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -46,7 +45,9 @@ interface HeroSectionProps {
   onRefreshMetadata?: () => void
   onEditMetadata?: () => void
   onDelete?: () => void
+  /** @deprecated 预处理操作已从影片详情菜单移除，保留兼容旧调用方。 */
   onPreprocess?: () => void
+  /** @deprecated 强制转码已从影片详情菜单移除，保留兼容旧调用方。 */
   onTranscode?: () => void
 }
 
@@ -71,8 +72,6 @@ export default function HeroSection({
   onRefreshMetadata,
   onEditMetadata,
   onDelete,
-  onPreprocess,
-  onTranscode,
 }: HeroSectionProps) {
   const toast = useToast()
   const { t } = useTranslation()
@@ -344,16 +343,6 @@ export default function HeroSection({
                           role="menuitem"
                         >
                           <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
-                        </button>
-                        <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
-                        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">
-                          预处理与转码
-                        </div>
-                        <button onClick={() => { onPreprocess?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                          <Zap size={14} aria-hidden="true" /> 手动预处理
-                        </button>
-                        <button onClick={() => { onTranscode?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                          <Clapperboard size={14} aria-hidden="true" /> 强制重新转码
                         </button>
                         <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
                       </>
