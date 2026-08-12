@@ -7,7 +7,7 @@ import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
-import { Zap, Loader2, Cpu, ArrowLeft } from 'lucide-react'
+import { Zap, Loader2, Cpu } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
 import { DesktopPlayerBadge, MpvEmbedPlayer, useDesktop, usePlayerEngine, type MediaProfile } from '@/desktop'
 import { getMediaCapabilities, type BrowserMediaCapability } from '@/utils/media-capabilities'
@@ -200,16 +200,6 @@ export default function PlayerPage() {
 
   return (
     <div className="group/player relative h-screen w-screen bg-[var(--nv-player-canvas)]">
-      <button
-        type="button"
-        onClick={handleBack}
-        aria-label="返回"
-        title="返回"
-        className="absolute left-4 top-4 z-[60] flex h-9 w-9 items-center justify-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md transition-[background-color,border-color,transform] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]"
-      >
-        <ArrowLeft size={18} aria-hidden="true" />
-      </button>
-
       <div className="absolute right-4 top-4 z-50 flex flex-col items-end gap-2">
         {playInfo.is_strm && <STRMDiagnostics mediaId={id} compact />}
         <DesktopPlayerBadge
