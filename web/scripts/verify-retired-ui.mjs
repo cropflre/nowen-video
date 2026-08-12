@@ -23,12 +23,19 @@ const retiredDistPatterns = [
 const sourceAllowlist = new Set(['index.css'])
 const retiredSourcePatterns = [
   { name: '旧 Neon/Glass utility', regex: /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g },
+  { name: '旧 Neon Tailwind utility', regex: /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g },
+  { name: '旧 Neon gradient utility', regex: /\bbg-neon-gradient(?:-[hv])?\b/g },
+  { name: '旧 Neon animation utility', regex: /\banimate-(?:neon-breathe|glow-pulse|energy-flow)\b/g },
+  { name: '旧 Glass/shadow utility', regex: /\bshadow-(?:glass|inner-glow|neon-glow)\b/g },
+  { name: '旧 Theme Tailwind utility', regex: /\b(?:text|bg|border)-theme-[A-Za-z0-9-]+\b/g },
+  { name: '旧 Surface Tailwind utility', regex: /\b(?:text|bg|border)-surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
   { name: '旧 Neon CSS token', regex: /var\(--neon-[A-Za-z0-9-]+\)/g },
   { name: '旧 Glass CSS token', regex: /var\(--glass-[A-Za-z0-9-]+\)/g },
   { name: '旧背景 CSS token', regex: /var\(--bg-[A-Za-z0-9-]+\)/g },
   { name: '旧文字 CSS token', regex: /var\(--text-[A-Za-z0-9-]+\)/g },
   { name: '旧边框 CSS token', regex: /var\(--border-[A-Za-z0-9-]+\)/g },
   { name: '旧阴影 CSS token', regex: /var\(--shadow-[A-Za-z0-9-]+\)/g },
+  { name: '旧 Surface CSS token', regex: /var\(--surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
 ]
 
 async function collectFiles(directory, extensions) {
