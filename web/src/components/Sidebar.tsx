@@ -296,7 +296,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
       <motion.aside
         className={clsx(
           sidebarShellClassName,
-          'relative z-20 hidden h-screen flex-shrink-0 flex-col overflow-hidden md:flex',
+          'relative z-20 hidden h-full flex-shrink-0 flex-col overflow-hidden md:flex',
         )}
         animate={collapsed ? 'collapsed' : 'expanded'}
         variants={sidebarVariants}
