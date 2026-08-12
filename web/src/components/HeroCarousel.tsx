@@ -304,28 +304,36 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
       {items.length > 1 && (
         <>
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={goPrev}
-            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity group-hover:opacity-100 sm:left-5"
+          <div
+            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 opacity-0 transition-opacity sm:left-5"
             style={{ opacity: isHovering ? 1 : undefined }}
-            aria-label="上一个"
           >
-            <ChevronLeft size={19} aria-hidden="true" />
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={goNext}
-            className="absolute right-3 top-1/2 z-20 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity sm:right-5"
+            <Button
+              variant="secondary"
+              size="sm"
+              iconOnly
+              onClick={goPrev}
+              className="shadow-[var(--nv-shadow-card)]"
+              aria-label="上一个"
+            >
+              <ChevronLeft size={19} aria-hidden="true" />
+            </Button>
+          </div>
+          <div
+            className="absolute right-3 top-1/2 z-20 -translate-y-1/2 opacity-0 transition-opacity sm:right-5"
             style={{ opacity: isHovering ? 1 : undefined }}
-            aria-label="下一个"
           >
-            <ChevronRight size={19} aria-hidden="true" />
-          </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              iconOnly
+              onClick={goNext}
+              className="shadow-[var(--nv-shadow-card)]"
+              aria-label="下一个"
+            >
+              <ChevronRight size={19} aria-hidden="true" />
+            </Button>
+          </div>
         </>
       )}
 
