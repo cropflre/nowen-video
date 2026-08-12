@@ -55,7 +55,7 @@ export { aiApi, aiAssistantApi } from './ai'
 
 // 社交与互动
 export { recommendApi } from './recommend'
-export { castApi, bookmarkApi, commentApi, statsApi, logApi } from './social'
+export { castApi, bookmarkApi, commentApi, statsApi } from './social'
 
 // V3 扩展
 export { aiSceneApi } from './v3'
