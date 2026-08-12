@@ -1,164 +1,162 @@
-# Android V2 Release Guide
+# Android Release Guide
 
-本文档说明 Android V2 的正式签名、证书指纹锁定、GitHub Actions Secrets、候选包生成与公开发布流程。
+本文档描述 **Nowen Video Android 正式版** 的签名与发布流程。当前实现源码仍位于 `clients/android-v2/`，但 `V2` 仅是仓库内部的历史目录名，不再代表独立产品。正式 APK 使用历史包名 `com.nowen.video`，用于直接覆盖旧 Android V1。
 
-相关文档：
+## 当前发布结论
 
-- 普通用户安装与当前能力：[README.md](./README.md)
-- 包名、versionCode 与旧版迁移：[MIGRATION.md](./MIGRATION.md)
-- Android 8 / 13 / 15 真机放行：[SMOKE_TEST.md](./SMOKE_TEST.md)
-- 自动生成的发布说明模板：[RELEASE_NOTES_TEMPLATE.md](./RELEASE_NOTES_TEMPLATE.md)
+- 正式 Android 产品：**Nowen Video Android**。
+- 正式 applicationId：`com.nowen.video`。
+- 最低系统：Android 8.0 / API 26。
+- 历史签名信任锚：GitHub Release `v1.2.5` 中的 `nowen-video-android-1.2.5.apk`。
+- 当前标签已到 `v1.2.8`，首个 V1 接管版按 `v1.2.9` 准备。
+- `android/` 旧客户端仅保留迁移和历史兼容参考，不再作为正式发布客户端。
 
-## 安全原则
+## 最重要的安全规则
 
-- keystore、密码、私钥和 Base64 内容不得提交到 Git。
-- 正式 keystore 必须离线备份；遗失后无法继续为 `com.nowen.video.v2` 发布可覆盖升级的新版本。
-- RC 与 Stable 必须永久使用同一份 Android V2 release keystore。
-- PR 中的临时 keystore 只用于验证构建和验签链路，产物不得分发。
-- 非 PR 发布必须同时校验 keystore 证书和最终 APK 证书的 SHA-256 指纹。
-- `signing-preflight.json`、`release-manifest.json` 和证书指纹可以公开，但不能包含密码或私钥。
+**不要为正式版生成新的 keystore。**
 
-## 1. 生成长期 release keystore
+Android 要允许 `com.nowen.video` 从 V1 原位覆盖升级，新 APK 必须由 **与 V1 完全相同的私钥** 签名。只要签名不同，即使 applicationId 一样、版本号更高，Android 也会拒绝覆盖安装，用户只能卸载旧版后重新安装。
 
-建议在仓库目录之外生成：
+因此生产发布只接受：
 
-```bash
-mkdir -p "$HOME/keys/nowen-video"
+> 当年用于签署 `v1.2.5` 正式 APK 的那份历史 V1 keystore。
 
-keytool -genkeypair -v \
-  -keystore "$HOME/keys/nowen-video/nowen-video-android-v2-release.jks" \
-  -alias nowen-video-android-v2 \
-  -keyalg RSA \
-  -keysize 4096 \
-  -validity 10000
-```
+仓库已经有两层 fail-closed 门禁：
 
-请离线记录并备份：
+1. `.github/workflows/android-signing-identity.yml` 会把仓库配置的 keystore 与公开的 V1 正式 APK 做证书比对；
+2. `.github/workflows/release-android-v2.yml` 每次生产构建都会再次从 V1 APK 动态提取证书指纹，只有最终 APK 与 V1 指纹完全一致才允许继续。
 
-- keystore 文件；
-- keystore 密码；
+证书指纹不再人工复制为 Secret，避免“Secret 中指纹写错但大家以为没问题”的双重真相源。
+
+## 1. 找回历史 V1 keystore
+
+需要找回以下四项：
+
+- V1 正式 keystore 文件（`.jks` / `.keystore`）；
+- keystore password；
 - key alias；
-- key 密码；
-- 证书 SHA-256 指纹；
-- 至少一份不与开发机同盘的加密备份。
+- key password。
 
-仓库 `.gitignore` 已忽略 `*.keystore` 和 `*.jks`，但不要把正式密钥长期放在仓库目录中。
+旧 V1 Gradle 配置曾使用这些本地/环境字段：
 
-## 2. 正式签名预检
-
-`scripts/android-v2-signing-preflight.sh` 会在构建前完成：
-
-- 校验 versionName 并计算 versionCode；
-- 检查当前分支必须为 `main`；
-- 检查工作区必须干净；
-- 拉取并确认 `HEAD == origin/main`；
-- 检查目标 Android tag 尚未存在；
-- 校验 keystore 文件与 store password；
-- 校验 alias 存在；
-- 使用临时 JAR 验证 key password 与私钥可用于签名；
-- 提取并规范化证书 SHA-256；
-- 输出不含敏感值的 JSON 预检报告。
-
-先设置密码环境变量。密码不会作为命令行参数出现在进程列表中：
-
-```bash
-export ANDROID_V2_KEYSTORE_PASSWORD='replace-me'
-export ANDROID_V2_KEY_PASSWORD='replace-me'
+```text
+RELEASE_STORE_FILE
+RELEASE_STORE_PASSWORD
+RELEASE_KEY_ALIAS
+RELEASE_KEY_PASSWORD
 ```
 
-执行预检：
+常见查找位置包括原来发布 Android V1 的开发机、备份盘、密码管理器或 CI 私密配置。**不要把 keystore、密码或 Base64 内容提交到 Git、Issue、PR、聊天记录或构建日志。**
+
+如果历史私钥永久遗失，就不存在技术手段从已发布 APK 反推出私钥，也无法继续做无卸载覆盖升级；这种情况必须作为单独的产品迁移事故处理，不能生成新 key 冒充旧 key。
+
+## 2. 本地验证历史 keystore
+
+在拥有历史 keystore 的可信设备上：
 
 ```bash
+export ANDROID_KEYSTORE_PASSWORD='你的 V1 keystore 密码'
+export ANDROID_KEY_PASSWORD='你的 V1 key 密码'
+
 bash scripts/android-v2-signing-preflight.sh \
-  --version 0.1.0-rc.1 \
-  --keystore "$HOME/keys/nowen-video/nowen-video-android-v2-release.jks" \
-  --alias nowen-video-android-v2 \
-  --report dist/android-v2/signing-preflight.json
+  --version 1.2.9 \
+  --keystore '/安全路径/nowen-video-release.jks' \
+  --alias '你的 V1 alias' \
+  --repository cropflre/nowen-video \
+  --report dist/android/signing-preflight.json
 ```
 
-成功后会显示：
+该预检会校验：
 
-- versionName；
-- versionCode；
-- source commit；
-- 证书 SHA-256。
+- keystore 可以读取；
+- alias 存在；
+- key password 可以真正完成签名；
+- versionName / versionCode 合法；
+- 当前源码与发布上下文合法；
+- 输出报告不包含私钥和密码。
 
-不会显示或写入：
-
-- keystore 密码；
-- key 密码；
-- keystore Base64；
-- 私钥内容。
-
-自测预检脚本：
-
-```bash
-bash scripts/android-v2-signing-preflight.sh --self-test
-```
-
-自测会生成一次性 keystore，并确认错误 store password、错误 key password、缺失 alias 和非法指纹都会失败。
+若要同时强制确认它就是历史 V1 签名 key，使用下一节的 `--set-github-secrets`。该模式会先下载公开 `v1.2.5` APK 做签名比对，**不匹配时不会写任何 GitHub Secret**。
 
 ## 3. 配置 GitHub Actions Secrets
 
-正式发布需要五项 Secrets：
+正式发布只需要四项官方 Secrets：
 
 | Secret | 内容 |
 |---|---|
-| `ANDROID_V2_KEYSTORE_BASE64` | 正式 keystore 的单行 Base64 |
-| `ANDROID_V2_KEYSTORE_PASSWORD` | keystore 密码 |
-| `ANDROID_V2_KEY_ALIAS` | 私钥 alias |
-| `ANDROID_V2_KEY_PASSWORD` | 私钥密码 |
-| `ANDROID_V2_CERTIFICATE_SHA256` | 正式证书 SHA-256，允许有或无冒号 |
+| `ANDROID_KEYSTORE_BASE64` | 历史 V1 keystore 的单行 Base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | V1 keystore password |
+| `ANDROID_KEY_ALIAS` | V1 private-key alias |
+| `ANDROID_KEY_PASSWORD` | V1 key password |
 
-推荐由预检脚本直接配置，避免 Base64 或密码出现在终端历史中：
+仓库暂时兼容旧的 `ANDROID_V2_*` Secret 名称，但新的配置统一写入 `ANDROID_*`。旧名称只用于过渡，后续可以在确认官方名称稳定后删除。
+
+推荐直接使用仓库脚本安全写入：
 
 ```bash
-export ANDROID_V2_KEYSTORE_PASSWORD='replace-me'
-export ANDROID_V2_KEY_PASSWORD='replace-me'
+export ANDROID_KEYSTORE_PASSWORD='你的 V1 keystore 密码'
+export ANDROID_KEY_PASSWORD='你的 V1 key 密码'
 
 bash scripts/android-v2-signing-preflight.sh \
-  --version 0.1.0-rc.1 \
-  --keystore "$HOME/keys/nowen-video/nowen-video-android-v2-release.jks" \
-  --alias nowen-video-android-v2 \
+  --version 1.2.9 \
+  --keystore '/安全路径/nowen-video-release.jks' \
+  --alias '你的 V1 alias' \
   --repository cropflre/nowen-video \
-  --report dist/android-v2/signing-preflight.json \
+  --report dist/android/signing-preflight.json \
   --set-github-secrets
 ```
 
-该模式需要已安装并登录 GitHub CLI：
+前置要求：
 
 ```bash
 gh auth status
 gh repo view cropflre/nowen-video
 ```
 
-脚本会通过标准输入配置五项 Secrets，随后只复查 Secret 名称是否存在；GitHub 不允许读取 Secret 值。
+`--set-github-secrets` 的顺序是：
 
-手工转换 keystore 时，可使用：
+1. 验证本地 keystore 和密码；
+2. 下载公开的 V1 `v1.2.5` APK；
+3. 提取 V1 APK 的真实签名证书；
+4. 比较本地 keystore 证书；
+5. 只有完全一致时，才写入四项 `ANDROID_*` Secrets。
 
-Linux：
+脚本不会上传本地报告中的敏感值，也不会把 keystore 内容打印到终端。
+
+## 4. GitHub 签名身份门禁
+
+Secrets 配置后，在 GitHub Actions 手动运行：
+
+```text
+Android Signing Identity
+```
+
+必须得到：
+
+```text
+Verify V1 signing identity = PASS
+```
+
+门禁检查：
+
+- 四项生产 Secret 是否存在；
+- keystore 是否能读取指定 alias；
+- keystore 证书 SHA-256；
+- 历史 V1 APK 是否确实为 `com.nowen.video`；
+- V1 APK 证书 SHA-256；
+- 两者是否完全一致。
+
+这一步不构建正式版本、不创建 tag、不发布 Release，因此可以安全重复执行。
+
+## 5. 版本规则
+
+`scripts/android-v2-version.sh` 是 Android versionCode 的唯一来源。接管后的 versionCode 被分配到高于历史 V1 的区间，避免系统把新正式版视为降级。
 
 ```bash
-base64 -w 0 nowen-video-android-v2-release.jks
+bash scripts/android-v2-version.sh --self-test
+bash scripts/android-v2-version.sh 1.2.9
 ```
 
-macOS：
-
-```bash
-base64 < nowen-video-android-v2-release.jks | tr -d '\n'
-```
-
-PowerShell：
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes('nowen-video-android-v2-release.jks'))
-```
-
-不要把输出粘贴到 Issue、PR、聊天记录或构建日志中。
-
-## 4. 版本规则
-
-允许的 versionName：
+允许：
 
 ```text
 MAJOR.MINOR.PATCH-alpha.N
@@ -167,184 +165,111 @@ MAJOR.MINOR.PATCH-rc.N
 MAJOR.MINOR.PATCH
 ```
 
-`scripts/android-v2-version.sh` 是 versionCode 的唯一计算来源。workflow 不接受手工 versionCode。
-
-```bash
-bash scripts/android-v2-version.sh --self-test
-bash scripts/android-v2-version.sh 0.1.0-rc.1
-```
-
-RC1 固定为：
+同一语义版本内保持：
 
 ```text
-versionName = 0.1.0-rc.1
-versionCode = 100501
-applicationId = com.nowen.video.v2
+alpha < beta < rc < stable
+```
+
+正式产物必须同时满足：
+
+```text
+applicationId = com.nowen.video
+versionCode > historical V1 range
 minSdk = 26
 targetSdk = 35
+signer = historical V1 signer
 ```
 
-升级顺序：
+## 6. 生产构建验证（不发布）
+
+在 GitHub Actions 手动运行 `release-android`，输入例如：
 
 ```text
-0.1.0-alpha.1 < 0.1.0-beta.1 < 0.1.0-rc.1 < 0.1.0
+version_name = 1.2.9
 ```
 
-详细公式见 [MIGRATION.md](./MIGRATION.md)。
+手动运行只生成并保留签名候选产物，不创建 GitHub Release，适合正式打 tag 前最后验收。
 
-## 5. 本地签名构建
+流水线会执行：
 
-```bash
-export ANDROID_VERSION_NAME='0.1.0-rc.1'
-export ANDROID_VERSION_CODE="$(bash scripts/android-v2-version.sh "$ANDROID_VERSION_NAME")"
-export ANDROID_SIGNING_STORE_FILE="$HOME/keys/nowen-video/nowen-video-android-v2-release.jks"
-export ANDROID_SIGNING_STORE_PASSWORD='replace-me'
-export ANDROID_SIGNING_KEY_ALIAS='nowen-video-android-v2'
-export ANDROID_SIGNING_KEY_PASSWORD='replace-me'
+1. Android 版本策略自测；
+2. 从公开 V1 APK 推导历史证书指纹；
+3. 用历史 V1 指纹验证配置的 keystore；
+4. Unit Test + Lint；
+5. 构建 signed APK / AAB；
+6. 从最终 APK 反读 applicationId、versionName、versionCode、minSdk、targetSdk；
+7. 再次验证最终 APK 签名等于 V1；
+8. 生成 `release-manifest.json`、`signing-preflight.json`、`SHA256SUMS.txt`、`RELEASE_NOTES.md`；
+9. 上传 `nowen-video-android-release` Actions artifact，保留 30 天。
 
-./android/gradlew -p clients/android-v2 \
-  clean testDebugUnitTest lintDebug assembleRelease bundleRelease
-```
+任一步失败都不允许进入正式 tag 发布。
 
-产物：
+## 7. 正式发布 v1.2.9
 
-```text
-clients/android-v2/app/build/outputs/apk/release/app-release.apk
-clients/android-v2/app/build/outputs/bundle/release/app-release.aab
-```
+只有以下条件全部为 PASS 才允许打 tag：
 
-四项 Gradle 签名变量必须全部设置或全部不设置。只设置一部分时构建会失败。
+- `Android` CI 通过；
+- Android 8 / API 26 设备冒烟通过；
+- Android 13 / API 33 设备冒烟通过；
+- Android 15 / API 35 设备冒烟通过；
+- `Android Signing Identity` 通过；
+- `release-android` 手动生产构建通过；
+- APK 可以在安装了 V1 的测试设备上直接覆盖安装，并保留应用沙箱；
+- 旧服务器配置迁移正常，旧明文 Token/密码不会被迁移，用户按设计重新登录。
 
-本地 Gradle 构建不会自动生成完整发布记录；可分发候选包应由 `release-android-v2` workflow 生成。
-
-## 6. 手动验证正式 Secrets
-
-在 GitHub Actions 中手动运行 `release-android-v2`，输入：
-
-```text
-0.1.0-rc.1
-```
-
-非 PR workflow 会按顺序执行：
-
-1. 自测版本、manifest 和签名预检脚本；
-2. 检查五项正式 Secrets；
-3. 解码 keystore；
-4. 验证 store password、alias、key password 和 keystore 证书指纹；
-5. 执行 Android 单元测试、Lint、APK 与 AAB 构建；
-6. 验证 APK 与 AAB 签名；
-7. 再次验证最终 APK 证书指纹；
-8. 从 APK 反读 applicationId、versionName、versionCode、minSdk 和 targetSdk；
-9. 生成 `release-manifest.json`、`SHA256SUMS.txt`、`signing-preflight.json` 和 `RELEASE_NOTES.md`；
-10. 上传保存 30 天的 workflow artifact。
-
-手动运行不会创建 GitHub Release，适合在推 tag 前验证正式 Secrets。
-
-## 7. 通过 tag 创建草稿 Release
-
-Android V2 使用独立 tag，避免触发现有桌面端 `v*.*.*` 发布流程：
+然后统一使用产品 tag：
 
 ```bash
 git checkout main
 git pull --ff-only
 git status --short
-git rev-parse HEAD
 
-bash scripts/android-v2-signing-preflight.sh \
-  --version 0.1.0-rc.1 \
-  --keystore "$HOME/keys/nowen-video/nowen-video-android-v2-release.jks" \
-  --alias nowen-video-android-v2 \
-  --expected-fingerprint "$ANDROID_V2_CERTIFICATE_SHA256" \
-  --report dist/android-v2/signing-preflight.json
-
-git tag android-v2-v0.1.0-rc.1
-git push origin android-v2-v0.1.0-rc.1
+git tag -a v1.2.9 -m 'Nowen Video v1.2.9'
+git push origin v1.2.9
 ```
 
-Tag workflow 成功后会创建草稿 GitHub Release，并自动将含 `-alpha`、`-beta` 或 `-rc` 的版本标记为 prerelease。
+`v1.2.9` 会进入统一 Nowen Video 产品发布链路。Android workflow 会上传：
 
-草稿附件包含：
-
-- 正式签名 APK；
-- 正式签名 AAB；
-- `SHA256SUMS.txt`；
-- `release-manifest.json`；
-- `signing-preflight.json`；
-- `RELEASE_NOTES.md`。
-
-Release 正文使用同一次构建生成的 `RELEASE_NOTES.md`，其中版本、commit、证书指纹和 APK/AAB 哈希来自 `release-manifest.json`，不是人工填写。
-
-## 8. 候选包追溯与验证
-
-`release-manifest.json` 记录：
-
-- 发布渠道；
-- versionName 与 versionCode；
-- applicationId、minSdk 和 targetSdk；
-- repository、commit 与 ref；
-- workflow event、run ID 与 attempt；
-- 最终 APK 证书 SHA-256；
-- APK/AAB 文件名、大小和 SHA-256。
-
-`signing-preflight.json` 记录：
-
-- 预检时间；
-- source commit 与分支；
-- versionName 与 versionCode；
-- alias 与 keystore 证书 SHA-256；
-- `sensitive_values_included: false`。
-
-校验哈希：
-
-```bash
-sha256sum -c SHA256SUMS.txt
+```text
+nowen-video-android-1.2.9.apk
+nowen-video-android-1.2.9.aab
+release-manifest.json
+signing-preflight.json
+SHA256SUMS.txt
+RELEASE_NOTES.md
 ```
 
-校验 APK：
+GitHub Release 默认保持 **Draft**，待最终人工检查多端产物和说明后再公开。
 
-```bash
-apksigner verify --verbose --print-certs \
-  nowen-video-android-v2-0.1.0-rc.1.apk
-```
+## 8. V1 → 当前 Android 升级行为
 
-校验 AAB：
+原位升级时应用继续占用 `com.nowen.video` 的同一 Android sandbox。
 
-```bash
-jarsigner -verify nowen-video-android-v2-0.1.0-rc.1.aab
-```
+当前客户端会尝试导入 V1：
 
-校验 JSON：
+- 已保存的服务器名称；
+- 服务器 URL；
+- 当前服务器选择。
 
-```bash
-python3 -m json.tool release-manifest.json > /dev/null
-python3 -m json.tool signing-preflight.json > /dev/null
-```
+不会迁移：
 
-必须确认：
+- V1 明文 Token；
+- 密码；
+- 任何不能安全升级到 Android Keystore 的旧凭据。
 
-- APK/AAB 哈希与 `SHA256SUMS.txt`、`release-manifest.json` 一致；
-- `source.commit` 是本轮候选版本的 main commit；
-- keystore、最终 APK、manifest 和 `ANDROID_V2_CERTIFICATE_SHA256` 四处指纹完全一致；
-- versionName、versionCode、applicationId 和 SDK 基线符合候选版本；
-- 公开附件不包含 Debug APK、未签名 APK、PR 临时签名包、keystore 或凭据。
+真正检测到并导入 V1 数据时才显示迁移提示；纯新安装不会显示旧版迁移提示。
 
-## 9. RC1 发布前检查
+## 9. 回滚与禁止事项
 
-只有以下项目全部完成，才能把草稿 Release 改为公开 prerelease：
+禁止：
 
-- [ ] 长期 release keystore 已离线备份。
-- [ ] 五项 Android V2 Secrets 已配置。
-- [ ] 本地签名预检通过并保存非敏感报告。
-- [ ] 发布 commit 已合并到 `main`，且 `HEAD == origin/main`。
-- [ ] `Android V2` 标准门禁全部通过。
-- [ ] 手动 `release-android-v2` 使用正式 Secrets 构建成功。
-- [ ] Android 8、13、15 自动启动冒烟全部通过。
-- [ ] Tag workflow 创建草稿 Release。
-- [ ] 同一次 tag 构建生成 APK、AAB、校验和、manifest、预检报告和 Release Notes。
-- [ ] keystore 与最终 APK 证书指纹一致，并记录在 RC Issue。
-- [ ] Fresh install、旧版并行安装和覆盖升级通过。
-- [ ] [SMOKE_TEST.md](./SMOKE_TEST.md) 所有 P0 为 `PASS`，或存在明确批准的非阻断已知问题。
-- [ ] Release Notes 包含能力、最低系统、迁移、已知限制、哈希与反馈模板。
-- [ ] 回归设备、服务器版本、workflow 链接和测试结论已附到 RC Issue。
+- 为正式版重新生成 keystore；
+- 修改 `com.nowen.video` 正式 applicationId；
+- 绕过 V1 signer gate；
+- 手工降低 versionCode；
+- 将生产 keystore 放进仓库；
+- 在日志、Issue、PR 或聊天中粘贴 Base64 私钥内容或密码；
+- 在签名身份门禁失败时仍创建正式 tag。
 
-出现签名不一致、覆盖升级失败、凭据泄露、数据串号、下载损坏或 P0 崩溃时，必须停止发布并使用更高 versionCode 修复，不能要求测试用户卸载降级。
+如果候选版出现功能问题，应修复代码并生成更高 versionCode 的新候选；不要通过换签名或降低版本号回滚。
