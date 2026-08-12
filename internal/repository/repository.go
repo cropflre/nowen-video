@@ -45,8 +45,6 @@ type Repositories struct {
 	LoginLog   *LoginLogRepo
 	AuditLog   *AuditLogRepo
 	InviteCode *InviteCodeRepo
-	// 系统日志
-	SystemLog *SystemLogRepo
 	// 文件管理操作日志（持久化）
 	FileOpLog *FileOpLogRepo
 	// SmartRename 智能扫描重命名
@@ -98,8 +96,6 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		LoginLog:   &LoginLogRepo{db: db},
 		AuditLog:   &AuditLogRepo{db: db},
 		InviteCode: &InviteCodeRepo{db: db},
-		// 系统日志
-		SystemLog: &SystemLogRepo{db: db},
 		// 文件管理操作日志
 		FileOpLog: NewFileOpLogRepo(db),
 		// SmartRename 智能扫描重命名
