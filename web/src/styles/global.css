@@ -242,3 +242,16 @@
   background: color-mix(in srgb, var(--nv-status-danger) 16%, transparent);
   color: var(--nv-status-danger);
 }
+
+/* Library content tabs must keep a shared control height. The series count tag
+ * used to make only the “剧集合集” button taller than “全部内容”. */
+[aria-label='媒体库内容类型'] > .nv-button {
+  height: 2.25rem;
+  min-height: 2.25rem;
+}
+
+[aria-label='媒体库内容类型'] > .nv-button .nv-tag {
+  min-height: 1.25rem;
+  padding: .1rem .4rem;
+  line-height: 1;
+}
