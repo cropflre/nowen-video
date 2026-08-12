@@ -11,10 +11,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 
 /**
- * Android V2 应用入口。
+ * Nowen Video 正式 Android 应用入口。
  *
- * V2 使用独立 applicationId，与旧客户端并行安装；所有跨模块依赖由 Hilt
- * 从 Application 级容器统一提供。
+ * V2 模块化实现已经接管历史 `com.nowen.video` applicationId。源码 namespace
+ * 继续保留 `.v2`，只作为内部代码边界，不再代表一个可并行安装的独立产品。
  */
 @HiltAndroidApp
 class NowenV2Application : Application(), ImageLoaderFactory {
