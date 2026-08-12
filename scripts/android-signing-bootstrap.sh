@@ -7,7 +7,7 @@ KEYSTORE_PATH=""
 SECRETS_ENV=""
 KEY_ALIAS="nowen-video"
 SET_GITHUB_SECRETS=false
-EXPECTED_FINGERPRINT="07ac3f214fbb8ac44e85fa1f65610dcbcff8fe04876c417364c3905dfb8b6bcd"
+FINGERPRINT_FILE="$ROOT_DIR/android/signing/production-certificate.sha256"
 
 usage() {
   cat <<'USAGE'
@@ -38,6 +38,13 @@ USAGE
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 require_command() { command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"; }
 
+normalize_fingerprint() {
+  local value
+  value="$(printf '%s' "$1" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+  [[ "$value" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "$value"
+}
+
 while (($# > 0)); do
   case "$1" in
     --keystore) KEYSTORE_PATH="${2:-}"; shift 2 ;;
@@ -54,6 +61,10 @@ require_command keytool
 require_command openssl
 require_command base64
 require_command python3
+
+[[ -f "$FINGERPRINT_FILE" ]] || fail "production fingerprint baseline is missing: $FINGERPRINT_FILE"
+EXPECTED_FINGERPRINT="$(normalize_fingerprint "$(cat "$FINGERPRINT_FILE")")" || \
+  fail "invalid production fingerprint baseline"
 
 [[ -n "$KEYSTORE_PATH" ]] || fail "--keystore is required"
 [[ -n "$KEY_ALIAS" ]] || fail "--alias must not be empty"
