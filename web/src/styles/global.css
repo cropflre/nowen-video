@@ -290,3 +290,13 @@
     max-height: 9rem;
   }
 }
+
+/* Detail heroes should show artwork, not a blurred color wash. Keep the source
+ * image crisp and near full strength, while the existing left/bottom scrims
+ * continue to create a dedicated readability zone for title and actions. This
+ * targets movie/episode and series detail heroes without changing poster cards. */
+section.border-b:has(> div.relative a[href^='/play/']) > div.absolute:first-child img {
+  filter: none !important;
+  opacity: .96 !important;
+  transform: scale(1) !important;
+}
