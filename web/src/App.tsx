@@ -111,9 +111,9 @@ export default function App() {
           <DesktopServerPicker />
           <DesktopEventBinder />
           <UpdateBanner />
-          <div className="nv-app-shell">
+          <div className="nv-app-shell flex h-dvh min-h-0 flex-col overflow-hidden">
             <TitleBar />
-            <div className="nv-app-body">
+            <div className="nv-app-body min-h-0 flex-1 overflow-hidden">
               <Suspense fallback={<PageLoader />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
