@@ -2,8 +2,6 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
-import TaskCenter from './TaskCenter'
-import RuntimeHistoryButton from './RuntimeHistoryButton'
 import PageTransition from './PageTransition'
 import { Button, PageContainer } from './design-system'
 import { Menu } from 'lucide-react'
@@ -66,8 +64,6 @@ export default function Layout() {
 
   return (
     <div className="nv-app-shell relative flex h-full flex-col overflow-hidden">
-      <TaskCenter />
-      <RuntimeHistoryButton />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <Sidebar isMobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
 
