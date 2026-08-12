@@ -546,15 +546,27 @@ export default function LibraryPage() {
 
       {viewTab === 'series' && (
         <>
-          {loading ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="正在加载剧集合集">
+          {viewMode === 'grid' ? (
+            loading ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="正在加载剧集合集">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div key={index} className="skeleton aspect-[16/11] rounded-[var(--nv-radius-card)]" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {filteredSeries.map((series) => <SeriesCard key={series.id} series={series} />)}
+              </div>
+            )
+          ) : loading ? (
+            <div className="space-y-2" aria-label="正在加载剧集合集">
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="skeleton aspect-[16/11] rounded-[var(--nv-radius-card)]" />
+                <div key={index} className="skeleton h-[90px] rounded-[var(--nv-radius-card)]" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredSeries.map((series) => <SeriesCard key={series.id} series={series} />)}
+            <div className="space-y-2">
+              {filteredSeries.map((series) => <ListSeriesItem key={series.id} series={series} />)}
             </div>
           )}
 
