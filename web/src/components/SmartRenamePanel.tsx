@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, Save, ScanSearch, Wand2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, RotateCcw, Save, ScanSearch, Wand2, X } from 'lucide-react'
 import { useDialog } from './Dialog'
 import {
   smartRenameApi,
