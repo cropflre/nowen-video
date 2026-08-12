@@ -10,9 +10,11 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-PRODUCT = "Nowen Video Android V2"
-PACKAGE_ID = "com.nowen.video.v2"
+PRODUCT = "Nowen Video Android"
+PACKAGE_ID = "com.nowen.video"
+# V1 and the promoted client intentionally share the production package ID.
 LEGACY_PACKAGE_ID = "com.nowen.video"
+PREVIOUS_V2_TEST_PACKAGE_ID = "com.nowen.video.v2"
 MIN_SDK = 26
 TARGET_SDK = 35
 STATUSES = {"PENDING", "PASS", "FAIL", "BLOCKED", "N/A"}
