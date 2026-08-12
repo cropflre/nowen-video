@@ -1,4 +1,4 @@
-name: Android V2
+name: Android
 
 on:
   pull_request:
@@ -56,7 +56,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-v2-${{ github.ref }}
+  group: android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          go test ./internal/service ./internal/handler 2>&1 | tee android-v2-go-test.log
+          go test ./internal/service ./internal/handler 2>&1 | tee android-go-test.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
@@ -108,7 +108,7 @@ jobs:
           chmod +x android/gradlew
           ./android/gradlew -p clients/android-v2 \
             testDebugUnitTest assembleDebugAndroidTest lintDebug assembleDebug assembleRelease \
-            --no-daemon --stacktrace 2>&1 | tee android-v2-build.log
+            --no-daemon --stacktrace 2>&1 | tee android-build.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
@@ -117,10 +117,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nowen-video-android-v2-build-log
+          name: nowen-video-android-build-log
           path: |
-            android-v2-go-test.log
-            android-v2-build.log
+            android-go-test.log
+            android-build.log
           if-no-files-found: error
           retention-days: 14
 
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.go.outputs.status }}" != "0" || "${{ steps.gradle.outputs.status }}" != "0" ]]; then
-            echo "Backend or Android V2 verification failed."
+            echo "Backend or Android verification failed."
             exit 1
           fi
 
@@ -137,7 +137,7 @@ jobs:
         if: steps.gradle.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
-          name: nowen-video-android-v2-debug
+          name: nowen-video-android-debug
           path: clients/android-v2/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -146,7 +146,7 @@ jobs:
         if: steps.gradle.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
-          name: nowen-video-android-v2-release-unsigned
+          name: nowen-video-android-release-unsigned
           path: clients/android-v2/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
