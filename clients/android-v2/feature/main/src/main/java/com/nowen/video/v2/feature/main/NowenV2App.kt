@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nowen.video.v2.core.data.LegacyV1Migration
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.NowenTheme
 import com.nowen.video.v2.core.model.SessionSnapshot
@@ -34,6 +35,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class AppViewModel @Inject constructor(
     private val sessionStore: ServerSessionStore,
+    private val legacyV1Migration: LegacyV1Migration,
 ) : ViewModel() {
     val session: StateFlow<SessionSnapshot> = sessionStore.snapshot.stateIn(
         viewModelScope,
@@ -42,7 +44,10 @@ class AppViewModel @Inject constructor(
     )
 
     init {
-        viewModelScope.launch { sessionStore.bootstrap() }
+        viewModelScope.launch {
+            legacyV1Migration.migrateIfNeeded()
+            sessionStore.bootstrap()
+        }
     }
 }
 
@@ -67,7 +72,7 @@ fun NowenV2App(viewModel: AppViewModel = hiltViewModel()) {
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
-                RootDestination.Server -> ServerSetupWithMigrationNotice()
+                RootDestination.Server -> ServerSetupWithUpgradeNotice()
                 RootDestination.Login -> LoginScreen()
                 RootDestination.Password -> ForcePasswordScreen()
                 RootDestination.Main -> MainShell()
@@ -77,22 +82,22 @@ fun NowenV2App(viewModel: AppViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun ServerSetupWithMigrationNotice() {
-    var showMigrationNotice by rememberSaveable { mutableStateOf(true) }
+private fun ServerSetupWithUpgradeNotice() {
+    var showUpgradeNotice by rememberSaveable { mutableStateOf(true) }
 
     ServerSetupScreen()
-    if (showMigrationNotice) {
+    if (showUpgradeNotice) {
         AlertDialog(
-            onDismissRequest = { showMigrationNotice = false },
-            title = { Text("从旧版迁移到 Android V2") },
+            onDismissRequest = { showUpgradeNotice = false },
+            title = { Text("Android 客户端已升级") },
             text = {
                 Text(
-                    "V2 会与旧版并行安装，不会覆盖或读取旧版的服务器和登录数据。" +
-                        "请在 V2 中重新添加服务器并登录；旧版仍可继续使用。",
+                    "新版 Android 客户端已经正式替换旧版。升级安装时会尽量自动导入旧版服务器地址，" +
+                        "但出于安全考虑不会迁移旧版明文 Token 或密码；如未保持登录状态，请重新登录。",
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showMigrationNotice = false }) {
+                TextButton(onClick = { showUpgradeNotice = false }) {
                     Text("我知道了")
                 }
             },
