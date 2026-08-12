@@ -20,7 +20,7 @@
   <a href="#-configuration">Configuration</a> •
   <a href="./docs/SERVER.md">Server Architecture</a> •
   <a href="./desktop/README.md">Desktop App</a> •
-  <a href="./clients/android-v2/README.md">Android</a>
+  <a href="./android/README.md">Android</a>
 </p>
 
 </div>
@@ -34,7 +34,7 @@ A home media server built with **Go + React**, similar to Jellyfin / Emby and op
 >
 > 🖥️ The **desktop client** supports advanced local playback capabilities including MKV / HEVC / HDR / Dolby Vision / DTS / Atmos → see [desktop/README.md](./desktop/README.md)
 >
-> 📱 **Android** now officially replaces the legacy Android client under the same product identity. It is built with Kotlin + Jetpack Compose and includes server discovery, QR login, library browsing, search, episode navigation, native playback, and offline capabilities → see [clients/android-v2/README.md](./clients/android-v2/README.md)
+> 📱 **Android** is built with Kotlin + Jetpack Compose and includes server discovery, QR login, library browsing, search, episode navigation, native playback, and offline capabilities. The repository now keeps only this official Android implementation → see [android/README.md](./android/README.md)
 
 ## 📸 Screenshots
 
@@ -130,12 +130,13 @@ The legacy compatibility runtime is not a second production edition. See [docs/S
 
 ### 4. Android
 
-The official Android client supports Android 8.0 / API 26 and newer. The internal source directory keeps the historical `clients/android-v2/` name, but V1/V2 are no longer separate public products.
+The official Android client lives at the repository root under `android/` and supports Android 8.0 / API 26 and newer. The old Android V1 source and `clients/android-v2` tree have been removed; the project no longer maintains V1/V2 tracks or legacy-app data migration.
 
-- [Android README](./clients/android-v2/README.md)
-- [Release Guide](./clients/android-v2/RELEASE.md)
-- [Migration Guide](./clients/android-v2/MIGRATION.md)
-- [Smoke Test](./clients/android-v2/SMOKE_TEST.md)
+- [Android README](./android/README.md)
+- [Release Guide](./android/RELEASE.md)
+- [Smoke Test](./android/SMOKE_TEST.md)
+
+> The official Android app now starts a new long-term production signing identity. Devices with an older V1 installation signed by another key may need to uninstall it before installing the current app. Future releases will reuse the new production keystore for normal in-place upgrades.
 
 ## ⚙️ Configuration
 
@@ -177,8 +178,8 @@ Current mainline priorities:
 - ✅ Playback planning, fallback, and unified task lifecycle
 - ✅ Persistent transcode execution state, leases, recovery, and shutdown protocol
 - ✅ Web design-system and player UX consolidation
-- ✅ New Android architecture owns the legacy product identity and upgrade path
-- 🧪 Android production signing and first takeover release validation
+- ✅ Modular Android client promoted to the only official implementation
+- 🧪 Android new production signing and release validation
 - 🚀 Ongoing playback stability, subtitles, cross-client UX, and NAS resource-efficiency work
 
 ## 💬 Community

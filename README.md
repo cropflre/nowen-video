@@ -20,7 +20,7 @@
   <a href="#%EF%B8%8F-配置说明">配置</a> •
   <a href="./docs/SERVER.md">服务端架构</a> •
   <a href="./desktop/README.md">桌面客户端</a> •
-  <a href="./clients/android-v2/README.md">Android</a>
+  <a href="./android/README.md">Android</a>
 </p>
 
 </div>
@@ -34,7 +34,7 @@
 >
 > 🖥️ **PC 桌面客户端** 支持 MKV / HEVC / HDR / 杜比视界 / DTS / Atmos 等本地能力 → 详见 [desktop/README.md](./desktop/README.md)
 >
-> 📱 **Android** 已正式替换旧版 Android 客户端，使用 Kotlin + Jetpack Compose，具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线能力 → 详见 [clients/android-v2/README.md](./clients/android-v2/README.md)
+> 📱 **Android** 使用 Kotlin + Jetpack Compose，具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线能力。仓库只保留这一套正式 Android 实现 → 详见 [android/README.md](./android/README.md)
 
 ## 📸 功能截图
 
@@ -134,12 +134,13 @@ make build
 
 ### 四、Android
 
-正式 Android 客户端最低支持 Android 8.0 / API 26。仓库内部源码目录仍保留 `clients/android-v2/` 历史名称，但对外不再区分 V1 / V2。构建、迁移与发布要求见：
+正式 Android 客户端源码位于仓库根目录 `android/`，最低支持 Android 8.0 / API 26。旧 Android V1 与 `clients/android-v2` 已从当前代码树移除，不再维护 V1/V2 双轨和旧数据迁移逻辑。
 
-- [Android README](./clients/android-v2/README.md)
-- [Release Guide](./clients/android-v2/RELEASE.md)
-- [Migration Guide](./clients/android-v2/MIGRATION.md)
-- [Smoke Test](./clients/android-v2/SMOKE_TEST.md)
+- [Android README](./android/README.md)
+- [Release Guide](./android/RELEASE.md)
+- [Smoke Test](./android/SMOKE_TEST.md)
+
+> Android 正式版从现在开始使用新的长期生产签名。此前已经安装旧 V1 且签名不同的设备需要先卸载旧应用再安装当前版本；后续版本将持续使用新的生产 keystore 正常覆盖升级。
 
 ## ⚙️ 配置说明
 
@@ -183,8 +184,8 @@ make build
 - ✅ 服务端播放规划、自动回退与统一任务中心
 - ✅ 持久转码执行状态、Lease、恢复与关闭协议
 - ✅ Web 统一 Design System 与播放器体验收口
-- ✅ Android 新架构正式接管旧版产品身份与升级链路
-- 🧪 Android 正式签名与首个接管版本发布验证
+- ✅ Android 模块化客户端成为唯一正式实现
+- 🧪 Android 新生产签名与正式发布验证
 - 🚀 后续继续围绕播放稳定性、字幕、跨端体验与 NAS 资源效率演进
 
 ## 💬 交流与反馈
