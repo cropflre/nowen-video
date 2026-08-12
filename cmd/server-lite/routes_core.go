@@ -125,7 +125,6 @@ func registerCoreAPI(
 
 	api.POST("/stats/playback", handlers.Stats.RecordPlayback)
 	api.GET("/stats/me", handlers.Stats.GetUserStats)
-	api.POST("/logs/playback-error", handlers.SystemLog.ReportPlaybackError)
 
 	api.GET("/media/:id/collection", handlers.Collection.GetMediaCollection)
 	api.GET("/collections", handlers.Collection.ListCollections)
