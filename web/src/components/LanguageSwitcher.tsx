@@ -26,13 +26,13 @@ export default function LanguageSwitcher() {
       <Button
         type="button"
         variant="ghost"
-        size="sm"
+        size="md"
         onClick={() => setOpen((value) => !value)}
-        className="w-full justify-start"
+        className="w-full justify-start gap-3"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Globe size={16} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+        <Globe size={18} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
         <span className="truncate">{currentLang?.flag} {currentLang?.name}</span>
       </Button>
 
