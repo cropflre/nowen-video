@@ -7,6 +7,7 @@
 <p>
   <img src="https://img.shields.io/badge/Go-1.22-00ADD8?style=flat-square&logo=go" alt="Go">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react" alt="React">
+  <img src="https://img.shields.io/badge/Android-Kotlin%20%2B%20Compose-3DDC84?style=flat-square&logo=android" alt="Android">
   <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite" alt="SQLite">
   <img src="https://img.shields.io/badge/Docker-Alpine-2496ED?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="License">
@@ -18,7 +19,8 @@
   <a href="#-features">Features</a> •
   <a href="#-configuration">Configuration</a> •
   <a href="./docs/SERVER.md">Server Architecture</a> •
-  <a href="./desktop/README.md">Desktop App</a>
+  <a href="./desktop/README.md">Desktop App</a> •
+  <a href="./clients/android-v2/README.md">Android</a>
 </p>
 
 </div>
@@ -32,7 +34,7 @@ A home media server built with **Go + React**, similar to Jellyfin / Emby and op
 >
 > 🖥️ The **desktop client** supports advanced local playback capabilities including MKV / HEVC / HDR / Dolby Vision / DTS / Atmos → see [desktop/README.md](./desktop/README.md)
 >
-> 📱 **Android V2** includes server discovery, QR login, library browsing, search, episode navigation, native playback, and offline capabilities → see [clients/android-v2/README.md](./clients/android-v2/README.md)
+> 📱 **Android** now officially replaces the legacy Android client under the same product identity. It is built with Kotlin + Jetpack Compose and includes server discovery, QR login, library browsing, search, episode navigation, native playback, and offline capabilities → see [clients/android-v2/README.md](./clients/android-v2/README.md)
 
 ## 📸 Screenshots
 
@@ -51,7 +53,7 @@ A home media server built with **Go + React**, similar to Jellyfin / Emby and op
 - 🧠 **Optional AI** — desired configuration and actual runtime state are tracked separately so disabled AI components do not become unnecessary resident services
 - 🌐 **Remote storage** — WebDAV / Alist / S3 capabilities are enabled only when configured
 - ✅ **Unified task center** — library scans, scraping, and transcode-maintenance tasks share consistent lifecycle and progress reporting
-- 📱 **Multi-client API** — Web, desktop, and Android V2 share stable authentication, library, search, playback, favorites, history, and progress APIs
+- 📱 **Multi-client API** — Web, desktop, and Android share stable authentication, library, search, playback, favorites, history, and progress APIs
 - 🛡️ **Security** — JWT, bcrypt, CORS, security headers, rate limiting, and access logging
 - 🌍 **i18n** — Chinese / English / Japanese
 - 🪶 **NAS-first deployment** — single binary + SQLite (WAL), Alpine image, health checks, PUID/PGID, and persistent data/cache directories
@@ -126,6 +128,15 @@ make build
 
 The legacy compatibility runtime is not a second production edition. See [docs/SERVER.md](./docs/SERVER.md).
 
+### 4. Android
+
+The official Android client supports Android 8.0 / API 26 and newer. The internal source directory keeps the historical `clients/android-v2/` name, but V1/V2 are no longer separate public products.
+
+- [Android README](./clients/android-v2/README.md)
+- [Release Guide](./clients/android-v2/RELEASE.md)
+- [Migration Guide](./clients/android-v2/MIGRATION.md)
+- [Smoke Test](./clients/android-v2/SMOKE_TEST.md)
+
 ## ⚙️ Configuration
 
 Configuration precedence:
@@ -154,7 +165,7 @@ Common split files under `config/`:
 
 **Frontend** React · TypeScript · Vite · Tailwind CSS · Zustand · HLS.js · React Router
 
-**Android V2** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
+**Android** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
 
 **Deployment** Docker (Alpine) · docker-compose
 
@@ -166,7 +177,8 @@ Current mainline priorities:
 - ✅ Playback planning, fallback, and unified task lifecycle
 - ✅ Persistent transcode execution state, leases, recovery, and shutdown protocol
 - ✅ Web design-system and player UX consolidation
-- 🧪 Android V2 production release validation
+- ✅ New Android architecture owns the legacy product identity and upgrade path
+- 🧪 Android production signing and first takeover release validation
 - 🚀 Ongoing playback stability, subtitles, cross-client UX, and NAS resource-efficiency work
 
 ## 💬 Community
