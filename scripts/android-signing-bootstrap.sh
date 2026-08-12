@@ -3,30 +3,35 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY="cropflre/nowen-video"
-OUTPUT_PATH="${HOME}/keys/nowen-video-android-production.jks"
+KEYSTORE_PATH=""
+SECRETS_ENV=""
 KEY_ALIAS="nowen-video"
-VALIDITY_DAYS=10000
 SET_GITHUB_SECRETS=false
-FORCE=false
+EXPECTED_FINGERPRINT="07ac3f214fbb8ac44e85fa1f65610dcbcff8fe04876c417364c3905dfb8b6bcd"
 
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/android-signing-bootstrap.sh [options]
+  scripts/android-signing-bootstrap.sh --keystore PATH [options]
 
-Generate the one long-lived production signing key for the official Nowen Video
-Android app. This key is independent from the retired Android V1 key.
+Configure or recover the official Nowen Video Android production signing setup.
+This script NEVER generates or rotates the production key. The production
+certificate is pinned and any different keystore is rejected.
 
 Options:
-  --output PATH                  Production keystore path
-  --alias ALIAS                  Key alias (default: nowen-video)
-  --repository OWNER/REPO        GitHub repository
-  --set-github-secrets           Write the four Android signing Actions Secrets
-  --force                        Replace an existing output keystore and backup env
-  -h, --help                     Show this help
+  --keystore PATH                 Existing production keystore
+  --secrets-env PATH              Optional env backup containing signing passwords
+  --alias ALIAS                   Key alias (default: nowen-video)
+  --repository OWNER/REPO         GitHub repository
+  --set-github-secrets            Write the four Android signing Actions Secrets
+  -h, --help                      Show this help
 
-The script writes a sibling .env backup containing the generated passwords.
-Neither the keystore nor the .env file may be committed to Git.
+Environment:
+  ANDROID_KEYSTORE_PASSWORD
+  ANDROID_KEY_PASSWORD
+
+If --secrets-env is omitted, a sibling file named
+<keystore-without-extension>.secrets.env is loaded automatically when present.
 USAGE
 }
 
@@ -35,11 +40,11 @@ require_command() { command -v "$1" >/dev/null 2>&1 || fail "required command no
 
 while (($# > 0)); do
   case "$1" in
-    --output) OUTPUT_PATH="${2:-}"; shift 2 ;;
+    --keystore) KEYSTORE_PATH="${2:-}"; shift 2 ;;
+    --secrets-env) SECRETS_ENV="${2:-}"; shift 2 ;;
     --alias) KEY_ALIAS="${2:-}"; shift 2 ;;
     --repository) REPOSITORY="${2:-}"; shift 2 ;;
     --set-github-secrets) SET_GITHUB_SECRETS=true; shift ;;
-    --force) FORCE=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
@@ -50,85 +55,62 @@ require_command openssl
 require_command base64
 require_command python3
 
-[[ -n "$OUTPUT_PATH" ]] || fail "--output must not be empty"
+[[ -n "$KEYSTORE_PATH" ]] || fail "--keystore is required"
 [[ -n "$KEY_ALIAS" ]] || fail "--alias must not be empty"
 
-OUTPUT_PATH="$(python3 - "$OUTPUT_PATH" <<'PY'
+KEYSTORE_PATH="$(python3 - "$KEYSTORE_PATH" <<'PY'
 import os, sys
 print(os.path.abspath(os.path.expanduser(sys.argv[1])))
 PY
 )"
-BACKUP_ENV="${OUTPUT_PATH%.*}.secrets.env"
-FINGERPRINT_FILE="${OUTPUT_PATH%.*}.certificate-sha256.txt"
+[[ -f "$KEYSTORE_PATH" ]] || fail "production keystore not found: $KEYSTORE_PATH"
 
-if [[ "$FORCE" != true ]]; then
-  [[ ! -e "$OUTPUT_PATH" ]] || fail "keystore already exists: $OUTPUT_PATH"
-  [[ ! -e "$BACKUP_ENV" ]] || fail "secret backup already exists: $BACKUP_ENV"
+if [[ -z "$SECRETS_ENV" ]]; then
+  candidate="${KEYSTORE_PATH%.*}.secrets.env"
+  [[ -f "$candidate" ]] && SECRETS_ENV="$candidate"
 fi
 
-mkdir -p "$(dirname "$OUTPUT_PATH")"
-umask 077
-[[ "$FORCE" == true ]] && rm -f "$OUTPUT_PATH" "$BACKUP_ENV" "$FINGERPRINT_FILE"
+if [[ -n "$SECRETS_ENV" ]]; then
+  SECRETS_ENV="$(python3 - "$SECRETS_ENV" <<'PY'
+import os, sys
+print(os.path.abspath(os.path.expanduser(sys.argv[1])))
+PY
+)"
+  [[ -f "$SECRETS_ENV" ]] || fail "secret backup not found: $SECRETS_ENV"
+  set -a
+  # shellcheck disable=SC1090
+  source "$SECRETS_ENV"
+  set +a
+fi
 
-ANDROID_KEYSTORE_PASSWORD="$(openssl rand -base64 36 | tr -d '\r\n')"
-ANDROID_KEY_PASSWORD="$(openssl rand -base64 36 | tr -d '\r\n')"
-export ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD
-
-keytool -genkeypair -noprompt \
-  -storetype JKS \
-  -keystore "$OUTPUT_PATH" \
-  -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-  -keypass "$ANDROID_KEY_PASSWORD" \
-  -alias "$KEY_ALIAS" \
-  -keyalg RSA \
-  -keysize 4096 \
-  -sigalg SHA256withRSA \
-  -validity "$VALIDITY_DAYS" \
-  -dname 'CN=Nowen Video Android, OU=Release, O=Nowen, L=Shenzhen, ST=Guangdong, C=CN'
-
-FINGERPRINT="$(keytool -exportcert -rfc \
-  -keystore "$OUTPUT_PATH" \
-  -alias "$KEY_ALIAS" \
-  -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | \
-  openssl x509 -noout -fingerprint -sha256 | \
-  sed 's/^.*=//' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
-[[ "$FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || fail "unable to resolve certificate SHA-256"
-
-cat > "$BACKUP_ENV" <<EOF
-ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
-ANDROID_KEY_ALIAS=$KEY_ALIAS
-ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
-EOF
-printf '%s\n' "$FINGERPRINT" > "$FINGERPRINT_FILE"
-chmod 600 "$OUTPUT_PATH" "$BACKUP_ENV" "$FINGERPRINT_FILE"
+[[ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ]] || fail "ANDROID_KEYSTORE_PASSWORD is required"
+[[ -n "${ANDROID_KEY_PASSWORD:-}" ]] || fail "ANDROID_KEY_PASSWORD is required"
 
 ANDROID_KEY_ALIAS="$KEY_ALIAS" \
   bash "$ROOT_DIR/scripts/android-signing-preflight.sh" \
     --version 1.2.9 \
-    --keystore "$OUTPUT_PATH" \
+    --keystore "$KEYSTORE_PATH" \
     --alias "$KEY_ALIAS" \
     --repository "$REPOSITORY" \
-    --expected-fingerprint "$FINGERPRINT" \
+    --expected-fingerprint "$EXPECTED_FINGERPRINT" \
     --skip-git-checks
 
 if [[ "$SET_GITHUB_SECRETS" == true ]]; then
   require_command gh
   gh auth status >/dev/null
   gh repo view "$REPOSITORY" >/dev/null
-  base64 < "$OUTPUT_PATH" | tr -d '\r\n' | gh secret set ANDROID_KEYSTORE_BASE64 --repo "$REPOSITORY"
+  base64 < "$KEYSTORE_PATH" | tr -d '\r\n' | gh secret set ANDROID_KEYSTORE_BASE64 --repo "$REPOSITORY"
   printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | gh secret set ANDROID_KEYSTORE_PASSWORD --repo "$REPOSITORY"
   printf '%s' "$KEY_ALIAS" | gh secret set ANDROID_KEY_ALIAS --repo "$REPOSITORY"
   printf '%s' "$ANDROID_KEY_PASSWORD" | gh secret set ANDROID_KEY_PASSWORD --repo "$REPOSITORY"
 fi
 
-printf '\nAndroid production signing bootstrap complete.\n'
-printf 'Keystore: %s\n' "$OUTPUT_PATH"
-printf 'Secret backup: %s\n' "$BACKUP_ENV"
-printf 'Certificate SHA-256: %s\n' "$FINGERPRINT"
+printf '\nAndroid production signing bootstrap passed.\n'
+printf 'Keystore: %s\n' "$KEYSTORE_PATH"
+printf 'Certificate SHA-256: %s\n' "$EXPECTED_FINGERPRINT"
 if [[ "$SET_GITHUB_SECRETS" == true ]]; then
   printf 'GitHub Actions secrets: configured for %s\n' "$REPOSITORY"
 else
   printf 'GitHub Actions secrets: not changed (pass --set-github-secrets to configure them).\n'
 fi
-printf '\nIMPORTANT: keep at least two offline backups of the .jks and .env files.\n'
-printf 'Losing this key prevents future signed upgrades of com.nowen.video.\n'
+printf '\nThis repository will reject any different production signing certificate.\n'
