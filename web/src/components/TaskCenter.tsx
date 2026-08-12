@@ -1,7 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, CheckCircle2, CircleAlert, Clock3, Database, HardDrive, Loader2, RefreshCw, RotateCcw, ShieldCheck, X, XCircle } from 'lucide-react'
+import {
+  Activity,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  Database,
+  HardDrive,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  X,
+  XCircle,
+} from 'lucide-react'
 import { taskCenterApi } from '@/api'
-import type { TaskCenterSnapshot, UnifiedTask, UnifiedTaskAction, UnifiedTaskKind, UnifiedTaskStatus } from '@/api'
+import type {
+  TaskCenterSnapshot,
+  UnifiedTask,
+  UnifiedTaskAction,
+  UnifiedTaskKind,
+  UnifiedTaskStatus,
+} from '@/api'
+import { Button, Surface, Tag, type TagTone } from '@/components/design-system'
 import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -26,24 +46,33 @@ const statusLabel: Record<UnifiedTaskStatus, string> = {
 }
 
 function taskIcon(kind: UnifiedTaskKind, status: UnifiedTaskStatus) {
-  if (kind === 'storage_incident') return <CircleAlert size={17} />
-  if ((kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') && status === 'failed') return <CircleAlert size={17} />
-  if (status === 'failed') return <XCircle size={17} />
-  if (status === 'completed') return <CheckCircle2 size={17} />
-  if (status === 'queued') return <Clock3 size={17} />
-  if (kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') return <HardDrive size={17} />
-  if (kind === 'legacy_projection_migration') return <Database size={17} />
-  if (kind === 'scan') return <Database size={17} />
-  return <Loader2 size={17} className="animate-spin" />
+  if (kind === 'storage_incident') return <CircleAlert size={17} aria-hidden="true" />
+  if ((kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') && status === 'failed') return <CircleAlert size={17} aria-hidden="true" />
+  if (status === 'failed') return <XCircle size={17} aria-hidden="true" />
+  if (status === 'completed') return <CheckCircle2 size={17} aria-hidden="true" />
+  if (status === 'queued') return <Clock3 size={17} aria-hidden="true" />
+  if (kind === 'artifact_cleanup' || kind === 'legacy_artifact_migration') return <HardDrive size={17} aria-hidden="true" />
+  if (kind === 'legacy_projection_migration' || kind === 'scan') return <Database size={17} aria-hidden="true" />
+  return <Loader2 size={17} className="animate-spin" aria-hidden="true" />
+}
+
+function statusTone(status: UnifiedTaskStatus): TagTone {
+  switch (status) {
+    case 'running': return 'brand'
+    case 'completed': return 'success'
+    case 'failed': return 'danger'
+    case 'cancelled': return 'neutral'
+    default: return 'warning'
+  }
 }
 
 function statusColor(status: UnifiedTaskStatus) {
   switch (status) {
-    case 'running': return 'var(--neon-blue)'
-    case 'completed': return '#16A34A'
-    case 'failed': return '#DC2626'
-    case 'cancelled': return 'var(--text-muted)'
-    default: return '#CA8A04'
+    case 'running': return 'var(--nv-action-primary)'
+    case 'completed': return 'var(--nv-status-success)'
+    case 'failed': return 'var(--nv-status-danger)'
+    case 'cancelled': return 'var(--nv-text-tertiary)'
+    default: return 'var(--nv-status-warning)'
   }
 }
 
@@ -88,63 +117,61 @@ function TaskRow({
   const actions = task.actions || []
 
   return (
-    <div
-      className="rounded-xl border p-3"
-      style={{
-        borderColor: operationalIssue ? 'rgba(220,38,38,.28)' : 'var(--border-default)',
-        background: operationalIssue ? 'rgba(220,38,38,.04)' : 'var(--card-bg)',
-      }}
+    <Surface
+      className="bg-[var(--nv-bg-surface-soft)] p-3 shadow-none"
+      style={operationalIssue ? {
+        borderColor: 'color-mix(in srgb, var(--nv-status-danger) 28%, var(--nv-border-default))',
+        background: 'color-mix(in srgb, var(--nv-status-danger) 4%, var(--nv-bg-surface-soft))',
+      } : undefined}
     >
       <div className="flex items-start gap-3">
         <div
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-          style={{ color: statusColor(task.status), background: 'var(--nav-hover-bg)' }}
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-hover)]"
+          style={{ color: statusColor(task.status) }}
         >
           {taskIcon(task.kind, task.status)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{task.title}</p>
-              <p className="mt-0.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              <p className="truncate text-sm font-medium text-[var(--nv-text-primary)]">{task.title}</p>
+              <p className="mt-0.5 text-xs text-[var(--nv-text-tertiary)]">
                 {kindLabel[task.kind]}{task.subtitle ? ` · ${task.subtitle}` : ''}
               </p>
             </div>
-            <span className="shrink-0 text-xs font-medium" style={{ color: statusColor(task.status) }}>
-              {statusLabel[task.status]}
-            </span>
+            <Tag tone={statusTone(task.status)}>{statusLabel[task.status]}</Tag>
           </div>
 
           {active && (
             <div className="mt-3">
-              <div className="mb-1 flex items-center justify-between text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--nv-text-tertiary)]">
                 <span className={cleanupTask || storageIncident ? 'min-w-0 break-all pr-3' : 'truncate pr-3'}>{task.message || '处理中'}</span>
                 <span>{Math.round(task.progress)}%</span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--nav-hover-bg)' }}>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--nv-bg-hover)]">
                 <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${Math.max(2, task.progress)}%`, background: 'var(--neon-blue)' }}
+                  className="h-full rounded-full bg-[var(--nv-action-primary)] transition-[width] duration-300"
+                  style={{ width: `${Math.max(2, task.progress)}%` }}
                 />
               </div>
             </div>
           )}
 
           {!active && (task.message || time) && (
-            <div className="mt-2 flex items-start justify-between gap-3 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <div className="mt-2 flex items-start justify-between gap-3 text-[11px] text-[var(--nv-text-tertiary)]">
               <span className={cleanupTask || storageIncident ? 'min-w-0 break-all' : 'truncate'}>{task.message}</span>
               <span className="shrink-0">{time}</span>
             </div>
           )}
 
           {cleanupTask && task.status === 'failed' && !migrationTask && (
-            <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
               修复挂载、权限或路径配置后再重试。操作仍会经过 Cleanup Lease 与路径安全校验。
             </p>
           )}
 
           {storageIncident && (
-            <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
               新转码 Claim 已暂停，正在运行的任务保持原 Lease。系统会持续执行真实写探针，确认存储恢复后自动解除告警。
             </p>
           )}
@@ -152,34 +179,38 @@ function TaskRow({
           {actions.length > 0 && (
             <div className="mt-3 flex justify-end gap-2">
               {actions.includes('retry') && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => onAction(task, 'retry')}
                   disabled={actionLoading !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-                  style={{ borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
+                  loading={actionLoading === `${task.id}:retry`}
                 >
-                  {actionLoading === `${task.id}:retry` ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  {actionLoading !== `${task.id}:retry` && <RotateCcw size={13} aria-hidden="true" />}
                   {cleanupTask ? '立即重试' : projectionMigrationTask ? '重新登记' : '重试'}
-                </button>
+                </Button>
               )}
               {actions.includes('rollback') && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => onAction(task, 'rollback')}
                   disabled={actionLoading !== null}
-                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-                  style={{ borderColor: 'rgba(202,138,4,.3)', color: '#CA8A04' }}
+                  loading={actionLoading === `${task.id}:rollback`}
+                  className="text-[var(--nv-status-warning)]"
+                  style={{ borderColor: 'color-mix(in srgb, var(--nv-status-warning) 30%, var(--nv-border-default))' }}
                 >
-                  {actionLoading === `${task.id}:rollback` ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                  {actionLoading !== `${task.id}:rollback` && <ShieldCheck size={13} aria-hidden="true" />}
                   保留目录
-                </button>
+                </Button>
               )}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </Surface>
   )
 }
 
@@ -207,8 +238,6 @@ export default function TaskCenter() {
   const refresh = useCallback(async (quiet = false) => {
     if (!enabled) return
 
-    // 生命周期事件可能高频到达。请求执行期间只记录一次追加刷新，
-    // 避免多个 GET /admin/tasks 并发并导致旧响应覆盖新快照。
     if (refreshInFlightRef.current) {
       refreshQueuedRef.current = true
       return refreshInFlightRef.current
@@ -308,88 +337,93 @@ export default function TaskCenter() {
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant={operationalIssueCount > 0 ? 'danger' : 'secondary'}
+        size="sm"
         onClick={() => setOpen(true)}
-        className="fixed right-4 top-14 z-40 flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium shadow-lg backdrop-blur md:right-6"
-        style={{
-          borderColor: operationalIssueCount > 0 ? 'rgba(220,38,38,.35)' : 'var(--border-default)',
-          background: 'var(--card-bg)',
-          color: operationalIssueCount > 0 ? '#DC2626' : 'var(--text-secondary)',
-        }}
+        className="fixed right-4 top-14 z-40 shadow-[var(--nv-shadow-card)] backdrop-blur md:right-6"
         aria-label={operationalIssueCount > 0 ? `打开任务中心，${issueLabel}` : '打开任务中心'}
       >
         {operationalIssueCount > 0
-          ? <CircleAlert size={18} className="animate-pulse" />
-          : <Activity size={18} className={activeCount > 0 ? 'animate-pulse text-neon' : ''} />}
+          ? <CircleAlert size={18} className="animate-pulse" aria-hidden="true" />
+          : <Activity size={18} className={activeCount > 0 ? 'animate-pulse text-[var(--nv-action-primary)]' : ''} aria-hidden="true" />}
         <span className="hidden sm:inline">任务</span>
         {badgeCount > 0 && (
           <span
-            className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white"
-            style={{ background: operationalIssueCount > 0 ? '#DC2626' : 'var(--neon-blue)' }}
+            className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
+            style={{
+              background: operationalIssueCount > 0 ? 'var(--nv-status-danger)' : 'var(--nv-action-primary)',
+              color: 'var(--nv-text-on-brand)',
+            }}
           >
             {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         )}
-      </button>
+      </Button>
 
       {open && (
-        <div className="fixed inset-0 z-[100]">
-          <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="关闭任务中心" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l shadow-2xl" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-base)' }}>
-            <header className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
+        <div className="fixed inset-0 z-[var(--nv-z-modal)]">
+          <button
+            type="button"
+            className="absolute inset-0 bg-[var(--nv-bg-overlay)] backdrop-blur-sm"
+            aria-label="关闭任务中心"
+            onClick={() => setOpen(false)}
+          />
+          <aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] shadow-[var(--nv-shadow-elevated)]">
+            <header className="flex items-center justify-between border-b border-[var(--nv-border-subtle)] px-5 py-4">
               <div>
                 <div className="flex items-center gap-2">
-                  {operationalIssueCount > 0 ? <CircleAlert size={19} style={{ color: '#DC2626' }} /> : <Activity size={19} className="text-neon" />}
-                  <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>任务中心</h2>
-                  {operationalIssueCount > 0 && (
-                    <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: 'rgba(220,38,38,.08)', color: '#DC2626' }}>
-                      {issueLabel}
-                    </span>
-                  )}
+                  {operationalIssueCount > 0
+                    ? <CircleAlert size={19} className="text-[var(--nv-status-danger)]" aria-hidden="true" />
+                    : <Activity size={19} className="text-[var(--nv-action-primary)]" aria-hidden="true" />}
+                  <h2 className="font-semibold text-[var(--nv-text-primary)]">任务中心</h2>
+                  {operationalIssueCount > 0 && <Tag tone="danger">{issueLabel}</Tag>}
                 </div>
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>扫描、刮削、转码、缓存清理和存储告警统一展示</p>
+                <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">扫描、刮削、转码、缓存清理和存储告警统一展示</p>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)] disabled:opacity-50" style={{ color: 'var(--text-secondary)' }} aria-label="刷新任务">
-                  <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
-                </button>
-                <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 transition-colors hover:bg-[var(--nav-hover-bg)]" style={{ color: 'var(--text-secondary)' }} aria-label="关闭任务中心">
-                  <X size={19} />
-                </button>
+                <Button variant="ghost" size="sm" iconOnly onClick={() => void refresh()} disabled={loading} aria-label="刷新任务">
+                  <RefreshCw size={17} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+                </Button>
+                <Button variant="ghost" size="sm" iconOnly onClick={() => setOpen(false)} aria-label="关闭任务中心">
+                  <X size={19} aria-hidden="true" />
+                </Button>
               </div>
             </header>
 
             <div className="flex-1 overflow-y-auto p-4">
               {error && (
-                <div className="mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm" style={{ borderColor: 'rgba(220,38,38,.25)', background: 'rgba(220,38,38,.06)', color: '#DC2626' }}>
-                  <CircleAlert size={17} />
+                <div className="mb-4 flex items-center gap-2 rounded-[var(--nv-radius-control)] border p-3 text-sm text-[var(--nv-status-danger)]" style={{ borderColor: 'color-mix(in srgb, var(--nv-status-danger) 25%, transparent)', background: 'color-mix(in srgb, var(--nv-status-danger) 6%, transparent)' }} role="alert">
+                  <CircleAlert size={17} aria-hidden="true" />
                   {error}
                 </div>
               )}
 
               {loading && !snapshot ? (
-                <div className="flex min-h-60 items-center justify-center"><Loader2 size={24} className="animate-spin text-neon" /></div>
+                <div className="flex min-h-60 items-center justify-center">
+                  <Loader2 size={24} className="animate-spin text-[var(--nv-action-primary)]" aria-label="加载任务" />
+                </div>
               ) : tasks.length === 0 ? (
                 <div className="flex min-h-60 flex-col items-center justify-center text-center">
-                  <CheckCircle2 size={34} className="mb-3 text-green-500" />
-                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>当前没有后台任务</p>
-                  <p className="mt-1 text-sm" style={{ color: 'var(--text-tertiary)' }}>扫描媒体库、开始转码或出现存储问题后会显示在这里。</p>
+                  <CheckCircle2 size={34} className="mb-3 text-[var(--nv-status-success)]" aria-hidden="true" />
+                  <p className="font-medium text-[var(--nv-text-primary)]">当前没有后台任务</p>
+                  <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">扫描媒体库、开始转码或出现存储问题后会显示在这里。</p>
                 </div>
               ) : (
                 <div className="space-y-5">
                   {activeTasks.length > 0 && (
                     <section>
                       <div className="mb-2 flex items-center justify-between">
-                        <h3 className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>进行中</h3>
-                        <span className="text-xs text-neon">{activeTasks.length} 项</span>
+                        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">进行中</h3>
+                        <Tag tone="brand">{activeTasks.length} 项</Tag>
                       </div>
                       <div className="space-y-2">{activeTasks.map(renderTask)}</div>
                     </section>
                   )}
                   {recentTasks.length > 0 && (
                     <section>
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-tertiary)' }}>最近任务与待处理问题</h3>
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">最近任务与待处理问题</h3>
                       <div className="space-y-2">{recentTasks.map(renderTask)}</div>
                     </section>
                   )}
