@@ -126,8 +126,8 @@ function CastCard({
 
         {mediaPerson.role && mediaPerson.role !== 'actor' && (
           <Tag
-            tone={mediaPerson.role === 'director' ? 'brand' : 'neutral'}
-            className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] bg-[var(--nv-bg-overlay)] text-[10px] backdrop-blur-sm"
+            tone="quality"
+            className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-12px)] text-[11px] shadow-sm"
           >
             {roleLabel}
           </Tag>
