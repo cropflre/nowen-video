@@ -53,8 +53,6 @@ type Handlers struct {
 	Collection *CollectionHandler
 	// V2.1: WebDAV 存储管理
 	Storage *StorageHandler
-	// 系统日志
-	SystemLog *SystemLogHandler
 	// 番号刮削管理
 	AdultScraper *AdultScraperHandler
 	// 智能扫描重命名
@@ -139,8 +137,6 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Collection: &CollectionHandler{collectionService: services.Collection, streamService: services.Stream, logger: logger},
 		// V2.1: WebDAV 存储管理
 		Storage: NewStorageHandler(services.WebDAV, services.RemoteStorage, cfg, logger),
-		// 系统日志
-		SystemLog: &SystemLogHandler{logRepo: repos.SystemLog, logger: logger},
 		// 番号刮削管理
 		AdultScraper: &AdultScraperHandler{scraperService: services.AdultScraper, danmakuService: services.Danmaku, cfg: cfg, logger: logger},
 		// 智能扫描重命名
