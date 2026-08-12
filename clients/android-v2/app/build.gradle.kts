@@ -23,7 +23,7 @@ val hasAnyReleaseSigningValue = releaseSigningValues.any { it != null }
 val hasReleaseSigning = releaseSigningValues.all { it != null }
 
 check(!hasAnyReleaseSigningValue || hasReleaseSigning) {
-    "Android V2 release signing is partially configured. Set ANDROID_SIGNING_STORE_FILE, " +
+    "Android release signing is partially configured. Set ANDROID_SIGNING_STORE_FILE, " +
         "ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS and ANDROID_SIGNING_KEY_PASSWORD together."
 }
 
@@ -34,16 +34,18 @@ check((versionNameInput == null) == (versionCodeInput == null)) {
         "Use scripts/android-v2-version.sh to derive the version code."
 }
 val resolvedVersionCode = versionCodeInput?.toIntOrNull()
-    ?: if (versionCodeInput == null) 100101 else error("ANDROID_VERSION_CODE must be a positive integer.")
+    ?: if (versionCodeInput == null) 10_100_101 else error("ANDROID_VERSION_CODE must be a positive integer.")
 check(resolvedVersionCode > 0) { "ANDROID_VERSION_CODE must be a positive integer." }
 val resolvedVersionName = versionNameInput ?: "0.1.0-alpha.1"
 
 android {
+    // Keep the V2 source namespace so the mature modular code does not need a risky package rewrite.
+    // applicationId is the public Android identity and now intentionally takes over V1.
     namespace = "com.nowen.video.v2"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nowen.video.v2"
+        applicationId = "com.nowen.video"
         minSdk = 26
         targetSdk = 35
         versionCode = resolvedVersionCode
