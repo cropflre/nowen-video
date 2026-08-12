@@ -8,7 +8,7 @@ from typing import Any
 
 from android_v2_p0.common import command, fail, fingerprint, load_json, sha256_file
 
-from .common import Candidate, SENSITIVE_ASSET, commit_sha, exact_file_hashes, normalized_text
+from .common import Candidate, SENSITIVE_ASSET, commit_sha, exact_file_hashes
 
 
 class GitHubCLI:
@@ -67,8 +67,6 @@ def release_metadata(gh: GitHubCLI, tag: str, *, draft: bool) -> dict[str, Any]:
     errors: list[str] = []
     if payload.get("tag_name") != tag:
         errors.append("release tag_name does not match requested tag")
-    if payload.get("prerelease") is not True:
-        errors.append("release must be marked prerelease")
     if payload.get("draft") is not draft:
         errors.append(f"release draft must be {draft}")
     if errors:
@@ -87,19 +85,21 @@ def asset_names(release: dict[str, Any]) -> list[str]:
 
 
 def validate_allowlist(release: dict[str, Any], candidate: Candidate) -> None:
+    """Require all Android candidate assets without rejecting sibling platform assets.
+
+    Android now publishes on the same vX.Y.Z release as desktop/server artifacts.
+    The old V2 gate treated every non-Android asset as an error, which would make
+    a unified product release impossible. We still fail closed for dangerous
+    filenames and for any missing Android candidate artifact.
+    """
     names = asset_names(release)
     dangerous = sorted(name for name in names if SENSITIVE_ASSET.search(name))
     if dangerous:
         fail("release contains dangerous asset name(s): " + ", ".join(dangerous))
     expected, actual = set(candidate.files), set(names)
-    missing, extra = sorted(expected - actual), sorted(actual - expected)
-    if missing or extra:
-        detail = []
-        if missing:
-            detail.append("missing: " + ", ".join(missing))
-        if extra:
-            detail.append("unexpected: " + ", ".join(extra))
-        fail("release asset allowlist mismatch: " + "; ".join(detail))
+    missing = sorted(expected - actual)
+    if missing:
+        fail("release is missing Android candidate asset(s): " + ", ".join(missing))
 
 
 def download_release(gh: GitHubCLI, tag: str, destination: pathlib.Path) -> None:
@@ -110,6 +110,7 @@ def download_release(gh: GitHubCLI, tag: str, destination: pathlib.Path) -> None
 
 
 def verify_release_files(directory: pathlib.Path, candidate: Candidate, release: dict[str, Any]) -> None:
+    del release
     errors: list[str] = []
     expected_hashes = exact_file_hashes(candidate)
     for name, expected in expected_hashes.items():
@@ -117,15 +118,13 @@ def verify_release_files(directory: pathlib.Path, candidate: Candidate, release:
         if not path.is_file():
             errors.append(f"downloaded release file is missing: {name}")
         elif sha256_file(path) != expected:
-            errors.append(f"release asset differs from P0-tested candidate: {name}")
-    expected_body = normalized_text(candidate.path("RELEASE_NOTES.md").read_text(encoding="utf-8"))
-    if normalized_text(str(release.get("body") or "")) != expected_body:
-        errors.append("release body differs from candidate RELEASE_NOTES.md")
+            errors.append(f"release Android asset differs from P0-tested candidate: {name}")
+
     if not errors:
         manifest = load_json(directory / "release-manifest.json")
         preflight = load_json(directory / "signing-preflight.json")
         if not isinstance(manifest, dict) or not isinstance(preflight, dict):
-            errors.append("release JSON metadata is invalid")
+            errors.append("release Android JSON metadata is invalid")
         else:
             if str(manifest.get("source", {}).get("commit", "")).lower() != candidate.source_commit:
                 errors.append("release manifest source commit is inconsistent")
@@ -136,17 +135,15 @@ def verify_release_files(directory: pathlib.Path, candidate: Candidate, release:
             if fingerprint(str(preflight.get("signing", {}).get("certificate_sha256", ""))) != candidate.certificate_sha256:
                 errors.append("release preflight certificate is inconsistent")
     if errors:
-        fail("release asset verification failed:\n- " + "\n- ".join(errors))
+        fail("release Android asset verification failed:\n- " + "\n- ".join(errors))
 
 
 def sync_release(gh: GitHubCLI, tag: str, candidate: Candidate, release: dict[str, Any]) -> None:
-    validate_allowlist(release, candidate)
+    # Preserve desktop/server assets and the shared product release body. Only
+    # replace the Android candidate files byte-for-byte.
+    del release
     gh.run(
         "release", "upload", tag,
         *[str(candidate.path(name)) for name in candidate.files],
         "--repo", gh.repository, "--clobber", timeout=600,
-    )
-    gh.patch_release(
-        int(release["id"]),
-        [("body", f"@{candidate.path('RELEASE_NOTES.md')}"), ("draft", "true"), ("prerelease", "true")],
     )
