@@ -10,6 +10,7 @@ on:
       - 'scripts/android-version.sh'
       - 'scripts/android-release-manifest.py'
       - 'scripts/android-signing-preflight.sh'
+      - 'scripts/android-signing-bootstrap.sh'
       - '.github/workflows/release-android.yml'
   push:
     tags:
@@ -29,6 +30,7 @@ concurrency:
 
 env:
   ANDROID_PRODUCTION_APPLICATION_ID: com.nowen.video
+  ANDROID_PRODUCTION_CERTIFICATE_SHA256: 07ac3f214fbb8ac44e85fa1f65610dcbcff8fe04876c417364c3905dfb8b6bcd
   ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
   ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
   ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -58,6 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/android-signing-bootstrap.sh
           bash scripts/android-version.sh --self-test
           python3 scripts/android-release-manifest.py --self-test
           bash scripts/android-signing-preflight.sh --self-test
@@ -103,15 +106,20 @@ jobs:
 
           chmod 600 "$store_file"
           mkdir -p dist/android
+          preflight_args=(
+            --keystore "$store_file"
+            --alias "$ANDROID_KEY_ALIAS"
+            --version "$ANDROID_VERSION_NAME"
+            --repository "$GITHUB_REPOSITORY"
+            --report dist/android/signing-preflight.json
+            --skip-git-checks
+          )
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            preflight_args+=(--expected-fingerprint "$ANDROID_PRODUCTION_CERTIFICATE_SHA256")
+          fi
           ANDROID_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
           ANDROID_KEY_PASSWORD="$ANDROID_KEY_PASSWORD" \
-            bash scripts/android-signing-preflight.sh \
-              --keystore "$store_file" \
-              --alias "$ANDROID_KEY_ALIAS" \
-              --version "$ANDROID_VERSION_NAME" \
-              --repository "$GITHUB_REPOSITORY" \
-              --report dist/android/signing-preflight.json \
-              --skip-git-checks
+            bash scripts/android-signing-preflight.sh "${preflight_args[@]}"
 
           {
             echo "ANDROID_SIGNING_STORE_FILE=$store_file"
@@ -151,6 +159,10 @@ jobs:
           [[ "$apk_version_name" == "$ANDROID_VERSION_NAME" ]] || { echo "Unexpected versionName: $apk_version_name"; exit 1; }
           certificate_sha256="$(sed -n 's/.*certificate SHA-256 digest: //Ip' "$RUNNER_TEMP/android-apksigner.txt" | head -1 | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
           [[ "$certificate_sha256" =~ ^[0-9a-f]{64}$ ]]
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" && "$certificate_sha256" != "$ANDROID_PRODUCTION_CERTIFICATE_SHA256" ]]; then
+            echo "Unexpected production signing certificate: $certificate_sha256"
+            exit 1
+          fi
 
           {
             echo "ANDROID_APPLICATION_ID=$application_id"
