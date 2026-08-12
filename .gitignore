@@ -48,29 +48,23 @@ config/.master.key
 config/*.key
 *.master.key
 
-# Android V1
+# Android
 android/.gradle/
-android/build/
-android/app/build/
+android/**/build/
 android/local.properties
 android/captures/
 android/.externalNativeBuild/
 android/.cxx/
 
-# Android V2
-clients/android-v2/.gradle/
-clients/android-v2/**/build/
-clients/android-v2/local.properties
-clients/android-v2/captures/
-clients/android-v2/.externalNativeBuild/
-clients/android-v2/.cxx/
-
+# Android signing / build artifacts
 *.apk
 *.aab
 *.aar
 *.ap_
 *.keystore
 *.jks
+*.p12
+*.pfx
 
 # 第三方参考源码（不纳入本仓库）
 mdcx-master/
