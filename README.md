@@ -20,7 +20,7 @@
   <a href="#%EF%B8%8F-配置说明">配置</a> •
   <a href="./docs/SERVER.md">服务端架构</a> •
   <a href="./desktop/README.md">桌面客户端</a> •
-  <a href="./clients/android-v2/README.md">Android V2</a>
+  <a href="./clients/android-v2/README.md">Android</a>
 </p>
 
 </div>
@@ -34,7 +34,7 @@
 >
 > 🖥️ **PC 桌面客户端** 支持 MKV / HEVC / HDR / 杜比视界 / DTS / Atmos 等本地能力 → 详见 [desktop/README.md](./desktop/README.md)
 >
-> 📱 **Android V2** 已具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线能力 → 详见 [clients/android-v2/README.md](./clients/android-v2/README.md)
+> 📱 **Android** 已正式替换旧版 Android 客户端，使用 Kotlin + Jetpack Compose，具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线能力 → 详见 [clients/android-v2/README.md](./clients/android-v2/README.md)
 
 ## 📸 功能截图
 
@@ -53,7 +53,7 @@
 - 🧠 **AI 可选能力** — 支持配置状态、实际运行状态与待重启状态分离；关闭时不会强行启动相关运行组件
 - 🌐 **远程存储** — WebDAV / Alist / S3 按配置启用，不需要的能力不会作为常驻服务启动
 - ✅ **统一任务中心** — 聚合媒体库扫描、刮削及转码维护任务，支持状态、进度、重试与生命周期事件
-- 📱 **多端访问** — Web、桌面端与 Android V2 共用稳定的登录、媒体库、搜索、播放、收藏、历史和进度 API
+- 📱 **多端访问** — Web、桌面端与 Android 共用稳定的登录、媒体库、搜索、播放、收藏、历史和进度 API
 - 🛡️ **安全** — JWT、bcrypt、CORS、安全响应头、限流和访问日志
 - 🌍 **国际化** — 简体中文 / English / 日本語
 - 🪶 **NAS 优先** — 单二进制 + SQLite (WAL)，Alpine Docker 镜像，健康检查，PUID/PGID 与持久化目录
@@ -132,11 +132,11 @@ make build
 
 旧版兼容运行时只用于迁移/回滚验证，不应作为新的正式部署方式。详见 [docs/SERVER.md](./docs/SERVER.md)。
 
-### 四、Android V2
+### 四、Android
 
-Android V2 最低支持 Android 8.0 / API 26。构建与发布要求见：
+正式 Android 客户端最低支持 Android 8.0 / API 26。仓库内部源码目录仍保留 `clients/android-v2/` 历史名称，但对外不再区分 V1 / V2。构建、迁移与发布要求见：
 
-- [Android V2 README](./clients/android-v2/README.md)
+- [Android README](./clients/android-v2/README.md)
 - [Release Guide](./clients/android-v2/RELEASE.md)
 - [Migration Guide](./clients/android-v2/MIGRATION.md)
 - [Smoke Test](./clients/android-v2/SMOKE_TEST.md)
@@ -171,7 +171,7 @@ Android V2 最低支持 Android 8.0 / API 26。构建与发布要求见：
 
 **Web 前端** React · TypeScript · Vite · Tailwind CSS · Zustand · HLS.js · React Router
 
-**Android V2** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
+**Android** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
 
 **部署** Docker (Alpine) · docker-compose
 
@@ -183,7 +183,8 @@ Android V2 最低支持 Android 8.0 / API 26。构建与发布要求见：
 - ✅ 服务端播放规划、自动回退与统一任务中心
 - ✅ 持久转码执行状态、Lease、恢复与关闭协议
 - ✅ Web 统一 Design System 与播放器体验收口
-- 🧪 Android V2 持续完成正式发布验证
+- ✅ Android 新架构正式接管旧版产品身份与升级链路
+- 🧪 Android 正式签名与首个接管版本发布验证
 - 🚀 后续继续围绕播放稳定性、字幕、跨端体验与 NAS 资源效率演进
 
 ## 💬 交流与反馈
