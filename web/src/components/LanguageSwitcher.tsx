@@ -4,7 +4,12 @@ import clsx from 'clsx'
 import { useI18nStore, SUPPORTED_LOCALES } from '@/i18n'
 import { Button } from '@/components/design-system'
 
-export default function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+  className?: string
+  buttonClassName?: string
+}
+
+export default function LanguageSwitcher({ className, buttonClassName }: LanguageSwitcherProps) {
   const { locale, setLocale } = useI18nStore()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -22,17 +27,19 @@ export default function LanguageSwitcher() {
   const currentLang = SUPPORTED_LOCALES.find((lang) => lang.code === locale)
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={clsx('relative', className)}>
       <Button
         type="button"
         variant="ghost"
         size="md"
         onClick={() => setOpen((value) => !value)}
-        className="w-full justify-start gap-3"
+        className={clsx('w-full !justify-start gap-3 text-left', buttonClassName)}
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Globe size={18} className="shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <Globe size={18} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+        </span>
         <span className="truncate">{currentLang?.flag} {currentLang?.name}</span>
       </Button>
 
