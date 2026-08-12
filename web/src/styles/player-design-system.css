@@ -40,6 +40,17 @@
   outline-offset: 2px;
 }
 
+/* Keep every player engine's top-left back control aligned with the detail-page
+   secondary icon button: 32 × 32 with the shared control radius. Individual
+   engines may still own their immersive colors and icons. */
+.group\/player button[aria-label='返回'] {
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  min-height: 2rem;
+  border-radius: var(--nv-radius-control);
+}
+
 .group\/player [role='menu'],
 .group\/player [role='dialog'] {
   font-family: var(--nv-font-sans);
