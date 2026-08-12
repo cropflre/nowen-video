@@ -222,3 +222,23 @@
     animation: none;
   }
 }
+
+/* Media detail polish: the hero already owns the quality badge, so hide the
+ * duplicated standalone badge above the info cards. */
+[aria-label='媒体标识'] > .nv-tag[data-tone='brand'] {
+  display: none;
+}
+
+/* A saved favorite is a semantic positive selection, but the conventional
+ * heart affordance should stay red rather than inheriting the cyan brand color. */
+.nv-button[data-variant='secondary'][aria-pressed='true']:has(.lucide-heart) {
+  border-color: color-mix(in srgb, var(--nv-status-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--nv-status-danger) 10%, transparent);
+  color: var(--nv-status-danger);
+}
+
+.nv-button[data-variant='secondary'][aria-pressed='true']:has(.lucide-heart):hover {
+  border-color: color-mix(in srgb, var(--nv-status-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--nv-status-danger) 16%, transparent);
+  color: var(--nv-status-danger);
+}
