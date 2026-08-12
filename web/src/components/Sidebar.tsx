@@ -44,6 +44,8 @@ const sidebarNavClassName = (isActive: boolean) => clsx(
     : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]',
 )
 
+const sidebarFooterActionClassName = 'w-full !justify-start gap-3 !px-3 text-left'
+
 export default function Sidebar({ isMobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
@@ -199,42 +201,44 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose }: Sidebar
       </nav>
 
       <div className="shrink-0 border-t border-[var(--nv-border-subtle)] p-3">
-        <div className={clsx('mb-3', !showText && 'flex justify-center')}>
-          <button
-            onClick={toggleTheme}
-            className={clsx(
-              'nv-button nv-button--ghost nv-button--md group relative flex items-center gap-3',
-              showText ? 'w-full justify-start' : 'nv-button--icon-only',
-            )}
-            data-variant="ghost"
-            data-size="md"
-            data-icon-only={!showText || undefined}
-            title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
-            aria-label={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
-            role="switch"
-            aria-checked={theme === 'dark'}
-          >
-            <div className="relative flex h-[18px] w-[18px] shrink-0 items-center justify-center">
-              <Sun
-                size={18}
-                className={clsx(
-                  'absolute transition-all duration-200',
-                  theme === 'light' ? 'rotate-0 scale-100 opacity-100 text-amber-500' : 'rotate-90 scale-0 opacity-0',
-                )}
-              />
-              <Moon
-                size={18}
-                className={clsx(
-                  'absolute transition-all duration-200',
-                  theme === 'dark' ? 'rotate-0 scale-100 opacity-100 text-[var(--nv-action-primary)]' : '-rotate-90 scale-0 opacity-0',
-                )}
-              />
-            </div>
-            {showText && <span>{theme === 'dark' ? t('nav.darkMode') : t('nav.lightMode')}</span>}
-          </button>
-        </div>
+        <div className={clsx('mb-3 space-y-1', !showText && 'flex justify-center')}>
+          <div className={clsx(showText && 'space-y-1')}>
+            <button
+              onClick={toggleTheme}
+              className={clsx(
+                'nv-button nv-button--ghost nv-button--md group relative flex items-center',
+                showText ? sidebarFooterActionClassName : 'nv-button--icon-only',
+              )}
+              data-variant="ghost"
+              data-size="md"
+              data-icon-only={!showText || undefined}
+              title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
+              aria-label={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
+              role="switch"
+              aria-checked={theme === 'dark'}
+            >
+              <div className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                <Sun
+                  size={18}
+                  className={clsx(
+                    'absolute transition-all duration-200',
+                    theme === 'light' ? 'rotate-0 scale-100 opacity-100 text-amber-500' : 'rotate-90 scale-0 opacity-0',
+                  )}
+                />
+                <Moon
+                  size={18}
+                  className={clsx(
+                    'absolute transition-all duration-200',
+                    theme === 'dark' ? 'rotate-0 scale-100 opacity-100 text-[var(--nv-action-primary)]' : '-rotate-90 scale-0 opacity-0',
+                  )}
+                />
+              </div>
+              {showText && <span>{theme === 'dark' ? t('nav.darkMode') : t('nav.lightMode')}</span>}
+            </button>
 
-        {showText && <LanguageSwitcher />}
+            {showText && <LanguageSwitcher buttonClassName={sidebarFooterActionClassName} />}
+          </div>
+        </div>
 
         <div className="mt-3 flex items-center gap-3">
           <div
