@@ -17,10 +17,7 @@ const retiredDistPatterns = [
   { name: 'Pulse 客户端路由', regex: /["']\/pulse(?:\/|["'])/g },
 ]
 
-// index.css 是最后一份待物理清理的历史全局定义文件。
-// 这里先锁死其它 live 源码的 caller，确保旧视觉不会继续扩散；
-// index.css 清空后即可移除这个唯一豁免。
-const sourceAllowlist = new Set(['index.css'])
+// 全量扫描所有 live source，不再保留 legacy stylesheet 豁免。
 const retiredSourcePatterns = [
   { name: '旧 Neon/Glass utility', regex: /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g },
   { name: '旧 Neon Tailwind utility', regex: /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g },
@@ -74,7 +71,6 @@ async function verifyRetiredSourceCallers() {
   const violations = []
   for (const file of await collectFiles(srcDir, sourceTextExtensions)) {
     const relative = path.relative(srcDir, file)
-    if (sourceAllowlist.has(relative)) continue
     const content = await readFile(file, 'utf8')
     violations.push(...findViolations(content, retiredSourcePatterns, relative))
   }
@@ -87,7 +83,7 @@ async function verifyRetiredSourceCallers() {
     process.exit(1)
   }
 
-  console.log('[retired-ui] source contains no legacy Design System callers outside index.css')
+  console.log('[retired-ui] source contains no legacy Design System callers')
 }
 
 async function verifyRetiredProductionUI() {
