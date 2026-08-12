@@ -7,6 +7,7 @@ on:
       - 'scripts/android-version.sh'
       - 'scripts/android-release-manifest.py'
       - 'scripts/android-signing-preflight.sh'
+      - 'scripts/android-signing-bootstrap.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -24,6 +25,7 @@ on:
       - 'scripts/android-version.sh'
       - 'scripts/android-release-manifest.py'
       - 'scripts/android-signing-preflight.sh'
+      - 'scripts/android-signing-bootstrap.sh'
       - 'cmd/server/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
@@ -65,6 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/android-signing-bootstrap.sh
           bash scripts/android-version.sh --self-test
           python3 scripts/android-release-manifest.py --self-test
           bash scripts/android-signing-preflight.sh --self-test
