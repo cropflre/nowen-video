@@ -36,10 +36,10 @@ export default {
         },
       },
       backgroundImage: {
-        'deep-space': 'radial-gradient(ellipse at 20% 50%, var(--deco-glow-blue) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, var(--deco-glow-purple) 0%, transparent 50%)',
+        'deep-space': 'radial-gradient(ellipse at 20% 50%, var(--nv-ambient-cyan) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, var(--nv-ambient-purple-soft) 0%, transparent 50%)',
       },
       boxShadow: {
-        'card-hover': 'var(--shadow-card-hover)',
+        'card-hover': 'var(--nv-shadow-card-hover)',
       },
       animation: {
         'fade-in': 'fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
