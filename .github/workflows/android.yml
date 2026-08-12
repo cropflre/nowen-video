@@ -45,6 +45,10 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  ANDROID_PRODUCTION_CERTIFICATE_FILE: android/signing/production-certificate.sha256
+  ANDROID_PRODUCTION_CERTIFICATE_PEM: android/signing/production-cert.pem
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -71,6 +75,14 @@ jobs:
           bash scripts/android-version.sh --self-test
           python3 scripts/android-release-manifest.py --self-test
           bash scripts/android-signing-preflight.sh --self-test
+
+          expected="$(tr -d ':[:space:]' < "$ANDROID_PRODUCTION_CERTIFICATE_FILE" | tr '[:upper:]' '[:lower:]')"
+          [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid production certificate SHA-256 baseline"; exit 1; }
+          actual="$(openssl x509 -in "$ANDROID_PRODUCTION_CERTIFICATE_PEM" -outform DER | sha256sum | awk '{print $1}')"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Production signing certificate mismatch: expected=$expected actual=$actual"
+            exit 1
+          }
 
       - name: Backend contract tests
         id: go
