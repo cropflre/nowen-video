@@ -1,0 +1,224 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Nowen Video global foundation.
+ *
+ * Theme values live in design-system.css. This file only owns browser-level
+ * base behavior and a small set of intentionally global utilities that are
+ * still useful across product surfaces.
+ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--nv-bg-canvas);
+    color: var(--nv-text-primary);
+    font-family: var(--nv-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html.no-theme-transition *,
+  html.no-theme-transition *::before,
+  html.no-theme-transition *::after {
+    transition: none !important;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: var(--nv-radius-pill);
+    background: color-mix(in srgb, var(--nv-text-tertiary) 42%, transparent);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--nv-action-primary) 52%, var(--nv-text-tertiary));
+  }
+
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 5px;
+    border-radius: var(--nv-radius-pill);
+    background: var(--nv-bg-hover);
+    outline: none;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--nv-bg-elevated);
+    border-radius: 50%;
+    background: var(--nv-action-primary);
+    box-shadow: var(--nv-shadow-card);
+    cursor: pointer;
+    transition: transform var(--nv-motion-fast) var(--nv-ease-standard), box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
+  }
+
+  input[type='range']::-webkit-slider-thumb:hover {
+    transform: scale(1.025);
+    box-shadow: var(--nv-shadow-focus);
+  }
+
+  input[type='range']::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--nv-bg-elevated);
+    border-radius: 50%;
+    background: var(--nv-action-primary);
+    box-shadow: var(--nv-shadow-card);
+    cursor: pointer;
+  }
+
+  input[type='range']::-moz-range-track {
+    height: 5px;
+    border-radius: var(--nv-radius-pill);
+    background: var(--nv-bg-hover);
+  }
+
+  video::cue {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .68);
+    color: #fff;
+    font-size: 1.1em;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(
+      90deg,
+      var(--nv-bg-surface-soft) 25%,
+      var(--nv-bg-hover) 50%,
+      var(--nv-bg-surface-soft) 75%
+    );
+    background-size: 200% 100%;
+    animation: nv-global-shimmer 1.8s linear infinite;
+  }
+
+  .gradient-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--nv-hero-bottom-scrim);
+  }
+
+  .noise-bg::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: .012;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .tooltip {
+    position: absolute;
+    z-index: var(--nv-z-dropdown);
+    pointer-events: none;
+    white-space: nowrap;
+    border: 1px solid var(--nv-border-default);
+    border-radius: var(--nv-radius-control);
+    background: var(--nv-bg-elevated);
+    color: var(--nv-text-primary);
+    box-shadow: var(--nv-shadow-elevated);
+    padding: .375rem .75rem;
+    font-size: .75rem;
+    font-weight: 500;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
+  .pwa-safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  @keyframes nv-global-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+}
+
+@media (max-width: 479px) {
+  button:not(.inline-link),
+  a[role='button'],
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .modal-responsive {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  .hover-only:hover {
+    background: transparent !important;
+  }
+
+  .scroll-smooth {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .landscape-hide {
+    display: none !important;
+  }
+}
+
+@media (display-mode: standalone) {
+  .browser-only {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
