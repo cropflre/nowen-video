@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION_NAME="0.1.0-rc.1"
 KEYSTORE_PATH=""
-KEY_ALIAS="${ANDROID_V2_KEY_ALIAS:-nowen-video-android-v2}"
+KEY_ALIAS="${ANDROID_V2_KEY_ALIAS:-nowen-video}"
 REPOSITORY="cropflre/nowen-video"
-OUTPUT_DIR="$ROOT_DIR/dist/android-v2/candidate"
+OUTPUT_DIR="$ROOT_DIR/dist/android/candidate"
 VERIFY_DIR=""
 EXPECTED_COMMIT=""
 EXPECTED_FINGERPRINT="${ANDROID_V2_CERTIFICATE_SHA256:-}"
@@ -31,35 +31,32 @@ Safe defaults:
   - Never publishes a GitHub Release.
 
 Options:
-  --version VERSION                 versionName (default: 0.1.0-rc.1)
-  --keystore PATH                   Long-term Android V2 release keystore
+  --version VERSION                 versionName
+  --keystore PATH                   Historical Android release keystore
   --alias ALIAS                     Private-key alias
   --repository OWNER/REPO           GitHub repository
   --output-dir PATH                 Candidate artifact directory
-  --generate-keystore               Generate the keystore when PATH does not exist
-  --configure-secrets               Configure the five Android V2 Actions secrets
-  --dispatch                        Trigger release-android-v2, wait, download and verify
+  --generate-keystore               Generate a key for non-production experiments only
+  --configure-secrets               Configure the existing Android Actions secrets
+  --dispatch                        Trigger release-android, wait, download and verify
   --verify-dir PATH                 Verify an already downloaded candidate directory
   --expected-commit SHA             Required source commit for verify-only mode
   --expected-fingerprint SHA256     Required signing certificate SHA-256
-  --create-tag                      After successful verification, create and push the RC tag
+  --create-tag                      After successful verification, create and push vVERSION
   --self-test                       Run a completely offline fixture test
   -h, --help                        Show this help
 
+Production takeover warning:
+  com.nowen.video MUST be signed by the historical Android V1 release key.
+  --generate-keystore is not a valid production migration path.
+
 Passwords are read from ANDROID_V2_KEYSTORE_PASSWORD and
-ANDROID_V2_KEY_PASSWORD. When running interactively, missing values are read
-with hidden terminal input. Passwords and keystore Base64 are never printed.
+ANDROID_V2_KEY_PASSWORD. Missing interactive values use hidden terminal input.
 USAGE
 }
 
-fail() {
-  printf 'error: %s\n' "$*" >&2
-  exit 1
-}
-
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
-}
+fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
+require_command() { command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"; }
 
 normalize_fingerprint() {
   local value
@@ -74,7 +71,6 @@ read_secret() {
   value="${!variable_name:-}"
   [[ -n "$value" ]] && return 0
   [[ -t 0 ]] || fail "$variable_name is required in non-interactive mode"
-
   read -r -s -p "$prompt: " value
   printf '\n'
   [[ -n "$value" ]] || fail "$variable_name must not be empty"
@@ -101,23 +97,18 @@ generate_keystore_if_requested() {
     printf 'Reusing existing keystore: %s\n' "$KEYSTORE_PATH"
     return 0
   fi
-
   require_command keytool
   umask 077
   mkdir -p "$(dirname "$KEYSTORE_PATH")"
   keytool -genkeypair -noprompt \
-    -keystore "$KEYSTORE_PATH" \
-    -storetype JKS \
+    -keystore "$KEYSTORE_PATH" -storetype JKS \
     -storepass:env ANDROID_V2_KEYSTORE_PASSWORD \
     -keypass:env ANDROID_V2_KEY_PASSWORD \
-    -alias "$KEY_ALIAS" \
-    -keyalg RSA \
-    -keysize 4096 \
-    -validity 10000 \
-    -dname 'CN=Nowen Video Android V2, OU=Release, O=Nowen, L=Shenzhen, ST=Guangdong, C=CN'
+    -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 \
+    -dname 'CN=Nowen Video Android, OU=Release, O=Nowen, L=Shenzhen, ST=Guangdong, C=CN'
   chmod 600 "$KEYSTORE_PATH"
-  printf 'Generated long-term Android V2 keystore: %s\n' "$KEYSTORE_PATH"
-  printf 'Back up this file to an encrypted offline or separate-disk location before release.\n'
+  printf 'Generated test keystore: %s\n' "$KEYSTORE_PATH"
+  printf 'Do NOT use a newly generated key for production com.nowen.video takeover.\n'
 }
 
 resolve_git_source() {
@@ -136,17 +127,10 @@ resolve_git_source() {
 
 run_signing_preflight() {
   local report_path="$1"
-  local args=(
-    --version "$VERSION_NAME"
-    --keystore "$KEYSTORE_PATH"
-    --alias "$KEY_ALIAS"
-    --repository "$REPOSITORY"
-    --report "$report_path"
-  )
+  local args=(--version "$VERSION_NAME" --keystore "$KEYSTORE_PATH" --alias "$KEY_ALIAS" --repository "$REPOSITORY" --report "$report_path")
   [[ -n "$EXPECTED_FINGERPRINT" ]] && args+=(--expected-fingerprint "$EXPECTED_FINGERPRINT")
   [[ "$CONFIGURE_SECRETS" == true ]] && args+=(--set-github-secrets)
   bash "$ROOT_DIR/scripts/android-v2-signing-preflight.sh" "${args[@]}"
-
   EXPECTED_FINGERPRINT="$(python3 - "$report_path" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:
@@ -156,47 +140,27 @@ PY
 }
 
 list_existing_run_ids() {
-  gh run list \
-    --repo "$REPOSITORY" \
-    --workflow release-android-v2.yml \
-    --event workflow_dispatch \
-    --limit 100 \
-    --json databaseId \
-    --jq '.[].databaseId'
+  gh run list --repo "$REPOSITORY" --workflow release-android-v2.yml --event workflow_dispatch --limit 100 --json databaseId --jq '.[].databaseId'
 }
 
 find_dispatched_run() {
   local source_commit="$1" before_file="$2" request_id="$3"
   local attempt json json_file run_id
   for ((attempt = 1; attempt <= 90; attempt++)); do
-    json="$(gh run list \
-      --repo "$REPOSITORY" \
-      --workflow release-android-v2.yml \
-      --event workflow_dispatch \
-      --limit 30 \
-      --json databaseId,headSha,displayTitle,event,status,createdAt)"
+    json="$(gh run list --repo "$REPOSITORY" --workflow release-android-v2.yml --event workflow_dispatch --limit 30 --json databaseId,headSha,displayTitle,event,status,createdAt)"
     json_file="$(mktemp)"
     printf '%s' "$json" > "$json_file"
     run_id="$(python3 - "$source_commit" "$before_file" "$request_id" "$json_file" <<'PY'
 import json, pathlib, sys
 source_commit, before_path, request_id, json_path = sys.argv[1:]
 before = set(pathlib.Path(before_path).read_text(encoding="utf-8").split())
-runs = json.loads(pathlib.Path(json_path).read_text(encoding="utf-8"))
-for run in runs:
-    if (
-        str(run["databaseId"]) not in before
-        and run.get("headSha") == source_commit
-        and request_id in (run.get("displayTitle") or "")
-    ):
-        print(run["databaseId"])
-        break
+for run in json.loads(pathlib.Path(json_path).read_text(encoding="utf-8")):
+    if str(run["databaseId"]) not in before and run.get("headSha") == source_commit and request_id in (run.get("displayTitle") or ""):
+        print(run["databaseId"]); break
 PY
 )"
     rm -f "$json_file"
-    if [[ -n "$run_id" ]]; then
-      printf '%s\n' "$run_id"
-      return 0
-    fi
+    [[ -n "$run_id" ]] && { printf '%s\n' "$run_id"; return 0; }
     sleep 2
   done
   return 1
@@ -216,43 +180,24 @@ dispatch_download_candidate() {
   require_command python3
   gh auth status >/dev/null
   gh repo view "$REPOSITORY" >/dev/null
-
   prepare_output_dir "$OUTPUT_DIR"
   local before_file run_id request_id
   before_file="$(mktemp)"
   request_id="candidate-$(date -u +%Y%m%dT%H%M%SZ)-$$-${RANDOM}"
   list_existing_run_ids > "$before_file"
-
-  printf 'Dispatching release-android-v2 for %s at %s\n' "$VERSION_NAME" "$source_commit"
-  gh workflow run release-android-v2.yml \
-    --repo "$REPOSITORY" \
-    --ref main \
-    -f "version_name=$VERSION_NAME" \
-    -f "request_id=$request_id"
-
-  run_id="$(find_dispatched_run "$source_commit" "$before_file" "$request_id")" || {
-    rm -f "$before_file"
-    fail "unable to identify the newly dispatched workflow run"
-  }
+  printf 'Dispatching official Android release workflow for %s at %s\n' "$VERSION_NAME" "$source_commit"
+  gh workflow run release-android-v2.yml --repo "$REPOSITORY" --ref main -f "version_name=$VERSION_NAME" -f "request_id=$request_id"
+  run_id="$(find_dispatched_run "$source_commit" "$before_file" "$request_id")" || { rm -f "$before_file"; fail "unable to identify the newly dispatched workflow run"; }
   rm -f "$before_file"
-  printf 'Watching workflow run %s (%s)\n' "$run_id" "$request_id"
   gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
-
-  gh run download "$run_id" \
-    --repo "$REPOSITORY" \
-    --name nowen-video-android-v2-release \
-    --dir "$OUTPUT_DIR"
+  gh run download "$run_id" --repo "$REPOSITORY" --name nowen-video-android-release --dir "$OUTPUT_DIR"
   printf '%s\n' "$run_id" > "$OUTPUT_DIR/workflow-run-id.txt"
   printf '%s\n' "$request_id" > "$OUTPUT_DIR/workflow-request-id.txt"
-  printf 'Downloaded candidate artifact to %s\n' "$OUTPUT_DIR"
 }
 
 find_apksigner() {
   local candidate root
-  if command -v apksigner >/dev/null 2>&1; then
-    command -v apksigner
-    return 0
-  fi
+  if command -v apksigner >/dev/null 2>&1; then command -v apksigner; return 0; fi
   for root in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
     [[ -n "$root" && -d "$root/build-tools" ]] || continue
     candidate="$(find "$root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
@@ -265,30 +210,21 @@ verify_candidate_dir() {
   local directory="$1" source_commit="$2" expected_fingerprint="$3"
   local version_code
   version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")" || return 1
-  expected_fingerprint="$(normalize_fingerprint "$expected_fingerprint")" || {
-    printf 'error: invalid expected certificate SHA-256\n' >&2
-    return 1
-  }
+  expected_fingerprint="$(normalize_fingerprint "$expected_fingerprint")" || { printf 'error: invalid expected certificate SHA-256\n' >&2; return 1; }
 
-  local apk="$directory/nowen-video-android-v2-${VERSION_NAME}.apk"
-  local aab="$directory/nowen-video-android-v2-${VERSION_NAME}.aab"
+  local apk="$directory/nowen-video-android-${VERSION_NAME}.apk"
+  local aab="$directory/nowen-video-android-${VERSION_NAME}.aab"
   local sums="$directory/SHA256SUMS.txt"
   local manifest="$directory/release-manifest.json"
   local preflight="$directory/signing-preflight.json"
   local notes="$directory/RELEASE_NOTES.md"
   local required
   for required in "$apk" "$aab" "$sums" "$manifest" "$preflight" "$notes"; do
-    if [[ ! -f "$required" ]]; then
-      printf 'error: required candidate file is missing: %s\n' "$required" >&2
-      return 1
-    fi
+    [[ -f "$required" ]] || { printf 'error: required candidate file is missing: %s\n' "$required" >&2; return 1; }
   done
+  (cd "$directory" && sha256sum -c SHA256SUMS.txt) || return 1
 
-  if ! (cd "$directory" && sha256sum -c SHA256SUMS.txt); then
-    return 1
-  fi
-
-  if ! python3 - "$manifest" "$preflight" "$notes" "$VERSION_NAME" "$version_code" "$source_commit" "$expected_fingerprint" <<'PY'
+  python3 - "$manifest" "$preflight" "$notes" "$VERSION_NAME" "$version_code" "$source_commit" "$expected_fingerprint" <<'PY' || return 1
 import hashlib, json, pathlib, sys
 manifest_path, preflight_path, notes_path, version_name, version_code, commit, fingerprint = sys.argv[1:]
 manifest_path = pathlib.Path(manifest_path)
@@ -296,14 +232,12 @@ manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 preflight = json.loads(pathlib.Path(preflight_path).read_text(encoding="utf-8"))
 notes = pathlib.Path(notes_path).read_text(encoding="utf-8")
 errors = []
-
 def expect(actual, expected, label):
-    if actual != expected:
-        errors.append(f"{label}: expected {expected!r}, got {actual!r}")
-
+    if actual != expected: errors.append(f"{label}: expected {expected!r}, got {actual!r}")
+expect(manifest["product"], "Nowen Video Android", "product")
 expect(manifest["version"]["name"], version_name, "manifest versionName")
 expect(int(manifest["version"]["code"]), int(version_code), "manifest versionCode")
-expect(manifest["application"]["id"], "com.nowen.video.v2", "applicationId")
+expect(manifest["application"]["id"], "com.nowen.video", "applicationId")
 expect(int(manifest["application"]["min_sdk"]), 26, "minSdk")
 expect(int(manifest["application"]["target_sdk"]), 35, "targetSdk")
 expect(manifest["source"]["commit"], commit, "source commit")
@@ -311,83 +245,51 @@ expect(manifest["signing"]["certificate_sha256"].replace(":", "").lower(), finge
 expect(preflight["source"]["commit"], commit, "preflight commit")
 expect(preflight["version"]["name"], version_name, "preflight versionName")
 expect(preflight["signing"]["certificate_sha256"].replace(":", "").lower(), fingerprint, "preflight certificate")
-
+expected_names = {f"nowen-video-android-{version_name}.apk", f"nowen-video-android-{version_name}.aab"}
 artifact_names = {entry["name"] for entry in manifest["artifacts"]}
-expected_names = {
-    f"nowen-video-android-v2-{version_name}.apk",
-    f"nowen-video-android-v2-{version_name}.aab",
-}
 expect(artifact_names, expected_names, "manifest artifact names")
 for entry in manifest["artifacts"]:
     path = manifest_path.parent / entry["name"]
-    if not path.is_file():
-        errors.append(f"manifest artifact is missing: {path.name}")
-        continue
-    actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    expect(actual_hash, entry["sha256"].lower(), f"manifest hash for {path.name}")
+    if not path.is_file(): errors.append(f"manifest artifact is missing: {path.name}"); continue
+    expect(hashlib.sha256(path.read_bytes()).hexdigest(), entry["sha256"].lower(), f"manifest hash for {path.name}")
     expect(path.stat().st_size, int(entry["size_bytes"]), f"manifest size for {path.name}")
-
 for token, label in ((version_name, "version"), (commit, "commit"), (fingerprint, "certificate")):
-    if token not in notes:
-        errors.append(f"release notes missing {label}: {token}")
-if "{{" in notes or "}}" in notes:
-    errors.append("release notes contain unresolved template placeholders")
-if errors:
-    raise SystemExit("Candidate verification failed:\n- " + "\n- ".join(errors))
+    if token not in notes: errors.append(f"release notes missing {label}: {token}")
+if "{{" in notes or "}}" in notes: errors.append("release notes contain unresolved placeholders")
+if errors: raise SystemExit("Candidate verification failed:\n- " + "\n- ".join(errors))
 print("Candidate metadata verification passed")
 PY
-  then
-    return 1
-  fi
 
   local apk_signature_verified=false aab_signature_verified=false apksigner
   if [[ "$SKIP_SIGNATURE_VERIFICATION" != true ]]; then
-    if apksigner="$(find_apksigner)"; then
-      "$apksigner" verify --verbose --print-certs "$apk" >/dev/null || return 1
-      apk_signature_verified=true
-      printf 'APK signature verification passed\n'
-    else
-      printf 'warning: apksigner not found; APK cryptographic verification skipped\n' >&2
-    fi
-    if command -v jarsigner >/dev/null 2>&1; then
-      jarsigner -verify "$aab" >/dev/null || return 1
-      aab_signature_verified=true
-      printf 'AAB signature verification passed\n'
-    else
-      printf 'warning: jarsigner not found; AAB cryptographic verification skipped\n' >&2
-    fi
+    if apksigner="$(find_apksigner)"; then "$apksigner" verify --verbose --print-certs "$apk" >/dev/null || return 1; apk_signature_verified=true; fi
+    if command -v jarsigner >/dev/null 2>&1; then jarsigner -verify "$aab" >/dev/null || return 1; aab_signature_verified=true; fi
   fi
 
   python3 - "$directory/candidate-verification.json" "$VERSION_NAME" "$version_code" "$REPOSITORY" "$source_commit" "$expected_fingerprint" "$apk_signature_verified" "$aab_signature_verified" <<'PY'
 import datetime, json, pathlib, sys
 output, version_name, version_code, repository, commit, fingerprint, apk_verified, aab_verified = sys.argv[1:]
 payload = {
-    "schema_version": 1,
-    "product": "Nowen Video Android V2",
+    "schema_version": 1, "product": "Nowen Video Android",
     "verified_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    "repository": repository,
-    "version": {"name": version_name, "code": int(version_code)},
-    "source_commit": commit,
-    "certificate_sha256": fingerprint,
-    "checksums_verified": True,
-    "metadata_verified": True,
-    "apk_signature_verified": apk_verified == "true",
-    "aab_signature_verified": aab_verified == "true",
+    "repository": repository, "version": {"name": version_name, "code": int(version_code)},
+    "source_commit": commit, "certificate_sha256": fingerprint,
+    "checksums_verified": True, "metadata_verified": True,
+    "apk_signature_verified": apk_verified == "true", "aab_signature_verified": aab_verified == "true",
     "sensitive_values_included": False,
 }
 pathlib.Path(output).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
-  printf 'Candidate verification report: %s/candidate-verification.json\n' "$directory"
 }
 
 create_and_push_tag() {
-  local source_commit="$1" tag="android-v2-v${VERSION_NAME}"
+  local source_commit="$1" tag="v${VERSION_NAME}"
   require_command git
   git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$tag" && fail "local tag already exists: $tag"
   git -C "$ROOT_DIR" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 && fail "remote tag already exists: $tag"
   git -C "$ROOT_DIR" tag "$tag" "$source_commit"
   git -C "$ROOT_DIR" push origin "$tag"
-  printf 'Pushed tag %s. The tag workflow will create a draft prerelease.\n' "$tag"
+  printf 'Pushed product tag %s. Android and desktop release workflows may attach artifacts to the same release.\n' "$tag"
 }
 
 run_self_test() {
@@ -396,81 +298,53 @@ run_self_test() {
   require_command keytool
   local temp_dir fixture fingerprint commit version_code apk_name aab_name
   temp_dir="$(mktemp -d)"
-
   KEYSTORE_PATH="$temp_dir/generated-release.jks"
-  KEY_ALIAS="android-v2-candidate-self-test"
+  KEY_ALIAS="android-candidate-self-test"
   GENERATE_KEYSTORE=true
   export ANDROID_V2_KEYSTORE_PASSWORD='android-ci-store-password'
   export ANDROID_V2_KEY_PASSWORD='android-ci-key-password'
   generate_keystore_if_requested >/dev/null
   [[ -f "$KEYSTORE_PATH" ]] || fail "self-test failed to generate a keystore"
-  bash "$ROOT_DIR/scripts/android-v2-signing-preflight.sh" \
-    --version 0.1.0-rc.1 \
-    --keystore "$KEYSTORE_PATH" \
-    --alias "$KEY_ALIAS" \
-    --report "$temp_dir/generated-preflight.json" \
-    --skip-git-checks >/dev/null
+  bash "$ROOT_DIR/scripts/android-v2-signing-preflight.sh" --version 0.1.0-rc.1 --keystore "$KEYSTORE_PATH" --alias "$KEY_ALIAS" --report "$temp_dir/generated-preflight.json" --skip-git-checks >/dev/null
 
-  fixture="$temp_dir/candidate"
-  mkdir -p "$fixture"
-  fingerprint="$(printf 'ab%.0s' {1..32})"
-  commit="$(printf 'c%.0s' {1..40})"
-  VERSION_NAME="0.1.0-rc.1"
-  version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")"
-  apk_name="nowen-video-android-v2-${VERSION_NAME}.apk"
-  aab_name="nowen-video-android-v2-${VERSION_NAME}.aab"
-  printf 'fixture-apk' > "$fixture/$apk_name"
-  printf 'fixture-aab' > "$fixture/$aab_name"
+  fixture="$temp_dir/candidate"; mkdir -p "$fixture"
+  fingerprint="$(printf 'ab%.0s' {1..32})"; commit="$(printf 'c%.0s' {1..40})"
+  VERSION_NAME="0.1.0-rc.1"; version_code="$(bash "$ROOT_DIR/scripts/android-v2-version.sh" "$VERSION_NAME")"
+  apk_name="nowen-video-android-${VERSION_NAME}.apk"; aab_name="nowen-video-android-${VERSION_NAME}.aab"
+  printf 'fixture-apk' > "$fixture/$apk_name"; printf 'fixture-aab' > "$fixture/$aab_name"
   (cd "$fixture" && sha256sum "$apk_name" "$aab_name" > SHA256SUMS.txt)
-
   python3 - "$fixture" "$VERSION_NAME" "$version_code" "$commit" "$fingerprint" "$apk_name" "$aab_name" <<'PY'
 import hashlib, json, pathlib, sys
-root, version, code, commit, fingerprint, apk_name, aab_name = sys.argv[1:]
-root = pathlib.Path(root)
+root, version, code, commit, fingerprint, apk_name, aab_name = sys.argv[1:]; root = pathlib.Path(root)
 def artifact(name, kind):
     path = root / name
     return {"type": kind, "name": name, "size_bytes": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 manifest = {
-    "schema_version": 1,
-    "product": "Nowen Video Android V2",
-    "channel": "rc",
+    "schema_version": 1, "product": "Nowen Video Android", "channel": "rc",
     "version": {"name": version, "code": int(code)},
-    "application": {"id": "com.nowen.video.v2", "min_sdk": 26, "target_sdk": 35},
+    "application": {"id": "com.nowen.video", "min_sdk": 26, "target_sdk": 35},
     "source": {"repository": "cropflre/nowen-video", "commit": commit, "ref": "refs/heads/main"},
     "workflow": {"event": "workflow_dispatch", "run_id": "1", "run_attempt": "1"},
-    "signing": {"certificate_sha256": fingerprint},
-    "artifacts": [artifact(apk_name, "apk"), artifact(aab_name, "aab")],
+    "signing": {"certificate_sha256": fingerprint}, "artifacts": [artifact(apk_name, "apk"), artifact(aab_name, "aab")],
 }
 preflight = {
-    "schema_version": 1,
-    "product": "Nowen Video Android V2",
-    "repository": "cropflre/nowen-video",
-    "source": {"commit": commit, "branch": "main"},
-    "version": {"name": version, "code": int(code)},
-    "signing": {"key_alias": "fixture", "certificate_sha256": fingerprint},
-    "sensitive_values_included": False,
+    "schema_version": 1, "product": "Nowen Video Android V2", "repository": "cropflre/nowen-video",
+    "source": {"commit": commit, "branch": "main"}, "version": {"name": version, "code": int(code)},
+    "signing": {"key_alias": "fixture", "certificate_sha256": fingerprint}, "sensitive_values_included": False,
 }
 (root / "release-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 (root / "signing-preflight.json").write_text(json.dumps(preflight), encoding="utf-8")
 (root / "RELEASE_NOTES.md").write_text(f"# {version}\nCommit: {commit}\nCertificate: {fingerprint}\n", encoding="utf-8")
 PY
-
   SKIP_SIGNATURE_VERIFICATION=true
   verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null || fail "valid fixture candidate was rejected"
-
   python3 - "$fixture/release-manifest.json" <<'PY'
 import json, pathlib, sys
-path = pathlib.Path(sys.argv[1])
-data = json.loads(path.read_text(encoding="utf-8"))
-data["source"]["commit"] = "d" * 40
-path.write_text(json.dumps(data), encoding="utf-8")
+path = pathlib.Path(sys.argv[1]); data = json.loads(path.read_text(encoding="utf-8")); data["source"]["commit"] = "d" * 40; path.write_text(json.dumps(data), encoding="utf-8")
 PY
-  if verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null 2>&1; then
-    rm -rf "$temp_dir"
-    fail "self-test must reject an incorrect manifest commit"
-  fi
+  if verify_candidate_dir "$fixture" "$commit" "$fingerprint" >/dev/null 2>&1; then rm -rf "$temp_dir"; fail "self-test must reject an incorrect manifest commit"; fi
   rm -rf "$temp_dir"
-  printf 'Android V2 release candidate helper self-test passed\n'
+  printf 'Android release candidate helper self-test passed\n'
 }
 
 while (($# > 0)); do
@@ -493,13 +367,8 @@ while (($# > 0)); do
   esac
 done
 
-if [[ "$SELF_TEST" == true ]]; then
-  run_self_test
-  exit 0
-fi
-
-require_command python3
-require_command sha256sum
+if [[ "$SELF_TEST" == true ]]; then run_self_test; exit 0; fi
+require_command python3; require_command sha256sum
 
 if [[ -n "$VERIFY_DIR" ]]; then
   [[ -n "$EXPECTED_COMMIT" ]] || fail "--expected-commit is required with --verify-dir"
@@ -513,23 +382,10 @@ fi
 ensure_passwords
 generate_keystore_if_requested
 [[ -f "$KEYSTORE_PATH" ]] || fail "keystore not found: $KEYSTORE_PATH"
-
 SOURCE_COMMIT="$(resolve_git_source)"
 LOCAL_PREFLIGHT_REPORT="${OUTPUT_DIR%/}.signing-preflight-local.json"
 run_signing_preflight "$LOCAL_PREFLIGHT_REPORT"
-
-if [[ "$DISPATCH" == true && "$CONFIGURE_SECRETS" != true ]]; then
-  fail "--dispatch requires --configure-secrets to avoid using stale signing Secrets"
-fi
-
-if [[ "$DISPATCH" == true ]]; then
-  dispatch_download_candidate "$SOURCE_COMMIT"
-  verify_candidate_dir "$OUTPUT_DIR" "$SOURCE_COMMIT" "$EXPECTED_FINGERPRINT" || fail "downloaded candidate verification failed"
-fi
-
-if [[ "$CREATE_TAG" == true ]]; then
-  [[ "$DISPATCH" == true ]] || fail "--create-tag requires a successfully dispatched and verified candidate"
-  create_and_push_tag "$SOURCE_COMMIT"
-fi
-
-printf 'Android V2 RC candidate helper completed safely.\n'
+if [[ "$DISPATCH" == true && "$CONFIGURE_SECRETS" != true ]]; then fail "--dispatch requires --configure-secrets to avoid using stale signing Secrets"; fi
+if [[ "$DISPATCH" == true ]]; then dispatch_download_candidate "$SOURCE_COMMIT"; verify_candidate_dir "$OUTPUT_DIR" "$SOURCE_COMMIT" "$EXPECTED_FINGERPRINT" || fail "downloaded candidate verification failed"; fi
+if [[ "$CREATE_TAG" == true ]]; then [[ "$DISPATCH" == true ]] || fail "--create-tag requires a successfully dispatched and verified candidate"; create_and_push_tag "$SOURCE_COMMIT"; fi
+printf 'Android release candidate helper completed safely.\n'
