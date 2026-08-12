@@ -255,3 +255,13 @@
   padding: .1rem .4rem;
   line-height: 1;
 }
+
+/* Browsing pages are action-dense surfaces. Keep the title/type controls,
+ * toolbar and result area visually connected instead of inheriting the large
+ * editorial section rhythm used by content/detail pages. This is intentionally
+ * scoped to both the global 影视库 and a single 媒体库 so their vertical rhythm
+ * stays in sync. */
+.nv-section-stack:has(> [aria-label='媒体类型']),
+.nv-section-stack:has(> [aria-label='媒体库内容类型']) {
+  gap: clamp(.875rem, 1.2vw, 1.25rem);
+}
