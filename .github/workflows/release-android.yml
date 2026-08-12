@@ -30,7 +30,8 @@ concurrency:
 
 env:
   ANDROID_PRODUCTION_APPLICATION_ID: com.nowen.video
-  ANDROID_PRODUCTION_CERTIFICATE_SHA256: 07ac3f214fbb8ac44e85fa1f65610dcbcff8fe04876c417364c3905dfb8b6bcd
+  ANDROID_PRODUCTION_CERTIFICATE_FILE: android/signing/production-certificate.sha256
+  ANDROID_PRODUCTION_CERTIFICATE_PEM: android/signing/production-cert.pem
   ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
   ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
   ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -55,7 +56,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Resolve Android version
+      - name: Resolve Android version and signing baseline
         id: version
         shell: bash
         run: |
@@ -64,6 +65,15 @@ jobs:
           bash scripts/android-version.sh --self-test
           python3 scripts/android-release-manifest.py --self-test
           bash scripts/android-signing-preflight.sh --self-test
+
+          production_certificate_sha256="$(tr -d ':[:space:]' < "$ANDROID_PRODUCTION_CERTIFICATE_FILE" | tr '[:upper:]' '[:lower:]')"
+          [[ "$production_certificate_sha256" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid production certificate SHA-256 baseline"; exit 1; }
+          public_certificate_sha256="$(openssl x509 -in "$ANDROID_PRODUCTION_CERTIFICATE_PEM" -outform DER | sha256sum | awk '{print $1}')"
+          [[ "$public_certificate_sha256" == "$production_certificate_sha256" ]] || {
+            echo "Production certificate PEM does not match SHA-256 baseline"
+            exit 1
+          }
+          echo "ANDROID_PRODUCTION_CERTIFICATE_SHA256=$production_certificate_sha256" >> "$GITHUB_ENV"
 
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             version_name="0.1.0-alpha.1"
