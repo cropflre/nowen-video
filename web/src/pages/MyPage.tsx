@@ -66,17 +66,17 @@ export default function MyPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-[var(--nv-text-primary)]">服务端模式</h3>
+                  <h3 className="font-semibold text-[var(--nv-text-primary)]">服务端版本</h3>
                   <Tag tone="brand">
-                    {profileLoading ? '检测中' : manifest?.profile === 'lite' ? 'Lite' : manifest?.profile === 'full' ? 'Full' : '未知'}
+                    {profileLoading ? '检测中' : manifest?.profile === 'lite' ? '正式版' : manifest?.profile === 'full' ? '旧版兼容' : '未知'}
                   </Tag>
                   {pendingRestart.length > 0 && <Tag tone="warning">待重启</Tag>}
                 </div>
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--nv-text-tertiary)]">
                   {manifest?.profile === 'lite'
-                    ? '面向 NAS 的影视核心模式，非核心服务按配置启用。'
+                    ? 'Nowen Video 正式服务端，面向 NAS 与家庭影音场景优化，扩展能力按配置启用。'
                     : manifest?.profile === 'full'
-                      ? '完整兼容模式，包含高级扩展与历史功能。'
+                      ? '旧版兼容运行模式，仅用于迁移、回滚或历史能力验证。'
                       : '正在读取服务端能力与运行状态。'}
                 </p>
 
