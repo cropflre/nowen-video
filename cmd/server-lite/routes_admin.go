@@ -49,10 +49,6 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 	admin.GET("/strm/config", handlers.Admin.GetSTRMConfig)
 	admin.PUT("/strm/config", handlers.Admin.UpdateSTRMConfig)
 
-	admin.GET("/system-logs", handlers.SystemLog.ListSystemLogs)
-	admin.GET("/system-logs/stats", handlers.SystemLog.GetSystemLogStats)
-	admin.GET("/system-logs/export", handlers.SystemLog.ExportSystemLogs)
-	admin.POST("/system-logs/clean", handlers.SystemLog.CleanSystemLogs)
 	admin.POST("/batch/scan", handlers.Admin.BatchScan)
 	admin.POST("/batch/scrape", handlers.Admin.BatchScrape)
 	admin.GET("/permissions/:userId", handlers.Admin.GetUserPermission)
