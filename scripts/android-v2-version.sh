@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Android V1 used versionCode = major*1,000,000 + minor*1,000 + patch.
+# The promoted modular client must always be newer than every historical V1 build
+# so Android can perform an in-place upgrade of com.nowen.video.
+PROMOTION_OFFSET=10000000
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -13,7 +18,8 @@ Supported versions:
   MAJOR.MINOR.PATCH-beta.N
   MAJOR.MINOR.PATCH-rc.N
 
-The resulting Android versionCode is monotonic within one semantic version:
+Production versionCodes are allocated above the legacy V1 range. Within one
+semantic version they remain monotonic:
   alpha < beta < rc < stable
 EOF
 }
@@ -23,7 +29,7 @@ android_version_code() {
   local core prerelease major minor patch channel sequence base offset
 
   if [[ ! "$version_name" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$ ]]; then
-    echo "Unsupported Android V2 version: $version_name" >&2
+    echo "Unsupported Android version: $version_name" >&2
     return 1
   fi
 
@@ -34,24 +40,25 @@ android_version_code() {
   channel="${BASH_REMATCH[5]:-}"
   sequence="${BASH_REMATCH[6]:-}"
 
-  # Force base-10 parsing so values such as 08 are not treated as octal.
   major=$((10#$major))
   minor=$((10#$minor))
   patch=$((10#$patch))
 
+  # Keep enough headroom for the 10,000,000 V1-takeover offset while staying
+  # below Android's 2,100,000,000 versionCode ceiling.
   if (( major > 199 || minor > 99 || patch > 99 )); then
-    echo "Android V2 version components exceed limits: major<=199, minor<=99, patch<=99" >&2
+    echo "Android version components exceed limits: major<=199, minor<=99, patch<=99" >&2
     return 1
   fi
 
-  base=$((major * 10000000 + minor * 100000 + patch * 1000))
+  base=$((PROMOTION_OFFSET + major * 10000000 + minor * 100000 + patch * 1000))
 
   if [[ -z "$prerelease" ]]; then
     offset=999
   else
     sequence=$((10#$sequence))
     if (( sequence < 1 || sequence > 99 )); then
-      echo "Android V2 prerelease sequence must be between 1 and 99" >&2
+      echo "Android prerelease sequence must be between 1 and 99" >&2
       return 1
     fi
     case "$channel" in
@@ -59,7 +66,7 @@ android_version_code() {
       beta)  offset=$((300 + sequence)) ;;
       rc)    offset=$((500 + sequence)) ;;
       *)
-        echo "Unsupported Android V2 prerelease channel: $channel" >&2
+        echo "Unsupported Android prerelease channel: $channel" >&2
         return 1
         ;;
     esac
@@ -67,7 +74,7 @@ android_version_code() {
 
   local version_code=$((base + offset))
   if (( version_code < 1 || version_code > 2100000000 )); then
-    echo "Android V2 versionCode is outside Android's supported range: $version_code" >&2
+    echo "Android versionCode is outside Android's supported range: $version_code" >&2
     return 1
   fi
 
@@ -98,13 +105,20 @@ self_test() {
     fi
   }
 
-  assert_code "0.1.0-alpha.1" "100101"
-  assert_code "0.1.0-beta.1" "100301"
-  assert_code "0.1.0-rc.1" "100501"
-  assert_code "0.1.0" "100999"
-  assert_code "1.2.3-rc.4" "10203504"
-  assert_code "1.2.3" "10203999"
-  assert_code "199.99.99" "1999999999"
+  assert_code "0.1.0-alpha.1" "10100101"
+  assert_code "0.1.0-beta.1" "10100301"
+  assert_code "0.1.0-rc.1" "10100501"
+  assert_code "0.1.0" "10100999"
+  assert_code "1.2.3-rc.4" "20203504"
+  assert_code "1.2.3" "20203999"
+  assert_code "199.99.99" "2009999999"
+
+  # The promoted client must always clear historical V1 versionCodes.
+  actual="$(android_version_code "0.0.1-alpha.1")"
+  if (( actual <= 1002008 )); then
+    echo "FAIL: promoted Android versionCode must be above legacy V1 range" >&2
+    failures=$((failures + 1))
+  fi
 
   assert_invalid "1.2"
   assert_invalid "1.2.3-preview.1"
@@ -115,10 +129,10 @@ self_test() {
   assert_invalid "1.0.100"
 
   if (( failures > 0 )); then
-    echo "Android V2 version policy self-test failed: $failures case(s)" >&2
+    echo "Android version policy self-test failed: $failures case(s)" >&2
     return 1
   fi
-  echo "Android V2 version policy self-test passed."
+  echo "Android version policy self-test passed."
 }
 
 case "${1:-}" in
