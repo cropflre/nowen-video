@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a verifiable Android V2 release manifest."""
+"""Generate a verifiable Nowen Video Android release manifest."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = 1
-EXPECTED_APPLICATION_ID = "com.nowen.video.v2"
+PRODUCT = "Nowen Video Android"
+EXPECTED_APPLICATION_ID = "com.nowen.video"
 EXPECTED_MIN_SDK = 26
 EXPECTED_TARGET_SDK = 35
 
@@ -87,7 +88,7 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "product": "Nowen Video Android V2",
+        "product": PRODUCT,
         "channel": infer_channel(args.version_name, args.event_name),
         "version": {
             "name": args.version_name,
@@ -139,23 +140,25 @@ def run_self_test() -> None:
             apk=str(apk),
             aab=str(aab),
             version_name="0.1.0-rc.1",
-            version_code=100501,
+            version_code=10100501,
             apk_version_name="0.1.0-rc.1",
-            apk_version_code=100501,
+            apk_version_code=10100501,
             application_id=EXPECTED_APPLICATION_ID,
             min_sdk=EXPECTED_MIN_SDK,
             target_sdk=EXPECTED_TARGET_SDK,
             certificate_sha256="AA:" * 31 + "AA",
             repository="cropflre/nowen-video",
             commit="a" * 40,
-            ref="refs/tags/android-v2-v0.1.0-rc.1",
+            ref="refs/tags/v0.1.0-rc.1",
             event_name="push",
             run_id="123",
             run_attempt="1",
         )
         manifest = build_manifest(args)
+        assert manifest["product"] == PRODUCT
         assert manifest["channel"] == "rc"
-        assert manifest["version"]["code"] == 100501
+        assert manifest["version"]["code"] == 10100501
+        assert manifest["application"]["id"] == "com.nowen.video"
         assert manifest["signing"]["certificate_sha256"] == "aa" * 32
         assert manifest["artifacts"][0]["sha256"] == sha256_file(apk)
         assert manifest["artifacts"][1]["size_bytes"] == len(b"aab-content")
@@ -172,7 +175,7 @@ def run_self_test() -> None:
             f"{sha256_file(aab)}  sample.aab",
         ]
 
-        args.apk_version_code = 100500
+        args.apk_version_code = 10100500
         try:
             build_manifest(args)
         except ValueError as error:
@@ -180,7 +183,7 @@ def run_self_test() -> None:
         else:
             raise AssertionError("versionCode mismatch must fail")
 
-        args.apk_version_code = 100501
+        args.apk_version_code = 10100501
         args.application_id = "com.example.invalid"
         try:
             build_manifest(args)
@@ -189,7 +192,7 @@ def run_self_test() -> None:
         else:
             raise AssertionError("applicationId mismatch must fail")
 
-    print("Android V2 release manifest self-test passed")
+    print("Android release manifest self-test passed")
 
 
 def parse_args() -> argparse.Namespace:
@@ -254,8 +257,8 @@ def main() -> int:
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"Wrote Android V2 release manifest to {args.output}")
-    print(f"Wrote Android V2 checksums to {args.checksums_output}")
+    print(f"Wrote Android release manifest to {args.output}")
+    print(f"Wrote Android checksums to {args.checksums_output}")
     return 0
 
 
