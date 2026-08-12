@@ -17,7 +17,12 @@ const retiredDistPatterns = [
   { name: 'Pulse 客户端路由', regex: /["']\/pulse(?:\/|["'])/g },
 ]
 
-// 全量扫描所有 live source，不再保留 legacy stylesheet 豁免。
+// Scan live source for actual retired visual contracts rather than generic
+// structural class names. player-controls/progress-bar/nav-item are still valid
+// DOM hooks after the migration because their implementations now consume only
+// --nv-* / --nv-player-* semantic tokens. Treating those names themselves as
+// legacy produced false positives and encouraged risky DOM churn in the stable
+// player. Old Neon/Glass utilities and pre-design-system tokens remain blocked.
 const retiredSourcePatterns = [
   { name: '旧 Neon/Glass utility', regex: /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g },
   { name: '旧 Neon Tailwind utility', regex: /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g },
@@ -26,9 +31,9 @@ const retiredSourcePatterns = [
   { name: '旧 Glass/shadow utility', regex: /\bshadow-(?:glass|inner-glow|neon-glow)\b/g },
   { name: '旧 Theme Tailwind utility', regex: /\b(?:text|bg|border)-theme-[A-Za-z0-9-]+\b/g },
   { name: '旧 Surface Tailwind utility', regex: /\b(?:text|bg|border)-surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
-  { name: '旧全局导航/开关 class', regex: /(?<![A-Za-z0-9_-])(?:nav-item|theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g },
+  { name: '旧全局开关 class', regex: /(?<![A-Za-z0-9_-])(?:theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g },
   { name: '旧全局弹层/管理 class', regex: /(?<![A-Za-z0-9_-])(?:modal-overlay|modal-panel|btn-close-ghost|admin-tab|tab-content-enter)(?![A-Za-z0-9_-])/g },
-  { name: '旧播放器全局 class', regex: /(?<![A-Za-z0-9_-])(?:player-controls|progress-bar(?:-fill|-thumb)?|gesture-overlay)(?![A-Za-z0-9_-])/g },
+  { name: '旧播放器手势 class', regex: /(?<![A-Za-z0-9_-])gesture-overlay(?![A-Za-z0-9_-])/g },
   { name: '旧 Neon CSS token', regex: /var\(--neon-[A-Za-z0-9-]+\)/g },
   { name: '旧 Glass CSS token', regex: /var\(--glass-[A-Za-z0-9-]+\)/g },
   { name: '旧背景 CSS token', regex: /var\(--bg-[A-Za-z0-9-]+\)/g },
