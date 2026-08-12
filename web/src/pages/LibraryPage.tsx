@@ -6,12 +6,13 @@ import type { Media, MixedItem, Series } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
 import {
-  Calendar,
   Film,
-  Filter,
   Grid3X3,
+  LayoutGrid,
   LayoutList,
+  Play,
   Search,
+  SlidersHorizontal,
   Star,
   Tv,
   X,
@@ -23,26 +24,31 @@ import {
   Select,
   Surface,
   Tag,
-  type TagTone,
 } from '@/components/design-system'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  easeSmooth,
+  staggerContainerVariants,
+  staggerItemVariants,
+} from '@/lib/motion'
+import clsx from 'clsx'
 
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '最近添加' },
-  { value: 'created_asc', label: '最早添加' },
-  { value: 'title_asc', label: '名称 A-Z' },
-  { value: 'title_desc', label: '名称 Z-A' },
+  { value: 'rating_desc', label: '评分最高' },
   { value: 'year_desc', label: '年份最新' },
   { value: 'year_asc', label: '年份最早' },
-  { value: 'rating_desc', label: '评分最高' },
+  { value: 'title_asc', label: '名称 A-Z' },
+  { value: 'title_desc', label: '名称 Z-A' },
 ]
 
-type LibraryViewMode = 'grid' | 'list'
+type LibraryViewMode = 'grid' | 'list' | 'poster'
 type LibraryViewTab = 'all' | 'series'
 
-const LIBRARY_VIEW_MODE_STORAGE_KEY = 'nowen:library-view-mode'
+const MAX_CLIENT_ITEMS = 2000
 
-function parseLibraryViewMode(value: string | null): LibraryViewMode | null {
-  return value === 'grid' || value === 'list' ? value : null
+function parseViewMode(value: string | null): LibraryViewMode {
+  return value === 'list' || value === 'poster' ? value : 'grid'
 }
 
 function FilterChip({
@@ -71,27 +77,62 @@ function FilterChip({
   )
 }
 
-function ViewTabButton({
+function ContentTabButton({
   active,
-  onClick,
   icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean
+  icon: ReactNode
+  label: string
+  count: number
+  onClick: () => void
+}) {
+  return (
+    <motion.button
+      type="button"
+      variants={staggerItemVariants}
+      onClick={onClick}
+      aria-pressed={active}
+      className="inline-flex min-h-9 items-center gap-2 rounded-[var(--nv-radius-control)] border px-3 text-sm transition-[background-color,border-color,color] duration-200"
+      style={{
+        background: active ? 'var(--nv-bg-active)' : 'var(--nv-bg-surface-soft)',
+        borderColor: active ? 'var(--nv-border-hover)' : 'var(--nv-border-default)',
+        color: active ? 'var(--nv-action-primary)' : 'var(--nv-text-secondary)',
+      }}
+    >
+      {icon}
+      <span>{label}</span>
+      <strong className="font-semibold text-[var(--nv-text-primary)]">{count}</strong>
+    </motion.button>
+  )
+}
+
+function ViewButton({
+  active,
+  title,
+  onClick,
   children,
 }: {
   active: boolean
+  title: string
   onClick: () => void
-  icon: ReactNode
   children: ReactNode
 }) {
   return (
     <Button
       type="button"
-      variant={active ? 'secondary' : 'ghost'}
+      variant="ghost"
       size="sm"
+      iconOnly
       onClick={onClick}
+      title={title}
+      aria-label={title}
       aria-pressed={active}
       className={active ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
     >
-      {icon}
       {children}
     </Button>
   )
@@ -100,104 +141,99 @@ function ViewTabButton({
 export default function LibraryPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
-  const [seriesList, setSeriesList] = useState<Series[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [viewTab, setViewTab] = useState<LibraryViewTab>('all')
+  const toast = useToast()
 
   const page = parseInt(searchParams.get('page') || '1', 10) || 1
   const size = parseInt(searchParams.get('limit') || '30', 10) || 30
+  const viewTab: LibraryViewTab = searchParams.get('tab') === 'series' ? 'series' : 'all'
+  const viewMode = parseViewMode(searchParams.get('view'))
+  const searchQuery = searchParams.get('q') || ''
+  const sortValue = searchParams.get('sort') || 'created_desc'
+  const filterGenre = searchParams.get('genre') || ''
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [sortValue, setSortValue] = useState('created_desc')
-  const [viewMode, setViewMode] = useState<LibraryViewMode>(() => {
-    const urlMode = parseLibraryViewMode(searchParams.get('view'))
-    if (urlMode) return urlMode
-    if (typeof window === 'undefined') return 'grid'
-    return parseLibraryViewMode(window.localStorage.getItem(LIBRARY_VIEW_MODE_STORAGE_KEY)) || 'grid'
-  })
-  const [filterGenre, setFilterGenre] = useState<string | null>(null)
+  const [mixedItems, setMixedItems] = useState<MixedItem[]>([])
+  const [seriesList, setSeriesList] = useState<Series[]>([])
+  const [total, setTotal] = useState(0)
+  const [serverPaginated, setServerPaginated] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
-  const toast = useToast()
 
-  const handleViewModeChange = useCallback((mode: LibraryViewMode) => {
-    setViewMode(mode)
-    window.localStorage.setItem(LIBRARY_VIEW_MODE_STORAGE_KEY, mode)
-    const params = new URLSearchParams(searchParams)
-    if (mode === 'grid') params.delete('view')
-    else params.set('view', mode)
-    setSearchParams(params, { replace: true })
+  const updateUrl = useCallback((changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams)
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) next.delete(key)
+      else next.set(key, value)
+    }
+    if (!('page' in changes)) next.delete('page')
+    setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
-
-  useEffect(() => {
-    const urlMode = parseLibraryViewMode(searchParams.get('view'))
-    if (!urlMode || urlMode === viewMode) return
-    setViewMode(urlMode)
-    window.localStorage.setItem(LIBRARY_VIEW_MODE_STORAGE_KEY, urlMode)
-  }, [searchParams, viewMode])
 
   const setPage = useCallback((newPage: number) => {
-    const params = new URLSearchParams(searchParams)
-    if (newPage <= 1) params.delete('page')
-    else params.set('page', String(newPage))
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    updateUrl({ page: newPage <= 1 ? null : String(newPage) })
+  }, [updateUrl])
 
   const setSize = useCallback((newSize: number) => {
-    const params = new URLSearchParams(searchParams)
-    if (newSize === 30) params.delete('limit')
-    else params.set('limit', String(newSize))
-    params.delete('page')
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    updateUrl({ limit: newSize === 30 ? null : String(newSize), page: null })
+  }, [updateUrl])
 
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams)
-    params.delete('page')
-    setSearchParams(params, { replace: true })
-    setLoading(true)
-    setSearchQuery('')
-    setFilterGenre(null)
-  }, [id])
+  const setViewTab = useCallback((nextTab: LibraryViewTab) => {
+    updateUrl({ tab: nextTab === 'series' ? 'series' : null, page: null })
+  }, [updateUrl])
+
+  const setViewMode = useCallback((nextMode: LibraryViewMode) => {
+    updateUrl({ view: nextMode === 'grid' ? null : nextMode })
+  }, [updateUrl])
 
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     setLoading(true)
 
-    Promise.all([
-      mediaApi.listMixed({ page, size, library_id: id }),
-      seriesApi.list({ library_id: id }),
-    ])
-      .then(([mixedRes, seriesRes]) => {
-        setMixedItems(mixedRes.data.data || [])
-        setTotal(mixedRes.data.total)
-        setSeriesList(seriesRes.data.data || [])
-      })
-      .catch(() => { toast.error('加载媒体库内容失败') })
-      .finally(() => setLoading(false))
-  }, [id, page, size])
+    const load = async () => {
+      try {
+        const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: id })
+        const totalCount = probe.data.total || 0
+        const shouldPaginateOnServer = totalCount > MAX_CLIENT_ITEMS
 
-  const totalPages = Math.ceil(total / size)
-  const hasSeries = seriesList.length > 0
+        const [mixedRes, seriesRes] = await Promise.all([
+          mediaApi.listMixed({
+            page: shouldPaginateOnServer ? page : 1,
+            size: shouldPaginateOnServer ? size : Math.max(totalCount, 1),
+            library_id: id,
+          }),
+          seriesApi.list({ library_id: id }),
+        ])
+
+        if (cancelled) return
+        setMixedItems(mixedRes.data.data || [])
+        setSeriesList(seriesRes.data.data || [])
+        setTotal(totalCount)
+        setServerPaginated(shouldPaginateOnServer)
+      } catch {
+        if (!cancelled) toast.error('加载媒体库内容失败')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
+  }, [id, page, size, toast])
 
   const allGenres = useMemo(() => {
     const genres = new Set<string>()
-    mixedItems.forEach((item) => {
-      const value = item.type === 'series' ? item.series?.genres : item.media?.genres
+    const collect = (value?: string) => {
       if (!value) return
       value.split(',').forEach((genre) => {
         const trimmed = genre.trim()
         if (trimmed) genres.add(trimmed)
       })
+    }
+
+    mixedItems.forEach((item) => {
+      collect(item.type === 'series' ? item.series?.genres : item.media?.genres)
     })
-    seriesList.forEach((series) => {
-      if (!series.genres) return
-      series.genres.split(',').forEach((genre) => {
-        const trimmed = genre.trim()
-        if (trimmed) genres.add(trimmed)
-      })
-    })
+    seriesList.forEach((series) => collect(series.genres))
     return Array.from(genres).sort()
   }, [mixedItems, seriesList])
 
@@ -246,7 +282,7 @@ export default function LibraryPage() {
       .replace(/\s*【\s*第?\s*[一二三四五六七八九十\d]+\s*季?\s*】\s*$/, '')
       .trim() || title
 
-    const groups = new Map<string, { best: typeof seriesList[0]; totalSeasons: number; totalEps: number }>()
+    const groups = new Map<string, { best: Series; totalSeasons: number; totalEps: number }>()
     const order: string[] = []
 
     for (const series of seriesList) {
@@ -255,7 +291,7 @@ export default function LibraryPage() {
       if (existing) {
         existing.totalSeasons += series.season_count
         existing.totalEps += series.episode_count
-        const score = (candidate: typeof series) =>
+        const score = (candidate: Series) =>
           (candidate.overview ? 3 : 0)
           + (candidate.poster_path ? 3 : 0)
           + (candidate.rating > 0 ? 2 : 0)
@@ -309,276 +345,349 @@ export default function LibraryPage() {
     return items
   }, [deduplicatedSeries, searchQuery, filterGenre, sortValue])
 
-  const resultCount = viewTab === 'all' ? filteredMixed.length : filteredSeries.length
+  const pagedMixed = useMemo(() => {
+    if (serverPaginated) return filteredMixed
+    const start = (page - 1) * size
+    return filteredMixed.slice(start, start + size)
+  }, [serverPaginated, filteredMixed, page, size])
+
+  const pagedSeries = useMemo(() => {
+    const start = (page - 1) * size
+    return filteredSeries.slice(start, start + size)
+  }, [filteredSeries, page, size])
+
+  const allTotal = serverPaginated && !searchQuery && !filterGenre ? total : filteredMixed.length
+  const resultCount = viewTab === 'all' ? allTotal : filteredSeries.length
+  const totalPages = Math.ceil(resultCount / size)
   const hasLocalFilter = Boolean(searchQuery || filterGenre)
+  const hasSeries = deduplicatedSeries.length > 0
+
+  useEffect(() => {
+    if (page <= 1 || totalPages <= 0 || page <= totalPages) return
+    updateUrl({ page: totalPages > 1 ? String(totalPages) : null })
+  }, [page, totalPages, updateUrl])
 
   return (
     <div className="nv-section-stack">
-      <Surface className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="媒体库内容类型">
-            <ViewTabButton
-              active={viewTab === 'all'}
-              onClick={() => setViewTab('all')}
-              icon={<Film size={14} aria-hidden="true" />}
-            >
-              全部内容
-            </ViewTabButton>
-            {hasSeries && (
-              <ViewTabButton
-                active={viewTab === 'series'}
-                onClick={() => setViewTab('series')}
-                icon={<Tv size={14} aria-hidden="true" />}
+      <motion.div
+        className="flex flex-wrap items-center gap-2"
+        variants={staggerContainerVariants}
+        initial="hidden"
+        animate="visible"
+        role="group"
+        aria-label="媒体库内容类型"
+      >
+        <ContentTabButton
+          active={viewTab === 'all'}
+          onClick={() => setViewTab('all')}
+          icon={<Film size={14} aria-hidden="true" />}
+          label="全部内容"
+          count={total}
+        />
+        {hasSeries && (
+          <ContentTabButton
+            active={viewTab === 'series'}
+            onClick={() => setViewTab('series')}
+            icon={<Tv size={14} aria-hidden="true" />}
+            label="剧集合集"
+            count={deduplicatedSeries.length}
+          />
+        )}
+      </motion.div>
+
+      <Surface className="space-y-3 p-3 sm:p-4">
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1 lg:max-w-xl">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => updateUrl({ q: event.target.value || null })}
+              className="pl-9 pr-10"
+              placeholder="搜索此媒体库..."
+              aria-label="搜索此媒体库"
+            />
+            {searchQuery && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                iconOnly
+                onClick={() => updateUrl({ q: null })}
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                aria-label="清空搜索"
               >
-                剧集合集
-                <Tag tone="neutral">{seriesList.length}</Tag>
-              </ViewTabButton>
+                <X size={14} aria-hidden="true" />
+              </Button>
             )}
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row xl:justify-end">
-            <div className="relative min-w-0 flex-1 sm:max-w-sm">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]"
-                aria-hidden="true"
-              />
-              <Input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="pl-9 pr-9"
-                placeholder="搜索此媒体库..."
-                aria-label="搜索此媒体库"
-              />
-              {searchQuery && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
-                  aria-label="清除搜索"
-                >
-                  <X size={14} aria-hidden="true" />
-                </Button>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {allGenres.length > 0 && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowFilters((value) => !value)}
+                aria-expanded={showFilters}
+                className={filterGenre ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
+              >
+                <SlidersHorizontal size={14} aria-hidden="true" />
+                筛选
+                {filterGenre && <Tag tone="brand">1</Tag>}
+              </Button>
+            )}
 
             <Select
               value={sortValue}
-              onChange={(event) => setSortValue(event.target.value)}
+              onChange={(event) => updateUrl({ sort: event.target.value === 'created_desc' ? null : event.target.value })}
               aria-label="媒体库排序"
-              className="sm:w-36"
+              className="h-9 min-w-32"
             >
               {SORT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </Select>
 
-            {allGenres.length > 0 && (
-              <Button
-                type="button"
-                variant={showFilters || filterGenre ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setShowFilters((value) => !value)}
-                className={filterGenre ? 'text-[var(--nv-action-primary)]' : undefined}
-                aria-expanded={showFilters}
-              >
-                <Filter size={14} aria-hidden="true" />
-                筛选
-                {filterGenre && <Tag tone="brand">1</Tag>}
-              </Button>
-            )}
-
             <div
-              className="flex items-center overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)]"
+              className="flex items-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)] p-0.5"
               role="group"
               aria-label="媒体库视图"
             >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                iconOnly
-                onClick={() => handleViewModeChange('grid')}
-                className={viewMode === 'grid' ? 'rounded-none bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'rounded-none'}
-                aria-pressed={viewMode === 'grid'}
-                aria-label="网格视图"
-              >
-                <Grid3X3 size={16} aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                iconOnly
-                onClick={() => handleViewModeChange('list')}
-                className={viewMode === 'list' ? 'rounded-none border-l border-[var(--nv-border-subtle)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'rounded-none border-l border-[var(--nv-border-subtle)]'}
-                aria-pressed={viewMode === 'list'}
-                aria-label="列表视图"
-              >
-                <LayoutList size={16} aria-hidden="true" />
-              </Button>
+              <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => setViewMode('grid')}>
+                <Grid3X3 size={15} aria-hidden="true" />
+              </ViewButton>
+              <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => setViewMode('list')}>
+                <LayoutList size={15} aria-hidden="true" />
+              </ViewButton>
+              <ViewButton active={viewMode === 'poster'} title="海报墙视图" onClick={() => setViewMode('poster')}>
+                <LayoutGrid size={15} aria-hidden="true" />
+              </ViewButton>
             </div>
           </div>
         </div>
-
-        {showFilters && allGenres.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
-            <span className="mr-1 text-xs font-medium text-[var(--nv-text-tertiary)]">类型</span>
-            <FilterChip selected={!filterGenre} onClick={() => setFilterGenre(null)}>全部</FilterChip>
-            {allGenres.map((genre) => (
-              <FilterChip
-                key={genre}
-                selected={filterGenre === genre}
-                onClick={() => setFilterGenre(filterGenre === genre ? null : genre)}
-              >
-                {genre}
-              </FilterChip>
-            ))}
-          </div>
-        )}
-
-        {hasLocalFilter && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--nv-border-subtle)] pt-3 text-sm text-[var(--nv-text-secondary)]">
-            <span>
-              找到 <strong className="font-semibold text-[var(--nv-action-primary)]">{resultCount}</strong> 个结果
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSearchQuery('')
-                setFilterGenre(null)
-              }}
-            >
-              <X size={13} aria-hidden="true" />
-              清除筛选
-            </Button>
-          </div>
-        )}
       </Surface>
 
-      {viewTab === 'all' && (
-        <>
-          {viewMode === 'grid' ? (
-            loading ? (
-              <div
-                className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                aria-label="正在加载媒体库内容"
-              >
-                {Array.from({ length: 12 }).map((_, index) => (
-                  <div key={index}>
-                    <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
-                    <div className="skeleton mt-2 h-4 w-3/4 rounded" />
-                    <div className="skeleton mt-1 h-3 w-1/2 rounded" />
-                  </div>
-                ))}
+      <AnimatePresence initial={false}>
+        {showFilters && allGenres.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2, ease: easeSmooth as unknown as [number, number, number, number] }}
+            className="overflow-hidden"
+          >
+            <Surface className="space-y-4 p-4 sm:p-5">
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--nv-text-secondary)]">
+                  <span>类型标签</span>
+                  {filterGenre && <Tag tone="brand">1</Tag>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip selected={!filterGenre} onClick={() => updateUrl({ genre: null })}>全部</FilterChip>
+                  {allGenres.map((genre) => (
+                    <FilterChip
+                      key={genre}
+                      selected={filterGenre === genre}
+                      onClick={() => updateUrl({ genre: filterGenre === genre ? null : genre })}
+                    >
+                      {genre}
+                    </FilterChip>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {filteredMixed.map((item) => {
-                  if (item.type === 'series' && item.series) {
-                    return <MediaCard key={`s-${item.series.id}`} series={item.series} />
-                  }
-                  if (item.media) {
-                    return <MediaCard key={`m-${item.media.id}`} media={item.media} />
-                  }
-                  return null
-                })}
-              </div>
-            )
-          ) : loading ? (
-            <div className="space-y-2" aria-label="正在加载媒体库内容">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="skeleton h-[90px] rounded-[var(--nv-radius-card)]" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredMixed.map((item) => {
-                if (item.type === 'series' && item.series) {
-                  return <ListSeriesItem key={`s-${item.series.id}`} series={item.series} />
-                }
-                if (item.media) {
-                  return <ListMediaItem key={`m-${item.media.id}`} media={item.media} />
-                }
-                return null
-              })}
-            </div>
-          )}
 
-          {!loading && filteredMixed.length === 0 && (
-            <EmptyState
-              icon={<Film size={26} aria-hidden="true" />}
-              title={hasLocalFilter ? '没有找到匹配的内容' : '此媒体库暂无内容'}
-              description={hasLocalFilter ? '尝试清除搜索词或类型筛选。' : '扫描媒体库后，内容会显示在这里。'}
-              action={hasLocalFilter ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setFilterGenre(null)
-                  }}
-                >
-                  清除筛选
-                </Button>
-              ) : undefined}
-            />
-          )}
+              {filterGenre && (
+                <div className="flex justify-end border-t border-[var(--nv-border-subtle)] pt-3">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => updateUrl({ genre: null })}>
+                    <X size={13} aria-hidden="true" />
+                    清除筛选
+                  </Button>
+                </div>
+              )}
+            </Surface>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            total={total}
-            pageSize={size}
-            pageSizeOptions={[20, 30, 50, 100]}
-            onPageChange={setPage}
-            onPageSizeChange={setSize}
-          />
-        </>
+      {hasLocalFilter && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--nv-text-secondary)]" aria-live="polite">
+          <span>找到 <strong className="font-semibold text-[var(--nv-text-primary)]">{resultCount}</strong> 个结果</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => updateUrl({ q: null, genre: null })}
+          >
+            <X size={13} aria-hidden="true" />
+            清除筛选
+          </Button>
+        </div>
       )}
 
-      {viewTab === 'series' && (
-        <>
-          {viewMode === 'grid' ? (
-            loading ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="正在加载剧集合集">
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <div key={index} className="skeleton aspect-[16/11] rounded-[var(--nv-radius-card)]" />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`${viewTab}-${viewMode}-${sortValue}-${page}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          {loading ? (
+            <LibrarySkeleton viewMode={viewMode} />
+          ) : viewTab === 'all' ? (
+            pagedMixed.length === 0 ? (
+              <EmptyState
+                icon={<Film size={26} aria-hidden="true" />}
+                title={hasLocalFilter ? '没有找到匹配的内容' : '此媒体库暂无内容'}
+                description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '扫描媒体库后，内容会显示在这里。'}
+                action={hasLocalFilter ? (
+                  <Button type="button" variant="secondary" size="sm" onClick={() => updateUrl({ q: null, genre: null })}>
+                    清除所有筛选
+                  </Button>
+                ) : undefined}
+              />
+            ) : viewMode === 'grid' ? (
+              <motion.div
+                className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                variants={staggerContainerVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                {pagedMixed.map((item) => (
+                  <motion.div
+                    key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`}
+                    variants={staggerItemVariants}
+                    className="min-w-0"
+                  >
+                    {item.type === 'series' && item.series
+                      ? <MediaCard series={item.series} />
+                      : item.media
+                        ? <MediaCard media={item.media} />
+                        : null}
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
+            ) : viewMode === 'list' ? (
+              <motion.div className="space-y-2" variants={staggerContainerVariants} initial="hidden" animate="visible">
+                {pagedMixed.map((item) => (
+                  <motion.div
+                    key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`}
+                    variants={staggerItemVariants}
+                  >
+                    <LibraryListItem item={item} />
+                  </motion.div>
+                ))}
+              </motion.div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredSeries.map((series) => <SeriesCard key={series.id} series={series} />)}
-              </div>
+              <motion.div
+                className="grid grid-cols-3 gap-x-2.5 gap-y-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
+                variants={staggerContainerVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                {pagedMixed.map((item) => (
+                  <motion.div
+                    key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`}
+                    variants={staggerItemVariants}
+                  >
+                    <LibraryPosterItem item={item} />
+                  </motion.div>
+                ))}
+              </motion.div>
             )
-          ) : loading ? (
-            <div className="space-y-2" aria-label="正在加载剧集合集">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="skeleton h-[90px] rounded-[var(--nv-radius-card)]" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredSeries.map((series) => <ListSeriesItem key={series.id} series={series} />)}
-            </div>
-          )}
-
-          {!loading && filteredSeries.length === 0 && (
+          ) : pagedSeries.length === 0 ? (
             <EmptyState
               icon={<Tv size={26} aria-hidden="true" />}
               title={hasLocalFilter ? '没有找到匹配的剧集' : '此媒体库暂无剧集合集'}
-              description={hasLocalFilter ? '尝试清除搜索词或类型筛选。' : '识别到剧集后，合集会显示在这里。'}
+              description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '识别到剧集后，合集会显示在这里。'}
             />
+          ) : viewMode === 'grid' ? (
+            <motion.div
+              className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+              variants={staggerContainerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              {pagedSeries.map((series) => (
+                <motion.div key={series.id} variants={staggerItemVariants} className="min-w-0">
+                  <MediaCard series={series} />
+                </motion.div>
+              ))}
+            </motion.div>
+          ) : viewMode === 'list' ? (
+            <motion.div className="space-y-2" variants={staggerContainerVariants} initial="hidden" animate="visible">
+              {pagedSeries.map((series) => (
+                <motion.div key={series.id} variants={staggerItemVariants}>
+                  <LibraryListItem series={series} />
+                </motion.div>
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              className="grid grid-cols-3 gap-x-2.5 gap-y-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8"
+              variants={staggerContainerVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              {pagedSeries.map((series) => (
+                <motion.div key={series.id} variants={staggerItemVariants}>
+                  <LibraryPosterItem series={series} />
+                </motion.div>
+              ))}
+            </motion.div>
           )}
-        </>
-      )}
+        </motion.div>
+      </AnimatePresence>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={resultCount}
+        pageSize={size}
+        pageSizeOptions={[20, 30, 50, 100]}
+        onPageChange={setPage}
+        onPageSizeChange={setSize}
+      />
+    </div>
+  )
+}
+
+function LibrarySkeleton({ viewMode }: { viewMode: LibraryViewMode }) {
+  const list = viewMode === 'list'
+  return (
+    <div className={clsx(
+      viewMode === 'poster'
+        ? 'grid grid-cols-3 gap-x-2.5 gap-y-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8'
+        : list
+          ? 'space-y-2'
+          : 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+    )}>
+      {Array.from({ length: list ? 8 : 12 }).map((_, index) => (
+        list ? (
+          <Surface key={index} className="flex items-center gap-4 p-3">
+            <div className="skeleton h-20 w-14 shrink-0 rounded-[var(--nv-radius-control)]" />
+            <div className="flex-1 space-y-2">
+              <div className="skeleton h-4 w-3/4 rounded" />
+              <div className="skeleton h-3 w-1/2 rounded" />
+            </div>
+          </Surface>
+        ) : (
+          <div key={index}>
+            <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+            {viewMode !== 'poster' && (
+              <>
+                <div className="skeleton mt-2 h-4 w-3/4 rounded" />
+                <div className="skeleton mt-1 h-3 w-1/2 rounded" />
+              </>
+            )}
+          </div>
+        )
+      ))}
     </div>
   )
 }
@@ -590,16 +699,45 @@ function formatDuration(seconds: number) {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
 }
 
-function ListMediaItem({ media }: { media: Media }) {
+function LibraryListItem({ item, series: seriesProp }: { item?: MixedItem; series?: Series }) {
+  const [tagsExpanded, setTagsExpanded] = useState(false)
+  const isSeries = Boolean(seriesProp) || item?.type === 'series'
+  const series = seriesProp || (item?.type === 'series' ? item.series : undefined)
+  const media = isSeries ? undefined : item?.media
+  const title = series?.title || media?.title || ''
+  const year = series?.year || media?.year || 0
+  const rating = series?.rating || media?.rating || 0
+  const genres = series?.genres || media?.genres || ''
+  const country = series?.country || media?.country || ''
+  const overview = series?.overview || media?.overview || ''
+  const duration = media?.duration || 0
+
+  const genreList = genres ? genres.split(',').map((genre) => genre.trim()).filter(Boolean) : []
+  const maxVisibleTags = 3
+  const hasMoreTags = genreList.length > maxVisibleTags
+  const visibleTags = tagsExpanded ? genreList : genreList.slice(0, maxVisibleTags)
+
+  const linkTo = series
+    ? `/series/${series.id}`
+    : media?.series_id
+      ? `/series/${media.series_id}`
+      : `/media/${media?.id}`
+
+  const posterUrl = series
+    ? streamApi.getSeriesPosterUrl(series.id)
+    : media?.series_id
+      ? streamApi.getSeriesPosterUrl(media.series_id)
+      : streamApi.getPosterUrl(media?.id || '')
+
   return (
     <Link
-      to={media.series_id ? `/series/${media.series_id}` : `/media/${media.id}`}
-      className="group flex items-center gap-4 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card)]"
+      to={linkTo}
+      className="group flex items-center gap-4 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] p-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card)]"
     >
-      <div className="h-16 w-12 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]">
+      <div className="h-20 w-14 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]">
         <img
-          src={streamApi.getPosterUrl(media.id)}
-          alt={media.title}
+          src={posterUrl}
+          alt={title}
           className="h-full w-full object-cover"
           loading="lazy"
           onError={(event) => { event.currentTarget.style.display = 'none' }}
@@ -607,132 +745,101 @@ function ListMediaItem({ media }: { media: Media }) {
       </div>
 
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-medium text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]">
-          {media.title}
-        </h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
-          {media.year > 0 && <span>{media.year}</span>}
-          {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
-          {media.resolution && <Tag tone="brand">{media.resolution}</Tag>}
+        <div className="flex items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]">{title}</h3>
+          {isSeries && <Tag>剧集</Tag>}
         </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
+          {year > 0 && <span>{year}</span>}
+          {country && <span>{country}</span>}
+          {duration > 0 && <span>{formatDuration(duration)}</span>}
+          {series && <span>{series.season_count} 季 · {series.episode_count} 集</span>}
+        </div>
+
+        {genreList.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {visibleTags.map((genre) => <Tag key={genre}>{genre}</Tag>)}
+            {hasMoreTags && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setTagsExpanded((value) => !value)
+                }}
+                className="inline-flex items-center gap-0.5 rounded-[var(--nv-radius-pill)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-control)] px-2 py-0.5 text-[10px] font-medium text-[var(--nv-action-primary)] transition-colors hover:bg-[var(--nv-bg-hover)]"
+                title={tagsExpanded ? '收起标签' : `展开全部 ${genreList.length} 个标签`}
+              >
+                {tagsExpanded ? '收起' : `+${genreList.length - maxVisibleTags}`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {overview && <p className="mt-1.5 line-clamp-1 text-xs text-[var(--nv-text-tertiary)]">{overview}</p>}
       </div>
 
-      {media.rating > 0 && (
-        <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[var(--nv-status-rating)]">
-          <Star size={14} fill="currentColor" aria-hidden="true" />
-          <span>{media.rating.toFixed(1)}</span>
-        </div>
+      {rating > 0 && (
+        <Tag tone="rating" className="shrink-0">
+          <Star size={11} fill="currentColor" aria-hidden="true" />
+          {rating.toFixed(1)}
+        </Tag>
       )}
     </Link>
   )
 }
 
-function ListSeriesItem({ series }: { series: Series }) {
-  return (
-    <Link
-      to={`/series/${series.id}`}
-      className="group flex items-center gap-4 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card)]"
-    >
-      <div className="h-16 w-12 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]">
-        {series.poster_path ? (
-          <img
-            src={streamApi.getSeriesPosterUrl(series.id)}
-            alt={series.title}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-            <Tv size={16} aria-hidden="true" />
-          </div>
-        )}
-      </div>
+function LibraryPosterItem({ item, series: seriesProp }: { item?: MixedItem; series?: Series }) {
+  const isSeries = Boolean(seriesProp) || item?.type === 'series'
+  const series = seriesProp || (item?.type === 'series' ? item.series : undefined)
+  const media: Media | undefined = isSeries ? undefined : item?.media
+  const title = series?.title || media?.title || ''
+  const rating = series?.rating || media?.rating || 0
 
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-medium text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]">
-          {series.title}
-        </h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
-          {series.year > 0 && <span>{series.year}</span>}
-          <span>{series.season_count} 季 · {series.episode_count} 集</span>
-        </div>
-      </div>
+  const linkTo = series
+    ? `/series/${series.id}`
+    : media?.series_id
+      ? `/series/${media.series_id}`
+      : `/media/${media?.id}`
 
-      {series.rating > 0 && (
-        <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[var(--nv-status-rating)]">
-          <Star size={14} fill="currentColor" aria-hidden="true" />
-          <span>{series.rating.toFixed(1)}</span>
-        </div>
-      )}
-    </Link>
-  )
-}
-
-function scrapeTone(status?: string): TagTone {
-  if (status === 'failed') return 'danger'
-  if (status === 'partial') return 'warning'
-  return 'neutral'
-}
-
-function scrapeLabel(status?: string) {
-  if (status === 'failed') return '未识别'
-  if (status === 'partial') return '部分识别'
-  if (status === 'pending') return '待识别'
-  return null
-}
-
-function SeriesCard({ series }: { series: Series }) {
-  const statusLabel = scrapeLabel(series.scrape_status)
+  const posterUrl = series
+    ? streamApi.getSeriesPosterUrl(series.id)
+    : media?.series_id
+      ? streamApi.getSeriesPosterUrl(media.series_id)
+      : streamApi.getPosterUrl(media?.id || '')
 
   return (
     <Link
-      to={`/series/${series.id}`}
-      className="group block overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-elevated)] hover:shadow-[var(--nv-shadow-card)]"
+      to={linkTo}
+      className="group block overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card)]"
+      aria-label={title}
     >
-      <div className="relative aspect-video overflow-hidden bg-[var(--nv-bg-surface-soft)]">
-        {series.poster_path ? (
-          <img
-            src={streamApi.getSeriesPosterUrl(series.id)}
-            alt={series.title}
-            className="h-full w-full object-cover transition-[transform,filter] duration-300 group-hover:scale-[1.025] group-hover:brightness-95"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-            <Tv size={42} aria-hidden="true" />
-          </div>
-        )}
+      <div className="relative aspect-[2/3] overflow-hidden bg-[var(--nv-bg-surface-soft)]">
+        <img
+          src={posterUrl}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.025]"
+          loading="lazy"
+          onError={(event) => { event.currentTarget.style.display = 'none' }}
+        />
 
-        <div className="absolute bottom-2 right-2">
-          <Tag tone="brand">{series.season_count} 季 · {series.episode_count} 集</Tag>
+        <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center text-[var(--nv-text-tertiary)]">
+          {isSeries ? <Tv size={20} aria-hidden="true" /> : <Film size={20} aria-hidden="true" />}
         </div>
 
-        {statusLabel && (
-          <div className="absolute left-2 top-2">
-            <Tag tone={scrapeTone(series.scrape_status)}>{statusLabel}</Tag>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3.5">
-        <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]">
-          {series.title}
-        </h3>
-        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-[var(--nv-text-tertiary)]">
-          {series.year > 0 && (
-            <span className="flex items-center gap-1">
-              <Calendar size={12} aria-hidden="true" />
-              {series.year}
-            </span>
-          )}
-          {series.rating > 0 && (
-            <span className="flex items-center gap-1 text-[var(--nv-status-rating)]">
-              <Star size={12} fill="currentColor" aria-hidden="true" />
-              {series.rating.toFixed(1)}
-            </span>
-          )}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 via-black/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        <div className="absolute inset-x-2 bottom-2 translate-y-1 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+          <p className="truncate text-xs font-semibold text-white">{title}</p>
         </div>
-        {series.overview && (
-          <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{series.overview}</p>
+        <div className="absolute right-2 top-2 flex h-7 w-7 scale-95 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-action)] opacity-0 shadow-[var(--nv-shadow-card)] transition-[opacity,transform] duration-200 group-hover:scale-100 group-hover:opacity-100">
+          <Play size={12} className="ml-0.5" fill="currentColor" aria-hidden="true" />
+        </div>
+
+        {rating > 0 && (
+          <Tag tone="rating" className="absolute left-1.5 top-1.5">
+            <Star size={10} fill="currentColor" aria-hidden="true" />
+            {rating.toFixed(1)}
+          </Tag>
         )}
       </div>
     </Link>
