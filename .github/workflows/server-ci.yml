@@ -1,0 +1,226 @@
+name: Server CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - 'cmd/server-lite/**'
+      - 'cmd/server/**'
+      - 'cmd/transcode-fixture-cert/**'
+      - 'internal/playback/**'
+      - 'internal/service/lite.go'
+      - 'internal/service/task_center.go'
+      - 'internal/service/task_center_test.go'
+      - 'internal/service/playback_planner.go'
+      - 'internal/service/playback_planner_test.go'
+      - 'internal/service/playback_startup*.go'
+      - 'internal/service/media_probe_warmup*.go'
+      - 'internal/service/transcode*.go'
+      - 'internal/service/stream_artifacts.go'
+      - 'internal/service/ondemand.go'
+      - 'internal/handler/lite.go'
+      - 'internal/handler/handler.go'
+      - 'internal/handler/stream_artifacts.go'
+      - 'internal/handler/stream_startup_bridge.go'
+      - 'internal/handler/task_center.go'
+      - 'internal/handler/playback_plan.go'
+      - 'internal/handler/playback_session.go'
+      - 'internal/model/migrate_lite.go'
+      - 'internal/model/transcode_execution.go'
+      - 'internal/model/transcode_handoff*.go'
+      - 'internal/model/transcode_*migration_test.go'
+      - 'internal/repository/repo_transcode*.go'
+      - 'internal/transcode/**'
+      - 'internal/middleware/security.go'
+      - 'internal/middleware/**/*_test.go'
+      - 'internal/serverprofile/**'
+      - 'docs/TRANSCODE_*.md'
+      - 'docs/PLAYBACK_*.md'
+      - 'web/**'
+      - 'clients/android-v2/**'
+      - 'Dockerfile'
+      - 'Dockerfile.full'
+      - 'Makefile'
+      - '.github/workflows/server-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Go build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Test Go packages
+        run: go test ./...
+      - name: Encoding plan value-object contract
+        run: go test ./internal/transcode/encodingplan
+      - name: Timestamp normalization value-object contract
+        run: go test ./internal/transcode/timestampplan -run 'Plan|TimestampPolicy|ApplyFFmpeg'
+      - name: Fixture certification report contract
+        run: go test ./internal/transcode/certification
+      - name: Install FFmpeg fixture tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Real FFmpeg timestamp-origin fixture
+        env:
+          NOWEN_REQUIRE_FFMPEG_TIMESTAMP_FIXTURE: '1'
+        run: go test ./internal/transcode/timestampplan -run '^TestFFmpegCopyTSStartAtZeroPreservesContinuationOrigin$' -count=1 -v
+      - name: Produced media attestation contract
+        run: go test ./internal/transcode/attestation
+      - name: Historical timeline value-object contract
+        run: go test ./internal/transcode/timeline
+      - name: Execution history and retirement contract
+        run: go test ./internal/model ./internal/repository ./internal/service -run 'EncodingPlan|Timestamp|Attestation|Artifact|Lease|Retire|RuntimePlayback|PlaybackSession'
+      - name: Playback session and fallback contract
+        run: go test ./internal/playback/... ./internal/service ./internal/handler -run 'PlaybackSession|Playback|RuntimeArtifactServingIsRetired|SubmitStartupStreamIsRetired|RuntimePlayback'
+      - name: Runtime playback source removal contract
+        run: go test ./cmd/server -run '^TestRetiredRuntimePlaybackImplementationRemainsDeleted$'
+      - name: Plan and attestation race verification
+        run: go test -race ./internal/transcode/encodingplan ./internal/transcode/timestampplan ./internal/transcode/attestation ./internal/transcode/timeline
+      - name: Artifact lease and filesystem race tests
+        run: go test -race ./internal/repository ./internal/transcode/artifactstore ./internal/service -run 'Artifact|EncodingPlan|Timestamp|Attestation|Lease|Shutdown|Retire'
+      - name: Artifact repository encoding-plan baseline
+        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByEncodingPlan$' -benchtime=100x -benchmem
+      - name: Artifact repository execution-contract baseline
+        run: go test ./internal/repository -run '^$' -bench '^BenchmarkFindReadableArtifactByExecutionContract$' -benchtime=100x -benchmem
+      - name: Build fixture certification CLI
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-transcode-fixture-cert ./cmd/transcode-fixture-cert
+      - name: Build production server
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-video ./cmd/server-lite
+      - name: Build legacy compatibility server
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/nowen-video-legacy ./cmd/server
+
+  web:
+    name: Web typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Reject retired Pulse UI copy
+        run: |
+          if grep -R -n -E 'Pulse 数据中心|Pulse (Data )?Center|Pulse データセンター|nav\.pulse|pulse\.' dist; then
+            echo 'Retired Pulse UI copy must not be present in production assets.' >&2
+            exit 1
+          fi
+
+  docker:
+    name: Docker production and legacy compatibility smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: nowen-video:ci
+          build-args: |
+            NOWEN_VERSION=ci
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+      - name: Build legacy compatibility image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.full
+          push: false
+          load: true
+          tags: nowen-video:legacy-ci
+          build-args: |
+            NOWEN_VERSION=ci
+          cache-from: type=gha,scope=server-legacy
+          cache-to: type=gha,mode=max,scope=server-legacy
+      - name: Start production and legacy compatibility images with persistent volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker rm -f nowen-production-smoke nowen-legacy-smoke >/dev/null 2>&1 || true
+            docker volume rm -f nowen-production-data-ci nowen-production-cache-ci nowen-legacy-data-ci nowen-legacy-cache-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_health() {
+            local name="$1"
+            local port="$2"
+            for _ in $(seq 1 90); do
+              if curl --fail --silent --show-error "http://127.0.0.1:${port}/api/health" >/dev/null; then
+                return 0
+              fi
+              if ! docker inspect "$name" >/dev/null 2>&1 || [ "$(docker inspect -f '{{.State.Running}}' "$name")" != "true" ]; then
+                docker logs "$name" || true
+                return 1
+              fi
+              sleep 1
+            done
+            docker logs "$name" || true
+            return 1
+          }
+
+          smoke_profile() {
+            local profile="$1"
+            local image="$2"
+            local port="$3"
+            local data_volume="nowen-${profile}-data-ci"
+            local cache_volume="nowen-${profile}-cache-ci"
+            local container="nowen-${profile}-smoke"
+
+            docker volume create "$data_volume" >/dev/null
+            docker volume create "$cache_volume" >/dev/null
+            docker run -d \
+              --name "$container" \
+              -p "${port}:8080" \
+              -v "${data_volume}:/data" \
+              -v "${cache_volume}:/cache" \
+              "$image" >/dev/null
+            wait_health "$container" "$port"
+            docker exec "$container" test -s /data/nowen.db
+            docker exec "$container" test -d /cache/transcode
+
+            # Restart the exact image against the same volumes. This exercises
+            # additive migrations, runtime retirement reconciliation and normal
+            # ownership/permission handling rather than only a cold boot.
+            docker rm -f "$container" >/dev/null
+            docker run -d \
+              --name "$container" \
+              -p "${port}:8080" \
+              -v "${data_volume}:/data" \
+              -v "${cache_volume}:/cache" \
+              "$image" >/dev/null
+            wait_health "$container" "$port"
+            docker exec "$container" test -s /data/nowen.db
+            docker exec "$container" test -d /cache/transcode/workspaces
+            docker exec "$container" test -d /cache/transcode/artifacts
+            docker rm -f "$container" >/dev/null
+          }
+
+          smoke_profile production nowen-video:ci 18080
+          smoke_profile legacy nowen-video:legacy-ci 18081
