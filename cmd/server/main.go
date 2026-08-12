@@ -146,12 +146,6 @@ func main() {
 		ExcludePaths: []string{"/api/ws"}, // WebSocket 不受速率限制
 	}))
 
-	// 日志脱敏中间件：脱敏敏感参数，避免 token、密码等出现在日志中
-	r.Use(middleware.LogSanitizer())
-
-	// 请求日志中间件：记录所有 API 请求到系统日志
-	r.Use(middleware.RequestLogger(repos.SystemLog))
-
 	// JWT Secret 安全检查
 	if cfg.Secrets.JWTSecret == "" {
 		sugar.Fatal("JWT Secret 未配置或自动生成失败，无法启动")
@@ -182,27 +176,6 @@ func main() {
 		for range ticker.C {
 			_ = repos.LoginLog.CleanOlderThan(90)
 		}
-	}()
-
-	// 系统日志清理定时任务：保留30天
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		repos.SystemLog.CleanOlderThan(30)
-		for range ticker.C {
-			repos.SystemLog.CleanOlderThan(30)
-		}
-	}()
-
-	// 记录服务启动事件
-	go func() {
-		_ = repos.SystemLog.Create(&model.SystemLog{
-			Type:    model.LogTypeSystem,
-			Level:   model.LogLevelInfo,
-			Message: "服务启动",
-			Source:  "startup",
-			Detail:  fmt.Sprintf("版本: %s, Go: %s, OS: %s/%s", appVer, runtime.Version(), runtime.GOOS, runtime.GOARCH),
-		})
 	}()
 
 	// 公开路由（无需认证）
@@ -450,9 +423,6 @@ func main() {
 		api.POST("/stats/playback", handlers.Stats.RecordPlayback)
 		api.GET("/stats/me", handlers.Stats.GetUserStats)
 
-		// 播放错误上报（前端视频播放器错误日志）
-		api.POST("/logs/playback-error", handlers.SystemLog.ReportPlaybackError)
-
 		// ==================== V2: 音乐库 ====================
 		api.GET("/music/tracks", handlers.Music.ListTracks)
 		api.GET("/music/albums", handlers.Music.ListAlbums)
@@ -498,7 +468,6 @@ func main() {
 		api.POST("/media/:id/covers/apply", handlers.AIScene.ApplyCover)
 		api.GET("/media/:id/ai/tasks", handlers.AIScene.GetAnalysisTasks)
 		api.GET("/ai/tasks/:taskId", handlers.AIScene.GetAnalysisTask)
-
 	}
 
 	// 豆瓣 Cookie 懒人版一键导入（公开路由，通过一次性 token 鉴权，专供 douban.com 页面 Bookmarklet 跨域调用）
@@ -550,12 +519,6 @@ func main() {
 		// STRM 远程流全局配置
 		admin.GET("/strm/config", handlers.Admin.GetSTRMConfig)
 		admin.PUT("/strm/config", handlers.Admin.UpdateSTRMConfig)
-
-		// 系统日志
-		admin.GET("/system-logs", handlers.SystemLog.ListSystemLogs)
-		admin.GET("/system-logs/stats", handlers.SystemLog.GetSystemLogStats)
-		admin.GET("/system-logs/export", handlers.SystemLog.ExportSystemLogs)
-		admin.POST("/system-logs/clean", handlers.SystemLog.CleanSystemLogs)
 
 		// 批量操作
 		admin.POST("/batch/scan", handlers.Admin.BatchScan)
@@ -951,7 +914,6 @@ func main() {
 		admin.DELETE("/collections/:id", handlers.Collection.DeleteCollection)
 		admin.POST("/collections/:id/media", handlers.Collection.AddMedia)
 		admin.DELETE("/collections/:id/media/:mediaId", handlers.Collection.RemoveMedia)
-
 	}
 
 	// ==================== V2: 联邦 API（供其他节点调用） ====================
