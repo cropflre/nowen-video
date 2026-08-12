@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from typing import Any
 
-from android_v2_p0.common import fail, write_json
+from android_v2_p0.common import PRODUCT, fail, write_json
 
 from .common import Candidate, verify_candidate, verify_matrix
 from .github import (
@@ -44,7 +44,7 @@ def verify_remote(gh: GitHubCLI, tag: str, candidate: Candidate, *, draft: bool)
         fail(f"tag resolves to {resolved}, expected {candidate.source_commit}")
     release = release_metadata(gh, tag, draft=draft)
     validate_allowlist(release, candidate)
-    with tempfile.TemporaryDirectory(prefix="android-v2-release-promotion-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="android-release-promotion-") as temporary:
         directory = pathlib.Path(temporary)
         download_release(gh, tag, directory)
         verify_release_files(directory, candidate, release)
@@ -54,7 +54,7 @@ def verify_remote(gh: GitHubCLI, tag: str, candidate: Candidate, *, draft: bool)
 def report(operation: str, repository: str, tag: str, candidate: Candidate, matrix: dict[str, Any], release: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": 1,
-        "product": "Nowen Video Android V2",
+        "product": PRODUCT,
         "generated_at_utc": now(),
         "operation": operation,
         "verdict": "PASS",
@@ -80,10 +80,10 @@ def report(operation: str, repository: str, tag: str, candidate: Candidate, matr
         "checks": [
             "candidate checksums, metadata and signatures are verified",
             "P0 matrix is PASS with exact API 26 / 33 / 35 and a full session",
-            "tag resolves to the candidate source commit",
-            "release remains the expected prerelease",
-            "release contains only the six approved assets",
-            "release body and every asset exactly match the P0-tested candidate",
+            "product tag resolves to the candidate source commit",
+            "release state matches the requested promotion operation",
+            "release contains only the approved Android candidate assets",
+            "release body and every Android asset exactly match the P0-tested candidate",
         ],
         "sensitive_values_included": False,
     }
@@ -92,7 +92,7 @@ def report(operation: str, repository: str, tag: str, candidate: Candidate, matr
 def render(payload: dict[str, Any], path: pathlib.Path) -> None:
     candidate = payload["candidate"]
     lines = [
-        "# Android V2 RC prerelease 发布门禁报告", "",
+        "# Android 发布门禁报告", "",
         f"> 门禁结论：**{payload['verdict']}**  ",
         f"> 操作：**{payload['operation']}**", "",
         "| 项目 | 值 |", "|---|---|",
@@ -110,7 +110,7 @@ def render(payload: dict[str, Any], path: pathlib.Path) -> None:
     lines.extend(f"- [x] {item}" for item in payload["checks"])
     lines += [
         "", "该报告不包含 keystore、密码、Token、服务器地址或设备原始日志。",
-        "公开 prerelease 的附件与完成 P0 的候选目录逐字节一致。", "",
+        "公开附件必须与完成 P0 的候选目录逐字节一致。", "",
         f"生成时间：`{payload['generated_at_utc']}`",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -119,7 +119,7 @@ def render(payload: dict[str, Any], path: pathlib.Path) -> None:
 def save(args: argparse.Namespace, operation: str, candidate: Candidate, matrix: dict[str, Any], release: dict[str, Any]) -> None:
     output = pathlib.Path(args.output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    tag = args.tag or f"android-v2-v{candidate.version_name}"
+    tag = args.tag or f"v{candidate.version_name}"
     payload = report(operation, args.repository, tag, candidate, matrix, release)
     write_json(output / "release-promotion-verification.json", payload)
     render(payload, output / "RELEASE_PROMOTION_REPORT.md")
@@ -129,14 +129,14 @@ def save(args: argparse.Namespace, operation: str, candidate: Candidate, matrix:
 def local(args: argparse.Namespace) -> tuple[Candidate, dict[str, Any], str]:
     candidate = verify_candidate(pathlib.Path(args.candidate_dir), args.version)
     matrix = verify_matrix(pathlib.Path(args.matrix_dir), candidate)
-    return candidate, matrix, args.tag or f"android-v2-v{candidate.version_name}"
+    return candidate, matrix, args.tag or f"v{candidate.version_name}"
 
 
 def verify(args: argparse.Namespace) -> int:
     candidate, matrix, tag = local(args)
     release = verify_remote(client(args), tag, candidate, draft=True)
     save(args, "verify", candidate, matrix, release)
-    print("Draft prerelease exactly matches the P0-tested candidate")
+    print("Draft release exactly matches the P0-tested Android candidate")
     return 0
 
 
@@ -151,7 +151,7 @@ def sync(args: argparse.Namespace) -> int:
     sync_release(gh, tag, candidate, release)
     release = verify_remote(gh, tag, candidate, draft=True)
     save(args, "sync", candidate, matrix, release)
-    print("Draft prerelease assets now exactly match the P0-tested candidate")
+    print("Draft release Android assets now exactly match the P0-tested candidate")
     return 0
 
 
@@ -164,7 +164,7 @@ def publish(args: argparse.Namespace) -> int:
     gh.patch_release(int(release["id"]), [("draft", "false"), ("prerelease", "true")])
     published = verify_remote(gh, tag, candidate, draft=False)
     save(args, "publish", candidate, matrix, published)
-    print(f"Published prerelease {tag}")
+    print(f"Published Android prerelease assets on {tag}")
     return 0
 
 
@@ -179,10 +179,10 @@ def common(item: argparse.ArgumentParser) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(description="Fail-closed Android V2 prerelease promotion gate")
+    root = argparse.ArgumentParser(description="Fail-closed Android release promotion gate")
     sub = root.add_subparsers(dest="command", required=True)
     common(sub.add_parser("verify", help="read-only verification"))
-    item = sub.add_parser("sync", help="replace draft assets with the P0-tested candidate")
+    item = sub.add_parser("sync", help="replace draft Android assets with the P0-tested candidate")
     common(item)
     item.add_argument("--confirm-version", required=True)
     item = sub.add_parser("publish", help="publish a fully verified draft prerelease")
@@ -194,12 +194,8 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
-    if args.command == "verify":
-        return verify(args)
-    if args.command == "sync":
-        return sync(args)
-    if args.command == "publish":
-        return publish(args)
-    if args.command == "self-test":
-        return self_test()
+    if args.command == "verify": return verify(args)
+    if args.command == "sync": return sync(args)
+    if args.command == "publish": return publish(args)
+    if args.command == "self-test": return self_test()
     fail(f"unsupported command: {args.command}")
