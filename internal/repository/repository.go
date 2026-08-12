@@ -57,6 +57,12 @@ type Repositories struct {
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
+	// 系统日志模块已下线。旧版本留下的 system_logs 表不再保留，
+	// 升级启动时直接物理删除，确保数据库层也完成退役。
+	if err := db.Exec("DROP TABLE IF EXISTS system_logs").Error; err != nil {
+		panic("failed to remove legacy system_logs table: " + err.Error())
+	}
+
 	return &Repositories{
 		db:             db,
 		User:           &UserRepo{db: db},
