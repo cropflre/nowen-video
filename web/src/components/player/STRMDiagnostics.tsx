@@ -1,16 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { streamApi, strmApi, type MediaSTRMInfo } from '@/api'
 import {
-  Loader2,
   Activity,
   CheckCircle2,
-  XCircle,
   ChevronDown,
   ChevronUp,
-  Settings2,
-  X,
+  Loader2,
   Save,
+  Settings2,
+  XCircle,
 } from 'lucide-react'
+import {
+  Button,
+  Input,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Textarea,
+} from '@/components/design-system'
 
 interface STRMDiagnosticsProps {
   mediaId: string
@@ -75,46 +83,48 @@ export default function STRMDiagnostics({ mediaId, compact = false }: STRMDiagno
 
   return (
     <div className={compact ? 'inline-flex' : 'flex flex-col gap-2'}>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={runCheck}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-2.5 py-1 text-xs text-[var(--nv-player-text-secondary)] transition-[background-color,border-color,color] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] disabled:opacity-60"
         title="一键诊断远程流链路"
+        className="text-[var(--nv-player-text-secondary)]"
       >
-        {loading ? <Loader2 size={12} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" /> : <Activity size={12} aria-hidden="true" />}
+        {loading ? <Loader2 size={12} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Activity size={12} aria-hidden="true" />}
         <span>STRM 诊断</span>
         {result ? (open ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />) : null}
-      </button>
+      </Button>
 
       {open && result && (
-        <div className="mt-1 max-w-[360px] rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2.5 text-[11px] leading-relaxed text-[var(--nv-player-text-secondary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
-          <div className="mb-1.5 flex items-center gap-1.5">
+        <div className="mt-1 max-w-[360px] rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-elevated)] p-3 text-[11px] leading-relaxed text-[var(--nv-text-secondary)] shadow-[var(--nv-shadow-elevated)]">
+          <div className="mb-2 flex items-center gap-1.5">
             {result.ok ? (
-              <><CheckCircle2 size={14} className="text-[var(--nv-player-success)]" aria-hidden="true" /><span className="font-medium text-[var(--nv-player-success)]">连通正常</span></>
+              <><CheckCircle2 size={14} className="text-[var(--nv-status-success)]" aria-hidden="true" /><span className="font-medium text-[var(--nv-status-success)]">连通正常</span></>
             ) : (
-              <><XCircle size={14} className="text-[var(--nv-player-danger)]" aria-hidden="true" /><span className="font-medium text-[var(--nv-player-danger)]">连通异常</span></>
+              <><XCircle size={14} className="text-[var(--nv-status-danger)]" aria-hidden="true" /><span className="font-medium text-[var(--nv-status-danger)]">连通异常</span></>
             )}
-            <span className="ml-auto text-[var(--nv-player-text-tertiary)]">{result.response_ms}ms</span>
+            <span className="ml-auto text-[var(--nv-text-tertiary)]">{result.response_ms}ms</span>
           </div>
 
           <div className="space-y-0.5 font-mono">
-            <div><span className="text-[var(--nv-player-text-tertiary)]">HTTP:</span> {result.status_code || '-'}</div>
-            {result.content_type && <div className="truncate"><span className="text-[var(--nv-player-text-tertiary)]">CT:</span> {result.content_type}</div>}
+            <div><span className="text-[var(--nv-text-tertiary)]">HTTP:</span> {result.status_code || '-'}</div>
+            {result.content_type && <div className="truncate"><span className="text-[var(--nv-text-tertiary)]">CT:</span> {result.content_type}</div>}
             {typeof result.content_length === 'number' && result.content_length > 0 && (
-              <div><span className="text-[var(--nv-player-text-tertiary)]">Size:</span> {(result.content_length / 1024 / 1024).toFixed(2)} MB</div>
+              <div><span className="text-[var(--nv-text-tertiary)]">Size:</span> {(result.content_length / 1024 / 1024).toFixed(2)} MB</div>
             )}
-            {result.accept_ranges && <div><span className="text-[var(--nv-player-text-tertiary)]">Range:</span> {result.accept_ranges}</div>}
-            {result.error && <div className="mt-1 break-words text-[var(--nv-player-danger)]"><span className="text-[var(--nv-player-text-tertiary)]">Error:</span> {result.error}</div>}
-            {result.url && <div className="mt-1 break-all text-[var(--nv-player-text-tertiary)]">{result.url.length > 80 ? `${result.url.slice(0, 80)}…` : result.url}</div>}
+            {result.accept_ranges && <div><span className="text-[var(--nv-text-tertiary)]">Range:</span> {result.accept_ranges}</div>}
+            {result.error && <div className="mt-1 break-words text-[var(--nv-status-danger)]"><span className="text-[var(--nv-text-tertiary)]">Error:</span> {result.error}</div>}
+            {result.url && <div className="mt-1 break-all text-[var(--nv-text-tertiary)]">{result.url.length > 80 ? `${result.url.slice(0, 80)}…` : result.url}</div>}
           </div>
 
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <button type="button" onClick={copyDiag} className="flex-1 rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] px-2 py-1 text-[10px] text-[var(--nv-player-accent)] transition-colors hover:bg-[var(--nv-player-accent-soft-hover)]">复制诊断信息</button>
-            <button type="button" onClick={runCheck} className="flex-1 rounded-[var(--nv-radius-sm)] bg-[var(--nv-player-surface-subtle)] px-2 py-1 text-[10px] text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]">重试</button>
-            <button type="button" onClick={() => setEditorOpen(true)} className="inline-flex items-center gap-1 rounded-[var(--nv-radius-sm)] bg-[var(--nv-player-surface-subtle)] px-2 py-1 text-[10px] text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]" title="手动覆盖 UA / Referer / Cookie（会立即生效）">
-              <Settings2 size={10} aria-hidden="true" /> 编辑请求头
-            </button>
+          <div className="mt-2.5 flex flex-wrap items-center gap-1">
+            <Button type="button" variant="ghost" size="sm" onClick={copyDiag}>复制诊断信息</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={runCheck}>重试</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditorOpen(true)} title="手动覆盖 UA / Referer / Cookie（会立即生效）">
+              <Settings2 size={12} aria-hidden="true" /> 编辑请求头
+            </Button>
           </div>
         </div>
       )}
@@ -210,65 +220,70 @@ function STRMHeaderEditor({ mediaId, onClose, onSaved }: EditorProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[color-mix(in_srgb,var(--nv-player-canvas)_65%,transparent)] p-4 backdrop-blur-sm"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
-    >
-      <div className="w-full max-w-lg rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-5 text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)]">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">STRM 请求头覆写</div>
-            <div className="text-[11px] text-[var(--nv-player-text-tertiary)]">只影响当前这条媒体；粘贴后立即生效，不需重新扫描</div>
-          </div>
-          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-tertiary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]" title="关闭" aria-label="关闭请求头编辑"><X size={16} aria-hidden="true" /></button>
-        </div>
+    <Modal open onClose={onClose} size="md" ariaLabel="STRM 请求头覆写">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ModalHeader
+          title="STRM 请求头覆写"
+          description="只影响当前媒体；保存后立即生效，不需要重新扫描。"
+          icon={<Settings2 size={18} aria-hidden="true" />}
+          onClose={onClose}
+        />
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-8 text-xs text-[var(--nv-player-text-tertiary)]"><Loader2 size={12} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" /> 加载中...</div>
-        ) : (
-          <div className="space-y-2.5 text-xs">
-            {info && !info.is_strm && <div className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] px-2 py-1.5 text-[11px] text-[var(--nv-player-danger)]">当前媒体不是 STRM 远程流，覆写无效</div>}
-            <LabeledInput label="远程 URL (可选，token 过期时手动刷新)" value={url} onChange={setURL} placeholder="https://..." />
-            <LabeledInput label="User-Agent" value={ua} onChange={setUA} placeholder="Mozilla/5.0 ..." />
-            <LabeledInput label="Referer" value={referer} onChange={setReferer} placeholder="https://example.com/" />
-            <LabeledInput label="Cookie" value={cookie} onChange={setCookie} placeholder="sid=xxx; uid=yyy" textarea />
-            <LabeledInput label="额外 Header（每行 Key: Value）" value={headersText} onChange={setHeadersText} placeholder={'X-Auth: secret-token\nAccept: */*'} textarea rows={4} />
-
-            {err && <div className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] px-2 py-1.5 text-[11px] text-[var(--nv-player-danger)]">{err}</div>}
-
-            <div className="flex items-center gap-2 pt-1">
-              <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent)] px-3 py-1.5 text-xs font-medium text-[var(--nv-player-text-on-accent)] transition-colors hover:bg-[var(--nv-action-primary-hover)] disabled:opacity-60">
-                {saving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}保存并重试
-              </button>
-              <button type="button" onClick={onClose} className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 py-1.5 text-xs text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]">取消</button>
+        <ModalBody>
+          {loading ? (
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-[var(--nv-text-tertiary)]">
+              <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> 加载中...
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-4">
+              {info && !info.is_strm && (
+                <div className="border-y border-[color-mix(in_srgb,var(--nv-status-danger)_24%,transparent)] py-2 text-xs text-[var(--nv-status-danger)]">
+                  当前媒体不是 STRM 远程流，覆写不会生效。
+                </div>
+              )}
+
+              <Field label="远程 URL（可选，token 过期时手动刷新）">
+                <Input value={url} onChange={(event) => setURL(event.target.value)} placeholder="https://..." className="font-mono" />
+              </Field>
+              <Field label="User-Agent">
+                <Input value={ua} onChange={(event) => setUA(event.target.value)} placeholder="Mozilla/5.0 ..." className="font-mono" />
+              </Field>
+              <Field label="Referer">
+                <Input value={referer} onChange={(event) => setReferer(event.target.value)} placeholder="https://example.com/" className="font-mono" />
+              </Field>
+              <Field label="Cookie">
+                <Textarea value={cookie} onChange={(event) => setCookie(event.target.value)} placeholder="sid=xxx; uid=yyy" rows={2} className="font-mono" />
+              </Field>
+              <Field label="额外 Header（每行 Key: Value）">
+                <Textarea value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={'X-Auth: secret-token\nAccept: */*'} rows={4} className="font-mono" />
+              </Field>
+
+              {err && (
+                <div className="border-y border-[color-mix(in_srgb,var(--nv-status-danger)_24%,transparent)] py-2 text-xs text-[var(--nv-status-danger)]">
+                  {err}
+                </div>
+              )}
+            </div>
+          )}
+        </ModalBody>
+
+        <ModalFooter>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>取消</Button>
+          <Button type="button" variant="primary" onClick={save} disabled={loading || saving} loading={saving}>
+            {saving ? <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />}
+            保存并重试
+          </Button>
+        </ModalFooter>
       </div>
-    </div>
+    </Modal>
   )
 }
 
-interface LabeledInputProps {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
-  textarea?: boolean
-  rows?: number
-}
-
-function LabeledInput({ label, value, onChange, placeholder, textarea, rows }: LabeledInputProps) {
-  const common = {
-    value,
-    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value),
-    placeholder,
-    className: 'w-full rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-2.5 py-1.5 font-mono text-xs text-[var(--nv-player-text-primary)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[var(--nv-player-text-faint)] focus:border-[var(--nv-player-border-hover)] focus:bg-[var(--nv-player-surface)] focus:shadow-[0_0_0_3px_var(--nv-player-accent-soft)]',
-  }
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="mb-1 block text-[11px] font-medium text-[var(--nv-player-text-tertiary)]">{label}</label>
-      {textarea ? <textarea rows={rows || 2} {...common} /> : <input type="text" {...common} />}
-    </div>
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium text-[var(--nv-text-secondary)]">{label}</span>
+      {children}
+    </label>
   )
 }
