@@ -3,7 +3,7 @@
 # Nowen Video unified product release orchestrator
 #
 # Safe order:
-#   1. Require clean/synced main and a new semantic version
+#   1. Require clean/synced main and a new monotonically increasing version
 #   2. Gate the exact commit on Server CI
 #   3. Build signed Android + Desktop release candidates and wait
 #   4. Build/push the official Docker image and verify its manifest
@@ -159,17 +159,36 @@ if [ "$MULTIARCH" = "1" ]; then
     docker buildx version >/dev/null 2>&1 || die "docker buildx 不可用"
 fi
 
+validate_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; }
+
+semver_base_gt() {
+    local left="$1" right="$2" l1 l2 l3 r1 r2 r3
+    IFS=. read -r l1 l2 l3 <<<"$left"
+    IFS=. read -r r1 r2 r3 <<<"$right"
+    if ((10#$l1 != 10#$r1)); then ((10#$l1 > 10#$r1)); return; fi
+    if ((10#$l2 != 10#$r2)); then ((10#$l2 > 10#$r2)); return; fi
+    ((10#$l3 > 10#$r3))
+}
+
+latest_stable_version() {
+    local latest="" tag candidate
+    while IFS= read -r tag; do
+        candidate="${tag#v}"
+        [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+        if [ -z "$latest" ] || semver_base_gt "$candidate" "$latest"; then
+            latest="$candidate"
+        fi
+    done < <(git tag --list 'v*')
+    printf '%s\n' "$latest"
+}
+
 suggest_next_version() {
     local latest base major rest minor patch
-    latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1 | sed 's/^v//')" || latest=""
+    latest="$(latest_stable_version)"
     if [ -z "$latest" ]; then echo "0.1.0"; return; fi
-    base="${latest%%-*}"; major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"; patch="${rest#*.}"
-    [[ "$major" =~ ^[0-9]+$ ]] || major=0
-    [[ "$minor" =~ ^[0-9]+$ ]] || minor=0
-    [[ "$patch" =~ ^[0-9]+$ ]] || patch=0
-    echo "${major}.${minor}.$((patch + 1))"
+    base="$latest"; major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"; patch="${rest#*.}"
+    echo "${major}.${minor}.$((10#$patch + 1))"
 }
-validate_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; }
 
 if [ -z "$VERSION" ]; then
     SUGGEST="$(suggest_next_version)"
@@ -184,6 +203,16 @@ validate_version "$VERSION" || die "版本号格式非法: $VERSION"
 VERSION_TAG="v${VERSION}"
 IS_PRERELEASE=0
 [[ "$VERSION" == *-* ]] && IS_PRERELEASE=1
+CANDIDATE_BASE="${VERSION%%-*}"
+LATEST_STABLE="$(latest_stable_version)"
+if [ -n "$LATEST_STABLE" ]; then
+    if semver_base_gt "$LATEST_STABLE" "$CANDIDATE_BASE"; then
+        die "版本倒退：当前最新稳定版是 v${LATEST_STABLE}，不能发布 ${VERSION_TAG}"
+    fi
+    if [ "$CANDIDATE_BASE" = "$LATEST_STABLE" ] && [ "$IS_PRERELEASE" = "1" ]; then
+        die "v${LATEST_STABLE} 已是稳定版，不能再发布同基线预发布版本 ${VERSION_TAG}"
+    fi
+fi
 
 if [ "$LATEST_EXPLICIT" = "0" ]; then
     [ "$IS_PRERELEASE" = "1" ] && DO_LATEST=0 || DO_LATEST=1
@@ -267,6 +296,7 @@ step "发布计划"
 echo "  repo             : ${GITHUB_REPO}"
 echo "  commit           : ${GIT_SHA}"
 echo "  version          : ${VERSION_TAG}"
+echo "  latest stable    : ${LATEST_STABLE:-none}"
 echo "  channel          : $([ "$IS_PRERELEASE" = "1" ] && echo prerelease || echo stable)"
 echo "  Docker           : ${IMAGE_NAME}:${VERSION_TAG}"
 echo "  Docker latest    : $([ "$DO_LATEST" = "1" ] && echo yes || echo no)"
