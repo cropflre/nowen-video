@@ -1,246 +1,108 @@
 import type { Transition, Variants } from 'framer-motion'
 
-// 全局动画参数。页面级动画避免给 fixed 弹窗祖先设置 filter，
-// 否则浏览器会改变 fixed 后代的 containing block。
-export const easeSmooth = [0.22, 1, 0.36, 1] as const
-export const easeExit = [0.36, 0, 0.66, -0.56] as const
+export const easeSmooth = [0.2, 0.72, 0.2, 1] as const
+export const easeExit = [0.4, 0, 1, 1] as const
 
-export const springDefault: Transition = { type: 'spring', stiffness: 300, damping: 30 }
-export const springBouncy: Transition = { type: 'spring', stiffness: 400, damping: 25 }
-export const springSnappy: Transition = { type: 'spring', stiffness: 500, damping: 35 }
+export const springDefault: Transition = { duration: 0.18, ease: easeSmooth as unknown as [number, number, number, number] }
+export const springBouncy: Transition = springDefault
+export const springSnappy: Transition = { duration: 0.12, ease: easeSmooth as unknown as [number, number, number, number] }
 
 export const durations = {
   instant: 0.1,
-  fast: 0.2,
-  normal: 0.3,
-  slow: 0.5,
-  slower: 0.7,
-  page: 0.4,
+  fast: 0.12,
+  normal: 0.18,
+  slow: 0.2,
+  slower: 0.2,
+  page: 0.18,
 }
 
 export const pageVariants: Variants = {
-  initial: { opacity: 0, y: 12 },
-  enter: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: durations.page,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
-  exit: {
-    opacity: 0,
-    y: -8,
-    transition: {
-      duration: durations.normal,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  },
+  initial: { opacity: 0, y: 3 },
+  enter: { opacity: 1, y: 0, transition: springDefault },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const fadeInVariants: Variants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  visible: { opacity: 1, transition: springDefault },
 }
 
 export const slideUpVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: durations.slow,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  hidden: { opacity: 0, y: 4 },
+  visible: { opacity: 1, y: 0, transition: springDefault },
 }
 
 export const scaleInVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.92 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: springDefault },
 }
 
 export const staggerContainerVariants: Variants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.04,
-      delayChildren: 0.08,
-    },
-  },
+  visible: { opacity: 1, transition: { duration: durations.fast } },
 }
 
 export const staggerItemVariants: Variants = {
-  hidden: { opacity: 0, y: 16, scale: 0.96 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  hidden: { opacity: 0, y: 2 },
+  visible: { opacity: 1, y: 0, transition: springDefault },
 }
 
 export const modalOverlayVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: durations.fast } },
-  exit: { opacity: 0, transition: { duration: durations.fast, delay: 0.1 } },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const modalContentVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.92, y: 20, filter: 'blur(8px)' },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    filter: 'blur(0px)',
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    y: 10,
-    filter: 'blur(4px)',
-    transition: {
-      duration: durations.fast,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  },
+  hidden: { opacity: 0, y: 4 },
+  visible: { opacity: 1, y: 0, transition: springDefault },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const toastVariants: Variants = {
-  initial: { opacity: 0, x: 80, scale: 0.9 },
-  animate: {
-    opacity: 1,
-    x: 0,
-    scale: 1,
-    transition: springDefault,
-  },
-  exit: {
-    opacity: 0,
-    x: 80,
-    scale: 0.9,
-    transition: {
-      duration: durations.fast,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  },
+  initial: { opacity: 0, y: 4 },
+  animate: { opacity: 1, y: 0, transition: springDefault },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const sidebarVariants: Variants = {
-  collapsed: {
-    width: 68,
-    minWidth: 68,
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
-  expanded: {
-    width: 240,
-    minWidth: 240,
-    transition: {
-      duration: durations.normal,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  collapsed: { width: 72, minWidth: 72, transition: springDefault },
+  expanded: { width: 72, minWidth: 72, transition: springDefault },
 }
 
 export const sidebarMobileVariants: Variants = {
-  hidden: { x: '-100%' },
-  visible: { x: 0, transition: springDefault },
-  exit: {
-    x: '-100%',
-    transition: {
-      duration: durations.normal,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  },
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: springDefault },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const carouselVariants: Variants = {
-  enter: (direction: number) => ({
-    opacity: 0,
-    x: direction > 0 ? 60 : -60,
-    scale: 0.98,
-  }),
-  center: {
-    opacity: 1,
-    x: 0,
-    scale: 1,
-    transition: {
-      duration: durations.slow,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
-  exit: (direction: number) => ({
-    opacity: 0,
-    x: direction > 0 ? -60 : 60,
-    scale: 0.98,
-    transition: {
-      duration: durations.normal,
-      ease: easeExit as unknown as [number, number, number, number],
-    },
-  }),
+  enter: (direction: number) => ({ opacity: 0, x: direction > 0 ? 4 : -4 }),
+  center: { opacity: 1, x: 0, transition: springDefault },
+  exit: (direction: number) => ({ opacity: 0, x: direction > 0 ? -4 : 4, transition: { duration: durations.fast } }),
 }
 
 export const dropdownVariants: Variants = {
-  hidden: {
-    opacity: 0,
-    scale: 0.95,
-    y: -4,
-    transformOrigin: 'top left',
-  },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: springDefault,
-  },
-  exit: {
-    opacity: 0,
-    scale: 0.95,
-    y: -4,
-    transition: { duration: durations.fast },
-  },
+  hidden: { opacity: 0, y: -2 },
+  visible: { opacity: 1, y: 0, transition: springDefault },
+  exit: { opacity: 0, transition: { duration: durations.fast } },
 }
 
 export const hoverScale = {
-  whileHover: { scale: 1.025 },
-  whileTap: { scale: 0.97 },
+  whileHover: { y: -2 },
+  whileTap: { y: 0 },
   transition: springDefault,
 }
 
 export const hoverLift = {
-  whileHover: { y: -4 },
+  whileHover: { y: -3 },
   whileTap: { y: 0 },
   transition: springDefault,
 }
 
 export const hoverGlow = {
-  whileHover: {
-    boxShadow: '0 0 20px color-mix(in srgb, var(--nv-action-primary) 30%, transparent), 0 8px 32px rgba(0, 0, 0, 0.3)',
-  },
-  transition: { duration: durations.normal },
+  whileHover: { boxShadow: 'var(--nv-shadow-card-hover)' },
+  transition: springDefault,
 }
 
 export const reducedMotionVariants: Variants = {
@@ -255,13 +117,6 @@ export const skeletonExitVariants: Variants = {
 }
 
 export const contentEnterVariants: Variants = {
-  initial: { opacity: 0, y: 8 },
-  animate: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: durations.page,
-      ease: easeSmooth as unknown as [number, number, number, number],
-    },
-  },
+  initial: { opacity: 0, y: 3 },
+  animate: { opacity: 1, y: 0, transition: springDefault },
 }
