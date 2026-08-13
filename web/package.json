@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && npm run verify:retired-ui",
+    "build": "tsc -b && vite build && npm run verify:retired-ui && npm run audit:ui",
     "verify:retired-ui": "node scripts/verify-retired-ui.mjs",
+    "audit:ui": "node scripts/audit-ui-residuals.mjs",
     "preview": "vite preview",
     "lint": "eslint ."
   },
