@@ -8,6 +8,7 @@ import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Library } from '@/types'
 import { useTranslation } from '@/i18n'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 import {
   Film,
   FolderOpen,
@@ -38,13 +39,7 @@ interface RailLinkProps {
 
 function RailLink({ to, icon, label, end = false }: RailLinkProps) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      className="nv-rail-item"
-      aria-label={label}
-      title={label}
-    >
+    <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label}>
       <span className="nv-rail-icon">{icon}</span>
       <span className="nv-rail-label">{label}</span>
     </NavLink>
@@ -130,17 +125,14 @@ export default function Sidebar(_props: SidebarProps) {
             <>
               <div className="nv-rail-divider" aria-hidden="true" />
               <RailLink to="/admin" icon={<Settings size={18} aria-hidden="true" />} label="管理" />
-              {isFullProfile && (
-                <RailLink to="/files" icon={<FolderOpen size={18} aria-hidden="true" />} label="文件" />
-              )}
-              {preprocessAvailable && (
-                <RailLink to="/preprocess" icon={<Zap size={18} aria-hidden="true" />} label="预处理" />
-              )}
+              {isFullProfile && <RailLink to="/files" icon={<FolderOpen size={18} aria-hidden="true" />} label="文件" />}
+              {preprocessAvailable && <RailLink to="/preprocess" icon={<Zap size={18} aria-hidden="true" />} label="预处理" />}
             </>
           )}
         </nav>
 
         <div className="nv-rail-footer">
+          <LanguageSwitcher compact />
           <button
             type="button"
             className="nv-rail-item"
