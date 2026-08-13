@@ -39,11 +39,17 @@ on:
       - 'docs/TRANSCODE_*.md'
       - 'docs/PLAYBACK_*.md'
       - 'web/**'
-      - 'clients/android-v2/**'
+      - 'android/**'
+      - 'scripts/release.sh'
+      - 'scripts/android-*.sh'
+      - 'scripts/android-*.py'
+      - 'scripts/sync-version.ps1'
       - 'Dockerfile'
       - 'Dockerfile.full'
       - 'Makefile'
       - '.github/workflows/server-ci.yml'
+      - '.github/workflows/release-android.yml'
+      - '.github/workflows/release-desktop.yml'
 
 permissions:
   contents: read
@@ -58,6 +64,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate release shell tooling
+        run: |
+          bash -n scripts/release.sh
+          bash -n scripts/android-version.sh
+          bash -n scripts/android-signing-preflight.sh
+          bash -n scripts/android-signing-bootstrap.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
