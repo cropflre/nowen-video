@@ -41,6 +41,7 @@ on:
       - 'web/**'
       - 'android/**'
       - 'scripts/release.sh'
+      - 'scripts/release-advanced.sh'
       - 'scripts/android-*.sh'
       - 'scripts/android-*.py'
       - 'scripts/sync-version.ps1'
@@ -67,6 +68,7 @@ jobs:
       - name: Validate release shell tooling
         run: |
           bash -n scripts/release.sh
+          bash -n scripts/release-advanced.sh
           bash -n scripts/android-version.sh
           bash -n scripts/android-signing-preflight.sh
           bash -n scripts/android-signing-bootstrap.sh
