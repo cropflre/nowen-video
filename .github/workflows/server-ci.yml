@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - refactor/server-lite-v1
   pull_request:
     paths:
       - 'cmd/server-lite/**'
@@ -219,9 +220,6 @@ jobs:
             docker exec "$container" test -s /data/nowen.db
             docker exec "$container" test -d /cache/transcode
 
-            # Restart the exact image against the same volumes. This exercises
-            # additive migrations, runtime retirement reconciliation and normal
-            # ownership/permission handling rather than only a cold boot.
             docker rm -f "$container" >/dev/null
             docker run -d \
               --name "$container" \
