@@ -78,3 +78,18 @@ func (r *MediaProbeRepo) Upsert(record *model.MediaProbeRecord) error {
 func (r *MediaProbeRepo) DeleteByMediaID(mediaID string) error {
 	return r.db.Delete(&model.MediaProbeRecord{}, "media_id = ?", mediaID).Error
 }
+
+func (r *MediaProbeRepo) DeleteByMediaIDs(mediaIDs []string) (int64, error) {
+	if len(mediaIDs) == 0 {
+		return 0, nil
+	}
+	result := r.db.Where("media_id IN ?", mediaIDs).Delete(&model.MediaProbeRecord{})
+	return result.RowsAffected, result.Error
+}
+
+// CleanOrphaned 删除媒体主体已不存在的探测缓存。
+func (r *MediaProbeRepo) CleanOrphaned() (int64, error) {
+	result := r.db.Where("media_id NOT IN (SELECT id FROM media WHERE deleted_at IS NULL)").
+		Delete(&model.MediaProbeRecord{})
+	return result.RowsAffected, result.Error
+}

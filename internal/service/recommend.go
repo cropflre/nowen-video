@@ -85,11 +85,19 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 		if cached, ok := s.recommendCache.Get(userID); ok {
 			var results []RecommendedMedia
 			if err := json.Unmarshal([]byte(cached), &results); err == nil {
-				if len(results) > limit {
-					results = results[:limit]
+				if s.cachedRecommendationsAreCurrent(results) {
+					if len(results) > limit {
+						results = results[:limit]
+					}
+					s.logger.Debugf("使用推荐缓存: user=%s, count=%d", userID, len(results))
+					return results, nil
 				}
-				s.logger.Debugf("使用推荐缓存: user=%s, count=%d", userID, len(results))
-				return results, nil
+
+				// 推荐缓存保存的是完整媒体快照。只要其中一个媒体已被删除，就丢弃整份快照并重新计算。
+				if err := s.recommendCache.Invalidate(userID); err != nil {
+					s.logger.Warnf("清理失效推荐缓存失败: user=%s, err=%v", userID, err)
+				}
+				s.logger.Infof("检测到失效推荐缓存，重新计算: user=%s", userID)
 			}
 		}
 	}
@@ -187,6 +195,38 @@ func (s *RecommendService) GetRecommendations(userID string, limit int) ([]Recom
 	}
 
 	return results, nil
+}
+
+// cachedRecommendationsAreCurrent 确认推荐快照引用的媒体仍然存在。
+// 这是删除流程之外的防御层，用于处理历史脏数据和删除时并发写回的旧快照。
+func (s *RecommendService) cachedRecommendationsAreCurrent(results []RecommendedMedia) bool {
+	if len(results) == 0 {
+		return true
+	}
+
+	ids := make([]string, 0, len(results))
+	for _, item := range results {
+		if item.Media.ID == "" {
+			return false
+		}
+		ids = append(ids, item.Media.ID)
+	}
+
+	mediaList, err := s.mediaRepo.FindByIDs(ids)
+	if err != nil {
+		s.logger.Warnf("校验推荐缓存失败: %v", err)
+		return false
+	}
+	existing := make(map[string]struct{}, len(mediaList))
+	for _, media := range mediaList {
+		existing[media.ID] = struct{}{}
+	}
+	for _, id := range ids {
+		if _, ok := existing[id]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // buildRatingMatrix 构建用户-物品评分矩阵（包含时间衰减）

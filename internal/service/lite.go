@@ -36,6 +36,10 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		repos.WatchHistory,
 		repos.MediaPerson,
 		nil, // Lite 不迁移或访问 AI 扫描归类表
+		repos.RecommendCache,
+		repos.PlaybackStats,
+		repos.MediaProbe,
+		repos.MovieCollection,
 		cfg,
 		scanner,
 		metadata,

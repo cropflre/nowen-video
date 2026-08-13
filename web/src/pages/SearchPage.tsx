@@ -16,7 +16,7 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { useTranslation } from '@/i18n'
+import { t as translate, useTranslation } from '@/i18n'
 
 const SORT_OPTIONS = [
   { value: 'relevance', labelKey: 'search.sortRelevance' },
@@ -109,7 +109,7 @@ export default function SearchPage() {
     setLoading(true)
     setSearched(true)
     try {
-      const intent = aiIntent || aiParsed
+      const intent = aiIntent
       const searchQuery = intent?.parsed ? intent.query : q.trim()
       const searchType = intent?.parsed && intent.media_type ? intent.media_type : (filterType || undefined)
       const searchGenre = intent?.parsed && intent.genre ? intent.genre : undefined
@@ -140,11 +140,11 @@ export default function SearchPage() {
       setResults(res.data.data || [])
       setTotal(res.data.total)
     } catch {
-      toast.error(t('search.searchFailed'))
+      toast.error(translate('search.searchFailed'))
     } finally {
       setLoading(false)
     }
-  }, [aiParsed, filterType, sortBy, yearRange, minRating, size, toast, t])
+  }, [filterType, sortBy, yearRange, minRating, size, toast])
 
   useEffect(() => {
     if (!query.trim()) {
@@ -155,10 +155,12 @@ export default function SearchPage() {
     }
 
     const timer = setTimeout(() => {
-      const params = new URLSearchParams(searchParams)
-      params.set('q', query.trim())
-      params.delete('page')
-      setSearchParams(params, { replace: true })
+      setSearchParams((currentParams) => {
+        const params = new URLSearchParams(currentParams)
+        params.set('q', query.trim())
+        params.delete('page')
+        return params
+      }, { replace: true })
 
       if (query.trim().length > 4) {
         aiAbortRef.current?.abort()
@@ -193,15 +195,15 @@ export default function SearchPage() {
     }, 320)
 
     return () => clearTimeout(timer)
-  }, [query, doSearch, searchParams, setSearchParams])
+  }, [query, doSearch, setSearchParams])
 
   useEffect(() => {
-    if (page > 1 && query.trim()) doSearch(query, page)
-  }, [page, query, doSearch])
+    if (page > 1 && query.trim()) doSearch(query, page, aiParsed)
+  }, [page, query, doSearch, aiParsed])
 
   useEffect(() => {
     if (query.trim() && searched) doSearch(query, 1)
-  }, [filterType, sortBy, yearRange, minRating, size])
+  }, [filterType, sortBy, yearRange, minRating, size, doSearch])
 
   const totalPages = Math.ceil(total / size)
   const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0

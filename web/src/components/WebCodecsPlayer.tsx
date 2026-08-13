@@ -56,6 +56,32 @@ interface TrackMeta {
   description?: ArrayBuffer
 }
 
+interface EncodedSample {
+  epoch: number
+  trackId: number
+  data: ArrayBuffer
+  timestamp: number
+  duration: number
+  isKey: boolean
+}
+
+const MAX_BUFFERED_VIDEO_FRAMES = 90
+const RESUME_BUFFERED_VIDEO_FRAMES = 30
+
+function closeVideoFrame(frame: VideoFrame) {
+  try { frame.close() } catch { /* already closed */ }
+}
+
+function closeVideoDecoder(decoder: VideoDecoder | null) {
+  if (!decoder || decoder.state === 'closed') return
+  try { decoder.close() } catch { /* already closed by a decoder error */ }
+}
+
+function closeAudioDecoder(decoder: AudioDecoder | null) {
+  if (!decoder || decoder.state === 'closed') return
+  try { decoder.close() } catch { /* already closed by a decoder error */ }
+}
+
 const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
   function WebCodecsPlayer(props, ref) {
     const { src, startPosition = 0 } = props
@@ -73,6 +99,12 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
     const audioScheduledEndRef = useRef(0) // 已排队音频的末尾时间（AudioContext 时基）
     // 视频帧队列（按时间戳排序）
     const videoQueueRef = useRef<VideoFrame[]>([])
+    // 编码样本先排队，再按解码器/渲染队列容量送入，不能任意丢弃参考帧
+    const encodedVideoQueueRef = useRef<EncodedSample[]>([])
+    const encodedAudioQueueRef = useRef<EncodedSample[]>([])
+    const workerPausedRef = useRef(false)
+    const streamEpochRef = useRef(0)
+    const lifecycleIdRef = useRef(0)
     // 播放状态
     const playingRef = useRef(false)
     const currentTimeRef = useRef(0) // 秒
@@ -85,9 +117,6 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
     const tracksRef = useRef<{ video?: TrackMeta; audio?: TrackMeta }>({})
     // seek 时钟重置标记
     const seekBaseRef = useRef(0) // 本次 seek 起点（秒），用于计算 video 显示时间
-    // 已喂给解码器的视频样本数（用于背压）
-    const pendingVideoRef = useRef(0)
-
     const [error, setError] = useState<string | null>(null)
 
     // 稳定回调：存到 ref，避免每次重新挂载
@@ -115,6 +144,7 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
         playingRef.current = false
         audioCtxRef.current?.suspend().catch(() => {})
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
         cbRef.current.onPause?.()
       },
       seek: (time: number) => {
@@ -153,6 +183,13 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       if (!src) return
 
       let cancelled = false
+      const lifecycleId = ++lifecycleIdRef.current
+      const isActive = () => !cancelled && lifecycleIdRef.current === lifecycleId
+      streamEpochRef.current = 0
+      workerPausedRef.current = false
+      encodedVideoQueueRef.current = []
+      encodedAudioQueueRef.current = []
+      setError(null)
 
       // 1. 初始化 AudioContext
       const audioCtx = new AudioContext({ latencyHint: 'playback' })
@@ -169,11 +206,11 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       workerRef.current = worker
 
       worker.onmessage = async (e: MessageEvent) => {
-        if (cancelled) return
+        if (!isActive()) return
         const msg = e.data
         switch (msg.type) {
           case 'ready':
-            await handleReady(msg)
+            await handleReady(msg, isActive)
             break
           case 'sample':
             handleSample(msg)
@@ -202,14 +239,20 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       return () => {
         cancelled = true
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
         try { worker.postMessage({ type: 'stop' }) } catch { /* ignore */ }
         worker.terminate()
-        videoDecoderRef.current?.close()
-        audioDecoderRef.current?.close()
+        const videoDecoder = videoDecoderRef.current
+        const audioDecoder = audioDecoderRef.current
         videoDecoderRef.current = null
         audioDecoderRef.current = null
-        for (const f of videoQueueRef.current) f.close()
+        closeVideoDecoder(videoDecoder)
+        closeAudioDecoder(audioDecoder)
+        for (const f of videoQueueRef.current) closeVideoFrame(f)
         videoQueueRef.current = []
+        encodedVideoQueueRef.current = []
+        encodedAudioQueueRef.current = []
+        workerPausedRef.current = false
         audioCtx.close().catch(() => {})
         audioCtxRef.current = null
         audioGainRef.current = null
@@ -218,7 +261,10 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [src])
 
-    async function handleReady(msg: { duration: number; tracks: TrackMeta[] }) {
+    async function handleReady(
+      msg: { duration: number; tracks: TrackMeta[] },
+      isActive: () => boolean,
+    ) {
       durationRef.current = msg.duration
       cbRef.current.onDurationChange?.(msg.duration)
 
@@ -228,10 +274,25 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
 
       // 视频解码器
       if (vtrack) {
-        const decoder = new VideoDecoder({
-          output: (frame) => onVideoFrame(frame),
+        let decoder: VideoDecoder
+        decoder = new VideoDecoder({
+          output: (frame) => {
+            if (!isActive() || videoDecoderRef.current !== decoder) {
+              closeVideoFrame(frame)
+              return
+            }
+            onVideoFrame(frame)
+          },
           error: (e) => {
+            if (!isActive()) return
             console.error('[WebCodecs] VideoDecoder error:', e)
+            if (videoDecoderRef.current === decoder) videoDecoderRef.current = null
+            playingRef.current = false
+            if (rafRef.current) cancelAnimationFrame(rafRef.current)
+            rafRef.current = 0
+            for (const frame of videoQueueRef.current) closeVideoFrame(frame)
+            videoQueueRef.current = []
+            encodedVideoQueueRef.current = []
             setError(`视频解码错误: ${e.message}`)
             cbRef.current.onError?.(e.message)
           },
@@ -246,15 +307,24 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
         }
         try {
           const { supported } = await VideoDecoder.isConfigSupported(config)
+          if (!isActive()) {
+            closeVideoDecoder(decoder)
+            return
+          }
           if (!supported) {
             const msg2 = `视频编码 ${vtrack.codec} 不被浏览器支持`
+            closeVideoDecoder(decoder)
             setError(msg2)
             cbRef.current.onError?.(msg2)
             return
           }
           decoder.configure(config)
           videoDecoderRef.current = decoder
+          decoder.addEventListener('dequeue', drainVideoSamples)
+          drainVideoSamples()
         } catch (e: any) {
+          closeVideoDecoder(decoder)
+          if (!isActive()) return
           setError(`视频解码器配置失败: ${e.message || e}`)
           cbRef.current.onError?.(e.message || String(e))
           return
@@ -263,10 +333,20 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
 
       // 音频解码器
       if (atrack) {
-        const decoder = new AudioDecoder({
-          output: (data) => onAudioData(data),
+        let decoder: AudioDecoder
+        decoder = new AudioDecoder({
+          output: (data) => {
+            if (!isActive() || audioDecoderRef.current !== decoder) {
+              data.close()
+              return
+            }
+            onAudioData(data)
+          },
           error: (e) => {
+            if (!isActive()) return
             console.error('[WebCodecs] AudioDecoder error:', e)
+            if (audioDecoderRef.current === decoder) audioDecoderRef.current = null
+            encodedAudioQueueRef.current = []
             // 音频失败不中断播放（可能是不支持的 codec），静音继续
           },
         })
@@ -280,14 +360,28 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
         }
         try {
           const { supported } = await AudioDecoder.isConfigSupported(config)
+          if (!isActive()) {
+            closeAudioDecoder(decoder)
+            return
+          }
           if (supported) {
             decoder.configure(config)
             audioDecoderRef.current = decoder
+            decoder.addEventListener('dequeue', drainAudioSamples)
+            drainAudioSamples()
+          } else {
+            closeAudioDecoder(decoder)
+            encodedAudioQueueRef.current = []
           }
         } catch (e) {
+          closeAudioDecoder(decoder)
+          if (!isActive()) return
+          encodedAudioQueueRef.current = []
           console.warn('[WebCodecs] 音频解码器配置失败，将静音播放:', e)
         }
       }
+
+      if (!isActive()) return
 
       // 通知父组件就绪
       cbRef.current.onLoadedMetadata?.({
@@ -310,56 +404,98 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       }
     }
 
-    function handleSample(msg: {
-      trackId: number
-      data: ArrayBuffer
-      timestamp: number
-      duration: number
-      isKey: boolean
-    }) {
+    function handleSample(msg: EncodedSample) {
+      if (msg.epoch !== streamEpochRef.current) return
       const { video, audio } = tracksRef.current
-      if (video && msg.trackId === video.id && videoDecoderRef.current) {
-        // 背压：视频队列太长时丢弃（正常播放下不应发生）
-        if (pendingVideoRef.current > 60) return
+      if (video && msg.trackId === video.id) {
+        encodedVideoQueueRef.current.push(msg)
+        drainVideoSamples()
+      } else if (audio && msg.trackId === audio.id) {
+        encodedAudioQueueRef.current.push(msg)
+        drainAudioSamples()
+      }
+      updateWorkerFlowControl()
+    }
+
+    function bufferedVideoFrameCount() {
+      return videoQueueRef.current.length
+        + encodedVideoQueueRef.current.length
+        + (videoDecoderRef.current?.decodeQueueSize || 0)
+    }
+
+    function updateWorkerFlowControl() {
+      const worker = workerRef.current
+      if (!worker) return
+      const buffered = bufferedVideoFrameCount()
+      if (!workerPausedRef.current && buffered >= MAX_BUFFERED_VIDEO_FRAMES) {
+        workerPausedRef.current = true
+        worker.postMessage({ type: 'pause', epoch: streamEpochRef.current })
+      } else if (workerPausedRef.current && buffered <= RESUME_BUFFERED_VIDEO_FRAMES) {
+        workerPausedRef.current = false
+        worker.postMessage({ type: 'resume', epoch: streamEpochRef.current })
+      }
+    }
+
+    function drainVideoSamples() {
+      const decoder = videoDecoderRef.current
+      if (!decoder || decoder.state !== 'configured') return
+      const queue = encodedVideoQueueRef.current
+      while (
+        queue.length > 0
+        && decoder.state === 'configured'
+        && decoder.decodeQueueSize + videoQueueRef.current.length < MAX_BUFFERED_VIDEO_FRAMES
+      ) {
+        const sample = queue.shift()!
         const chunk = new EncodedVideoChunk({
-          type: msg.isKey ? 'key' : 'delta',
-          timestamp: msg.timestamp,
-          duration: msg.duration,
-          data: msg.data,
+          type: sample.isKey ? 'key' : 'delta',
+          timestamp: sample.timestamp,
+          duration: sample.duration,
+          data: sample.data,
         })
         try {
-          videoDecoderRef.current.decode(chunk)
-          pendingVideoRef.current++
+          decoder.decode(chunk)
         } catch (e) {
           console.warn('[WebCodecs] 视频 decode 失败:', e)
+          break
         }
-      } else if (audio && msg.trackId === audio.id && audioDecoderRef.current) {
+      }
+      updateWorkerFlowControl()
+    }
+
+    function drainAudioSamples() {
+      const decoder = audioDecoderRef.current
+      if (!decoder || decoder.state !== 'configured') return
+      const queue = encodedAudioQueueRef.current
+      while (queue.length > 0 && decoder.state === 'configured' && decoder.decodeQueueSize < 120) {
+        const sample = queue.shift()!
         const chunk = new EncodedAudioChunk({
-          type: msg.isKey ? 'key' : 'delta',
-          timestamp: msg.timestamp,
-          duration: msg.duration,
-          data: msg.data,
+          type: sample.isKey ? 'key' : 'delta',
+          timestamp: sample.timestamp,
+          duration: sample.duration,
+          data: sample.data,
         })
         try {
-          audioDecoderRef.current.decode(chunk)
+          decoder.decode(chunk)
         } catch (e) {
           console.warn('[WebCodecs] 音频 decode 失败:', e)
+          break
         }
       }
     }
 
     function onVideoFrame(frame: VideoFrame) {
-      pendingVideoRef.current--
       // 队列丢弃过期帧（比当前时间早太多）
       const nowSec = currentTimeRef.current
       const frameSec = (frame.timestamp || 0) / 1e6
       if (frameSec < nowSec - 1) {
-        frame.close()
+        closeVideoFrame(frame)
+        drainVideoSamples()
         return
       }
       videoQueueRef.current.push(frame)
       // 按 timestamp 排序
       videoQueueRef.current.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+      updateWorkerFlowControl()
     }
 
     function onAudioData(data: AudioData) {
@@ -382,9 +518,8 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
         }
         buffer.copyToChannel(arr, ch)
       }
-      data.close()
-
       const audioTime = (data.timestamp || 0) / 1e6 // 秒（媒体时间轴）
+      data.close()
       // 目标 AudioContext 时刻 = audioStartTime + mediaTime
       const playAt = Math.max(
         ctx.currentTime,
@@ -409,8 +544,13 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       const ctx2d = canvas.getContext('2d')
       if (!ctx2d) return
 
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+
       const render = () => {
-        if (!playingRef.current) return
+        if (!playingRef.current) {
+          rafRef.current = 0
+          return
+        }
 
         // 当前媒体时间 = AudioContext.currentTime - audioStartTime
         const actx = audioCtxRef.current
@@ -435,7 +575,7 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
           const head = queue[0]
           const hs = (head.timestamp || 0) / 1e6
           if (hs <= mediaTime + 0.02) {
-            if (picked) picked.close()
+            if (picked) closeVideoFrame(picked)
             picked = head
             queue.shift()
           } else {
@@ -448,11 +588,14 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
           try {
             ctx2d.drawImage(picked as any, 0, 0)
           } catch { /* ignore */ }
-          picked.close()
+          closeVideoFrame(picked)
+          drainVideoSamples()
         }
 
         if (playingRef.current) {
           rafRef.current = requestAnimationFrame(render)
+        } else {
+          rafRef.current = 0
         }
       }
       rafRef.current = requestAnimationFrame(render)
@@ -463,14 +606,18 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       const dur = durationRef.current
       const target = Math.max(0, Math.min(dur || Number.MAX_VALUE, time))
 
+      streamEpochRef.current++
+      workerPausedRef.current = false
+      encodedVideoQueueRef.current = []
+      encodedAudioQueueRef.current = []
+
       // 清空视频帧队列
-      for (const f of videoQueueRef.current) f.close()
+      for (const f of videoQueueRef.current) closeVideoFrame(f)
       videoQueueRef.current = []
-      pendingVideoRef.current = 0
 
       // flush 解码器
-      videoDecoderRef.current?.reset()
-      audioDecoderRef.current?.reset()
+      if (videoDecoderRef.current?.state === 'configured') videoDecoderRef.current.reset()
+      if (audioDecoderRef.current?.state === 'configured') audioDecoderRef.current.reset()
 
       // 重新 configure（reset 之后 configure 才能再用）
       try {
@@ -508,7 +655,11 @@ const WebCodecsPlayer = forwardRef<WebCodecsPlayerHandle, WebCodecsPlayerProps>(
       }
 
       // 通知 Worker 重新从新位置拉取
-      workerRef.current?.postMessage({ type: 'seek', time: target })
+      workerRef.current?.postMessage({
+        type: 'seek',
+        time: target,
+        epoch: streamEpochRef.current,
+      })
 
       cbRef.current.onTimeUpdate?.(target)
 

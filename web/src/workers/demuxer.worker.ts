@@ -29,13 +29,19 @@ interface InitMessage {
 interface SeekMessage {
   type: 'seek'
   time: number // 秒
+  epoch: number
+}
+
+interface FlowControlMessage {
+  type: 'pause' | 'resume'
+  epoch: number
 }
 
 interface StopMessage {
   type: 'stop'
 }
 
-type InMsg = InitMessage | SeekMessage | StopMessage
+type InMsg = InitMessage | SeekMessage | FlowControlMessage | StopMessage
 
 interface TrackInfo {
   id: number
@@ -48,7 +54,7 @@ interface TrackInfo {
   height?: number
   sample_rate?: number
   channel_count?: number
-  /** AVC/HEVC/VP9 的描述盒（用于 VideoDecoder.configure.description） */
+  /** 编码器初始化数据（用于 VideoDecoder/AudioDecoder.configure.description） */
   description?: ArrayBuffer
 }
 
@@ -58,6 +64,9 @@ let authToken = ''
 let sourceSize = 0
 let fetchOffset = 0
 let abortCtrl: AbortController | null = null
+let activeEpoch = 0
+let paused = false
+let pumpGeneration = 0
 const CHUNK_SIZE = 1024 * 1024 * 2 // 2MB 每次拉取
 
 function post(msg: any, transfer?: Transferable[]) {
@@ -69,8 +78,8 @@ function post(msg: any, transfer?: Transferable[]) {
 }
 
 /**
- * 从 mp4box 的 track 信息中提取 codec description（avcC/hvcC/vpcC 等盒子的原始字节）
- * 这是 VideoDecoder.configure 必需的参数
+ * 从 mp4box 的 track 信息中提取 codec description。
+ * 视频使用 avcC/hvcC/vpcC/av1C，AAC 音频使用 esds 内的 DecoderSpecificInfo。
  */
 function extractDescription(track: any): ArrayBuffer | undefined {
   const trak = mp4boxFile!.getTrackById(track.id)
@@ -82,6 +91,13 @@ function extractDescription(track: any): ArrayBuffer | undefined {
       box.write(stream)
       // 去掉盒子头（8字节：size + type）
       return stream.buffer.slice(8)
+    }
+
+    // mp4a 的 WebCodecs 配置需要 AudioSpecificConfig，而不是完整的 esds box。
+    const decoderConfig = entry.esds?.esd?.findDescriptor?.(0x04)
+    const decoderSpecificInfo = decoderConfig?.findDescriptor?.(0x05)
+    if (decoderSpecificInfo?.data) {
+      return new Uint8Array(decoderSpecificInfo.data).slice().buffer
     }
   }
   return undefined
@@ -105,6 +121,16 @@ async function fetchRange(start: number, end: number): Promise<boolean> {
     const resp = await fetch(sourceUrl, { headers, signal: abortCtrl.signal })
     if (!resp.ok && resp.status !== 206 && resp.status !== 200) {
       post({ type: 'error', message: `HTTP ${resp.status}` })
+      return false
+    }
+    const requestedLength = end - start + 1
+    const contentLength = Number(resp.headers.get('Content-Length') || 0)
+    if (
+      resp.status === 200
+      && (start > 0 || contentLength === 0 || contentLength > requestedLength)
+    ) {
+      await resp.body?.cancel()
+      post({ type: 'error', message: '源流不支持 Range 分段读取，无法使用 WebCodecs 播放' })
       return false
     }
     // 读取 Content-Range 获取总长度
@@ -131,16 +157,22 @@ async function fetchRange(start: number, end: number): Promise<boolean> {
 /**
  * 持续拉取数据直到文件结束（或被打断）
  */
-async function pumpLoop() {
-  while (sourceSize === 0 || fetchOffset < sourceSize) {
+async function pumpLoop(generation: number) {
+  while (!paused && generation === pumpGeneration && (sourceSize === 0 || fetchOffset < sourceSize)) {
     const end = sourceSize > 0
       ? Math.min(fetchOffset + CHUNK_SIZE - 1, sourceSize - 1)
       : fetchOffset + CHUNK_SIZE - 1
     const ok = await fetchRange(fetchOffset, end)
-    if (!ok) return
+    if (!ok || paused || generation !== pumpGeneration) return
   }
+  if (paused || generation !== pumpGeneration) return
   mp4boxFile!.flush()
-  post({ type: 'eof' })
+  post({ type: 'eof', epoch: activeEpoch })
+}
+
+function startPump() {
+  const generation = ++pumpGeneration
+  void pumpLoop(generation)
 }
 
 /**
@@ -193,6 +225,7 @@ function initMp4box() {
         const data = new Uint8Array(s.data).slice().buffer // 复制以便 transfer
         post({
           type: 'sample',
+          epoch: activeEpoch,
           trackId: id,
           data,
           timestamp: (s.cts * 1e6) / s.timescale, // 微秒
@@ -214,23 +247,42 @@ self.onmessage = (e: MessageEvent<InMsg>) => {
       authToken = msg.token || ''
       fetchOffset = 0
       sourceSize = 0
+      activeEpoch = 0
+      paused = false
       initMp4box()
-      pumpLoop()
+      startPump()
       break
     }
     case 'seek': {
       if (!mp4boxFile) return
+      activeEpoch = msg.epoch
+      paused = false
+      pumpGeneration++
+      if (abortCtrl) abortCtrl.abort()
       // mp4box 的 seek 返回 { offset, time } —— 需要从该 offset 重新拉取
       const res = mp4boxFile.seek(msg.time, true)
       if (res && typeof res.offset === 'number') {
         fetchOffset = res.offset
-        // 停止当前拉取 → pumpLoop 会 continue
-        if (abortCtrl) abortCtrl.abort()
-        pumpLoop()
+        startPump()
       }
       break
     }
+    case 'pause': {
+      if (msg.epoch !== activeEpoch || paused) return
+      paused = true
+      pumpGeneration++
+      if (abortCtrl) abortCtrl.abort()
+      break
+    }
+    case 'resume': {
+      if (msg.epoch !== activeEpoch || !paused) return
+      paused = false
+      startPump()
+      break
+    }
     case 'stop': {
+      paused = true
+      pumpGeneration++
       if (abortCtrl) abortCtrl.abort()
       if (mp4boxFile) {
         try { mp4boxFile.stop() } catch { /* ignore */ }

@@ -1,10 +1,13 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/repository"
+	"go.uber.org/zap"
 )
 
 // ==================== 推荐系统测试 ====================
@@ -51,6 +54,42 @@ func TestBuildRatingMatrix_TimeDecay(t *testing.T) {
 	}
 
 	t.Logf("时间衰减测试通过: 最近=%.2f, 60天前=%.2f, 衰减比=%.2f", recentScore, oldScore, actualDecay)
+}
+
+func TestGetRecommendationsRejectsDeletedMediaCache(t *testing.T) {
+	db := setupTestDB(t)
+	repos := repository.NewRepositories(db)
+	logger := zap.NewNop().Sugar()
+
+	library := model.Library{ID: "library-current", Name: "当前媒体库", Path: "/media/current", Type: "movie"}
+	if err := db.Create(&library).Error; err != nil {
+		t.Fatal(err)
+	}
+	current := model.Media{ID: "media-current", LibraryID: library.ID, Title: "当前影片", FilePath: "/media/current/movie.mp4", MediaType: "movie", Rating: 9}
+	if err := db.Create(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	stale := []RecommendedMedia{{Media: model.Media{ID: "media-deleted", Title: "已删除影片"}, Score: 10, Reason: "旧缓存"}}
+	payload, err := json.Marshal(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repos.RecommendCache.Set("user", string(payload), 60); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewRecommendService(repos.Media, repos.Series, repos.WatchHistory, repos.Favorite, repos.RecommendCache, logger)
+	results, err := svc.GetRecommendations("user", 10)
+	if err != nil {
+		t.Fatalf("获取推荐失败: %v", err)
+	}
+	if len(results) != 1 || results[0].Media.ID != current.ID {
+		t.Fatalf("应重新计算并返回当前媒体，实际=%+v", results)
+	}
+	if _, ok := repos.RecommendCache.Get("user"); ok {
+		t.Fatal("失效的推荐缓存应被删除")
+	}
 }
 
 func TestBuildRatingMatrix_ScoreRules(t *testing.T) {

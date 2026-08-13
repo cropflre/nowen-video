@@ -126,10 +126,11 @@ export default function PlayerPage() {
 
   const useMpvEmbed = desktopIsDesktop && desktopEmbedAvailable && desktopEngine === 'mpv' && !isPreprocessed
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
+  const isRandomAccessMp4 = playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v'
   const canUseWC =
     !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
     canUseWebCodecs(playInfo.video_codec, playInfo.audio_codec, webcodecsCap) &&
-    (playInfo.can_remux || playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v')
+    isRandomAccessMp4
 
   const mode: 'direct' | 'hls' | 'remux' | 'webcodecs' = isPreprocessed
     ? 'hls'
@@ -151,7 +152,7 @@ export default function PlayerPage() {
       : mode === 'remux'
         ? streamApi.getRemuxUrl(id)
         : mode === 'webcodecs'
-          ? (playInfo.can_remux ? streamApi.getRemuxUrl(id) : streamApi.getDirectUrl(id))
+          ? streamApi.getDirectUrl(id)
           : requiresSessionTranscode
             ? ''
             : streamApi.getMasterUrl(id)

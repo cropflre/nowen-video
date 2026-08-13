@@ -23,6 +23,10 @@ type LibraryService struct {
 	historyRepo            *repository.WatchHistoryRepo       // 观看历史仓储（用于级联清理）
 	mediaPersonRepo        *repository.MediaPersonRepo        // 演职人员关联仓储（用于级联清理刮削数据）
 	scanClassificationRepo *repository.ScanClassificationRepo // 扫描归类仓储（用于级联清理分类记录）
+	recommendCacheRepo     *repository.RecommendCacheRepo     // 推荐快照（媒体集合变化时全量失效）
+	playbackStatsRepo      *repository.PlaybackStatsRepo      // 播放统计（用于清理被删媒体的派生数据）
+	mediaProbeRepo         *repository.MediaProbeRepo         // 媒体探测缓存
+	movieCollectionRepo    *repository.MovieCollectionRepo    // 电影合集（用于清理删除后产生的空合集）
 	cfg                    *config.Config                     // 用于访问 CacheDir 以清理磁盘上的刮削缓存
 	scanner                *ScannerService
 	metadata               *MetadataService
@@ -44,6 +48,10 @@ func NewLibraryService(
 	historyRepo *repository.WatchHistoryRepo,
 	mediaPersonRepo *repository.MediaPersonRepo,
 	scanClassificationRepo *repository.ScanClassificationRepo,
+	recommendCacheRepo *repository.RecommendCacheRepo,
+	playbackStatsRepo *repository.PlaybackStatsRepo,
+	mediaProbeRepo *repository.MediaProbeRepo,
+	movieCollectionRepo *repository.MovieCollectionRepo,
 	cfg *config.Config,
 	scanner *ScannerService,
 	metadata *MetadataService,
@@ -57,6 +65,10 @@ func NewLibraryService(
 		historyRepo:            historyRepo,
 		mediaPersonRepo:        mediaPersonRepo,
 		scanClassificationRepo: scanClassificationRepo,
+		recommendCacheRepo:     recommendCacheRepo,
+		playbackStatsRepo:      playbackStatsRepo,
+		mediaProbeRepo:         mediaProbeRepo,
+		movieCollectionRepo:    movieCollectionRepo,
 		cfg:                    cfg,
 		scanner:                scanner,
 		metadata:               metadata,
@@ -436,11 +448,11 @@ func (s *LibraryService) Scan(id string) error {
 // Delete 删除媒体库（级联清理关联的媒体和剧集合集数据）
 func (s *LibraryService) Delete(id string) error {
 	// 先获取媒体库信息（用于日志和事件通知）
-	lib, _ := s.repo.FindByID(id)
-	libName := id
-	if lib != nil {
-		libName = lib.Name
+	lib, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
 	}
+	libName := lib.Name
 
 	// 取消文件监听（逐个路径）
 	if lib != nil && s.fileWatcher != nil {
@@ -452,50 +464,79 @@ func (s *LibraryService) Delete(id string) error {
 	// 先收集该媒体库下所有 media_id 和 series_id，用于后续删除磁盘上的刮削缓存（图片、缩略图、转码等）
 	var mediaIDs []string
 	var seriesIDs []string
-	if mediaList, err := s.mediaRepo.ListByLibraryID(id); err == nil {
-		for _, m := range mediaList {
-			mediaIDs = append(mediaIDs, m.ID)
+	mediaList, err := s.mediaRepo.ListByLibraryID(id)
+	if err != nil {
+		return fmt.Errorf("读取媒体库 %s 的媒体失败: %w", libName, err)
+	}
+	for _, m := range mediaList {
+		mediaIDs = append(mediaIDs, m.ID)
+	}
+	seriesList, err := s.seriesRepo.ListByLibraryID(id)
+	if err != nil {
+		return fmt.Errorf("读取媒体库 %s 的剧集失败: %w", libName, err)
+	}
+	for _, se := range seriesList {
+		seriesIDs = append(seriesIDs, se.ID)
+	}
+
+	// 推荐结果保存的是完整媒体快照。媒体候选集一旦变化，所有用户的快照都必须失效。
+	if s.recommendCacheRepo != nil {
+		if _, err := s.recommendCacheRepo.InvalidateAll(); err != nil {
+			return fmt.Errorf("清理媒体库 %s 的推荐缓存失败: %w", libName, err)
 		}
 	}
-	if seriesList, err := s.seriesRepo.ListByLibraryID(id); err == nil {
-		for _, se := range seriesList {
-			seriesIDs = append(seriesIDs, se.ID)
+
+	// 清理不会由媒体表自动级联的派生数据，避免留下孤立缓存和统计记录。
+	if s.mediaProbeRepo != nil {
+		if _, err := s.mediaProbeRepo.DeleteByMediaIDs(mediaIDs); err != nil {
+			return fmt.Errorf("清理媒体库 %s 的探测缓存失败: %w", libName, err)
+		}
+	}
+	if s.playbackStatsRepo != nil {
+		if _, err := s.playbackStatsRepo.DeleteByMediaIDs(mediaIDs); err != nil {
+			return fmt.Errorf("清理媒体库 %s 的播放统计失败: %w", libName, err)
 		}
 	}
 
 	// 级联删除关联数据（先清理收藏和观看历史，再删除媒体和合集）
 	if s.favRepo != nil {
 		if err := s.favRepo.DeleteByLibraryMediaIDs(id); err != nil {
-			s.logger.Errorf("删除媒体库 %s 的收藏数据失败: %v", libName, err)
+			return fmt.Errorf("删除媒体库 %s 的收藏数据失败: %w", libName, err)
 		}
 	}
 	if s.historyRepo != nil {
 		if err := s.historyRepo.DeleteByLibraryMediaIDs(id); err != nil {
-			s.logger.Errorf("删除媒体库 %s 的观看历史数据失败: %v", libName, err)
+			return fmt.Errorf("删除媒体库 %s 的观看历史数据失败: %w", libName, err)
 		}
 	}
 	// 清理演职人员关联（刮削产生的元数据）
 	if s.mediaPersonRepo != nil {
 		if err := s.mediaPersonRepo.DeleteByLibraryMediaIDs(id); err != nil {
-			s.logger.Errorf("删除媒体库 %s 的演职人员关联(media)失败: %v", libName, err)
+			return fmt.Errorf("删除媒体库 %s 的演职人员关联(media)失败: %w", libName, err)
 		}
 		if err := s.mediaPersonRepo.DeleteByLibrarySeriesIDs(id); err != nil {
-			s.logger.Errorf("删除媒体库 %s 的演职人员关联(series)失败: %v", libName, err)
+			return fmt.Errorf("删除媒体库 %s 的演职人员关联(series)失败: %w", libName, err)
 		}
 	}
 	// 清理扫描归类记录（虚拟归类与命名映射）
 	if s.scanClassificationRepo != nil {
 		if deleted, err := s.scanClassificationRepo.DeleteByLibraryID(id); err != nil {
-			s.logger.Errorf("删除媒体库 %s 的扫描归类记录失败: %v", libName, err)
+			return fmt.Errorf("删除媒体库 %s 的扫描归类记录失败: %w", libName, err)
 		} else if deleted > 0 {
 			s.logger.Debugf("已清理 %d 条扫描归类记录（媒体库 %s）", deleted, libName)
 		}
 	}
 	if err := s.mediaRepo.DeleteByLibraryID(id); err != nil {
-		s.logger.Errorf("删除媒体库 %s 的媒体数据失败: %v", libName, err)
+		return fmt.Errorf("删除媒体库 %s 的媒体数据失败: %w", libName, err)
 	}
 	if err := s.seriesRepo.DeleteByLibraryID(id); err != nil {
-		s.logger.Errorf("删除媒体库 %s 的剧集合集数据失败: %v", libName, err)
+		return fmt.Errorf("删除媒体库 %s 的剧集合集数据失败: %w", libName, err)
+	}
+
+	if s.movieCollectionRepo != nil {
+		if _, err := s.movieCollectionRepo.CleanupEmptyCollections(); err != nil {
+			return fmt.Errorf("清理媒体库 %s 产生的空电影合集失败: %w", libName, err)
+		}
 	}
 
 	// 删除媒体库记录本身

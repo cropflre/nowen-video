@@ -28,6 +28,7 @@ import {
 import clsx from 'clsx'
 import { AdminPanel, AdminStatus } from '@/components/admin/AdminPrimitives'
 import { Button, EmptyState, Tag } from '@/components/design-system'
+import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film }> = {
   movie: { label: '电影', icon: Film },
@@ -123,13 +124,14 @@ function LibraryManager({
   const handleDelete = async (id: string) => {
     const ok = await dialog.confirm({
       title: '删除媒体库',
-      message: '确定删除此媒体库？关联的媒体记录也会被清除。',
+      message: '确定删除此媒体库？关联的媒体记录、推荐快照和本地缓存也会被彻底清除。',
       confirmText: '删除',
       variant: 'danger',
     })
     if (!ok) return
     try {
       await libraryApi.delete(id)
+      invalidateMediaListCaches()
       setLibraries((current) => current.filter((library) => library.id !== id))
     } catch {
       toast.error('删除失败')

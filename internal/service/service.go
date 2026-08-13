@@ -113,7 +113,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	metadata.SetWSHub(wsHub)
 
 	// 创建Library服务
-	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, repos.Favorite, repos.WatchHistory, repos.MediaPerson, repos.ScanClassification, cfg, scanner, metadata, logger)
+	libService := NewLibraryService(repos.Library, repos.Media, repos.Series, repos.Favorite, repos.WatchHistory, repos.MediaPerson, repos.ScanClassification, repos.RecommendCache, repos.PlaybackStats, repos.MediaProbe, repos.MovieCollection, cfg, scanner, metadata, logger)
 	libService.SetWSHub(wsHub)
 
 	// 创建文件监听服务
