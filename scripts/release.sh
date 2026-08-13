@@ -304,7 +304,7 @@ fi
 if [ "$RUN_ACTIONS_PREFLIGHT" = "1" ]; then
     step "客户端正式候选门禁"
     dispatch_and_wait "release-android.yml" "Android signed release" -f "version_name=${VERSION}"
-    dispatch_and_wait "release-desktop.yml" "Desktop release" -f "target=windows"
+    dispatch_and_wait "release-desktop.yml" "Desktop release" -f "version_name=${VERSION}" -f "target=windows"
 fi
 
 START_TS="$(date +%s)"
