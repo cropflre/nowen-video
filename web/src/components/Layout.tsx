@@ -5,7 +5,7 @@ import { PageContainer, SearchField } from './design-system'
 import { SlidersHorizontal } from 'lucide-react'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
-const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections']
+const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
 
 const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/browse', '影视库'],
