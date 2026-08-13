@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.6
-# Default NAS-oriented lite image.
-# The complete legacy feature set remains available through Dockerfile.full.
+# Official Nowen Video image, optimized for NAS and self-hosted home media use.
+# cmd/server-lite remains an internal migration-stable implementation path only;
+# it is no longer a separate Lite product edition. Dockerfile.full is retained
+# solely for legacy compatibility and rollback validation.
 
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 ARG NOWEN_VERSION=0.1.0
@@ -43,8 +45,8 @@ RUN apk add --no-cache \
     && ffmpeg -version | head -n 1 | grep -F "ffmpeg version 8.1.2" \
     && ffprobe -version | head -n 1 | grep -F "ffprobe version 8.1.2"
 
-# Hardware acceleration drivers remain in the lite image because direct play,
-# remux and on-demand fallback transcoding are core playback capabilities.
+# Hardware acceleration drivers are part of the official image because direct
+# play, remux and on-demand fallback transcoding are core playback capabilities.
 RUN set -eux; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
       apk add --no-cache intel-media-driver libva-intel-driver mesa-va-gallium libva-utils; \

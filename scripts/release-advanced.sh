@@ -1,0 +1,521 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Nowen Video unified product release orchestrator
+#
+# Default release target:
+#   - Official Docker image: cropflre/nowen-video:vX.Y.Z (+ latest for stable)
+#   - Android APK + AAB: attached to the same GitHub Release
+#   - Desktop Windows bundles: attached to the same GitHub Release
+#
+# Safe order:
+#   1. Require a clean, synchronized main branch and increasing version
+#   2. Gate the exact commit on Server CI (and Android CI when available)
+#   3. Build Android signed candidate + Desktop candidate and wait for PASS
+#   4. Build/push Docker amd64+arm64 and verify the remote manifest
+#   5. Push the single product git tag
+#   6. Wait for Android/Desktop tag workflows
+#   7. Verify Android APK/AAB really exist on the product GitHub Release
+#
+# Android is a first-class release target. A normal successful invocation must
+# not report success unless the matching signed APK and AAB are present.
+# =============================================================================
+set -euo pipefail
+
+IMAGE_NAME="cropflre/nowen-video"
+GITHUB_REPO="cropflre/nowen-video"
+DEFAULT_BRANCH="main"
+DEFAULT_PLATFORMS="linux/amd64,linux/arm64"
+BUILDX_BUILDER="nowen-video-builder"
+
+if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]; then
+    C_RED="$(tput setaf 1)"; C_GREEN="$(tput setaf 2)"; C_YELLOW="$(tput setaf 3)"
+    C_BLUE="$(tput setaf 4)"; C_CYAN="$(tput setaf 6)"; C_BOLD="$(tput bold)"; C_RESET="$(tput sgr0)"
+else
+    C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_CYAN=""; C_BOLD=""; C_RESET=""
+fi
+
+info() { echo "${C_BLUE}[*]${C_RESET} $*"; }
+ok()   { echo "${C_GREEN}[✓]${C_RESET} $*"; }
+warn() { echo "${C_YELLOW}[!]${C_RESET} $*" >&2; }
+die()  { echo "${C_RED}[✗]${C_RESET} $*" >&2; exit 1; }
+step() { echo; echo "${C_BOLD}${C_CYAN}==== $* ====${C_RESET}"; }
+trap 'echo; die "已被用户中断（SIGINT）"' INT
+
+VERSION=""
+ASSUME_YES=0
+DO_PULL=1
+DO_LATEST=1
+LATEST_EXPLICIT=0
+DO_GIT_TAG=1
+RUN_CI_GATE=1
+RUN_ACTIONS_PREFLIGHT=1
+WAIT_RELEASE_ACTIONS=1
+PUBLISH_ANDROID=1
+PUBLISH_DESKTOP=1
+ALLOW_NON_MAIN=0
+DRY_RUN=0
+PLATFORMS="$DEFAULT_PLATFORMS"
+MULTIARCH=1
+EXPLICIT_PLATFORM=0
+
+usage() {
+    cat <<USAGE
+用法: $0 [选项]
+
+默认一次发布同一个版本：
+  Docker Server + Android APK/AAB + Desktop Windows，并汇总到同一个 GitHub tag/Release。
+
+  -v, --version VERSION       版本，例如 1.2.9 / v1.2.9 / 1.2.9-rc.1
+  -y, --yes                   跳过交互确认
+      --no-pull               不 pull；本地 HEAD 仍必须等于 origin/main
+      --latest                强制更新 Docker :latest
+      --no-latest             不更新 Docker :latest
+                              默认稳定版更新 latest，预发布版不更新
+      --no-android            显式跳过 Android（默认绝不跳过）
+      --no-desktop            跳过 Desktop，只发布 Server + Android
+      --server-only           仅发布 Docker（等价 --no-android --no-desktop --no-git-tag）
+      --no-git-tag            不创建产品 tag；不能与默认 Android/Desktop 正式发布同时使用
+      --no-ci-gate            跳过 main CI 门禁（不推荐）
+      --no-actions-preflight  跳过 Android/Desktop 候选构建（不推荐）
+      --no-wait-actions       tag 后不等待客户端工作流，也不做最终资产核验
+      --allow-non-main        允许非 main（仅恢复/特殊场景）
+      --no-multiarch          只构建本机架构
+      --amd64-only            只发布 linux/amd64
+      --arm64-only            只发布 linux/arm64
+      --platform LIST         自定义 buildx 平台列表
+      --dry-run               只展示计划，不执行发布写操作
+  -h, --help                  显示帮助
+
+推荐：
+  $0 -v 1.2.9 -y              # Server + Android + Desktop 全量正式发布
+  $0 -v 1.2.9 --no-desktop    # Server + Android 同步发布
+  $0 -v 1.2.9-rc.1 -y         # 预发布；默认不覆盖 Docker latest
+  $0 -v 1.2.9 --dry-run       # 先看发布计划
+USAGE
+    exit 0
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -v|--version) VERSION="${2:-}"; shift 2 ;;
+        -y|--yes) ASSUME_YES=1; shift ;;
+        --no-pull) DO_PULL=0; shift ;;
+        --latest) DO_LATEST=1; LATEST_EXPLICIT=1; shift ;;
+        --no-latest) DO_LATEST=0; LATEST_EXPLICIT=1; shift ;;
+        --no-android) PUBLISH_ANDROID=0; shift ;;
+        --no-desktop) PUBLISH_DESKTOP=0; shift ;;
+        --server-only)
+            PUBLISH_ANDROID=0; PUBLISH_DESKTOP=0; DO_GIT_TAG=0; WAIT_RELEASE_ACTIONS=0
+            shift
+            ;;
+        --no-git-tag) DO_GIT_TAG=0; shift ;;
+        --no-ci-gate) RUN_CI_GATE=0; shift ;;
+        --no-actions-preflight) RUN_ACTIONS_PREFLIGHT=0; shift ;;
+        --no-wait-actions) WAIT_RELEASE_ACTIONS=0; shift ;;
+        --allow-non-main) ALLOW_NON_MAIN=1; shift ;;
+        --no-multiarch) MULTIARCH=0; shift ;;
+        --amd64-only) MULTIARCH=1; PLATFORMS="linux/amd64"; EXPLICIT_PLATFORM=1; shift ;;
+        --arm64-only) MULTIARCH=1; PLATFORMS="linux/arm64"; EXPLICIT_PLATFORM=1; shift ;;
+        --platform) MULTIARCH=1; PLATFORMS="${2:-}"; EXPLICIT_PLATFORM=1; shift 2 ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        -h|--help) usage ;;
+        *) die "未知参数: $1（使用 -h 查看帮助）" ;;
+    esac
+done
+
+[ "$MULTIARCH" = "0" ] && [ "$EXPLICIT_PLATFORM" = "1" ] && die "--no-multiarch 与平台参数互斥"
+[ "$MULTIARCH" = "1" ] && [ -z "${PLATFORMS// }" ] && die "--platform 不能为空"
+if [ "$DO_GIT_TAG" = "0" ] && { [ "$PUBLISH_ANDROID" = "1" ] || [ "$PUBLISH_DESKTOP" = "1" ]; }; then
+    die "Android/Desktop 正式同步发布依赖产品 git tag；若只发 Docker，请使用 --server-only，或显式 --no-android --no-desktop"
+fi
+if [ "$WAIT_RELEASE_ACTIONS" = "0" ] && [ "$PUBLISH_ANDROID" = "1" ]; then
+    warn "已选择 --no-wait-actions：脚本不会等待或核验最终 Android APK/AAB"
+fi
+if [ "$RUN_ACTIONS_PREFLIGHT" = "0" ] && [ "$PUBLISH_ANDROID" = "1" ]; then
+    warn "已跳过 Android 正式签名候选门禁；最终 tag workflow 仍会执行签名校验"
+fi
+
+run_argv() {
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '  %sDRY-RUN%s' "$C_YELLOW" "$C_RESET"
+        printf ' %q' "$@"
+        printf '\n'
+    else
+        "$@"
+    fi
+}
+require_cmd() { command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"; }
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+step "本地与仓库预检"
+require_cmd git
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "当前目录不是 git 仓库"
+[ -f Dockerfile ] || die "仓库根目录未找到 Dockerfile"
+
+if [ -n "$(git status --porcelain)" ]; then
+    git status --short | head -30
+    die "工作区必须完全干净后才能发布"
+fi
+
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ] && [ "$ALLOW_NON_MAIN" != "1" ]; then
+    die "正式发布必须从 ${DEFAULT_BRANCH} 执行；当前分支: ${CURRENT_BRANCH}"
+fi
+
+info "当前分支: $CURRENT_BRANCH"
+if [ "$DRY_RUN" = "0" ]; then
+    git fetch origin "$DEFAULT_BRANCH" --tags --prune
+    if [ "$DO_PULL" = "1" ]; then
+        git pull --ff-only origin "$CURRENT_BRANCH"
+    fi
+else
+    info "DRY-RUN：不执行 fetch/pull"
+fi
+
+LOCAL_SHA="$(git rev-parse HEAD)"
+if [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ] && git rev-parse "origin/${DEFAULT_BRANCH}" >/dev/null 2>&1; then
+    REMOTE_SHA="$(git rev-parse "origin/${DEFAULT_BRANCH}")"
+    [ "$LOCAL_SHA" = "$REMOTE_SHA" ] || die "本地 HEAD 不等于 origin/${DEFAULT_BRANCH}；拒绝发布过期代码"
+fi
+ok "源码已锁定: $(git log -1 --pretty=format:'%h  %s')"
+
+if [ "$DRY_RUN" = "0" ]; then
+    require_cmd docker
+    docker info >/dev/null 2>&1 || die "Docker daemon 不可用"
+    if [ "$MULTIARCH" = "1" ]; then
+        docker buildx version >/dev/null 2>&1 || die "docker buildx 不可用"
+    fi
+fi
+
+validate_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; }
+
+semver_base_gt() {
+    local left="$1" right="$2" l1 l2 l3 r1 r2 r3
+    IFS=. read -r l1 l2 l3 <<<"$left"
+    IFS=. read -r r1 r2 r3 <<<"$right"
+    if ((10#$l1 != 10#$r1)); then ((10#$l1 > 10#$r1)); return; fi
+    if ((10#$l2 != 10#$r2)); then ((10#$l2 > 10#$r2)); return; fi
+    ((10#$l3 > 10#$r3))
+}
+
+latest_stable_version() {
+    local latest="" tag candidate
+    while IFS= read -r tag; do
+        candidate="${tag#v}"
+        [[ "$candidate" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+        if [ -z "$latest" ] || semver_base_gt "$candidate" "$latest"; then
+            latest="$candidate"
+        fi
+    done < <(git tag --list 'v*')
+    printf '%s\n' "$latest"
+}
+
+suggest_next_version() {
+    local latest base major rest minor patch
+    latest="$(latest_stable_version)"
+    if [ -z "$latest" ]; then echo "0.1.0"; return; fi
+    base="$latest"; major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"; patch="${rest#*.}"
+    echo "${major}.${minor}.$((10#$patch + 1))"
+}
+
+if [ -z "$VERSION" ]; then
+    SUGGEST="$(suggest_next_version)"
+    echo
+    echo "${C_BOLD}请输入本次发布版本号${C_RESET}"
+    echo "建议: ${C_GREEN}${SUGGEST}${C_RESET}（回车采用建议值）"
+    read -r -p "> " VERSION
+    VERSION="${VERSION:-$SUGGEST}"
+fi
+VERSION="${VERSION#v}"
+validate_version "$VERSION" || die "版本号格式非法: $VERSION"
+VERSION_TAG="v${VERSION}"
+IS_PRERELEASE=0
+[[ "$VERSION" == *-* ]] && IS_PRERELEASE=1
+CANDIDATE_BASE="${VERSION%%-*}"
+LATEST_STABLE="$(latest_stable_version)"
+if [ -n "$LATEST_STABLE" ]; then
+    if semver_base_gt "$LATEST_STABLE" "$CANDIDATE_BASE"; then
+        die "版本倒退：当前最新稳定版是 v${LATEST_STABLE}，不能发布 ${VERSION_TAG}"
+    fi
+    if [ "$CANDIDATE_BASE" = "$LATEST_STABLE" ] && [ "$IS_PRERELEASE" = "1" ]; then
+        die "v${LATEST_STABLE} 已是稳定版，不能再发布同基线预发布版本 ${VERSION_TAG}"
+    fi
+fi
+
+if [ "$LATEST_EXPLICIT" = "0" ]; then
+    [ "$IS_PRERELEASE" = "1" ] && DO_LATEST=0 || DO_LATEST=1
+fi
+[ "$IS_PRERELEASE" = "1" ] && [ "$DO_LATEST" = "1" ] && warn "预发布 ${VERSION_TAG} 将覆盖 Docker :latest（显式选择）"
+
+git rev-parse -q --verify "refs/tags/${VERSION_TAG}" >/dev/null 2>&1 && die "本地 tag ${VERSION_TAG} 已存在"
+if [ "$DRY_RUN" = "0" ]; then
+    git ls-remote --exit-code --tags origin "refs/tags/${VERSION_TAG}" >/dev/null 2>&1 && die "远端 tag ${VERSION_TAG} 已存在"
+fi
+
+GIT_SHA="$(git rev-parse HEAD)"
+GIT_SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+NEED_GH=0
+[ "$RUN_CI_GATE" = "1" ] && NEED_GH=1
+[ "$RUN_ACTIONS_PREFLIGHT" = "1" ] && { [ "$PUBLISH_ANDROID" = "1" ] || [ "$PUBLISH_DESKTOP" = "1" ]; } && NEED_GH=1
+[ "$DO_GIT_TAG" = "1" ] && [ "$WAIT_RELEASE_ACTIONS" = "1" ] && NEED_GH=1
+if [ "$NEED_GH" = "1" ] && [ "$DRY_RUN" = "0" ]; then
+    require_cmd gh
+    gh auth status >/dev/null 2>&1 || die "GitHub CLI 未登录，请执行 gh auth login"
+    gh repo view "$GITHUB_REPO" >/dev/null 2>&1 || die "当前 gh 身份无法访问 ${GITHUB_REPO}"
+fi
+
+check_android_secret_names() {
+    [ "$PUBLISH_ANDROID" = "1" ] || return 0
+    local secrets required missing=0
+    required=(ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD)
+    if ! secrets="$(gh secret list --repo "$GITHUB_REPO" --json name --jq '.[].name' 2>/dev/null)"; then
+        warn "无法读取 Actions Secret 名称；交给 Android candidate workflow 做最终门禁"
+        return 0
+    fi
+    for name in "${required[@]}"; do
+        if ! printf '%s\n' "$secrets" | grep -Fxq "$name"; then
+            warn "缺少 Android production secret: $name"
+            missing=1
+        fi
+    done
+    [ "$missing" = "0" ] || die "Android 正式签名 Secrets 未配置完整；不会继续发布 Docker/tag"
+    ok "Android production signing Secrets: 4/4"
+}
+
+check_workflow_for_commit() {
+    local workflow="$1" label="$2" required="$3" line run_id status conclusion url
+    line="$(gh run list --repo "$GITHUB_REPO" --workflow "$workflow" --commit "$GIT_SHA" --event push --limit 1 \
+        --json databaseId,status,conclusion,url --jq '.[0] | [.databaseId, .status, (.conclusion // ""), .url] | @tsv' 2>/dev/null || true)"
+    if [ -z "$line" ]; then
+        [ "$required" = "1" ] && die "未找到 ${label} 对 ${GIT_SHORT_SHA} 的 CI 记录"
+        info "${label}: 当前提交未触发，跳过已有运行检查"
+        return
+    fi
+    IFS=$'\t' read -r run_id status conclusion url <<EOF_RUN
+$line
+EOF_RUN
+    if [ "$status" != "completed" ]; then
+        info "${label}: 等待 run #${run_id}"
+        gh run watch "$run_id" --repo "$GITHUB_REPO" --exit-status
+    else
+        [ "$conclusion" = "success" ] || die "${label} 未通过: ${conclusion} (${url})"
+    fi
+    ok "${label}: PASS"
+}
+
+dispatch_and_wait() {
+    local workflow="$1" label="$2" previous_id new_id attempt
+    shift 2
+    previous_id="$(gh run list --repo "$GITHUB_REPO" --workflow "$workflow" --event workflow_dispatch --branch "$DEFAULT_BRANCH" --limit 1 \
+        --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo 0)"
+    info "触发 ${label} 候选构建 ..."
+    gh workflow run "$workflow" --repo "$GITHUB_REPO" --ref "$DEFAULT_BRANCH" "$@"
+    new_id=""; attempt=0
+    while [ "$attempt" -lt 60 ]; do
+        new_id="$(gh run list --repo "$GITHUB_REPO" --workflow "$workflow" --event workflow_dispatch --branch "$DEFAULT_BRANCH" --commit "$GIT_SHA" --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
+        [ -n "$new_id" ] && [ "$new_id" != "$previous_id" ] && break
+        sleep 2; attempt=$((attempt + 1))
+    done
+    [ -n "$new_id" ] || die "无法定位刚触发的 ${label} workflow run"
+    info "等待 ${label} run #${new_id} ..."
+    gh run watch "$new_id" --repo "$GITHUB_REPO" --exit-status
+    ok "${label} 候选构建: PASS"
+}
+
+wait_tag_workflow() {
+    local workflow="$1" label="$2" run_id attempt
+    run_id=""; attempt=0
+    while [ "$attempt" -lt 90 ]; do
+        run_id="$(gh run list --repo "$GITHUB_REPO" --workflow "$workflow" --event push --branch "$VERSION_TAG" --commit "$GIT_SHA" --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)"
+        [ -n "$run_id" ] && break
+        sleep 2; attempt=$((attempt + 1))
+    done
+    [ -n "$run_id" ] || die "未找到 ${label} 的 tag workflow (${VERSION_TAG})"
+    info "等待 ${label} 正式工作流 run #${run_id} ..."
+    gh run watch "$run_id" --repo "$GITHUB_REPO" --exit-status
+    ok "${label} 正式工作流: PASS"
+}
+
+verify_android_release_assets() {
+    [ "$PUBLISH_ANDROID" = "1" ] || return 0
+    local apk="nowen-video-android-${VERSION}.apk"
+    local aab="nowen-video-android-${VERSION}.aab"
+    local names="" attempt
+
+    step "核验 Android GitHub Release 产物"
+    for attempt in $(seq 1 30); do
+        names="$(gh release view "$VERSION_TAG" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+        if printf '%s\n' "$names" | grep -Fxq "$apk" && printf '%s\n' "$names" | grep -Fxq "$aab"; then
+            ok "Android APK: $apk"
+            ok "Android AAB: $aab"
+            return 0
+        fi
+        sleep 2
+    done
+
+    warn "当前 Release assets:"
+    printf '%s\n' "$names" >&2
+    die "Android workflow 虽已结束，但 Release 缺少对应版本 APK/AAB；本次发版不判定成功"
+}
+
+step "发布计划"
+echo "  repo             : ${GITHUB_REPO}"
+echo "  commit           : ${GIT_SHA}"
+echo "  version          : ${VERSION_TAG}"
+echo "  latest stable    : ${LATEST_STABLE:-none}"
+echo "  channel          : $([ "$IS_PRERELEASE" = "1" ] && echo prerelease || echo stable)"
+echo "  Server Docker    : yes (${IMAGE_NAME}:${VERSION_TAG})"
+echo "  Android APK/AAB  : $([ "$PUBLISH_ANDROID" = "1" ] && echo REQUIRED || echo skipped)"
+echo "  Desktop Windows  : $([ "$PUBLISH_DESKTOP" = "1" ] && echo yes || echo skipped)"
+echo "  Docker latest    : $([ "$DO_LATEST" = "1" ] && echo yes || echo no)"
+echo "  Git tag          : $([ "$DO_GIT_TAG" = "1" ] && echo yes || echo no)"
+echo "  CI gate          : $([ "$RUN_CI_GATE" = "1" ] && echo yes || echo no)"
+echo "  client preflight : $([ "$RUN_ACTIONS_PREFLIGHT" = "1" ] && echo yes || echo no)"
+echo "  wait + verify    : $([ "$WAIT_RELEASE_ACTIONS" = "1" ] && echo yes || echo no)"
+echo "  platforms        : $([ "$MULTIARCH" = "1" ] && echo "$PLATFORMS" || echo local)"
+[ "$DRY_RUN" = "1" ] && echo "  mode             : DRY-RUN"
+
+if [ "$ASSUME_YES" != "1" ]; then
+    echo
+    read -r -p "确认按以上计划发布？[y/N] " ans
+    case "$ans" in [yY]|[yY][eE][sS]) ;; *) die "已取消" ;; esac
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+    step "DRY-RUN 发布顺序"
+    [ "$RUN_CI_GATE" = "1" ] && echo "  1. 检查 Server CI / Android CI"
+    if [ "$RUN_ACTIONS_PREFLIGHT" = "1" ]; then
+        [ "$PUBLISH_ANDROID" = "1" ] && echo "  2. Android ${VERSION} 正式签名候选构建"
+        [ "$PUBLISH_DESKTOP" = "1" ] && echo "  3. Desktop ${VERSION} 候选构建"
+    fi
+    echo "  4. 构建并推送 Docker ${IMAGE_NAME}:${VERSION_TAG}"
+    [ "$DO_LATEST" = "1" ] && echo "     同时更新 ${IMAGE_NAME}:latest"
+    [ "$DO_GIT_TAG" = "1" ] && echo "  5. 创建并推送产品 tag ${VERSION_TAG}"
+    [ "$PUBLISH_ANDROID" = "1" ] && echo "  6. tag 自动触发 Android APK/AAB 正式构建并上传 Release"
+    [ "$PUBLISH_DESKTOP" = "1" ] && echo "  7. tag 自动触发 Desktop 正式构建并上传 Release"
+    [ "$PUBLISH_ANDROID" = "1" ] && [ "$WAIT_RELEASE_ACTIONS" = "1" ] && echo "  8. 强制核验 Release 中 APK + AAB"
+    ok "DRY-RUN 完成"
+    exit 0
+fi
+
+if [ "$PUBLISH_ANDROID" = "1" ]; then
+    step "Android production signing 前置检查"
+    check_android_secret_names
+fi
+
+if [ "$RUN_CI_GATE" = "1" ]; then
+    step "GitHub CI 门禁"
+    check_workflow_for_commit "server-ci.yml" "Server CI" 1
+    [ "$PUBLISH_ANDROID" = "1" ] && check_workflow_for_commit "android.yml" "Android CI" 0
+fi
+
+if [ "$RUN_ACTIONS_PREFLIGHT" = "1" ]; then
+    step "客户端正式候选门禁"
+    if [ "$PUBLISH_ANDROID" = "1" ]; then
+        dispatch_and_wait "release-android.yml" "Android signed release ${VERSION}" -f "version_name=${VERSION}"
+    fi
+    if [ "$PUBLISH_DESKTOP" = "1" ]; then
+        dispatch_and_wait "release-desktop.yml" "Desktop release ${VERSION}" -f "version_name=${VERSION}" -f "target=windows"
+    fi
+fi
+
+START_TS="$(date +%s)"
+BUILD_TAGS=(-t "${IMAGE_NAME}:${VERSION_TAG}")
+[ "$DO_LATEST" = "1" ] && BUILD_TAGS+=(-t "${IMAGE_NAME}:latest")
+OCI_LABELS=(
+    --label "org.opencontainers.image.version=${VERSION}"
+    --label "org.opencontainers.image.revision=${GIT_SHA}"
+    --label "org.opencontainers.image.created=${BUILD_DATE}"
+    --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPO}"
+    --label "org.opencontainers.image.title=nowen-video"
+    --label "org.opencontainers.image.description=Nowen Video official release image"
+)
+
+if [ "$MULTIARCH" = "1" ]; then
+    step "准备 Docker buildx"
+    if docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
+        docker buildx use "$BUILDX_BUILDER"
+    else
+        docker buildx create --name "$BUILDX_BUILDER" --driver docker-container --use
+    fi
+    docker buildx inspect --bootstrap
+
+    step "构建并推送 Docker 多架构镜像"
+    BUILD_START="$(date +%s)"
+    docker buildx build --platform "$PLATFORMS" -f "$REPO_ROOT/Dockerfile" \
+        --build-arg "NOWEN_VERSION=$VERSION" "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" --push "$REPO_ROOT"
+    BUILD_END="$(date +%s)"; BUILD_DURATION=$((BUILD_END - BUILD_START))
+
+    step "验证 Docker manifest"
+    MANIFEST_TEXT="$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}")"
+    echo "$MANIFEST_TEXT" | grep -E 'Name:|MediaType:|Digest:|Platform:' | head -30 || true
+    old_ifs="$IFS"; IFS=','
+    for platform in $PLATFORMS; do
+        platform="${platform// /}"
+        [ -z "$platform" ] && continue
+        printf '%s\n' "$MANIFEST_TEXT" | grep -Eq "Platform:[[:space:]]+${platform//\//\\/}([[:space:]]|$)" || die "远端 manifest 缺少平台: ${platform}"
+    done
+    IFS="$old_ifs"
+else
+    step "构建并推送 Docker 单架构镜像"
+    BUILD_START="$(date +%s)"
+    docker build -f "$REPO_ROOT/Dockerfile" --build-arg "NOWEN_VERSION=$VERSION" \
+        "${BUILD_TAGS[@]}" "${OCI_LABELS[@]}" "$REPO_ROOT"
+    docker push "${IMAGE_NAME}:${VERSION_TAG}"
+    [ "$DO_LATEST" = "1" ] && docker push "${IMAGE_NAME}:latest"
+    BUILD_END="$(date +%s)"; BUILD_DURATION=$((BUILD_END - BUILD_START))
+fi
+ok "Docker 发布完成"
+
+DIGEST="$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev/null | sed -n 's/^Digest:[[:space:]]*//p' | head -1 || true)"
+
+if [ "$DO_GIT_TAG" = "1" ]; then
+    step "创建产品 git tag"
+    git tag -a "$VERSION_TAG" -m "Nowen Video ${VERSION_TAG}"
+    if git push origin "$VERSION_TAG"; then
+        ok "git tag ${VERSION_TAG} 已推送"
+    else
+        warn "Docker 已成功发布，但 git tag 推送失败；本地 tag 已保留。"
+        warn "修复 GitHub 认证后执行: git push origin ${VERSION_TAG}"
+        die "产品 tag 推送失败"
+    fi
+
+    if [ "$WAIT_RELEASE_ACTIONS" = "1" ]; then
+        step "等待 tag 正式发布工作流"
+        [ "$PUBLISH_ANDROID" = "1" ] && wait_tag_workflow "release-android.yml" "Android"
+        [ "$PUBLISH_DESKTOP" = "1" ] && wait_tag_workflow "release-desktop.yml" "Desktop"
+
+        if [ "$PUBLISH_ANDROID" = "1" ] || [ "$PUBLISH_DESKTOP" = "1" ]; then
+            gh release view "$VERSION_TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1 \
+                || die "客户端工作流已结束，但没有找到 ${VERSION_TAG} 的 GitHub Release"
+            RELEASE_LINE="$(gh release view "$VERSION_TAG" --repo "$GITHUB_REPO" --json url,isDraft,isPrerelease --jq '[.url, .isDraft, .isPrerelease] | @tsv')"
+            IFS=$'\t' read -r RELEASE_URL RELEASE_DRAFT RELEASE_PRERELEASE <<EOF_RELEASE
+$RELEASE_LINE
+EOF_RELEASE
+            ok "GitHub Release 已生成: ${RELEASE_URL}"
+            [ "$RELEASE_DRAFT" = "true" ] && info "Release 仍为 Draft；产物已同步，可检查后公开"
+        fi
+
+        verify_android_release_assets
+    fi
+fi
+
+END_TS="$(date +%s)"; TOTAL=$((END_TS - START_TS))
+step "发布完成"
+echo "  Docker          : ${IMAGE_NAME}:${VERSION_TAG}"
+[ "$DO_LATEST" = "1" ] && echo "  Docker latest   : ${IMAGE_NAME}:latest"
+[ -n "$DIGEST" ] && echo "  Docker digest   : ${DIGEST}"
+[ "$PUBLISH_ANDROID" = "1" ] && echo "  Android APK     : nowen-video-android-${VERSION}.apk"
+[ "$PUBLISH_ANDROID" = "1" ] && echo "  Android AAB     : nowen-video-android-${VERSION}.aab"
+[ "$PUBLISH_DESKTOP" = "1" ] && echo "  Desktop         : Windows bundle"
+[ "$DO_GIT_TAG" = "1" ] && echo "  Git tag         : ${VERSION_TAG}"
+echo "  commit          : ${GIT_SHA}"
+echo "  total time      : ${TOTAL}s (Docker ${BUILD_DURATION}s)"
+ok "Nowen Video ${VERSION_TAG} 同步发版流程完成 🎉"

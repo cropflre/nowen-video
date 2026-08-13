@@ -47,7 +47,6 @@ function canBind(port, host, ipv6Only = false) {
     const server = net.createServer()
     server.unref()
     server.once('error', (error) => {
-      // 某些系统完全禁用 IPv6，此时只要 IPv4 可绑定即可继续。
       if (host === '::' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) {
         resolve(true)
         return
@@ -92,8 +91,6 @@ function resolveVersion() {
 }
 
 function resolveNpmInvocation(args) {
-  // npm run 会提供 npm_execpath。直接用当前 node 执行 npm-cli.js，
-  // 避免 Windows 新版 Node 对 npm.cmd 直接 spawn 时抛出 EINVAL。
   const npmExecPath = process.env.npm_execpath
   if (npmExecPath && existsSync(npmExecPath)) {
     return {
@@ -186,7 +183,7 @@ async function main() {
 
   console.log('')
   console.log('============================================================')
-  console.log(' nowen-video 本地开发环境（Server Lite）')
+  console.log(' nowen-video 本地开发环境（正式版）')
   console.log(` 后端地址: http://localhost:${serverPort}`)
   console.log(` 前端地址: http://localhost:${webPort}`)
   console.log(` 前端代理: http://localhost:${serverPort}`)
@@ -237,7 +234,6 @@ async function main() {
       },
     )
   } catch (error) {
-    // spawn 可能同步抛错。确保前端启动失败时不会遗留已经运行的 Go 后端。
     stopProcess(web)
     stopProcess(server)
     throw error

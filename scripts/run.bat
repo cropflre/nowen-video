@@ -5,7 +5,7 @@ chcp 65001 >nul
 REM ============================================================
 REM  nowen-video 本地开发交互启动器
 REM
-REM  推荐直接运行项目根目录 dev.bat，一键启动 Server Lite + Vite。
+REM  推荐直接运行项目根目录 dev.bat，一键启动正式后端 + Vite。
 REM  本脚本保留按需启动单个服务的交互入口。
 REM ============================================================
 
@@ -20,7 +20,7 @@ echo ============================================================
 echo            nowen-video local dev launcher
 echo ============================================================
 echo.
-echo   [1] Start Backend  (Server Lite)
+echo   [1] Start Backend  (Official Server)
 echo   [2] Start Frontend (Vite dev server)
 echo   [3] Start ALL      (auto-select free ports)
 echo   [0] Exit
@@ -50,7 +50,7 @@ call :ask_server_port
 echo.
 echo 将从端口 %SERVER_PORT% 开始自动寻找可用端口。
 echo.
-start "nowen-video-server-lite preferred port %SERVER_PORT%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_SERVER_MODE=lite&& call %SCRIPT_DIR%\run-server.bat"
+start "nowen-video-server preferred port %SERVER_PORT%" cmd /k "set SERVER_PORT=%SERVER_PORT%&& set NOWEN_SERVER_MODE=official&& call %SCRIPT_DIR%\run-server.bat"
 goto end
 
 

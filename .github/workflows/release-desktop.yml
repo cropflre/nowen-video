@@ -1,19 +1,15 @@
-# NoWen Video — 桌面端 Release 构建（M7）
+# Nowen Video — desktop Release build
 #
-# 触发方式：
-#  1. push tag v*.*.*      → 自动构建 + 发布 Release（draft）
-#  2. 手动 workflow_dispatch → 仅构建不发布，用于冒烟
+# Trigger:
+#  1. push tag v*.*.*         -> build + attach artifacts to a draft Release
+#  2. workflow_dispatch       -> build only, used as release-candidate smoke
 #
-# 产物：
-#  - desktop/src-tauri/target/release/bundle/nsis/*.exe       (Windows 安装包)
-#  - desktop/src-tauri/target/release/bundle/msi/*.msi        (Windows MSI)
-#  - desktop/src-tauri/target/release/bundle/dmg/*.dmg        (macOS)
-#  - desktop/src-tauri/target/release/bundle/appimage/*.AppImage (Linux)
-#
-# 前置条件：
-#  - secrets.TAURI_SIGNING_PRIVATE_KEY          (可选, 自动更新签名)
-#  - secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD (可选)
+# The bundled Go sidecar must use the same official server runtime as Docker.
+# cmd/server is legacy compatibility-only and must not ship in new desktop builds.
 name: release-desktop
+run-name: >-
+  release-desktop
+  ${{ github.ref_type == 'tag' && github.ref_name || inputs.version_name || '0.1.0' }}
 
 on:
   push:
@@ -21,6 +17,10 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
+      version_name:
+        description: 'Product version, for example 1.2.9 or 1.2.9-rc.1'
+        required: false
+        default: '0.1.0'
       target:
         description: 'Target platform (windows/macos/linux/all)'
         required: false
@@ -61,9 +61,9 @@ jobs:
           - os: windows-latest
             platform: windows
             bundles: 'nsis,msi'
-          # 如未来扩展多平台，放开下面两行：
-          # - { os: macos-latest,   platform: macos,   bundles: 'dmg,app' }
-          # - { os: ubuntu-22.04,   platform: linux,   bundles: 'appimage,deb' }
+          # Future expansion:
+          # - { os: macos-latest, platform: macos, bundles: 'dmg,app' }
+          # - { os: ubuntu-22.04, platform: linux, bundles: 'appimage,deb' }
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.platform }})
@@ -101,8 +101,11 @@ jobs:
       - name: Resolve app version
         shell: pwsh
         run: |
-          $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '0.1.0' }
+          $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '${{ inputs.version_name }}' }
           $version = $version -replace '^v',''
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid product version: $version"
+          }
           "NOWEN_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version $version
@@ -110,8 +113,7 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.0" --locked
 
-      # ---- 构建后端 sidecar ----
-      - name: Build Go sidecar
+      - name: Build official Go sidecar
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String host) -replace 'host: ',''
@@ -123,13 +125,12 @@ jobs:
           if ($env:RUNNER_OS -eq 'Windows') {
             $env:GOOS = 'windows'
             $env:GOARCH = 'amd64'
-            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple.exe" ./cmd/server
+            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple.exe" ./cmd/server-lite
           } else {
-            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple" ./cmd/server
+            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple" ./cmd/server-lite
           }
           Get-ChildItem $outDir
 
-      # ---- 前端构建 ----
       - name: Install web deps
         working-directory: web
         run: npm ci
@@ -140,7 +141,6 @@ jobs:
         env:
           VITE_APP_VERSION: ${{ env.NOWEN_VERSION }}
 
-      # ---- 桌面端打包 ----
       - name: Tauri build
         working-directory: desktop/src-tauri
         env:

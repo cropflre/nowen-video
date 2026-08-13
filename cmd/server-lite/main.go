@@ -74,7 +74,7 @@ func main() {
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 	srv := &http.Server{Addr: addr, Handler: router}
 	go func() {
-		sugar.Infof("nowen-video lite 启动于 %s", addr)
+		sugar.Infof("nowen-video 启动于 %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			sugar.Errorf("服务器异常退出: %v", err)
 		}
@@ -84,7 +84,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	signal.Stop(quit)
-	sugar.Info("正在关闭 nowen-video lite...")
+	sugar.Info("正在关闭 nowen-video...")
 	mdnsService.Stop()
 
 	// Stop accepting new API requests first, so no new playback session can
@@ -114,7 +114,7 @@ func main() {
 	}
 	transcodeCancel()
 
-	sugar.Info("nowen-video lite 已优雅关闭")
+	sugar.Info("nowen-video 已优雅关闭")
 }
 
 // applyRuntimePortOverride restores the documented precedence for development

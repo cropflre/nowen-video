@@ -1,0 +1,60 @@
+name: Server SQLite Upgrade and Rollback Certification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'internal/model/model.go'
+      - 'internal/model/migrate_lite.go'
+      - 'internal/model/migrate_lite_roundtrip_test.go'
+      - 'internal/model/transcode_*.go'
+      - 'cmd/server-lite/**'
+      - 'cmd/server/**'
+      - '.github/workflows/server-sqlite-upgrade-cert.yml'
+      - 'docs/SERVER.md'
+      - 'docs/SERVER_LITE_SQLITE_UPGRADE_ROLLBACK.md'
+  pull_request:
+    paths:
+      - 'internal/model/model.go'
+      - 'internal/model/migrate_lite.go'
+      - 'internal/model/migrate_lite_roundtrip_test.go'
+      - 'internal/model/transcode_*.go'
+      - 'cmd/server-lite/**'
+      - 'cmd/server/**'
+      - '.github/workflows/server-sqlite-upgrade-cert.yml'
+      - 'docs/SERVER.md'
+      - 'docs/SERVER_LITE_SQLITE_UPGRADE_ROLLBACK.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-sqlite-upgrade-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    name: Legacy to Production to Legacy SQLite round trip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download modules
+        run: go mod download
+      - name: Certify production migration and backup restore
+        run: >-
+          go test ./internal/model
+          -run 'TestSQLiteFullLiteFullRoundTripPreservesDataAndBackup|TestFreshLiteMigrationDoesNotCreateFullOnlyTables'
+          -count=1
+          -v
+      - name: Re-run under the race detector
+        run: >-
+          go test -race ./internal/model
+          -run 'TestSQLiteFullLiteFullRoundTripPreservesDataAndBackup|TestFreshLiteMigrationDoesNotCreateFullOnlyTables'
+          -count=1

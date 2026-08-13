@@ -1,0 +1,148 @@
+name: Android
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'scripts/android-version.sh'
+      - 'scripts/android-release-manifest.py'
+      - 'scripts/android-signing-preflight.sh'
+      - 'scripts/android-signing-bootstrap.sh'
+      - 'cmd/server/main.go'
+      - 'internal/handler/**'
+      - 'internal/middleware/**'
+      - 'internal/model/**'
+      - 'internal/repository/**'
+      - 'internal/service/**'
+      - 'internal/version/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'scripts/android-version.sh'
+      - 'scripts/android-release-manifest.py'
+      - 'scripts/android-signing-preflight.sh'
+      - 'scripts/android-signing-bootstrap.sh'
+      - 'cmd/server/main.go'
+      - 'internal/handler/**'
+      - 'internal/middleware/**'
+      - 'internal/model/**'
+      - 'internal/repository/**'
+      - 'internal/service/**'
+      - 'internal/version/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_PRODUCTION_CERTIFICATE_FILE: android/signing/production-certificate.sha256
+  ANDROID_PRODUCTION_CERTIFICATE_PEM: android/signing/production-cert.pem
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Android release policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/android-signing-bootstrap.sh
+          bash scripts/android-version.sh --self-test
+          python3 scripts/android-release-manifest.py --self-test
+          bash scripts/android-signing-preflight.sh --self-test
+
+          expected="$(tr -d ':[:space:]' < "$ANDROID_PRODUCTION_CERTIFICATE_FILE" | tr '[:upper:]' '[:lower:]')"
+          [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid production certificate SHA-256 baseline"; exit 1; }
+          actual="$(openssl x509 -in "$ANDROID_PRODUCTION_CERTIFICATE_PEM" -outform DER | sha256sum | awk '{print $1}')"
+          [[ "$actual" == "$expected" ]] || {
+            echo "Production signing certificate mismatch: expected=$expected actual=$actual"
+            exit 1
+          }
+
+      - name: Backend contract tests
+        id: go
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          go test ./internal/service ./internal/handler 2>&1 | tee android-go-test.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Unit tests, instrumentation compile, lint, debug and release builds
+        id: gradle
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          chmod +x android/gradlew
+          ./android/gradlew -p android \
+            testDebugUnitTest assembleDebugAndroidTest lintDebug assembleDebug assembleRelease \
+            --no-daemon --stacktrace 2>&1 | tee android-build.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Upload verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-android-build-log
+          path: |
+            android-go-test.log
+            android-build.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce verification gate
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ steps.go.outputs.status }}" != "0" || "${{ steps.gradle.outputs.status }}" != "0" ]]; then
+            echo "Backend or Android verification failed."
+            exit 1
+          fi
+
+      - name: Upload debug APK
+        if: steps.gradle.outputs.status == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload unsigned release APK
+        if: steps.gradle.outputs.status == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-android-release-unsigned
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14

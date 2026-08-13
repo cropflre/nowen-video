@@ -3,7 +3,7 @@ name: Transcode Source Origin Certification
 on:
   push:
     branches:
-      - refactor/server-lite-v1
+      - main
     paths:
       - 'cmd/transcode-source-origin-cert/**'
       - 'internal/service/ffmpeg/**'

@@ -8,9 +8,10 @@ REM
 REM  使用方法：
 REM    scripts\run-server.bat [优先端口]
 REM
-REM  默认启动 Server Lite，默认优先端口 28888。
+REM  默认启动 Nowen Video 正式版，默认优先端口 28888。
 REM  端口冲突时会自动向上寻找空闲端口。
-REM  如需完整服务，可设置 NOWEN_SERVER_MODE=full。
+REM  旧版完整服务仅用于迁移/回滚，可设置 NOWEN_SERVER_MODE=legacy。
+REM  为兼容旧脚本，lite/full 仍作为 official/legacy 的别名接受。
 REM ============================================================
 
 set "SCRIPT_DIR=%~dp0"
@@ -23,14 +24,22 @@ if "%SERVER_PORT%"=="" set "SERVER_PORT=28888"
 REM 是否启用调试模式（true / false）
 if "%NOWEN_DEBUG%"=="" set "NOWEN_DEBUG=true"
 
-REM 服务模式：lite / full
-if "%NOWEN_SERVER_MODE%"=="" set "NOWEN_SERVER_MODE=lite"
-if /I "%NOWEN_SERVER_MODE%"=="lite" (
+REM 服务模式：official / legacy；lite / full 仅为兼容别名。
+if "%NOWEN_SERVER_MODE%"=="" set "NOWEN_SERVER_MODE=official"
+if /I "%NOWEN_SERVER_MODE%"=="official" (
     set "SERVER_ENTRY=./cmd/server-lite"
+    set "SERVER_DISPLAY_MODE=正式版"
+) else if /I "%NOWEN_SERVER_MODE%"=="lite" (
+    set "SERVER_ENTRY=./cmd/server-lite"
+    set "SERVER_DISPLAY_MODE=正式版"
+) else if /I "%NOWEN_SERVER_MODE%"=="legacy" (
+    set "SERVER_ENTRY=./cmd/server"
+    set "SERVER_DISPLAY_MODE=旧版兼容"
 ) else if /I "%NOWEN_SERVER_MODE%"=="full" (
     set "SERVER_ENTRY=./cmd/server"
+    set "SERVER_DISPLAY_MODE=旧版兼容"
 ) else (
-    echo [error] NOWEN_SERVER_MODE 仅支持 lite 或 full，当前值: %NOWEN_SERVER_MODE%
+    echo [error] NOWEN_SERVER_MODE 仅支持 official 或 legacy（兼容别名: lite/full），当前值: %NOWEN_SERVER_MODE%
     exit /b 1
 )
 
@@ -73,7 +82,7 @@ set "CGO_ENABLED=1"
 echo.
 echo ============================================================
 echo  启动 nowen-video 后端服务
-echo  服务模式: %NOWEN_SERVER_MODE%
+echo  服务版本: %SERVER_DISPLAY_MODE%
 echo  启动入口: %SERVER_ENTRY%
 echo  监听端口: %SERVER_PORT%
 echo  应用版本: %NOWEN_VERSION%

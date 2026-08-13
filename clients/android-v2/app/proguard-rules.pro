@@ -1,4 +1,0 @@
--keepattributes *Annotation*
--keep class com.nowen.video.v2.core.model.** { *; }
--keep class kotlinx.serialization.** { *; }
--dontwarn javax.annotation.**
