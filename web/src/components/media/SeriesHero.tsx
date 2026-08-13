@@ -38,7 +38,6 @@ export default function SeriesHero({
 }: SeriesHeroProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
 
   const closeAndRun = (action: () => void) => {
@@ -48,13 +47,13 @@ export default function SeriesHero({
 
   return (
     <section className="relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-[clamp(20rem,42vw,34rem)] overflow-hidden">
         {series.backdrop_path ? (
           <img
             key={`series-backdrop-${series.id}-${posterVersion}`}
             src={streamApi.getSeriesBackdropUrl(series.id, posterVersion)}
             alt=""
-            className={`h-full w-full object-cover transition-[opacity,transform] duration-700 ${imageLoaded ? 'scale-100 opacity-55' : 'scale-[1.02] opacity-0'}`}
+            className={`h-full w-full object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-55' : 'opacity-0'}`}
             onLoad={() => setImageLoaded(true)}
           />
         ) : series.poster_path ? (
@@ -62,90 +61,77 @@ export default function SeriesHero({
             key={`series-backdrop-poster-${series.id}-${posterVersion}`}
             src={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
             alt=""
-            className="h-full w-full scale-110 object-cover opacity-20 blur-2xl"
+            className="h-full w-full scale-105 object-cover opacity-20 blur-2xl"
           />
         ) : null}
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
       </div>
 
-      <div className="relative mx-auto flex min-h-[30rem] max-w-7xl items-end gap-6 px-4 pb-8 pt-24 sm:px-6 lg:px-8">
-        <div className="hidden w-52 shrink-0 overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-strong)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-elevated)] sm:block">
-          {series.poster_path ? (
-            <img
-              key={`series-poster-${series.id}-${posterVersion}`}
-              src={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
-              alt={series.title}
-              className="aspect-[2/3] w-full object-cover"
-              loading="eager"
-            />
-          ) : (
-            <div className="flex aspect-[2/3] items-center justify-center text-[var(--nv-text-tertiary)]">
-              <Tv size={48} aria-hidden="true" />
-            </div>
-          )}
+      <div className="relative mx-auto grid min-h-[clamp(24rem,48vw,39rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[11rem_minmax(0,1fr)] lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+        <div className="hidden sm:block">
+          <div className="aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-poster)] shadow-[var(--nv-shadow-card)]">
+            {series.poster_path ? (
+              <img
+                key={`series-poster-${series.id}-${posterVersion}`}
+                src={streamApi.getSeriesPosterUrl(series.id, posterVersion)}
+                alt={series.title}
+                className="h-full w-full object-cover"
+                loading="eager"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-[var(--nv-text-tertiary)]">
+                <Tv size={32} aria-hidden="true" />
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="min-w-0 flex-1 pb-1">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Tag tone="brand">剧集</Tag>
+        <div className="min-w-0 pb-1">
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <Tag>剧集</Tag>
             {series.rating > 0 && <Tag tone="rating">★ {series.rating.toFixed(1)}</Tag>}
             {series.year > 0 && <Tag>{series.year}</Tag>}
             <Tag>{series.season_count} 季 · {series.episode_count} 集</Tag>
           </div>
 
-          <h1 className="max-w-4xl text-3xl font-bold leading-tight tracking-[-0.025em] text-[var(--nv-text-primary)] sm:text-4xl lg:text-5xl">
+          <h1 className="max-w-[24ch] text-[var(--nv-type-h1)] font-semibold leading-[var(--nv-line-tight)] tracking-[var(--nv-tracking-tight)] text-[var(--nv-text-primary)]">
             {series.title}
           </h1>
           {series.orig_title && series.orig_title !== series.title && (
-            <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">{series.orig_title}</p>
+            <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)]">{series.orig_title}</p>
           )}
 
           {genres.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {genres.slice(0, 4).map((genre) => (
-                <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`} className="no-underline">
-                  <Tag>{genre}</Tag>
-                </Link>
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-[var(--nv-text-tertiary)]">
+              {genres.slice(0, 4).map((genre, index) => (
+                <span key={genre} className="inline-flex items-center gap-2">
+                  {index > 0 && <span aria-hidden="true">·</span>}
+                  <Link to={`/search?q=${encodeURIComponent(genre)}`} className="hover:text-[var(--nv-text-primary)]">{genre}</Link>
+                </span>
               ))}
             </div>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-2.5">
+          <div className="mt-5 flex flex-wrap items-center gap-2">
             {firstEpisode && (
-              <Link to={`/play/${firstEpisode.id}`} className={buttonClassName({ variant: 'primary', size: 'lg' })}>
-                <Play size={19} fill="currentColor" aria-hidden="true" />
+              <Link to={`/play/${firstEpisode.id}`} className={buttonClassName({ variant: 'primary', size: 'lg' })} data-variant="primary" data-size="lg">
+                <Play size={17} fill="currentColor" aria-hidden="true" />
                 播放第一集
               </Link>
             )}
 
-            <Button
-              type="button"
-              variant={isFavorited ? 'primary' : 'secondary'}
-              size="lg"
-              iconOnly
-              onClick={onFavorite}
-              title={isFavorited ? '取消收藏' : '收藏'}
-              aria-label={isFavorited ? '取消收藏' : '收藏'}
-            >
-              <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+            <Button type="button" variant="secondary" size="lg" iconOnly onClick={onFavorite} title={isFavorited ? '取消收藏' : '收藏'} aria-label={isFavorited ? '取消收藏' : '收藏'} aria-pressed={isFavorited}>
+              <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
             </Button>
 
             <div className="relative">
-              <Button
-                type="button"
-                variant="secondary"
-                size="lg"
-                iconOnly
-                onClick={() => setMenuOpen((open) => !open)}
-                aria-label="更多操作"
-                aria-expanded={menuOpen}
-              >
-                <MoreHorizontal size={20} aria-hidden="true" />
+              <Button type="button" variant="ghost" size="lg" iconOnly onClick={() => setMenuOpen((open) => !open)} aria-label="更多操作" aria-expanded={menuOpen}>
+                <MoreHorizontal size={19} aria-hidden="true" />
               </Button>
 
               {menuOpen && (
-                <div className="absolute left-0 top-full z-[var(--nv-z-dropdown)] mt-2 min-w-56 overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-1.5 shadow-[var(--nv-shadow-elevated)]">
+                <div className="nv-menu absolute left-0 top-full z-[var(--nv-z-dropdown)] mt-2 w-56" role="menu">
                   {isAdmin && (
                     <>
                       <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">剧集管理</div>
@@ -170,25 +156,14 @@ export default function SeriesHero({
   )
 }
 
-function MenuItem({
-  icon,
-  label,
-  onClick,
-  disabled = false,
-  danger = false,
-}: {
-  icon: ReactNode
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  danger?: boolean
-}) {
+function MenuItem({ icon, label, onClick, disabled = false, danger = false }: { icon: ReactNode; label: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex w-full items-center gap-2.5 rounded-[var(--nv-radius-control)] px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${danger ? 'text-[var(--nv-status-danger)] hover:bg-[color-mix(in_srgb,var(--nv-status-danger)_10%,transparent)]' : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'}`}
+      className={`nv-menu-item disabled:cursor-not-allowed disabled:opacity-50 ${danger ? '!text-[var(--nv-status-danger)]' : ''}`}
+      role="menuitem"
     >
       {icon}
       <span>{label}</span>
