@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { authApi, userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
-import { Button, Input, PageContainer, Section, Surface, Tag } from '@/components/design-system'
+import { Button, Input, PageContainer, Section, Tag } from '@/components/design-system'
 
 export default function ProfilePage() {
   const { user, setAuth, updateUser, logout } = useAuthStore()
@@ -84,132 +84,126 @@ export default function ProfilePage() {
 
   return (
     <PageContainer className="max-w-3xl">
-      <div className="space-y-8">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[var(--nv-action-primary)]">
-            <User size={17} aria-hidden="true" />
+      <div className="space-y-7">
+        <header className="border-b border-[var(--nv-border-subtle)] pb-5">
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-[var(--nv-text-tertiary)]">
+            <User size={15} aria-hidden="true" />
             {t('profile.title')}
           </div>
-          <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--nv-text-primary)]">{t('profile.title')}</h1>
-          <p className="mt-2 text-sm text-[var(--nv-text-tertiary)]">管理账号身份、登录凭据与会话。</p>
-        </div>
+          <h1 className="text-xl font-semibold tracking-[-0.015em] text-[var(--nv-text-primary)]">{t('profile.title')}</h1>
+          <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">管理账号身份、登录凭据与当前会话。</p>
+        </header>
 
-        <Surface className="p-5 sm:p-6">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[var(--nv-radius-container)] bg-[var(--nv-action-primary)] text-2xl font-bold text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]">
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-xl font-semibold text-[var(--nv-text-primary)]">{user?.username}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Tag tone={user?.role === 'admin' ? 'brand' : 'neutral'}>
-                  <Shield size={12} aria-hidden="true" />
-                  {user?.role === 'admin' ? t('profile.roleAdmin') : t('profile.roleUser')}
-                </Tag>
-                {user?.created_at && (
-                  <span className="text-xs text-[var(--nv-text-tertiary)]">
-                    {t('profile.registeredAt', { date: new Date(user.created_at).toLocaleDateString() })}
-                  </span>
-                )}
-              </div>
+        <section className="flex items-center gap-4 border-b border-[var(--nv-border-subtle)] pb-6">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-active)] text-base font-semibold text-[var(--nv-text-secondary)]">
+            {user?.username?.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold text-[var(--nv-text-primary)]">{user?.username}</h2>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <Tag>
+                <Shield size={11} aria-hidden="true" />
+                {user?.role === 'admin' ? t('profile.roleAdmin') : t('profile.roleUser')}
+              </Tag>
+              {user?.created_at && (
+                <span className="text-[11px] text-[var(--nv-text-tertiary)]">
+                  {t('profile.registeredAt', { date: new Date(user.created_at).toLocaleDateString() })}
+                </span>
+              )}
             </div>
           </div>
-        </Surface>
+        </section>
 
         <Section
           title={t('profile.updateUsername')}
           description={t('profile.usernameHint')}
-          action={<AtSign size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />}
+          action={<AtSign size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />}
         >
-          <Surface className="p-5 sm:p-6">
-            <form onSubmit={handleChangeUsername} className="space-y-4">
-              <FormField label={t('profile.username')} htmlFor="profile-username">
-                <Input
-                  id="profile-username"
-                  type="text"
-                  value={newUsername}
-                  onChange={(event) => setNewUsername(event.target.value)}
-                  placeholder={t('profile.usernamePlaceholder')}
-                  minLength={3}
-                  maxLength={32}
-                  required
-                  autoComplete="username"
-                />
-              </FormField>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
-              >
-                {savingUsername ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
-                {t('profile.saveUsername')}
-              </Button>
-            </form>
-          </Surface>
+          <form onSubmit={handleChangeUsername} className="max-w-lg space-y-3 border-y border-[var(--nv-border-subtle)] py-4">
+            <FormField label={t('profile.username')} htmlFor="profile-username">
+              <Input
+                id="profile-username"
+                type="text"
+                value={newUsername}
+                onChange={(event) => setNewUsername(event.target.value)}
+                placeholder={t('profile.usernamePlaceholder')}
+                minLength={3}
+                maxLength={32}
+                required
+                autoComplete="username"
+              />
+            </FormField>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
+            >
+              {savingUsername ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+              {t('profile.saveUsername')}
+            </Button>
+          </form>
         </Section>
 
         <Section
           title={t('profile.changePassword')}
           description="更新密码后会刷新当前登录会话。"
-          action={<Key size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />}
+          action={<Key size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />}
         >
-          <Surface className="p-5 sm:p-6">
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <FormField label={t('profile.currentPassword')} htmlFor="profile-current-password">
-                <Input
-                  id="profile-current-password"
-                  type="password"
-                  value={oldPassword}
-                  onChange={(event) => setOldPassword(event.target.value)}
-                  placeholder={t('profile.currentPasswordPlaceholder')}
-                  required
-                  autoComplete="current-password"
-                />
-              </FormField>
-              <FormField label={t('profile.newPassword')} htmlFor="profile-new-password">
-                <Input
-                  id="profile-new-password"
-                  type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  placeholder={t('profile.newPasswordPlaceholder')}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </FormField>
-              <FormField label={t('profile.confirmPassword')} htmlFor="profile-confirm-password">
-                <Input
-                  id="profile-confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder={t('profile.confirmPasswordPlaceholder')}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </FormField>
-              <Button type="submit" variant="primary" disabled={changingPwd || !oldPassword || !newPassword}>
-                {changingPwd ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
-                {t('profile.verifyAndChange')}
-              </Button>
-            </form>
-          </Surface>
+          <form onSubmit={handleChangePassword} className="max-w-lg space-y-3 border-y border-[var(--nv-border-subtle)] py-4">
+            <FormField label={t('profile.currentPassword')} htmlFor="profile-current-password">
+              <Input
+                id="profile-current-password"
+                type="password"
+                value={oldPassword}
+                onChange={(event) => setOldPassword(event.target.value)}
+                placeholder={t('profile.currentPasswordPlaceholder')}
+                required
+                autoComplete="current-password"
+              />
+            </FormField>
+            <FormField label={t('profile.newPassword')} htmlFor="profile-new-password">
+              <Input
+                id="profile-new-password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder={t('profile.newPasswordPlaceholder')}
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+            </FormField>
+            <FormField label={t('profile.confirmPassword')} htmlFor="profile-confirm-password">
+              <Input
+                id="profile-confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder={t('profile.confirmPasswordPlaceholder')}
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+            </FormField>
+            <Button type="submit" variant="primary" disabled={changingPwd || !oldPassword || !newPassword}>
+              {changingPwd ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+              {t('profile.verifyAndChange')}
+            </Button>
+          </form>
         </Section>
 
-        <Surface className="p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">{t('profile.logout')}</h3>
-              <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">{t('profile.logoutHint')}</p>
+        <Section title={t('profile.logout')} description={t('profile.logoutHint')}>
+          <div className="flex items-center justify-between gap-4 border-y border-[var(--nv-border-subtle)] py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-[var(--nv-text-primary)]">结束当前会话</div>
+              <p className="mt-0.5 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">退出后需要重新登录才能访问媒体库。</p>
             </div>
             <Button type="button" variant="danger" onClick={handleLogout}>
-              <LogOut size={16} aria-hidden="true" />
+              <LogOut size={15} aria-hidden="true" />
               {t('profile.logout')}
             </Button>
           </div>
-        </Surface>
+        </Section>
       </div>
     </PageContainer>
   )
@@ -218,7 +212,7 @@ export default function ProfilePage() {
 function FormField({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--nv-text-secondary)]">{label}</label>
+      <label htmlFor={htmlFor} className="block text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{label}</label>
       {children}
     </div>
   )
