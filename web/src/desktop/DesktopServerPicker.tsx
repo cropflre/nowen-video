@@ -84,22 +84,22 @@ export default function DesktopServerPicker() {
   if (!need) return null
 
   return (
-    <div className="fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center p-6 backdrop-blur-md" style={{ background: 'var(--nv-bg-overlay)' }}>
+    <div className="fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center bg-[var(--nv-bg-overlay)] p-6">
       <form onSubmit={handleSubmit} className="w-full max-w-[30rem]">
-        <Surface className="border-[var(--nv-border-strong)] bg-[var(--nv-bg-elevated)] p-7 shadow-[var(--nv-shadow-elevated)]">
+        <Surface className="border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-6 shadow-[var(--nv-shadow-elevated)] sm:p-7">
           <div className="mb-5 flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
-              <Server size={20} aria-hidden="true" />
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
+              <Server size={18} aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-[var(--nv-text-primary)]">连接到 nowen-video 服务器</h2>
+              <h2 className="text-lg font-semibold tracking-[-0.015em] text-[var(--nv-text-primary)]">连接到 Nowen Video 服务器</h2>
               <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
-                未检测到可用后端。请填写本机或局域网内运行的 nowen-video 服务器地址（包含协议与端口）。
+                未检测到可用后端。请填写本机或局域网内运行的 Nowen Video 服务器地址（包含协议与端口）。
               </p>
             </div>
           </div>
 
-          <label htmlFor="desktop-server-url" className="mb-1.5 block text-xs font-semibold text-[var(--nv-text-secondary)]">服务器地址</label>
+          <label htmlFor="desktop-server-url" className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">服务器地址</label>
           <Input
             id="desktop-server-url"
             autoFocus
@@ -111,13 +111,13 @@ export default function DesktopServerPicker() {
           />
 
           {error && (
-            <div className="mt-3 rounded-[var(--nv-radius-control)] border px-3 py-2 text-xs text-[var(--nv-status-danger)]" style={{ borderColor: 'color-mix(in srgb, var(--nv-status-danger) 28%, transparent)', background: 'color-mix(in srgb, var(--nv-status-danger) 8%, transparent)' }} role="alert">
+            <div className="mt-3 border-y border-[color-mix(in_srgb,var(--nv-status-danger)_24%,transparent)] py-2 text-xs text-[var(--nv-status-danger)]" role="alert">
               {error}
             </div>
           )}
 
           <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setInput('http://127.0.0.1:8080')}>
+            <Button type="button" variant="ghost" onClick={() => setInput('http://127.0.0.1:8080')}>
               使用本机 8080
             </Button>
             <Button type="submit" variant="primary" loading={submitting} disabled={submitting}>
@@ -126,7 +126,7 @@ export default function DesktopServerPicker() {
             </Button>
           </div>
 
-          <p className="mt-4 text-xs leading-5 text-[var(--nv-text-tertiary)]">保存后会写入本地配置并重新加载页面；之后可在设置中重置服务器地址。</p>
+          <p className="mt-4 border-t border-[var(--nv-border-subtle)] pt-3 text-xs leading-5 text-[var(--nv-text-tertiary)]">保存后会写入本地配置并重新加载页面；之后可在设置中重置服务器地址。</p>
         </Surface>
       </form>
     </div>
