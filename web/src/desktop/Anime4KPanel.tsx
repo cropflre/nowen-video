@@ -4,7 +4,7 @@
  * Anime4K 超分档位选择：off / low / medium / high。
  */
 
-import { CheckCircle2, Zap } from 'lucide-react'
+import { Check, Zap } from 'lucide-react'
 import type { Anime4KLevel } from './bridge'
 
 export type { Anime4KLevel }
@@ -30,52 +30,40 @@ const LEVELS: LevelMeta[] = [
 
 export default function Anime4KPanel({ value, onChange }: Props) {
   return (
-    <div className="min-w-[280px] rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-3 shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+    <div className="min-w-[280px] rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-3 shadow-[var(--nv-player-shadow)]">
       <div className="mb-2 flex items-center gap-2 px-1">
-        <Zap className="h-4 w-4 text-[var(--nv-player-accent)]" aria-hidden="true" />
+        <Zap className="h-4 w-4 text-[var(--nv-player-text-tertiary)]" aria-hidden="true" />
         <span className="text-sm font-semibold text-[var(--nv-player-text-primary)]">Anime4K 超分</span>
         <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--nv-player-text-faint)]">GPU Shader</span>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {LEVELS.map((level) => {
           const active = value === level.key
-          const badgeColor = level.key === 'medium'
-            ? 'var(--nv-player-success)'
-            : level.key === 'high'
-              ? 'var(--nv-player-warning)'
-              : 'var(--nv-player-accent)'
           return (
             <button
               key={level.key}
               type="button"
               onClick={() => onChange(level.key)}
-              className={`flex w-full items-center gap-3 rounded-[var(--nv-player-radius-control)] border px-3 py-2 text-left transition-[background-color,border-color,color] ${active
-                ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)]'
-                : 'border-transparent bg-[var(--nv-player-surface-subtle)] hover:bg-[var(--nv-player-surface-hover)]'}`}
+              className={`flex w-full items-center gap-3 rounded-[var(--nv-player-radius-control)] px-3 py-2 text-left transition-[background-color,color] duration-150 ${active
+                ? 'bg-[var(--nv-player-surface-hover)] text-[var(--nv-player-text-primary)]'
+                : 'text-[var(--nv-player-text-secondary)] hover:bg-[var(--nv-player-surface-subtle)]'}`}
               aria-pressed={active}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--nv-player-text-primary)]">{level.label}</span>
-                  {level.badge && (
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[10px]"
-                      style={{ color: badgeColor, background: `color-mix(in srgb, ${badgeColor} 12%, transparent)` }}
-                    >
-                      {level.badge}
-                    </span>
-                  )}
+                  <span className="text-sm font-medium">{level.label}</span>
+                  {level.badge && <span className="text-[10px] text-[var(--nv-player-text-tertiary)]">{level.badge}</span>}
                 </div>
                 <div className="mt-0.5 truncate text-[11px] text-[var(--nv-player-text-tertiary)]">{level.desc}</div>
               </div>
-              {active && <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--nv-player-accent)]" aria-hidden="true" />}
+              {active && <Check className="h-4 w-4 shrink-0 text-[var(--nv-player-text-primary)]" aria-hidden="true" />}
             </button>
           )
         })}
       </div>
 
-      <div className="mt-2 px-1 text-[10px] leading-relaxed text-[var(--nv-player-text-faint)]">
+      <div className="mt-2 border-t border-[var(--nv-player-border-subtle)] px-1 pt-2 text-[10px] leading-relaxed text-[var(--nv-player-text-faint)]">
         适合动漫和 2D 插画。3D 真人影片建议“关闭”，实时超分对人脸会产生伪影。
       </div>
     </div>

@@ -39,20 +39,22 @@
 
 .nv-admin-panel {
   background: transparent;
-  border: 1px solid var(--nv-border-subtle);
-  border-radius: var(--nv-radius-container);
+  border: 0;
+  border-top: 1px solid var(--nv-border-subtle);
+  border-bottom: 1px solid var(--nv-border-subtle);
+  border-radius: 0;
   box-shadow: none;
 }
 .nv-admin-panel-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--nv-space-3);
-  min-height: 44px;
-  padding: 10px 12px;
+  min-height: 42px;
+  padding: 10px 2px 9px;
   border-bottom: 1px solid var(--nv-border-subtle);
 }
-.nv-admin-panel-body { padding: 12px; }
+.nv-admin-panel-body { padding: 12px 2px; }
 .nv-admin-section-title {
   display: flex;
   align-items: center;
@@ -133,4 +135,6 @@
   .nv-admin-header { align-items: flex-start; }
   .nv-admin-toolbar { width: 100%; }
   .nv-admin-tab { min-height: 32px; padding-inline: 8px; }
+  .nv-admin-panel-header,
+  .nv-admin-panel-body { padding-inline: 0; }
 }

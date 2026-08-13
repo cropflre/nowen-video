@@ -27,6 +27,20 @@ export default function MyPage() {
   const enabledCapabilities = manifest ? Object.entries(capabilityLabels).filter(([name]) => manifest.capabilities[name]?.enabled) : []
   const pendingRestart = manifest ? Object.values(manifest.capabilities).filter((capability) => capability.pending_restart) : []
 
+  const profileLabel = profileLoading
+    ? '检测中'
+    : manifest?.profile === 'lite'
+      ? '正式版'
+      : manifest?.profile === 'full'
+        ? '旧版兼容'
+        : '未知'
+
+  const profileDescription = manifest?.profile === 'lite'
+    ? 'Nowen Video 正式服务端，面向 NAS 与家庭影音场景优化，扩展能力按配置启用。'
+    : manifest?.profile === 'full'
+      ? '旧版兼容运行模式，仅用于迁移、回滚或历史能力验证。'
+      : '查看服务端能力和管理设置。'
+
   return (
     <div className="nv-section-stack">
       <section className="flex items-center gap-3 border-b border-[var(--nv-border-subtle)] pb-5">
@@ -42,7 +56,7 @@ export default function MyPage() {
       <Section title="我的内容">
         <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {entries.map(({ to, title, description, icon: Icon }) => (
-            <Link key={to} to={to} className="group flex min-h-14 items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
+            <Link key={to} to={to} className="group flex min-h-14 items-center gap-3 px-1 py-2.5 transition-colors duration-150 hover:bg-[var(--nv-fill-hover)]">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]"><Icon size={16} aria-hidden="true" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[var(--nv-text-primary)]">{title}</span>
@@ -66,15 +80,15 @@ export default function MyPage() {
 
       {user?.role === 'admin' && (
         <Section title="服务端">
-          <Link to="/admin" className="group flex items-start gap-3 border-y border-[var(--nv-border-subtle)] px-1 py-3 transition-colors hover:bg-[var(--nv-fill-hover)]">
+          <Link to="/admin" className="group flex items-start gap-3 border-y border-[var(--nv-border-subtle)] px-1 py-3 transition-colors duration-150 hover:bg-[var(--nv-fill-hover)]">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]"><Server size={16} aria-hidden="true" /></span>
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="text-sm font-medium text-[var(--nv-text-primary)]">服务端模式</span>
-                <Tag>{profileLoading ? '检测中' : manifest?.profile === 'lite' ? 'Lite' : manifest?.profile === 'full' ? 'Full' : '未知'}</Tag>
+                <Tag>{profileLabel}</Tag>
                 {pendingRestart.length > 0 && <Tag tone="warning">待重启</Tag>}
               </span>
-              <span className="mt-1 block text-[11px] leading-5 text-[var(--nv-text-tertiary)]">查看服务端能力和管理设置。</span>
+              <span className="mt-1 block text-[11px] leading-5 text-[var(--nv-text-tertiary)]">{profileDescription}</span>
               {enabledCapabilities.length > 0 && <span className="mt-2 flex flex-wrap gap-1.5">{enabledCapabilities.map(([name, label]) => <Tag key={name}>{label}</Tag>)}</span>}
             </span>
             <ChevronRight size={15} className="mt-2 shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />

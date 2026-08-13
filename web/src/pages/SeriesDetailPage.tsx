@@ -9,14 +9,12 @@ import SeriesHero from '@/components/media/SeriesHero'
 import SeriesEpisodeBrowser from '@/components/media/SeriesEpisodeBrowser'
 import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
-import { Button, Section, Surface, Tag } from '@/components/design-system'
+import { Button, Section, Tag } from '@/components/design-system'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { MediaPerson, Playlist, SeasonInfo, Series, WatchHistory } from '@/types'
-import { AnimatePresence, motion } from 'framer-motion'
-import { durations, easeSmooth } from '@/lib/motion'
 import { ArrowLeft, ChevronDown, ChevronUp, Database } from 'lucide-react'
 
 export default function SeriesDetailPage() {
@@ -328,30 +326,21 @@ export default function SeriesDetailPage() {
 
   if (loading || !series) {
     return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key="series-skeleton"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: durations.fast }}
-          className="space-y-6"
-        >
-          <div className="skeleton h-[420px] rounded-2xl" />
-          <div className="flex gap-6 pt-4">
-            <div className="skeleton hidden h-72 w-48 rounded-xl sm:block" />
-            <div className="flex-1 space-y-4">
-              <div className="skeleton h-10 w-2/3 rounded-lg" />
-              <div className="skeleton h-5 w-1/3 rounded-lg" />
-              <div className="flex gap-3">
-                <div className="skeleton h-12 w-28 rounded-xl" />
-                <div className="skeleton h-12 w-24 rounded-xl" />
-              </div>
-              <div className="skeleton h-20 w-full rounded-xl" />
+      <div className="space-y-6" aria-label="剧集详情加载中">
+        <div className="skeleton h-[420px] rounded-[var(--nv-radius-hero)]" />
+        <div className="mx-auto flex w-full max-w-[var(--nv-content-max)] gap-6 px-[var(--nv-page-gutter)] pt-4">
+          <div className="skeleton hidden h-72 w-48 rounded-[var(--nv-radius-card)] sm:block" />
+          <div className="flex-1 space-y-4">
+            <div className="skeleton h-10 w-2/3 rounded-[var(--nv-radius-control)]" />
+            <div className="skeleton h-5 w-1/3 rounded-[var(--nv-radius-control)]" />
+            <div className="flex gap-3">
+              <div className="skeleton h-10 w-28 rounded-[var(--nv-radius-control)]" />
+              <div className="skeleton h-10 w-24 rounded-[var(--nv-radius-control)]" />
             </div>
+            <div className="skeleton h-20 w-full rounded-[var(--nv-radius-control)]" />
           </div>
-        </motion.div>
-      </AnimatePresence>
+        </div>
+      </div>
     )
   }
 
@@ -360,19 +349,14 @@ export default function SeriesDetailPage() {
   const hasSources = series.tmdb_id > 0 || Boolean(series.douban_id) || series.bangumi_id > 0
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
-      className="relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
-    >
+    <div className="relative">
       <Button
         type="button"
-        variant="secondary"
+        variant="ghost"
         size="sm"
         iconOnly
         onClick={handleBack}
-        className="absolute left-4 top-4 z-30 bg-[color-mix(in_srgb,var(--nv-bg-elevated)_80%,transparent)] backdrop-blur-md"
+        className="absolute left-[var(--nv-page-gutter)] top-4 z-30 border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-text-secondary)] shadow-[var(--nv-shadow-card)]"
         aria-label="返回"
         title="返回"
       >
@@ -395,32 +379,30 @@ export default function SeriesDetailPage() {
         onShare={handleShare}
       />
 
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[var(--nv-content-max)] space-y-8 px-[var(--nv-page-gutter)] py-8">
         {series.overview && (
           <Section title="剧情简介">
-            <Surface className="p-5 sm:p-6">
-              <div className="relative">
-                <p className={`text-sm leading-7 text-[var(--nv-text-secondary)] ${!overviewExpanded && isLongOverview ? 'line-clamp-3' : ''}`}>
-                  {series.overview}
-                </p>
-              </div>
+            <div className="border-y border-[var(--nv-border-subtle)] py-4">
+              <p className={`text-sm leading-7 text-[var(--nv-text-secondary)] ${!overviewExpanded && isLongOverview ? 'line-clamp-3' : ''}`}>
+                {series.overview}
+              </p>
               {isLongOverview && (
-                <Button type="button" variant="ghost" size="sm" className="mt-3" onClick={() => setOverviewExpanded((expanded) => !expanded)}>
-                  {overviewExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                <Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => setOverviewExpanded((expanded) => !expanded)}>
+                  {overviewExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
                   {overviewExpanded ? '收起' : '展开全部'}
                 </Button>
               )}
-            </Surface>
+            </div>
           </Section>
         )}
 
         {(genres.length > 0 || hasSources) && (
           <Section title="类型与来源">
-            <Surface className="space-y-5 p-5 sm:p-6">
+            <div className="grid gap-5 border-y border-[var(--nv-border-subtle)] py-4 sm:grid-cols-2">
               {genres.length > 0 && (
                 <div>
-                  <div className="mb-2 text-xs font-medium uppercase tracking-[0.08em] text-[var(--nv-text-tertiary)]">类型</div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--nv-text-tertiary)]">类型</div>
+                  <div className="flex flex-wrap gap-1.5">
                     {genres.map((genre) => (
                       <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`} className="no-underline">
                         <Tag>{genre}</Tag>
@@ -432,11 +414,11 @@ export default function SeriesDetailPage() {
 
               {hasSources && (
                 <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.08em] text-[var(--nv-text-tertiary)]">
-                    <Database size={13} aria-hidden="true" />
+                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--nv-text-tertiary)]">
+                    <Database size={12} aria-hidden="true" />
                     数据来源
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {series.tmdb_id > 0 && (
                       <a href={`https://www.themoviedb.org/tv/${series.tmdb_id}`} target="_blank" rel="noopener noreferrer" className="no-underline">
                         <Tag tone="brand">TMDb #{series.tmdb_id}</Tag>
@@ -455,7 +437,7 @@ export default function SeriesDetailPage() {
                   </div>
                 </div>
               )}
-            </Surface>
+            </div>
           </Section>
         )}
 
@@ -543,6 +525,6 @@ export default function SeriesDetailPage() {
           tone="danger"
         />
       )}
-    </motion.div>
+    </div>
   )
 }
