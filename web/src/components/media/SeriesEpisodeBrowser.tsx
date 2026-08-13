@@ -48,103 +48,287 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
   }, [activeSeasonData?.episodes, needsPagination, pagination.page, pagination.size])
 
   if (seasons.length === 0) {
-    return <EmptyState title="æš‚æ ¥èŠé›†" description="å½“å‰å‰§é›†ä¸šæ¨y§"ycëù¦/¹é.¹k§º`i¹fï¹cexà ˆˆÛ\ÜÓ˜[YOH›Z[‹ZMLˆˆÏ‚ˆB‚ˆ™]\›ˆ
-ˆÙXİ[ÛˆÛ\ÜÓ˜[YOHœÜXÙK^KMH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^XÛÛØ\LÈ›Ü™\‹Xˆ›Ü™\‹Vİ˜\ŠK[‹X›Ü™\‹\İXJWH‹LÈÛN™›^\›İÈÛNš][\ËXÙ[\ˆÛNš\İYKX™]ÙY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LHˆ›ÛOHX›\İˆ\šXK[X™[H¹biºfáº)áº/æ‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[^İšY]Ó[ÙHOOH	ÜÙX\ÛÛ‰ÈÈ	ÜÙXÛÛ™\IÈˆ	ÙÚÜİ	ßHÚ^™OHœÛHˆÛÛXÚÏ^Ê
-HOˆÙ]šY]Ó[ÙJ	ÜÙX\ÛÛ‰Ê_O¹khú)á¹fïĞ]Û‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[^İšY]Ó[ÙHOOH	Ø[	ÈÈ	ÜÙXÛÛ™\IÈˆ	ÙÚÜİ	ßHÚ^™OHœÛHˆÛÛXÚÏ^Ê
-HOˆÙ]šY]Ó[ÙJ	Ø[	Ê_O¹aj:`ê9biºfáĞ]Û‚ˆÙ]‚‚ˆİšY]Ó[ÙHOOH	ÜÙX\ÛÛ‰È	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LHˆ›ÛOH™Ü›İ\ˆ\šXK[X™[H¹biúfá¹leyé.¹b!¹o#È‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[^Ù\Ü^S[ÙHOOH	ÜÛYIÈÈ	ÜÙXÛÛ™\IÈˆ	ÙÚÜİ	ßHÚ^™OHœÛHˆXÛÛ“Û›HÛÛXÚÏ^Ê
-HOˆÙ]\Ü^S[ÙJ	ÜÛYIÊ_H\šXK[X™[H¹nnùé£ùâaù¨(yo#Èˆ]OH¹nnùé£ùâaù¨(yo#È‚ˆØ[\RÜš^›Û[Ú^™O^ÌM_H\šXKZY[HYHˆÏ‚ˆĞ]Û‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[^Ù\Ü^S[ÙHOOH	Û\İ	ÈÈ	ÜÙXÛÛ™\IÈˆ	ÙÚÜİ	ßHÚ^™OHœÛHˆXÛÛ“Û›HÛÛXÚÏ^Ê
-HOˆÙ]\Ü^S[ÙJ	Û\İ	Ê_H\šXK[X™[H¹b!yï%º/®ùo#Èˆ]OH¹b!yï%º/®ùo#È‚ˆ^[İ]\İÚ^™O^ÌM_H\šXKZY[HYHˆÏ‚ˆĞ]Û‚ˆÙ]‚ˆ
-_BˆÙ]‚ˆİšY]Ó[ÙHOOH	ÜÙX\ÛÛ‰ÈÈ
-ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KMH‚ˆÜÙX\ÛÛœË›[™İˆH	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\Ø\LKH‚ˆÜÙX\ÛÛœË›X\
+    return <EmptyState title="æš‚æ— å‰§é›†" description="å½“å‰å‰§é›†è¿˜æ²¡æœ‰å¯å±•ç¤ºçš„å­£æˆ–å•é›†ã€‚" className="min-h-52" />
+  }
 
-ÙX\ÛÛŠHOˆÂˆÛÛœİXİ]™HHXİ]™TÙX\ÛÛˆOOHÙX\ÛÛ‹œÙX\ÛÛ—Û[Bˆ™]\›ˆ
-ˆ]Û‚ˆÙ^O^ÜÙX\ÛÛ‹œÙX\ÛÛ—Û[_Bˆ\OH˜]Ûˆ‚ˆÛÛXÚÏ^Ê
-HOˆÙ]Xİ]™TÙX\ÛÛŠÙX\ÛÛ‹œÙX\ÛÛ—Û[J_BˆÛ\ÜÓ˜[YO^Ø›İ[™YVİ˜\ŠK[‹\˜Y]\ËXÛÛ›Û
-WHLÈKLKH^VÌLÜH›Û[YY][H˜[œÚ][Û‹XÛÛÜœÈ\˜][Û‹LML	ØXİ]™HÈ	Ø™ËVİ˜\ŠK[‹Yš[XXİ]™JWH^Vİ˜\ŠK[‹]^\š[X\JWIÈˆ	İ^Vİ˜\ŠK[‹]^]\X\JWHİ™\˜™ËVİ˜\ŠK[‹Yš[Zİ™\ŠWHİ™\^Vİ˜\ŠK[‹]^\ÙXÛÛ™\JWIßXBˆ\šXK\™\ÜÙY^ØXİ]™_Bˆ‚ˆÜÙX\ÛÛ“X™[
-ÙX\ÛÛ‹œÙX\ÛÛ—Û[J_BˆÜ[ˆÛ\ÜÓ˜[YOH›[LKH^VÌL\HÜXÚ]KMHÜÙX\ÛÛ‹™\\ÛÙWØÛİ[H:fáSÜÜ[‚ˆØ]Û‚ˆ
-BˆJ_BˆÙ]‚ˆ
-_B‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆØ\LÈ‚ˆ]‚ˆˆÛ\ÜÓ˜[YOH^X˜\ÙH›Û\Ù[ZX›Û^Vİ˜\ŠK[‹]^\š[X\JWHÜÙX\ÛÛ“X™[
-Xİ]™TÙX\ÛÛŠ_OÚ‚ˆÛ\ÜÓ˜[YOH›]LH^^È^Vİ˜\ŠK[‹]^]\X\JWH¹alHØXİ]™TÙX\ÛÛ‘]OË™\\ÛÙWØÛİ[H:fáÜ‚ˆÙ]‚ˆÙ]‚‚ˆÙ\Ü^S[ÙHOOH	ÜÛYIÈÈ
-ˆ\\ÛÙTÛY\‚ˆ\\ÛÙ\Ï^ÜYÙY\\ÛÙ\ßBˆÙ\šY\Õ]O^ÜÙ\šY\Õ]_Bˆ\İÜSX\^Ú\İÜSX\BˆÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸBˆÏ‚ˆ
-Hˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYKVİ˜\ŠK[‹X›Ü™\‹\İXJWH›Ü™\‹^H›Ü™\‹Vİ˜\ŠK[‹X›Ü™\‹\İXJWH‚ˆÜYÙY\\ÛÙ\Ë›X\
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2" role="tablist" aria-label="å‰§é›†è§†å›¾">
+          <Button type="button" variant={viewMode === 'season' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('season')}>å­£è§†å›¾</Button>
+          <Button type="button" variant={viewMode === 'all' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('all')}>å…¨éƒ¨å‰§é›†</Button>
+        </div>
 
-\\ÛÙJHOˆ
-ˆ\\ÛÙS\İØ\™Ù^O^Ù\\ÛÙKšYH\\ÛÙO^Ù\\ÛÙ_HÙ\šY\Õ]O^ÜÙ\šY\Õ]_H\İÜT™XÛÜ™^Ú\İÜSX\Ù\\ÛÙKšY_HÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸHÏ‚ˆ
-J_BˆÙ]‚ˆ
-J_B‚ˆÛ™YYÔYÚ[˜][Ûˆ	‰ˆXİ]™TÙX\ÛÛ‘]H	‰ˆ
-ˆYÚ[˜][Û‚ˆYÙO^ÜYÚ[˜][Û‹œYÙ_Bˆİ[YÙ\Ï^ÜYÚ[˜][Û‹İ[YÙ\ÊXİ]™TÙX\ÛÛ‘]K™\\ÛÙ\Ë›[™İ
-_Bˆİ[^ØXİ]™TÙX\ÛÛ‘]K™\\ÛÙ\Ë›[™İBˆYÙTÚ^™O^ÜYÚ[˜][Û‹œÚ^™_BˆYÙTÚ^™SÜ[ÛœÏ^ÖÌŒLLŒ_BˆÛ”YÙPÚ[™ÙO^ÜYÚ[˜][Û‹œÙ]YÙ_BˆÛ”YÙTÚ^™PÚ[™ÙO^ÜYÚ[˜][Û‹œÙ]Ú^™_BˆÏ‚ˆ
-_BˆÙ]‚ˆ
-Hˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KN‚ˆÜÙX\ÛÛœË›X\
+        {viewMode === 'season' && (
+          <div className="flex items-center gap-1 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-1">
+            <Button type="button" variant={displayMode === 'slide' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('slide')} aria-label="å¹»ç¯ç‰‡æ¨¡å¼" title="å¹»ç¯ç‰‡æ¨¡å¼">
+              <GalleryHorizontal size={15} aria-hidden="true" />
+            </Button>
+            <Button type="button" variant={displayMode === 'list' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('list')} aria-label="åˆ—è¡¨æ¨¡å¼" title="åˆ—è¡¨æ¨¡å¼">
+              <LayoutList size={15} aria-hidden="true" />
+            </Button>
+          </div>
+        )}
+      </div>
 
-ÙX\ÛÛŠHOˆ
-ˆÙXİ[ÛˆÙ^O^ÜÙX\ÛÛ‹œÙX\ÛÛ—Û[_HÛ\ÜÓ˜[YOHœÜXÙK^KLÈ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËX˜\Ù[[™HØ\Lˆ‚ˆˆÛ\ÜÓ˜[YOH^X˜\ÙH›Û\Ù[ZX›Û^Vİ˜\ŠK[‹]^\š[X\JWHÜÙX\ÛÛ“X™[
-ÙX\ÛÛ‹œÙX\ÛÛ—Û[J_OÚ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^^È^Vİ˜\ŠK[‹]^]\X\JWHÜÙX\ÛÛ‹™\\ÛÙWØÛİ[H:fáÜÜ[‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™]šYK^H]šYKVİ˜\ŠK[‹X›Ü™\‹\İXJWH›Ü™\‹^H›Ü™\‹Vİ˜\ŠK[‹X›Ü™\‹\İXJWH‚ˆÜÙX\ÛÛ‹™\\ÛÙ\Ë›X\
+      {viewMode === 'season' ? (
+        <div className="space-y-5">
+          {seasons.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {seasons.map((season) => {
+                const active = activeSeason === season.season_num
+                return (
+                  <button
+                    key={season.season_num}
+                    type="button"
+                    onClick={() => setActiveSeason(season.season_num)}
+                    className={`rounded-[var(--nv-radius-control)] border px-3.5 py-2 text-sm font-medium transition-colors ${active ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]'}`}
+                    aria-pressed={active}
+                  >
+                    {seasonLabel(season.season_num)}
+                    <span className="ml-1.5 text-xs opacity-70">{season.episode_count} é›†</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
-\\ÛÙJHOˆ
-ˆ\\ÛÙS\İØ\™Ù^O^Ù\\ÛÙKšYH\\ÛÙO^Ù\\ÛÙ_HÙ\šY\Õ]O^ÜÙ\šY\Õ]_H\İÜT™XÛÜ™^Ú\İÜSX\Ù\\ÛÙKšY_HÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸHÏ‚ˆ
-J_BˆÙ]‚ˆÜÙXİ[Û‚ˆ
-J_BˆÙ]‚ˆ
-_BˆÜÙXİ[Û‚ˆ
-BŸB‚™[˜İ[Ûˆ\\ÛÙTÛY\ŠÂˆ\\ÛÙ\ËˆÙ\šY\Õ]Kˆ\İÜSX\ˆÜİ\•™\œÚ[Û‹ŸNˆÂˆ\\ÛÙ\ÎˆYYXV×BˆÙ\šY\Õ]Nˆİš[™Âˆ\İÜSX\ˆ™XÛÜ™İš[™ËØ]Ú\İÜO‚ˆÜİ\•™\œÚ[Ûˆ[X™\‚ŸJHÂˆÛÛœİÛY\”™YˆH\ÙT™YS]‘[[Y[Š[
-BˆÛÛœİØÜ›ÛHH
-Yˆ[X™\ŠHOˆÛY\”™Y‹˜İ\œ™[ËœØÜ›ÛJÈY™Z]š[Üˆ	ÜÛ[Ûİ	ÈJB‚ˆYˆ
-\\ÛÙ\Ë›[™İOOH
-HÂˆ™]\›ˆ[\Tİ]H]OH¹¦`¹¥è9cezfáˆˆ\ØÜš\[ÛHº/æy. 9khù¦`¹¥í¹¬¨y§"ycëù¦/¹é.¹æ¡9cezfá¸à ˆˆÛ\ÜÓ˜[YOH›Z[‹ZMˆÏ‚ˆB‚ˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™Ü›İ\ÜÙ\šY\Ë\ÛY\ˆ™[]]™H‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆXÛÛ“Û›HÛÛXÚÏ^Ê
-HOˆØÜ›ÛJLÍŒ
-_HÛ\ÜÓ˜[YOH˜XœÛÛ]H[YLˆÜVÌÌ	WH‹LL]˜[œÛ]K^KLKÌˆÜXÚ]KLÚYİËVİ˜\ŠK[‹\ÚYİËXØ\™
-WH˜[œÚ][Û‹[ÜXÚ]H\˜][Û‹LMLÜ›İ\Zİ™\‹ÜÙ\šY\Ë\ÛY\›ÜXÚ]KLLˆ\šXK[X™[H¹d$ymé¹®æ¹bª‚ˆÚ]œ›Û“YÚ^™O^ÌMŸH\šXKZY[HYHˆÏ‚ˆĞ]Û‚‚ˆ]ˆ™Y^ÜÛY\”™YŸHÛ\ÜÓ˜[YOH™›^Û˜\^Û˜\[X[™]ÜHØ\Mİ™\™›İË^X]]È‹LˆØÜ›Û˜\‹ZY[ˆˆİ[O^ŞÈØÜ›Û˜\•ÚYˆ	Û›Û™IÈ_O‚ˆÙ\\ÛÙ\Ë›X\
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">{seasonLabel(activeSeason)}</h2>
+              <p className="mt-0.5 text-xs text-[var(--nv-text-tertiary)]">å…± {activeSeasonData?.episode_count || 0} é›†</p>
+            </div>
+          </div>
 
-\\ÛÙJHOˆ
-ˆ\\ÛÙTÛYPØ\™Ù^O^Ù\\ÛÙKšYH\\ÛÙO^Ù\\ÛÙ_HÙ\šY\Õ]O^ÜÙ\šY\Õ]_H\İÜT™XÛÜ™^Ú\İÜSX\Ù\\ÛÙKšY_HÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸHÏ‚ˆ
-J_BˆÙ]‚‚ˆ]Ûˆ\OH˜]Ûˆˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆXÛÛ“Û›HÛÛXÚÏ^Ê
-HOˆØÜ›ÛJÍŒ
-_HÛ\ÜÓ˜[YOH˜XœÛÛ]H\šYÚLˆÜVÌÌ	WH‹LL]˜[œÛ]K^KLKÌˆÜXÚ]KLÚYİËVİ˜\ŠK[‹\ÚYİËXØ\™
-WH˜[œÚ][Û‹[ÜXÚ]H\˜][Û‹LMLÜ›İ\Zİ™\‹ÜÙ\šY\Ë\ÛY\›ÜXÚ]KLLˆ\šXK[X™[H¹d$ycì9®æ¹bª‚ˆÚ]œ›Û”šYÚÚ^™O^ÌMŸH\šXKZY[HYHˆÏ‚ˆĞ]Û‚ˆÙ]‚ˆ
-BŸB‚™[˜İ[Ûˆ\\ÛÙS\İØ\™
-Âˆ\\ÛÙKˆÙ\šY\Õ]Kˆ\İÜT™XÛÜ™ˆÜİ\•™\œÚ[Û‹ŸNˆÂˆ\\ÛÙNˆYYXBˆÙ\šY\Õ]Nˆİš[™Âˆ\İÜT™XÛÜ™ÎˆØ]Ú\İÜBˆÜİ\•™\œÚ[Ûˆ[X™\‚ŸJHÂˆÛÛœİİ]\ÈHÙ]Ø]Úİ]\Ê\İÜT™XÛÜ™
-B‚ˆ™]\›ˆ
-ˆ[šÂˆÏ^ØÛYYXKÉÙ\\ÛÙKšYXBˆÛ\ÜÓ˜[YOH™Ü›İ\›^][\ËXÙ[\ˆØ\LÈLHKLÈ˜[œÚ][Û‹XÛÛÜœÈ\˜][Û‹LMLİ™\˜™ËVİ˜\ŠK[‹Yš[Zİ™\ŠWH‚ˆ‚ˆ\\ÛÙU[Xˆ\\ÛÙO^Ù\\ÛÙ_Hİ]\Ï^Üİ]\ßHÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸHÛ\ÜÓ˜[YOHšLMˆËL›İ[™YVİ˜\ŠK[‹\˜Y]\ËXÛÛ›Û
-WHˆÏ‚‚ˆ]ˆÛ\ÜÓ˜[YOH›Z[‹]ËL›^LH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ‚ˆYÏ”ŞÜY
-\\ÛÙKœÙX\ÛÛ—Û[J_Q^ÜY
-\\ÛÙK™\\ÛÙWÛ[J_OÕYÏ‚ˆÈÛ\ÜÓ˜[YO^ØZ[‹]ËL›^LH[˜Ø]H^\ÛH›Û[YY][H	Üİ]\ËØ]ÚYÈ	İ^Vİ˜\ŠK[‹]^]\X\JWIÈˆ	İ^Vİ˜\ŠK[‹]^\š[X\JWIßXO‚ˆÙ\\ÛÙU]J\\ÛÙKÙ\šY\Õ]J_BˆÚÏ‚ˆÜİ]\ËØ]ÚY	‰ˆYÈÛ™OHœİXØÙ\ÜÈ¹mì¹ç"ÏÕYÏŸBˆÙ]‚‚ˆ]ˆÛ\ÜÓ˜[YOH›]LKH›^›^]Ü˜\][\ËXÙ[\ˆØ\Lˆ^^È^Vİ˜\ŠK[‹]^]\X\JWH‚ˆÙ\\ÛÙK™\˜][Ûˆˆ	‰ˆÜ[ˆÛ\ÜÓ˜[YOHš[›[™KY›^][\ËXÙ[\ˆØ\LHÛØÚÈÚ^™O^ÌLŸH\šXKZY[HYHˆÏÙ›Ü›X]\˜][ÛŠ\\ÛÙK™\˜][ÛŠ_OÜÜ[ŸBˆÈ\İ]\ËØ]ÚY	‰ˆİ]\Ëœ›ÙÜ™\ÜÈˆ	‰ˆÜ[Üİ]\Ëœ›ÙÜ™\ÜßIOÜÜ[ŸBˆÙ\\ÛÙKœ™\ÛÛ][Ûˆ	‰ˆYÈÛ™OHœ]X[]HÙ\\ÛÙKœ™\ÛÛ][ÛŸOÕYÏŸBˆÙ\\ÛÙKšY[×ØÛÙXÈ	‰ˆYÏÙ\\ÛÙKšY[×ØÛÙXßOÕYÏŸBˆÙ]‚‚ˆÙ\\ÛÙK›İ™\šY]È	‰ˆÛ\ÜÓ˜[YOH›]LKH[™KXÛ[\Lˆ^^ÈXY[™ËMH^Vİ˜\ŠK[‹]^]\X\JWHÙ\\ÛÙK›İ™\šY]ßOÜŸBˆÙ]‚‚ˆÚ]œ›Û”šYÚÚ^™O^ÌMŸHÛ\ÜÓ˜[YOHœÚš[šËL^Vİ˜\ŠK[‹]^]\X\JWH˜[œÚ][Û‹VØÛÛÜ‹˜[œÙ›Ü›WH\˜][Û‹LMLÜ›İ\Zİ™\˜[œÛ]K^LHÜ›İ\Zİ™\^Vİ˜\ŠK[‹]^\ÙXÛÛ™\JWHˆ\šXKZY[HYHˆÏ‚ˆÓ[šÏ‚ˆ
-BŸB‚™[˜İ[Ûˆ\\ÛÙTÛYPØ\™
-Âˆ\\ÛÙKˆÙ\šY\Õ]Kˆ\İÜT™XÛÜ™ˆÜİ\•™\œÚ[Û‹ŸNˆÂˆ\\ÛÙNˆYYXBˆÙ\šY\Õ]Nˆİš[™Âˆ\İÜT™XÛÜ™ÎˆØ]Ú\İÜBˆÜİ\•™\œÚ[Ûˆ[X™\‚ŸJHÂˆÛÛœİİ]\ÈHÙ]Ø]Úİ]\Ê\İÜT™XÛÜ™
-B‚ˆ™]\›ˆ
-ˆ[šÂˆÏ^ØÛYYXKÉÙ\\ÛÙKšYXBˆÛ\ÜÓ˜[YOH™Ü›İ\ËVÌLË\™[WHÚš[šËLÛ˜\\İ\˜[œÚ][Û‹]˜[œÙ›Ü›H\˜][Û‹LMLİ™\‹]˜[œÛ]K^KLH‚ˆ‚ˆ\\ÛÙU[Xˆ\\ÛÙO^Ù\\ÛÙ_Hİ]\Ï^Üİ]\ßHÜİ\•™\œÚ[Û^ÜÜİ\•™\œÚ[ÛŸHÛ\ÜÓ˜[YOH˜\ÜXİ]šY[ÈËY[›İ[™YVİ˜\ŠK[‹\˜Y]\ËXØ\™
-WHÚYİËVİ˜\ŠK[‹\ÚYİËXØ\™
-WHÜ›İ\Zİ™\œÚYİËVİ˜\ŠK[‹\ÚYİËXØ\™Zİ™\ŠWHˆÚİÑ\\ÛÙSX™[Ï‚‚ˆ]ˆÛ\ÜÓ˜[YOHœLHL‹H‚ˆÈÛ\ÜÓ˜[YO^Ø[˜Ø]H^\ÛH›Û[YY][H	Üİ]\ËØ]ÚYÈ	İ^Vİ˜\ŠK[‹]^]\X\JWIÈˆ	İ^Vİ˜\ŠK[‹]^\š[X\JWIßXO‚ˆÙ\\ÛÙU]J\\ÛÙKÙ\šY\Õ]J_BˆÚÏ‚ˆ]ˆÛ\ÜÓ˜[YOH›]LKH›^›^]Ü˜\][\ËXÙ[\ˆØ\LKH^^È^Vİ˜\ŠK[‹]^]\X\JWH‚ˆÜİ]\ËØ]ÚYÈÜ[¹mì¹ç"ÏÜÜ[ˆˆİ]\Ëœ›ÙÜ™\ÜÈˆÈÜ[Üİ]\Ëœ›ÙÜ™\ÜßIOÜÜ[ˆˆ[BˆÙ\\ÛÙKœ™\ÛÛ][Ûˆ	‰ˆYÈÛ™OHœ]X[]HÙ\\ÛÙKœ™\ÛÛ][ÛŸOÕYÏŸBˆÙ\\ÛÙK™\˜][Ûˆˆ	‰ˆÜ[Ù›Ü›X]\˜][ÛŠ\\ÛÙK™\˜][ÛŠ_OÜÜ[ŸBˆÙ]‚ˆÙ\\ÛÙK›İ™\šY]È	‰ˆÛ\ÜÓ˜[YOH›]LKH[™KXÛ[\Lˆ^VÌL\HXY[™ËMH^Vİ˜\ŠK[‹]^]\X\JWHÙ\\ÛÙK›İ™\šY]ßOÜŸBˆÙ]‚ˆÓ[šÏ‚ˆ
-BŸB‚™[˜İ[Ûˆ\\ÛÙU[XŠÂˆ\\ÛÙKˆİ]\ËˆÜİ\•™\œÚ[Û‹ˆÛ\ÜÓ˜[YKˆÚİÑ\\ÛÙSX™[H˜[ÙKŸNˆÂˆ\\ÛÙNˆYYXBˆİ]\ÎˆÈØ]ÚYˆ›ÛÛX[È›ÙÜ™\ÜÎˆ[X™\ˆBˆÜİ\•™\œÚ[Ûˆ[X™\‚ˆÛ\ÜÓ˜[YNˆİš[™ÂˆÚİÑ\\ÛÙSX™[Îˆ›ÛÛX[‚ŸJHÂˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YO^Ø™[]]™HÚš[šËLİ™\™›İËZY[ˆ™ËVİ˜\ŠK[‹X™Ë\İ\™˜XÙK\ÛÙ
-WH	ØÛ\ÜÓ˜[Y_XO‚ˆÙ\\ÛÙKœÜİ\—Ü]È
-ˆ[YÈÜ˜Ï^Üİ™X[P\K™Ù]Üİ\•\›
-\\ÛÙKšYÜİ\•™\œÚ[ÛŠ_H[^Ù\\ÛÙK]_HÛ\ÜÓ˜[YOHšY[ËY[Øš™XİXÛİ™\ˆˆÏ‚ˆ
-Hˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^Y[ËY[][\ËXÙ[\ˆ\İYKXÙ[\ˆ^Vİ˜\ŠK[‹]^]\X\JWH^HÚ^™O^ÌŒŸH\šXKZY[HYHˆÏÙ]‚ˆ
-_B‚ˆ]ˆÛ\ÜÓ˜[YOH˜XœÛÛ]H[œÙ]L›^][\ËXÙ[\ˆ\İYKXÙ[\ˆ™ËX›XÚËÌÌÜXÚ]KL˜[œÚ][Û‹[ÜXÚ]H\˜][Û‹LMLÜ›İ\Zİ™\›ÜXÚ]KLL‚ˆ]ˆÛ\ÜÓ˜[YOH™›^NHËNH][\ËXÙ[\ˆ\İYKXÙ[\ˆ›İ[™YY[™Ë]Ú]KÎL^X›XÚÈÚYİËVİ˜\ŠK[‹\ÚYİËXØ\™
-WH‚ˆ^HÚ^™O^ÌM_Hš[H˜İ\œ™[ÛÛÜˆˆÛ\ÜÓ˜[YOH›[LHˆ\šXKZY[HYHˆÏ‚ˆÙ]‚ˆÙ]‚‚ˆÜÚİÑ\\ÛÙSX™[	‰ˆ]ˆÛ\ÜÓ˜[YOH˜XœÛÛ]HYLˆÜLˆYÏ‘^ÜY
-\\ÛÙK™\\ÛÙWÛ[J_OÕYÏÙ]ŸB‚ˆÜİ]\ËØ]ÚY	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH˜XœÛÛ]HšYÚLˆÜLˆÜšYMˆËMˆXÙKZ][\ËXÙ[\ˆ›İ[™YY[™ËX›XÚËÍH^]Ú]H‚ˆÚXÚÈÚ^™O^ÌLßH\šXKZY[HYHˆÏ‚ˆÙ]‚ˆ
-_B‚ˆÈ\İ]\ËØ]ÚY	‰ˆİ]\Ëœ›ÙÜ™\ÜÈˆ	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH˜XœÛÛ]H[œÙ]^L›İÛKLLH™ËX›XÚËÌÍH‚ˆ]ˆÛ\ÜÓ˜[YOHšY[™Ë]Ú]KÎˆİ[O^ŞÈÚYˆ	Üİ]\Ëœ›ÙÜ™\ÜßIX_HÏ‚ˆÙ]‚ˆ
-_BˆÙ]‚ˆ
-BŸB‚™[˜İ[ÛˆÙ]Ø]Úİ]\Ê\İÜT™XÛÜ™ÎˆØ]Ú\İÜJHÂˆYˆ
-Z\İÜT™XÛÜ™
-H™]\›ˆÈØ]ÚYˆ˜[ÙK›ÙÜ™\ÜÎˆBˆ™]\›ˆÂˆØ]ÚYˆ\İÜT™XÛÜ™˜ÛÛ\]Y
-\İÜT™XÛÜ™™\˜][Ûˆˆ	‰ˆ\İÜT™XÛÜ™œÜÚ][ÛˆÚ\İÜT™XÛÜ™™\˜][ÛˆˆJKˆ›ÙÜ™\ÜÎˆ\İÜT™XÛÜ™™\˜][ÛˆˆÈX]œ›İ[™
+          {displayMode === 'slide' ? (
+            <EpisodeSlider
+              episodes={pagedEpisodes}
+              seriesTitle={seriesTitle}
+              historyMap={historyMap}
+              posterVersion={posterVersion}
+            />
+          ) : (
+            <div className="space-y-2">
+              {pagedEpisodes.map((episode) => (
+                <EpisodeListCard key={episode.id} episode={episode} seriesTitle={seriesTitle} historyRecord={historyMap[episode.id]} posterVersion={posterVersion} />
+              ))}
+            </div>
+          )}
 
-\İÜT™XÛÜ™œÜÚ][ÛˆÈ\İÜT™XÛÜ™™\˜][ÛŠH
-ˆL
-HˆˆBŸB‚™[˜İ[ÛˆÙX\ÛÛ“X™[
-ÙX\ÛÛ“[X™\ˆ[X™\ŠHÂˆ™]\›ˆÙX\ÛÛ“[X™\ˆOOHÈ	ùânyb*ùëáÂHˆ9ë+	ÜÙX\ÛÛ“[X™\ŸH9khØŸB‚™[˜İ[Ûˆ\\ÛÙU]J\\ÛÙNˆYYXKÙ\šY\Õ]Nˆİš[™ÊHÂˆ™]\›ˆ\\ÛÙK™\\ÛÙWİ]H
-\\ÛÙK™\\ÛÙWÛ[HˆÈ9ë+	Ù\\ÛÙK™\\ÛÙWÛ[_H:fá€ˆÙ\šY\Õ]JBŸB‚™[˜İ[Ûˆ›Ü›X]\˜][ÛŠÙXÛÛ™Îˆ[X™\ŠHÂˆYˆ
-\ÙXÛÛ™ÊH™]\›ˆ	ÉÂˆ™]\›ˆ	ÓX]™›ÛÜŠÙXÛÛ™ÈÈŒ
-_yb!ºd§ØŸB‚™[˜İ[ÛˆY
-˜[YNˆ[X™\ŠHÂˆ™]\›ˆİš[™Ê˜[YH
-KœYİ\
-‹	Ì	ÊBŸB
+          {needsPagination && activeSeasonData && (
+            <Pagination
+              page={pagination.page}
+              totalPages={pagination.totalPages(activeSeasonData.episodes.length)}
+              total={activeSeasonData.episodes.length}
+              pageSize={pagination.size}
+              pageSizeOptions={[20, 50, 100, 200]}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.setSize}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {seasons.map((season) => (
+            <section key={season.season_num} className="space-y-3">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">{seasonLabel(season.season_num)}</h2>
+                <span className="text-xs text-[var(--nv-text-tertiary)]">{season.episode_count} é›†</span>
+              </div>
+              <div className="space-y-2">
+                {season.episodes.map((episode) => (
+                  <EpisodeListCard key={episode.id} episode={episode} seriesTitle={seriesTitle} historyRecord={historyMap[episode.id]} posterVersion={posterVersion} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function EpisodeSlider({
+  episodes,
+  seriesTitle,
+  historyMap,
+  posterVersion,
+}: {
+  episodes: Media[]
+  seriesTitle: string
+  historyMap: Record<string, WatchHistory>
+  posterVersion: number
+}) {
+  const sliderRef = useRef<HTMLDivElement>(null)
+  const scrollBy = (left: number) => sliderRef.current?.scrollBy({ left, behavior: 'smooth' })
+
+  if (episodes.length === 0) {
+    return <EmptyState title="æš‚æ— å•é›†" description="è¿™ä¸€å­£æš‚æ—¶æ²¡æœ‰å¯å±•ç¤ºçš„å•é›†ã€‚" className="min-h-44" />
+  }
+
+  return (
+    <div className="group/series-slider relative">
+      <Button type="button" variant="secondary" size="sm" iconOnly onClick={() => scrollBy(-360)} className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity group-hover/series-slider:opacity-100" aria-label="å‘å·¦æ»šåŠ¨">
+        <ChevronLeft size={16} aria-hidden="true" />
+      </Button>
+
+      <div ref={sliderRef} className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
+        {episodes.map((episode) => (
+          <EpisodeSlideCard key={episode.id} episode={episode} seriesTitle={seriesTitle} historyRecord={historyMap[episode.id]} posterVersion={posterVersion} />
+        ))}
+      </div>
+
+      <Button type="button" variant="secondary" size="sm" iconOnly onClick={() => scrollBy(360)} className="absolute -right-2 top-1/2 z-10 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity group-hover/series-slider:opacity-100" aria-label="å‘å³æ»šåŠ¨">
+        <ChevronRight size={16} aria-hidden="true" />
+      </Button>
+    </div>
+  )
+}
+
+function EpisodeListCard({
+  episode,
+  seriesTitle,
+  historyRecord,
+  posterVersion,
+}: {
+  episode: Media
+  seriesTitle: string
+  historyRecord?: WatchHistory
+  posterVersion: number
+}) {
+  const status = getWatchStatus(historyRecord)
+
+  return (
+    <Link
+      to={`/media/${episode.id}`}
+      className="group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+    >
+      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="h-16 w-28" />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag tone="brand">S{pad(episode.season_num)}E{pad(episode.episode_num)}</Tag>
+          <h3 className={`min-w-0 flex-1 truncate text-sm font-medium ${status.watched ? 'text-[var(--nv-text-tertiary)]' : 'text-[var(--nv-text-primary)]'}`}>
+            {episodeTitle(episode, seriesTitle)}
+          </h3>
+          {status.watched && <Tag tone="success">å·²çœ‹</Tag>}
+        </div>
+
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
+          {episode.duration > 0 && <span className="inline-flex items-center gap-1"><Clock size={12} />{formatDuration(episode.duration)}</span>}
+          {!status.watched && status.progress > 0 && <span className="text-[var(--nv-action-primary)]">{status.progress}%</span>}
+          {episode.resolution && <Tag tone="quality">{episode.resolution}</Tag>}
+          {episode.video_codec && <Tag>{episode.video_codec}</Tag>}
+        </div>
+
+        {episode.overview && <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{episode.overview}</p>}
+      </div>
+
+      <ChevronRight size={16} className="shrink-0 text-[var(--nv-text-tertiary)] transition-colors group-hover:text-[var(--nv-action-primary)]" aria-hidden="true" />
+    </Link>
+  )
+}
+
+function EpisodeSlideCard({
+  episode,
+  seriesTitle,
+  historyRecord,
+  posterVersion,
+}: {
+  episode: Media
+  seriesTitle: string
+  historyRecord?: WatchHistory
+  posterVersion: number
+}) {
+  const status = getWatchStatus(historyRecord)
+
+  return (
+    <Link
+      to={`/media/${episode.id}`}
+      className="group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+    >
+      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full" showEpisodeLabel />
+
+      <div className="p-3">
+        <h3 className={`truncate text-sm font-medium ${status.watched ? 'text-[var(--nv-text-tertiary)]' : 'text-[var(--nv-text-primary)]'}`}>
+          {episodeTitle(episode, seriesTitle)}
+        </h3>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
+          {status.watched ? <Tag tone="success">å·²çœ‹</Tag> : status.progress > 0 ? <span className="text-[var(--nv-action-primary)]">{status.progress}%</span> : null}
+          {episode.resolution && <Tag tone="quality">{episode.resolution}</Tag>}
+          {episode.duration > 0 && <span>{formatDuration(episode.duration)}</span>}
+        </div>
+        {episode.overview && <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">{episode.overview}</p>}
+      </div>
+    </Link>
+  )
+}
+
+function EpisodeThumb({
+  episode,
+  status,
+  posterVersion,
+  className,
+  showEpisodeLabel = false,
+}: {
+  episode: Media
+  status: { watched: boolean; progress: number }
+  posterVersion: number
+  className: string
+  showEpisodeLabel?: boolean
+}) {
+  return (
+    <div className={`relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
+      {episode.poster_path ? (
+        <img src={streamApi.getPosterUrl(episode.id, posterVersion)} alt={episode.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]"><Play size={22} /></div>
+      )}
+
+      <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]">
+          <Play size={16} fill="currentColor" className="ml-0.5" aria-hidden="true" />
+        </div>
+      </div>
+
+      {showEpisodeLabel && <div className="absolute left-2 top-2"><Tag tone="brand">E{pad(episode.episode_num)}</Tag></div>}
+
+      {status.watched && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-status-success)] text-white"><Check size={16} aria-hidden="true" /></div>
+        </div>
+      )}
+
+      {!status.watched && status.progress > 0 && (
+        <div className="absolute inset-x-0 bottom-0 h-1 bg-black/35">
+          <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${status.progress}%` }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function getWatchStatus(historyRecord?: WatchHistory) {
+  if (!historyRecord) return { watched: false, progress: 0 }
+  return {
+    watched: historyRecord.completed || (historyRecord.duration > 0 && historyRecord.position / historyRecord.duration > 0.9),
+    progress: historyRecord.duration > 0 ? Math.round((historyRecord.position / historyRecord.duration) * 100) : 0,
+  }
+}
+
+function seasonLabel(seasonNumber: number) {
+  return seasonNumber === 0 ? 'ç‰¹åˆ«ç¯‡' : `ç¬¬ ${seasonNumber} å­£`
+}
+
+function episodeTitle(episode: Media, seriesTitle: string) {
+  return episode.episode_title || (episode.episode_num > 0 ? `ç¬¬ ${episode.episode_num} é›†` : seriesTitle)
+}
+
+function formatDuration(seconds: number) {
+  if (!seconds) return ''
+  return `${Math.floor(seconds / 60)}åˆ†é’Ÿ`
+}
+
+function pad(value: number) {
+  return String(value || 0).padStart(2, '0')
+}
