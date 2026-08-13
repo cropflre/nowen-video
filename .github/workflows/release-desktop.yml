@@ -9,7 +9,7 @@
 name: release-desktop
 run-name: >-
   release-desktop
-  ${{ github.ref_type == 'tag' && github.ref_name || inputs.target || 'windows' }}
+  ${{ github.ref_type == 'tag' && github.ref_name || inputs.version_name || '0.1.0' }}
 
 on:
   push:
@@ -17,6 +17,10 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
+      version_name:
+        description: 'Product version, for example 1.2.9 or 1.2.9-rc.1'
+        required: false
+        default: '0.1.0'
       target:
         description: 'Target platform (windows/macos/linux/all)'
         required: false
@@ -97,8 +101,11 @@ jobs:
       - name: Resolve app version
         shell: pwsh
         run: |
-          $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '0.1.0' }
+          $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '${{ inputs.version_name }}' }
           $version = $version -replace '^v',''
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid product version: $version"
+          }
           "NOWEN_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version $version
