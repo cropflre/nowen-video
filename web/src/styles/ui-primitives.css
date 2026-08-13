@@ -1,0 +1,182 @@
+/* Native/control primitives shared by admin, file manager and settings. */
+
+.nv-app-shell :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  color: var(--nv-text-secondary);
+  font-size: var(--nv-type-body-sm);
+}
+
+.nv-app-shell :where(thead) {
+  color: var(--nv-text-tertiary);
+  font-size: var(--nv-type-caption);
+  font-weight: 600;
+  text-align: left;
+}
+
+.nv-app-shell :where(th) {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--nv-border-default);
+  background: transparent;
+}
+
+.nv-app-shell :where(td) {
+  padding: 10px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+  vertical-align: middle;
+}
+
+.nv-app-shell :where(tbody tr) {
+  transition: background-color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-app-shell :where(tbody tr:hover) {
+  background: var(--nv-fill-hover);
+}
+
+.nv-app-shell :where(input[type='checkbox'], input[type='radio']) {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--nv-action-primary);
+  border-color: var(--nv-border-default);
+}
+
+.nv-app-shell :where(input[type='range']) {
+  accent-color: var(--nv-action-primary);
+}
+
+.nv-app-shell :where(fieldset) {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nv-app-shell :where(legend) {
+  margin-bottom: 8px;
+  color: var(--nv-text-secondary);
+  font-size: var(--nv-type-body-sm);
+  font-weight: 600;
+}
+
+.nv-app-shell :where(label) {
+  color: var(--nv-text-secondary);
+}
+
+.nv-app-shell :where(hr) {
+  border: 0;
+  border-top: 1px solid var(--nv-border-subtle);
+}
+
+.nv-app-shell :where(code:not(pre code), kbd) {
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: 6px;
+  background: var(--nv-bg-control);
+  color: var(--nv-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .88em;
+}
+
+.nv-app-shell :where(kbd) {
+  padding: 2px 5px;
+}
+
+.nv-app-shell :where(details) {
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-app-shell :where(summary) {
+  cursor: pointer;
+  padding-block: 9px;
+  color: var(--nv-text-secondary);
+}
+
+.nv-app-shell :where(summary:hover) {
+  color: var(--nv-text-primary);
+}
+
+.nv-switch {
+  position: relative;
+  display: inline-flex;
+  width: 32px;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-bg-control);
+  transition: background-color var(--nv-motion-fast) var(--nv-ease-standard), border-color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-switch::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-text-tertiary);
+  transform: translateX(0);
+  transition: transform var(--nv-motion-fast) var(--nv-ease-standard), background-color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-switch[aria-checked='true'],
+.nv-switch[data-checked='true'] {
+  border-color: var(--nv-border-strong);
+  background: var(--nv-fill-active);
+}
+
+.nv-switch[aria-checked='true']::after,
+.nv-switch[data-checked='true']::after {
+  background: var(--nv-text-primary);
+  transform: translateX(14px);
+}
+
+.nv-form-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 42px;
+  padding-block: 7px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-form-row:last-child {
+  border-bottom: 0;
+}
+
+.nv-data-list {
+  border-top: 1px solid var(--nv-border-subtle);
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-data-row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+  transition: background-color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-data-row:last-child {
+  border-bottom: 0;
+}
+
+.nv-data-row:hover {
+  background: var(--nv-fill-hover);
+}
+
+@media (max-width: 47.999rem) {
+  .nv-form-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .nv-app-shell :where(th, td) {
+    padding-inline: 8px;
+  }
+}
