@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { FileDetail, Media, TechSpecs } from '@/types'
 import { formatSize } from '@/utils/format'
 import { AudioLines, Gauge, HardDrive, Monitor, Palette, PanelsTopLeft, ScanLine, Video } from 'lucide-react'
@@ -91,7 +92,7 @@ function DetailMetric({
   label,
   value,
 }: {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   value: string
 }) {
