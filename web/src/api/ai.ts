@@ -8,6 +8,16 @@ import type {
   AITestResult,
 } from '@/types'
 
+let cachedAIStatus: AIStatus | null = null
+
+type AIStatusReadOptions = {
+  allowCachedOnError?: boolean
+}
+
+function rememberAIStatus(status: AIStatus | null | undefined) {
+  if (status) cachedAIStatus = status
+}
+
 async function refreshServerProfile() {
   await useServerProfileStore.getState().load(true)
 }
@@ -18,9 +28,21 @@ export const aiApi = {
   smartSearch: (q: string) =>
     api.get<{ data: SearchIntent }>('/ai/search', { params: { q } }),
 
-  // 获取 AI 服务状态（管理员）
-  getStatus: () =>
-    api.get<{ data: AIStatus }>('/admin/ai/status'),
+  // 获取 AI 服务状态（管理员）。首次读取失败必须显式失败；一旦成功读取过，
+  // 后续瞬时网络抖动允许调用方继续使用最后一次已确认状态，避免把“读取失败”
+  // 错误展示成“未配置/未启用”。管理页的入口预检会关闭该回退以区分真实失败。
+  getStatus: async (options: AIStatusReadOptions = {}) => {
+    try {
+      const response = await api.get<{ data: AIStatus }>('/admin/ai/status')
+      rememberAIStatus(response.data.data)
+      return response
+    } catch (error) {
+      if (options.allowCachedOnError !== false && cachedAIStatus) {
+        return { data: { data: cachedAIStatus } }
+      }
+      throw error
+    }
+  },
 
   // 更新 AI 配置（管理员）
   updateConfig: async (updates: Partial<{
@@ -43,6 +65,7 @@ export const aiApi = {
     profiles: Record<string, { api_base?: string; api_key?: string; model?: string; model_chain?: string[] }>
   }>) => {
     const response = await api.put<{ message: string; data: AIStatus }>('/admin/ai/config', updates)
+    rememberAIStatus(response.data.data)
     await refreshServerProfile()
     return response
   },
@@ -51,6 +74,7 @@ export const aiApi = {
   // 提供 provider / api_key 即可，会自动填好 api_base / model，并打开所有 AI 子开关
   enableAutoPilot: async (params?: { provider?: string; api_key?: string }) => {
     const response = await api.post<{ message: string; data: AIStatus }>('/admin/ai/auto-pilot', params || {})
+    rememberAIStatus(response.data.data)
     await refreshServerProfile()
     return response
   },
@@ -91,6 +115,7 @@ export const aiApi = {
       message: string
       data: { status: import('@/types').AIStatus; test: import('@/types').AITestResult }
     }>('/admin/ai/quick-config/qwen', { api_key: apiKey })
+    rememberAIStatus(response.data.data.status)
     await refreshServerProfile()
     return response
   },
