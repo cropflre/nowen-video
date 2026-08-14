@@ -31,6 +31,14 @@ interface FolderTreeProps {
   onCopyPath?: (path: string) => void
 }
 
+function normalizeTreePath(path: string) {
+  let normalized = path.replace(/\\/g, '/')
+  while (normalized.length > 1 && normalized.endsWith('/') && !/^[A-Za-z]:\/$/.test(normalized)) {
+    normalized = normalized.slice(0, -1)
+  }
+  return normalized
+}
+
 function TreeNode({
   node,
   selectedPath,
@@ -47,7 +55,9 @@ function TreeNode({
   scrollIntoView?: boolean
 }) {
   const [expanded, setExpanded] = useState(depth < 1)
-  const isSelected = selectedPath === node.path
+  const normalizedNodePath = normalizeTreePath(node.path)
+  const normalizedSelectedPath = normalizeTreePath(selectedPath)
+  const isSelected = normalizedSelectedPath === normalizedNodePath
   const hasChildren = Boolean(node.children?.length)
   const nodeRef = useRef<HTMLDivElement>(null)
 
@@ -58,10 +68,14 @@ function TreeNode({
   }, [isSelected, scrollIntoView])
 
   useEffect(() => {
-    if (selectedPath && hasChildren && selectedPath.startsWith(node.path + '/')) {
+    if (
+      normalizedSelectedPath
+      && hasChildren
+      && normalizedSelectedPath.startsWith(`${normalizedNodePath}/`)
+    ) {
       setExpanded(true)
     }
-  }, [selectedPath, node.path, hasChildren])
+  }, [normalizedSelectedPath, normalizedNodePath, hasChildren])
 
   const handleToggle = useCallback((event: React.MouseEvent) => {
     event.stopPropagation()
