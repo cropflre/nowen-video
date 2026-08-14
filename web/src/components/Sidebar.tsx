@@ -202,8 +202,8 @@ export default function Sidebar(_props: SidebarProps) {
       >
         <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
         <RailLink to="/browse" icon={<Film size={18} aria-hidden="true" />} label="影视库" />
-        <RailLink to="/collections" icon={<Layers size={18} aria-hidden="true" />} label="合集" />
         <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
+        <RailLink to="/my" icon={<UserRound size={18} aria-hidden="true" />} label="我的" />
       </nav>
     </>
   )
