@@ -152,7 +152,9 @@ export const storageApi = {
   updateAlistConfig: async (data: Partial<AlistConfig>) => {
     const response = await api.put<{ message: string }>('/admin/storage/alist', data)
     if (cachedAlistConfig) {
-      const { password: _password, token: _token, ...safeData } = data
+      const safeData: Partial<AlistConfig> = { ...data }
+      delete safeData.password
+      delete safeData.token
       cachedAlistConfig = { ...cachedAlistConfig, ...safeData }
     }
     return response
@@ -176,7 +178,8 @@ export const storageApi = {
   updateS3Config: async (data: Partial<S3Config>) => {
     const response = await api.put<{ message: string }>('/admin/storage/s3', data)
     if (cachedS3Config) {
-      const { secret_key: _secretKey, ...safeData } = data
+      const safeData: Partial<S3Config> = { ...data }
+      delete safeData.secret_key
       cachedS3Config = { ...cachedS3Config, ...safeData }
     }
     return response
