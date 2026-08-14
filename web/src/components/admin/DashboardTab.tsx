@@ -108,11 +108,12 @@ export default function DashboardTab({
     setSysSettingsSaving(true)
     setSysSettingsMsg(null)
     try {
-      await adminApi.updateSystemSettings(sysSettings)
+      const response = await adminApi.updateSystemSettings(sysSettings)
+      if (response.data.data) setSysSettings(response.data.data)
       setSysSettingsMsg({ type: 'success', text: '系统设置已保存' })
-      setTimeout(() => setSysSettingsMsg(null), 4000)
-    } catch {
-      setSysSettingsMsg({ type: 'error', text: '保存失败，请稍后重试' })
+      window.setTimeout(() => setSysSettingsMsg(null), 4000)
+    } catch (error: any) {
+      setSysSettingsMsg({ type: 'error', text: error?.response?.data?.error || '保存失败，请稍后重试' })
     } finally {
       setSysSettingsSaving(false)
     }
