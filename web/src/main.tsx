@@ -23,6 +23,7 @@ import './styles/modern-cinema.css'
 import './styles/modern-cinema-reference.css'
 import './styles/modern-cinema-light-fix.css'
 import './styles/media-detail-cinema.css'
+import './styles/media-detail-shell-fix.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
