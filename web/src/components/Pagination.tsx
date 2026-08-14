@@ -70,39 +70,39 @@ export default function Pagination({
   }
 
   return (
-    <nav className="nv-pagination flex flex-wrap items-center justify-center gap-2 py-6" aria-label="分页导航">
+    <nav className="nv-pagination flex flex-wrap items-center justify-center gap-x-2 gap-y-3 py-6" aria-label="分页导航">
       {showTotal && total !== undefined && (
-        <span className="nv-pagination-total mr-1 text-xs text-[var(--nv-text-tertiary)]">
+        <span className="nv-pagination-total mr-1 shrink-0 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
           共 <strong className="font-semibold text-[var(--nv-text-secondary)]">{total}</strong> 项
         </span>
       )}
 
       {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-        <label className="nv-pagination-size mr-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
-          <span>每页</span>
+        <label className="nv-pagination-size mr-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
+          <span className="shrink-0 whitespace-nowrap">每页</span>
           <Select
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-8 min-w-[4rem] py-0"
+            className="h-8 w-[4.75rem] shrink-0 py-0"
             aria-label="每页数量"
           >
             {pageSizeOptions.map((size) => (
               <option key={size} value={size}>{size}</option>
             ))}
           </Select>
-          <span>条</span>
+          <span className="shrink-0 whitespace-nowrap">条</span>
         </label>
       )}
 
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(1)} disabled={page === 1} title="首页" aria-label="首页">
+      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(1)} disabled={page === 1} title="首页" aria-label="首页" className="shrink-0">
         <ChevronsLeft size={14} aria-hidden="true" />
       </Button>
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1} title="上一页" aria-label="上一页">
+      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1} title="上一页" aria-label="上一页" className="shrink-0">
         <ChevronLeft size={14} aria-hidden="true" />
       </Button>
 
       {getPageNumbers().map((number, index) => number === 'ellipsis' ? (
-        <span key={`ellipsis-${index}`} className="nv-pagination-ellipsis flex h-8 w-8 items-center justify-center text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">
+        <span key={`ellipsis-${index}`} className="nv-pagination-ellipsis flex h-8 w-8 shrink-0 items-center justify-center text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">
           ···
         </span>
       ) : (
@@ -111,7 +111,7 @@ export default function Pagination({
           variant={page === number ? 'primary' : 'secondary'}
           size="sm"
           onClick={() => onPageChange(number)}
-          className="nv-pagination-page min-w-8 px-2"
+          className="nv-pagination-page min-w-8 shrink-0 px-2"
           aria-label={`第 ${number} 页`}
           aria-current={page === number ? 'page' : undefined}
         >
@@ -119,26 +119,26 @@ export default function Pagination({
         </Button>
       ))}
 
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} title="下一页" aria-label="下一页">
+      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} title="下一页" aria-label="下一页" className="shrink-0">
         <ChevronRight size={14} aria-hidden="true" />
       </Button>
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(totalPages)} disabled={page === totalPages} title="末页" aria-label="末页">
+      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(totalPages)} disabled={page === totalPages} title="末页" aria-label="末页" className="shrink-0">
         <ChevronsRight size={14} aria-hidden="true" />
       </Button>
 
       {showJumper && totalPages > 5 && (
-        <label className="nv-pagination-jumper ml-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
-          <span>跳至</span>
+        <label className="nv-pagination-jumper ml-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
+          <span className="shrink-0 whitespace-nowrap">跳至</span>
           <Input
             type="number"
             min={1}
             max={totalPages}
             onKeyDown={handleJump}
-            className="h-8 w-14 px-2 text-center"
+            className="h-8 w-16 shrink-0 px-2 text-center"
             placeholder={`${page}`}
             aria-label="跳转页码"
           />
-          <span>页</span>
+          <span className="shrink-0 whitespace-nowrap">页</span>
         </label>
       )}
     </nav>
