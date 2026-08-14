@@ -1,27 +1,17 @@
 import type { KeyboardEvent } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button, Input, Select } from '@/components/design-system'
 
 interface PaginationProps {
-  /** 当前页码（从1开始） */
   page: number
-  /** 总页数 */
   totalPages: number
-  /** 总记录数 */
   total?: number
-  /** 每页数量 */
   pageSize?: number
-  /** 每页数量可选项 */
   pageSizeOptions?: number[]
-  /** 每页数量变化回调 */
   onPageSizeChange?: (size: number) => void
-  /** 页码变化回调 */
   onPageChange: (page: number) => void
-  /** 是否显示总数信息 */
   showTotal?: boolean
-  /** 是否显示快速跳转 */
   showJumper?: boolean
-  /** 最多显示的页码按钮数量 */
   maxButtons?: number
 }
 
@@ -69,80 +59,93 @@ export default function Pagination({
     }
   }
 
+  const safePageSize = Math.max(pageSize || 0, 1)
+  const firstItem = total && total > 0 ? (page - 1) * safePageSize + 1 : 0
+  const lastItem = total && total > 0 ? Math.min(page * safePageSize, total) : 0
+
   return (
-    <nav className="nv-pagination flex flex-wrap items-center justify-center gap-x-2 gap-y-3 py-6" aria-label="分页导航">
+    <nav className="nv-pagination" aria-label="分页导航">
       {showTotal && total !== undefined && (
-        <span className="nv-pagination-total mr-1 shrink-0 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
-          共 <strong className="font-semibold text-[var(--nv-text-secondary)]">{total}</strong> 项
-        </span>
+        <div className="nv-pagination-summary" aria-live="polite">
+          {firstItem > 0 ? `第 ${firstItem}-${lastItem} 项 / 共 ${total}` : `共 ${total} 项`}
+        </div>
       )}
 
-      {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-        <label className="nv-pagination-size mr-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
-          <span className="shrink-0 whitespace-nowrap">每页</span>
-          <Select
-            value={pageSize}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-8 shrink-0 py-0"
-            style={{ width: '4.75rem', flex: '0 0 4.75rem' }}
-            aria-label="每页数量"
-          >
-            {pageSizeOptions.map((size) => (
-              <option key={size} value={size}>{size}</option>
-            ))}
-          </Select>
-          <span className="shrink-0 whitespace-nowrap">条</span>
-        </label>
-      )}
-
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(1)} disabled={page === 1} title="首页" aria-label="首页" className="shrink-0">
-        <ChevronsLeft size={14} aria-hidden="true" />
-      </Button>
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1} title="上一页" aria-label="上一页" className="shrink-0">
-        <ChevronLeft size={14} aria-hidden="true" />
-      </Button>
-
-      {getPageNumbers().map((number, index) => number === 'ellipsis' ? (
-        <span key={`ellipsis-${index}`} className="nv-pagination-ellipsis flex h-8 w-8 shrink-0 items-center justify-center text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">
-          ···
-        </span>
-      ) : (
+      <div className="nv-pagination-pages" role="group" aria-label="页码">
         <Button
-          key={number}
-          variant={page === number ? 'primary' : 'secondary'}
+          variant="secondary"
           size="sm"
-          onClick={() => onPageChange(number)}
-          className="nv-pagination-page min-w-8 shrink-0 px-2"
-          aria-label={`第 ${number} 页`}
-          aria-current={page === number ? 'page' : undefined}
+          iconOnly
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page === 1}
+          title="上一页"
+          aria-label="上一页"
+          className="nv-pagination-arrow"
         >
-          {number}
+          <ChevronLeft size={14} aria-hidden="true" />
         </Button>
-      ))}
 
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} title="下一页" aria-label="下一页" className="shrink-0">
-        <ChevronRight size={14} aria-hidden="true" />
-      </Button>
-      <Button variant="secondary" size="sm" iconOnly onClick={() => onPageChange(totalPages)} disabled={page === totalPages} title="末页" aria-label="末页" className="shrink-0">
-        <ChevronsRight size={14} aria-hidden="true" />
-      </Button>
+        {getPageNumbers().map((number, index) => number === 'ellipsis' ? (
+          <span key={`ellipsis-${index}`} className="nv-pagination-ellipsis" aria-hidden="true">…</span>
+        ) : (
+          <Button
+            key={number}
+            variant={page === number ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => onPageChange(number)}
+            className="nv-pagination-page"
+            aria-label={`第 ${number} 页`}
+            aria-current={page === number ? 'page' : undefined}
+          >
+            {number}
+          </Button>
+        ))}
 
-      {showJumper && totalPages > 5 && (
-        <label className="nv-pagination-jumper ml-2 flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-[var(--nv-text-tertiary)]">
-          <span className="shrink-0 whitespace-nowrap">跳至</span>
-          <Input
-            type="number"
-            min={1}
-            max={totalPages}
-            onKeyDown={handleJump}
-            className="h-8 shrink-0 px-2 text-center"
-            style={{ width: '4rem', flex: '0 0 4rem' }}
-            placeholder={`${page}`}
-            aria-label="跳转页码"
-          />
-          <span className="shrink-0 whitespace-nowrap">页</span>
-        </label>
-      )}
+        <Button
+          variant="secondary"
+          size="sm"
+          iconOnly
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page === totalPages}
+          title="下一页"
+          aria-label="下一页"
+          className="nv-pagination-arrow"
+        >
+          <ChevronRight size={14} aria-hidden="true" />
+        </Button>
+      </div>
+
+      <div className="nv-pagination-options">
+        {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
+          <label className="nv-pagination-size">
+            <span>每页</span>
+            <Select
+              value={pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              style={{ width: '3.5rem', flex: '0 0 3.5rem' }}
+              aria-label="每页数量"
+            >
+              {pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
+            </Select>
+          </label>
+        )}
+
+        {showJumper && totalPages > 5 && (
+          <label className="nv-pagination-jumper">
+            <span>跳至</span>
+            <Input
+              type="number"
+              min={1}
+              max={totalPages}
+              onKeyDown={handleJump}
+              style={{ width: '2.75rem', flex: '0 0 2.75rem' }}
+              placeholder={`${page}`}
+              aria-label="跳转页码"
+            />
+            <span>/ {totalPages}</span>
+          </label>
+        )}
+      </div>
     </nav>
   )
 }
