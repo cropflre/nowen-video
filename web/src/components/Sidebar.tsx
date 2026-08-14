@@ -123,14 +123,15 @@ export default function Sidebar(_props: SidebarProps) {
           <div className="nv-rail-brand" aria-hidden="true">N</div>
           <div className="nv-rail-brand-copy">
             <strong>Nowen Video</strong>
-            <span>媒体中心</span>
+            <span>MEDIA LIBRARY</span>
           </div>
         </div>
 
         <nav className="nv-rail-scroll">
           <RailSection title="浏览">
             <RailLink to="/" end icon={<Home size={16} aria-hidden="true" />} label={t('nav.home')} />
-            <RailLink to="/browse" icon={<Layers size={16} aria-hidden="true" />} label="影视库" />
+            <RailLink to="/browse" icon={<Film size={16} aria-hidden="true" />} label="影视库" />
+            <RailLink to="/collections" icon={<Layers size={16} aria-hidden="true" />} label="合集" />
             <RailLink to="/search" icon={<Search size={16} aria-hidden="true" />} label={t('nav.search')} />
             <RailLink to="/my" icon={<UserRound size={16} aria-hidden="true" />} label="我的" />
           </RailSection>
@@ -200,9 +201,9 @@ export default function Sidebar(_props: SidebarProps) {
         }}
       >
         <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
-        <RailLink to="/browse" icon={<Layers size={18} aria-hidden="true" />} label="影视库" />
+        <RailLink to="/browse" icon={<Film size={18} aria-hidden="true" />} label="影视库" />
+        <RailLink to="/collections" icon={<Layers size={18} aria-hidden="true" />} label="合集" />
         <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
-        <RailLink to="/my" icon={<UserRound size={18} aria-hidden="true" />} label="我的" />
       </nav>
     </>
   )
