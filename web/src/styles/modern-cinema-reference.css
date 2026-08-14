@@ -4,7 +4,7 @@
  * state, routes, API contracts and playback behavior stay in existing code.
  */
 
-:root,
+:root:not([data-theme]),
 [data-theme="dark"] {
   --nv-bg-canvas: #0d0e11;
   --nv-bg-surface: #131418;
