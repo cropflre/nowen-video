@@ -52,6 +52,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div
         className="nv-toast-stack pointer-events-none fixed right-3 top-3 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-4"
+        style={{
+          top: 'max(12px, env(safe-area-inset-top, 0px))',
+          right: 'max(12px, env(safe-area-inset-right, 0px))',
+          maxWidth: 'calc(100vw - max(12px, env(safe-area-inset-left, 0px)) - max(12px, env(safe-area-inset-right, 0px)))',
+        }}
         aria-live="polite"
         aria-relevant="additions"
       >
