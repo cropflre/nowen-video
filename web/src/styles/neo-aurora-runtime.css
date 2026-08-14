@@ -225,8 +225,8 @@ section[aria-labelledby="cast-grid-title"] {
   scroll-snap-type: x proximity;
 }
 
-.nv-section .scrollbar-hide > article,
-.nv-section .scrollbar-hide > div:has(> .nv-media-card) {
+.nv-continue-card,
+.nv-genre-card-slot {
   scroll-snap-align: start;
 }
 
