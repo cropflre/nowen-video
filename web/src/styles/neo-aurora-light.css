@@ -68,6 +68,23 @@
     var(--nv-bg-canvas);
 }
 
+/* App shell must explicitly expose the light canvas because the base Aurora
+   shell is transparent and otherwise inherits whichever dark root fallback was
+   painted before data-theme was applied. */
+[data-theme="light"] .nv-app-shell,
+[data-theme="light"] .nv-app-body,
+[data-theme="light"] .nv-main-scroll {
+  background: transparent;
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-main-scroll::before {
+  display: block;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(59,130,246,.055), transparent 28rem),
+    radial-gradient(circle at 82% 10%, rgba(124,58,237,.05), transparent 32rem);
+}
+
 [data-theme="light"] .nv-topbar-title {
   color: var(--nv-text-primary);
   text-shadow: none;
