@@ -11,7 +11,6 @@ import {
   ChevronRight,
   Clapperboard,
   Copy,
-  Cpu,
   Film,
   Heart,
   Link2,
@@ -24,7 +23,6 @@ import {
   Star,
   Trash2,
   Unlink,
-  Zap,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -82,8 +80,6 @@ export default function HeroSection({
   onRefreshMetadata,
   onEditMetadata,
   onDelete,
-  onPreprocess,
-  onTranscode,
 }: HeroSectionProps) {
   const toast = useToast()
   const { t } = useTranslation()
@@ -329,16 +325,6 @@ export default function HeroSection({
                         <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
                           <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
                         </button>
-                        {onPreprocess && (
-                          <button onClick={() => { onPreprocess(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                            <Zap size={14} aria-hidden="true" /> 预处理
-                          </button>
-                        )}
-                        {onTranscode && (
-                          <button onClick={() => { onTranscode(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                            <Cpu size={14} aria-hidden="true" /> 强制转码
-                          </button>
-                        )}
                         <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
                           <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
                         </button>
