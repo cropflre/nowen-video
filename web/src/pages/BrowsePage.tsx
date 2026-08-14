@@ -4,6 +4,7 @@ import { mediaApi, seriesApi, libraryApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
+import { usePosterVersion } from '@/stores/mediaRefresh'
 import type { Series, MixedItem, Library } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
@@ -25,6 +26,8 @@ import {
   Info,
 } from 'lucide-react'
 import clsx from 'clsx'
+
+const MAX_CLIENT_ITEMS = 2000
 
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '最近添加' },
@@ -53,6 +56,23 @@ const RATING_OPTIONS = [
 ]
 
 type ViewMode = 'grid' | 'list' | 'poster'
+type MixedSort = 'added' | 'title' | 'year' | 'rating'
+type SortOrder = 'asc' | 'desc'
+
+interface BrowseProbe {
+  libraryKey: string
+  total: number
+  movieCount: number
+  seriesCount: number
+}
+
+interface BrowseData {
+  scopeKey: string
+  mixedItems: MixedItem[]
+  seriesList: Series[]
+  totalCount: number
+  serverPaginated: boolean
+}
 
 const getItemTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.title || '') : (item.media?.title || '')
 const getItemOrigTitle = (item: MixedItem) => item.type === 'series' ? (item.series?.orig_title || '') : (item.media?.orig_title || '')
@@ -62,6 +82,26 @@ const getItemCountry = (item: MixedItem) => item.type === 'series' ? (item.serie
 const getItemYear = (item: MixedItem) => item.type === 'series' ? (item.series?.year || 0) : (item.media?.year || 0)
 const getItemRating = (item: MixedItem) => item.type === 'series' ? (item.series?.rating || 0) : (item.media?.rating || 0)
 const getItemTime = (item: MixedItem) => item.type === 'series' ? (item.series?.created_at || '') : (item.media?.created_at || '')
+
+function parseServerSort(value: string): { sort: MixedSort; order: SortOrder } {
+  const [field, direction] = value.split('_')
+  const sort: MixedSort = field === 'title' || field === 'year' || field === 'rating' ? field : 'added'
+  return { sort, order: direction === 'asc' ? 'asc' : 'desc' }
+}
+
+function hasItemPoster(item: MixedItem): boolean {
+  if (item.type === 'series') return !!item.series?.poster_path
+  const media = item.media
+  if (!media) return false
+  if (media.series_id) return !!media.series?.poster_path || !!media.poster_path
+  return !!media.poster_path
+}
+
+function getItemPosterUrl(item: MixedItem, version: number): string {
+  if (item.type === 'series' && item.series) return streamApi.getSeriesPosterUrl(item.series.id, version)
+  if (item.media?.series_id) return streamApi.getSeriesPosterUrl(item.media.series_id, version)
+  return streamApi.getPosterUrl(item.media?.id || '', version)
+}
 
 function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -155,65 +195,111 @@ export default function BrowsePage() {
 
   useEffect(() => { setSearchInput(searchQuery) }, [searchQuery])
 
-  const MAX_CLIENT_ITEMS = 2000
-  interface BrowseData {
-    mixedItems: MixedItem[]
-    seriesList: Series[]
-    totalCount: number
-    movieCount: number
-    seriesCount: number
-    serverPaginated: boolean
-  }
-
-  const { data: browseData, loading, refetch } = usePageCache<BrowseData>(
-    `browse:lib=${selectedLibrary || 'all'}:page=${page}:size=${size}`,
+  const libraryKey = selectedLibrary || 'all'
+  const { data: probeData, loading: probeLoading, refetch: refetchProbe } = usePageCache<BrowseProbe>(
+    `browse:probe:lib=${libraryKey}`,
     async () => {
-      const libraryId = selectedLibrary || undefined
-      const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: libraryId })
-      const total = probe.data.total || 0
-      const movieCount = probe.data.movie_count || 0
-      const seriesCount = probe.data.series_count || 0
+      const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: selectedLibrary || undefined })
+      return {
+        libraryKey,
+        total: probe.data.total || 0,
+        movieCount: probe.data.movie_count || 0,
+        seriesCount: probe.data.series_count || 0,
+      }
+    },
+    { ttl: 20_000 },
+  )
 
-      if (total <= MAX_CLIENT_ITEMS) {
+  const probeReady = probeData?.libraryKey === libraryKey
+  const serverPaginated = !!probeReady && (probeData?.total || 0) > MAX_CLIENT_ITEMS
+  const serverGenre = selectedGenres[0] || ''
+  const serverSort = useMemo(() => parseServerSort(sortValue), [sortValue])
+
+  const browseKey = useMemo(() => {
+    if (!probeReady) return null
+    if (!serverPaginated) return `browse:client:lib=${libraryKey}`
+    return [
+      'browse:server',
+      `lib=${libraryKey}`,
+      `page=${page}`,
+      `size=${size}`,
+      `type=${mediaType || 'all'}`,
+      `q=${encodeURIComponent(searchQuery.trim())}`,
+      `genre=${encodeURIComponent(serverGenre)}`,
+      `year=${yearRange.min}-${yearRange.max}`,
+      `sort=${serverSort.sort}-${serverSort.order}`,
+    ].join(':')
+  }, [probeReady, serverPaginated, libraryKey, page, size, mediaType, searchQuery, serverGenre, yearRange.min, yearRange.max, serverSort])
+
+  const { data: rawBrowseData, loading: browseLoading, refetch } = usePageCache<BrowseData>(
+    browseKey,
+    async () => {
+      if (!browseKey || !probeData) throw new Error('Browse probe is not ready')
+      const libraryId = selectedLibrary || undefined
+
+      if (!serverPaginated) {
         const [mixedRes, seriesRes] = await Promise.all([
           mediaApi.listMixed({ page: 1, size: MAX_CLIENT_ITEMS, library_id: libraryId }),
           seriesApi.list({ library_id: libraryId }),
         ])
         return {
+          scopeKey: browseKey,
           mixedItems: mixedRes.data.data || [],
           seriesList: seriesRes.data.data || [],
-          totalCount: total,
-          movieCount,
-          seriesCount,
+          totalCount: mixedRes.data.total || probeData.total,
           serverPaginated: false,
         }
       }
 
-      const [mixedRes, seriesRes] = await Promise.all([
-        mediaApi.listMixed({ page, size, library_id: libraryId }),
-        seriesApi.list({ library_id: libraryId }),
-      ])
+      const mixedRes = await mediaApi.listMixed({
+        page,
+        size,
+        library_id: libraryId,
+        type: mediaType || undefined,
+        q: searchQuery.trim() || undefined,
+        genre: serverGenre || undefined,
+        year_from: yearRange.min || undefined,
+        year_to: yearRange.max || undefined,
+        sort: serverSort.sort,
+        order: serverSort.order,
+      })
       return {
+        scopeKey: browseKey,
         mixedItems: mixedRes.data.data || [],
-        seriesList: seriesRes.data.data || [],
-        totalCount: total,
-        movieCount,
-        seriesCount,
+        seriesList: [],
+        totalCount: mixedRes.data.total || 0,
         serverPaginated: true,
       }
     },
     { ttl: 20_000 },
   )
 
+  const browseData = rawBrowseData?.scopeKey === browseKey ? rawBrowseData : undefined
+  const loading = probeLoading || browseLoading || !probeReady
   const mixedItems = browseData?.mixedItems ?? []
   const seriesList = browseData?.seriesList ?? []
   const totalCount = browseData?.totalCount ?? 0
-  const serverMovieCount = browseData?.movieCount ?? 0
-  const serverSeriesCount = browseData?.seriesCount ?? 0
-  const serverPaginated = browseData?.serverPaginated ?? false
 
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast }, [toast])
+
+  useEffect(() => {
+    if (!serverPaginated) return
+    const changes: Record<string, string | null> = {}
+    if (selectedCountry) changes.country = null
+    if (minRating > 0) changes.rating = null
+    if (selectedGenres.length > 1) changes.genres = selectedGenres[0] || null
+    if (Object.keys(changes).length === 0) return
+    toastRef.current.info('大型影视库使用服务端分页，已移除当前接口无法准确执行的组合筛选条件')
+    updateUrl(changes)
+  }, [serverPaginated, selectedCountry, minRating, selectedGenres, updateUrl])
+
+  useEffect(() => {
+    if (searchInput === searchQuery) return
+    const timer = setTimeout(() => updateUrl({ q: searchInput || null }), serverPaginated ? 280 : 120)
+    return () => clearTimeout(timer)
+  }, [searchInput, searchQuery, serverPaginated, updateUrl])
+
   const hasDataRef = useRef(false)
   useEffect(() => { if (browseData) hasDataRef.current = true }, [browseData])
   useEffect(() => {
@@ -225,7 +311,8 @@ export default function BrowsePage() {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       refreshTimerRef.current = setTimeout(() => {
         invalidatePageCachePrefix('browse:')
-        refetch(true)
+        void refetchProbe(true)
+        void refetch(true)
       }, 1000)
     }
     on(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
@@ -237,7 +324,7 @@ export default function BrowsePage() {
       off(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
-  }, [on, off, refetch])
+  }, [on, off, refetch, refetchProbe])
 
   const { allGenres, allCountries } = useMemo(() => {
     const genres = new Set<string>()
@@ -304,29 +391,36 @@ export default function BrowsePage() {
   const clearAllFilters = () => {
     setSearchInput('')
     const next = new URLSearchParams()
+    if (selectedLibrary) next.set('lib', selectedLibrary)
     if (size !== 30) next.set('size', String(size))
     if (viewMode !== 'grid') next.set('view', viewMode)
     setSearchParams(next, { replace: true })
   }
 
   const toggleGenre = (genre: string) => {
+    if (serverPaginated) {
+      updateUrl({ genres: selectedGenres.includes(genre) ? null : genre })
+      return
+    }
     const next = selectedGenres.includes(genre) ? selectedGenres.filter((value) => value !== genre) : [...selectedGenres, genre]
     updateUrl({ genres: next.length > 0 ? next.join(',') : null })
   }
 
   const stats = useMemo(() => {
-    if (serverPaginated) return { movieCount: serverMovieCount, seriesCount: serverSeriesCount, total: totalCount }
+    if (serverPaginated && probeData) {
+      return { movieCount: probeData.movieCount, seriesCount: probeData.seriesCount, total: probeData.total }
+    }
     let movieCount = 0
     let seriesCount = 0
     mixedItems.forEach((item) => { if (item.type === 'movie') movieCount++; else if (item.type === 'series') seriesCount++ })
     return { movieCount, seriesCount, total: mixedItems.length }
-  }, [mixedItems, serverPaginated, totalCount, serverMovieCount, serverSeriesCount])
+  }, [mixedItems, serverPaginated, probeData])
 
-  const hasSearchOrFilters = !!searchQuery || activeFilterCount > 0
+  const hasSearchOrFilters = mediaType !== '' || !!searchQuery || activeFilterCount > 0
 
   return (
     <div className="nv-section-stack">
-      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="媒体类型">
+      <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="媒体类型">
         {[
           { key: '' as const, label: '全部', icon: Layers, value: stats.total },
           { key: 'movie' as const, label: '电影', icon: Film, value: stats.movieCount },
@@ -352,7 +446,7 @@ export default function BrowsePage() {
         {!serverPaginated && <SemanticTag className="ml-1"><TagIcon size={10} aria-hidden="true" />{allGenres.length} 类型</SemanticTag>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="nv-browse-toolbar flex flex-wrap items-center gap-1.5">
         {libraries.length > 1 && (
           <Select
             value={selectedLibrary}
@@ -367,11 +461,8 @@ export default function BrowsePage() {
 
         <SearchField
           value={searchInput}
-          onChange={(event) => {
-            setSearchInput(event.target.value)
-            updateUrl({ q: event.target.value || null })
-          }}
-          placeholder="筛选当前影视库"
+          onChange={(event) => setSearchInput(event.target.value)}
+          placeholder={serverPaginated ? '服务端搜索标题' : '筛选当前影视库'}
           wrapperClassName="min-w-[190px] flex-1 lg:max-w-sm"
           aria-label="筛选当前影视库"
         />
@@ -394,26 +485,37 @@ export default function BrowsePage() {
       </div>
 
       {showFilters && (
-        <Surface className="space-y-2.5 p-3 sm:p-4">
-          {allGenres.length > 0 && (
-            <FilterGroup icon={<TagIcon size={12} />} label="类型" count={selectedGenres.length}>
-              {allGenres.map((genre) => <FilterChip key={genre} selected={selectedGenres.includes(genre)} onClick={() => toggleGenre(genre)}>{genre}</FilterChip>)}
-            </FilterGroup>
-          )}
-          {allCountries.length > 0 && (
-            <FilterGroup icon={<Globe size={12} />} label="地区">
-              <FilterChip selected={!selectedCountry} onClick={() => updateUrl({ country: null })}>全部</FilterChip>
-              {allCountries.map((country) => <FilterChip key={country} selected={selectedCountry === country} onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}>{country}</FilterChip>)}
-            </FilterGroup>
+        <Surface className="nv-browse-filter-panel space-y-2.5 p-3 sm:p-4">
+          {serverPaginated ? (
+            <div className="flex items-start gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
+              <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>大型库模式下，媒体类型、关键词、年份与排序由服务端准确执行；题材、地区和最低评分组合筛选在当前库不超过 {MAX_CLIENT_ITEMS} 部时开放。</span>
+            </div>
+          ) : (
+            <>
+              {allGenres.length > 0 && (
+                <FilterGroup icon={<TagIcon size={12} />} label="类型" count={selectedGenres.length}>
+                  {allGenres.map((genre) => <FilterChip key={genre} selected={selectedGenres.includes(genre)} onClick={() => toggleGenre(genre)}>{genre}</FilterChip>)}
+                </FilterGroup>
+              )}
+              {allCountries.length > 0 && (
+                <FilterGroup icon={<Globe size={12} />} label="地区">
+                  <FilterChip selected={!selectedCountry} onClick={() => updateUrl({ country: null })}>全部</FilterChip>
+                  {allCountries.map((country) => <FilterChip key={country} selected={selectedCountry === country} onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}>{country}</FilterChip>)}
+                </FilterGroup>
+              )}
+            </>
           )}
           <FilterGroup icon={<Calendar size={12} />} label="年份">
             {YEAR_RANGES.map((range) => (
               <FilterChip key={range.label} selected={yearRange.min === range.min && yearRange.max === range.max} onClick={() => updateUrl({ year_min: range.min > 0 ? String(range.min) : null, year_max: range.max > 0 ? String(range.max) : null })}>{range.label}</FilterChip>
             ))}
           </FilterGroup>
-          <FilterGroup icon={<Star size={12} />} label="最低评分">
-            {RATING_OPTIONS.map((option) => <FilterChip key={option.value} selected={minRating === option.value} onClick={() => updateUrl({ rating: option.value > 0 ? String(option.value) : null })}>{option.label}</FilterChip>)}
-          </FilterGroup>
+          {!serverPaginated && (
+            <FilterGroup icon={<Star size={12} />} label="最低评分">
+              {RATING_OPTIONS.map((option) => <FilterChip key={option.value} selected={minRating === option.value} onClick={() => updateUrl({ rating: option.value > 0 ? String(option.value) : null })}>{option.label}</FilterChip>)}
+            </FilterGroup>
+          )}
           {activeFilterCount > 0 && (
             <div className="flex items-center justify-end border-t border-[var(--nv-border-subtle)] pt-2.5">
               <Button type="button" variant="ghost" size="sm" onClick={clearAllFilters}><X size={13} />清除所有筛选</Button>
@@ -443,7 +545,7 @@ export default function BrowsePage() {
       {serverPaginated && (
         <div className="flex items-start gap-2 border-y border-[var(--nv-border-subtle)] py-2.5 text-[11px] leading-5 text-[var(--nv-text-tertiary)]" role="status">
           <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>影视库较大（共 {totalCount} 部），当前使用服务端分页；选择单个媒体库后可使用更完整的客户端筛选。</span>
+          <span>大型影视库模式（库内共 {probeData?.total || 0} 部），当前条件匹配 {totalCount} 部；筛选与排序先在服务端执行，再进行稳定分页。</span>
         </div>
       )}
 
@@ -463,11 +565,11 @@ export default function BrowsePage() {
             : item.media ? <MediaCard key={`m-${item.media.id}`} media={item.media} /> : null)}
         </div>
       ) : viewMode === 'list' ? (
-        <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
+        <div className="nv-browse-list divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {pagedItems.map((item) => <BrowseListItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+        <div className="nv-browse-poster-grid grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
           {pagedItems.map((item) => <PosterWallItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}
         </div>
       )}
@@ -495,6 +597,8 @@ function BrowseSkeleton({ viewMode }: { viewMode: ViewMode }) {
 
 function BrowseListItem({ item }: { item: MixedItem }) {
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  const [posterFailed, setPosterFailed] = useState(false)
+  const posterVersion = usePosterVersion()
   const isSeries = item.type === 'series'
   const media = isSeries ? undefined : item.media
   const series = isSeries ? item.series : undefined
@@ -508,13 +612,22 @@ function BrowseListItem({ item }: { item: MixedItem }) {
   const genreList = genres ? genres.split(',').map((genre: string) => genre.trim()).filter(Boolean) : []
   const visibleTags = tagsExpanded ? genreList : genreList.slice(0, 3)
   const linkTo = series ? `/series/${series.id}` : media?.series_id ? `/series/${media.series_id}` : `/media/${media?.id}`
-  const posterUrl = series ? streamApi.getSeriesPosterUrl(series.id) : media?.series_id ? streamApi.getSeriesPosterUrl(media.series_id) : streamApi.getPosterUrl(media?.id || '')
+  const posterUrl = getItemPosterUrl(item, posterVersion)
+  const hasPoster = hasItemPoster(item)
   const durationLabel = duration ? `${Math.floor(duration / 3600) ? `${Math.floor(duration / 3600)}h ` : ''}${Math.floor((duration % 3600) / 60)}m` : ''
 
+  useEffect(() => { setPosterFailed(false) }, [posterUrl])
+
   return (
-    <Link to={linkTo} className="group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
-      <div className="h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
-        <img src={posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
+    <Link to={linkTo} className="nv-browse-list-item group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
+      <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
+        {hasPoster && !posterFailed ? (
+          <img src={posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPosterFailed(true)} />
+        ) : (
+          <div className="nv-media-card-placeholder absolute inset-0 grid place-items-center text-[var(--nv-text-tertiary)]">
+            {isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
+          </div>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2"><h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{title}</h3>{isSeries && <SemanticTag>剧集</SemanticTag>}</div>
@@ -535,19 +648,31 @@ function BrowseListItem({ item }: { item: MixedItem }) {
 }
 
 function PosterWallItem({ item }: { item: MixedItem }) {
+  const [posterFailed, setPosterFailed] = useState(false)
+  const posterVersion = usePosterVersion()
   const isSeries = item.type === 'series'
   const media = isSeries ? undefined : item.media
   const series = isSeries ? item.series : undefined
   const title = series?.title || media?.title || ''
   const rating = series?.rating || media?.rating || 0
   const linkTo = series ? `/series/${series.id}` : media?.series_id ? `/series/${media.series_id}` : `/media/${media?.id}`
-  const posterUrl = series ? streamApi.getSeriesPosterUrl(series.id) : media?.series_id ? streamApi.getSeriesPosterUrl(media.series_id) : streamApi.getPosterUrl(media?.id || '')
+  const posterUrl = getItemPosterUrl(item, posterVersion)
+  const hasPoster = hasItemPoster(item)
+
+  useEffect(() => { setPosterFailed(false) }, [posterUrl])
 
   return (
-    <Link to={linkTo} className="group block min-w-0" aria-label={title}>
+    <Link to={linkTo} className="nv-browse-poster-card group block min-w-0" aria-label={title}>
       <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-        <img src={posterUrl} alt="" className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
-        <div className="absolute inset-0 grid place-items-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        {hasPoster && !posterFailed ? (
+          <img src={posterUrl} alt="" className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]" loading="lazy" onError={() => setPosterFailed(true)} />
+        ) : (
+          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
+            {isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
+            <span className="text-[9px]">暂无海报</span>
+          </div>
+        )}
+        <div className="absolute inset-0 grid place-items-center bg-[var(--nv-bg-overlay)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span>
         </div>
         {rating > 0 && <SemanticTag tone="quality" className="absolute left-1.5 top-1.5"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</SemanticTag>}
