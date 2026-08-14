@@ -81,8 +81,10 @@
   background: var(--nv-player-surface-hover) !important;
 }
 
-/* Timeline sits above the glass control dock and uses the only persistent glow
-   in the player chrome. */
+/* Timeline sits above the glass control dock. Resting state is intentionally
+   quiet: only the rail and played fill stay visible. The scrubber becomes a
+   circular handle on hover/press, avoiding the square marker that previously
+   remained visible at 0% progress. */
 .group\/player .player-controls > .progress-bar {
   position: absolute !important;
   left: calc(var(--nv-player-side) + 12px) !important;
@@ -91,23 +93,68 @@
   width: auto !important;
   height: 4px !important;
   margin: 0 !important;
+  overflow: visible !important;
+  cursor: pointer;
+  touch-action: none;
   border-radius: var(--nv-radius-pill) !important;
   background: rgba(235,238,255,.16) !important;
-  transition: height var(--nv-motion-fast) var(--nv-ease-standard) !important;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.28);
+  transition:
+    height var(--nv-motion-fast) var(--nv-ease-standard),
+    background-color var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
-.group\/player .player-controls > .progress-bar:hover { height: 5px !important; }
+.group\/player .player-controls > .progress-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 18px;
+  transform: translateY(-50%);
+}
+.group\/player .player-controls > .progress-bar:hover,
+.group\/player .player-controls > .progress-bar:focus-visible,
+.group\/player .player-controls > .progress-bar:active {
+  height: 6px !important;
+  background: rgba(235,238,255,.22) !important;
+}
 .group\/player .progress-bar-fill {
+  position: absolute !important;
+  inset: 0 auto 0 0 !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  pointer-events: none;
+  border-radius: inherit !important;
   background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink)) !important;
   box-shadow: 0 0 12px rgba(109,93,252,.36) !important;
 }
 .group\/player .progress-bar-thumb {
-  width: 11px !important;
-  height: 11px !important;
-  background: var(--nv-player-text-primary) !important;
-  box-shadow: 0 0 0 3px rgba(117,100,255,.16), 0 0 14px rgba(117,100,255,.56) !important;
+  position: absolute !important;
+  top: 50% !important;
+  width: 12px !important;
+  height: 12px !important;
+  pointer-events: none;
+  border: 2px solid rgba(255,255,255,.96) !important;
+  border-radius: 999px !important;
+  background: var(--nv-player-accent) !important;
+  opacity: 0 !important;
+  transform: translate(-50%, -50%) scale(.72) !important;
+  box-shadow: 0 0 0 3px rgba(117,100,255,.14), 0 0 14px rgba(117,100,255,.50) !important;
+  transition:
+    opacity var(--nv-motion-fast) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard),
+    box-shadow var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
-.group\/player .progress-bar:hover .progress-bar-thumb { opacity: 1 !important; }
+.group\/player .progress-bar:hover .progress-bar-thumb,
+.group\/player .progress-bar:focus-visible .progress-bar-thumb,
+.group\/player .progress-bar:active .progress-bar-thumb {
+  opacity: 1 !important;
+  transform: translate(-50%, -50%) scale(1) !important;
+}
+.group\/player .progress-bar:active .progress-bar-thumb {
+  transform: translate(-50%, -50%) scale(1.14) !important;
+  box-shadow: 0 0 0 5px rgba(117,100,255,.16), 0 0 18px rgba(117,100,255,.62) !important;
+}
 
 /* Bottom dock: preserve the existing control tree and interaction handlers. */
 .group\/player .player-controls > .flex.items-center.gap-1 {
