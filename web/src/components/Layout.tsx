@@ -26,6 +26,11 @@ const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/person/', '演员详情'],
 ]
 
+const SAFE_INLINE_STYLE = {
+  paddingInlineStart: 'max(var(--nv-page-gutter), env(safe-area-inset-left, 0px))',
+  paddingInlineEnd: 'max(var(--nv-page-gutter), env(safe-area-inset-right, 0px))',
+} as const
+
 function resolveTitle(pathname: string) {
   if (pathname === '/') return '首页'
   return TITLE_BY_PREFIX.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Nowen Video'
@@ -53,7 +58,7 @@ function ApplicationTopBar() {
   }
 
   return (
-    <header className="nv-topbar pwa-safe-top" aria-label="页面工具栏">
+    <header className="nv-topbar pwa-safe-top" aria-label="页面工具栏" style={SAFE_INLINE_STYLE}>
       <h1 className="nv-topbar-title max-w-[20vw] sm:max-w-none">{title}</h1>
       <div className="nv-topbar-spacer" />
       <form onSubmit={submitSearch} role="search" className="flex min-w-0 flex-1 items-center justify-end sm:flex-initial">
@@ -124,7 +129,7 @@ export default function Layout() {
         className="nv-main-scroll relative min-w-0 flex-1 overflow-y-auto overscroll-contain"
       >
         <ApplicationTopBar />
-        <PageContainer width={isWidePage ? 'wide' : 'content'}>
+        <PageContainer width={isWidePage ? 'wide' : 'content'} style={SAFE_INLINE_STYLE}>
           <Outlet />
         </PageContainer>
       </main>
