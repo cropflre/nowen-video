@@ -19,6 +19,7 @@ import './styles/player-subtitles.css'
 import './styles/player-navi.css'
 import './styles/neo-aurora-responsive.css'
 import './styles/neo-aurora-light.css'
+import './styles/modern-cinema.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
@@ -42,60 +43,62 @@ async function cleanupDevelopmentServiceWorker() {
       window.location.reload()
       return
     }
+
     sessionStorage.removeItem(SW_DEV_RELOAD_KEY)
   } catch (error) {
-    console.warn('[PWA] 清理开发环境 Service Worker 失败:', error)
+    console.warn('[PWA] Failed to cleanup development service worker state:', error)
   }
 }
 
-function registerProductionServiceWorker() {
-  window.addEventListener('pageshow', () => {
-    sessionStorage.removeItem(SW_UPDATE_RELOAD_KEY)
-  }, { once: true })
+async function registerProductionServiceWorker() {
+  try {
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
 
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (sessionStorage.getItem(SW_UPDATE_RELOAD_KEY) === '1') return
-    sessionStorage.setItem(SW_UPDATE_RELOAD_KEY, '1')
-    window.location.reload()
-  })
-
-  window.addEventListener('load', async () => {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
-      registration.addEventListener('updatefound', () => {
-        const worker = registration.installing
-        worker?.addEventListener('statechange', () => {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) worker.postMessage({ type: 'SKIP_WAITING' })
-        })
-      })
-      await registration.update()
-      registration.waiting?.postMessage({ type: 'SKIP_WAITING' })
-    } catch (error) {
-      console.warn('[PWA] Service Worker 注册失败:', error)
+    const activateUpdate = (worker: ServiceWorker | null) => {
+      if (!worker || worker.state !== 'installed' || !navigator.serviceWorker.controller) return
+      worker.postMessage({ type: 'SKIP_WAITING' })
     }
-  })
+
+    registration.addEventListener('updatefound', () => {
+      const installing = registration.installing
+      installing?.addEventListener('statechange', () => activateUpdate(installing))
+    })
+
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+    }
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (sessionStorage.getItem(SW_UPDATE_RELOAD_KEY) === '1') return
+      sessionStorage.setItem(SW_UPDATE_RELOAD_KEY, '1')
+      window.location.reload()
+    })
+
+    window.addEventListener('load', () => {
+      sessionStorage.removeItem(SW_UPDATE_RELOAD_KEY)
+      void registration.update()
+    }, { once: true })
+  } catch (error) {
+    console.warn('[PWA] Failed to register service worker:', error)
+  }
 }
 
 if ('serviceWorker' in navigator) {
-  if (import.meta.env.PROD) registerProductionServiceWorker()
-  else void cleanupDevelopmentServiceWorker()
+  if (import.meta.env.DEV) void cleanupDevelopmentServiceWorker()
+  else void registerProductionServiceWorker()
 }
 
 installSubtitleTrackActivationGuard()
+
 initTheme()
 initI18n()
 
-if (typeof window !== 'undefined') {
-  const w = window as unknown as { __TAURI_INTERNALS__?: unknown; __TAURI__?: unknown }
-  if (w.__TAURI_INTERNALS__ || w.__TAURI__) document.documentElement.setAttribute('data-runtime', 'tauri')
-}
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <FluentAppProvider>
-      <LazyMotion features={domAnimation} strict>
+    <LazyMotion features={domAnimation} strict>
+      <FluentAppProvider>
         <App />
-      </LazyMotion>
-    </FluentAppProvider>
+      </FluentAppProvider>
+    </LazyMotion>
   </React.StrictMode>,
 )
