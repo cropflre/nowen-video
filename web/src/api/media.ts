@@ -90,6 +90,10 @@ export const mediaApi = {
 
 // ==================== 演员 ====================
 export const personApi = {
+  /** 搜索演员/演职人员（匹配名称和原名） */
+  search: (q: string, limit = 10) =>
+    api.get<{ data: import('@/types').Person[] }>('/persons/search', { params: { q, limit } }),
+
   /** 获取演员详情 */
   getDetail: (personId: string) =>
     api.get<{ data: import('@/types').Person }>(`/persons/${personId}`),
