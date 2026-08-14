@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { adminApi, playlistApi, seriesApi, streamApi, userApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -14,8 +14,131 @@ import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
-import type { MediaPerson, Playlist, SeasonInfo, Series, WatchHistory } from '@/types'
+import type { Media, MediaPerson, Playlist, SeasonInfo, Series, WatchHistory } from '@/types'
 import { ArrowLeft, ChevronDown, ChevronUp, Database } from 'lucide-react'
+
+const HISTORY_PAGE_SIZE = 50
+const HISTORY_FETCH_CONCURRENCY = 6
+
+type SeriesPlaybackChoice = {
+  episode: Media | null
+  label: string
+}
+
+function orderedEpisodes(seasons: SeasonInfo[]) {
+  return seasons
+    .flatMap((season) => season.episodes || [])
+    .slice()
+    .sort((left, right) => left.season_num - right.season_num || left.episode_num - right.episode_num || left.id.localeCompare(right.id))
+}
+
+function isHistoryCompleted(history?: WatchHistory) {
+  if (!history) return false
+  if (history.completed) return true
+  return history.duration > 0 && history.position / history.duration >= 0.9
+}
+
+function historyUpdatedAt(history?: WatchHistory) {
+  if (!history?.updated_at) return 0
+  const timestamp = Date.parse(history.updated_at)
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function episodeCode(episode: Media) {
+  return `S${String(episode.season_num).padStart(2, '0')}E${String(episode.episode_num).padStart(2, '0')}`
+}
+
+function chooseSeriesPlayback(episodes: Media[], historyMap: Record<string, WatchHistory>): SeriesPlaybackChoice {
+  if (episodes.length === 0) return { episode: null, label: '播放' }
+
+  // Season 0 is commonly specials. Prefer the first regular episode for a fresh
+  // series, but keep specials available in the episode browser.
+  const regularEpisodes = episodes.filter((episode) => episode.season_num > 0)
+  const playbackOrder = regularEpisodes.length > 0 ? regularEpisodes : episodes
+
+  const partial = playbackOrder
+    .map((episode) => ({ episode, history: historyMap[episode.id] }))
+    .filter(({ history }) => !!history && history.position > 0 && !isHistoryCompleted(history))
+    .sort((left, right) => historyUpdatedAt(right.history) - historyUpdatedAt(left.history))[0]
+
+  if (partial) {
+    return { episode: partial.episode, label: `继续播放 ${episodeCode(partial.episode)}` }
+  }
+
+  const watched = playbackOrder
+    .map((episode) => ({ episode, history: historyMap[episode.id] }))
+    .filter(({ history }) => isHistoryCompleted(history))
+    .sort((left, right) => historyUpdatedAt(right.history) - historyUpdatedAt(left.history))
+
+  if (watched.length > 0) {
+    const latestIndex = playbackOrder.findIndex((episode) => episode.id === watched[0].episode.id)
+    if (latestIndex >= 0 && latestIndex + 1 < playbackOrder.length) {
+      const nextEpisode = playbackOrder[latestIndex + 1]
+      if (!isHistoryCompleted(historyMap[nextEpisode.id])) {
+        return { episode: nextEpisode, label: `继续播放 ${episodeCode(nextEpisode)}` }
+      }
+    }
+
+    const firstUnwatched = playbackOrder.find((episode) => !isHistoryCompleted(historyMap[episode.id]))
+    if (firstUnwatched) {
+      return { episode: firstUnwatched, label: `继续播放 ${episodeCode(firstUnwatched)}` }
+    }
+
+    return { episode: playbackOrder[0], label: `重新播放 ${episodeCode(playbackOrder[0])}` }
+  }
+
+  return { episode: playbackOrder[0], label: '播放第一集' }
+}
+
+async function loadEpisodeHistory(episodeIds: Set<string>, onPartial?: (map: Record<string, WatchHistory>) => void) {
+  const map: Record<string, WatchHistory> = {}
+  if (episodeIds.size === 0) return map
+
+  const collect = (histories: WatchHistory[]) => {
+    for (const history of histories) {
+      if (episodeIds.has(history.media_id)) map[history.media_id] = history
+    }
+  }
+
+  const firstPage = await userApi.history(1, HISTORY_PAGE_SIZE)
+  collect(firstPage.data.data || [])
+  onPartial?.({ ...map })
+
+  const totalPages = Math.max(1, Math.ceil((firstPage.data.total || 0) / HISTORY_PAGE_SIZE))
+  if (totalPages <= 1 || Object.keys(map).length >= episodeIds.size) return map
+
+  const unmatchedIds = Array.from(episodeIds).filter((episodeId) => !map[episodeId])
+  const remainingHistoryRequests = totalPages - 1
+
+  // Use whichever existing API path needs fewer requests. The history endpoint
+  // is capped at 50 rows by the backend, so the old history(1, 200) call only
+  // returned 20 rows. This keeps the contract unchanged while making progress
+  // accurate even for long-running users and large series.
+  if (remainingHistoryRequests <= unmatchedIds.length) {
+    const pages = Array.from({ length: remainingHistoryRequests }, (_, index) => index + 2)
+    for (let index = 0; index < pages.length; index += HISTORY_FETCH_CONCURRENCY) {
+      const batch = pages.slice(index, index + HISTORY_FETCH_CONCURRENCY)
+      const responses = await Promise.all(batch.map((page) => userApi.history(page, HISTORY_PAGE_SIZE).catch(() => null)))
+      for (const response of responses) {
+        if (response) collect(response.data.data || [])
+      }
+      onPartial?.({ ...map })
+      if (Object.keys(map).length >= episodeIds.size) break
+    }
+  } else {
+    for (let index = 0; index < unmatchedIds.length; index += HISTORY_FETCH_CONCURRENCY) {
+      const batch = unmatchedIds.slice(index, index + HISTORY_FETCH_CONCURRENCY)
+      const responses = await Promise.all(batch.map((episodeId) => userApi.getProgress(episodeId).catch(() => null)))
+      for (let offset = 0; offset < responses.length; offset += 1) {
+        const history = responses[offset]?.data.data
+        if (history) map[batch[offset]] = history
+      }
+      onPartial?.({ ...map })
+    }
+  }
+
+  return map
+}
 
 export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -71,6 +194,9 @@ export default function SeriesDetailPage() {
     if (!id) return
     const abortController = new AbortController()
     setLoading(true)
+    setHistoryMap({})
+    setIsFavorited(false)
+    setOverviewExpanded(false)
 
     Promise.all([
       seriesApi.detail(id),
@@ -92,17 +218,6 @@ export default function SeriesDetailPage() {
         if (!abortController.signal.aborted) setLoading(false)
       })
 
-    userApi.history(1, 200)
-      .then((res) => {
-        if (abortController.signal.aborted) return
-        const map: Record<string, WatchHistory> = {}
-        for (const history of (res.data.data || [])) {
-          map[history.media_id] = history
-        }
-        setHistoryMap(map)
-      })
-      .catch(() => {})
-
     seriesApi.getPersons(id)
       .then((res) => {
         if (!abortController.signal.aborted) setPersons(res.data.data || [])
@@ -112,20 +227,51 @@ export default function SeriesDetailPage() {
       })
 
     return () => abortController.abort()
-  }, [id, navigate])
+  }, [id, navigate, toast])
 
-  const firstEpisode = seasons.length > 0 && seasons[0].episodes?.length > 0
-    ? seasons[0].episodes[0]
-    : null
+  const episodes = useMemo(() => orderedEpisodes(seasons), [seasons])
+  const favoriteEpisode = useMemo(() => episodes.find((episode) => episode.season_num > 0) || episodes[0] || null, [episodes])
+  const playbackChoice = useMemo(() => chooseSeriesPlayback(episodes, historyMap), [episodes, historyMap])
+
+  useEffect(() => {
+    if (episodes.length === 0) {
+      setHistoryMap({})
+      return
+    }
+    let cancelled = false
+    const episodeIds = new Set(episodes.map((episode) => episode.id))
+    setHistoryMap({})
+
+    void loadEpisodeHistory(episodeIds, (partialMap) => {
+      if (!cancelled) setHistoryMap(partialMap)
+    }).then((map) => {
+      if (!cancelled) setHistoryMap(map)
+    }).catch(() => {})
+
+    return () => { cancelled = true }
+  }, [id, episodes])
+
+  useEffect(() => {
+    if (!favoriteEpisode) {
+      setIsFavorited(false)
+      return
+    }
+    let cancelled = false
+    setIsFavorited(false)
+    userApi.checkFavorite(favoriteEpisode.id)
+      .then((response) => { if (!cancelled) setIsFavorited(response.data.data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [favoriteEpisode?.id])
 
   const handleFavorite = async () => {
-    if (!firstEpisode) return
+    if (!favoriteEpisode) return
     try {
       if (isFavorited) {
-        await userApi.removeFavorite(firstEpisode.id)
+        await userApi.removeFavorite(favoriteEpisode.id)
         setIsFavorited(false)
       } else {
-        await userApi.addFavorite(firstEpisode.id)
+        await userApi.addFavorite(favoriteEpisode.id)
         setIsFavorited(true)
       }
     } catch {
@@ -365,7 +511,8 @@ export default function SeriesDetailPage() {
 
       <SeriesHero
         series={series}
-        firstEpisode={firstEpisode}
+        playEpisode={playbackChoice.episode}
+        playLabel={playbackChoice.label}
         isFavorited={isFavorited}
         isAdmin={isAdmin}
         scraping={scraping}
@@ -448,10 +595,12 @@ export default function SeriesDetailPage() {
           description={`${series.season_count} 季 · ${series.episode_count} 集`}
         >
           <SeriesEpisodeBrowser
+            key={series.id}
             seasons={seasons}
             seriesTitle={series.title}
             historyMap={historyMap}
             posterVersion={posterVersion}
+            preferredSeason={playbackChoice.episode?.season_num}
           />
         </Section>
       </div>
