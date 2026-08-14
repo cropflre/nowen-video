@@ -1,31 +1,34 @@
 .group\/player {
-  --nv-player-canvas: #050406;
-  --nv-player-surface: rgba(23, 16, 25, .96);
-  --nv-player-surface-soft: rgba(14, 13, 16, .94);
-  --nv-player-surface-subtle: rgba(255, 255, 255, .035);
-  --nv-player-surface-hover: rgba(255, 255, 255, .065);
-  --nv-player-text-primary: rgba(255, 255, 255, .96);
-  --nv-player-text-secondary: rgba(255, 255, 255, .74);
-  --nv-player-text-tertiary: rgba(255, 255, 255, .50);
-  --nv-player-text-faint: rgba(255, 255, 255, .34);
-  --nv-player-text-on-accent: #09070a;
-  --nv-player-border-subtle: rgba(255, 255, 255, .055);
-  --nv-player-border: rgba(255, 255, 255, .085);
-  --nv-player-border-strong: rgba(255, 255, 255, .18);
-  --nv-player-border-hover: rgba(255, 255, 255, .16);
-  --nv-player-accent: rgba(255, 255, 255, .92);
-  --nv-player-accent-soft: rgba(255, 255, 255, .07);
-  --nv-player-accent-soft-hover: rgba(255, 255, 255, .10);
-  --nv-player-accent-border: rgba(255, 255, 255, .14);
+  --nv-player-canvas: #030711;
+  --nv-player-surface: rgba(12, 18, 38, .84);
+  --nv-player-surface-soft: rgba(8, 13, 29, .74);
+  --nv-player-surface-subtle: rgba(119, 101, 255, .07);
+  --nv-player-surface-hover: rgba(126, 104, 255, .13);
+  --nv-player-text-primary: #f7f8ff;
+  --nv-player-text-secondary: rgba(234, 237, 255, .76);
+  --nv-player-text-tertiary: rgba(218, 224, 248, .52);
+  --nv-player-text-faint: rgba(218, 224, 248, .34);
+  --nv-player-text-on-accent: #ffffff;
+  --nv-player-border-subtle: rgba(121, 103, 255, .11);
+  --nv-player-border: rgba(126, 107, 255, .20);
+  --nv-player-border-strong: rgba(145, 118, 255, .48);
+  --nv-player-border-hover: rgba(145, 118, 255, .38);
+  --nv-player-accent: #7564ff;
+  --nv-player-accent-blue: #3b82f6;
+  --nv-player-accent-purple: #7c3aed;
+  --nv-player-accent-pink: #c84dff;
+  --nv-player-accent-soft: rgba(109, 93, 252, .13);
+  --nv-player-accent-soft-hover: rgba(124, 92, 255, .20);
+  --nv-player-accent-border: rgba(145, 119, 255, .36);
   --nv-player-success: var(--nv-status-success);
   --nv-player-warning: var(--nv-status-warning);
   --nv-player-danger: var(--nv-status-danger);
   --nv-player-danger-soft: color-mix(in srgb, var(--nv-player-danger) 9%, transparent);
   --nv-player-danger-border: color-mix(in srgb, var(--nv-player-danger) 24%, transparent);
-  --nv-player-focus: rgba(255, 255, 255, .28);
-  --nv-player-shadow: 0 20px 48px rgba(0, 0, 0, .46);
-  --nv-player-radius-control: 10px;
-  --nv-player-radius-panel: 16px;
+  --nv-player-focus: rgba(137, 111, 255, .72);
+  --nv-player-shadow: 0 24px 72px rgba(0, 0, 0, .50), 0 0 0 1px rgba(112, 92, 255, .08);
+  --nv-player-radius-control: 11px;
+  --nv-player-radius-panel: 18px;
 }
 
 .group\/player :where(button, input, select, textarea, [role='button'], [role='menuitem']):focus-visible {
@@ -48,26 +51,28 @@
 
 .group\/player .nv-player-timeline {
   position: relative;
-  height: 3px;
+  height: 4px;
   cursor: pointer;
   border-radius: var(--nv-radius-pill);
-  background: color-mix(in srgb, var(--nv-player-text-primary) 16%, transparent);
+  background: rgba(235, 238, 255, .16);
 }
 
 .group\/player .nv-player-timeline-fill {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  background: var(--nv-player-accent);
+  background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink));
+  box-shadow: 0 0 12px rgba(109, 93, 252, .32);
 }
 
 .group\/player .nv-player-timeline-thumb {
   position: absolute;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-text-primary);
+  box-shadow: 0 0 0 3px rgba(117, 100, 255, .18), 0 0 14px rgba(117, 100, 255, .54);
   opacity: 0;
   transform: translate(-50%, -50%);
   transition: opacity var(--nv-motion-fast) var(--nv-ease-standard);
@@ -82,6 +87,7 @@
   height: 3px;
   border-radius: var(--nv-radius-pill);
   outline: none;
+  accent-color: var(--nv-player-accent);
 }
 
 .group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb {
@@ -91,7 +97,7 @@
   border: 2px solid var(--nv-player-text-primary);
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
+  box-shadow: 0 0 12px rgba(117, 100, 255, .42);
 }
 
 .group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-moz-range-thumb {
@@ -100,7 +106,7 @@
   border: 2px solid var(--nv-player-text-primary);
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
+  box-shadow: 0 0 12px rgba(117, 100, 255, .42);
 }
 
 .group\/player :where(.nv-player-chrome, [role='menu'], [role='dialog']) {
