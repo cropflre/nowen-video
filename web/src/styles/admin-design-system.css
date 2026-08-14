@@ -132,8 +132,26 @@
 }
 
 @media (max-width: 47.99rem) {
-  .nv-admin-header { align-items: flex-start; }
-  .nv-admin-toolbar { width: 100%; }
+  .nv-admin-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--nv-space-3);
+  }
+
+  .nv-admin-header-copy,
+  .nv-admin-toolbar {
+    width: 100%;
+  }
+
+  .nv-admin-panel-header {
+    flex-wrap: wrap;
+  }
+
+  .nv-admin-panel-header > .nv-admin-toolbar {
+    width: auto;
+    max-width: 100%;
+  }
+
   .nv-admin-tab { min-height: 32px; padding-inline: 8px; }
   .nv-admin-panel-header,
   .nv-admin-panel-body { padding-inline: 0; }
