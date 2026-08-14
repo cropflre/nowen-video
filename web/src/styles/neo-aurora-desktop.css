@@ -1,0 +1,210 @@
+/* Neo Glass / Aurora desktop calibration.
+ *
+ * This layer contains responsive geometry only. It deliberately consumes the
+ * shared --nv-* semantic tokens from design-system.css / neo-aurora.css so the
+ * Home, Browse, Detail and shared media components keep one visual system.
+ */
+
+@media (min-width: 80rem) {
+  :root {
+    --nv-page-gutter: clamp(20px, 1.45vw, 28px);
+    --nv-section-gap: clamp(22px, 1.65vw, 30px);
+    --nv-grid-gap-x: clamp(13px, .9vw, 18px);
+    --nv-grid-gap-y: clamp(18px, 1.25vw, 24px);
+  }
+
+  /* App chrome: keep the page title and route actions at the edges while the
+     real global search field sits visually centered like the target desktop UI. */
+  .nv-topbar {
+    min-height: 62px;
+    padding-inline: var(--nv-page-gutter);
+  }
+
+  .nv-topbar form[role="search"] {
+    position: absolute;
+    left: 50%;
+    width: min(34vw, 32rem);
+    transform: translateX(-50%);
+  }
+
+  .nv-topbar form[role="search"] .nv-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .nv-topbar-title {
+    max-width: min(24vw, 18rem);
+  }
+
+  .nv-page-container {
+    padding-top: 18px;
+    padding-bottom: 44px;
+  }
+
+  /* Home: lower the hero height from billboard proportions to the reference's
+     cinematic desktop panel while keeping real carousel content and controls. */
+  .nv-hero-carousel,
+  .nv-section-stack > section[aria-roledescription="carousel"] {
+    min-height: clamp(370px, 24vw, 460px) !important;
+  }
+
+  .nv-hero-carousel > .relative.z-10 {
+    min-height: inherit !important;
+    max-width: 48rem;
+    padding-bottom: 54px;
+    padding-top: 58px;
+  }
+
+  .nv-hero-carousel h2 {
+    max-width: 16ch;
+  }
+
+  .nv-section .scrollbar-hide > article {
+    width: clamp(224px, 15vw, 250px) !important;
+  }
+
+  .nv-section .scrollbar-hide > article > a > .relative.aspect-video img {
+    object-position: center 32%;
+  }
+
+  /* Shared media density: 6 columns around laptop/1440p widths and 8 at a
+     1920px desktop without allowing cards to become oversized on 2K/4K. */
+  .nv-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(176px, var(--nv-grid-column)));
+  }
+
+  /* Browse: visually group the real URL-backed search/sort/view controls into
+     one quiet glass toolbar instead of leaving them as unrelated controls. */
+  [aria-label="媒体类型"] {
+    margin-bottom: -10px;
+  }
+
+  [aria-label="媒体类型"] + div {
+    position: relative;
+    gap: 8px !important;
+    padding: 8px;
+    border: 1px solid var(--nv-border-default);
+    border-radius: var(--nv-radius-container);
+    background: color-mix(in srgb, var(--nv-bg-surface) 84%, transparent);
+    box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 4%, transparent), 0 12px 32px rgba(2, 4, 16, .10);
+    backdrop-filter: blur(16px) saturate(118%);
+    -webkit-backdrop-filter: blur(16px) saturate(118%);
+  }
+
+  [aria-label="媒体类型"] + div .nv-search {
+    min-width: 15rem;
+  }
+
+  [aria-label="视图模式"] {
+    margin-left: 2px;
+  }
+
+  /* Detail: restore the poster/information proportion visible in the reference.
+     The backdrop, metadata and actions remain the existing real components. */
+  .nv-detail-hero-inner {
+    min-height: clamp(34rem, 42vw, 40rem) !important;
+    grid-template-columns: minmax(230px, 260px) minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: clamp(28px, 2.2vw, 42px) !important;
+    padding-top: 78px !important;
+    padding-bottom: 42px !important;
+  }
+
+  .nv-detail-poster {
+    max-width: 260px;
+    border-color: var(--nv-border-hover) !important;
+    box-shadow: var(--nv-shadow-elevated) !important;
+  }
+
+  .nv-detail-hero-inner > div:last-child {
+    max-width: 62rem;
+    padding-bottom: 0 !important;
+  }
+
+  .nv-detail-hero-inner h1 {
+    max-width: 26ch !important;
+  }
+
+  .nv-page-container[data-width="wide"] .divide-y.border-y {
+    box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent), 0 14px 34px rgba(2, 4, 16, .10);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  /* Cast stays horizontally scrollable but gains enough visual weight to match
+     the poster/info hierarchy instead of looking like tiny utility thumbnails. */
+  section[aria-labelledby="cast-grid-title"] [role="listitem"] {
+    width: 102px !important;
+  }
+
+  section[aria-labelledby="cast-grid-title"] [role="listitem"] > div:first-child {
+    border-color: var(--nv-border-default) !important;
+    box-shadow: var(--nv-shadow-card);
+  }
+
+  /* Technical overview: the existing four SummaryCell components become four
+     distinct glass info cards, matching Video / Audio / Subtitles / Container. */
+  section:has(#media-tech-specs-title) > .grid {
+    gap: 12px;
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  section:has(#media-tech-specs-title) > .grid > div {
+    min-height: 96px;
+    border: 1px solid var(--nv-border-default) !important;
+    border-radius: var(--nv-radius-card);
+    background: color-mix(in srgb, var(--nv-bg-surface) 84%, transparent);
+    box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent), 0 10px 28px rgba(2, 4, 16, .10);
+  }
+
+  section:has(#media-tech-specs-title) > .grid > div > div > div:first-child {
+    border: 1px solid color-mix(in srgb, var(--nv-action-muted) 22%, transparent);
+    background: color-mix(in srgb, var(--nv-action-muted) 12%, var(--nv-bg-surface));
+    color: var(--nv-action-muted-hover);
+  }
+}
+
+@media (min-width: 80rem) and (max-width: 95rem) {
+  :root { --nv-grid-column: 190px; }
+}
+
+@media (min-width: 95.001rem) and (max-width: 118rem) {
+  :root { --nv-grid-column: 204px; }
+}
+
+@media (min-width: 118.001rem) {
+  :root { --nv-grid-column: 208px; }
+}
+
+/* At 4K, keep the product centered as a desktop application rather than
+   stretching text and media rows across the entire display. */
+@media (min-width: 160rem) {
+  :root {
+    --nv-content-max: 120rem;
+    --nv-content-wide-max: 120rem;
+  }
+}
+
+/* Light theme keeps exactly the same geometry and swaps only semantic surfaces. */
+[data-theme="light"] [aria-label="媒体类型"] + div,
+[data-theme="light"] section:has(#media-tech-specs-title) > .grid > div {
+  box-shadow: var(--nv-shadow-card);
+}
+
+@media (max-width: 79.999rem) {
+  /* The base responsive system remains authoritative below the desktop target. */
+  .nv-topbar form[role="search"] {
+    position: static;
+    width: auto;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-detail-poster,
+  section[aria-labelledby="cast-grid-title"] [role="listitem"] > div:first-child {
+    transition-duration: .01ms !important;
+  }
+}
