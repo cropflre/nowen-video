@@ -123,7 +123,7 @@ export default function HeroSection({
 
   return (
     <>
-      <section className="nv-detail-hero relative overflow-hidden border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+      <section className="nv-detail-hero relative overflow-visible border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
             <img
