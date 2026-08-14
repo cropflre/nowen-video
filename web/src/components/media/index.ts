@@ -1,6 +1,8 @@
 export { default as HeroSection } from './HeroSection'
 export { default as MediaInfoSection } from './MediaInfoSection'
 export { default as MediaTechSpecs } from './MediaTechSpecs'
+export { default as MediaDetailSidebar } from './MediaDetailSidebar'
+export { default as MediaDetailTechOverview } from './MediaDetailTechOverview'
 export { default as RecommendationCarousel } from './RecommendationCarousel'
 export { default as TrailerModal } from './TrailerModal'
 export { default as CastGrid } from './CastGrid'
