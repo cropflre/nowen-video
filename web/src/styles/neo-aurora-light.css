@@ -1,0 +1,203 @@
+/* Nowen Video Neo Glass / Aurora light-mode specialization.
+ *
+ * The base Aurora layer intentionally owns cinematic dark defaults. This file
+ * only neutralizes dark-only chrome when the formal design-system light mode is
+ * active. It does not alter player chrome, routes, data or interaction logic.
+ */
+
+[data-theme="light"] .nv-topbar-title {
+  color: var(--nv-text-primary);
+  text-shadow: none;
+}
+
+[data-theme="light"] .nv-search {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-elevated) 84%, transparent);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent), var(--nv-shadow-card);
+}
+
+[data-theme="light"] .nv-search:hover {
+  border-color: var(--nv-border-hover);
+}
+
+[data-theme="light"] .nv-search:focus-within {
+  border-color: var(--nv-border-strong);
+  background: var(--nv-bg-elevated);
+  box-shadow: var(--nv-shadow-focus);
+}
+
+[data-theme="light"] .nv-rail-brand {
+  border-color: var(--nv-border-default);
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--nv-action-muted) 9%, transparent), transparent 64%),
+    color-mix(in srgb, var(--nv-bg-elevated) 90%, transparent);
+  color: var(--nv-action-muted-hover);
+  text-shadow: none;
+  box-shadow: var(--nv-shadow-card);
+}
+
+[data-theme="light"] .nv-rail-item {
+  color: var(--nv-text-tertiary);
+}
+
+[data-theme="light"] .nv-rail-item:hover {
+  border-color: var(--nv-border-default);
+  background: var(--nv-fill-hover);
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-rail-item[aria-current="page"],
+[data-theme="light"] .nv-rail-item.is-active {
+  border-color: color-mix(in srgb, var(--nv-action-muted) 26%, var(--nv-border-default));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--nv-status-info) 11%, var(--nv-bg-elevated)),
+    color-mix(in srgb, var(--nv-action-muted) 13%, var(--nv-bg-elevated)) 58%,
+    color-mix(in srgb, var(--nv-action-muted) 8%, var(--nv-bg-elevated)));
+  color: var(--nv-text-primary);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 4%, transparent), var(--nv-shadow-card);
+}
+
+[data-theme="light"] .nv-rail-item[aria-current="page"] .nv-rail-icon,
+[data-theme="light"] .nv-rail-item.is-active .nv-rail-icon {
+  filter: none;
+}
+
+[data-theme="light"] .nv-rail-divider {
+  background: var(--nv-border-default);
+}
+
+[data-theme="light"] .nv-button[data-variant="secondary"] {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-elevated) 76%, var(--nv-bg-control));
+  color: var(--nv-text-secondary);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent);
+}
+
+[data-theme="light"] .nv-button[data-variant="secondary"]:hover {
+  border-color: var(--nv-border-hover);
+  background: var(--nv-fill-hover);
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-button[data-variant="ghost"]:hover {
+  background: var(--nv-fill-hover);
+}
+
+[data-theme="light"] .nv-input,
+[data-theme="light"] .nv-textarea,
+[data-theme="light"] .nv-select {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-elevated) 68%, var(--nv-bg-control));
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-input:focus,
+[data-theme="light"] .nv-textarea:focus,
+[data-theme="light"] .nv-select:focus {
+  border-color: var(--nv-border-strong);
+  background: var(--nv-bg-elevated);
+  box-shadow: var(--nv-shadow-focus);
+}
+
+[data-theme="light"] .nv-tag {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-surface-soft) 76%, transparent);
+  color: var(--nv-text-secondary);
+}
+
+[data-theme="light"] .nv-tag[data-tone="brand"] {
+  border-color: color-mix(in srgb, var(--nv-action-muted) 26%, var(--nv-border-default));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--nv-status-info) 9%, var(--nv-bg-elevated)),
+    color-mix(in srgb, var(--nv-action-muted) 12%, var(--nv-bg-elevated)));
+  color: var(--nv-action-muted-hover);
+}
+
+[data-theme="light"] .nv-tag[data-tone="quality"] {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-elevated) 86%, transparent);
+  color: var(--nv-text-primary);
+  backdrop-filter: blur(8px);
+}
+
+[data-theme="light"] .nv-media-card-poster {
+  border-color: var(--nv-border-default);
+  background: linear-gradient(180deg, var(--nv-bg-elevated), var(--nv-bg-poster));
+  box-shadow: var(--nv-shadow-card);
+}
+
+[data-theme="light"] .nv-media-card:hover .nv-media-card-poster,
+[data-theme="light"] .nv-media-card:focus-within .nv-media-card-poster {
+  border-color: var(--nv-border-hover);
+  box-shadow: var(--nv-shadow-card-hover);
+}
+
+[data-theme="light"] .nv-media-card-meta {
+  color: var(--nv-text-tertiary);
+}
+
+[data-theme="light"] .nv-media-card-progress {
+  background: color-mix(in srgb, var(--nv-text-primary) 12%, transparent);
+}
+
+[data-theme="light"] .nv-hero-carousel,
+[data-theme="light"] .nv-section-stack > section[aria-roledescription="carousel"] {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface-soft) !important;
+  box-shadow: var(--nv-shadow-card) !important;
+}
+
+[data-theme="light"] .nv-hero-carousel::after,
+[data-theme="light"] .nv-section-stack > section[aria-roledescription="carousel"]::after {
+  box-shadow:
+    inset 0 1px color-mix(in srgb, var(--nv-text-primary) 6%, transparent),
+    inset 0 -1px var(--nv-border-subtle);
+}
+
+[data-theme="light"] [aria-label="媒体类型"] {
+  border-bottom-color: var(--nv-border-subtle) !important;
+}
+
+[data-theme="light"] [aria-label="媒体类型"] .nv-button[aria-pressed="true"],
+[data-theme="light"] [aria-label="视图模式"] button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--nv-action-muted) 28%, var(--nv-border-default)) !important;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--nv-status-info) 9%, var(--nv-bg-elevated)),
+    color-mix(in srgb, var(--nv-action-muted) 12%, var(--nv-bg-elevated))) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: none;
+}
+
+[data-theme="light"] [aria-label="视图模式"] {
+  border-color: var(--nv-border-default) !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 74%, transparent);
+}
+
+[data-theme="light"] .nv-page-container[data-width="wide"] .divide-y.border-y {
+  border-color: var(--nv-border-default) !important;
+  background: linear-gradient(180deg, var(--nv-bg-surface), var(--nv-bg-surface-soft));
+  box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent);
+}
+
+[data-theme="light"] nav[aria-label*="分页"] button[aria-current="page"],
+[data-theme="light"] nav[aria-label*="pagination"] button[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--nv-action-muted) 34%, var(--nv-border-default)) !important;
+  background: color-mix(in srgb, var(--nv-action-muted) 12%, var(--nv-bg-elevated)) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: none;
+}
+
+[data-theme="light"] .nv-mobile-nav {
+  border-color: var(--nv-border-default);
+  background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent);
+  box-shadow: var(--nv-shadow-elevated);
+}
+
+[data-theme="light"] .nv-media-info,
+[data-theme="light"] .nv-recommendation-section,
+[data-theme="light"] .nv-comment-section {
+  box-shadow: var(--nv-shadow-card);
+}
+
+/* The video player remains intentionally cinematic/dark in both application
+   themes; no player selectors belong in this light-mode specialization. */
