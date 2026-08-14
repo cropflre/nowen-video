@@ -24,6 +24,8 @@ const sizeClass: Record<ModalSize, string> = {
   video: 'max-w-5xl',
 }
 
+const responsiveSafePadding = 'max(10px, min(20px, 2vw), env(safe-area-inset-top, 0px))'
+
 export function Modal({
   open = true,
   onClose,
@@ -62,6 +64,12 @@ export function Modal({
     <div
       ref={overlayRef}
       className={clsx('nv-modal-backdrop', className)}
+      style={{
+        paddingTop: responsiveSafePadding,
+        paddingRight: 'max(10px, min(20px, 2vw), env(safe-area-inset-right, 0px))',
+        paddingBottom: 'max(10px, min(20px, 2vw), env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(10px, min(20px, 2vw), env(safe-area-inset-left, 0px))',
+      }}
       onMouseDown={handleBackdrop}
       role="dialog"
       aria-modal="true"
