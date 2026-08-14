@@ -240,8 +240,8 @@
     transform: translate(-50%, calc(-50% - 1px)) scale(1.015);
   }
 
-  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-volume-2),
-  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-volume-x) { order: -4; }
+  /* Keep the volume button in its DOM position. Muting swaps the Lucide glyph,
+     so glyph-dependent ordering would make the control jump horizontally. */
   .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-back) { order: -3; }
   .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-forward) { order: -2; }
   .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-chevron-right) { order: -1; }
