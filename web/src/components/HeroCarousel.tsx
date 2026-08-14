@@ -70,13 +70,13 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
 }
 
 function getHeroArtwork(media: Media) {
+  // Series already exposes a real authenticated backdrop endpoint. Standalone
+  // media currently exposes poster only, so keep using that public contract
+  // instead of inventing a frontend-only /backdrop URL.
   if (media.series_id) {
     return media.backdrop_path
       ? streamApi.getSeriesBackdropUrl(media.series_id)
       : streamApi.getSeriesPosterUrl(media.series_id)
-  }
-  if (media.backdrop_path) {
-    return streamApi.withTokenUrl(`/api/media/${media.id}/backdrop`)
   }
   return streamApi.getPosterUrl(media.id)
 }
