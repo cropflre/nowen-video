@@ -44,7 +44,7 @@ function ApplicationTopBar() {
     // The URL is the source of truth for committed searches. Leaving /search
     // clears an unsubmitted stale keyword; back/forward restores the route query.
     setKeyword(routeKeyword)
-  }, [routeKeyword])
+  }, [location.pathname, routeKeyword])
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()
