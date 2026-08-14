@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { libraryApi, storageApi } from '@/api'
 import type { AlistStatus, S3Status, WebDAVConfig, WebDAVStatus } from '@/api/storage'
 import type { Library } from '@/types'
+import { getLibraryPaths } from '@/types'
 import {
   Cloud,
   Database,
@@ -70,6 +71,7 @@ export default function StorageTab() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [loadWarning, setLoadWarning] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [passwordDirty, setPasswordDirty] = useState(false)
   const [registeringLib, setRegisteringLib] = useState<string | null>(null)
@@ -79,23 +81,45 @@ export default function StorageTab() {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
+    setLoadWarning(null)
     try {
-      const [cfgRes, webdavStatusRes, libsRes, aggregateStatusRes] = await Promise.all([
+      const [cfgResult, webdavStatusResult, libsResult, aggregateStatusResult] = await Promise.allSettled([
         storageApi.getWebDAVConfig(),
         storageApi.getWebDAVStatus(),
         libraryApi.list(),
-        storageApi.getStorageStatus().catch(() => null),
+        storageApi.getStorageStatus(),
       ])
-      setConfig({ ...DEFAULT_CONFIG, ...cfgRes.data.data })
-      setStatus(webdavStatusRes.data.data)
-      setLibraries(libsRes.data.data || [])
-      setPasswordDirty(false)
-      if (aggregateStatusRes) {
-        setAlistStatus(aggregateStatusRes.data.data.alist || null)
-        setS3Status(aggregateStatusRes.data.data.s3 || null)
+
+      const failed: string[] = []
+      if (cfgResult.status === 'fulfilled') {
+        setConfig({ ...DEFAULT_CONFIG, ...cfgResult.value.data.data })
+        setPasswordDirty(false)
+      } else {
+        failed.push('WebDAV 配置')
       }
-    } catch (error) {
-      console.error('加载存储配置失败', error)
+
+      if (webdavStatusResult.status === 'fulfilled') {
+        setStatus(webdavStatusResult.value.data.data)
+      } else {
+        failed.push('WebDAV 状态')
+      }
+
+      if (libsResult.status === 'fulfilled') {
+        setLibraries(libsResult.value.data.data || [])
+      } else {
+        failed.push('媒体库列表')
+      }
+
+      if (aggregateStatusResult.status === 'fulfilled') {
+        setAlistStatus(aggregateStatusResult.value.data.data.alist || null)
+        setS3Status(aggregateStatusResult.value.data.data.s3 || null)
+      } else {
+        failed.push('存储聚合状态')
+      }
+
+      if (failed.length > 0) {
+        setLoadWarning(`${failed.join('、')}加载失败；其他已成功加载的存储配置仍可继续使用。`)
+      }
     } finally {
       setLoading(false)
     }
@@ -126,10 +150,10 @@ export default function StorageTab() {
     setToast(null)
     try {
       await storageApi.testWebDAVConnection({
-        server_url: config.server_url,
-        username: config.username,
+        server_url: config.server_url.trim(),
+        username: config.username.trim(),
         password: passwordDirty ? config.password : '',
-        base_path: config.base_path,
+        base_path: config.base_path.trim() || '/',
       })
       setToast({ ok: true, msg: 'WebDAV 连接测试成功' })
     } catch (error: any) {
@@ -140,6 +164,7 @@ export default function StorageTab() {
   }
 
   const handleRegisterLib = async (libraryId: string) => {
+    if (registeringLib) return
     setRegisteringLib(libraryId)
     try {
       await storageApi.registerWebDAVLibrary(libraryId)
@@ -201,7 +226,7 @@ export default function StorageTab() {
         title="存储概览"
         description="查看各存储 Provider 的连接状态，并切换到对应配置。"
         actions={
-          <ActionButton variant="icon" onClick={loadAll} icon={<RefreshCw size={16} />} aria-label="刷新状态" />
+          <ActionButton variant="icon" onClick={() => void loadAll()} icon={<RefreshCw size={16} />} aria-label="刷新状态" />
         }
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -217,6 +242,11 @@ export default function StorageTab() {
             />
           ))}
         </div>
+        {loadWarning && (
+          <div className="mt-4">
+            <Toast ok={false} msg={loadWarning} onDismiss={() => setLoadWarning(null)} />
+          </div>
+        )}
       </AdminPanel>
 
       {activeTab === 'local' && (
@@ -328,7 +358,7 @@ export default function StorageTab() {
                     type="number"
                     min={1}
                     value={config.timeout}
-                    onChange={(event) => setConfig({ ...config, timeout: Number(event.target.value) })}
+                    onChange={(event) => setConfig({ ...config, timeout: Math.max(1, Number(event.target.value) || 1) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -337,7 +367,7 @@ export default function StorageTab() {
                     type="number"
                     min={1}
                     value={config.pool_size}
-                    onChange={(event) => setConfig({ ...config, pool_size: Number(event.target.value) })}
+                    onChange={(event) => setConfig({ ...config, pool_size: Math.max(1, Number(event.target.value) || 1) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -346,7 +376,7 @@ export default function StorageTab() {
                     type="number"
                     min={0}
                     value={config.max_retries}
-                    onChange={(event) => setConfig({ ...config, max_retries: Number(event.target.value) })}
+                    onChange={(event) => setConfig({ ...config, max_retries: Math.max(0, Number(event.target.value) || 0) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -355,7 +385,7 @@ export default function StorageTab() {
                     type="number"
                     min={1}
                     value={config.retry_interval}
-                    onChange={(event) => setConfig({ ...config, retry_interval: Number(event.target.value) })}
+                    onChange={(event) => setConfig({ ...config, retry_interval: Math.max(1, Number(event.target.value) || 1) })}
                     disabled={!config.enabled}
                   />
                 </Field>
@@ -373,7 +403,7 @@ export default function StorageTab() {
                     type="number"
                     min={0}
                     value={config.cache_ttl_hours}
-                    onChange={(event) => setConfig({ ...config, cache_ttl_hours: Number(event.target.value) })}
+                    onChange={(event) => setConfig({ ...config, cache_ttl_hours: Math.max(0, Number(event.target.value) || 0) })}
                     disabled={!config.enabled || !config.enable_cache}
                   />
                 </Field>
@@ -388,21 +418,21 @@ export default function StorageTab() {
                 <>
                   <ActionButton
                     variant="secondary"
-                    onClick={handleTest}
-                    disabled={!config.enabled || !config.server_url || testing || saving}
+                    onClick={() => void handleTest()}
+                    disabled={!config.enabled || !config.server_url.trim() || testing || saving}
                     loading={testing}
                     icon={<Wifi size={16} />}
                   >
                     测试连接
                   </ActionButton>
-                  <ActionButton variant="icon" onClick={loadAll} icon={<RefreshCw size={16} />} aria-label="刷新" />
+                  <ActionButton variant="icon" onClick={() => void loadAll()} icon={<RefreshCw size={16} />} aria-label="刷新" />
                 </>
               }
               primaryActions={
                 <ActionButton
                   variant="primary"
-                  onClick={handleSave}
-                  disabled={saving || testing}
+                  onClick={() => void handleSave()}
+                  disabled={saving || testing || (config.enabled && !config.server_url.trim())}
                   loading={saving}
                   icon={<Save size={16} />}
                 >
@@ -432,12 +462,16 @@ export default function StorageTab() {
               ) : (
                 <ul className="space-y-2">
                   {libraries.map((library) => {
-                    const isWebDAV = library.path?.startsWith('webdav://')
-                    const isAlist = library.path?.startsWith('alist://')
-                    const isS3 = library.path?.startsWith('s3://')
-                    const isRemote = isWebDAV || isAlist || isS3
+                    const paths = getLibraryPaths(library)
+                    const remotePath = paths.find((path) => /^(webdav|alist|s3):\/\//i.test(path))
+                    const normalizedRemote = remotePath?.toLowerCase() || ''
+                    const isWebDAV = normalizedRemote.startsWith('webdav://')
+                    const isAlist = normalizedRemote.startsWith('alist://')
+                    const isS3 = normalizedRemote.startsWith('s3://')
+                    const isRemote = Boolean(remotePath)
                     const providerLabel = isWebDAV ? 'WebDAV' : isAlist ? 'Alist' : isS3 ? 'S3' : '本地'
                     const ProviderIcon = isWebDAV ? Cloud : isAlist ? Server : isS3 ? Database : HardDrive
+                    const displayPath = paths.length > 1 ? `${paths[0]} +${paths.length - 1}` : paths[0] || library.path
 
                     return (
                       <li
@@ -452,16 +486,16 @@ export default function StorageTab() {
                             <div className="truncate text-sm font-medium text-[var(--nv-text-primary)]">
                               {library.name}
                             </div>
-                            <div className="truncate font-mono text-[11px] text-[var(--nv-text-tertiary)]">
-                              {library.path}
+                            <div className="truncate font-mono text-[11px] text-[var(--nv-text-tertiary)]" title={paths.join('\n')}>
+                              {displayPath}
                             </div>
                           </div>
                         </div>
                         {!isRemote ? (
                           <ActionButton
                             variant="secondary"
-                            onClick={() => handleRegisterLib(library.id)}
-                            disabled={registeringLib === library.id}
+                            onClick={() => void handleRegisterLib(library.id)}
+                            disabled={registeringLib !== null}
                             loading={registeringLib === library.id}
                             icon={<Link2 size={14} />}
                             className="shrink-0"
