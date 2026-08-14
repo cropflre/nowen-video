@@ -20,6 +20,7 @@ import './styles/player-navi.css'
 import './styles/neo-aurora-responsive.css'
 import './styles/neo-aurora-light.css'
 import './styles/modern-cinema.css'
+import './styles/modern-cinema-reference.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
