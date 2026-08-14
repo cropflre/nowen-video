@@ -198,6 +198,43 @@
     font-size: 16px !important;
   }
 
+  /* Browse/search toolbars should use the whole phone width instead of forcing
+     a desktop-style search + selector row into ~360 CSS pixels. */
+  .nv-browse-toolbar .nv-search {
+    flex-basis: 100%;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .nv-browse-toolbar > .nv-select {
+    width: auto !important;
+    min-width: 7rem;
+    flex: 1 1 7rem;
+  }
+
+  .nv-search-page-toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .nv-search-page-toolbar > .nv-page-title-lockup {
+    min-width: 0;
+    flex: 1 1 12rem;
+  }
+
+  .nv-search-filter-row {
+    align-items: flex-start;
+  }
+
+  .nv-search-filter-row > span {
+    width: 100%;
+    min-width: 0;
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+
   /* A seven-button desktop paginator plus touch-size controls easily spans
      multiple phone rows. Keep the four directional actions and the current
      page visible; larger viewports retain the full numbered paginator. */
