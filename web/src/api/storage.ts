@@ -88,7 +88,7 @@ export interface TestS3Request {
   endpoint: string
   region?: string
   access_key: string
-  secret_key: string
+  secret_key?: string
   bucket: string
   base_path?: string
   path_style?: boolean
@@ -113,6 +113,14 @@ export interface TestWebDAVRequest {
   base_path?: string
 }
 
+export type StorageReadOptions = {
+  allowCachedOnError?: boolean
+}
+
+let cachedAlistConfig: AlistConfig | null = null
+let cachedS3Config: S3Config | null = null
+let cachedStorageStatus: StorageStatus | null = null
+
 export const storageApi = {
   // ---------- WebDAV ----------
   getWebDAVConfig: () =>
@@ -129,21 +137,64 @@ export const storageApi = {
     }),
 
   // ---------- V2.3: Alist ----------
-  getAlistConfig: () =>
-    api.get<{ data: AlistConfig }>('/admin/storage/alist'),
-  updateAlistConfig: (data: Partial<AlistConfig>) =>
-    api.put<{ message: string }>('/admin/storage/alist', data),
+  getAlistConfig: async (options: StorageReadOptions = {}) => {
+    try {
+      const response = await api.get<{ data: AlistConfig }>('/admin/storage/alist')
+      cachedAlistConfig = response.data.data
+      return response
+    } catch (error) {
+      if (options.allowCachedOnError !== false && cachedAlistConfig) {
+        return { data: { data: cachedAlistConfig } }
+      }
+      throw error
+    }
+  },
+  updateAlistConfig: async (data: Partial<AlistConfig>) => {
+    const response = await api.put<{ message: string }>('/admin/storage/alist', data)
+    if (cachedAlistConfig) {
+      const { password: _password, token: _token, ...safeData } = data
+      cachedAlistConfig = { ...cachedAlistConfig, ...safeData }
+    }
+    return response
+  },
   testAlistConnection: (data: TestAlistRequest) =>
     api.post<{ message: string }>('/admin/storage/alist/test', data),
 
   // ---------- V2.3: S3 ----------
-  getS3Config: () => api.get<{ data: S3Config }>('/admin/storage/s3'),
-  updateS3Config: (data: Partial<S3Config>) =>
-    api.put<{ message: string }>('/admin/storage/s3', data),
+  getS3Config: async (options: StorageReadOptions = {}) => {
+    try {
+      const response = await api.get<{ data: S3Config }>('/admin/storage/s3')
+      cachedS3Config = response.data.data
+      return response
+    } catch (error) {
+      if (options.allowCachedOnError !== false && cachedS3Config) {
+        return { data: { data: cachedS3Config } }
+      }
+      throw error
+    }
+  },
+  updateS3Config: async (data: Partial<S3Config>) => {
+    const response = await api.put<{ message: string }>('/admin/storage/s3', data)
+    if (cachedS3Config) {
+      const { secret_key: _secretKey, ...safeData } = data
+      cachedS3Config = { ...cachedS3Config, ...safeData }
+    }
+    return response
+  },
   testS3Connection: (data: TestS3Request) =>
     api.post<{ message: string }>('/admin/storage/s3/test', data),
 
   // ---------- 聚合状态 ----------
-  getStorageStatus: () =>
-    api.get<{ data: StorageStatus }>('/admin/storage/status'),
+  getStorageStatus: async (options: StorageReadOptions = {}) => {
+    try {
+      const response = await api.get<{ data: StorageStatus }>('/admin/storage/status')
+      cachedStorageStatus = response.data.data
+      return response
+    } catch (error) {
+      if (options.allowCachedOnError !== false && cachedStorageStatus) {
+        return { data: { data: cachedStorageStatus } }
+      }
+      throw error
+    }
+  },
 }
