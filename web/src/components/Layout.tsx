@@ -53,15 +53,16 @@ function ApplicationTopBar() {
   }
 
   return (
-    <header className="nv-topbar" aria-label="页面工具栏">
-      <h1 className="nv-topbar-title">{title}</h1>
+    <header className="nv-topbar pwa-safe-top" aria-label="页面工具栏">
+      <h1 className="nv-topbar-title max-w-[20vw] sm:max-w-none">{title}</h1>
       <div className="nv-topbar-spacer" />
-      <form onSubmit={submitSearch} role="search" className="flex min-w-0 items-center">
+      <form onSubmit={submitSearch} role="search" className="flex min-w-0 flex-1 items-center justify-end sm:flex-initial">
         <SearchField
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索影片、剧集、演员"
           aria-label="全局搜索"
+          wrapperClassName="max-w-full"
         />
       </form>
       <button
@@ -120,7 +121,7 @@ export default function Layout() {
       <main
         ref={mainRef}
         id="main-scroll-container"
-        className="nv-main-scroll relative min-w-0 flex-1 overflow-y-auto"
+        className="nv-main-scroll relative min-w-0 flex-1 overflow-y-auto overscroll-contain"
       >
         <ApplicationTopBar />
         <PageContainer width={isWidePage ? 'wide' : 'content'}>
