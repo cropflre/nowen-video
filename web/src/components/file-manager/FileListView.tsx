@@ -121,7 +121,10 @@ export default function FileListView({
         key: 'play',
         label: '播放/预览',
         icon: <Play size={14} />,
-        onClick: () => onPlayFile?.(file) || onViewDetail(file),
+        onClick: () => {
+          if (onPlayFile) onPlayFile(file)
+          else onViewDetail(file)
+        },
       },
       {
         key: 'detail',
@@ -223,6 +226,7 @@ export default function FileListView({
   }
 
   const hasSubFolders = Boolean(subFolders?.length)
+  const allCurrentFilesSelected = files.length > 0 && files.every((file) => selectedIds.has(file.id))
 
   if (files.length === 0 && !hasSubFolders) {
     return (
@@ -309,10 +313,10 @@ export default function FileListView({
                       type="button"
                       onClick={onToggleSelectAll}
                       className="rounded-[var(--nv-radius-sm)] p-1 text-[var(--nv-text-tertiary)] transition-colors duration-150 hover:bg-[var(--nv-fill-hover)] hover:text-[var(--nv-text-primary)]"
-                      aria-label={selectedIds.size === files.length ? '取消全选' : '全选当前页'}
-                      aria-pressed={selectedIds.size === files.length}
+                      aria-label={allCurrentFilesSelected ? '取消全选' : '全选当前页'}
+                      aria-pressed={allCurrentFilesSelected}
                     >
-                      {selectedIds.size === files.length
+                      {allCurrentFilesSelected
                         ? <CheckSquare size={16} className="text-[var(--nv-text-primary)]" />
                         : <Square size={16} />}
                     </button>
