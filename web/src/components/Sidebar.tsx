@@ -158,7 +158,14 @@ export default function Sidebar(_props: SidebarProps) {
         </div>
       </aside>
 
-      <nav className="nv-mobile-nav" aria-label="移动端主导航">
+      <nav
+        className="nv-mobile-nav"
+        aria-label="移动端主导航"
+        style={{
+          left: 'max(8px, env(safe-area-inset-left, 0px))',
+          right: 'max(8px, env(safe-area-inset-right, 0px))',
+        }}
+      >
         <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
         <RailLink to="/browse" icon={<Layers size={18} aria-hidden="true" />} label="影视库" />
         <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
