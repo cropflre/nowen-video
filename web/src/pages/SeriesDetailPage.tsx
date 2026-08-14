@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { adminApi, playlistApi, seriesApi, streamApi, userApi } from '@/api'
+import { adminApi, seriesApi, streamApi, userApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/components/Toast'
 import EditMetadataModal from '@/components/EditMetadataModal'
@@ -14,7 +14,7 @@ import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
-import type { Media, MediaPerson, Playlist, SeasonInfo, Series, WatchHistory } from '@/types'
+import type { Media, MediaPerson, SeasonInfo, Series, WatchHistory } from '@/types'
 import { ArrowLeft, ChevronDown, ChevronUp, Database } from 'lucide-react'
 
 const HISTORY_PAGE_SIZE = 50
@@ -150,7 +150,6 @@ export default function SeriesDetailPage() {
   const [seasons, setSeasons] = useState<SeasonInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [isFavorited, setIsFavorited] = useState(false)
-  const [, setPlaylists] = useState<Playlist[]>([])
   const [overviewExpanded, setOverviewExpanded] = useState(false)
   const [posterVersion, setPosterVersion] = useState<number>(() => Date.now())
   const [historyMap, setHistoryMap] = useState<Record<string, WatchHistory>>({})
@@ -201,13 +200,11 @@ export default function SeriesDetailPage() {
     Promise.all([
       seriesApi.detail(id),
       seriesApi.seasons(id),
-      playlistApi.list(),
     ])
-      .then(([seriesRes, seasonsRes, playlistRes]) => {
+      .then(([seriesRes, seasonsRes]) => {
         if (abortController.signal.aborted) return
         setSeries(seriesRes.data.data)
         setSeasons(seasonsRes.data.data || [])
-        setPlaylists(playlistRes.data.data || [])
       })
       .catch(() => {
         if (abortController.signal.aborted) return
@@ -231,6 +228,7 @@ export default function SeriesDetailPage() {
 
   const episodes = useMemo(() => orderedEpisodes(seasons), [seasons])
   const favoriteEpisode = useMemo(() => episodes.find((episode) => episode.season_num > 0) || episodes[0] || null, [episodes])
+  const favoriteEpisodeId = favoriteEpisode?.id
   const playbackChoice = useMemo(() => chooseSeriesPlayback(episodes, historyMap), [episodes, historyMap])
 
   useEffect(() => {
@@ -252,17 +250,17 @@ export default function SeriesDetailPage() {
   }, [id, episodes])
 
   useEffect(() => {
-    if (!favoriteEpisode) {
+    if (!favoriteEpisodeId) {
       setIsFavorited(false)
       return
     }
     let cancelled = false
     setIsFavorited(false)
-    userApi.checkFavorite(favoriteEpisode.id)
+    userApi.checkFavorite(favoriteEpisodeId)
       .then((response) => { if (!cancelled) setIsFavorited(response.data.data) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [favoriteEpisode?.id])
+  }, [favoriteEpisodeId])
 
   const handleFavorite = async () => {
     if (!favoriteEpisode) return
