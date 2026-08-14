@@ -2,7 +2,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from './Sidebar'
 import { PageContainer, SearchField } from './design-system'
-import { SlidersHorizontal } from 'lucide-react'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
 const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
@@ -15,7 +14,7 @@ const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/playlists', '播放列表'],
   ['/collections', '合集'],
   ['/files', '文件管理'],
-  ['/preprocess', '预处理'],
+  ['/preprocess', '任务中心'],
   ['/admin', '管理中心'],
   ['/stats', '统计'],
   ['/profile', '个人资料'],
@@ -46,8 +45,6 @@ function ApplicationTopBar() {
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname])
 
   useEffect(() => {
-    // The URL is the source of truth for committed searches. Leaving /search
-    // clears an unsubmitted stale keyword; back/forward restores the route query.
     setKeyword(routeKeyword)
   }, [location.pathname, routeKeyword])
 
@@ -70,18 +67,6 @@ function ApplicationTopBar() {
           wrapperClassName="max-w-full"
         />
       </form>
-      <button
-        type="button"
-        className="nv-button nv-button--ghost nv-button--sm nv-button--icon-only hidden sm:inline-flex"
-        data-variant="ghost"
-        data-size="sm"
-        data-icon-only="true"
-        onClick={() => navigate('/browse')}
-        aria-label="浏览与筛选"
-        title="浏览与筛选"
-      >
-        <SlidersHorizontal size={16} aria-hidden="true" />
-      </button>
     </header>
   )
 }
