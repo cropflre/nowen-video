@@ -30,6 +30,17 @@ interface ScanDirectoryModalProps {
   onSuccess: () => void
 }
 
+function failedImportPaths(errors: string[], selectedPaths: Set<string>) {
+  const failed = new Set<string>()
+  for (const error of errors) {
+    if (error.includes('已存在')) continue
+    for (const path of selectedPaths) {
+      if (error.includes(path)) failed.add(path)
+    }
+  }
+  return failed
+}
+
 export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: ScanDirectoryModalProps) {
   const toast = useToast()
   const [scanPath, setScanPath] = useState('')
@@ -48,14 +59,16 @@ export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: Sc
     && unimportedPaths.every((path) => scanSelectedPaths.has(path))
 
   const handleScan = async () => {
-    if (!scanPath) {
+    const normalizedPath = scanPath.trim()
+    if (!normalizedPath) {
       toast.error('请输入目录路径')
       return
     }
 
     setScanning(true)
     try {
-      const res = await fileManagerApi.scanDirectory(scanPath)
+      const res = await fileManagerApi.scanDirectory(normalizedPath)
+      setScanPath(normalizedPath)
       setScannedFiles(res.data.data || [])
       setScanSelectedPaths(new Set())
     } catch (err: any) {
@@ -86,7 +99,8 @@ export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: Sc
   }
 
   const handleBatchImport = async () => {
-    const filesToImport: FileImportRequest[] = Array.from(scanSelectedPaths).map((path) => {
+    const selectedBeforeImport = new Set(scanSelectedPaths)
+    const filesToImport: FileImportRequest[] = Array.from(selectedBeforeImport).map((path) => {
       const file = scannedFiles.find((item) => item.path === path)
       return {
         file_path: path,
@@ -105,9 +119,27 @@ export default function ScanDirectoryModal({ libraries, onClose, onSuccess }: Sc
     try {
       const res = await fileManagerApi.batchImportFiles(filesToImport)
       const result = res.data.data
-      toast.success(`导入完成: 成功 ${result.success}, 跳过 ${result.skipped}, 失败 ${result.failed}`)
+      const errors = result.errors || []
+      const failedPaths = failedImportPaths(errors, selectedBeforeImport)
+
+      if (result.success > 0 || result.skipped > 0) {
+        toast.success(`导入完成: 成功 ${result.success}, 跳过 ${result.skipped}, 失败 ${result.failed}`)
+        onSuccess()
+      }
+
+      if (result.failed > 0) {
+        toast.error(`${result.failed} 个文件导入失败，失败项目已保留供重试`)
+        try {
+          const refreshed = await fileManagerApi.scanDirectory(scanPath.trim())
+          setScannedFiles(refreshed.data.data || [])
+        } catch {
+          // Keep the previous scan result when the refresh itself fails.
+        }
+        setScanSelectedPaths(failedPaths)
+        return
+      }
+
       onClose()
-      onSuccess()
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '批量导入失败')
     } finally {

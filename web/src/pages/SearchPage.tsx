@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { mediaApi, aiApi } from '@/api'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { aiApi, mediaApi, personApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
-import type { Media, SearchIntent } from '@/types'
+import type { Media, MixedItem, Person, SearchIntent, Series } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import Pagination from '@/components/Pagination'
-import { Button, EmptyState, Input, Surface, Tag } from '@/components/design-system'
+import { Button, EmptyState, Surface, Tag } from '@/components/design-system'
 import {
   ArrowUpDown,
   Calendar,
@@ -14,9 +14,10 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
+  User,
   X,
 } from 'lucide-react'
-import { useTranslation } from '@/i18n'
+import { t as translate, useTranslation } from '@/i18n'
 
 const SORT_OPTIONS = [
   { value: 'relevance', labelKey: 'search.sortRelevance' },
@@ -24,7 +25,7 @@ const SORT_OPTIONS = [
   { value: 'year_desc', labelKey: 'search.sortYearDesc' },
   { value: 'year_asc', labelKey: 'search.sortYearAsc' },
   { value: 'title_asc', labelKey: 'search.sortTitleAsc' },
-]
+] as const
 
 const YEAR_RANGES = [
   { labelKey: 'search.yearAll', min: 0, max: 0 },
@@ -35,17 +36,43 @@ const YEAR_RANGES = [
   { labelKey: 'search.yearEarlier', min: 0, max: 1999 },
 ]
 
+const SEARCH_BATCH_SIZE = 500
+const SEARCH_FETCH_CONCURRENCY = 4
+const SEARCH_CACHE_TTL = 30_000
+
+type SearchType = '' | 'movie' | 'series'
+type SearchSort = typeof SORT_OPTIONS[number]['value']
+
+type EffectiveSearch = {
+  query: string
+  type?: 'movie' | 'series'
+  genre?: string
+  yearMin?: number
+  yearMax?: number
+  minRating: number
+  sort: SearchSort
+}
+
+type SearchUniverse = {
+  media: Media[]
+  series: Series[]
+}
+
+type SearchUniverseCacheEntry = SearchUniverse & {
+  loadedAt: number
+}
+
+const searchUniverseCache = new Map<string, SearchUniverseCacheEntry>()
+const searchUniverseInFlight = new Map<string, Promise<SearchUniverse>>()
+
 function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="min-h-8 rounded-[var(--nv-radius-control)] border px-3 py-1.5 text-xs font-medium transition-[background-color,border-color,color] duration-200"
-      style={{
-        background: selected ? 'var(--nv-bg-active)' : 'var(--nv-bg-control)',
-        borderColor: selected ? 'var(--nv-border-hover)' : 'var(--nv-border-default)',
-        color: selected ? 'var(--nv-action-primary)' : 'var(--nv-text-secondary)',
-      }}
+      className="nv-button nv-search-filter-chip"
+      data-variant={selected ? 'secondary' : 'ghost'}
+      data-size="sm"
       aria-pressed={selected}
     >
       {children}
@@ -55,7 +82,7 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
 
 function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-2.5">
+    <div className="nv-search-filter-row flex flex-wrap items-center gap-1.5">
       <span className="mr-1 inline-flex min-w-20 items-center gap-1.5 text-xs font-medium text-[var(--nv-text-tertiary)]">
         {icon}
         {label}
@@ -65,222 +92,366 @@ function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; 
   )
 }
 
+function normalizeIntentType(value?: string): 'movie' | 'series' | undefined {
+  const normalized = (value || '').trim().toLowerCase()
+  if (normalized === 'movie') return 'movie'
+  if (normalized === 'episode' || normalized === 'series' || normalized === 'tv' || normalized === 'tvshow') return 'series'
+  return undefined
+}
+
+function normalizeIntentSort(value?: string): SearchSort {
+  return SORT_OPTIONS.some((option) => option.value === value) ? value as SearchSort : 'relevance'
+}
+
+function normalizeText(value?: string) {
+  return (value || '').trim().toLocaleLowerCase()
+}
+
+function includesFold(value: string | undefined, query: string | undefined) {
+  if (!query) return true
+  return normalizeText(value).includes(normalizeText(query))
+}
+
+function getMixedTitle(item: MixedItem) {
+  return item.type === 'series' ? item.series?.title || '' : item.media?.title || ''
+}
+
+function getMixedOrigTitle(item: MixedItem) {
+  return item.type === 'series' ? item.series?.orig_title || '' : item.media?.orig_title || ''
+}
+
+function getMixedGenres(item: MixedItem) {
+  return item.type === 'series' ? item.series?.genres || '' : item.media?.genres || ''
+}
+
+function getMixedYear(item: MixedItem) {
+  return item.type === 'series' ? item.series?.year || 0 : item.media?.year || 0
+}
+
+function getMixedRating(item: MixedItem) {
+  return item.type === 'series' ? item.series?.rating || 0 : item.media?.rating || 0
+}
+
+function getMixedCreatedAt(item: MixedItem) {
+  return item.type === 'series' ? item.series?.created_at || '' : item.media?.created_at || ''
+}
+
+function relevanceScore(item: MixedItem, query: string) {
+  const needle = normalizeText(query)
+  const title = normalizeText(getMixedTitle(item))
+  const origTitle = normalizeText(getMixedOrigTitle(item))
+  const genres = normalizeText(getMixedGenres(item))
+
+  if (title === needle) return 100
+  if (origTitle === needle) return 95
+  if (title.startsWith(needle)) return 85
+  if (origTitle.startsWith(needle)) return 80
+  if (title.includes(needle)) return 70
+  if (origTitle.includes(needle)) return 65
+  if (genres.includes(needle)) return 40
+  return 0
+}
+
+function uniqueById<T extends { id: string }>(items: T[]) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+async function loadSearchUniverse(rawQuery: string): Promise<SearchUniverse> {
+  const query = rawQuery.trim()
+  const cacheKey = normalizeText(query)
+  const cached = searchUniverseCache.get(cacheKey)
+  if (cached && Date.now() - cached.loadedAt <= SEARCH_CACHE_TTL) {
+    return { media: cached.media, series: cached.series }
+  }
+
+  const existing = searchUniverseInFlight.get(cacheKey)
+  if (existing) return existing
+
+  const promise = (async () => {
+    const first = await mediaApi.searchMixed(query, 1, SEARCH_BATCH_SIZE)
+    const media = [...(first.data.media || [])]
+    const series = [...(first.data.series || [])]
+    const mediaPages = Math.ceil((first.data.media_total || 0) / SEARCH_BATCH_SIZE)
+    const seriesPages = Math.ceil((first.data.series_total || 0) / SEARCH_BATCH_SIZE)
+    const totalPages = Math.max(1, mediaPages, seriesPages)
+
+    if (totalPages > 1) {
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2)
+      for (let index = 0; index < remainingPages.length; index += SEARCH_FETCH_CONCURRENCY) {
+        const batch = remainingPages.slice(index, index + SEARCH_FETCH_CONCURRENCY)
+        const responses = await Promise.all(batch.map((page) => mediaApi.searchMixed(query, page, SEARCH_BATCH_SIZE)))
+        for (const response of responses) {
+          media.push(...(response.data.media || []))
+          series.push(...(response.data.series || []))
+        }
+      }
+    }
+
+    const result = {
+      // Search is presented at movie / series level. Individual episode hits
+      // stay discoverable through their series detail instead of duplicating
+      // the same show dozens of times in the mixed grid.
+      media: uniqueById(media.filter((item) => item.media_type !== 'episode')),
+      series: uniqueById(series),
+    }
+    searchUniverseCache.set(cacheKey, { ...result, loadedAt: Date.now() })
+    return result
+  })().finally(() => {
+    searchUniverseInFlight.delete(cacheKey)
+  })
+
+  searchUniverseInFlight.set(cacheKey, promise)
+  return promise
+}
+
+function applySearchCriteria(universe: SearchUniverse, criteria: EffectiveSearch) {
+  let items: MixedItem[] = [
+    ...universe.media.map((media) => ({ type: 'movie' as const, media })),
+    ...universe.series.map((series) => ({ type: 'series' as const, series })),
+  ]
+
+  if (criteria.type) items = items.filter((item) => item.type === criteria.type)
+  if (criteria.genre) items = items.filter((item) => includesFold(getMixedGenres(item), criteria.genre))
+  if (criteria.yearMin) items = items.filter((item) => getMixedYear(item) >= criteria.yearMin!)
+  if (criteria.yearMax) items = items.filter((item) => getMixedYear(item) <= criteria.yearMax!)
+  if (criteria.minRating > 0) items = items.filter((item) => getMixedRating(item) >= criteria.minRating)
+
+  items.sort((left, right) => {
+    if (criteria.sort === 'rating_desc') {
+      return getMixedRating(right) - getMixedRating(left) || getMixedYear(right) - getMixedYear(left)
+    }
+    if (criteria.sort === 'year_desc') {
+      return getMixedYear(right) - getMixedYear(left) || getMixedRating(right) - getMixedRating(left)
+    }
+    if (criteria.sort === 'year_asc') {
+      return getMixedYear(left) - getMixedYear(right) || getMixedRating(right) - getMixedRating(left)
+    }
+    if (criteria.sort === 'title_asc') {
+      return getMixedTitle(left).localeCompare(getMixedTitle(right), undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    const relevance = relevanceScore(right, criteria.query) - relevanceScore(left, criteria.query)
+    if (relevance !== 0) return relevance
+    const rating = getMixedRating(right) - getMixedRating(left)
+    if (rating !== 0) return rating
+    return new Date(getMixedCreatedAt(right)).getTime() - new Date(getMixedCreatedAt(left)).getTime()
+  })
+
+  return items
+}
+
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [query, setQuery] = useState(searchParams.get('q') || '')
-  const [results, setResults] = useState<Media[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
   const toast = useToast()
+  const toastRef = useRef(toast)
   const { t } = useTranslation()
 
-  const page = parseInt(searchParams.get('page') || '1', 10) || 1
-  const size = parseInt(searchParams.get('size') || '30', 10) || 30
+  useEffect(() => { toastRef.current = toast }, [toast])
+
+  const query = (searchParams.get('q') || '').trim()
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+  const rawSize = parseInt(searchParams.get('size') || '30', 10) || 30
+  const size = rawSize > 0 && rawSize <= 100 ? rawSize : 30
+  const typeParam = searchParams.get('type')
+  const filterType: SearchType = typeParam === 'movie' || typeParam === 'series' ? typeParam : ''
+  const sortParam = searchParams.get('sort')
+  const sortBy: SearchSort = SORT_OPTIONS.some((option) => option.value === sortParam) ? sortParam as SearchSort : 'relevance'
+  const yearRange = {
+    min: Math.max(0, parseInt(searchParams.get('year_min') || '0', 10) || 0),
+    max: Math.max(0, parseInt(searchParams.get('year_max') || '0', 10) || 0),
+  }
+  const parsedRating = Number(searchParams.get('rating') || 0)
+  const minRating = Number.isFinite(parsedRating) && parsedRating >= 0 && parsedRating <= 10 ? parsedRating : 0
+
+  const [results, setResults] = useState<MixedItem[]>([])
+  const [people, setPeople] = useState<Person[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [aiState, setAiState] = useState<{ sourceQuery: string; intent: SearchIntent } | null>(null)
+  const [aiLoadingQuery, setAiLoadingQuery] = useState<string | null>(null)
+  const aiRequestRef = useRef(0)
+  const searchRequestRef = useRef(0)
+
+  const updateUrl = useCallback((changes: Record<string, string | null>, resetPage = true) => {
+    setSearchParams((currentParams) => {
+      const params = new URLSearchParams(currentParams)
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null || value === '') params.delete(key)
+        else params.set(key, value)
+      }
+      if (resetPage) params.delete('page')
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
 
   const setPage = useCallback((newPage: number) => {
-    const params = new URLSearchParams(searchParams)
-    if (newPage <= 1) params.delete('page')
-    else params.set('page', String(newPage))
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    setSearchParams((currentParams) => {
+      const params = new URLSearchParams(currentParams)
+      if (newPage <= 1) params.delete('page')
+      else params.set('page', String(newPage))
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
 
   const setSize = useCallback((newSize: number) => {
-    const params = new URLSearchParams(searchParams)
-    if (newSize === 30) params.delete('size')
-    else params.set('size', String(newSize))
-    params.delete('page')
-    setSearchParams(params, { replace: true })
-  }, [searchParams, setSearchParams])
+    setSearchParams((currentParams) => {
+      const params = new URLSearchParams(currentParams)
+      if (newSize === 30) params.delete('size')
+      else params.set('size', String(newSize))
+      params.delete('page')
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
 
-  const [showFilters, setShowFilters] = useState(false)
-  const [filterType, setFilterType] = useState<'' | 'movie' | 'episode'>('')
-  const [sortBy, setSortBy] = useState('relevance')
-  const [yearRange, setYearRange] = useState<{ min: number; max: number }>({ min: 0, max: 0 })
-  const [minRating, setMinRating] = useState(0)
-  const [aiParsed, setAiParsed] = useState<SearchIntent | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const aiAbortRef = useRef<AbortController | null>(null)
-
-  const doSearch = useCallback(async (q: string, p: number, aiIntent?: SearchIntent | null) => {
-    if (!q.trim()) return
-    setLoading(true)
-    setSearched(true)
-    try {
-      const intent = aiIntent || aiParsed
-      const searchQuery = intent?.parsed ? intent.query : q.trim()
-      const searchType = intent?.parsed && intent.media_type ? intent.media_type : (filterType || undefined)
-      const searchGenre = intent?.parsed && intent.genre ? intent.genre : undefined
-      const searchYearMin = intent?.parsed && intent.year_min ? intent.year_min : (yearRange.min || undefined)
-      const searchYearMax = intent?.parsed && intent.year_max ? intent.year_max : (yearRange.max || undefined)
-      const searchMinRating = intent?.parsed && intent.min_rating ? intent.min_rating : (minRating || undefined)
-      const searchSortBy = intent?.parsed && intent.sort_by && intent.sort_by !== 'relevance' ? intent.sort_by : sortBy
-
-      let sort_by = 'created_at'
-      let sort_order = 'desc'
-      if (searchSortBy === 'rating_desc') {
-        sort_by = 'rating'
-      } else if (searchSortBy === 'year_desc') {
-        sort_by = 'year'
-      } else if (searchSortBy === 'year_asc') {
-        sort_by = 'year'
-        sort_order = 'asc'
-      } else if (searchSortBy === 'title_asc') {
-        sort_by = 'title'
-        sort_order = 'asc'
-      }
-
-      const res = await mediaApi.searchAdvanced({
-        q: searchQuery,
-        type: searchType || undefined,
-        genre: searchGenre,
-        year_min: searchYearMin,
-        year_max: searchYearMax,
-        min_rating: searchMinRating,
-        sort_by,
-        sort_order,
-        page: p,
-        size,
-      })
-
-      setResults(res.data.data || [])
-      setTotal(res.data.total)
-    } catch {
-      toast.error(t('search.searchFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [filterType, sortBy, yearRange, minRating, size])
+  const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0
+  const validAiIntent = aiState?.sourceQuery === query && aiState.intent.parsed ? aiState.intent : null
+  const aiLoading = aiLoadingQuery === query
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([])
-      setTotal(0)
-      setSearched(false)
+    const requestId = ++aiRequestRef.current
+    setAiState(null)
+
+    if (!query || Array.from(query).length <= 4) {
+      setAiLoadingQuery(null)
       return
     }
 
-    const timer = setTimeout(() => {
-      setPage(1)
-      const params = new URLSearchParams(searchParams)
-      params.set('q', query.trim())
-      params.delete('page')
-      setSearchParams(params, { replace: true })
+    setAiLoadingQuery(query)
+    aiApi.smartSearch(query)
+      .then((response) => {
+        if (aiRequestRef.current !== requestId) return
+        const intent = response.data.data
+        setAiState(intent.parsed ? { sourceQuery: query, intent } : null)
+      })
+      .catch(() => {
+        if (aiRequestRef.current === requestId) setAiState(null)
+      })
+      .finally(() => {
+        if (aiRequestRef.current === requestId) setAiLoadingQuery(null)
+      })
 
-      if (query.trim().length > 4) {
-        aiAbortRef.current?.abort()
-        const controller = new AbortController()
-        aiAbortRef.current = controller
-        setAiLoading(true)
-        aiApi.smartSearch(query.trim())
-          .then((res) => {
-            if (!controller.signal.aborted) {
-              const intent = res.data.data
-              if (intent.parsed) {
-                setAiParsed(intent)
-                doSearch(query, 1, intent)
-              } else {
-                setAiParsed(null)
-                doSearch(query, 1)
-              }
-            }
-          })
-          .catch(() => {
-            if (!controller.signal.aborted) {
-              setAiParsed(null)
-              doSearch(query, 1)
-            }
-          })
-          .finally(() => {
-            if (!controller.signal.aborted) setAiLoading(false)
-          })
-      } else {
-        setAiParsed(null)
-        doSearch(query, 1)
-      }
-    }, 400)
+    return () => {
+      if (aiRequestRef.current === requestId) aiRequestRef.current += 1
+    }
+  }, [query])
 
-    return () => clearTimeout(timer)
-  }, [query, doSearch])
+  const effectiveSearch = useMemo<EffectiveSearch>(() => {
+    const useAiStructure = !!validAiIntent && !hasActiveFilters
+    const aiQuery = validAiIntent?.query?.trim()
+    return {
+      query: aiQuery || query,
+      type: filterType || (useAiStructure ? normalizeIntentType(validAiIntent?.media_type) : undefined),
+      genre: useAiStructure ? validAiIntent?.genre?.trim() || undefined : undefined,
+      yearMin: yearRange.min || (useAiStructure && validAiIntent?.year_min ? validAiIntent.year_min : undefined),
+      yearMax: yearRange.max || (useAiStructure && validAiIntent?.year_max ? validAiIntent.year_max : undefined),
+      minRating: minRating || (useAiStructure && validAiIntent?.min_rating ? validAiIntent.min_rating : 0),
+      sort: sortBy !== 'relevance' ? sortBy : (useAiStructure ? normalizeIntentSort(validAiIntent?.sort_by) : 'relevance'),
+    }
+  }, [filterType, hasActiveFilters, minRating, query, sortBy, validAiIntent, yearRange.max, yearRange.min])
 
   useEffect(() => {
-    if (page > 1 && query.trim()) doSearch(query, page)
-  }, [page, query, doSearch])
+    const requestId = ++searchRequestRef.current
+    if (!query || !effectiveSearch.query) {
+      setResults([])
+      setPeople([])
+      setTotal(0)
+      setLoading(false)
+      return
+    }
 
+    setLoading(true)
+    setResults([])
+    setPeople([])
+    setTotal(0)
+
+    const peoplePromise = page === 1
+      ? personApi.search(effectiveSearch.query, 10).catch(() => null)
+      : Promise.resolve(null)
+
+    Promise.all([
+      loadSearchUniverse(effectiveSearch.query),
+      peoplePromise,
+    ])
+      .then(([universe, peopleResponse]) => {
+        if (searchRequestRef.current !== requestId) return
+        const filtered = applySearchCriteria(universe, effectiveSearch)
+        const start = Math.max(0, (page - 1) * size)
+        setResults(filtered.slice(start, start + size))
+        setTotal(filtered.length)
+        setPeople(peopleResponse?.data.data || [])
+      })
+      .catch(() => {
+        if (searchRequestRef.current !== requestId) return
+        setResults([])
+        setPeople([])
+        setTotal(0)
+        toastRef.current.error(translate('search.searchFailed'))
+      })
+      .finally(() => {
+        if (searchRequestRef.current === requestId) setLoading(false)
+      })
+
+    return () => {
+      if (searchRequestRef.current === requestId) searchRequestRef.current += 1
+    }
+  }, [effectiveSearch, page, query, size])
+
+  const totalPages = Math.max(1, Math.ceil(total / size))
   useEffect(() => {
-    if (query.trim() && searched) doSearch(query, 1)
-  }, [filterType, sortBy, yearRange, minRating, size])
-
-  const totalPages = Math.ceil(total / size)
-  const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0
+    if (!loading && total > 0 && page > totalPages) setPage(totalPages)
+  }, [loading, page, setPage, total, totalPages])
 
   const clearFilters = () => {
-    setFilterType('')
-    setSortBy('relevance')
-    setYearRange({ min: 0, max: 0 })
-    setMinRating(0)
+    updateUrl({ type: null, sort: null, year_min: null, year_max: null, rating: null })
   }
 
-  return (
-    <div className="nv-section-stack">
-      <section aria-labelledby="search-page-title">
-        <div className="mb-5">
-          <h1 id="search-page-title" className="text-2xl font-bold tracking-[-0.02em] text-[var(--nv-text-primary)]">
-            {t('nav.search')}
-          </h1>
-          <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">{t('search.searchPlaceholder')}</p>
-        </div>
+  const searched = query.length > 0
+  const hasAnyResults = total > 0 || people.length > 0
+  const resultSummary = loading
+    ? '正在搜索…'
+    : searched
+      ? `“${query}” · ${total} 个影视结果${people.length > 0 && page === 1 ? ` · ${people.length} 位人物` : ''}`
+      : '搜索标题、原名、题材、剧集或演职人员，并使用筛选快速缩小范围。'
 
-        <div className="relative">
-          <SearchIcon
-            size={19}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]"
-            aria-hidden="true"
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="h-12 pl-11 pr-24 text-base"
-            placeholder={t('search.searchPlaceholder')}
-            autoFocus
-            aria-label={t('nav.search')}
-          />
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-            {query && (
-              <Button variant="ghost" size="sm" iconOnly onClick={() => setQuery('')} aria-label="清空搜索">
-                <X size={16} aria-hidden="true" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              iconOnly
-              onClick={() => setShowFilters((value) => !value)}
-              className={showFilters || hasActiveFilters ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
-              title={t('search.filterAndSort')}
-              aria-label={t('search.filterAndSort')}
-              aria-expanded={showFilters}
-            >
-              <SlidersHorizontal size={16} aria-hidden="true" />
-            </Button>
+  return (
+    <div className="nv-section-stack nv-library-page nv-search-page">
+      <header className="nv-page-hero-header nv-search-page-toolbar">
+        <div className="nv-page-title-lockup">
+          <div className="nv-page-title-icon" aria-hidden="true">
+            <SearchIcon size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="nv-page-title">搜索</h1>
+            <p className="nv-page-subtitle" aria-live="polite">{resultSummary}</p>
           </div>
         </div>
-      </section>
+        <Button
+          variant={showFilters || hasActiveFilters ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setShowFilters((value) => !value)}
+          aria-expanded={showFilters}
+        >
+          <SlidersHorizontal size={14} aria-hidden="true" />
+          {t('search.filterAndSort')}
+          {hasActiveFilters && <Tag tone="brand">已筛选</Tag>}
+        </Button>
+      </header>
 
       {showFilters && (
-        <Surface className="space-y-4 p-4 sm:p-5">
+        <Surface className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
           <FilterRow icon={<Film size={13} aria-hidden="true" />} label={`${t('search.type')}:`}>
             {[
-              { value: '', label: t('search.typeAll') },
-              { value: 'movie', label: t('search.typeMovie') },
-              { value: 'episode', label: t('search.typeEpisode') },
+              { value: '' as SearchType, label: t('search.typeAll') },
+              { value: 'movie' as SearchType, label: t('search.typeMovie') },
+              { value: 'series' as SearchType, label: t('search.typeEpisode') },
             ].map((option) => (
-              <FilterChip
-                key={option.value}
-                selected={filterType === option.value}
-                onClick={() => setFilterType(option.value as '' | 'movie' | 'episode')}
-              >
+              <FilterChip key={option.value} selected={filterType === option.value} onClick={() => updateUrl({ type: option.value || null })}>
                 {option.label}
               </FilterChip>
             ))}
@@ -291,7 +462,10 @@ export default function SearchPage() {
               <FilterChip
                 key={range.labelKey || `${range.min}-${range.max}`}
                 selected={yearRange.min === range.min && yearRange.max === range.max}
-                onClick={() => setYearRange({ min: range.min, max: range.max })}
+                onClick={() => updateUrl({
+                  year_min: range.min > 0 ? String(range.min) : null,
+                  year_max: range.max > 0 ? String(range.max) : null,
+                })}
               >
                 {range.labelKey ? t(range.labelKey) : `${range.min}-${range.max}`}
               </FilterChip>
@@ -300,7 +474,7 @@ export default function SearchPage() {
 
           <FilterRow icon={<Star size={13} aria-hidden="true" />} label={`${t('search.minRating')}:`}>
             {[0, 6, 7, 8, 9].map((rating) => (
-              <FilterChip key={rating} selected={minRating === rating} onClick={() => setMinRating(rating)}>
+              <FilterChip key={rating} selected={minRating === rating} onClick={() => updateUrl({ rating: rating > 0 ? String(rating) : null })}>
                 {rating === 0 ? t('search.ratingAll') : `≥${rating}分`}
               </FilterChip>
             ))}
@@ -308,14 +482,14 @@ export default function SearchPage() {
 
           <FilterRow icon={<ArrowUpDown size={13} aria-hidden="true" />} label={`${t('search.sort')}:`}>
             {SORT_OPTIONS.map((option) => (
-              <FilterChip key={option.value} selected={sortBy === option.value} onClick={() => setSortBy(option.value)}>
+              <FilterChip key={option.value} selected={sortBy === option.value} onClick={() => updateUrl({ sort: option.value === 'relevance' ? null : option.value })}>
                 {t(option.labelKey)}
               </FilterChip>
             ))}
           </FilterRow>
 
           {hasActiveFilters && (
-            <Button variant="danger" size="sm" onClick={clearFilters}>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
               <X size={14} aria-hidden="true" />
               {t('search.clearFilters')}
             </Button>
@@ -323,53 +497,89 @@ export default function SearchPage() {
         </Surface>
       )}
 
-      {searched && (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--nv-text-secondary)]" aria-live="polite">
-          <span>
-            {t('search.found')} <strong className="font-semibold text-[var(--nv-text-primary)]">{total}</strong> {t('search.results2')}
-          </span>
-          {aiParsed?.parsed && (
-            <Tag>
+      {(validAiIntent || aiLoading) && (
+        <div className="nv-search-ai-row flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
+          {validAiIntent && (
+            <Tag tone="brand">
               <Sparkles size={11} aria-hidden="true" />
-              {t('search.aiUnderstand')}: “{aiParsed.query}”
-              {aiParsed.genre && ` · ${aiParsed.genre}`}
-              {aiParsed.year_min && aiParsed.year_max ? ` · ${aiParsed.year_min}-${aiParsed.year_max}` : ''}
+              {t('search.aiUnderstand')}: “{validAiIntent.query}”
+              {validAiIntent.genre && ` · ${validAiIntent.genre}`}
+              {validAiIntent.min_rating ? ` · ≥${validAiIntent.min_rating}分` : ''}
             </Tag>
           )}
-          {aiLoading && (
-            <Tag>
-              <Sparkles size={11} className="animate-pulse" aria-hidden="true" />
-              {t('search.aiAnalyzing')}
-            </Tag>
-          )}
-          {hasActiveFilters && <Tag tone="brand">{t('search.filtered')}</Tag>}
+          {aiLoading && <Tag><Sparkles size={11} aria-hidden="true" />{t('search.aiAnalyzing')}</Tag>}
+          {validAiIntent && hasActiveFilters && <Tag>手动筛选优先</Tag>}
         </div>
       )}
 
-      <MediaGrid items={results} loading={loading} />
+      {people.length > 0 && page === 1 && !loading && (
+        <section className="nv-search-person-section" aria-labelledby="search-person-title">
+          <div className="mb-3 flex items-baseline gap-2">
+            <h2 id="search-person-title" className="nv-section-title">人物</h2>
+            <span className="text-[11px] text-[var(--nv-text-tertiary)]">{people.length}</span>
+          </div>
+          <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2" role="list" aria-label="人物搜索结果">
+            {people.map((person) => <PersonSearchCard key={person.id} person={person} />)}
+          </div>
+        </section>
+      )}
 
-      {searched && !loading && results.length === 0 && (
+      <MediaGrid mixedItems={results} loading={loading} />
+
+      {searched && !loading && !aiLoading && !hasAnyResults && (
         <EmptyState
-          icon={<SearchIcon size={26} aria-hidden="true" />}
+          icon={<SearchIcon size={22} aria-hidden="true" />}
           title={t('search.noMatch')}
           description={hasActiveFilters ? t('search.noMatchHintFiltered') : t('search.noMatchHint')}
-          action={hasActiveFilters ? (
-            <Button variant="secondary" size="sm" onClick={clearFilters}>
-              {t('search.clearFilterConditions')}
-            </Button>
-          ) : undefined}
+          action={hasActiveFilters ? <Button variant="secondary" size="sm" onClick={clearFilters}>{t('search.clearFilterConditions')}</Button> : undefined}
         />
       )}
 
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        pageSize={size}
-        pageSizeOptions={[20, 30, 50, 100]}
-        onPageChange={setPage}
-        onPageSizeChange={setSize}
-      />
+      {total > 0 && !loading && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={size}
+          pageSizeOptions={[20, 30, 50, 100]}
+          onPageChange={setPage}
+          onPageSizeChange={setSize}
+        />
+      )}
     </div>
+  )
+}
+
+function PersonSearchCard({ person }: { person: Person }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const profileUrl = streamApi.getPersonProfileUrl(person.id)
+
+  return (
+    <Link
+      to={`/person/${person.id}`}
+      className="group w-[92px] shrink-0 no-underline sm:w-[104px]"
+      role="listitem"
+      aria-label={`查看人物 ${person.name}`}
+    >
+      <div className="relative aspect-[4/5] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[var(--nv-shadow-card)] transition-[transform,border-color,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
+        {!imageFailed ? (
+          <img
+            src={profileUrl}
+            alt=""
+            className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.88]"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
+            <User size={28} strokeWidth={1.4} aria-hidden="true" />
+          </div>
+        )}
+      </div>
+      <p className="mt-1.5 truncate text-xs font-medium text-[var(--nv-text-primary)]" title={person.name}>{person.name}</p>
+      {person.orig_name && person.orig_name !== person.name && (
+        <p className="mt-0.5 truncate text-[10px] text-[var(--nv-text-tertiary)]" title={person.orig_name}>{person.orig_name}</p>
+      )}
+    </Link>
   )
 }

@@ -12,6 +12,7 @@ interface SeriesEpisodeBrowserProps {
   seriesTitle: string
   historyMap: Record<string, WatchHistory>
   posterVersion: number
+  preferredSeason?: number
 }
 
 type ViewMode = 'season' | 'all'
@@ -19,26 +20,47 @@ type DisplayMode = 'slide' | 'list'
 
 const EPISODE_PAGE_THRESHOLD = 50
 
-export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap, posterVersion }: SeriesEpisodeBrowserProps) {
+function resolveDefaultSeason(seasons: SeasonInfo[], preferredSeason?: number) {
+  if (preferredSeason !== undefined && seasons.some((season) => season.season_num === preferredSeason)) return preferredSeason
+  return seasons.find((season) => season.season_num > 0)?.season_num ?? seasons[0]?.season_num ?? 1
+}
+
+export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap, posterVersion, preferredSeason }: SeriesEpisodeBrowserProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('season')
   const [displayMode, setDisplayMode] = useState<DisplayMode>('slide')
-  const [activeSeason, setActiveSeason] = useState<number>(() => seasons[0]?.season_num ?? 1)
+  const [activeSeason, setActiveSeason] = useState<number>(() => resolveDefaultSeason(seasons, preferredSeason))
+  const manuallySelectedSeasonRef = useRef(false)
   const pagination = usePagination({ initialSize: 50 })
+  const allPagination = usePagination({ initialSize: 50 })
 
   useEffect(() => {
-    if (!seasons.some((season) => season.season_num === activeSeason)) {
-      setActiveSeason(seasons[0]?.season_num ?? 1)
+    const activeExists = seasons.some((season) => season.season_num === activeSeason)
+    if (!activeExists) {
+      manuallySelectedSeasonRef.current = false
+      setActiveSeason(resolveDefaultSeason(seasons, preferredSeason))
+      return
     }
-  }, [activeSeason, seasons])
+    if (!manuallySelectedSeasonRef.current && preferredSeason !== undefined && preferredSeason !== activeSeason && seasons.some((season) => season.season_num === preferredSeason)) {
+      setActiveSeason(preferredSeason)
+    }
+  }, [activeSeason, preferredSeason, seasons])
 
   useEffect(() => {
     pagination.setPage(1)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSeason])
+  }, [activeSeason, pagination.setPage])
+
+  useEffect(() => {
+    if (viewMode === 'all') allPagination.setPage(1)
+  }, [allPagination.setPage, viewMode])
 
   const activeSeasonData = seasons.find((season) => season.season_num === activeSeason)
   const episodeCount = activeSeasonData?.episodes?.length ?? 0
   const needsPagination = episodeCount > EPISODE_PAGE_THRESHOLD
+
+  const seasonTotalPages = Math.max(1, Math.ceil(episodeCount / pagination.size))
+  useEffect(() => {
+    if (pagination.page > seasonTotalPages) pagination.setPage(seasonTotalPages)
+  }, [pagination.page, pagination.setPage, seasonTotalPages])
 
   const pagedEpisodes = useMemo(() => {
     if (!activeSeasonData?.episodes) return []
@@ -47,16 +69,51 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
     return activeSeasonData.episodes.slice(start, start + pagination.size)
   }, [activeSeasonData?.episodes, needsPagination, pagination.page, pagination.size])
 
+  const allEpisodes = useMemo(() => seasons
+    .flatMap((season) => season.episodes || [])
+    .slice()
+    .sort((left, right) => left.season_num - right.season_num || left.episode_num - right.episode_num || left.id.localeCompare(right.id)), [seasons])
+  const allNeedsPagination = allEpisodes.length > EPISODE_PAGE_THRESHOLD
+  const allTotalPages = Math.max(1, Math.ceil(allEpisodes.length / allPagination.size))
+
+  useEffect(() => {
+    if (allPagination.page > allTotalPages) allPagination.setPage(allTotalPages)
+  }, [allPagination.page, allPagination.setPage, allTotalPages])
+
+  const pagedAllEpisodes = useMemo(() => {
+    if (!allNeedsPagination) return allEpisodes
+    const start = (allPagination.page - 1) * allPagination.size
+    return allEpisodes.slice(start, start + allPagination.size)
+  }, [allEpisodes, allNeedsPagination, allPagination.page, allPagination.size])
+
+  const allEpisodeGroups = useMemo(() => {
+    const grouped = new Map<number, Media[]>()
+    for (const episode of pagedAllEpisodes) {
+      const episodes = grouped.get(episode.season_num) || []
+      episodes.push(episode)
+      grouped.set(episode.season_num, episodes)
+    }
+    return Array.from(grouped.entries()).map(([seasonNum, episodes]) => ({ seasonNum, episodes }))
+  }, [pagedAllEpisodes])
+
+  const watchedCount = useMemo(() => allEpisodes.filter((episode) => getWatchStatus(historyMap[episode.id]).watched).length, [allEpisodes, historyMap])
+  const inProgressCount = useMemo(() => allEpisodes.filter((episode) => {
+    const status = getWatchStatus(historyMap[episode.id])
+    return !status.watched && status.progress > 0
+  }).length, [allEpisodes, historyMap])
+
   if (seasons.length === 0) {
     return <EmptyState title="暂无剧集" description="当前剧集还没有可展示的季或单集。" className="min-h-52" />
   }
 
   return (
-    <section className="space-y-5">
-      <div className="flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2" role="tablist" aria-label="剧集视图">
+    <section className="nv-series-episode-browser space-y-5">
+      <div className="nv-series-episode-toolbar flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="剧集视图">
           <Button type="button" variant={viewMode === 'season' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('season')}>季视图</Button>
           <Button type="button" variant={viewMode === 'all' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('all')}>全部剧集</Button>
+          {watchedCount > 0 && <Tag tone="success">已看 {watchedCount}/{allEpisodes.length}</Tag>}
+          {inProgressCount > 0 && <Tag tone="brand">进行中 {inProgressCount}</Tag>}
         </div>
 
         {viewMode === 'season' && (
@@ -81,8 +138,11 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
                   <button
                     key={season.season_num}
                     type="button"
-                    onClick={() => setActiveSeason(season.season_num)}
-                    className={`rounded-[var(--nv-radius-control)] border px-3.5 py-2 text-sm font-medium transition-colors ${active ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]'}`}
+                    onClick={() => {
+                      manuallySelectedSeasonRef.current = true
+                      setActiveSeason(season.season_num)
+                    }}
+                    className={`nv-season-chip rounded-[var(--nv-radius-control)] border px-3.5 py-2 text-sm font-medium transition-colors ${active ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]'}`}
                     aria-pressed={active}
                   >
                     {seasonLabel(season.season_num)}
@@ -118,7 +178,7 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
           {needsPagination && activeSeasonData && (
             <Pagination
               page={pagination.page}
-              totalPages={pagination.totalPages(activeSeasonData.episodes.length)}
+              totalPages={seasonTotalPages}
               total={activeSeasonData.episodes.length}
               pageSize={pagination.size}
               pageSizeOptions={[20, 50, 100, 200]}
@@ -129,19 +189,31 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
         </div>
       ) : (
         <div className="space-y-8">
-          {seasons.map((season) => (
-            <section key={season.season_num} className="space-y-3">
+          {allEpisodeGroups.map(({ seasonNum, episodes: groupEpisodes }) => (
+            <section key={`${seasonNum}-${allPagination.page}`} className="space-y-3">
               <div className="flex items-baseline gap-2">
-                <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">{seasonLabel(season.season_num)}</h2>
-                <span className="text-xs text-[var(--nv-text-tertiary)]">{season.episode_count} 集</span>
+                <h2 className="text-base font-semibold text-[var(--nv-text-primary)]">{seasonLabel(seasonNum)}</h2>
+                <span className="text-xs text-[var(--nv-text-tertiary)]">本页 {groupEpisodes.length} 集</span>
               </div>
               <div className="space-y-2">
-                {season.episodes.map((episode) => (
+                {groupEpisodes.map((episode) => (
                   <EpisodeListCard key={episode.id} episode={episode} seriesTitle={seriesTitle} historyRecord={historyMap[episode.id]} posterVersion={posterVersion} />
                 ))}
               </div>
             </section>
           ))}
+
+          {allNeedsPagination && (
+            <Pagination
+              page={allPagination.page}
+              totalPages={allTotalPages}
+              total={allEpisodes.length}
+              pageSize={allPagination.size}
+              pageSizeOptions={[20, 50, 100, 200]}
+              onPageChange={allPagination.setPage}
+              onPageSizeChange={allPagination.setSize}
+            />
+          )}
         </div>
       )}
     </section>
@@ -201,7 +273,7 @@ function EpisodeListCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-list-card group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
     >
       <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="h-16 w-28" />
 
@@ -245,7 +317,7 @@ function EpisodeSlideCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-slide-card group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
     >
       <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full" showEpisodeLabel />
 
@@ -277,12 +349,24 @@ function EpisodeThumb({
   className: string
   showEpisodeLabel?: boolean
 }) {
+  const [posterFailed, setPosterFailed] = useState(false)
+
+  useEffect(() => {
+    setPosterFailed(false)
+  }, [episode.id, episode.poster_path, posterVersion])
+
   return (
-    <div className={`relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
-      {episode.poster_path ? (
-        <img src={streamApi.getPosterUrl(episode.id, posterVersion)} alt={episode.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]" />
+    <div className={`nv-episode-thumb relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
+      {episode.poster_path && !posterFailed ? (
+        <img
+          src={streamApi.getPosterUrl(episode.id, posterVersion)}
+          alt={episode.title}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
+          loading="lazy"
+          onError={() => setPosterFailed(true)}
+        />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]"><Play size={22} /></div>
+        <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]"><Play size={22} aria-hidden="true" /></div>
       )}
 
       <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
@@ -300,7 +384,7 @@ function EpisodeThumb({
       )}
 
       {!status.watched && status.progress > 0 && (
-        <div className="absolute inset-x-0 bottom-0 h-1 bg-black/35">
+        <div className="nv-episode-progress absolute inset-x-0 bottom-0 h-1 bg-black/35">
           <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${status.progress}%` }} />
         </div>
       )}
@@ -310,9 +394,10 @@ function EpisodeThumb({
 
 function getWatchStatus(historyRecord?: WatchHistory) {
   if (!historyRecord) return { watched: false, progress: 0 }
+  const ratio = historyRecord.duration > 0 ? historyRecord.position / historyRecord.duration : 0
   return {
-    watched: historyRecord.completed || (historyRecord.duration > 0 && historyRecord.position / historyRecord.duration > 0.9),
-    progress: historyRecord.duration > 0 ? Math.round((historyRecord.position / historyRecord.duration) * 100) : 0,
+    watched: historyRecord.completed || ratio >= 0.9,
+    progress: Math.max(0, Math.min(100, Math.round(ratio * 100))),
   }
 }
 

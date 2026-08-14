@@ -28,7 +28,8 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
   const [importing, setImporting] = useState(false)
 
   const handleImport = async () => {
-    if (!importPath) {
+    const normalizedPath = importPath.trim()
+    if (!normalizedPath) {
       toast.error('请输入文件路径')
       return
     }
@@ -36,8 +37,8 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
     setImporting(true)
     try {
       await fileManagerApi.importFile({
-        file_path: importPath,
-        title: importTitle || undefined,
+        file_path: normalizedPath,
+        title: importTitle.trim() || undefined,
         media_type: importMediaType,
         library_id: importLibraryId || undefined,
       })
@@ -83,6 +84,7 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
                 placeholder="/path/to/movie.mkv"
                 autoFocus
                 aria-required="true"
+                disabled={importing}
               />
             </label>
 
@@ -93,6 +95,7 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
                 value={importTitle}
                 onChange={(event) => setImportTitle(event.target.value)}
                 placeholder="自动从文件名提取"
+                disabled={importing}
               />
             </label>
 
@@ -103,6 +106,7 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
                   value={importMediaType}
                   onChange={(event) => setImportMediaType(event.target.value)}
                   className="w-full"
+                  disabled={importing}
                 >
                   <option value="movie">电影</option>
                   <option value="episode">剧集</option>
@@ -115,6 +119,7 @@ export default function ImportFileModal({ libraries, onClose, onSuccess }: Impor
                   value={importLibraryId}
                   onChange={(event) => setImportLibraryId(event.target.value)}
                   className="w-full"
+                  disabled={importing}
                 >
                   <option value="">不指定</option>
                   {libraries.map((library) => (

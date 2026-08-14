@@ -70,15 +70,15 @@ export default function Pagination({
   }
 
   return (
-    <nav className="flex flex-wrap items-center justify-center gap-2 py-6" aria-label="分页导航">
+    <nav className="nv-pagination flex flex-wrap items-center justify-center gap-2 py-6" aria-label="分页导航">
       {showTotal && total !== undefined && (
-        <span className="mr-1 text-xs text-[var(--nv-text-tertiary)]">
+        <span className="nv-pagination-total mr-1 text-xs text-[var(--nv-text-tertiary)]">
           共 <strong className="font-semibold text-[var(--nv-text-secondary)]">{total}</strong> 项
         </span>
       )}
 
       {pageSizeOptions && pageSizeOptions.length > 0 && onPageSizeChange && (
-        <label className="mr-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
+        <label className="nv-pagination-size mr-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
           <span>每页</span>
           <Select
             value={pageSize}
@@ -102,7 +102,7 @@ export default function Pagination({
       </Button>
 
       {getPageNumbers().map((number, index) => number === 'ellipsis' ? (
-        <span key={`ellipsis-${index}`} className="flex h-8 w-8 items-center justify-center text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">
+        <span key={`ellipsis-${index}`} className="nv-pagination-ellipsis flex h-8 w-8 items-center justify-center text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">
           ···
         </span>
       ) : (
@@ -111,7 +111,7 @@ export default function Pagination({
           variant={page === number ? 'primary' : 'secondary'}
           size="sm"
           onClick={() => onPageChange(number)}
-          className="min-w-8 px-2"
+          className="nv-pagination-page min-w-8 px-2"
           aria-label={`第 ${number} 页`}
           aria-current={page === number ? 'page' : undefined}
         >
@@ -127,7 +127,7 @@ export default function Pagination({
       </Button>
 
       {showJumper && totalPages > 5 && (
-        <label className="ml-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
+        <label className="nv-pagination-jumper ml-2 flex items-center gap-1.5 text-xs text-[var(--nv-text-tertiary)]">
           <span>跳至</span>
           <Input
             type="number"

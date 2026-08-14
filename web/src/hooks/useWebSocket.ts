@@ -239,6 +239,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       wsRef.current = ws
 
       ws.onopen = () => {
+        if (ws !== wsRef.current) {
+          // React StrictMode can clean up a connecting socket before it opens.
+          // Close that stale socket without changing the active connection state.
+          ws.close()
+          return
+        }
         console.log('[WS] 已连接')
         setConnected(true)
         retriesRef.current = 0
@@ -260,6 +266,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
 
       ws.onclose = (event) => {
+        if (ws !== wsRef.current) return
         console.log('[WS] 连接关闭:', event.code, event.reason)
         setConnected(false)
         wsRef.current = null
@@ -273,6 +280,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
 
       ws.onerror = (error) => {
+        if (ws !== wsRef.current) return
         console.error('[WS] 连接错误:', error)
       }
     } catch (e) {
@@ -290,10 +298,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       // 清理
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
       }
       if (wsRef.current) {
-        wsRef.current.close()
+        const ws = wsRef.current
         wsRef.current = null
+        // Closing a CONNECTING WebSocket produces a browser-level console error.
+        // Let it finish connecting, then close it as an intentionally stale socket.
+        ws.onclose = null
+        ws.onerror = null
+        if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => ws.close()
+        } else {
+          ws.onopen = null
+          ws.close()
+        }
       }
     }
   }, [isAuthenticated, token, connect])

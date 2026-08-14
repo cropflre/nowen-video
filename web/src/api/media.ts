@@ -37,7 +37,18 @@ export const mediaApi = {
   recentMixed: (limit = 20) =>
     api.get<ListResponse<MixedItem>>('/media/recent/mixed', { params: { limit } }),
 
-  listMixed: (params: { page?: number; size?: number; library_id?: string }) =>
+  listMixed: (params: {
+    page?: number
+    size?: number
+    library_id?: string
+    type?: 'movie' | 'series'
+    genre?: string
+    q?: string
+    year_from?: number
+    year_to?: number
+    sort?: 'added' | 'title' | 'year' | 'rating'
+    order?: 'asc' | 'desc'
+  }) =>
     api.get<PaginatedResponse<MixedItem> & { movie_count: number; series_count: number }>('/media/mixed', { params }),
 
   continueWatching: (limit = 10) =>
@@ -79,6 +90,10 @@ export const mediaApi = {
 
 // ==================== 演员 ====================
 export const personApi = {
+  /** 搜索演员/演职人员（匹配名称和原名） */
+  search: (q: string, limit = 10) =>
+    api.get<{ data: import('@/types').Person[] }>('/persons/search', { params: { q, limit } }),
+
   /** 获取演员详情 */
   getDetail: (personId: string) =>
     api.get<{ data: import('@/types').Person }>(`/persons/${personId}`),

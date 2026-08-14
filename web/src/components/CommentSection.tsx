@@ -87,8 +87,8 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
   const activeRating = hoverRating || rating
 
   return (
-    <section className="space-y-4" aria-labelledby="comment-section-title">
-      <div className="flex flex-wrap items-center gap-2">
+    <section className="nv-comment-section space-y-4" aria-labelledby="comment-section-title">
+      <div className="nv-comment-header flex flex-wrap items-center gap-2">
         <h3 id="comment-section-title" className="flex items-center gap-2 text-lg font-semibold text-[var(--nv-text-primary)]">
           <MessageSquare size={19} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
           {t('comment.title')}
@@ -101,7 +101,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
         )}
       </div>
 
-      <Surface className="space-y-4 p-4 sm:p-5">
+      <Surface className="nv-comment-composer space-y-4 p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-[var(--nv-text-secondary)]">{t('media.rating')}：</span>
           <div className="flex flex-wrap gap-0.5" role="radiogroup" aria-label={t('media.rating')}>
@@ -159,12 +159,12 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
           description="成为第一个留下评分或评论的人。"
         />
       ) : (
-        <div className="space-y-3">
+        <div className="nv-comment-list space-y-3">
           {comments.map((comment) => (
             <Surface key={comment.id} as="article" className="group p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-sm font-bold text-[var(--nv-text-on-brand)]">
+                  <div className="nv-comment-avatar flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-sm font-bold text-[var(--nv-text-on-brand)]">
                     {comment.user?.username?.charAt(0).toUpperCase() || '?'}
                   </div>
                   <div className="min-w-0">

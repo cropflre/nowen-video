@@ -8,6 +8,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
+import { Search } from 'lucide-react'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md' | 'lg'
@@ -88,13 +89,26 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ i
     <input
       {...props}
       ref={ref}
-      className={clsx(
-        'h-10 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
-        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
-        className,
-      )}
+      className={clsx('nv-input', className)}
       aria-invalid={invalid || props['aria-invalid'] || undefined}
     />
+  )
+})
+
+interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
+  wrapperClassName?: string
+}
+
+export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField({
+  wrapperClassName,
+  className,
+  ...props
+}, ref) {
+  return (
+    <label className={clsx('nv-search', wrapperClassName)}>
+      <Search size={15} aria-hidden="true" />
+      <input {...props} ref={ref} type="search" className={className} />
+    </label>
   )
 })
 
@@ -107,11 +121,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     <textarea
       {...props}
       ref={ref}
-      className={clsx(
-        'min-h-24 w-full rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 py-2.5 text-sm leading-6 text-[var(--nv-text-primary)] shadow-none outline-none transition-[background-color,border-color,box-shadow] duration-200 placeholder:text-[var(--nv-text-tertiary)] hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
-        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
-        className,
-      )}
+      className={clsx('nv-textarea', className)}
       aria-invalid={invalid || props['aria-invalid'] || undefined}
     />
   )
@@ -126,11 +136,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     <select
       {...props}
       ref={ref}
-      className={clsx(
-        'h-10 rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-3 text-sm text-[var(--nv-text-primary)] outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] focus:border-[var(--nv-action-primary)] focus:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50',
-        invalid ? 'border-[var(--nv-status-danger)]' : 'border-[var(--nv-border-default)]',
-        className,
-      )}
+      className={clsx('nv-select', className)}
       aria-invalid={invalid || props['aria-invalid'] || undefined}
     >
       {children}
@@ -212,20 +218,20 @@ export function EmptyState({ icon, title, description, action, className, ...pro
   return (
     <div
       {...props}
-      className={clsx('flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center', className)}
+      className={clsx('nv-empty-state flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center', className)}
     >
       {icon && (
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-text-tertiary)]">
+        <div className="nv-empty-state-icon mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
           {icon}
         </div>
       )}
-      <h3 className="text-base font-semibold text-[var(--nv-text-primary)]">{title}</h3>
+      <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">{title}</h3>
       {description && (
-        <div className="mt-2 max-w-md text-sm leading-6 text-[var(--nv-text-tertiary)]">
+        <div className="mt-1.5 max-w-md text-xs leading-5 text-[var(--nv-text-tertiary)]">
           {description}
         </div>
       )}
-      {action && <div className="mt-5">{action}</div>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   )
 }

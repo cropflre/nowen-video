@@ -24,6 +24,7 @@ type Repositories struct {
 	UserPermission *UserPermissionRepo
 	SystemSetting  *SystemSettingRepo
 	PlaybackStats  *PlaybackStatsRepo
+	MediaProbe     *MediaProbeRepo
 	ScrapeTask     *ScrapeTaskRepo
 	ScrapeHistory  *ScrapeHistoryRepo
 	// V3: AI 场景识别与内容理解
@@ -82,6 +83,7 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		UserPermission: &UserPermissionRepo{db: db},
 		SystemSetting:  &SystemSettingRepo{db: db},
 		PlaybackStats:  &PlaybackStatsRepo{db: db},
+		MediaProbe:     NewMediaProbeRepo(db),
 		ScrapeTask:     &ScrapeTaskRepo{db: db},
 		ScrapeHistory:  &ScrapeHistoryRepo{db: db},
 		// V3

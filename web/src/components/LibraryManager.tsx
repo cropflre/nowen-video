@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { libraryApi } from '@/api'
+import { adminApi, libraryApi } from '@/api'
 import type { Library, CreateLibraryRequest } from '@/types'
 import { getLibraryPaths } from '@/types'
 import type { ScanProgressData, ScrapeProgressData, ScanPhaseData } from '@/hooks/useWebSocket'
@@ -28,6 +28,7 @@ import {
 import clsx from 'clsx'
 import { AdminPanel, AdminStatus } from '@/components/admin/AdminPrimitives'
 import { Button, EmptyState, Tag } from '@/components/design-system'
+import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film }> = {
   movie: { label: '电影', icon: Film },
@@ -86,9 +87,21 @@ function LibraryManager({
   })
 
   const handleCreate = async (data: CreateLibraryRequest) => {
-    await libraryApi.create(data)
-    const res = await libraryApi.list()
-    setLibraries(res.data.data || [])
+    const response = await libraryApi.create(data)
+    const created = response.data.data
+    if (created) {
+      setLibraries((current) => [created, ...current.filter((library) => library.id !== created.id)])
+    }
+    invalidateMediaListCaches()
+
+    // Creation has already succeeded at this point. Refreshing the list is a
+    // best-effort reconciliation and must not make the modal report failure.
+    try {
+      const res = await libraryApi.list()
+      setLibraries(res.data.data || [])
+    } catch {
+      toast.info('媒体库已创建，列表刷新失败，可稍后手动刷新')
+    }
   }
 
   const handleScan = async (id: string) => {
@@ -111,28 +124,59 @@ function LibraryManager({
       toast.info('所有媒体库已在扫描中')
       return
     }
+
     setScanAllLoading(true)
     try {
-      for (const library of toScan) await handleScan(library.id)
-      toast.success(`已启动 ${toScan.length} 个媒体库扫描`)
+      const response = await adminApi.batchScan(toScan.map((library) => library.id))
+      const started: string[] = response.data.started || []
+      const errors: Array<{ library_id: string; error: string }> = response.data.errors || []
+
+      if (started.length > 0) {
+        setScanning((current) => {
+          const next = new Set(current)
+          started.forEach((id) => next.add(id))
+          return next
+        })
+        toast.success(`已启动 ${started.length} 个媒体库扫描`)
+      }
+      if (errors.length > 0) {
+        toast.error(`${errors.length} 个媒体库扫描启动失败`)
+      }
+      if (started.length === 0 && errors.length === 0) {
+        toast.info('没有新的媒体库扫描任务被启动')
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '批量扫描启动失败')
     } finally {
       setScanAllLoading(false)
     }
   }
 
   const handleDelete = async (id: string) => {
+    if (scanning.has(id)) {
+      toast.info('媒体库正在扫描，请等待扫描结束后再删除')
+      return
+    }
+
     const ok = await dialog.confirm({
       title: '删除媒体库',
-      message: '确定删除此媒体库？关联的媒体记录也会被清除。',
+      message: '确定删除此媒体库？关联的媒体记录、推荐快照和本地缓存也会被彻底清除。',
       confirmText: '删除',
       variant: 'danger',
     })
     if (!ok) return
     try {
       await libraryApi.delete(id)
+      invalidateMediaListCaches()
       setLibraries((current) => current.filter((library) => library.id !== id))
-    } catch {
-      toast.error('删除失败')
+      setScanning((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
+      toast.success('媒体库已删除')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '删除失败')
     }
   }
 
@@ -147,13 +191,13 @@ function LibraryManager({
     setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.reindex(id)
-    } catch {
+    } catch (err: any) {
       setScanning((current) => {
         const next = new Set(current)
         next.delete(id)
         return next
       })
-      toast.error('重建索引失败')
+      toast.error(err?.response?.data?.error || '重建索引失败')
     }
   }
 
@@ -265,6 +309,7 @@ function LibraryManager({
         library={editingLibrary}
         onClose={() => setEditingLibrary(null)}
         onUpdate={(updated) => {
+          invalidateMediaListCaches()
           setLibraries((current) => current.map((library) => (library.id === updated.id ? updated : library)))
           toast.success('媒体库已更新')
         }}
@@ -387,7 +432,7 @@ function LibraryRow({
           <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning} title="扫描媒体文件" aria-label="扫描媒体文件">
             <RefreshCw size={16} className={isScanning ? 'animate-spin text-[var(--nv-action-primary)]' : undefined} />
           </Button>
-          <Button variant="danger" size="sm" iconOnly onClick={onDelete} title="删除媒体库" aria-label="删除媒体库">
+          <Button variant="danger" size="sm" iconOnly onClick={onDelete} disabled={isScanning} title={isScanning ? '扫描期间不能删除媒体库' : '删除媒体库'} aria-label="删除媒体库">
             <Trash2 size={16} />
           </Button>
           <div className="relative">

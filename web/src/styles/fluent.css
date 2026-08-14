@@ -1,116 +1,61 @@
-/**
- * Fluent v9 visual alignment.
- *
- * Fluent Portal components cannot inherit component-local classes, so this
- * stylesheet maps their surfaces, controls and focus treatment to the formal
- * Nowen Video design-system tokens. No independent Neon/Glass palette lives
- * here.
- */
-
-.fui-FluentProvider {
-  background: transparent !important;
-}
+/** Fluent v9 components share the Nowen semantic visual layer. */
+.fui-FluentProvider { background: transparent !important; }
 
 .fui-MenuList,
 .fui-PopoverSurface,
 .fui-DialogSurface,
 .fui-Tooltip {
   border: 1px solid var(--nv-border-default) !important;
-  border-radius: var(--nv-radius-container) !important;
-  background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent) !important;
+  border-radius: var(--nv-radius-popover) !important;
+  background: var(--nv-bg-elevated) !important;
   color: var(--nv-text-primary) !important;
   box-shadow: var(--nv-shadow-elevated) !important;
-  backdrop-filter: blur(20px) saturate(135%);
-  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
+.fui-MenuList { padding: 6px !important; }
+.fui-MenuItem { min-height: 34px !important; border-radius: 9px !important; color: var(--nv-text-secondary) !important; }
 .fui-MenuItem:hover,
-.fui-MenuItem:focus-visible {
-  background: var(--nv-bg-hover) !important;
-  color: var(--nv-text-primary) !important;
-}
+.fui-MenuItem:focus-visible { background: var(--nv-fill-hover) !important; color: var(--nv-text-primary) !important; }
 
-.fui-Button[appearance='primary'] {
-  border-color: transparent !important;
-  background: var(--nv-action-primary) !important;
-  color: var(--nv-text-on-brand) !important;
-  font-weight: 650;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--nv-action-primary) 16%, transparent) !important;
-}
-
-.fui-Button[appearance='primary']:hover {
-  background: var(--nv-action-primary-hover) !important;
-}
-
-.fui-Button[appearance='primary']:active {
-  background: var(--nv-action-primary-active) !important;
-  transform: none;
-}
-
-.fui-Button[appearance='subtle'] {
-  background: transparent !important;
-  color: var(--nv-text-secondary) !important;
-}
-
-.fui-Button[appearance='subtle']:hover {
-  background: var(--nv-bg-hover) !important;
-  color: var(--nv-text-primary) !important;
-}
+.fui-Button { border-radius: var(--nv-radius-control) !important; box-shadow: none !important; }
+.fui-Button[appearance='primary'] { border-color: transparent !important; background: var(--nv-action-primary) !important; color: var(--nv-text-on-brand) !important; font-weight: 560 !important; }
+.fui-Button[appearance='primary']:hover { background: var(--nv-action-primary-hover) !important; }
+.fui-Button[appearance='primary']:active { background: var(--nv-action-primary-active) !important; transform: none; }
+.fui-Button[appearance='subtle'],
+.fui-Button[appearance='transparent'] { background: transparent !important; color: var(--nv-text-tertiary) !important; }
+.fui-Button[appearance='subtle']:hover,
+.fui-Button[appearance='transparent']:hover { background: var(--nv-fill-hover) !important; color: var(--nv-text-primary) !important; }
 
 .fui-Input,
 .fui-Combobox,
+.fui-Dropdown,
 .fui-Textarea {
+  min-height: 34px !important;
   border: 1px solid var(--nv-border-default) !important;
+  border-radius: var(--nv-radius-control) !important;
   background: var(--nv-bg-control) !important;
   color: var(--nv-text-primary) !important;
+  box-shadow: none !important;
 }
-
+.fui-Input:hover,
+.fui-Combobox:hover,
+.fui-Dropdown:hover,
+.fui-Textarea:hover { border-color: var(--nv-border-hover) !important; }
 .fui-Input:focus-within,
 .fui-Combobox:focus-within,
-.fui-Textarea:focus-within {
-  border-color: var(--nv-border-hover) !important;
-  box-shadow: var(--nv-shadow-focus) !important;
-}
+.fui-Dropdown:focus-within,
+.fui-Textarea:focus-within { border-color: var(--nv-border-strong) !important; box-shadow: var(--nv-shadow-focus) !important; }
 
-/* Global focus and scrollbar treatment follows the same formal tokens. */
-:where(button, a, input, select, textarea, [role='button']):focus-visible {
-  outline: 2px solid var(--nv-focus-ring);
-  outline-offset: 2px;
-}
+:where(button, a, input, select, textarea, [role='button']):focus-visible { outline: 2px solid var(--nv-focus-ring); outline-offset: 2px; }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--nv-action-primary) 25%, transparent) transparent;
-}
-
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: var(--nv-radius-sm);
-  background: color-mix(in srgb, var(--nv-text-primary) 14%, transparent);
-  background-clip: padding-box;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  border: 2px solid transparent;
-  background: color-mix(in srgb, var(--nv-action-primary) 32%, transparent);
-  background-clip: padding-box;
-}
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--nv-text-primary) 14%, transparent) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: var(--nv-radius-sm); background: color-mix(in srgb, var(--nv-text-primary) 13%, transparent); background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--nv-text-primary) 22%, transparent); background-clip: padding-box; }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

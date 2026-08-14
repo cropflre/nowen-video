@@ -17,12 +17,10 @@ const retiredDistPatterns = [
   { name: 'Pulse 客户端路由', regex: /["']\/pulse(?:\/|["'])/g },
 ]
 
-// Scan live source for actual retired visual contracts rather than generic
-// structural class names. player-controls/progress-bar/nav-item are still valid
-// DOM hooks after the migration because their implementations now consume only
-// --nv-* / --nv-player-* semantic tokens. Treating those names themselves as
-// legacy produced false positives and encouraged risky DOM churn in the stable
-// player. Old Neon/Glass utilities and pre-design-system tokens remain blocked.
+// The retirement gate validates visual dependencies, not implementation hooks.
+// Stable DOM hooks such as player-controls/progress-bar may remain while the
+// player business component is kept intact; their appearance must come only
+// from the current --nv-player-* semantic boundary.
 const retiredSourcePatterns = [
   { name: '旧 Neon/Glass utility', regex: /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g },
   { name: '旧 Neon Tailwind utility', regex: /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g },
@@ -31,9 +29,9 @@ const retiredSourcePatterns = [
   { name: '旧 Glass/shadow utility', regex: /\bshadow-(?:glass|inner-glow|neon-glow)\b/g },
   { name: '旧 Theme Tailwind utility', regex: /\b(?:text|bg|border)-theme-[A-Za-z0-9-]+\b/g },
   { name: '旧 Surface Tailwind utility', regex: /\b(?:text|bg|border)-surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
-  { name: '旧全局开关 class', regex: /(?<![A-Za-z0-9_-])(?:theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g },
+  { name: '旧 Cyan Tailwind chrome', regex: /\b(?:text|bg|border|ring|shadow)-(?:cyan|sky)-(?:300|400|500|600)(?:\/[0-9]+)?\b/g },
+  { name: '旧全局导航/开关 class', regex: /(?<![A-Za-z0-9_-])(?:nav-item|theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g },
   { name: '旧全局弹层/管理 class', regex: /(?<![A-Za-z0-9_-])(?:modal-overlay|modal-panel|btn-close-ghost|admin-tab|tab-content-enter)(?![A-Za-z0-9_-])/g },
-  { name: '旧播放器手势 class', regex: /(?<![A-Za-z0-9_-])gesture-overlay(?![A-Za-z0-9_-])/g },
   { name: '旧 Neon CSS token', regex: /var\(--neon-[A-Za-z0-9-]+\)/g },
   { name: '旧 Glass CSS token', regex: /var\(--glass-[A-Za-z0-9-]+\)/g },
   { name: '旧背景 CSS token', regex: /var\(--bg-[A-Za-z0-9-]+\)/g },
@@ -41,23 +39,21 @@ const retiredSourcePatterns = [
   { name: '旧边框 CSS token', regex: /var\(--border-[A-Za-z0-9-]+\)/g },
   { name: '旧阴影 CSS token', regex: /var\(--shadow-[A-Za-z0-9-]+\)/g },
   { name: '旧 Surface CSS token', regex: /var\(--surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
+  { name: '旧播放器 Cyan token', regex: /--nv-player-(?:accent|focus)\s*:\s*#(?:00e5ff|00f0ff|22d3ee|06b6d4)\b/gi },
+  { name: '旧播放器 Glow token', regex: /--nv-player-[A-Za-z0-9-]*glow\s*:/g },
 ]
 
 async function collectFiles(directory, extensions) {
   const entries = await readdir(directory, { withFileTypes: true })
   const files = []
-
   for (const entry of entries) {
     const absolutePath = path.join(directory, entry.name)
     if (entry.isDirectory()) {
       files.push(...await collectFiles(absolutePath, extensions))
       continue
     }
-    if (entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase())) {
-      files.push(absolutePath)
-    }
+    if (entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase())) files.push(absolutePath)
   }
-
   return files
 }
 
@@ -79,16 +75,12 @@ async function verifyRetiredSourceCallers() {
     const content = await readFile(file, 'utf8')
     violations.push(...findViolations(content, retiredSourcePatterns, relative))
   }
-
   if (violations.length > 0) {
     console.error('[retired-ui] 检测到旧 Design System 的 live caller：')
-    for (const violation of violations) {
-      console.error(`- src/${violation.file}: ${violation.name} (${JSON.stringify(violation.token)})`)
-    }
+    for (const violation of violations) console.error(`- src/${violation.file}: ${violation.name} (${JSON.stringify(violation.token)})`)
     process.exit(1)
   }
-
-  console.log('[retired-ui] source contains no legacy Design System callers')
+  console.log('[retired-ui] source contains no retired visual-system callers')
 }
 
 async function verifyRetiredProductionUI() {
@@ -106,15 +98,11 @@ async function verifyRetiredProductionUI() {
     const content = await readFile(file, 'utf8')
     violations.push(...findViolations(content, retiredDistPatterns, path.relative(distDir, file)))
   }
-
   if (violations.length > 0) {
     console.error('[retired-ui] 检测到已经退役的 Pulse 前端内容：')
-    for (const violation of violations) {
-      console.error(`- ${violation.file}: ${violation.name} (${JSON.stringify(violation.token)})`)
-    }
+    for (const violation of violations) console.error(`- ${violation.file}: ${violation.name} (${JSON.stringify(violation.token)})`)
     process.exit(1)
   }
-
   console.log('[retired-ui] production assets contain no retired Pulse UI')
 }
 

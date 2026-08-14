@@ -1,38 +1,34 @@
-/* Nowen Video Player semantic boundary
- *
- * Player UI is intentionally immersive/dark even when the application uses
- * the light theme. All player-facing components consume this --nv-player-*
- * contract directly; there is no Neon/Glass or app-theme compatibility bridge.
- */
-
 .group\/player {
-  --nv-player-canvas: #000000;
-  --nv-player-surface: rgba(10, 14, 20, .94);
-  --nv-player-surface-soft: rgba(18, 24, 33, .90);
-  --nv-player-surface-subtle: rgba(255, 255, 255, .04);
-  --nv-player-surface-hover: rgba(255, 255, 255, .09);
-  --nv-player-text-primary: rgba(255, 255, 255, .96);
-  --nv-player-text-secondary: rgba(255, 255, 255, .74);
-  --nv-player-text-tertiary: rgba(255, 255, 255, .52);
-  --nv-player-text-faint: rgba(255, 255, 255, .32);
-  --nv-player-text-on-accent: #041014;
-  --nv-player-border-subtle: rgba(255, 255, 255, .07);
-  --nv-player-border: rgba(255, 255, 255, .11);
-  --nv-player-border-strong: rgba(255, 255, 255, .18);
-  --nv-player-border-hover: rgba(34, 211, 238, .30);
-  --nv-player-accent: var(--nv-brand-cyan-400);
-  --nv-player-accent-soft: color-mix(in srgb, var(--nv-player-accent) 10%, transparent);
-  --nv-player-accent-soft-hover: color-mix(in srgb, var(--nv-player-accent) 15%, transparent);
-  --nv-player-accent-border: color-mix(in srgb, var(--nv-player-accent) 22%, transparent);
+  --nv-player-canvas: #030711;
+  --nv-player-surface: rgba(12, 18, 38, .84);
+  --nv-player-surface-soft: rgba(8, 13, 29, .74);
+  --nv-player-surface-subtle: rgba(119, 101, 255, .07);
+  --nv-player-surface-hover: rgba(126, 104, 255, .13);
+  --nv-player-text-primary: #f7f8ff;
+  --nv-player-text-secondary: rgba(234, 237, 255, .76);
+  --nv-player-text-tertiary: rgba(218, 224, 248, .52);
+  --nv-player-text-faint: rgba(218, 224, 248, .34);
+  --nv-player-text-on-accent: #ffffff;
+  --nv-player-border-subtle: rgba(121, 103, 255, .11);
+  --nv-player-border: rgba(126, 107, 255, .20);
+  --nv-player-border-strong: rgba(145, 118, 255, .48);
+  --nv-player-border-hover: rgba(145, 118, 255, .38);
+  --nv-player-accent: #7564ff;
+  --nv-player-accent-blue: #3b82f6;
+  --nv-player-accent-purple: #7c3aed;
+  --nv-player-accent-pink: #c84dff;
+  --nv-player-accent-soft: rgba(109, 93, 252, .13);
+  --nv-player-accent-soft-hover: rgba(124, 92, 255, .20);
+  --nv-player-accent-border: rgba(145, 119, 255, .36);
   --nv-player-success: var(--nv-status-success);
   --nv-player-warning: var(--nv-status-warning);
   --nv-player-danger: var(--nv-status-danger);
-  --nv-player-danger-soft: color-mix(in srgb, var(--nv-player-danger) 10%, transparent);
+  --nv-player-danger-soft: color-mix(in srgb, var(--nv-player-danger) 9%, transparent);
   --nv-player-danger-border: color-mix(in srgb, var(--nv-player-danger) 24%, transparent);
-  --nv-player-focus: rgba(34, 211, 238, .58);
-  --nv-player-shadow: 0 20px 54px rgba(0, 0, 0, .48);
-  --nv-player-radius-control: var(--nv-radius-control);
-  --nv-player-radius-panel: var(--nv-radius-container);
+  --nv-player-focus: rgba(137, 111, 255, .72);
+  --nv-player-shadow: 0 24px 72px rgba(0, 0, 0, .50), 0 0 0 1px rgba(112, 92, 255, .08);
+  --nv-player-radius-control: 11px;
+  --nv-player-radius-panel: 18px;
 }
 
 .group\/player :where(button, input, select, textarea, [role='button'], [role='menuitem']):focus-visible {
@@ -40,15 +36,57 @@
   outline-offset: 2px;
 }
 
-/* Keep every player engine's top-left back control aligned with the detail-page
-   secondary icon button: 32 × 32 with the shared control radius. Individual
-   engines may still own their immersive colors and icons. */
-.group\/player button[aria-label='返回'] {
-  width: 2rem;
-  min-width: 2rem;
-  height: 2rem;
-  min-height: 2rem;
-  border-radius: var(--nv-radius-control);
+/* Keep every playback engine's back affordance visually identical to the
+   media-detail back button: 40px circular glass button with the same ArrowLeft
+   glyph, hover scale and contrast. The more-specific selector also overrides
+   the cinema layout's top-toolbar button rule. */
+.group\/player button[aria-label='返回'],
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child {
+  width: 2.5rem !important;
+  min-width: 2.5rem !important;
+  height: 2.5rem !important;
+  min-height: 2.5rem !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, .15) !important;
+  border-radius: 9999px !important;
+  background: rgba(0, 0, 0, .45) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .18), 0 4px 6px -4px rgba(0, 0, 0, .18) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  font-size: 0;
+  line-height: 1;
+  transition: background-color 160ms var(--nv-ease-standard), transform 160ms var(--nv-ease-standard) !important;
+}
+
+.group\/player button[aria-label='返回'] > svg,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child > svg {
+  display: none !important;
+}
+
+.group\/player button[aria-label='返回']::before,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  background: center / 18px 18px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 19-7-7 7-7'/%3E%3Cpath d='M19 12H5'/%3E%3C/svg%3E");
+}
+
+.group\/player button[aria-label='返回']:hover,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:hover {
+  background: rgba(0, 0, 0, .60) !important;
+  transform: scale(1.03) !important;
+}
+
+.group\/player button[aria-label='返回']:active,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:active {
+  transform: scale(.98) !important;
 }
 
 .group\/player [role='menu'],
@@ -56,77 +94,67 @@
   font-family: var(--nv-font-sans);
 }
 
-/* Base progress geometry. Cinema layout controls final positioning. */
-.group\/player .progress-bar {
+.group\/player .nv-player-timeline {
   position: relative;
   height: 4px;
   cursor: pointer;
   border-radius: var(--nv-radius-pill);
-  background: color-mix(in srgb, var(--nv-player-text-primary) 18%, transparent);
+  background: rgba(235, 238, 255, .16);
 }
 
-.group\/player .progress-bar-fill {
+.group\/player .nv-player-timeline-fill {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: inherit;
-  background: var(--nv-player-accent);
+  background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink));
+  box-shadow: 0 0 12px rgba(109, 93, 252, .32);
 }
 
-.group\/player .progress-bar-thumb {
+.group\/player .nv-player-timeline-thumb {
   position: absolute;
   top: 50%;
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-text-primary);
+  box-shadow: 0 0 0 3px rgba(117, 100, 255, .18), 0 0 14px rgba(117, 100, 255, .54);
   opacity: 0;
   transform: translate(-50%, -50%);
   transition: opacity var(--nv-motion-fast) var(--nv-ease-standard);
 }
 
-.group\/player .progress-bar:hover .progress-bar-thumb,
-.group\/player .progress-bar:focus-within .progress-bar-thumb {
+.group\/player .nv-player-timeline:hover .nv-player-timeline-thumb,
+.group\/player .nv-player-timeline:focus-within .nv-player-timeline-thumb {
   opacity: 1;
 }
 
-/* Player-owned range styles. They intentionally do not inherit the app-wide
-   legacy range rules, which are retired independently after caller audit. */
 .group\/player :where(.player-volume-slider, .player-cast-volume-slider) {
-  height: 4px;
+  height: 3px;
   border-radius: var(--nv-radius-pill);
   outline: none;
+  accent-color: var(--nv-player-accent);
 }
 
 .group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   appearance: none;
   border: 2px solid var(--nv-player-text-primary);
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
-  transition: transform var(--nv-motion-fast) var(--nv-ease-standard), box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
-}
-
-.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb:hover {
-  transform: scale(1.02);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, .48);
-}
-
-.group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-webkit-slider-thumb:active {
-  transform: scale(.98);
+  box-shadow: 0 0 12px rgba(117, 100, 255, .42);
 }
 
 .group\/player :where(.player-volume-slider, .player-cast-volume-slider)::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 2px solid var(--nv-player-text-primary);
   border-radius: var(--nv-radius-pill);
   background: var(--nv-player-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .42);
+  box-shadow: 0 0 12px rgba(117, 100, 255, .42);
 }
 
-.group\/player :where(.player-controls, [role='menu'], [role='dialog']) {
+.group\/player :where(.nv-player-chrome, [role='menu'], [role='dialog']) {
   --nv-motion-fast: 120ms;
   --nv-motion-normal: 180ms;
 }

@@ -143,6 +143,13 @@ func (r *RecommendCacheRepo) Invalidate(userID string) error {
 	return r.db.Where("user_id = ?", userID).Delete(&model.RecommendCache{}).Error
 }
 
+// InvalidateAll 使所有用户的推荐缓存失效。
+// 媒体库增删会改变全局候选集，因此不能只清理发起操作的用户。
+func (r *RecommendCacheRepo) InvalidateAll() (int64, error) {
+	result := r.db.Where("1 = 1").Delete(&model.RecommendCache{})
+	return result.RowsAffected, result.Error
+}
+
 // CleanExpired 清理过期缓存
 func (r *RecommendCacheRepo) CleanExpired() (int64, error) {
 	result := r.db.Where("expires_at < ?", time.Now()).Delete(&model.RecommendCache{})

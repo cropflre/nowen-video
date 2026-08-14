@@ -29,6 +29,8 @@ interface RenameModalProps {
   onSuccess: () => void
 }
 
+const AI_APPLY_CONCURRENCY = 5
+
 export default function RenameModal({ selectedCount, selectedIds, onClose, onSuccess }: RenameModalProps) {
   const toast = useToast()
   const [useAIRename, setUseAIRename] = useState(false)
@@ -41,22 +43,33 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
 
   useEffect(() => {
     let active = true
-
     fileManagerApi.getRenameTemplates()
       .then((res) => {
         if (active) setRenameTemplates(res.data.data || [])
       })
       .catch(() => {})
-
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [])
+
+  const invalidatePreview = () => {
+    if (renamePreviews.length > 0) setRenamePreviews([])
+  }
+
+  const handleModeChange = (nextUseAI: boolean) => {
+    if (nextUseAI === useAIRename) return
+    setUseAIRename(nextUseAI)
+    invalidatePreview()
+  }
+
+  const handleTemplateChange = (template: string) => {
+    setRenameTemplate(template)
+    invalidatePreview()
+  }
 
   const handleTargetLangChange = (lang: string) => {
     setTargetLang(lang)
     localStorage.setItem('rename_target_lang', lang)
-    if (renamePreviews.length > 0) setRenamePreviews([])
+    invalidatePreview()
   }
 
   const handlePreview = async () => {
@@ -75,15 +88,55 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
     }
   }
 
+  const executeAIPreview = async () => {
+    let renamed = 0
+    let failed = 0
+
+    for (let index = 0; index < renamePreviews.length; index += AI_APPLY_CONCURRENCY) {
+      const batch = renamePreviews.slice(index, index + AI_APPLY_CONCURRENCY)
+      const results = await Promise.allSettled(
+        batch.map((preview) => fileManagerApi.updateFile(preview.media_id, { title: preview.new_title })),
+      )
+      for (const result of results) {
+        if (result.status === 'fulfilled') renamed += 1
+        else failed += 1
+      }
+    }
+
+    if (renamed > 0) toast.success(`已应用 ${renamed} 个 AI 重命名结果`)
+    if (failed > 0) toast.error(`${failed} 个文件重命名失败，请刷新后重试`)
+    return { renamed, failed }
+  }
+
   const handleExecute = async () => {
+    if (renamePreviews.length === 0) return
+
     setRenaming(true)
     try {
+      if (useAIRename) {
+        // AI preview contains concrete titles. The legacy executeRename endpoint
+        // only accepts a template and would regenerate a different result, so
+        // apply the exact titles the user just reviewed via the existing update API.
+        const result = await executeAIPreview()
+        if (result.renamed > 0) {
+          onClose()
+          onSuccess()
+        }
+        return
+      }
+
       const res = await fileManagerApi.executeRename(Array.from(selectedIds), renameTemplate)
-      toast.success(`已重命名 ${res.data.renamed} 个文件`)
-      onClose()
-      onSuccess()
-    } catch {
-      toast.error('重命名失败')
+      const renamed = res.data.renamed || 0
+      const errors = res.data.errors || []
+      if (renamed > 0) toast.success(`已重命名 ${renamed} 个文件`)
+      else if (errors.length === 0) toast.info('当前预览没有需要执行的标题变更')
+      if (errors.length > 0) toast.error(`${errors.length} 个文件重命名失败`)
+      if (renamed > 0 || errors.length === 0) {
+        onClose()
+        onSuccess()
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '重命名失败')
     } finally {
       setRenaming(false)
     }
@@ -94,7 +147,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
       <div className="flex min-h-0 flex-1 flex-col">
         <ModalHeader
           title="批量重命名"
-          description={`为已选择的 ${selectedCount} 个文件生成新名称，确认预览后再执行。`}
+          description={`为已选择的 ${selectedCount} 个文件生成新标题，确认预览后再执行。此操作只更新媒体记录标题，不移动磁盘文件。`}
           icon={<Wand2 size={18} aria-hidden="true" />}
           onClose={onClose}
         />
@@ -102,45 +155,33 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
         <ModalBody className="space-y-5">
           <section>
             <div className="mb-2 text-xs font-medium text-[var(--nv-text-tertiary)]">重命名方式</div>
-            <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="重命名方式">
+            <div className="grid border-y border-[var(--nv-border-subtle)] sm:grid-cols-2 sm:divide-x sm:divide-[var(--nv-border-subtle)]" role="group" aria-label="重命名方式">
               <button
                 type="button"
-                onClick={() => setUseAIRename(false)}
+                onClick={() => handleModeChange(false)}
                 aria-pressed={!useAIRename}
                 disabled={renaming}
-                className="rounded-[var(--nv-radius-control)] border px-4 py-3 text-left outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50"
-                style={{
-                  borderColor: !useAIRename ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
-                  background: !useAIRename ? 'var(--nv-bg-surface-soft)' : 'var(--nv-bg-control)',
-                }}
+                className={`px-3 py-3 text-left outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 ${!useAIRename ? 'bg-[var(--nv-fill-active)]' : 'hover:bg-[var(--nv-fill-hover)]'}`}
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-[var(--nv-text-primary)]">
-                  <Wand2 size={15} className={!useAIRename ? 'text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-tertiary)]'} aria-hidden="true" />
+                  <Wand2 size={15} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
                   模板重命名
                 </div>
-                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
-                  使用变量模板生成稳定、可预测的文件名称。
-                </div>
+                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">使用变量模板生成稳定、可预测的媒体标题。</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => setUseAIRename(true)}
+                onClick={() => handleModeChange(true)}
                 aria-pressed={useAIRename}
                 disabled={renaming}
-                className="rounded-[var(--nv-radius-control)] border px-4 py-3 text-left outline-none transition-[background-color,border-color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50"
-                style={{
-                  borderColor: useAIRename ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
-                  background: useAIRename ? 'var(--nv-bg-surface-soft)' : 'var(--nv-bg-control)',
-                }}
+                className={`border-t border-[var(--nv-border-subtle)] px-3 py-3 text-left outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 sm:border-t-0 ${useAIRename ? 'bg-[var(--nv-fill-active)]' : 'hover:bg-[var(--nv-fill-hover)]'}`}
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-[var(--nv-text-primary)]">
-                  <Sparkles size={15} className={useAIRename ? 'text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-tertiary)]'} aria-hidden="true" />
+                  <Sparkles size={15} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
                   AI 智能重命名
                 </div>
-                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">
-                  由 AI 规范化标题，并可按目标语言生成名称。
-                </div>
+                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">由 AI 规范化标题，并可按目标语言生成名称。</div>
               </button>
             </div>
           </section>
@@ -152,7 +193,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                 <Input
                   type="text"
                   value={renameTemplate}
-                  onChange={(event) => setRenameTemplate(event.target.value)}
+                  onChange={(event) => handleTemplateChange(event.target.value)}
                   className="font-mono"
                   disabled={renaming}
                   aria-label="命名模板"
@@ -162,22 +203,18 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
               {renameTemplates.length > 0 && (
                 <div>
                   <div className="mb-2 text-xs font-medium text-[var(--nv-text-tertiary)]">常用模板</div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {renameTemplates.map((template, index) => {
                       const selected = renameTemplate === template.pattern
                       return (
                         <button
                           key={`${template.pattern}-${index}`}
                           type="button"
-                          onClick={() => setRenameTemplate(template.pattern)}
+                          onClick={() => handleTemplateChange(template.pattern)}
                           disabled={renaming}
                           aria-pressed={selected}
                           title={`示例: ${template.example}`}
-                          className="rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-2.5 py-1.5 font-mono text-xs text-[var(--nv-text-secondary)] outline-none transition-[background-color,border-color,color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50"
-                          style={{
-                            borderColor: selected ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
-                            color: selected ? 'var(--nv-action-primary)' : undefined,
-                          }}
+                          className={`rounded-[var(--nv-radius-control)] px-2.5 py-1.5 font-mono text-xs outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-[var(--nv-fill-active)] text-[var(--nv-text-primary)]' : 'text-[var(--nv-text-tertiary)] hover:bg-[var(--nv-fill-hover)] hover:text-[var(--nv-text-secondary)]'}`}
                         >
                           {template.pattern}
                         </button>
@@ -197,7 +234,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                 <Languages size={14} aria-hidden="true" />
                 目标翻译语言
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {LANGUAGE_OPTIONS.map((language) => {
                   const selected = targetLang === language.value
                   return (
@@ -207,11 +244,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                       onClick={() => handleTargetLangChange(language.value)}
                       disabled={renaming}
                       aria-pressed={selected}
-                      className="flex items-center gap-1.5 rounded-[var(--nv-radius-control)] border bg-[var(--nv-bg-control)] px-2.5 py-1.5 text-xs text-[var(--nv-text-secondary)] outline-none transition-[background-color,border-color,color,box-shadow] duration-200 hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50"
-                      style={{
-                        borderColor: selected ? 'var(--nv-action-primary)' : 'var(--nv-border-default)',
-                        color: selected ? 'var(--nv-action-primary)' : undefined,
-                      }}
+                      className={`flex items-center gap-1.5 rounded-[var(--nv-radius-control)] px-2.5 py-1.5 text-xs outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-[var(--nv-fill-active)] text-[var(--nv-text-primary)]' : 'text-[var(--nv-text-tertiary)] hover:bg-[var(--nv-fill-hover)] hover:text-[var(--nv-text-secondary)]'}`}
                     >
                       <span aria-hidden="true">{language.flag}</span>
                       <span>{language.label}</span>
@@ -228,38 +261,27 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
             </section>
           )}
 
-          <section className="rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)]">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--nv-border-subtle)] px-3 py-2.5 sm:px-4">
+          <section className="border-y border-[var(--nv-border-subtle)]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--nv-border-subtle)] py-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={renaming}
-                  onClick={() => void handlePreview()}
-                >
+                <Button type="button" variant="secondary" size="sm" loading={renaming} onClick={() => void handlePreview()}>
                   {renaming
                     ? <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
                     : <Eye size={14} aria-hidden="true" />}
                   {renaming ? '生成中...' : '生成预览'}
                 </Button>
-                {renamePreviews.length > 0 && (
-                  <span className="text-xs text-[var(--nv-text-tertiary)]">共 {renamePreviews.length} 条结果</span>
-                )}
+                {renamePreviews.length > 0 && <span className="text-xs text-[var(--nv-text-tertiary)]">共 {renamePreviews.length} 条结果</span>}
               </div>
-
-              {renamePreviews.length > 0 && (
-                <Tag tone="success">{renamePreviews.length} 项待重命名</Tag>
-              )}
+              {renamePreviews.length > 0 && <Tag tone="success">{renamePreviews.length} 项待更新</Tag>}
             </div>
 
             {renamePreviews.length > 0 ? (
               <div>
-                <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4">
+                <div className="flex items-center justify-between gap-2 py-2">
                   <button
                     type="button"
                     onClick={() => setPreviewsExpanded((expanded) => !expanded)}
-                    className="flex items-center gap-1.5 rounded-[var(--nv-radius-control)] px-1 py-1 text-xs text-[var(--nv-text-tertiary)] outline-none transition-colors hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)]"
+                    className="flex items-center gap-1.5 rounded-[var(--nv-radius-control)] px-1 py-1 text-xs text-[var(--nv-text-tertiary)] outline-none transition-colors duration-150 hover:text-[var(--nv-text-primary)] focus-visible:shadow-[var(--nv-shadow-focus)]"
                     aria-expanded={previewsExpanded}
                   >
                     <ChevronsUpDown size={13} aria-hidden="true" />
@@ -268,46 +290,31 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                 </div>
 
                 {previewsExpanded && (
-                  <div className="border-t border-[var(--nv-border-subtle)] p-2 sm:p-3">
-                    <div className="space-y-2">
-                      {renamePreviews.map((preview, index) => (
-                        <div
-                          key={`${preview.media_id}-${index}`}
-                          className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] p-3 transition-colors hover:bg-[var(--nv-bg-hover)]"
-                        >
-                          <div className="flex items-start gap-3">
-                            <span className="w-6 shrink-0 pt-0.5 text-right font-mono text-xs text-[var(--nv-text-tertiary)]">
-                              {index + 1}
-                            </span>
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="break-all text-sm leading-5 text-[var(--nv-status-danger)] line-through decoration-current/60">
-                                {preview.old_title}
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <span className="pt-0.5 text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">↓</span>
-                                <span className="min-w-0 break-all text-sm font-medium leading-5 text-[var(--nv-status-success)]">
-                                  {preview.new_title}
-                                </span>
-                              </div>
-                              {preview.reason && (
-                                <div className="flex items-start gap-1.5 text-xs leading-5 text-[var(--nv-text-tertiary)]">
-                                  <Sparkles size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-                                  <span>{preview.reason}</span>
-                                </div>
-                              )}
-                            </div>
+                  <div className="divide-y divide-[var(--nv-border-subtle)] border-t border-[var(--nv-border-subtle)]">
+                    {renamePreviews.map((preview, index) => (
+                      <div key={`${preview.media_id}-${index}`} className="flex items-start gap-3 px-1 py-3 transition-colors duration-150 hover:bg-[var(--nv-fill-hover)]">
+                        <span className="w-6 shrink-0 pt-0.5 text-right font-mono text-xs text-[var(--nv-text-tertiary)]">{index + 1}</span>
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="break-all text-sm leading-5 text-[var(--nv-text-tertiary)] line-through decoration-current/50">{preview.old_title}</div>
+                          <div className="flex items-start gap-2">
+                            <span className="pt-0.5 text-xs text-[var(--nv-text-tertiary)]" aria-hidden="true">↓</span>
+                            <span className="min-w-0 break-all text-sm font-medium leading-5 text-[var(--nv-text-primary)]">{preview.new_title}</span>
                           </div>
+                          {preview.reason && (
+                            <div className="flex items-start gap-1.5 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                              <Sparkles size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+                              <span>{preview.reason}</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             ) : (
               <div className="flex min-h-44 flex-col items-center justify-center px-6 py-8 text-center">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] text-[var(--nv-text-tertiary)]">
-                  <Wand2 size={20} aria-hidden="true" />
-                </div>
+                <Wand2 size={22} className="mb-3 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
                 <div className="text-sm font-medium text-[var(--nv-text-secondary)]">尚未生成重命名预览</div>
                 <div className="mt-1 max-w-md text-xs leading-5 text-[var(--nv-text-tertiary)]">
                   {useAIRename
@@ -320,19 +327,9 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
         </ModalBody>
 
         <ModalFooter>
-          <div className="mr-auto hidden text-xs text-[var(--nv-text-tertiary)] sm:block">
-            已选择 {selectedCount} 个文件
-          </div>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={renaming}>
-            取消
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            loading={renaming}
-            onClick={() => void handleExecute()}
-            disabled={renamePreviews.length === 0}
-          >
+          <div className="mr-auto hidden text-xs text-[var(--nv-text-tertiary)] sm:block">已选择 {selectedCount} 个文件</div>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={renaming}>取消</Button>
+          <Button type="button" variant="primary" loading={renaming} onClick={() => void handleExecute()} disabled={renamePreviews.length === 0}>
             {renaming
               ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               : <Check size={15} aria-hidden="true" />}

@@ -1,13 +1,7 @@
-/* ============================================================
-   PLAYER-UI · Cinema Layout
-   ------------------------------------------------------------
-   只负责沉浸式播放器布局、控制区定位与响应式行为。
-   视觉状态全部来自 --nv-player-*，不再维护 Neon/Glass 兼容层。
-   ============================================================ */
-
+/* Cinema layout only. Visual values come from --nv-player-* semantic roles. */
 .group\/player {
-  --nv-player-side: clamp(16px, 2vw, 32px);
-  --nv-player-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  --nv-player-side: clamp(14px, 2vw, 30px);
+  --nv-player-bottom: max(16px, env(safe-area-inset-bottom, 0px));
   --nv-player-control-size: 40px;
   isolation: isolate;
 }
@@ -18,296 +12,287 @@
   background: var(--nv-player-canvas);
 }
 
-.group\/player:has(.player-controls.opacity-0) > video {
-  cursor: none;
+.group\/player:has(.player-controls.opacity-0) > video { cursor: none; }
+
+/* Runtime diagnostics belong to the same chrome lifecycle as the player's own
+   controls. They remain real playback state, but no longer stay pinned over a
+   clean video frame after the control UI has auto-hidden. */
+.group\/player > .nv-player-runtime-status {
+  top: max(16px, env(safe-area-inset-top, 0px)) !important;
+  right: var(--nv-player-side) !important;
+  max-width: min(38vw, 420px);
+  opacity: 1;
+  transition: opacity var(--nv-motion-normal) var(--nv-ease-standard), transform var(--nv-motion-normal) var(--nv-ease-standard) !important;
+}
+.group\/player:has(.player-controls.opacity-0) > .nv-player-runtime-status {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
 }
 
 .group\/player .player-controls {
   inset: 0 !important;
   padding: 0 !important;
-  background:
-    linear-gradient(to bottom, color-mix(in srgb, var(--nv-player-canvas) 62%, transparent) 0%, color-mix(in srgb, var(--nv-player-canvas) 28%, transparent) 13%, transparent 31%),
-    linear-gradient(to top, color-mix(in srgb, var(--nv-player-canvas) 84%, transparent) 0%, color-mix(in srgb, var(--nv-player-canvas) 50%, transparent) 14%, color-mix(in srgb, var(--nv-player-canvas) 16%, transparent) 25%, transparent 38%) !important;
   pointer-events: none;
-  transition: opacity var(--nv-motion-slow) var(--nv-ease-standard) !important;
+  background:
+    linear-gradient(to bottom, rgba(3,7,17,.72), rgba(3,7,17,.18) 25%, transparent 40%),
+    linear-gradient(to top, rgba(3,7,17,.90), rgba(3,7,17,.45) 18%, transparent 42%) !important;
+  transition: opacity var(--nv-motion-normal) var(--nv-ease-standard) !important;
 }
+.group\/player .player-controls > * { pointer-events: auto; }
 
-.group\/player .player-controls > * {
-  pointer-events: auto;
-}
-
-/* 顶部标题 */
+/* Top chrome keeps the real title/mode controls, but presents them as a quiet
+   glass toolbar rather than drawing attention away from the video. */
 .group\/player .player-controls > .absolute.left-4.top-4 {
-  top: max(20px, env(safe-area-inset-top, 0px)) !important;
+  top: max(16px, env(safe-area-inset-top, 0px)) !important;
   left: var(--nv-player-side) !important;
   right: var(--nv-player-side) !important;
   width: auto;
   min-width: 0;
-  gap: 12px !important;
-  align-items: center !important;
+  gap: 9px !important;
 }
-
-.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
-  width: var(--nv-player-control-size);
-  height: var(--nv-player-control-size);
-  min-width: var(--nv-player-control-size);
-  padding: 0 !important;
-}
-
-.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child svg {
-  display: none;
-}
-
-.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child::before {
-  content: '←';
-  display: block;
-  font-size: 23px;
-  font-weight: 400;
-  line-height: 1;
-  transform: translateY(-1px);
-}
-
 .group\/player .player-controls > .absolute.left-4.top-4 > h2 {
   min-width: 0;
-  max-width: min(72vw, 920px);
+  max-width: min(58vw, 820px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(15px, 1.2vw, 18px) !important;
-  font-weight: 560 !important;
-  line-height: 1.25 !important;
-  letter-spacing: .01em !important;
-  text-shadow: 0 2px 10px color-mix(in srgb, var(--nv-player-canvas) 75%, transparent) !important;
+  font-family: var(--nv-font-sans) !important;
+  font-size: clamp(14px, 1.1vw, 17px) !important;
+  font-weight: 590 !important;
+  letter-spacing: -.01em !important;
+  color: var(--nv-player-text-primary) !important;
+  text-shadow: 0 2px 14px rgba(0,0,0,.45);
+}
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
+  width: var(--nv-player-control-size);
+  min-width: var(--nv-player-control-size);
+  height: var(--nv-player-control-size);
+  padding: 0 !important;
+  border: 1px solid var(--nv-player-border) !important;
+  border-radius: var(--nv-player-radius-control) !important;
+  background: var(--nv-player-surface-soft) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.20) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child:hover {
+  border-color: var(--nv-player-border-hover) !important;
+  background: var(--nv-player-surface-hover) !important;
 }
 
-/* 进度条 */
+/* Timeline sits above the glass control dock. Resting state is intentionally
+   quiet: only the rail and played fill stay visible. The scrubber becomes a
+   circular handle on hover/press, avoiding the square marker that previously
+   remained visible at 0% progress. */
 .group\/player .player-controls > .progress-bar {
   position: absolute !important;
-  left: var(--nv-player-side) !important;
-  right: var(--nv-player-side) !important;
-  bottom: calc(var(--nv-player-bottom) + 52px) !important;
+  left: calc(var(--nv-player-side) + 12px) !important;
+  right: calc(var(--nv-player-side) + 12px) !important;
+  bottom: calc(var(--nv-player-bottom) + 66px) !important;
   width: auto !important;
-  height: 3px !important;
+  height: 4px !important;
   margin: 0 !important;
+  overflow: visible !important;
+  cursor: pointer;
+  touch-action: none;
   border-radius: var(--nv-radius-pill) !important;
-  background: color-mix(in srgb, var(--nv-player-text-primary) 24%, transparent) !important;
-  transition: height var(--nv-motion-fast) var(--nv-ease-standard), background-color var(--nv-motion-fast) var(--nv-ease-standard) !important;
+  background: rgba(235,238,255,.16) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.28);
+  transition:
+    height var(--nv-motion-fast) var(--nv-ease-standard),
+    background-color var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
-
-.group\/player .player-controls > .progress-bar:hover {
-  height: 5px !important;
-  background: color-mix(in srgb, var(--nv-player-text-primary) 30%, transparent) !important;
+.group\/player .player-controls > .progress-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 18px;
+  transform: translateY(-50%);
 }
-
+.group\/player .player-controls > .progress-bar:hover,
+.group\/player .player-controls > .progress-bar:focus-visible,
+.group\/player .player-controls > .progress-bar:active {
+  height: 6px !important;
+  background: rgba(235,238,255,.22) !important;
+}
 .group\/player .progress-bar-fill {
-  background: var(--nv-player-accent) !important;
-  box-shadow: none !important;
-  transition: width 100ms linear !important;
+  position: absolute !important;
+  inset: 0 auto 0 0 !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  pointer-events: none;
+  border-radius: inherit !important;
+  background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink)) !important;
+  box-shadow: 0 0 12px rgba(109,93,252,.36) !important;
 }
-
 .group\/player .progress-bar-thumb {
+  position: absolute !important;
+  top: 50% !important;
   width: 12px !important;
   height: 12px !important;
-  background: var(--nv-player-text-primary) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--nv-player-accent) 38%, transparent), 0 3px 12px color-mix(in srgb, var(--nv-player-canvas) 42%, transparent) !important;
+  pointer-events: none;
+  border: 2px solid rgba(255,255,255,.96) !important;
+  border-radius: 999px !important;
+  background: var(--nv-player-accent) !important;
+  opacity: 0 !important;
+  transform: translate(-50%, -50%) scale(.72) !important;
+  box-shadow: 0 0 0 3px rgba(117,100,255,.14), 0 0 14px rgba(117,100,255,.50) !important;
+  transition:
+    opacity var(--nv-motion-fast) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard),
+    box-shadow var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
-
-.group\/player .progress-bar:hover .progress-bar-thumb {
+.group\/player .progress-bar:hover .progress-bar-thumb,
+.group\/player .progress-bar:focus-visible .progress-bar-thumb,
+.group\/player .progress-bar:active .progress-bar-thumb {
   opacity: 1 !important;
+  transform: translate(-50%, -50%) scale(1) !important;
+}
+.group\/player .progress-bar:active .progress-bar-thumb {
+  transform: translate(-50%, -50%) scale(1.14) !important;
+  box-shadow: 0 0 0 5px rgba(117,100,255,.16), 0 0 18px rgba(117,100,255,.62) !important;
 }
 
-.group\/player .progress-bar [class*='shadow-'] {
-  border-color: var(--nv-player-border-strong) !important;
-}
-
-/* 底部主控制行 */
+/* Bottom dock: preserve the existing control tree and interaction handlers. */
 .group\/player .player-controls > .flex.items-center.gap-1 {
   position: absolute !important;
   left: var(--nv-player-side) !important;
   right: var(--nv-player-side) !important;
   bottom: var(--nv-player-bottom) !important;
   min-width: 0;
-  min-height: var(--nv-player-control-size);
+  min-height: 54px;
   gap: 2px !important;
   align-items: center !important;
-  line-height: 1 !important;
+  padding: 6px 10px !important;
+  border: 1px solid var(--nv-player-border) !important;
+  border-radius: 16px !important;
+  background: rgba(9,14,31,.68) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 18px 46px rgba(0,0,0,.25), 0 0 0 1px rgba(110,90,255,.035) !important;
+  backdrop-filter: blur(20px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(125%) !important;
 }
-
 .group\/player .player-controls > .flex.items-center.gap-1 > button,
 .group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button {
-  box-sizing: border-box;
   min-width: var(--nv-player-control-size);
   height: var(--nv-player-control-size);
-  padding: 0 10px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 5px;
-  flex: 0 0 auto;
+  padding: 0 9px !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--nv-player-radius-control) !important;
   line-height: 1 !important;
-  white-space: nowrap;
+  color: var(--nv-player-text-secondary) !important;
 }
-
+.group\/player .player-controls > .flex.items-center.gap-1 > button:hover,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:hover {
+  border-color: var(--nv-player-border-subtle) !important;
+  background: var(--nv-player-accent-soft) !important;
+  color: var(--nv-player-text-primary) !important;
+}
 .group\/player .player-controls > .flex.items-center.gap-1 > div.relative,
 .group\/player .player-controls > .flex.items-center.gap-1 > .group\/vol {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
   min-height: var(--nv-player-control-size);
-  line-height: 1;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 button > svg {
-  display: block;
-  flex: 0 0 auto;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > button:first-child svg {
-  width: 24px;
-  height: 24px;
-}
-
-/* −10 / +10 文字化，保持控制行对齐。 */
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back) svg,
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward) svg {
-  display: none;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back)::after,
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward)::after,
-.group\/player button[title='播放速度']:has(> svg)::after,
-.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings)::after {
-  display: block;
-  line-height: 1 !important;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-back)::after {
-  content: '−10';
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > button:has(> svg.lucide-skip-forward)::after {
-  content: '+10';
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.group\/player button[title='播放速度']:has(> svg) svg {
-  display: none;
-}
-
-.group\/player button[title='播放速度']:has(> svg)::after {
-  content: '1×';
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings) {
-  width: auto;
-  min-width: 48px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings) svg {
-  display: none;
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:has(> svg.lucide-settings)::after {
-  content: '画质';
-}
-
-.group\/player .player-controls > .flex.items-center.gap-1 button > span {
-  display: inline-flex;
   align-items: center;
-  line-height: 1 !important;
 }
 
-/* 音量滑杆默认收起。 */
+/* The primary play/pause affordance may live at different indices depending on
+   playback mode, so select it by the Lucide glyph rather than DOM position. */
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+  width: 46px;
+  min-width: 46px;
+  height: 46px;
+  margin-inline: 3px;
+  border-color: rgba(151,124,255,.46) !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #6d5dfc 52%, #a855f7 100%) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.14), 0 0 26px rgba(109,93,252,.34) !important;
+}
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+  transform: translateY(-1px) scale(1.015);
+  box-shadow: inset 0 1px rgba(255,255,255,.17), 0 0 32px rgba(109,93,252,.44) !important;
+}
+
+/* Desktop cinema composition: the play/pause control is visually centered like
+   the reference while the existing buttons stay in their real React handlers.
+   Reordering is CSS-only, so playback behavior and keyboard handling are not
+   duplicated or replaced. */
+@media (min-width: 56.25rem) {
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+    position: absolute !important;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    margin: 0;
+    transform: translate(-50%, -50%);
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+    transform: translate(-50%, calc(-50% - 1px)) scale(1.015);
+  }
+
+  /* Keep the volume button in its DOM position. Muting swaps the Lucide glyph,
+     so glyph-dependent ordering would make the control jump horizontally. */
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-back) { order: -3; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-forward) { order: -2; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-chevron-right) { order: -1; }
+}
+
 .group\/player .group\/vol input[type='range'] {
   width: 0 !important;
+  margin: 0 !important;
   opacity: 0;
   pointer-events: none;
-  margin: 0 !important;
-  align-self: center;
   transition: width var(--nv-motion-normal) var(--nv-ease-standard), opacity var(--nv-motion-fast) var(--nv-ease-standard) !important;
 }
-
 .group\/player .group\/vol:hover input[type='range'],
-.group\/player .group\/vol:focus-within input[type='range'] {
-  width: 80px !important;
-  opacity: 1;
-  pointer-events: auto;
-}
+.group\/player .group\/vol:focus-within input[type='range'] { width: 76px !important; opacity: 1; pointer-events: auto; }
 
-.group\/player .player-controls > .flex.items-center.gap-1 > span {
-  height: var(--nv-player-control-size);
-  margin-left: 8px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  flex: 0 0 auto;
-  line-height: 1 !important;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 弹出菜单只做尺寸兜底，颜色由组件自身的 --nv-player-* class 决定。 */
 .group\/player .player-controls [class*='bottom-full'] {
+  border-color: var(--nv-player-border) !important;
   border-radius: var(--nv-player-radius-panel) !important;
-  backdrop-filter: blur(20px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+  background: var(--nv-player-surface) !important;
+  box-shadow: var(--nv-player-shadow) !important;
+  backdrop-filter: blur(20px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
 }
 
-/* 响应式 */
 @media (max-width: 768px) {
-  .group\/player {
-    --nv-player-side: 12px;
-    --nv-player-bottom: max(10px, env(safe-area-inset-bottom, 0px));
-    --nv-player-control-size: 38px;
+  .group\/player { --nv-player-side: 10px; --nv-player-bottom: max(9px, env(safe-area-inset-bottom, 0px)); --nv-player-control-size: 36px; }
+  .group\/player > .nv-player-runtime-status {
+    top: max(9px, env(safe-area-inset-top, 0px)) !important;
+    right: 10px !important;
+    max-width: 44vw;
+    transform-origin: top right;
   }
-
-  .group\/player .player-controls > .absolute.left-4.top-4 {
-    top: max(10px, env(safe-area-inset-top, 0px)) !important;
-  }
-
+  .group\/player .player-controls > .absolute.left-4.top-4 { top: max(9px, env(safe-area-inset-top, 0px)) !important; }
+  .group\/player .player-controls > .absolute.left-4.top-4 > h2 { max-width: 46vw; }
   .group\/player .player-controls > .progress-bar {
-    bottom: calc(var(--nv-player-bottom) + 50px) !important;
+    left: calc(var(--nv-player-side) + 8px) !important;
+    right: calc(var(--nv-player-side) + 8px) !important;
+    bottom: calc(var(--nv-player-bottom) + 58px) !important;
   }
-
   .group\/player .player-controls > .flex.items-center.gap-1 {
-    gap: 0 !important;
+    min-height: 48px;
+    padding: 5px 6px !important;
+    border-radius: 14px !important;
   }
-
-  .group\/player .player-controls > .flex.items-center.gap-1 > button,
-  .group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button {
-    min-width: var(--nv-player-control-size);
-    height: var(--nv-player-control-size);
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-  }
-
-  .group\/player .group\/vol input[type='range'] {
-    display: none !important;
-  }
-
-  .group\/player .player-controls > .flex.items-center.gap-1 > span {
-    margin-left: 4px !important;
-    font-size: 10px !important;
-  }
-}
-
-@media (max-width: 560px) {
-  .group\/player .player-controls > .flex.items-center.gap-1 > span {
-    display: none !important;
-  }
-
-  .group\/player .player-controls > .absolute.left-4.top-4 > h2 {
-    max-width: calc(100vw - 76px);
-    font-size: 14px !important;
+  .group\/player .group\/vol input[type='range'] { display: none !important; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > span { display: none !important; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
   }
 }
 
@@ -315,7 +300,18 @@
   .group\/player .player-controls,
   .group\/player .progress-bar,
   .group\/player .player-controls button,
-  .group\/player .group\/vol input[type='range'] {
-    transition-duration: .01ms !important;
+  .group\/player .group\/vol input[type='range'],
+  .group\/player > .nv-player-runtime-status { transition-duration: .01ms !important; }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover { transform: none; }
+
+  @media (min-width: 56.25rem) {
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause),
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+      transform: translate(-50%, -50%);
+    }
   }
 }

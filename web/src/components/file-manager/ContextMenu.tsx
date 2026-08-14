@@ -26,9 +26,7 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
     if (!visible) return
 
     const handleClick = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose()
-      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose()
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -59,12 +57,8 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
     let adjustedX = x
     let adjustedY = y
 
-    if (x + rect.width > viewportWidth - 8) {
-      adjustedX = viewportWidth - rect.width - 8
-    }
-    if (y + rect.height > viewportHeight - 8) {
-      adjustedY = viewportHeight - rect.height - 8
-    }
+    if (x + rect.width > viewportWidth - 8) adjustedX = viewportWidth - rect.width - 8
+    if (y + rect.height > viewportHeight - 8) adjustedY = viewportHeight - rect.height - 8
     if (adjustedX < 8) adjustedX = 8
     if (adjustedY < 8) adjustedY = 8
 
@@ -79,12 +73,12 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
       const buttons = menuRef.current?.querySelectorAll('button:not(:disabled)')
       if (!buttons || buttons.length === 0) return
 
-      const items = Array.from(buttons)
-      const index = items.indexOf(focused as Element)
+      const menuItems = Array.from(buttons)
+      const index = menuItems.indexOf(focused as Element)
       const next = event.key === 'ArrowDown'
-        ? (index + 1) % items.length
-        : (index - 1 + items.length) % items.length
-      ;(items[next] as HTMLElement).focus()
+        ? (index + 1) % menuItems.length
+        : (index - 1 + menuItems.length) % menuItems.length
+      ;(menuItems[next] as HTMLElement).focus()
     }
 
     if (event.key === 'Enter') {
@@ -100,7 +94,7 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
       ref={menuRef}
       role="menu"
       aria-label="文件操作菜单"
-      className="fixed min-w-[180px] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1.5 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
+      className="fixed min-w-[176px] overflow-hidden rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-1.5 shadow-[var(--nv-shadow-elevated)] animate-in fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none"
       style={{
         left: `${x}px`,
         top: `${y}px`,
@@ -111,7 +105,7 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
       {items.map((item, index) => (
         <div key={item.key}>
           {item.divider && index > 0 && (
-            <div className="mx-2 my-1 border-t border-[var(--nv-border-subtle)]" role="separator" />
+            <div className="mx-1 my-1 border-t border-[var(--nv-border-subtle)]" role="separator" />
           )}
           <button
             type="button"
@@ -123,14 +117,14 @@ export default function ContextMenu({ visible, x, y, items, onClose }: ContextMe
               }
             }}
             disabled={item.disabled}
-            className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`flex min-h-8 w-full items-center gap-2 rounded-[var(--nv-radius-control)] px-2.5 py-1.5 text-left text-[13px] outline-none transition-[background-color,color] duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-40 ${
               item.danger
                 ? 'text-[var(--nv-status-danger)] hover:bg-[color-mix(in_srgb,var(--nv-status-danger)_10%,transparent)]'
-                : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'
+                : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-fill-hover)] hover:text-[var(--nv-text-primary)]'
             }`}
           >
             {item.icon && (
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--nv-text-tertiary)]" aria-hidden="true">
                 {item.icon}
               </span>
             )}

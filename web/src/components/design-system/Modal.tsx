@@ -24,6 +24,8 @@ const sizeClass: Record<ModalSize, string> = {
   video: 'max-w-5xl',
 }
 
+const responsiveSafePadding = 'max(10px, min(20px, 2vw), env(safe-area-inset-top, 0px))'
+
 export function Modal({
   open = true,
   onClose,
@@ -61,21 +63,20 @@ export function Modal({
   return (
     <div
       ref={overlayRef}
-      className={clsx(
-        'fixed inset-0 z-[var(--nv-z-modal)] flex items-center justify-center overflow-y-auto bg-[var(--nv-bg-overlay)] p-4 backdrop-blur-sm',
-        className,
-      )}
+      className={clsx('nv-modal-backdrop', className)}
+      style={{
+        paddingTop: responsiveSafePadding,
+        paddingRight: 'max(10px, min(20px, 2vw), env(safe-area-inset-right, 0px))',
+        paddingBottom: 'max(10px, min(20px, 2vw), env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(10px, min(20px, 2vw), env(safe-area-inset-left, 0px))',
+      }}
       onMouseDown={handleBackdrop}
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
     >
       <div
-        className={clsx(
-          'relative flex max-h-[min(90vh,900px)] w-full flex-col overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] shadow-[var(--nv-shadow-elevated)]',
-          sizeClass[size],
-          panelClassName,
-        )}
+        className={clsx('nv-modal-sheet', sizeClass[size], panelClassName)}
         onMouseDown={(event) => event.stopPropagation()}
       >
         {children}
@@ -93,30 +94,23 @@ interface ModalHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'>
 
 export function ModalHeader({ title, description, onClose, icon, className, ...props }: ModalHeaderProps) {
   return (
-    <div
-      {...props}
-      className={clsx(
-        'flex shrink-0 items-start gap-3 border-b border-[var(--nv-border-subtle)] px-5 py-4 sm:px-6',
-        className,
-      )}
-    >
-      {icon && (
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-action-primary)]">
-          {icon}
-        </div>
-      )}
+    <div {...props} className={clsx('nv-modal-header', className)}>
+      {icon && <div className="nv-modal-icon">{icon}</div>}
       <div className="min-w-0 flex-1">
-        <h2 className="text-base font-semibold text-[var(--nv-text-primary)] sm:text-lg">{title}</h2>
-        {description && <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)] sm:text-sm">{description}</div>}
+        <h2 className="nv-modal-title">{title}</h2>
+        {description && <div className="nv-modal-description">{description}</div>}
       </div>
       {onClose && (
         <button
           type="button"
           onClick={onClose}
           className="nv-button nv-button--ghost nv-button--sm nv-button--icon-only"
+          data-variant="ghost"
+          data-size="sm"
+          data-icon-only="true"
           aria-label="关闭"
         >
-          <X size={18} aria-hidden="true" />
+          <X size={17} aria-hidden="true" />
         </button>
       )}
     </div>
@@ -124,17 +118,9 @@ export function ModalHeader({ title, description, onClose, icon, className, ...p
 }
 
 export function ModalBody({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div {...props} className={clsx('min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6', className)} />
+  return <div {...props} className={clsx('nv-modal-body', className)} />
 }
 
 export function ModalFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      {...props}
-      className={clsx(
-        'flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--nv-border-subtle)] px-5 py-4 sm:px-6',
-        className,
-      )}
-    />
-  )
+  return <div {...props} className={clsx('nv-modal-footer', className)} />
 }

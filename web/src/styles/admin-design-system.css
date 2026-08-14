@@ -1,217 +1,158 @@
-/* Nowen Video Admin Design System
- *
- * Semantic primitives for the administration workspace. This stylesheet now
- * contains only the current nv-admin-* contract and has no legacy selector
- * dependency. Application UI consumes the shared --nv-* semantic tokens
- * directly; legacy compatibility bridges have been retired.
+/* Nowen Video Admin visual contract
+ * Administration keeps its business density, but consumes the same restrained
+ * surface hierarchy as the media-facing application.
  */
 
 .nv-admin-page {
   display: flex;
   flex-direction: column;
-  gap: var(--nv-space-6);
+  gap: var(--nv-space-5);
   color: var(--nv-text-primary);
 }
 
 .nv-admin-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--nv-space-4);
-  padding-bottom: var(--nv-space-4);
+  min-height: 38px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--nv-border-subtle);
 }
-
-.nv-admin-header-copy {
-  min-width: 0;
-}
-
+.nv-admin-header-copy { min-width: 0; }
 .nv-admin-title {
   margin: 0;
   color: var(--nv-text-primary);
   font-family: var(--nv-font-sans);
-  font-size: var(--nv-type-h2);
-  font-weight: 720;
+  font-size: var(--nv-type-h3);
+  font-weight: 650;
   line-height: var(--nv-line-tight);
   letter-spacing: var(--nv-tracking-tight);
 }
-
 .nv-admin-description {
-  margin-top: var(--nv-space-2);
+  margin-top: 3px;
   color: var(--nv-text-tertiary);
-  font-size: var(--nv-type-body-sm);
-  line-height: var(--nv-line-body);
+  font-size: var(--nv-type-caption);
+  line-height: 1.5;
 }
-
-.nv-admin-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--nv-space-2);
-}
+.nv-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 .nv-admin-panel {
-  background: color-mix(in srgb, var(--nv-bg-surface) 94%, transparent);
-  border: 1px solid var(--nv-border-subtle);
-  border-radius: var(--nv-radius-container);
-  box-shadow: var(--nv-shadow-card);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--nv-border-subtle);
+  border-bottom: 1px solid var(--nv-border-subtle);
+  border-radius: 0;
+  box-shadow: none;
 }
-
 .nv-admin-panel-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--nv-space-3);
-  padding: var(--nv-space-5) var(--nv-space-5) var(--nv-space-4);
+  min-height: 42px;
+  padding: 10px 2px 9px;
   border-bottom: 1px solid var(--nv-border-subtle);
 }
-
-.nv-admin-panel-body {
-  padding: var(--nv-space-5);
-}
-
+.nv-admin-panel-body { padding: 12px 2px; }
 .nv-admin-section-title {
   display: flex;
   align-items: center;
-  gap: var(--nv-space-2);
+  gap: 7px;
   color: var(--nv-text-primary);
-  font-size: var(--nv-type-h3);
-  font-weight: 680;
+  font-size: var(--nv-type-body-sm);
+  font-weight: 620;
   line-height: var(--nv-line-title);
 }
-
-.nv-admin-section-title > svg {
-  color: var(--nv-action-primary);
-}
+.nv-admin-section-title > svg { color: var(--nv-text-tertiary); }
 
 .nv-admin-status {
   display: inline-flex;
   align-items: center;
-  gap: .375rem;
-  min-height: 1.75rem;
-  padding: .25rem .55rem;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 7px;
   border: 1px solid var(--nv-border-subtle);
-  border-radius: var(--nv-radius-pill);
-  background: var(--nv-bg-hover);
-  color: var(--nv-text-secondary);
-  font-size: var(--nv-type-caption);
-  font-weight: 650;
+  border-radius: 7px;
+  background: var(--nv-bg-control);
+  color: var(--nv-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
 }
-
 .nv-admin-status[data-tone="connected"],
 .nv-admin-status[data-tone="success"] {
-  border-color: color-mix(in srgb, var(--nv-status-success) 26%, transparent);
-  background: color-mix(in srgb, var(--nv-status-success) 8%, transparent);
+  border-color: color-mix(in srgb, var(--nv-status-success) 24%, transparent);
+  background: color-mix(in srgb, var(--nv-status-success) 7%, transparent);
   color: var(--nv-status-success);
 }
-
 .nv-admin-status[data-tone="active"] {
-  border-color: color-mix(in srgb, var(--nv-action-primary) 26%, transparent);
-  background: var(--nv-bg-active);
-  color: var(--nv-action-primary);
+  border-color: var(--nv-border-default);
+  background: var(--nv-fill-active);
+  color: var(--nv-text-primary);
 }
-
 .nv-admin-status[data-tone="warning"] {
-  border-color: color-mix(in srgb, var(--nv-status-warning) 28%, transparent);
-  background: color-mix(in srgb, var(--nv-status-warning) 8%, transparent);
+  border-color: color-mix(in srgb, var(--nv-status-warning) 24%, transparent);
+  background: color-mix(in srgb, var(--nv-status-warning) 7%, transparent);
   color: var(--nv-status-warning);
 }
-
 .nv-admin-status[data-tone="danger"] {
-  border-color: color-mix(in srgb, var(--nv-status-danger) 28%, transparent);
-  background: color-mix(in srgb, var(--nv-status-danger) 8%, transparent);
+  border-color: color-mix(in srgb, var(--nv-status-danger) 24%, transparent);
+  background: color-mix(in srgb, var(--nv-status-danger) 7%, transparent);
   color: var(--nv-status-danger);
 }
 
 .nv-admin-tab {
-  position: relative;
-  min-height: 2.5rem;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--nv-space-2);
-  padding: .6rem .85rem;
+  gap: 6px;
+  padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: var(--nv-radius-control);
+  border-radius: 9px;
   background: transparent;
-  color: var(--nv-text-secondary);
+  color: var(--nv-text-tertiary);
   box-shadow: none;
   font-family: var(--nv-font-sans);
-  font-size: var(--nv-type-body-sm);
-  font-weight: 620;
-  letter-spacing: var(--nv-tracking-normal);
-  transition:
-    background-color var(--nv-motion-normal) var(--nv-ease-standard),
-    border-color var(--nv-motion-normal) var(--nv-ease-standard),
-    color var(--nv-motion-normal) var(--nv-ease-standard),
-    transform var(--nv-motion-fast) var(--nv-ease-standard);
+  font-size: var(--nv-type-caption);
+  font-weight: 580;
+  transition: background-color var(--nv-motion-fast) var(--nv-ease-standard), color var(--nv-motion-fast) var(--nv-ease-standard);
 }
+.nv-admin-tab:hover { background: var(--nv-fill-hover); color: var(--nv-text-primary); }
+.nv-admin-tab.is-active { background: var(--nv-fill-active); color: var(--nv-text-primary); }
+.nv-admin-tab.is-active::after { display: none; }
+.nv-admin-tab svg { flex: 0 0 auto; color: currentColor; }
 
-.nv-admin-tab:hover {
-  background: var(--nv-bg-hover);
-  border-color: var(--nv-border-subtle);
-  color: var(--nv-text-primary);
-}
-
-.nv-admin-tab.is-active {
-  background: var(--nv-bg-active);
-  border-color: color-mix(in srgb, var(--nv-action-primary) 22%, var(--nv-border-subtle));
-  color: var(--nv-action-primary);
-  box-shadow: none;
-}
-
-.nv-admin-tab.is-active::after {
-  content: '';
-  position: absolute;
-  left: .85rem;
-  right: .85rem;
-  bottom: -.12rem;
-  height: 2px;
-  border-radius: var(--nv-radius-pill);
-  background: var(--nv-action-primary);
-  box-shadow: none;
-}
-
-.nv-admin-tab svg {
-  flex: 0 0 auto;
-}
-
-.nv-admin-content-enter {
-  animation: nv-admin-content-in var(--nv-motion-normal) var(--nv-ease-standard);
-}
-
-@keyframes nv-admin-content-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+.nv-admin-content-enter { animation: nv-admin-content-in var(--nv-motion-fast) var(--nv-ease-standard); }
+@keyframes nv-admin-content-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .nv-admin-tab,
-  .nv-admin-content-enter {
-    transition: none;
-    animation: none;
-  }
+  .nv-admin-tab, .nv-admin-content-enter { transition: none; animation: none; }
 }
 
 @media (max-width: 47.99rem) {
   .nv-admin-header {
     flex-direction: column;
     align-items: stretch;
+    gap: var(--nv-space-3);
   }
 
+  .nv-admin-header-copy,
   .nv-admin-toolbar {
     width: 100%;
   }
 
-  .nv-admin-tab {
-    min-height: 2.375rem;
-    padding-inline: .7rem;
+  .nv-admin-panel-header {
+    flex-wrap: wrap;
   }
+
+  .nv-admin-panel-header > .nv-admin-toolbar {
+    width: auto;
+    max-width: 100%;
+  }
+
+  .nv-admin-tab { min-height: 32px; padding-inline: 8px; }
+  .nv-admin-panel-header,
+  .nv-admin-panel-body { padding-inline: 0; }
 }

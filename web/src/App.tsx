@@ -104,8 +104,19 @@ export default function App() {
   return (
     <ToastProvider>
       <DialogProvider>
-        <Toaster position="top-right" />
-        <BrowserRouter>
+        <Toaster
+          position="top-right"
+          containerStyle={{
+            top: 'max(12px, env(safe-area-inset-top, 0px))',
+            right: 'max(12px, env(safe-area-inset-right, 0px))',
+          }}
+        />
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <ServerProfileLoader />
           <CapabilityAdminGuard />
           <DesktopServerPicker />

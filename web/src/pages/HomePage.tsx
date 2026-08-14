@@ -12,14 +12,24 @@ import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
 import { Button, EmptyState, Section, Tag } from '@/components/design-system'
 import { Play, Clock, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { staggerContainerVariants, staggerItemVariants } from '@/lib/motion'
 
 interface HomeData {
   recentItems: MixedItem[]
   continueList: WatchHistory[]
   recommendations: RecommendedMedia[]
   allFailed: boolean
+}
+
+function getContinueArtwork(item: WatchHistory): string | null {
+  const media = item.media
+  if (media.media_type === 'episode' && media.series_id && media.series?.backdrop_path) {
+    return streamApi.getSeriesBackdropUrl(media.series_id)
+  }
+  if (media.media_type === 'episode' && media.series_id && media.series?.poster_path) {
+    return streamApi.getSeriesPosterUrl(media.series_id)
+  }
+  if (media.poster_path) return streamApi.getPosterUrl(item.media_id)
+  return null
 }
 
 export default function HomePage() {
@@ -54,14 +64,10 @@ export default function HomePage() {
   const tRef = useRef(t)
   useEffect(() => { toastRef.current = toast; tRef.current = t }, [toast, t])
   useEffect(() => {
-    if (data?.allFailed && !loading) {
-      toastRef.current.error(tRef.current('home.loadFailed'))
-    }
+    if (data?.allFailed && !loading) toastRef.current.error(tRef.current('home.loadFailed'))
   }, [data?.allFailed, loading])
 
-  const silentRefresh = useCallback(() => {
-    refetch(true)
-  }, [refetch])
+  const silentRefresh = useCallback(() => refetch(true), [refetch])
 
   useEffect(() => {
     const debouncedRefresh = () => {
@@ -91,11 +97,7 @@ export default function HomePage() {
   return (
     <div className="nv-section-stack">
       {(recommendations.length > 0 || recentItems.length > 0) && (
-        <HeroCarousel
-          items={recommendations}
-          fallbackItems={recentItems}
-          maxItems={5}
-        />
+        <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} />
       )}
 
       {continueList.length > 0 && (
@@ -110,65 +112,47 @@ export default function HomePage() {
         <Section
           title={(
             <span className="inline-flex items-center gap-2">
-              <Sparkles size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+              <Sparkles size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
               {t('home.recommended')}
             </span>
           )}
         >
-          <motion.div
-            className="nv-media-grid"
-            variants={staggerContainerVariants}
-            initial="hidden"
-            animate="visible"
-          >
+          <div className="nv-media-grid">
             {recommendations.map((item) => (
-              <motion.div key={item.media.id} variants={staggerItemVariants}>
-                <MediaCard media={item.media} eyebrow={item.reason} />
-              </motion.div>
+              <MediaCard key={item.media.id} media={item.media} eyebrow={item.reason} />
             ))}
-          </motion.div>
+          </div>
         </Section>
       )}
 
       {loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0 && (
-        <motion.div
-          className="nv-section-stack"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-        >
+        <div className="nv-section-stack">
           <Section title={t('home.continueWatching')}>
             <div className="flex gap-[var(--nv-grid-gap)] overflow-hidden pb-2">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="w-[220px] flex-shrink-0 sm:w-[260px]">
                   <div className="skeleton aspect-video w-full rounded-[var(--nv-radius-card)]" />
-                  <div className="mt-2 space-y-2 px-1">
-                    <div className="skeleton h-4 w-3/4" />
-                    <div className="skeleton h-3 w-1/2" />
+                  <div className="mt-2 space-y-2">
+                    <div className="skeleton h-3 w-3/4" />
+                    <div className="skeleton h-2.5 w-1/2" />
                   </div>
                 </div>
               ))}
             </div>
           </Section>
           <MediaGrid title={t('home.recentlyAdded')} loading />
-        </motion.div>
+        </div>
       )}
 
       {recentItems.length > 0 && (
-        <MediaGrid
-          mixedItems={recentItems}
-          title={t('home.recentlyAdded')}
-          loading={false}
-        />
+        <MediaGrid mixedItems={recentItems} title={t('home.recentlyAdded')} loading={false} />
       )}
 
-      {!loading && recentItems.length > 0 && (
-        <GenreRows items={recentItems} />
-      )}
+      {!loading && recentItems.length > 0 && <GenreRows items={recentItems} />}
 
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <EmptyState
-          icon={<Play size={26} aria-hidden="true" />}
+          icon={<Play size={22} aria-hidden="true" />}
           title={t('home.noContent')}
           description={t('home.noContentHint')}
         />
@@ -208,7 +192,7 @@ function ContinueWatchingRow({
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollRef.current
     if (!el) return
-    const amount = el.clientWidth * 0.72
+    const amount = el.clientWidth * .72
     el.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
@@ -216,7 +200,7 @@ function ContinueWatchingRow({
     <Section
       title={(
         <span className="inline-flex items-center gap-2">
-          <Clock size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          <Clock size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
           {title}
         </span>
       )}
@@ -228,71 +212,55 @@ function ContinueWatchingRow({
             size="sm"
             iconOnly
             onClick={() => scroll('left')}
-            className="absolute -left-2 top-[42%] z-30 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] group-hover/row:opacity-100 focus:opacity-100"
+            className="absolute -left-2 top-[42%] z-30 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 focus:opacity-100"
             aria-label="向左滚动"
           >
-            <ChevronLeft size={18} aria-hidden="true" />
+            <ChevronLeft size={17} aria-hidden="true" />
           </Button>
         )}
 
-        <div
-          ref={scrollRef}
-          className="scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2"
-        >
+        <div ref={scrollRef} className="nv-continue-row-track scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
           {items.map((item) => {
             const percent = formatProgress(item.position, item.duration)
             const displayTitle = item.media.media_type === 'episode' && item.media.series
               ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
               : item.media.title
+            const artworkUrl = getContinueArtwork(item)
 
             return (
-              <article
-                key={item.id}
-                className="nv-media-card group w-[220px] flex-shrink-0 sm:w-[260px]"
-              >
+              <article key={item.id} className="nv-continue-card group w-[220px] flex-shrink-0 sm:w-[260px]">
                 <Link to={`/play/${item.media_id}`} className="block" aria-label={`继续播放 ${displayTitle}`}>
-                  <div className="relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] bg-[var(--nv-bg-surface-soft)]">
-                    {item.media.poster_path ? (
+                  <div className="nv-continue-artwork relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] transition-[transform,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[var(--nv-shadow-card-hover)]">
+                    {artworkUrl ? (
                       <img
-                        src={streamApi.getPosterUrl(item.media_id)}
+                        src={artworkUrl}
                         alt=""
-                        className="h-full w-full object-cover transition-[transform,filter] duration-300 ease-out group-hover:scale-[1.025] group-hover:brightness-90"
+                        className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]"
                         loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-                        <Play size={30} aria-hidden="true" />
+                        <Play size={26} aria-hidden="true" />
                       </div>
                     )}
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                    <div className="absolute bottom-3 left-3 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                      <Play size={14} fill="currentColor" aria-hidden="true" />
+                    <div className="nv-continue-overlay absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
+                        <Play size={14} fill="currentColor" aria-hidden="true" />
+                      </span>
                     </div>
-
-                    <Tag tone="quality" className="absolute right-2 top-2">
-                      {percent}%
-                    </Tag>
-
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/25">
-                      <div
-                        className="h-full bg-[var(--nv-action-primary)] transition-[width] duration-200"
-                        style={{ width: `${percent}%` }}
-                      />
+                    <Tag tone="quality" className="absolute right-2 top-2">{percent}%</Tag>
+                    <div className="nv-media-card-progress">
+                      <span style={{ width: `${percent}%` }} />
                     </div>
                   </div>
 
-                  <div className="px-1 py-2">
+                  <div className="py-2">
                     <h3 className="nv-media-card-title">{displayTitle}</h3>
                     {item.media.media_type === 'episode' && item.media.episode_title && (
-                      <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">
-                        {item.media.episode_title}
-                      </p>
+                      <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{item.media.episode_title}</p>
                     )}
-                    <p className="mt-1 text-[var(--nv-type-caption)] text-[var(--nv-text-tertiary)]">
-                      {watchedLabel(percent)}
-                    </p>
+                    <p className="mt-1 text-[var(--nv-type-caption)] text-[var(--nv-text-tertiary)]">{watchedLabel(percent)}</p>
                   </div>
                 </Link>
               </article>
@@ -306,10 +274,10 @@ function ContinueWatchingRow({
             size="sm"
             iconOnly
             onClick={() => scroll('right')}
-            className="absolute -right-2 top-[42%] z-30 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] group-hover/row:opacity-100 focus:opacity-100"
+            className="absolute -right-2 top-[42%] z-30 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 focus:opacity-100"
             aria-label="向右滚动"
           >
-            <ChevronRight size={18} aria-hidden="true" />
+            <ChevronRight size={17} aria-hidden="true" />
           </Button>
         )}
       </div>
@@ -319,16 +287,15 @@ function ContinueWatchingRow({
 
 function GenreRows({ items }: { items: MixedItem[] }) {
   const genreMap = new Map<string, MixedItem[]>()
-
   items.forEach((item) => {
     const media = item.type === 'movie' ? item.media : item.series
     if (!media) return
     const genres = (media.genres || '').split(',').filter(Boolean)
     genres.forEach((genre: string) => {
-      const g = genre.trim()
-      if (!g) return
-      if (!genreMap.has(g)) genreMap.set(g, [])
-      genreMap.get(g)!.push(item)
+      const value = genre.trim()
+      if (!value) return
+      if (!genreMap.has(value)) genreMap.set(value, [])
+      genreMap.get(value)!.push(item)
     })
   })
 
@@ -371,7 +338,7 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollRef.current
     if (!el) return
-    const amount = el.clientWidth * 0.72
+    const amount = el.clientWidth * .72
     el.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
@@ -384,22 +351,19 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
             size="sm"
             iconOnly
             onClick={() => scroll('left')}
-            className="absolute -left-2 top-[42%] z-30 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] group-hover/row:opacity-100 focus:opacity-100"
+            className="absolute -left-2 top-[42%] z-30 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 focus:opacity-100"
             aria-label={`${genre} 向左滚动`}
           >
-            <ChevronLeft size={18} aria-hidden="true" />
+            <ChevronLeft size={17} aria-hidden="true" />
           </Button>
         )}
 
-        <div
-          ref={scrollRef}
-          className="scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2"
-        >
+        <div ref={scrollRef} className="nv-genre-row-track scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
           {items.map((item) => {
             const media = item.type === 'movie' ? item.media : item.series
             if (!media) return null
             return (
-              <div key={`${item.type}-${media.id}`} className="w-[140px] flex-shrink-0 sm:w-[160px]">
+              <div key={`${item.type}-${media.id}`} className="nv-genre-card-slot w-[150px] flex-shrink-0 sm:w-[176px]">
                 {item.type === 'series' && item.series
                   ? <MediaCard series={item.series} />
                   : item.media
@@ -416,10 +380,10 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
             size="sm"
             iconOnly
             onClick={() => scroll('right')}
-            className="absolute -right-2 top-[42%] z-30 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] group-hover/row:opacity-100 focus:opacity-100"
+            className="absolute -right-2 top-[42%] z-30 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 focus:opacity-100"
             aria-label={`${genre} 向右滚动`}
           >
-            <ChevronRight size={18} aria-hidden="true" />
+            <ChevronRight size={17} aria-hidden="true" />
           </Button>
         )}
       </div>

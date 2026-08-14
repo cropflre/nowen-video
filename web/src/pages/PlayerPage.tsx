@@ -126,10 +126,11 @@ export default function PlayerPage() {
 
   const useMpvEmbed = desktopIsDesktop && desktopEmbedAvailable && desktopEngine === 'mpv' && !isPreprocessed
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
+  const isRandomAccessMp4 = playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v'
   const canUseWC =
     !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
     canUseWebCodecs(playInfo.video_codec, playInfo.audio_codec, webcodecsCap) &&
-    (playInfo.can_remux || playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v')
+    isRandomAccessMp4
 
   const mode: 'direct' | 'hls' | 'remux' | 'webcodecs' = isPreprocessed
     ? 'hls'
@@ -151,7 +152,7 @@ export default function PlayerPage() {
       : mode === 'remux'
         ? streamApi.getRemuxUrl(id)
         : mode === 'webcodecs'
-          ? (playInfo.can_remux ? streamApi.getRemuxUrl(id) : streamApi.getDirectUrl(id))
+          ? streamApi.getDirectUrl(id)
           : requiresSessionTranscode
             ? ''
             : streamApi.getMasterUrl(id)
@@ -200,7 +201,7 @@ export default function PlayerPage() {
 
   return (
     <div className="group/player relative h-screen w-screen bg-[var(--nv-player-canvas)]">
-      <div className="absolute right-4 top-4 z-50 flex flex-col items-end gap-2">
+      <div className="nv-player-runtime-status absolute right-4 top-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-200">
         {playInfo.is_strm && <STRMDiagnostics mediaId={id} compact />}
         <DesktopPlayerBadge
           profile={{

@@ -10,7 +10,6 @@ import { Button, Tag } from '@/components/design-system'
 interface MediaCardProps {
   media?: Media
   series?: Series
-  /** Optional contextual label, e.g. recommendation reason. */
   eyebrow?: string
   className?: string
 }
@@ -22,19 +21,16 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
 
   const isSeries = !!series || !!media?.series_id
   const seriesData = series || media?.series
-
   const detailTo = series
     ? `/series/${series.id}`
     : media!.series_id
       ? `/series/${media!.series_id}`
       : `/media/${media!.id}`
-
   const playTo = series
     ? `/series/${series.id}`
     : media!.series_id
       ? `/series/${media!.series_id}`
       : `/play/${media!.id}`
-
   const title = series ? series.title : media!.title
   const year = series ? series.year : media!.year
   const rating = series ? series.rating : media!.rating
@@ -43,11 +39,10 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
     : media!.series_id
       ? streamApi.getSeriesPosterUrl(media!.series_id, posterVersion)
       : streamApi.getPosterUrl(media!.id, posterVersion)
-
   const hasPoster = series
     ? !!series.poster_path
     : media!.series_id
-      ? !!(media!.series?.poster_path) || !!media!.poster_path
+      ? !!media!.series?.poster_path || !!media!.poster_path
       : !!media!.poster_path
 
   const formatDuration = (seconds: number) => {
@@ -60,7 +55,7 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
   return (
     <article className={clsx('nv-media-card group', className)}>
       <div className="nv-media-card-poster isolate">
-        {hasPoster && !posterFailed && (
+        {hasPoster && !posterFailed ? (
           <img
             src={posterUrl}
             alt=""
@@ -68,14 +63,10 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
             onLoad={() => setPosterFailed(false)}
             onError={() => setPosterFailed(true)}
           />
-        )}
-
-        {(!hasPoster || posterFailed) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-surface-soft)] text-[var(--nv-text-tertiary)]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-hover)]">
-              {isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
-            </div>
-            <span className="text-xs font-medium">暂无海报</span>
+        ) : (
+          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+            {isSeries ? <Tv size={24} aria-hidden="true" /> : <Film size={24} aria-hidden="true" />}
+            <span className="text-[10px]">暂无海报</span>
           </div>
         )}
 
@@ -90,19 +81,21 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
             variant="primary"
             size="sm"
             iconOnly
-            className="pointer-events-auto rounded-full"
+            className="nv-media-card-play pointer-events-auto"
             onClick={() => navigate(playTo)}
             aria-label={isSeries ? `查看系列 ${title}` : `播放 ${title}`}
             title={isSeries ? '查看系列' : '立即播放'}
           >
-            {isSeries ? <Tv size={16} aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}
+            {isSeries
+              ? <Tv size={16} aria-hidden="true" />
+              : <Play size={16} fill="currentColor" aria-hidden="true" />}
           </Button>
         </div>
 
         {eyebrow && (
           <Tag
             tone="quality"
-            className="absolute left-2 top-2 z-30 max-w-[calc(100%-4rem)] truncate"
+            className="nv-media-card-badge absolute left-2 top-2 z-30 max-w-[calc(100%-4rem)] truncate"
             title={eyebrow}
           >
             {eyebrow}
@@ -110,24 +103,14 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
         )}
 
         {!isSeries && media!.resolution && (
-          <Tag tone="quality" className="absolute right-2 top-2 z-30">
+          <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30">
             {media!.resolution}
-          </Tag>
-        )}
-
-        {isSeries && seriesData && seriesData.season_count > 0 && (
-          <Tag tone="quality" className="absolute right-2 top-2 z-30">
-            {seriesData.season_count} 季 · {seriesData.episode_count} 集
           </Tag>
         )}
       </div>
 
-      <div className="px-1 pb-2 pt-2.5">
-        <Link
-          to={detailTo}
-          className="nv-media-card-title block transition-colors hover:text-[var(--nv-action-primary)]"
-          title={title}
-        >
+      <div className="pb-1 pt-2">
+        <Link to={detailTo} className="nv-media-card-title" title={title}>
           {title}
         </Link>
         <div className="nv-media-card-meta mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
@@ -135,8 +118,8 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
           {rating > 0 && (
             <>
               {year > 0 && <span aria-hidden="true">·</span>}
-              <span className="flex shrink-0 items-center gap-1 text-[var(--nv-status-rating)]">
-                <Star size={11} fill="currentColor" aria-hidden="true" />
+              <span className="flex shrink-0 items-center gap-1">
+                <Star size={10} fill="currentColor" aria-hidden="true" />
                 {rating.toFixed(1)}
               </span>
             </>
@@ -147,12 +130,12 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
               <span className="shrink-0">{formatDuration(media!.duration)}</span>
             </>
           )}
-          {isSeries && seriesData && seriesData.episode_count > 0 && (
+          {isSeries && seriesData?.episode_count ? (
             <>
               {(year > 0 || rating > 0) && <span aria-hidden="true">·</span>}
               <span className="shrink-0">{seriesData.episode_count} 集</span>
             </>
-          )}
+          ) : null}
         </div>
       </div>
     </article>

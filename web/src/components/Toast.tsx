@@ -1,8 +1,6 @@
-import { createContext, useContext, useState, useCallback, useRef, useMemo, forwardRef } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/design-system'
-import { toastVariants } from '@/lib/motion'
 
 type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -40,68 +38,55 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const toast = useCallback((type: ToastType, message: string, duration = 3500) => {
     const id = `toast-${++idRef.current}`
     setToasts((previous) => [...previous, { id, type, message, duration }])
-    if (duration > 0) setTimeout(() => removeToast(id), duration)
+    if (duration > 0) window.setTimeout(() => removeToast(id), duration)
   }, [removeToast])
 
   const success = useCallback((message: string) => toast('success', message), [toast])
   const error = useCallback((message: string) => toast('error', message), [toast])
   const warning = useCallback((message: string) => toast('warning', message), [toast])
   const info = useCallback((message: string) => toast('info', message), [toast])
-
-  const value: ToastContextType = useMemo(() => ({ toast, success, error, warning, info }), [toast, success, error, warning, info])
+  const value = useMemo(() => ({ toast, success, error, warning, info }), [toast, success, error, warning, info])
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed right-4 top-4 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2"
+        className="nv-toast-stack pointer-events-none fixed right-3 top-3 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-4"
+        style={{
+          top: 'max(12px, env(safe-area-inset-top, 0px))',
+          right: 'max(12px, env(safe-area-inset-right, 0px))',
+          maxWidth: 'calc(100vw - max(12px, env(safe-area-inset-left, 0px)) - max(12px, env(safe-area-inset-right, 0px)))',
+        }}
         aria-live="polite"
         aria-relevant="additions"
       >
-        <AnimatePresence mode="popLayout">
-          {toasts.map((item) => (
-            <ToastItem key={item.id} toast={item} onClose={() => removeToast(item.id)} />
-          ))}
-        </AnimatePresence>
+        {toasts.map((item) => (
+          <ToastItem key={item.id} toast={item} onClose={() => removeToast(item.id)} />
+        ))}
       </div>
     </ToastContext.Provider>
   )
 }
 
 const iconMap: Record<ToastType, React.ReactNode> = {
-  success: <CheckCircle2 size={18} className="text-[var(--nv-status-success)]" aria-hidden="true" />,
-  error: <XCircle size={18} className="text-[var(--nv-status-danger)]" aria-hidden="true" />,
-  warning: <AlertTriangle size={18} className="text-[var(--nv-status-warning)]" aria-hidden="true" />,
-  info: <Info size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />,
+  success: <CheckCircle2 size={16} className="text-[var(--nv-status-success)]" aria-hidden="true" />,
+  error: <XCircle size={16} className="text-[var(--nv-status-danger)]" aria-hidden="true" />,
+  warning: <AlertTriangle size={16} className="text-[var(--nv-status-warning)]" aria-hidden="true" />,
+  info: <Info size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />,
 }
 
-function borderColor(type: ToastType) {
-  if (type === 'success') return 'color-mix(in srgb, var(--nv-status-success) 25%, var(--nv-border-default))'
-  if (type === 'warning') return 'color-mix(in srgb, var(--nv-status-warning) 25%, var(--nv-border-default))'
-  if (type === 'error') return 'color-mix(in srgb, var(--nv-status-danger) 25%, var(--nv-border-default))'
-  return 'var(--nv-border-default)'
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+  return (
+    <div
+      className="nv-toast pointer-events-auto flex w-full min-w-0 items-center gap-2.5 rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] px-3 py-2.5 shadow-[var(--nv-shadow-elevated)] sm:min-w-[260px] sm:max-w-[390px]"
+      data-tone={toast.type}
+      role={toast.type === 'error' ? 'alert' : 'status'}
+    >
+      {iconMap[toast.type]}
+      <p className="min-w-0 flex-1 break-words text-xs leading-5 text-[var(--nv-text-secondary)]">{toast.message}</p>
+      <Button variant="ghost" size="sm" iconOnly onClick={onClose} className="shrink-0" aria-label="关闭通知">
+        <X size={13} aria-hidden="true" />
+      </Button>
+    </div>
+  )
 }
-
-const ToastItem = forwardRef<HTMLDivElement, { toast: Toast; onClose: () => void }>(
-  function ToastItem({ toast, onClose }, ref) {
-    return (
-      <motion.div
-        ref={ref}
-        layout
-        variants={toastVariants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        className="pointer-events-auto flex w-full min-w-0 items-center gap-3 rounded-[var(--nv-radius-container)] bg-[var(--nv-bg-elevated)] px-4 py-3 shadow-[var(--nv-shadow-elevated)] sm:min-w-[280px] sm:max-w-[420px]"
-        style={{ border: `1px solid ${borderColor(toast.type)}` }}
-        role={toast.type === 'error' ? 'alert' : 'status'}
-      >
-        {iconMap[toast.type]}
-        <p className="min-w-0 flex-1 break-words text-sm text-[var(--nv-text-primary)]">{toast.message}</p>
-        <Button variant="ghost" size="sm" iconOnly onClick={onClose} className="shrink-0" aria-label="关闭通知">
-          <X size={14} aria-hidden="true" />
-        </Button>
-      </motion.div>
-    )
-  },
-)

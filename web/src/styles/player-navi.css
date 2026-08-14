@@ -1,0 +1,80 @@
+/* Final player visual contract. Loaded after historical player layout CSS. */
+.group\/player .player-controls [class*='bottom-full'],
+.group\/player .player-overlay-panel {
+  border-color: var(--nv-player-border) !important;
+  background: var(--nv-player-surface) !important;
+  box-shadow: var(--nv-player-shadow) !important;
+  backdrop-filter: blur(20px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
+}
+
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
+  border: 1px solid var(--nv-player-border) !important;
+  border-radius: var(--nv-player-radius-control) !important;
+  background: var(--nv-player-surface-soft) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.20) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  transform: none !important;
+}
+
+.group\/player .player-controls > .progress-bar {
+  height: 4px !important;
+  background: rgba(235,238,255,.16) !important;
+}
+.group\/player .player-controls > .progress-bar:hover { height: 5px !important; }
+.group\/player .progress-bar-fill {
+  background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink)) !important;
+  box-shadow: 0 0 12px rgba(109,93,252,.36) !important;
+}
+.group\/player .progress-bar-thumb {
+  width: 11px !important;
+  height: 11px !important;
+  background: var(--nv-player-text-primary) !important;
+  box-shadow: 0 0 0 3px rgba(117,100,255,.16), 0 0 14px rgba(117,100,255,.56) !important;
+}
+
+.group\/player .player-overlay-panel-title > svg,
+.group\/player .player-overlay-chip kbd,
+.group\/player .player-overlay-input-action,
+.group\/player .player-overlay-item.is-active,
+.group\/player .player-overlay-item.is-active .player-overlay-item-icon {
+  color: #c8c2ff !important;
+}
+
+.group\/player .player-overlay-input-action,
+.group\/player .player-overlay-item.is-active,
+.group\/player .player-overlay-item.is-active .player-overlay-item-icon {
+  border-color: var(--nv-player-accent-border) !important;
+  background: var(--nv-player-accent-soft) !important;
+}
+
+.group\/player .player-overlay-item:hover,
+.group\/player .player-overlay-input-action:hover {
+  border-color: var(--nv-player-border-hover) !important;
+  background: var(--nv-player-accent-soft-hover) !important;
+}
+
+.group\/player .player-overlay-status-dot {
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 44%, transparent) !important;
+}
+.group\/player .player-overlay-scroll {
+  scrollbar-color: rgba(128,108,255,.24) transparent !important;
+}
+
+.group\/player :where(button, [role='button']) {
+  transition:
+    background-color var(--nv-motion-fast) var(--nv-ease-standard),
+    color var(--nv-motion-fast) var(--nv-ease-standard),
+    border-color var(--nv-motion-fast) var(--nv-ease-standard),
+    box-shadow var(--nv-motion-fast) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard),
+    opacity var(--nv-motion-fast) var(--nv-ease-standard) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group\/player *, .group\/player *::before, .group\/player *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

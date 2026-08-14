@@ -34,7 +34,6 @@ interface HeroSectionProps {
   playlists: Playlist[]
   scraping: boolean
   isAdmin: boolean
-  /** 海报/背景图版本号：元数据更新后递增此值可强制刷新图片 */
   posterVersion?: number
   onFavorite: () => void
   onScrape?: () => void
@@ -45,14 +44,24 @@ interface HeroSectionProps {
   onRefreshMetadata?: () => void
   onEditMetadata?: () => void
   onDelete?: () => void
-  /** @deprecated 预处理操作已从影片详情菜单移除，保留兼容旧调用方。 */
   onPreprocess?: () => void
-  /** @deprecated 强制转码已从影片详情菜单移除，保留兼容旧调用方。 */
   onTranscode?: () => void
 }
 
-const menuClassName = 'absolute left-0 top-full z-40 mt-2 min-w-[220px] overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
+const menuClassName = 'absolute left-0 top-full z-40 mt-2 min-w-[230px] overflow-hidden rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
 const menuItemClassName = 'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:bg-[var(--nv-bg-hover)]'
+
+function getBackdropUrl(media: Media, version?: number) {
+  // Series has a dedicated public backdrop stream. Standalone Media currently
+  // exposes poster only, while backdrop_path is a server-local filesystem path.
+  // Keep this UI refactor frontend-only and do not invent a new backend API.
+  if (media.series_id) {
+    return media.backdrop_path
+      ? streamApi.getSeriesBackdropUrl(media.series_id, version)
+      : streamApi.getSeriesPosterUrl(media.series_id, version)
+  }
+  return streamApi.getPosterUrl(media.id, version)
+}
 
 export default function HeroSection({
   media,
@@ -64,7 +73,6 @@ export default function HeroSection({
   isAdmin,
   posterVersion,
   onFavorite,
-  onScrape: _onScrape,
   onAddToPlaylist,
   onShowTrailer,
   onManualMatch,
@@ -111,16 +119,16 @@ export default function HeroSection({
 
   return (
     <>
-      <section className="relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-        <div className="absolute inset-x-0 top-0 h-[clamp(20rem,42vw,34rem)] overflow-hidden">
+      <section className="nv-detail-hero relative overflow-visible border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+        <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
             <img
-              src={streamApi.getPosterUrl(media.id, posterVersion)}
+              src={getBackdropUrl(media, posterVersion)}
               alt=""
               className={clsx(
-                'h-full w-full object-cover transition-[opacity,transform] duration-500 ease-out',
-                media.backdrop_path ? 'object-center' : 'scale-110 blur-2xl',
-                imgLoaded ? (media.backdrop_path ? 'scale-100 opacity-55' : 'opacity-22') : 'scale-[1.025] opacity-0',
+                'h-full w-full object-cover object-center transition-[opacity,transform] duration-500 ease-out',
+                media.backdrop_path && media.series_id ? '' : 'scale-110 blur-2xl',
+                imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
               )}
               onLoad={() => setImgLoaded(true)}
               onError={(event) => { event.currentTarget.style.display = 'none' }}
@@ -128,15 +136,12 @@ export default function HeroSection({
           </div>
           <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
           <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
-          <div
-            className="absolute inset-0 opacity-70"
-            style={{ background: 'radial-gradient(circle at 76% 18%, var(--nv-ambient-purple-soft), transparent 34rem)' }}
-          />
+          <div className="absolute inset-0 opacity-90" style={{ background: 'radial-gradient(circle at 78% 15%, var(--nv-ambient-purple-soft), transparent 32rem)' }} />
         </div>
 
-        <div className="relative mx-auto grid min-h-[clamp(24rem,48vw,39rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[11rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
+        <div className="nv-detail-hero-inner relative mx-auto grid min-h-[clamp(28rem,48vw,42rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[12rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8">
           <div className="hidden sm:block">
-            <div className="relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
+            <div className="nv-detail-poster relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
               <img
                 src={streamApi.getPosterUrl(media.id, posterVersion)}
                 alt={media.title}
@@ -163,11 +168,11 @@ export default function HeroSection({
             {media.media_type === 'episode' && media.series_id && (
               <Link
                 to={`/series/${media.series_id}`}
-                className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-primary)]"
+                className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-muted-hover)]"
               >
                 <span className="truncate">{media.series?.title || media.title}</span>
                 <ChevronRight size={14} aria-hidden="true" />
-                <span className="shrink-0 text-[var(--nv-action-primary)]">
+                <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
                   S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
                 </span>
               </Link>
@@ -185,14 +190,10 @@ export default function HeroSection({
             </h1>
 
             {media.orig_title && media.orig_title !== media.title && media.media_type !== 'episode' && (
-              <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">
-                {media.orig_title}
-              </p>
+              <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">{media.orig_title}</p>
             )}
             {media.tagline && (
-              <p className="mt-1.5 max-w-3xl text-sm italic text-[var(--nv-text-tertiary)]">
-                {media.tagline}
-              </p>
+              <p className="mt-1.5 max-w-3xl text-sm italic text-[var(--nv-text-tertiary)]">{media.tagline}</p>
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
@@ -204,12 +205,9 @@ export default function HeroSection({
               )}
               {media.year > 0 && <span>{media.year}</span>}
               {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
+              {media.country && <span>{media.country}</span>}
               {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
-                <Link
-                  key={genre}
-                  to={`/search?q=${encodeURIComponent(genre.trim())}`}
-                  className="transition-colors hover:text-[var(--nv-action-primary)]"
-                >
+                <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
                   {genre.trim()}
                 </Link>
               ))}
@@ -220,6 +218,10 @@ export default function HeroSection({
               {media.video_codec && <Tag>{media.video_codec}</Tag>}
               {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
             </div>
+
+            {media.overview && (
+              <p className="mt-4 line-clamp-3 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]">{media.overview}</p>
+            )}
 
             <div className="mt-5 flex flex-wrap items-center gap-2.5">
               <Link
@@ -245,7 +247,7 @@ export default function HeroSection({
                 size="lg"
                 iconOnly
                 onClick={onFavorite}
-                className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : undefined}
+                className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
                 title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
                 aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
                 aria-pressed={isFavorited}
@@ -272,22 +274,15 @@ export default function HeroSection({
 
                 {showPlaylistMenu && (
                   <div className={menuClassName} role="menu" aria-label={t('hero.playlists')}>
-                    <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">
-                      {t('hero.playlists')}
-                    </div>
+                    <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.playlists')}</div>
                     {playlists.length === 0 ? (
                       <div className="px-3 py-3 text-sm text-[var(--nv-text-tertiary)]">{t('hero.noPlaylists')}</div>
                     ) : playlists.map((playlist) => (
-                      <button
-                        key={playlist.id}
-                        onClick={() => handleAddToPlaylist(playlist.id)}
-                        className={menuItemClassName}
-                        role="menuitem"
-                      >
+                      <button key={playlist.id} onClick={() => handleAddToPlaylist(playlist.id)} className={menuItemClassName} role="menuitem">
                         <ListPlus size={14} aria-hidden="true" />
                         <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
                         {playlist.items?.some((playlistItem) => playlistItem.media_id === media.id) && (
-                          <Check size={14} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+                          <Check size={14} className="text-[var(--nv-action-muted-hover)]" aria-hidden="true" />
                         )}
                       </button>
                     ))}
@@ -316,32 +311,21 @@ export default function HeroSection({
                   <div className={menuClassName} role="menu" aria-label={t('hero.moreActions')}>
                     {isAdmin && (
                       <>
-                        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">
-                          {t('hero.mediaManagement')}
-                        </div>
+                        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
                         <button onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
                           <Link2 size={14} aria-hidden="true" /> {t('hero.manualMatch')}
                         </button>
                         <button onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
                           <Unlink size={14} aria-hidden="true" /> {t('hero.unmatch')}
                         </button>
-                        <button
-                          onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }}
-                          disabled={scraping}
-                          className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')}
-                          role="menuitem"
-                        >
+                        <button onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }} disabled={scraping} className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')} role="menuitem">
                           <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} aria-hidden="true" />
                           {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
                         </button>
                         <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
                           <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
                         </button>
-                        <button
-                          onClick={() => { onDelete?.(); setShowMoreMenu(false) }}
-                          className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')}
-                          role="menuitem"
-                        >
+                        <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
                           <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
                         </button>
                         <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
