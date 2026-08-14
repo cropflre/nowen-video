@@ -14,6 +14,22 @@
 
 .group\/player:has(.player-controls.opacity-0) > video { cursor: none; }
 
+/* Runtime diagnostics belong to the same chrome lifecycle as the player's own
+   controls. They remain real playback state, but no longer stay pinned over a
+   clean video frame after the control UI has auto-hidden. */
+.group\/player > .nv-player-runtime-status {
+  top: max(16px, env(safe-area-inset-top, 0px)) !important;
+  right: var(--nv-player-side) !important;
+  max-width: min(38vw, 420px);
+  opacity: 1;
+  transition: opacity var(--nv-motion-normal) var(--nv-ease-standard), transform var(--nv-motion-normal) var(--nv-ease-standard) !important;
+}
+.group\/player:has(.player-controls.opacity-0) > .nv-player-runtime-status {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+}
+
 .group\/player .player-controls {
   inset: 0 !important;
   padding: 0 !important;
@@ -37,7 +53,7 @@
 }
 .group\/player .player-controls > .absolute.left-4.top-4 > h2 {
   min-width: 0;
-  max-width: min(72vw, 900px);
+  max-width: min(58vw, 820px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -71,7 +87,7 @@
   position: absolute !important;
   left: calc(var(--nv-player-side) + 12px) !important;
   right: calc(var(--nv-player-side) + 12px) !important;
-  bottom: calc(var(--nv-player-bottom) + 64px) !important;
+  bottom: calc(var(--nv-player-bottom) + 66px) !important;
   width: auto !important;
   height: 4px !important;
   margin: 0 !important;
@@ -100,10 +116,10 @@
   right: var(--nv-player-side) !important;
   bottom: var(--nv-player-bottom) !important;
   min-width: 0;
-  min-height: 52px;
+  min-height: 54px;
   gap: 2px !important;
   align-items: center !important;
-  padding: 6px 9px !important;
+  padding: 6px 10px !important;
   border: 1px solid var(--nv-player-border) !important;
   border-radius: 16px !important;
   background: rgba(9,14,31,.68) !important;
@@ -141,9 +157,9 @@
    playback mode, so select it by the Lucide glyph rather than DOM position. */
 .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
 .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
+  width: 46px;
+  min-width: 46px;
+  height: 46px;
   margin-inline: 3px;
   border-color: rgba(151,124,255,.46) !important;
   border-radius: 999px !important;
@@ -155,6 +171,33 @@
 .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
   transform: translateY(-1px) scale(1.015);
   box-shadow: inset 0 1px rgba(255,255,255,.17), 0 0 32px rgba(109,93,252,.44) !important;
+}
+
+/* Desktop cinema composition: the play/pause control is visually centered like
+   the reference while the existing buttons stay in their real React handlers.
+   Reordering is CSS-only, so playback behavior and keyboard handling are not
+   duplicated or replaced. */
+@media (min-width: 56.25rem) {
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+    position: absolute !important;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    margin: 0;
+    transform: translate(-50%, -50%);
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+    transform: translate(-50%, calc(-50% - 1px)) scale(1.015);
+  }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-volume-2),
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-volume-x) { order: -4; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-back) { order: -3; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-skip-forward) { order: -2; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-chevron-right) { order: -1; }
 }
 
 .group\/player .group\/vol input[type='range'] {
@@ -178,7 +221,14 @@
 
 @media (max-width: 768px) {
   .group\/player { --nv-player-side: 10px; --nv-player-bottom: max(9px, env(safe-area-inset-bottom, 0px)); --nv-player-control-size: 36px; }
+  .group\/player > .nv-player-runtime-status {
+    top: max(9px, env(safe-area-inset-top, 0px)) !important;
+    right: 10px !important;
+    max-width: 44vw;
+    transform-origin: top right;
+  }
   .group\/player .player-controls > .absolute.left-4.top-4 { top: max(9px, env(safe-area-inset-top, 0px)) !important; }
+  .group\/player .player-controls > .absolute.left-4.top-4 > h2 { max-width: 46vw; }
   .group\/player .player-controls > .progress-bar {
     left: calc(var(--nv-player-side) + 8px) !important;
     right: calc(var(--nv-player-side) + 8px) !important;
@@ -203,8 +253,18 @@
   .group\/player .player-controls,
   .group\/player .progress-bar,
   .group\/player .player-controls button,
-  .group\/player .group\/vol input[type='range'] { transition-duration: .01ms !important; }
+  .group\/player .group\/vol input[type='range'],
+  .group\/player > .nv-player-runtime-status { transition-duration: .01ms !important; }
 
   .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
   .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover { transform: none; }
+
+  @media (min-width: 56.25rem) {
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause),
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+    .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+      transform: translate(-50%, -50%);
+    }
+  }
 }
