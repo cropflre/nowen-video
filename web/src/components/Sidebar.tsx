@@ -57,6 +57,8 @@ export default function Sidebar(_props: SidebarProps) {
   const [libraries, setLibraries] = useState<Library[]>([])
   const { on, off } = useWebSocket()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isDarkTheme = theme === 'dark'
+  const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
 
   const fetchLibraries = useCallback(() => {
     libraryApi.list().then((res) => setLibraries(res.data.data)).catch(() => {})
@@ -137,13 +139,14 @@ export default function Sidebar(_props: SidebarProps) {
             type="button"
             className="nv-rail-item"
             onClick={toggleTheme}
-            aria-label={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
-            title={theme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')}
+            aria-label={themeActionLabel}
+            aria-pressed={!isDarkTheme}
+            title={themeActionLabel}
           >
             <span className="nv-rail-icon">
-              {theme === 'dark' ? <Moon size={17} aria-hidden="true" /> : <Sun size={17} aria-hidden="true" />}
+              {isDarkTheme ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
             </span>
-            <span className="nv-rail-label">主题</span>
+            <span className="nv-rail-label">{isDarkTheme ? '浅色' : '深色'}</span>
           </button>
           <button
             type="button"
