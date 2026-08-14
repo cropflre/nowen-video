@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useSearchParams } from 'react-router-dom'
 import { aiApi, mediaApi, personApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
-import type { MixedItem, Person, SearchIntent } from '@/types'
+import type { Media, MixedItem, Person, SearchIntent, Series } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import Pagination from '@/components/Pagination'
 import { Button, EmptyState, Surface, Tag } from '@/components/design-system'
@@ -36,8 +36,9 @@ const YEAR_RANGES = [
   { labelKey: 'search.yearEarlier', min: 0, max: 1999 },
 ]
 
-const MIXED_BULK_SIZE = 2000
-const MIXED_FETCH_CONCURRENCY = 3
+const SEARCH_BATCH_SIZE = 500
+const SEARCH_FETCH_CONCURRENCY = 4
+const SEARCH_CACHE_TTL = 30_000
 
 type SearchType = '' | 'movie' | 'series'
 type SearchSort = typeof SORT_OPTIONS[number]['value']
@@ -51,6 +52,18 @@ type EffectiveSearch = {
   minRating: number
   sort: SearchSort
 }
+
+type SearchUniverse = {
+  media: Media[]
+  series: Series[]
+}
+
+type SearchUniverseCacheEntry = SearchUniverse & {
+  loadedAt: number
+}
+
+const searchUniverseCache = new Map<string, SearchUniverseCacheEntry>()
+const searchUniverseInFlight = new Map<string, Promise<SearchUniverse>>()
 
 function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -90,76 +103,146 @@ function normalizeIntentSort(value?: string): SearchSort {
   return SORT_OPTIONS.some((option) => option.value === value) ? value as SearchSort : 'relevance'
 }
 
-function parseSearchSort(value: SearchSort) {
-  switch (value) {
-    case 'rating_desc':
-      return { sort: 'rating' as const, order: 'desc' as const }
-    case 'year_desc':
-      return { sort: 'year' as const, order: 'desc' as const }
-    case 'year_asc':
-      return { sort: 'year' as const, order: 'asc' as const }
-    case 'title_asc':
-      return { sort: 'title' as const, order: 'asc' as const }
-    default:
-      // /media/mixed already filters the query before pagination. Its stable
-      // default order is used for "relevance" until the API exposes a dedicated score.
-      return { sort: 'added' as const, order: 'desc' as const }
-  }
+function normalizeText(value?: string) {
+  return (value || '').trim().toLocaleLowerCase()
+}
+
+function includesFold(value: string | undefined, query: string | undefined) {
+  if (!query) return true
+  return normalizeText(value).includes(normalizeText(query))
+}
+
+function getMixedTitle(item: MixedItem) {
+  return item.type === 'series' ? item.series?.title || '' : item.media?.title || ''
+}
+
+function getMixedOrigTitle(item: MixedItem) {
+  return item.type === 'series' ? item.series?.orig_title || '' : item.media?.orig_title || ''
+}
+
+function getMixedGenres(item: MixedItem) {
+  return item.type === 'series' ? item.series?.genres || '' : item.media?.genres || ''
+}
+
+function getMixedYear(item: MixedItem) {
+  return item.type === 'series' ? item.series?.year || 0 : item.media?.year || 0
 }
 
 function getMixedRating(item: MixedItem) {
-  if (item.type === 'series') return item.series?.rating || 0
-  return item.media?.rating || 0
+  return item.type === 'series' ? item.series?.rating || 0 : item.media?.rating || 0
 }
 
-async function fetchMixedSearchPage(criteria: EffectiveSearch, page: number, size: number) {
-  const sort = parseSearchSort(criteria.sort)
-  const baseParams = {
-    q: criteria.query,
-    type: criteria.type,
-    genre: criteria.genre,
-    year_from: criteria.yearMin,
-    year_to: criteria.yearMax,
-    sort: sort.sort,
-    order: sort.order,
+function getMixedCreatedAt(item: MixedItem) {
+  return item.type === 'series' ? item.series?.created_at || '' : item.media?.created_at || ''
+}
+
+function relevanceScore(item: MixedItem, query: string) {
+  const needle = normalizeText(query)
+  const title = normalizeText(getMixedTitle(item))
+  const origTitle = normalizeText(getMixedOrigTitle(item))
+  const genres = normalizeText(getMixedGenres(item))
+
+  if (title === needle) return 100
+  if (origTitle === needle) return 95
+  if (title.startsWith(needle)) return 85
+  if (origTitle.startsWith(needle)) return 80
+  if (title.includes(needle)) return 70
+  if (origTitle.includes(needle)) return 65
+  if (genres.includes(needle)) return 40
+  return 0
+}
+
+function uniqueById<T extends { id: string }>(items: T[]) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+async function loadSearchUniverse(rawQuery: string): Promise<SearchUniverse> {
+  const query = rawQuery.trim()
+  const cacheKey = normalizeText(query)
+  const cached = searchUniverseCache.get(cacheKey)
+  if (cached && Date.now() - cached.loadedAt <= SEARCH_CACHE_TTL) {
+    return { media: cached.media, series: cached.series }
   }
 
-  if (criteria.minRating <= 0) {
-    const response = await mediaApi.listMixed({ ...baseParams, page, size })
-    return {
-      items: response.data.data || [],
-      total: response.data.total || 0,
+  const existing = searchUniverseInFlight.get(cacheKey)
+  if (existing) return existing
+
+  const promise = (async () => {
+    const first = await mediaApi.searchMixed(query, 1, SEARCH_BATCH_SIZE)
+    const media = [...(first.data.media || [])]
+    const series = [...(first.data.series || [])]
+    const mediaPages = Math.ceil((first.data.media_total || 0) / SEARCH_BATCH_SIZE)
+    const seriesPages = Math.ceil((first.data.series_total || 0) / SEARCH_BATCH_SIZE)
+    const totalPages = Math.max(1, mediaPages, seriesPages)
+
+    if (totalPages > 1) {
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2)
+      for (let index = 0; index < remainingPages.length; index += SEARCH_FETCH_CONCURRENCY) {
+        const batch = remainingPages.slice(index, index + SEARCH_FETCH_CONCURRENCY)
+        const responses = await Promise.all(batch.map((page) => mediaApi.searchMixed(query, page, SEARCH_BATCH_SIZE)))
+        for (const response of responses) {
+          media.push(...(response.data.media || []))
+          series.push(...(response.data.series || []))
+        }
+      }
     }
-  }
 
-  // The current mixed-list contract does not expose min_rating. Keep the
-  // existing filter accurate without changing the backend contract: collect
-  // the already-filtered mixed result set in 2000-item pages, apply rating,
-  // then paginate locally. This path only runs when a rating filter is active.
-  const first = await mediaApi.listMixed({ ...baseParams, page: 1, size: MIXED_BULK_SIZE })
-  const allItems = [...(first.data.data || [])]
-  const unfilteredTotal = first.data.total || allItems.length
-  const totalPages = Math.max(1, Math.ceil(unfilteredTotal / MIXED_BULK_SIZE))
-
-  if (totalPages > 1) {
-    const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2)
-    for (let index = 0; index < remainingPages.length; index += MIXED_FETCH_CONCURRENCY) {
-      const batch = remainingPages.slice(index, index + MIXED_FETCH_CONCURRENCY)
-      const responses = await Promise.all(batch.map((nextPage) => mediaApi.listMixed({
-        ...baseParams,
-        page: nextPage,
-        size: MIXED_BULK_SIZE,
-      })))
-      for (const response of responses) allItems.push(...(response.data.data || []))
+    const result = {
+      // Search is presented at movie / series level. Individual episode hits
+      // stay discoverable through their series detail instead of duplicating
+      // the same show dozens of times in the mixed grid.
+      media: uniqueById(media.filter((item) => item.media_type !== 'episode')),
+      series: uniqueById(series),
     }
-  }
+    searchUniverseCache.set(cacheKey, { ...result, loadedAt: Date.now() })
+    return result
+  })().finally(() => {
+    searchUniverseInFlight.delete(cacheKey)
+  })
 
-  const filtered = allItems.filter((item) => getMixedRating(item) >= criteria.minRating)
-  const start = Math.max(0, (page - 1) * size)
-  return {
-    items: filtered.slice(start, start + size),
-    total: filtered.length,
-  }
+  searchUniverseInFlight.set(cacheKey, promise)
+  return promise
+}
+
+function applySearchCriteria(universe: SearchUniverse, criteria: EffectiveSearch) {
+  let items: MixedItem[] = [
+    ...universe.media.map((media) => ({ type: 'movie' as const, media })),
+    ...universe.series.map((series) => ({ type: 'series' as const, series })),
+  ]
+
+  if (criteria.type) items = items.filter((item) => item.type === criteria.type)
+  if (criteria.genre) items = items.filter((item) => includesFold(getMixedGenres(item), criteria.genre))
+  if (criteria.yearMin) items = items.filter((item) => getMixedYear(item) >= criteria.yearMin!)
+  if (criteria.yearMax) items = items.filter((item) => getMixedYear(item) <= criteria.yearMax!)
+  if (criteria.minRating > 0) items = items.filter((item) => getMixedRating(item) >= criteria.minRating)
+
+  items.sort((left, right) => {
+    if (criteria.sort === 'rating_desc') {
+      return getMixedRating(right) - getMixedRating(left) || getMixedYear(right) - getMixedYear(left)
+    }
+    if (criteria.sort === 'year_desc') {
+      return getMixedYear(right) - getMixedYear(left) || getMixedRating(right) - getMixedRating(left)
+    }
+    if (criteria.sort === 'year_asc') {
+      return getMixedYear(left) - getMixedYear(right) || getMixedRating(right) - getMixedRating(left)
+    }
+    if (criteria.sort === 'title_asc') {
+      return getMixedTitle(left).localeCompare(getMixedTitle(right), undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    const relevance = relevanceScore(right, criteria.query) - relevanceScore(left, criteria.query)
+    if (relevance !== 0) return relevance
+    const rating = getMixedRating(right) - getMixedRating(left)
+    if (rating !== 0) return rating
+    return new Date(getMixedCreatedAt(right)).getTime() - new Date(getMixedCreatedAt(left)).getTime()
+  })
+
+  return items
 }
 
 export default function SearchPage() {
@@ -292,13 +375,15 @@ export default function SearchPage() {
       : Promise.resolve(null)
 
     Promise.all([
-      fetchMixedSearchPage(effectiveSearch, page, size),
+      loadSearchUniverse(effectiveSearch.query),
       peoplePromise,
     ])
-      .then(([mediaResult, peopleResponse]) => {
+      .then(([universe, peopleResponse]) => {
         if (searchRequestRef.current !== requestId) return
-        setResults(mediaResult.items)
-        setTotal(mediaResult.total)
+        const filtered = applySearchCriteria(universe, effectiveSearch)
+        const start = Math.max(0, (page - 1) * size)
+        setResults(filtered.slice(start, start + size))
+        setTotal(filtered.length)
         setPeople(peopleResponse?.data.data || [])
       })
       .catch(() => {
@@ -332,7 +417,7 @@ export default function SearchPage() {
     ? '正在搜索…'
     : searched
       ? `“${query}” · ${total} 个影视结果${people.length > 0 && page === 1 ? ` · ${people.length} 位人物` : ''}`
-      : '搜索标题、原名、剧集或演职人员，并使用筛选快速缩小范围。'
+      : '搜索标题、原名、题材、剧集或演职人员，并使用筛选快速缩小范围。'
 
   return (
     <div className="nv-section-stack nv-library-page nv-search-page">
