@@ -20,6 +20,18 @@ interface HomeData {
   allFailed: boolean
 }
 
+function getContinueArtwork(item: WatchHistory): string | null {
+  const media = item.media
+  if (media.media_type === 'episode' && media.series_id && media.series?.backdrop_path) {
+    return streamApi.getSeriesBackdropUrl(media.series_id)
+  }
+  if (media.media_type === 'episode' && media.series_id && media.series?.poster_path) {
+    return streamApi.getSeriesPosterUrl(media.series_id)
+  }
+  if (media.poster_path) return streamApi.getPosterUrl(item.media_id)
+  return null
+}
+
 export default function HomePage() {
   const { on, off } = useWebSocket()
   const toast = useToast()
@@ -213,14 +225,15 @@ function ContinueWatchingRow({
             const displayTitle = item.media.media_type === 'episode' && item.media.series
               ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
               : item.media.title
+            const artworkUrl = getContinueArtwork(item)
 
             return (
-              <article key={item.id} className="group w-[220px] flex-shrink-0 sm:w-[260px]">
+              <article key={item.id} className="nv-continue-card group w-[220px] flex-shrink-0 sm:w-[260px]">
                 <Link to={`/play/${item.media_id}`} className="block" aria-label={`继续播放 ${displayTitle}`}>
-                  <div className="relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] transition-[transform,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-                    {item.media.poster_path ? (
+                  <div className="nv-continue-artwork relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] transition-[transform,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[var(--nv-shadow-card-hover)]">
+                    {artworkUrl ? (
                       <img
-                        src={streamApi.getPosterUrl(item.media_id)}
+                        src={artworkUrl}
                         alt=""
                         className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]"
                         loading="lazy"
@@ -231,7 +244,7 @@ function ContinueWatchingRow({
                         <Play size={26} aria-hidden="true" />
                       </div>
                     )}
-                    <div className="absolute inset-0 grid place-items-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <div className="nv-continue-overlay absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                       <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
                         <Play size={14} fill="currentColor" aria-hidden="true" />
                       </span>
