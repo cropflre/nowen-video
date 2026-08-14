@@ -1,9 +1,9 @@
 /* Neo Glass / Aurora runtime calibration.
  *
- * This is the single late-loading acceptance layer. It consolidates the former
- * screenshot-tuning + acceptance patches into stable semantic selectors. It
- * only adjusts geometry/contrast observed in real browser screenshots and does
- * not change route state, data loading, playback behavior or API contracts.
+ * This is the single late-loading acceptance layer. It consolidates screenshot
+ * calibration into stable semantic selectors. It only adjusts geometry and
+ * contrast observed in real browser screenshots; route state, data loading,
+ * playback behavior and API contracts remain untouched.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -35,18 +35,12 @@
   }
 
   [aria-label="媒体类型"] .nv-button,
-  [aria-label="视图模式"] .nv-button {
-    min-height: 34px;
-  }
+  [aria-label="视图模式"] .nv-button { min-height: 34px; }
 
   [aria-label="媒体类型"] + div .nv-select,
-  [aria-label="媒体类型"] + div .nv-search {
-    min-height: 36px;
-  }
+  [aria-label="媒体类型"] + div .nv-search { min-height: 36px; }
 
-  .nv-media-grid {
-    align-items: start;
-  }
+  .nv-media-grid { align-items: start; }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -96,32 +90,19 @@
     max-width: 112rem !important;
   }
 
-  .nv-detail-poster {
-    max-width: 236px !important;
-  }
-
-  .nv-detail-hero-inner > div:last-child {
-    max-width: 58rem !important;
-  }
-
-  .nv-detail-hero-inner h1 {
-    max-width: 24ch !important;
-  }
-
-  .nv-detail-hero + div {
-    max-width: 112rem !important;
-  }
+  .nv-detail-poster { max-width: 236px !important; }
+  .nv-detail-hero-inner > div:last-child { max-width: 58rem !important; }
+  .nv-detail-hero-inner h1 { max-width: 24ch !important; }
+  .nv-detail-hero + div { max-width: 112rem !important; }
 }
 
 /* -------------------------------------------------------------------------- */
 /* Detail information                                                          */
 /* -------------------------------------------------------------------------- */
 
-.nv-detail-hero + div {
-  row-gap: 24px !important;
-}
+.nv-detail-hero + div { row-gap: 24px !important; }
 
-.nv-detail-hero + div > div:first-child {
+.nv-media-info {
   overflow: hidden;
   padding-inline: 16px;
   border: 1px solid var(--nv-border-default) !important;
@@ -135,80 +116,37 @@
     0 12px 30px rgba(2, 4, 16, .08);
 }
 
-.nv-detail-hero + div > div:first-child > [aria-label="媒体标识"] {
-  padding-block: 10px !important;
-}
+.nv-media-info-badges { padding-block: 10px !important; }
+.nv-media-info > section { padding-block: 14px !important; }
+.nv-media-info > section p { line-height: 1.72 !important; max-width: 72rem; }
+.nv-media-info .py-2\.5 { padding-block: 7px !important; }
+.nv-media-info > section h2 { font-size: .92rem; }
 
-.nv-detail-hero + div > div:first-child > section {
-  padding-block: 14px !important;
-}
-
-.nv-detail-hero + div > div:first-child > section p {
-  line-height: 1.72 !important;
-}
-
-.nv-detail-hero + div > div:first-child > section .py-2\.5 {
-  padding-block: 7px !important;
-}
-
-.nv-detail-hero + div > * + * {
-  margin-top: 24px !important;
-}
-
-.nv-detail-hero + div > div:first-child > section h2 {
-  font-size: .92rem;
-}
-
-.nv-detail-hero + div > div:first-child > section p {
-  max-width: 72rem;
-}
+.nv-detail-hero + div > * + * { margin-top: 24px !important; }
 
 @media (min-width: 80rem) {
-  .nv-detail-hero + div > div:first-child {
-    padding-inline: 18px;
-  }
-
-  .nv-detail-hero + div > div:first-child > section:last-child .grid {
-    column-gap: 0;
-  }
-
-  .nv-detail-hero + div > div:first-child > section:last-child .sm\:pr-8 {
-    padding-right: 22px !important;
-  }
-
-  .nv-detail-hero + div > div:first-child > section:last-child .sm\:pl-8 {
-    padding-left: 22px !important;
-  }
-
-  section[aria-labelledby="media-tech-specs-title"] > .grid > div {
-    min-height: 88px !important;
-  }
+  .nv-media-info { padding-inline: 18px; }
+  .nv-media-info-grid { column-gap: 0; }
+  .nv-media-info-grid > .nv-media-info-column:first-child { padding-right: 22px !important; }
+  .nv-media-info-grid > .nv-media-info-column:nth-child(2) { padding-left: 22px !important; }
+  section[aria-labelledby="media-tech-specs-title"] > .grid > div { min-height: 88px !important; }
 }
 
-section[aria-labelledby="cast-grid-title"] {
-  margin-top: 2px;
-}
+section[aria-labelledby="cast-grid-title"] { margin-top: 2px; }
 
 .nv-recommendation-section {
   padding-top: 14px !important;
   padding-bottom: 14px !important;
 }
 
-.nv-recommendation-section .nv-section-header {
-  margin-bottom: 12px !important;
-}
+.nv-recommendation-section .nv-section-header { margin-bottom: 12px !important; }
 
 /* -------------------------------------------------------------------------- */
 /* Comments                                                                    */
 /* -------------------------------------------------------------------------- */
 
-.nv-comment-section {
-  padding-bottom: 14px !important;
-}
-
-.nv-comment-section .nv-comment-header {
-  margin-bottom: 12px !important;
-}
+.nv-comment-section { padding-bottom: 14px !important; }
+.nv-comment-section .nv-comment-header { margin-bottom: 12px !important; }
 
 .nv-comment-section .nv-empty-state {
   min-height: 148px !important;
@@ -221,14 +159,10 @@ section[aria-labelledby="cast-grid-title"] {
 /* Home                                                                         */
 /* -------------------------------------------------------------------------- */
 
-.nv-section .scrollbar-hide {
-  scroll-snap-type: x proximity;
-}
+.nv-section .scrollbar-hide { scroll-snap-type: x proximity; }
 
 .nv-continue-card,
-.nv-genre-card-slot {
-  scroll-snap-align: start;
-}
+.nv-genre-card-slot { scroll-snap-align: start; }
 
 @media (min-width: 80rem) {
   .nv-hero-carousel,
@@ -247,9 +181,7 @@ section[aria-labelledby="cast-grid-title"] {
 /* -------------------------------------------------------------------------- */
 
 @media (min-width: 80rem) {
-  .nv-rail-item {
-    min-height: 54px;
-  }
+  .nv-rail-item { min-height: 54px; }
 
   .nv-rail-label {
     font-size: 10px !important;
@@ -267,13 +199,8 @@ section[aria-labelledby="cast-grid-title"] {
     letter-spacing: -.012em;
   }
 
-  .nv-topbar form[role="search"] {
-    width: min(36vw, 35rem) !important;
-  }
-
-  .nv-section-title {
-    font-size: 1.02rem;
-  }
+  .nv-topbar form[role="search"] { width: min(36vw, 35rem) !important; }
+  .nv-section-title { font-size: 1.02rem; }
 }
 
 .nv-media-card-title {
@@ -286,15 +213,13 @@ section[aria-labelledby="cast-grid-title"] {
   line-height: 1.42;
 }
 
-.nv-media-card-poster > .absolute.inset-0.flex.flex-col {
+.nv-media-card-placeholder {
   background:
     radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--nv-action-muted) 10%, transparent), transparent 8rem),
     linear-gradient(180deg, color-mix(in srgb, var(--nv-bg-surface-soft) 82%, transparent), var(--nv-bg-poster)) !important;
 }
 
-.nv-media-card-poster > .absolute.inset-0.flex.flex-col svg {
-  opacity: .8;
-}
+.nv-media-card-placeholder svg { opacity: .8; }
 
 /* -------------------------------------------------------------------------- */
 /* Player acceptance                                                           */
@@ -330,9 +255,7 @@ section[aria-labelledby="cast-grid-title"] {
     height: 3px !important;
   }
 
-  .group\/player .player-controls > .progress-bar:hover {
-    height: 5px !important;
-  }
+  .group\/player .player-controls > .progress-bar:hover { height: 5px !important; }
 
   .group\/player .player-controls > .absolute.left-4.top-4 {
     top: max(18px, env(safe-area-inset-top, 0px)) !important;
@@ -360,15 +283,13 @@ section[aria-labelledby="cast-grid-title"] {
     transform: scale(1.08) !important;
   }
 
-  .nv-detail-hero + div > div:first-child {
+  .nv-media-info {
     margin-inline: -2px;
     padding-inline: 13px;
     border-radius: 15px;
   }
 
-  .nv-comment-section .nv-empty-state {
-    min-height: 132px !important;
-  }
+  .nv-comment-section .nv-empty-state { min-height: 132px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
