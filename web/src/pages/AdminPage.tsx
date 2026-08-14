@@ -49,6 +49,11 @@ type QuickNavItem = {
   href?: string
 }
 
+function resolveAdminTab(hash: string): TabId {
+  const value = hash.replace(/^#/, '')
+  return TABS.some((tab) => tab.id === value) ? value as TabId : 'dashboard'
+}
+
 function TabScrollNav({
   activeTab,
   switchTab,
@@ -203,12 +208,7 @@ export default function AdminPage() {
   const persistedScanStateRef = useRef(loadPersistedScanState())
   const { t } = useTranslation()
 
-  const getInitialTab = (): TabId => {
-    const hash = window.location.hash.replace('#', '')
-    return TABS.some((tab) => tab.id === hash) ? hash as TabId : 'dashboard'
-  }
-
-  const [activeTab, setActiveTab] = useState<TabId>(getInitialTab)
+  const [activeTab, setActiveTab] = useState<TabId>(() => resolveAdminTab(window.location.hash))
   const [searchQuery, setSearchQuery] = useState('')
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -234,8 +234,18 @@ export default function AdminPage() {
 
   const switchTab = useCallback((tab: TabId) => {
     setActiveTab(tab)
-    window.location.hash = tab
     setSearchQuery('')
+    const nextHash = `#${tab}`
+    if (window.location.hash !== nextHash) window.location.hash = tab
+  }, [])
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveTab(resolveAdminTab(window.location.hash))
+      setSearchQuery('')
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
   const addMessage = useCallback((message: string) => {
@@ -291,7 +301,7 @@ export default function AdminPage() {
     const handleScanCompleted = (data: ScanProgressData) => {
       clearLibraryProgress(data.library_id)
       addMessage(`✅ ${data.message}`)
-      void libraryApi.list().then((response) => setLibraries(response.data.data || []))
+      void libraryApi.list().then((response) => setLibraries(response.data.data || [])).catch(() => {})
     }
     const handleScanFailed = (data: ScanProgressData) => {
       clearLibraryProgress(data.library_id)
@@ -340,7 +350,7 @@ export default function AdminPage() {
           return next
         })
         addMessage(`✨ ${data.message}`)
-        void libraryApi.list().then((response) => setLibraries(response.data.data || []))
+        void libraryApi.list().then((response) => setLibraries(response.data.data || [])).catch(() => {})
       } else {
         setScanPhase((previous) => ({ ...previous, [data.library_id]: data }))
         addMessage(`📦 ${data.message}`)
@@ -377,21 +387,30 @@ export default function AdminPage() {
   }, [addMessage, off, on])
 
   useEffect(() => {
-    const loadAll = async () => {
-      try {
-        const [systemResponse, libraryResponse, userResponse, settingsResponse, scanStatusResponse] = await Promise.all([
-          adminApi.systemInfo(),
-          libraryApi.list(),
-          adminApi.listUsers(),
-          adminApi.getSystemSettings(),
-          libraryApi.scanStatus(),
-        ])
-        setSystemInfo(systemResponse.data.data)
-        setLibraries(libraryResponse.data.data || [])
-        setUsers(userResponse.data.data || [])
-        if (settingsResponse.data.data) setSysSettings(settingsResponse.data.data)
+    let active = true
 
-        const activeScanPhases = scanStatusResponse.data.data || []
+    const loadAll = async () => {
+      const [systemResult, libraryResult, userResult, settingsResult, scanStatusResult] = await Promise.allSettled([
+        adminApi.systemInfo(),
+        libraryApi.list(),
+        adminApi.listUsers(),
+        adminApi.getSystemSettings(),
+        libraryApi.scanStatus(),
+      ])
+      if (!active) return
+
+      if (systemResult.status === 'fulfilled') setSystemInfo(systemResult.value.data.data)
+      if (libraryResult.status === 'fulfilled') setLibraries(libraryResult.value.data.data || [])
+      if (userResult.status === 'fulfilled') setUsers(userResult.value.data.data || [])
+      if (settingsResult.status === 'fulfilled' && settingsResult.value.data.data) {
+        setSysSettings(settingsResult.value.data.data)
+      }
+
+      // Only reconcile persisted progress when the server status endpoint
+      // actually answered. A transient scan-status failure must not erase a
+      // valid persisted running state from the previous page session.
+      if (scanStatusResult.status === 'fulfilled') {
+        const activeScanPhases = scanStatusResult.value.data.data || []
         if (activeScanPhases.length > 0) {
           const activeIds = new Set(activeScanPhases.map((phase) => phase.library_id))
           setScanning(activeIds)
@@ -404,11 +423,11 @@ export default function AdminPage() {
           setScanProgress({})
           setScrapeProgress({})
         }
-      } catch {
-        // 与旧 AdminPage 一致：后台初始化单项失败时不阻断页面渲染。
       }
     }
+
     void loadAll()
+    return () => { active = false }
   }, [])
 
   const quickNavItems = useMemo<QuickNavItem[]>(() => {
