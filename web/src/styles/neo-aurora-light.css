@@ -61,16 +61,17 @@
   --nv-hero-bottom-scrim: linear-gradient(0deg, #f4f6fb 0%, rgba(244,246,251,.91) 22%, rgba(244,246,251,.38) 56%, transparent 80%);
 }
 
-[data-theme="light"] body {
+[data-theme="light"] body,
+[data-theme="light"] #root {
   background:
     radial-gradient(circle at 18% -10%, rgba(59, 130, 246, .075), transparent 32rem),
     radial-gradient(circle at 86% 2%, rgba(124, 58, 237, .07), transparent 36rem),
     var(--nv-bg-canvas);
+  color: var(--nv-text-primary);
 }
 
-/* App shell must explicitly expose the light canvas because the base Aurora
-   shell is transparent and otherwise inherits whichever dark root fallback was
-   painted before data-theme was applied. */
+/* App shell is intentionally transparent so the subtle light ambient canvas can
+   continue behind the content without reintroducing a dark hard-coded fill. */
 [data-theme="light"] .nv-app-shell,
 [data-theme="light"] .nv-app-body,
 [data-theme="light"] .nv-main-scroll {
