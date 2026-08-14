@@ -144,14 +144,14 @@
 
   /* Technical overview: the existing four SummaryCell components become four
      distinct glass info cards, matching Video / Audio / Subtitles / Container. */
-  section:has(#media-tech-specs-title) > .grid {
+  section[aria-labelledby="media-tech-specs-title"] > .grid {
     gap: 12px;
     overflow: visible !important;
     border: 0 !important;
     background: transparent !important;
   }
 
-  section:has(#media-tech-specs-title) > .grid > div {
+  section[aria-labelledby="media-tech-specs-title"] > .grid > div {
     min-height: 96px;
     border: 1px solid var(--nv-border-default) !important;
     border-radius: var(--nv-radius-card);
@@ -159,7 +159,7 @@
     box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 3%, transparent), 0 10px 28px rgba(2, 4, 16, .10);
   }
 
-  section:has(#media-tech-specs-title) > .grid > div > div > div:first-child {
+  section[aria-labelledby="media-tech-specs-title"] > .grid > div > div > div:first-child {
     border: 1px solid color-mix(in srgb, var(--nv-action-muted) 22%, transparent);
     background: color-mix(in srgb, var(--nv-action-muted) 12%, var(--nv-bg-surface));
     color: var(--nv-action-muted-hover);
@@ -189,7 +189,7 @@
 
 /* Light theme keeps exactly the same geometry and swaps only semantic surfaces. */
 [data-theme="light"] [aria-label="媒体类型"] + div,
-[data-theme="light"] section:has(#media-tech-specs-title) > .grid > div {
+[data-theme="light"] section[aria-labelledby="media-tech-specs-title"] > .grid > div {
   box-shadow: var(--nv-shadow-card);
 }
 
