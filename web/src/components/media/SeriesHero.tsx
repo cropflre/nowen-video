@@ -7,7 +7,8 @@ import { Button, Tag, buttonClassName } from '@/components/design-system'
 
 interface SeriesHeroProps {
   series: Series
-  firstEpisode: Media | null
+  playEpisode: Media | null
+  playLabel: string
   isFavorited: boolean
   isAdmin: boolean
   scraping: boolean
@@ -23,7 +24,8 @@ interface SeriesHeroProps {
 
 export default function SeriesHero({
   series,
-  firstEpisode,
+  playEpisode,
+  playLabel,
   isFavorited,
   isAdmin,
   scraping,
@@ -114,14 +116,14 @@ export default function SeriesHero({
           )}
 
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            {firstEpisode && (
-              <Link to={`/play/${firstEpisode.id}`} className={buttonClassName({ variant: 'primary', size: 'lg' })} data-variant="primary" data-size="lg">
+            {playEpisode && (
+              <Link to={`/play/${playEpisode.id}`} className={buttonClassName({ variant: 'primary', size: 'lg' })} data-variant="primary" data-size="lg">
                 <Play size={17} fill="currentColor" aria-hidden="true" />
-                播放第一集
+                {playLabel}
               </Link>
             )}
 
-            <Button type="button" variant="secondary" size="lg" iconOnly onClick={onFavorite} title={isFavorited ? '取消收藏' : '收藏'} aria-label={isFavorited ? '取消收藏' : '收藏'} aria-pressed={isFavorited}>
+            <Button type="button" variant="secondary" size="lg" iconOnly onClick={onFavorite} disabled={!playEpisode} title={isFavorited ? '取消收藏' : '收藏'} aria-label={isFavorited ? '取消收藏' : '收藏'} aria-pressed={isFavorited}>
               <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
             </Button>
 
