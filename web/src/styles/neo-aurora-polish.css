@@ -129,7 +129,7 @@
 [aria-label="媒体类型"] ~ .nv-surface .nv-button[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--nv-action-muted) 38%, transparent) !important;
   background: linear-gradient(135deg,
-    color-mix(in srgb, #3b82f6 14%, transparent),
+    color-mix(in srgb, var(--nv-status-info) 14%, transparent),
     color-mix(in srgb, var(--nv-action-muted) 20%, transparent)) !important;
   color: var(--nv-text-primary) !important;
   box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 4%, transparent);
@@ -186,7 +186,7 @@
 /* Detail comments                                                             */
 /* -------------------------------------------------------------------------- */
 
-section:has(#comment-section-title) {
+.nv-comment-section {
   padding: 16px;
   border: 1px solid var(--nv-border-default);
   border-radius: var(--nv-radius-container);
@@ -202,28 +202,28 @@ section:has(#comment-section-title) {
   letter-spacing: var(--nv-tracking-tight);
 }
 
-section:has(#comment-section-title) > .nv-surface {
+.nv-comment-composer {
   border-color: color-mix(in srgb, var(--nv-border-default) 86%, transparent);
   background: color-mix(in srgb, var(--nv-bg-elevated) 52%, transparent);
   box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 2.5%, transparent);
 }
 
-section:has(#comment-section-title) > .space-y-3 > article.nv-surface {
+.nv-comment-list > article.nv-surface {
   transition:
     border-color var(--nv-motion-normal) var(--nv-ease-standard),
     background-color var(--nv-motion-normal) var(--nv-ease-standard),
     transform var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
-section:has(#comment-section-title) > .space-y-3 > article.nv-surface:hover {
+.nv-comment-list > article.nv-surface:hover {
   transform: translateY(-1px);
   border-color: var(--nv-border-hover);
   background: color-mix(in srgb, var(--nv-bg-elevated) 72%, transparent);
 }
 
-section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.rounded-full {
+.nv-comment-avatar {
   border: 1px solid color-mix(in srgb, var(--nv-action-muted) 35%, transparent);
-  background: linear-gradient(135deg, #3b82f6, var(--nv-action-primary) 55%, #a855f7) !important;
+  background: linear-gradient(135deg, var(--nv-status-info), var(--nv-action-primary) 55%, var(--nv-action-muted)) !important;
   color: #fff !important;
   box-shadow: 0 0 18px color-mix(in srgb, var(--nv-action-muted) 14%, transparent);
 }
@@ -255,7 +255,7 @@ section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.r
 }
 
 .nv-modal-backdrop[aria-label="字幕管理"] .h-2.overflow-hidden.rounded-full > div {
-  background: linear-gradient(90deg, #3b82f6, var(--nv-action-primary) 58%, #a855f7) !important;
+  background: linear-gradient(90deg, var(--nv-status-info), var(--nv-action-primary) 58%, var(--nv-action-muted)) !important;
   box-shadow: 0 0 12px color-mix(in srgb, var(--nv-action-muted) 20%, transparent);
 }
 
@@ -309,7 +309,7 @@ section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.r
   .nv-recommendation-section { padding: 16px 18px 14px; }
   .nv-recommendation-row { gap: 14px; }
 
-  section:has(#comment-section-title) { padding: 18px; }
+  .nv-comment-section { padding: 18px; }
 
   .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-body {
     display: grid;
@@ -329,7 +329,7 @@ section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.r
 /* -------------------------------------------------------------------------- */
 
 [data-theme="light"] .nv-recommendation-section,
-[data-theme="light"] section:has(#comment-section-title),
+[data-theme="light"] .nv-comment-section,
 [data-theme="light"] [aria-label="媒体类型"] ~ .nv-surface,
 [data-theme="light"] .nv-empty-state,
 [data-theme="light"] .nv-toast {
@@ -342,7 +342,7 @@ section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.r
   .nv-modal-footer { padding: 12px 15px; }
 
   .nv-recommendation-section,
-  section:has(#comment-section-title) {
+  .nv-comment-section {
     margin-inline: -2px;
     padding: 13px;
     border-radius: 15px;
@@ -368,7 +368,7 @@ section:has(#comment-section-title) > .space-y-3 > article.nv-surface .h-9.w-9.r
 @media (prefers-reduced-motion: reduce) {
   .nv-menu-item:hover,
   .nv-menu-item:focus-visible,
-  section:has(#comment-section-title) > .space-y-3 > article.nv-surface:hover {
+  .nv-comment-list > article.nv-surface:hover {
     transform: none;
   }
 }
