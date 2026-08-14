@@ -260,6 +260,37 @@
   }
 }
 
+/* FileManager has two optional side panels. On tablets the 256px folder tree
+   plus the 380px AI assistant leaves almost no room for the actual file list.
+   Keep the tree for wide desktop only; stack an open assistant below the list
+   on narrower tablets/phones so 390/768 layouts never exceed the viewport. */
+@media (max-width: 63.999rem) {
+  .nv-file-manager-shell > .flex.gap-4 {
+    flex-direction: column;
+  }
+
+  .nv-file-manager-shell > .flex.gap-4 > .opacity-100:last-child {
+    width: 100% !important;
+    max-width: 100%;
+    max-height: min(60dvh, 34rem) !important;
+  }
+
+  .nv-file-manager-shell > .flex.gap-4 > .opacity-100:last-child > div {
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 64rem) and (max-width: 79.999rem) {
+  .nv-file-manager-shell > .flex.gap-4 > .hidden.flex-shrink-0:first-child {
+    display: none !important;
+    width: 0 !important;
+  }
+
+  .nv-file-manager-shell button[title$='文件夹面板'] {
+    display: none !important;
+  }
+}
+
 @media (hover: none) and (pointer: coarse) {
   .touch-target {
     min-height: 48px;
