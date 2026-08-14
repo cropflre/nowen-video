@@ -19,6 +19,7 @@ import './styles/player-overlay-panels.css'
 import './styles/player-design-system.css'
 import './styles/player-subtitles.css'
 import './styles/player-navi.css'
+import './styles/neo-aurora-screenshot-tuning.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
