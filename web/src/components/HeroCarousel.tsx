@@ -69,6 +69,18 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
   return null
 }
 
+function getHeroArtwork(media: Media) {
+  if (media.series_id) {
+    return media.backdrop_path
+      ? streamApi.getSeriesBackdropUrl(media.series_id)
+      : streamApi.getSeriesPosterUrl(media.series_id)
+  }
+  if (media.backdrop_path) {
+    return streamApi.withTokenUrl(`/api/media/${media.id}/backdrop`)
+  }
+  return streamApi.getPosterUrl(media.id)
+}
+
 interface HeroCarouselProps {
   items: RecommendedMedia[]
   fallbackItems?: MixedItem[]
@@ -166,9 +178,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   const item = items[current]
   if (!item) return null
 
-  const imageUrl = item.media.series_id
-    ? streamApi.getSeriesPosterUrl(item.media.series_id)
-    : streamApi.getPosterUrl(item.media.id)
+  const imageUrl = getHeroArtwork(item.media)
   const playLink = item.media.media_type === 'episode' && item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/play/${item.media.id}`
@@ -179,7 +189,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   return (
     <section
       ref={containerRef}
-      className="relative isolate min-h-[340px] overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)] sm:min-h-[400px] lg:min-h-[460px]"
+      className="nv-hero-carousel relative isolate min-h-[340px] overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)] sm:min-h-[400px] lg:min-h-[460px]"
       role="region"
       aria-roledescription="carousel"
       aria-label={t('home.recommended')}
@@ -213,9 +223,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
       {items.map((recommendation, index) => index !== current && (
         <img
           key={`hero-preload-${recommendation.media.id}`}
-          src={recommendation.media.series_id
-            ? streamApi.getSeriesPosterUrl(recommendation.media.series_id)
-            : streamApi.getPosterUrl(recommendation.media.id)}
+          src={getHeroArtwork(recommendation.media)}
           alt=""
           className="hidden"
           loading="lazy"
@@ -225,13 +233,13 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
       <div
-        className="pointer-events-none absolute inset-0 opacity-70"
+        className="pointer-events-none absolute inset-0 opacity-90"
         style={{
-          background: 'radial-gradient(circle at 72% 18%, var(--nv-ambient-purple-soft), transparent 36rem)',
+          background: 'radial-gradient(circle at 78% 16%, var(--nv-ambient-purple-soft), transparent 34rem)',
         }}
       />
 
-      <div className="relative z-10 flex min-h-[340px] max-w-[48rem] flex-col justify-end px-[var(--nv-page-gutter)] pb-12 pt-16 sm:min-h-[400px] sm:pb-14 lg:min-h-[460px] lg:pb-16">
+      <div className="relative z-10 flex min-h-[340px] max-w-[49rem] flex-col justify-end px-[var(--nv-page-gutter)] pb-12 pt-16 sm:min-h-[400px] sm:pb-14 lg:min-h-[460px] lg:pb-16">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={`hero-content-${item.media.id}`}
@@ -240,11 +248,10 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
             transition={{ duration: prefersReducedMotion ? 0.12 : 0.28 }}
           >
-            {item.reason && (
-              <Tag tone="brand" className="mb-3">
-                {item.reason}
-              </Tag>
-            )}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {item.reason && <Tag tone="brand">{item.reason}</Tag>}
+              {item.media.resolution && <Tag tone="quality">{item.media.resolution}</Tag>}
+            </div>
 
             <h2
               className="max-w-[18ch] font-bold text-[var(--nv-text-primary)]"
