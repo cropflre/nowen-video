@@ -102,11 +102,11 @@
 /* Home secondary horizontal rows                                              */
 /* -------------------------------------------------------------------------- */
 
-.nv-section .scrollbar-hide > div:has(> .nv-media-card) {
+.nv-genre-card-slot {
   width: clamp(150px, 10vw, 176px) !important;
 }
 
-.nv-section .scrollbar-hide:has(> div > .nv-media-card) {
+.nv-genre-row-track {
   scroll-padding-inline: 2px;
   padding-top: 2px;
 }
