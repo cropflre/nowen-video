@@ -37,7 +37,18 @@ export const mediaApi = {
   recentMixed: (limit = 20) =>
     api.get<ListResponse<MixedItem>>('/media/recent/mixed', { params: { limit } }),
 
-  listMixed: (params: { page?: number; size?: number; library_id?: string }) =>
+  listMixed: (params: {
+    page?: number
+    size?: number
+    library_id?: string
+    type?: 'movie' | 'series'
+    genre?: string
+    q?: string
+    year_from?: number
+    year_to?: number
+    sort?: 'added' | 'title' | 'year' | 'rating'
+    order?: 'asc' | 'desc'
+  }) =>
     api.get<PaginatedResponse<MixedItem> & { movie_count: number; series_count: number }>('/media/mixed', { params }),
 
   continueWatching: (limit = 10) =>
