@@ -155,12 +155,6 @@ export default function HeroSection({
                   <span className="text-xs">暂无海报</span>
                 </div>
               )}
-              {media.rating > 0 && (
-                <Tag tone="quality" className="absolute left-2 top-2">
-                  <Star size={12} fill="currentColor" className="text-[var(--nv-status-rating)]" aria-hidden="true" />
-                  {media.rating.toFixed(1)}
-                </Tag>
-              )}
             </div>
           </div>
 
