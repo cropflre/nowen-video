@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed right-3 top-3 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-4"
+        className="nv-toast-stack pointer-events-none fixed right-3 top-3 z-[var(--nv-z-toast)] flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-1.5 sm:right-4 sm:top-4"
         aria-live="polite"
         aria-relevant="additions"
       >
@@ -73,7 +73,8 @@ const iconMap: Record<ToastType, React.ReactNode> = {
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   return (
     <div
-      className="pointer-events-auto flex w-full min-w-0 items-center gap-2.5 rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] px-3 py-2.5 shadow-[var(--nv-shadow-elevated)] sm:min-w-[260px] sm:max-w-[390px]"
+      className="nv-toast pointer-events-auto flex w-full min-w-0 items-center gap-2.5 rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] px-3 py-2.5 shadow-[var(--nv-shadow-elevated)] sm:min-w-[260px] sm:max-w-[390px]"
+      data-tone={toast.type}
       role={toast.type === 'error' ? 'alert' : 'status'}
     >
       {iconMap[toast.type]}
