@@ -39,14 +39,20 @@ export default function FavoritesPage() {
   const pages = totalPages(total)
 
   return (
-    <div className="nv-section-stack">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-[-0.02em] text-[var(--nv-text-primary)]">
-          <Heart size={22} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
-          {t('favorites.title')}
-        </h1>
-        {total > 0 && <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">共 {total} 个收藏</p>}
-      </div>
+    <div className="nv-section-stack nv-library-page nv-favorites-page">
+      <header className="nv-page-hero-header">
+        <div className="nv-page-title-lockup">
+          <div className="nv-page-title-icon" aria-hidden="true">
+            <Heart size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="nv-page-title">{t('favorites.title')}</h1>
+            <p className="nv-page-subtitle">
+              {total > 0 ? `共 ${total} 个收藏` : '集中浏览你收藏的电影与剧集。'}
+            </p>
+          </div>
+        </div>
+      </header>
 
       <MediaGrid items={media} loading={loading} />
 
