@@ -19,6 +19,8 @@ import {
   CastGrid,
   CollectionCarousel,
   HeroSection,
+  MediaDetailSidebar,
+  MediaDetailTechOverview,
   MediaInfoSection,
   MediaTechSpecs,
   RecommendationCarousel,
@@ -29,7 +31,7 @@ import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
-import { Button, Surface } from '@/components/design-system'
+import { Button } from '@/components/design-system'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
@@ -37,7 +39,7 @@ import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { AnimatePresence, motion } from 'framer-motion'
 import { durations, easeSmooth } from '@/lib/motion'
-import { ArrowLeft, Captions } from 'lucide-react'
+import { ChevronLeft, Pencil, RefreshCw } from 'lucide-react'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -415,20 +417,19 @@ export default function MediaDetailPage() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: durations.fast }}
-          className="space-y-6"
+          className="nv-detail-loading space-y-5"
         >
-          <div className="skeleton h-[420px] rounded-[var(--nv-radius-hero)]" />
-          <div className="flex gap-6 pt-4">
-            <div className="skeleton hidden h-72 w-48 rounded-[var(--nv-radius-card)] sm:block" />
-            <div className="flex-1 space-y-4">
-              <div className="skeleton h-10 w-2/3 rounded-lg" />
-              <div className="skeleton h-5 w-1/3 rounded-lg" />
-              <div className="flex gap-3">
-                <div className="skeleton h-12 w-28 rounded-xl" />
-                <div className="skeleton h-12 w-24 rounded-xl" />
-                <div className="skeleton h-12 w-28 rounded-xl" />
-              </div>
-              <div className="skeleton h-20 w-full rounded-xl" />
+          <div className="skeleton h-12 rounded-[var(--nv-radius-control)]" />
+          <div className="skeleton h-[400px] rounded-[var(--nv-radius-hero)]" />
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-4">
+              <div className="skeleton h-14 rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton h-64 rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton h-40 rounded-[var(--nv-radius-card)]" />
+            </div>
+            <div className="space-y-4">
+              <div className="skeleton h-52 rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton h-48 rounded-[var(--nv-radius-card)]" />
             </div>
           </div>
         </motion.div>
@@ -437,26 +438,52 @@ export default function MediaDetailPage() {
   }
 
   const isAdmin = user?.role === 'admin'
+  const breadcrumbLabel = media.num || media.title
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
-      className="relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
+      className="nv-media-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
     >
-      <button
-        type="button"
-        onClick={() => {
-          if (window.history.length > 1) navigate(-1)
-          else navigate('/')
-        }}
-        aria-label="返回"
-        title="返回"
-        className="absolute left-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur-md transition-[background-color,transform] hover:scale-[1.03] hover:bg-black/60"
-      >
-        <ArrowLeft size={18} aria-hidden="true" />
-      </button>
+      <div className="nv-detail-local-toolbar">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="nv-detail-back-button"
+          onClick={() => {
+            if (window.history.length > 1) navigate(-1)
+            else navigate('/')
+          }}
+          aria-label="返回"
+        >
+          <ChevronLeft size={15} aria-hidden="true" />
+          返回
+        </Button>
+
+        <div className="nv-detail-breadcrumb" title={`影视库 / ${breadcrumbLabel}`}>
+          <span>影视库</span>
+          <span aria-hidden="true">/</span>
+          <strong>{breadcrumbLabel}</strong>
+        </div>
+
+        <div className="nv-detail-toolbar-spacer" />
+
+        {isAdmin && (
+          <div className="nv-detail-admin-actions">
+            <Button type="button" variant="ghost" size="sm" onClick={handleEditMetadata}>
+              <Pencil size={14} aria-hidden="true" />
+              编辑元数据
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={handleRefreshMetadata} disabled={scraping}>
+              <RefreshCw size={14} className={scraping ? 'animate-spin' : undefined} aria-hidden="true" />
+              {scraping ? '重新刮削中' : '重新刮削'}
+            </Button>
+          </div>
+        )}
+      </div>
 
       <HeroSection
         media={media}
@@ -476,49 +503,73 @@ export default function MediaDetailPage() {
         onRefreshMetadata={handleRefreshMetadata}
         onEditMetadata={handleEditMetadata}
         onDelete={() => setShowDeleteConfirm(true)}
-        onPreprocess={() => {
-          adminApi.submitPreprocess(id!).then(() => toast.success('已提交预处理任务')).catch(() => toast.error('提交预处理失败'))
-        }}
-        onTranscode={() => {
-          adminApi.submitTranscode(id!).then(() => toast.success('已提交强制转码任务')).catch(() => toast.error('提交转码失败'))
-        }}
       />
 
-      <div className="mx-auto w-full max-w-[var(--nv-content-max)] space-y-8 px-[var(--nv-page-gutter)] pt-6">
-        <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
-        <CastGrid persons={persons} />
+      <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
+        <div className="nv-detail-body-grid">
+          <main className="nv-detail-main-column min-w-0">
+            <nav className="nv-detail-section-tabs" aria-label="详情页章节导航">
+              <a href="#detail-overview">简介</a>
+              <a href="#detail-cast">演职人员</a>
+              <a href="#detail-tech">技术规格</a>
+              <a href="#detail-subtitles">字幕</a>
+              <a href="#detail-related">相关推荐</a>
+            </nav>
 
-        {media.media_type === 'movie' && id && <CollectionCarousel mediaId={id} />}
+            <section id="detail-overview" className="nv-detail-content-section scroll-mt-24">
+              <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
+            </section>
 
-        <MediaTechSpecs
-          media={media}
-          techSpecs={techSpecs}
-          fileInfo={fileInfo}
-          library={libraryInfo}
-          playbackStats={playbackStats}
-          loading={enhancedLoading}
-          isAdmin={isAdmin}
-        />
+            <section id="detail-cast" className="nv-detail-content-section scroll-mt-24">
+              <CastGrid persons={persons} />
+            </section>
 
-        {isAdmin && (
-          <Surface className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]">
-                <Captions size={18} aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">字幕管理</h3>
-                <p className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">查看内嵌 / 外挂字幕，批量提取并导出文本字幕。</p>
-              </div>
-            </div>
-            <Button type="button" variant="secondary" onClick={() => setShowSubtitleManager(true)}>
-              <Captions size={15} aria-hidden="true" /> 管理字幕
-            </Button>
-          </Surface>
-        )}
+            {media.media_type === 'movie' && id && (
+              <section className="nv-detail-content-section">
+                <CollectionCarousel mediaId={id} />
+              </section>
+            )}
 
-        <RecommendationCarousel recommendations={recommendations} />
-        {id && <CommentSection mediaId={id} />}
+            <section id="detail-tech" className="nv-detail-content-section scroll-mt-24">
+              <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
+
+              <details className="nv-detail-tech-details">
+                <summary>查看完整技术信息</summary>
+                <div className="nv-detail-tech-details-body">
+                  <MediaTechSpecs
+                    media={media}
+                    techSpecs={techSpecs}
+                    fileInfo={fileInfo}
+                    library={libraryInfo}
+                    playbackStats={playbackStats}
+                    loading={enhancedLoading}
+                    isAdmin={isAdmin}
+                  />
+                </div>
+              </details>
+            </section>
+
+            <section id="detail-related" className="nv-detail-content-section scroll-mt-24">
+              <RecommendationCarousel recommendations={recommendations} />
+            </section>
+
+            {id && (
+              <section id="detail-comments" className="nv-detail-content-section scroll-mt-24">
+                <CommentSection mediaId={id} />
+              </section>
+            )}
+          </main>
+
+          <MediaDetailSidebar
+            media={media}
+            playInfo={playInfo}
+            techSpecs={techSpecs}
+            fileInfo={fileInfo}
+            playbackStats={playbackStats}
+            isAdmin={isAdmin}
+            onManageSubtitles={() => setShowSubtitleManager(true)}
+          />
+        </div>
       </div>
 
       {showTrailer && media.trailer_url && (
