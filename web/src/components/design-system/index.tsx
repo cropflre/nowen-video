@@ -218,10 +218,10 @@ export function EmptyState({ icon, title, description, action, className, ...pro
   return (
     <div
       {...props}
-      className={clsx('flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center', className)}
+      className={clsx('nv-empty-state flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center', className)}
     >
       {icon && (
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
+        <div className="nv-empty-state-icon mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
           {icon}
         </div>
       )}
