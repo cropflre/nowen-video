@@ -139,11 +139,18 @@ func (h *StorageHandler) TestWebDAVConnection(c *gin.Context) {
 		return
 	}
 
+	// 管理端不会回传已经保存的明文密码。测试时密码留空代表继续使用
+	// 当前已保存凭证，与 UpdateWebDAVConfig 的“空值保留原密码”语义保持一致。
+	password := req.Password
+	if password == "" {
+		password = h.cfg.Storage.WebDAV.Password
+	}
+
 	testCfg := config.WebDAVConfig{
 		Enabled:   true,
 		ServerURL: req.ServerURL,
 		Username:  req.Username,
-		Password:  req.Password,
+		Password:  password,
 		BasePath:  req.BasePath,
 		Timeout:   30,
 	}
