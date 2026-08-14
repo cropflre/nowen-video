@@ -92,9 +92,9 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
   const hasClassifications = genreList.length > 0 || (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
 
   return (
-    <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
+    <div className="nv-media-info divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
       {(extractedNum || media.mpaa || media.resolution) && (
-        <div className="flex flex-wrap items-center gap-1.5 py-3" aria-label="媒体标识">
+        <div className="nv-media-info-badges flex flex-wrap items-center gap-1.5 py-3" aria-label="媒体标识">
           {extractedNum && <Tag>{extractedNum}</Tag>}
           {media.mpaa && <Tag>{media.mpaa}</Tag>}
           {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
@@ -102,7 +102,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
       )}
 
       {hasIntro && (
-        <section className="py-5 sm:py-6">
+        <section className="nv-media-info-intro py-5 sm:py-6">
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-[var(--nv-text-primary)]">影片简介</h2>
             {media.orig_title && media.orig_title !== media.title && (
@@ -158,7 +158,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
       )}
 
       {hasClassifications && (
-        <section className="grid gap-5 py-5 sm:grid-cols-2 sm:py-6">
+        <section className="nv-media-info-classifications grid gap-5 py-5 sm:grid-cols-2 sm:py-6">
           {genreList.length > 0 && (
             <div>
               <SectionLabel>{t('mediaInfo.genres').replace(/[:：]\s*$/, '')}</SectionLabel>
@@ -184,14 +184,14 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
       )}
 
       {hasMetaTable && (
-        <section className="py-5 sm:py-6">
+        <section className="nv-media-info-metadata py-5 sm:py-6">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-[var(--nv-text-primary)]">影片详情</h2>
             <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--nv-text-tertiary)]">Metadata</span>
           </div>
 
-          <div className="grid divide-y divide-[var(--nv-border-subtle)] text-sm sm:grid-cols-2 sm:divide-y-0">
-            <div className="divide-y divide-[var(--nv-border-subtle)] sm:pr-8">
+          <div className="nv-media-info-grid grid divide-y divide-[var(--nv-border-subtle)] text-sm sm:grid-cols-2 sm:divide-y-0">
+            <div className="nv-media-info-column divide-y divide-[var(--nv-border-subtle)] sm:pr-8">
               {extractedNum && <DetailItem label={t('mediaInfo.num')}><span className="font-mono tracking-wide">{extractedNum}</span></DetailItem>}
               {directors.length > 0 && <DetailItem label={t('mediaInfo.director')}>{directors.map((director) => director.person?.name || '').filter(Boolean).join(' / ')}</DetailItem>}
               {media.runtime > 0 && <DetailItem label={t('mediaInfo.runtime')}>{formatRuntime(media.runtime)} <span className="text-xs text-[var(--nv-text-tertiary)]">({t('mediaInfo.runtimeMinutes', { minutes: media.runtime })})</span></DetailItem>}
@@ -200,7 +200,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
               {media.country && <DetailItem label={t('mediaInfo.country')}>{media.country}{media.country_code && <span className="ml-1 text-xs text-[var(--nv-text-tertiary)]">({media.country_code})</span>}</DetailItem>}
             </div>
 
-            <div className="divide-y divide-[var(--nv-border-subtle)] sm:border-l sm:border-[var(--nv-border-subtle)] sm:pl-8">
+            <div className="nv-media-info-column divide-y divide-[var(--nv-border-subtle)] sm:border-l sm:border-[var(--nv-border-subtle)] sm:pl-8">
               {media.language && <DetailItem label={t('mediaInfo.language')}>{media.language}</DetailItem>}
               {media.studio && <DetailItem label={t('mediaInfo.studio')}>{media.studio}</DetailItem>}
               {media.maker && media.maker !== media.studio && <DetailItem label={t('mediaInfo.maker')}>{media.maker}</DetailItem>}
