@@ -83,7 +83,8 @@ export default function Pagination({
           <Select
             value={pageSize}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-8 w-[4.75rem] shrink-0 py-0"
+            className="h-8 shrink-0 py-0"
+            style={{ width: '4.75rem', flex: '0 0 4.75rem' }}
             aria-label="每页数量"
           >
             {pageSizeOptions.map((size) => (
@@ -134,7 +135,8 @@ export default function Pagination({
             min={1}
             max={totalPages}
             onKeyDown={handleJump}
-            className="h-8 w-16 shrink-0 px-2 text-center"
+            className="h-8 shrink-0 px-2 text-center"
+            style={{ width: '4rem', flex: '0 0 4rem' }}
             placeholder={`${page}`}
             aria-label="跳转页码"
           />
