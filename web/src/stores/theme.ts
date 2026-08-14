@@ -37,6 +37,10 @@ export const builtinThemes: ThemeConfig[] = [
 ]
 
 const LIGHT_THEME_IDS = new Set(['pure-light', 'light'])
+const THEME_CHROME_COLOR = {
+  dark: '#070b17',
+  light: '#f4f6fb',
+} as const
 
 function resolveMode(themeId: string): 'dark' | 'light' {
   return LIGHT_THEME_IDS.has(themeId) ? 'light' : 'dark'
@@ -44,6 +48,17 @@ function resolveMode(themeId: string): 'dark' | 'light' {
 
 function canonicalThemeId(themeId: string): string {
   return resolveMode(themeId) === 'light' ? 'pure-light' : 'neon-dark'
+}
+
+function syncBrowserThemeChrome(mode: 'dark' | 'light') {
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  themeColor?.setAttribute('content', THEME_CHROME_COLOR[mode])
+
+  // Standalone/PWA browser chrome should visually follow the application mode.
+  // This does not affect the cinematic player surface itself.
+  const appleStatusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
+  appleStatusBar?.setAttribute('content', mode === 'light' ? 'default' : 'black-translucent')
+  document.documentElement.style.colorScheme = mode
 }
 
 interface ThemeStore {
@@ -123,10 +138,12 @@ export const useThemeStore = create<ThemeStore>()(
   ),
 )
 
-/** Apply only the formal light/dark mode. CSS owns all color tokens. */
+/** Apply only the formal light/dark mode. CSS owns all application color tokens. */
 export function applyTheme(themeId: string) {
   if (typeof document === 'undefined') return
-  document.documentElement.setAttribute('data-theme', resolveMode(themeId))
+  const mode = resolveMode(themeId)
+  document.documentElement.setAttribute('data-theme', mode)
+  syncBrowserThemeChrome(mode)
 }
 
 /** Initialize the formal mode before React renders to avoid a theme flash. */
