@@ -44,15 +44,28 @@ export default function MetadataSettings() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([adminApi.getTMDbConfig(), adminApi.getDoubanConfig()])
-      .then(([tmdbResponse, doubanResponse]) => {
-        if (cancelled) return
-        setTmdbConfig(tmdbResponse.data.data)
-        setDoubanConfig(doubanResponse.data.data)
-      })
-      .catch(() => {
-        // 保持 AdminPage 旧行为：配置初始化失败不阻断其他管理功能。
-      })
+
+    const load = async () => {
+      const [tmdbResult, doubanResult] = await Promise.allSettled([
+        adminApi.getTMDbConfig(),
+        adminApi.getDoubanConfig(),
+      ])
+      if (cancelled) return
+
+      if (tmdbResult.status === 'fulfilled') {
+        setTmdbConfig(tmdbResult.value.data.data)
+      } else {
+        setTmdbMessage({ type: 'error', text: 'TMDb 配置加载失败，可稍后重新进入本页重试' })
+      }
+
+      if (doubanResult.status === 'fulfilled') {
+        setDoubanConfig(doubanResult.value.data.data)
+      } else {
+        setDoubanMessage({ type: 'error', text: '豆瓣配置加载失败，可稍后重新进入本页重试' })
+      }
+    }
+
+    void load()
     return () => { cancelled = true }
   }, [])
 
