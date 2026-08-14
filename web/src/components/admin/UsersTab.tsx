@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Library, User } from '@/types'
 import { adminApi, libraryApi } from '@/api'
 import { useToast } from '@/components/Toast'
@@ -53,6 +53,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const [loadingPerm, setLoadingPerm] = useState(false)
   const [savingPerm, setSavingPerm] = useState(false)
   const [keyword, setKeyword] = useState('')
+  const permissionRequestRef = useRef(0)
 
   const [resetPwdUser, setResetPwdUser] = useState<User | null>(null)
   const [resetPwdValue, setResetPwdValue] = useState('')
@@ -74,8 +75,10 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const [permTimeLimit, setPermTimeLimit] = useState(0)
 
   useEffect(() => {
-    libraryApi.list().then((res) => setLibraries(res.data.data || [])).catch(() => {})
-  }, [])
+    libraryApi.list().then((res) => setLibraries(res.data.data || [])).catch(() => {
+      toast.error('媒体库列表加载失败，暂时无法配置用户媒体库权限')
+    })
+  }, [toast])
 
   const filteredUsers = useMemo(() => {
     if (!keyword.trim()) return users
@@ -138,8 +141,8 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         username: newUser.username.trim(),
         password: newUser.password,
         role: newUser.role,
-        nickname: newUser.nickname || undefined,
-        email: newUser.email || undefined,
+        nickname: newUser.nickname.trim() || undefined,
+        email: newUser.email.trim() || undefined,
       })
       setUsers((current) => [res.data.data, ...current])
       toast.success(`已创建用户 ${res.data.data.username}`)
@@ -152,41 +155,52 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
     }
   }
 
+  const closePermEditor = () => {
+    permissionRequestRef.current += 1
+    setEditingUser(null)
+    setLoadingPerm(false)
+  }
+
   const openPermEditor = async (userId: string) => {
+    if (savingPerm) return
     if (editingUser === userId) {
-      setEditingUser(null)
+      closePermEditor()
       return
     }
+
+    const requestId = ++permissionRequestRef.current
     setEditingUser(userId)
     setLoadingPerm(true)
     try {
       const res = await adminApi.getUserPermission(userId)
+      if (permissionRequestRef.current !== requestId) return
       const permission = res.data.data
       setPermLibraries(permission.allowed_libraries ? permission.allowed_libraries.split(',').filter(Boolean) : [])
       setPermRating(permission.max_rating_level || 'NC-17')
-      setPermTimeLimit(permission.daily_time_limit || 0)
-    } catch {
-      setPermLibraries([])
-      setPermRating('NC-17')
-      setPermTimeLimit(0)
+      setPermTimeLimit(Math.min(1440, Math.max(0, permission.daily_time_limit || 0)))
+    } catch (err: any) {
+      if (permissionRequestRef.current !== requestId) return
+      toast.error(err?.response?.data?.error || '权限加载失败，未对现有权限做任何修改')
+      setEditingUser(null)
     } finally {
-      setLoadingPerm(false)
+      if (permissionRequestRef.current === requestId) setLoadingPerm(false)
     }
   }
 
   const savePerm = async () => {
-    if (!editingUser) return
+    const userId = editingUser
+    if (!userId || loadingPerm) return
     setSavingPerm(true)
     try {
-      await adminApi.updateUserPermission(editingUser, {
+      await adminApi.updateUserPermission(userId, {
         allowed_libraries: permLibraries.join(','),
         max_rating_level: permRating,
-        daily_time_limit: permTimeLimit,
+        daily_time_limit: Math.min(1440, Math.max(0, permTimeLimit)),
       })
       toast.success('权限已保存')
-      setEditingUser(null)
-    } catch {
-      toast.error('保存权限失败')
+      if (editingUser === userId) closePermEditor()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '保存权限失败')
     } finally {
       setSavingPerm(false)
     }
@@ -299,7 +313,8 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                       <Button
                         size="sm"
                         variant={editingUser === user.id ? 'primary' : 'secondary'}
-                        onClick={() => openPermEditor(user.id)}
+                        onClick={() => void openPermEditor(user.id)}
+                        disabled={savingPerm}
                       >
                         <Shield size={14} />
                         权限
@@ -372,6 +387,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                                     size="sm"
                                     variant={selected ? 'primary' : 'secondary'}
                                     onClick={() => toggleLibrary(library.id)}
+                                    disabled={savingPerm}
                                   >
                                     {selected && <Check size={13} />}
                                     {library.name}
@@ -387,7 +403,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                         <div className="grid gap-4 md:grid-cols-2">
                           <div>
                             <label className="mb-2 block text-xs font-medium text-[var(--nv-text-secondary)]">最高可观看内容分级</label>
-                            <Select value={permRating} onChange={(event) => setPermRating(event.target.value)} className="w-full">
+                            <Select value={permRating} onChange={(event) => setPermRating(event.target.value)} className="w-full" disabled={savingPerm}>
                               {RATING_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
                               ))}
@@ -403,7 +419,11 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                               min={0}
                               max={1440}
                               value={permTimeLimit}
-                              onChange={(event) => setPermTimeLimit(parseInt(event.target.value, 10) || 0)}
+                              disabled={savingPerm}
+                              onChange={(event) => {
+                                const value = parseInt(event.target.value, 10) || 0
+                                setPermTimeLimit(Math.min(1440, Math.max(0, value)))
+                              }}
                             />
                             <p className="mt-1.5 text-xs text-[var(--nv-text-tertiary)]">
                               {permTimeLimit > 0
@@ -414,8 +434,8 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                         </div>
 
                         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
-                          <Button variant="ghost" onClick={() => setEditingUser(null)}>取消</Button>
-                          <Button variant="primary" loading={savingPerm} onClick={savePerm}>
+                          <Button variant="ghost" onClick={closePermEditor} disabled={savingPerm}>取消</Button>
+                          <Button variant="primary" loading={savingPerm} onClick={() => void savePerm()} disabled={loadingPerm}>
                             {!savingPerm && <Check size={14} />}
                             {savingPerm ? '保存中...' : '保存权限'}
                           </Button>
@@ -450,6 +470,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               onChange={(event) => setNewUser({ ...newUser, username: event.target.value })}
               placeholder="至少 3 位"
               autoFocus
+              disabled={creatingUser}
             />
           </div>
           <div>
@@ -460,6 +481,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               onChange={(event) => setNewUser({ ...newUser, password: event.target.value })}
               placeholder="至少 6 位，首次登录须修改"
               minLength={6}
+              disabled={creatingUser}
             />
           </div>
           <div>
@@ -468,6 +490,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               value={newUser.role}
               onChange={(event) => setNewUser({ ...newUser, role: event.target.value as 'user' | 'admin' })}
               className="w-full"
+              disabled={creatingUser}
             >
               <option value="user">普通用户</option>
               <option value="admin">管理员</option>
@@ -476,17 +499,17 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">昵称（可选）</label>
-              <Input value={newUser.nickname} onChange={(event) => setNewUser({ ...newUser, nickname: event.target.value })} />
+              <Input value={newUser.nickname} onChange={(event) => setNewUser({ ...newUser, nickname: event.target.value })} disabled={creatingUser} />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">邮箱（可选）</label>
-              <Input type="email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} />
+              <Input type="email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} disabled={creatingUser} />
             </div>
           </div>
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" onClick={() => setShowCreateModal(false)} disabled={creatingUser}>取消</Button>
-          <Button variant="primary" loading={creatingUser} onClick={handleCreateUser}>
+          <Button variant="primary" loading={creatingUser} onClick={() => void handleCreateUser()}>
             {!creatingUser && <Check size={14} />}
             {creatingUser ? '创建中...' : '创建'}
           </Button>
@@ -510,6 +533,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               placeholder="至少 6 位"
               minLength={6}
               autoFocus
+              disabled={resettingPwd}
             />
           </div>
           <label className="flex items-start gap-2.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3 text-xs leading-5 text-[var(--nv-text-secondary)]">
@@ -519,6 +543,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               onChange={(event) => setResetForceChange(event.target.checked)}
               className="mt-0.5 h-4 w-4"
               style={{ accentColor: 'var(--nv-action-primary)' }}
+              disabled={resettingPwd}
             />
             <span>要求用户下次登录强制修改密码（推荐）</span>
           </label>
@@ -529,7 +554,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
             variant="primary"
             loading={resettingPwd}
             disabled={resetPwdValue.length < 6}
-            onClick={handleResetPassword}
+            onClick={() => void handleResetPassword()}
           >
             {!resettingPwd && <Check size={14} />}
             {resettingPwd ? '重置中...' : '确认重置'}
