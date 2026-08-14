@@ -46,8 +46,8 @@ export default function SeriesHero({
   }
 
   return (
-    <section className="relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-      <div className="absolute inset-x-0 top-0 h-[clamp(20rem,42vw,34rem)] overflow-hidden">
+    <section className="nv-series-hero relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+      <div className="nv-series-backdrop absolute inset-x-0 top-0 h-[clamp(20rem,42vw,34rem)] overflow-hidden">
         {series.backdrop_path ? (
           <img
             key={`series-backdrop-${series.id}-${posterVersion}`}
@@ -68,9 +68,9 @@ export default function SeriesHero({
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
       </div>
 
-      <div className="relative mx-auto grid min-h-[clamp(24rem,48vw,39rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[11rem_minmax(0,1fr)] lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+      <div className="nv-series-hero-inner relative mx-auto grid min-h-[clamp(24rem,48vw,39rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[11rem_minmax(0,1fr)] lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
         <div className="hidden sm:block">
-          <div className="aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-poster)] shadow-[var(--nv-shadow-card)]">
+          <div className="nv-series-poster aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-poster)] shadow-[var(--nv-shadow-card)]">
             {series.poster_path ? (
               <img
                 key={`series-poster-${series.id}-${posterVersion}`}
@@ -87,7 +87,7 @@ export default function SeriesHero({
           </div>
         </div>
 
-        <div className="min-w-0 pb-1">
+        <div className="nv-series-hero-content min-w-0 pb-1">
           <div className="mb-3 flex flex-wrap items-center gap-1.5">
             <Tag>剧集</Tag>
             {series.rating > 0 && <Tag tone="rating">★ {series.rating.toFixed(1)}</Tag>}
