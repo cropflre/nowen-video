@@ -1,9 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
+  AlertCircle,
   CircleDot,
   Edit3,
   History,
   Loader2,
+  RefreshCw,
   Sparkles,
   Trash2,
   Upload,
@@ -51,15 +53,37 @@ function getActionMeta(action: string): ActionMeta {
 export default function OperationLogsModal({ onClose }: OperationLogsModalProps) {
   const [operationLogs, setOperationLogs] = useState<FileOperationLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const res = await fileManagerApi.getOperationLogs(50)
+      setOperationLogs(res.data.data || [])
+    } catch {
+      setOperationLogs([])
+      setLoadError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setLoadError(false)
 
     fileManagerApi.getOperationLogs(50)
       .then((res) => {
         if (active) setOperationLogs(res.data.data || [])
       })
-      .catch(() => {})
+      .catch(() => {
+        if (active) {
+          setOperationLogs([])
+          setLoadError(true)
+        }
+      })
       .finally(() => {
         if (active) setLoading(false)
       })
@@ -84,6 +108,17 @@ export default function OperationLogsModal({ onClose }: OperationLogsModalProps)
             <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-[var(--nv-text-tertiary)]">
               <Loader2 size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               <span className="text-sm">正在加载操作日志...</span>
+            </div>
+          ) : loadError ? (
+            <div className="flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center">
+              <AlertCircle size={24} className="mb-3 text-[var(--nv-status-danger)]" aria-hidden="true" />
+              <div className="text-sm font-medium text-[var(--nv-text-primary)]">操作日志加载失败</div>
+              <div className="mt-1 max-w-sm text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                当前无法读取日志记录，请检查连接后重试。
+              </div>
+              <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={() => void loadLogs()}>
+                <RefreshCw size={14} aria-hidden="true" />重试
+              </Button>
             </div>
           ) : operationLogs.length > 0 ? (
             <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
