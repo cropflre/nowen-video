@@ -85,14 +85,18 @@ export default function HistoryPage() {
   const pages = totalPages(total)
 
   return (
-    <div className="nv-section-stack">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-[-0.02em] text-[var(--nv-text-primary)]">
-            <Clock size={22} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
-            {t('history.title')}
-          </h1>
-          {total > 0 && <p className="mt-1 text-sm text-[var(--nv-text-tertiary)]">共 {total} 条观看记录</p>}
+    <div className="nv-section-stack nv-library-page nv-history-page">
+      <header className="nv-page-hero-header nv-page-hero-header--actions">
+        <div className="nv-page-title-lockup">
+          <div className="nv-page-title-icon" aria-hidden="true">
+            <Clock size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="nv-page-title">{t('history.title')}</h1>
+            <p className="nv-page-subtitle">
+              {total > 0 ? `共 ${total} 条观看记录` : '回到最近播放过的内容，并从上次位置继续观看。'}
+            </p>
+          </div>
         </div>
         {histories.length > 0 && (
           <Button variant="danger" size="sm" onClick={handleClear}>
@@ -100,12 +104,12 @@ export default function HistoryPage() {
             {t('history.clearAll')}
           </Button>
         )}
-      </div>
+      </header>
 
       {loading && (
         <div className="space-y-3" aria-busy="true" aria-label="正在加载观看历史">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="flex gap-4 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 sm:p-4">
+            <div key={index} className="nv-history-card flex gap-4 p-3 sm:p-4">
               <div className="skeleton h-20 w-32 shrink-0 rounded-[var(--nv-radius-control)] sm:w-36" />
               <div className="flex-1 space-y-2 py-1">
                 <div className="skeleton h-5 w-1/3" />
@@ -123,30 +127,30 @@ export default function HistoryPage() {
             const displayTitle = item.media?.media_type === 'episode' && item.media?.series
               ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
               : (item.media?.title || t('history.unknownMedia'))
+            const historyArtwork = item.media?.media_type === 'episode' && item.media?.series?.backdrop_path
+              ? streamApi.getSeriesBackdropUrl(item.media.series.id)
+              : streamApi.getPosterUrl(item.media_id)
 
             return (
-              <article
-                key={item.id}
-                className="group flex gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-elevated)] hover:shadow-[var(--nv-shadow-card)] sm:gap-4 sm:p-4"
-              >
+              <article key={item.id} className="nv-history-card group flex gap-3 p-3 sm:gap-4 sm:p-4">
                 <Link
                   to={`/play/${item.media_id}`}
-                  className="relative h-20 w-28 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] sm:w-36"
+                  className="nv-history-thumb relative h-20 w-28 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] sm:w-36"
                   aria-label={`继续播放 ${displayTitle}`}
                 >
                   <img
-                    src={streamApi.getPosterUrl(item.media_id)}
+                    src={historyArtwork}
                     alt=""
-                    className="h-full w-full object-cover transition-[transform,filter] duration-300 group-hover:scale-[1.025] group-hover:brightness-90"
+                    className="h-full w-full object-cover transition-[transform,filter] duration-300 group-hover:scale-[1.015] group-hover:brightness-90"
                     onError={(event) => { event.currentTarget.style.display = 'none' }}
                   />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
+                  <div className="nv-history-play-overlay absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+                    <span className="nv-history-play-button flex h-8 w-8 items-center justify-center rounded-full">
                       <Play size={14} fill="currentColor" aria-hidden="true" />
                     </span>
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/25">
-                    <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${progress}%` }} />
+                  <div className="nv-history-progress-track absolute bottom-0 left-0 right-0 h-1">
+                    <div className="nv-history-progress h-full" style={{ width: `${progress}%` }} />
                   </div>
                 </Link>
 
