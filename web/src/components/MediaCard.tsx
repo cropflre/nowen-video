@@ -64,7 +64,7 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
             onError={() => setPosterFailed(true)}
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
             {isSeries ? <Tv size={24} aria-hidden="true" /> : <Film size={24} aria-hidden="true" />}
             <span className="text-[10px]">暂无海报</span>
           </div>
