@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Film } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { modalContentVariants } from '@/lib/motion'
@@ -18,29 +18,31 @@ function getYouTubeId(url: string): string | null {
 export default function TrailerModal({ trailerUrl, onClose }: TrailerModalProps) {
   const videoId = useMemo(() => getYouTubeId(trailerUrl), [trailerUrl])
 
-  if (!videoId) {
+  useEffect(() => {
+    if (videoId) return
     window.open(trailerUrl, '_blank', 'noopener,noreferrer')
     onClose()
-    return null
-  }
+  }, [onClose, trailerUrl, videoId])
+
+  if (!videoId) return null
 
   return (
     <Modal
       onClose={onClose}
       size="video"
       ariaLabel="预告片播放器"
-      panelClassName="bg-[#05080d]"
+      panelClassName="nv-trailer-modal"
     >
       <ModalHeader
         title="预告片"
         description="YouTube Trailer"
         icon={<Film size={18} aria-hidden="true" />}
         onClose={onClose}
-        className="border-white/10 bg-black/30"
+        className="nv-trailer-modal-header"
       />
-      <ModalBody className="p-0 sm:p-0">
+      <ModalBody className="nv-trailer-modal-body p-0 sm:p-0">
         <motion.div
-          className="relative w-full overflow-hidden bg-black"
+          className="nv-trailer-stage relative w-full overflow-hidden"
           style={{ aspectRatio: '16 / 9' }}
           variants={modalContentVariants}
           initial="hidden"
