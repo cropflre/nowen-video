@@ -29,6 +29,8 @@ interface RenameModalProps {
   onSuccess: () => void
 }
 
+const AI_APPLY_CONCURRENCY = 5
+
 export default function RenameModal({ selectedCount, selectedIds, onClose, onSuccess }: RenameModalProps) {
   const toast = useToast()
   const [useAIRename, setUseAIRename] = useState(false)
@@ -49,10 +51,25 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
     return () => { active = false }
   }, [])
 
+  const invalidatePreview = () => {
+    if (renamePreviews.length > 0) setRenamePreviews([])
+  }
+
+  const handleModeChange = (nextUseAI: boolean) => {
+    if (nextUseAI === useAIRename) return
+    setUseAIRename(nextUseAI)
+    invalidatePreview()
+  }
+
+  const handleTemplateChange = (template: string) => {
+    setRenameTemplate(template)
+    invalidatePreview()
+  }
+
   const handleTargetLangChange = (lang: string) => {
     setTargetLang(lang)
     localStorage.setItem('rename_target_lang', lang)
-    if (renamePreviews.length > 0) setRenamePreviews([])
+    invalidatePreview()
   }
 
   const handlePreview = async () => {
@@ -71,15 +88,55 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
     }
   }
 
+  const executeAIPreview = async () => {
+    let renamed = 0
+    let failed = 0
+
+    for (let index = 0; index < renamePreviews.length; index += AI_APPLY_CONCURRENCY) {
+      const batch = renamePreviews.slice(index, index + AI_APPLY_CONCURRENCY)
+      const results = await Promise.allSettled(
+        batch.map((preview) => fileManagerApi.updateFile(preview.media_id, { title: preview.new_title })),
+      )
+      for (const result of results) {
+        if (result.status === 'fulfilled') renamed += 1
+        else failed += 1
+      }
+    }
+
+    if (renamed > 0) toast.success(`已应用 ${renamed} 个 AI 重命名结果`)
+    if (failed > 0) toast.error(`${failed} 个文件重命名失败，请刷新后重试`)
+    return { renamed, failed }
+  }
+
   const handleExecute = async () => {
+    if (renamePreviews.length === 0) return
+
     setRenaming(true)
     try {
+      if (useAIRename) {
+        // AI preview contains concrete titles. The legacy executeRename endpoint
+        // only accepts a template and would regenerate a different result, so
+        // apply the exact titles the user just reviewed via the existing update API.
+        const result = await executeAIPreview()
+        if (result.renamed > 0) {
+          onClose()
+          onSuccess()
+        }
+        return
+      }
+
       const res = await fileManagerApi.executeRename(Array.from(selectedIds), renameTemplate)
-      toast.success(`已重命名 ${res.data.renamed} 个文件`)
-      onClose()
-      onSuccess()
-    } catch {
-      toast.error('重命名失败')
+      const renamed = res.data.renamed || 0
+      const errors = res.data.errors || []
+      if (renamed > 0) toast.success(`已重命名 ${renamed} 个文件`)
+      else if (errors.length === 0) toast.info('当前预览没有需要执行的标题变更')
+      if (errors.length > 0) toast.error(`${errors.length} 个文件重命名失败`)
+      if (renamed > 0 || errors.length === 0) {
+        onClose()
+        onSuccess()
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || '重命名失败')
     } finally {
       setRenaming(false)
     }
@@ -90,7 +147,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
       <div className="flex min-h-0 flex-1 flex-col">
         <ModalHeader
           title="批量重命名"
-          description={`为已选择的 ${selectedCount} 个文件生成新名称，确认预览后再执行。`}
+          description={`为已选择的 ${selectedCount} 个文件生成新标题，确认预览后再执行。此操作只更新媒体记录标题，不移动磁盘文件。`}
           icon={<Wand2 size={18} aria-hidden="true" />}
           onClose={onClose}
         />
@@ -101,7 +158,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
             <div className="grid border-y border-[var(--nv-border-subtle)] sm:grid-cols-2 sm:divide-x sm:divide-[var(--nv-border-subtle)]" role="group" aria-label="重命名方式">
               <button
                 type="button"
-                onClick={() => setUseAIRename(false)}
+                onClick={() => handleModeChange(false)}
                 aria-pressed={!useAIRename}
                 disabled={renaming}
                 className={`px-3 py-3 text-left outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 ${!useAIRename ? 'bg-[var(--nv-fill-active)]' : 'hover:bg-[var(--nv-fill-hover)]'}`}
@@ -110,12 +167,12 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                   <Wand2 size={15} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
                   模板重命名
                 </div>
-                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">使用变量模板生成稳定、可预测的文件名称。</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--nv-text-tertiary)]">使用变量模板生成稳定、可预测的媒体标题。</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => setUseAIRename(true)}
+                onClick={() => handleModeChange(true)}
                 aria-pressed={useAIRename}
                 disabled={renaming}
                 className={`border-t border-[var(--nv-border-subtle)] px-3 py-3 text-left outline-none transition-colors duration-150 focus-visible:shadow-[var(--nv-shadow-focus)] disabled:cursor-not-allowed disabled:opacity-50 sm:border-t-0 ${useAIRename ? 'bg-[var(--nv-fill-active)]' : 'hover:bg-[var(--nv-fill-hover)]'}`}
@@ -136,7 +193,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                 <Input
                   type="text"
                   value={renameTemplate}
-                  onChange={(event) => setRenameTemplate(event.target.value)}
+                  onChange={(event) => handleTemplateChange(event.target.value)}
                   className="font-mono"
                   disabled={renaming}
                   aria-label="命名模板"
@@ -153,7 +210,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                         <button
                           key={`${template.pattern}-${index}`}
                           type="button"
-                          onClick={() => setRenameTemplate(template.pattern)}
+                          onClick={() => handleTemplateChange(template.pattern)}
                           disabled={renaming}
                           aria-pressed={selected}
                           title={`示例: ${template.example}`}
@@ -215,7 +272,7 @@ export default function RenameModal({ selectedCount, selectedIds, onClose, onSuc
                 </Button>
                 {renamePreviews.length > 0 && <span className="text-xs text-[var(--nv-text-tertiary)]">共 {renamePreviews.length} 条结果</span>}
               </div>
-              {renamePreviews.length > 0 && <Tag tone="success">{renamePreviews.length} 项待重命名</Tag>}
+              {renamePreviews.length > 0 && <Tag tone="success">{renamePreviews.length} 项待更新</Tag>}
             </div>
 
             {renamePreviews.length > 0 ? (
