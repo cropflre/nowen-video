@@ -40,7 +40,7 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
     <button
       type="button"
       onClick={onClick}
-      className="nv-button"
+      className="nv-button nv-search-filter-chip"
       data-variant={selected ? 'secondary' : 'ghost'}
       data-size="sm"
       aria-pressed={selected}
@@ -52,7 +52,7 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
 
 function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="nv-search-filter-row flex flex-wrap items-center gap-1.5">
       <span className="mr-1 inline-flex min-w-20 items-center gap-1.5 text-xs font-medium text-[var(--nv-text-tertiary)]">
         {icon}
         {label}
@@ -216,14 +216,18 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="nv-section-stack">
-      <div className="flex min-h-8 flex-wrap items-center gap-2">
-        <div className="min-w-0 flex-1 text-xs text-[var(--nv-text-tertiary)]" aria-live="polite">
-          {searched && (
-            <>
-              “<span className="text-[var(--nv-text-secondary)]">{query}</span>” · {total} 个结果
-            </>
-          )}
+    <div className="nv-section-stack nv-library-page nv-search-page">
+      <header className="nv-page-hero-header nv-search-page-toolbar">
+        <div className="nv-page-title-lockup">
+          <div className="nv-page-title-icon" aria-hidden="true">
+            <SearchIcon size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="nv-page-title">搜索</h1>
+            <p className="nv-page-subtitle" aria-live="polite">
+              {searched ? `“${query}” · ${total} 个结果` : '搜索标题、简介，并使用筛选快速缩小范围。'}
+            </p>
+          </div>
         </div>
         <Button
           variant={showFilters || hasActiveFilters ? 'secondary' : 'ghost'}
@@ -235,10 +239,10 @@ export default function SearchPage() {
           {t('search.filterAndSort')}
           {hasActiveFilters && <Tag tone="brand">已筛选</Tag>}
         </Button>
-      </div>
+      </header>
 
       {showFilters && (
-        <Surface className="space-y-3 p-3 sm:p-4">
+        <Surface className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
           <FilterRow icon={<Film size={13} aria-hidden="true" />} label={`${t('search.type')}:`}>
             {[
               { value: '', label: t('search.typeAll') },
@@ -289,9 +293,9 @@ export default function SearchPage() {
       )}
 
       {(aiParsed?.parsed || aiLoading) && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
+        <div className="nv-search-ai-row flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
           {aiParsed?.parsed && (
-            <Tag>
+            <Tag tone="brand">
               <Sparkles size={11} aria-hidden="true" />
               {t('search.aiUnderstand')}: “{aiParsed.query}”
               {aiParsed.genre && ` · ${aiParsed.genre}`}
