@@ -75,6 +75,7 @@ export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
   const isWidePage = WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
+  const usesLocalDetailChrome = location.pathname.startsWith('/media/')
 
   useEffect(() => {
     const mainEl = mainRef.current
@@ -113,8 +114,12 @@ export default function Layout() {
         id="main-scroll-container"
         className="nv-main-scroll relative min-w-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <ApplicationTopBar />
-        <PageContainer width={isWidePage ? 'wide' : 'content'} style={SAFE_INLINE_STYLE}>
+        {!usesLocalDetailChrome && <ApplicationTopBar />}
+        <PageContainer
+          width={isWidePage ? 'wide' : 'content'}
+          className={usesLocalDetailChrome ? 'nv-page-container--detail' : undefined}
+          style={SAFE_INLINE_STYLE}
+        >
           <Outlet />
         </PageContainer>
       </main>
