@@ -29,10 +29,10 @@ export default function FileManagerShell({
   children,
 }: FileManagerShellProps) {
   return (
-    <div className="space-y-4">
+    <div className="nv-file-manager-shell space-y-4">
       <div className="flex min-w-0 items-end gap-3 border-b border-[var(--nv-border-subtle)]">
         <nav
-          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          className="scrollbar-hide flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain scroll-smooth"
           aria-label="文件管理功能"
         >
           {tabs.map((tab) => {
