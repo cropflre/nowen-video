@@ -318,5 +318,233 @@
     linear-gradient(180deg, rgba(255,255,255,.70), rgba(238,241,249,.70));
 }
 
+/* -------------------------------------------------------------------------- */
+/* Final light-mode visual polish                                              */
+/* -------------------------------------------------------------------------- */
+
+[data-theme="light"] ::selection {
+  background: rgba(98, 83, 234, .20);
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-section-title,
+[data-theme="light"] .nv-page-title,
+[data-theme="light"] .nv-admin-title,
+[data-theme="light"] .nv-admin-section-title {
+  color: #151a2b;
+  text-shadow: none;
+}
+
+[data-theme="light"] .nv-section-header {
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .nv-button[data-variant="primary"] {
+  border-color: rgba(91, 72, 186, .22);
+  background: linear-gradient(135deg, #5b7cf4 0%, #6657ea 50%, #8c5ae9 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.30),
+    0 8px 20px rgba(82, 69, 190, .18);
+}
+
+[data-theme="light"] .nv-button[data-variant="primary"]:hover {
+  border-color: rgba(91, 72, 186, .32);
+  background: linear-gradient(135deg, #5274ed 0%, #5c4fe0 50%, #8150df 100%);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.32),
+    0 11px 25px rgba(82, 69, 190, .23);
+}
+
+[data-theme="light"] .nv-menu,
+[data-theme="light"] .nv-modal-sheet {
+  border-color: rgba(78, 67, 155, .14);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(247,248,253,.94));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.90),
+    0 22px 60px rgba(39, 35, 72, .18);
+  backdrop-filter: blur(22px) saturate(112%);
+  -webkit-backdrop-filter: blur(22px) saturate(112%);
+}
+
+[data-theme="light"] .nv-modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 16%, rgba(98,83,234,.09), transparent 34rem),
+    rgba(28, 31, 48, .28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="light"] .nv-modal-header,
+[data-theme="light"] .nv-modal-footer {
+  background: color-mix(in srgb, var(--nv-bg-surface-soft) 62%, transparent);
+}
+
+[data-theme="light"] .nv-menu-item:hover,
+[data-theme="light"] .nv-menu-item:focus-visible {
+  background: rgba(98,83,234,.075);
+  color: var(--nv-text-primary);
+}
+
+[data-theme="light"] .skeleton {
+  border-color: rgba(78, 67, 155, .07);
+  background: linear-gradient(
+    90deg,
+    #eceff6 20%,
+    #f8f9fc 50%,
+    #eceff6 80%
+  );
+  background-size: 210% 100%;
+}
+
+/* Browse should read as a deliberately composed workspace rather than loose
+   controls floating directly on a white page. */
+[data-theme="light"] .nv-browse-type-tabs {
+  border-bottom-color: rgba(78, 67, 155, .10) !important;
+}
+
+[data-theme="light"] .nv-browse-toolbar {
+  padding: 10px;
+  border: 1px solid rgba(78, 67, 155, .11);
+  border-radius: var(--nv-radius-container);
+  background: linear-gradient(180deg, rgba(255,255,255,.76), rgba(247,248,252,.66));
+  box-shadow: 0 8px 24px rgba(39, 35, 72, .055);
+}
+
+[data-theme="light"] .nv-browse-filter-panel {
+  border-color: rgba(78, 67, 155, .12) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(244,246,251,.84)) !important;
+  box-shadow: var(--nv-shadow-card) !important;
+}
+
+[data-theme="light"] .nv-browse-list {
+  overflow: hidden;
+  border: 1px solid rgba(78, 67, 155, .10) !important;
+  border-radius: var(--nv-radius-container);
+  background: rgba(255,255,255,.62);
+  box-shadow: 0 8px 24px rgba(39,35,72,.05);
+}
+
+[data-theme="light"] .nv-browse-list-item:hover {
+  background: rgba(98,83,234,.055);
+}
+
+/* Detail pages keep cinematic artwork, while controls and information surfaces
+   use softer daylight shadows so posters no longer look pasted onto the page. */
+[data-theme="light"] .nv-detail-hero .nv-detail-poster {
+  box-shadow:
+    0 20px 42px rgba(34, 31, 58, .17),
+    0 0 0 1px rgba(255,255,255,.72) !important;
+}
+
+[data-theme="light"] .nv-page-container[data-width="wide"] > .relative > button.absolute.left-4.top-4 {
+  border-color: rgba(78, 67, 155, .15) !important;
+  background: rgba(255,255,255,.88) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: 0 10px 28px rgba(39,35,72,.12) !important;
+}
+
+[data-theme="light"] .nv-media-info,
+[data-theme="light"] .nv-recommendation-section,
+[data-theme="light"] .nv-comment-section {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.82),
+    0 10px 28px rgba(39,35,72,.07);
+}
+
+[data-theme="light"] .nv-comment-composer {
+  border-color: rgba(78, 67, 155, .10);
+  background: rgba(255,255,255,.72);
+}
+
+/* Admin remains dense, but light mode benefits from a restrained card boundary
+   so long configuration pages do not collapse into one flat white sheet. */
+[data-theme="light"] .nv-admin-panel {
+  overflow: hidden;
+  border: 1px solid rgba(78, 67, 155, .10);
+  border-radius: var(--nv-radius-container);
+  background: linear-gradient(180deg, rgba(255,255,255,.76), rgba(247,248,252,.68));
+  box-shadow: 0 8px 24px rgba(39,35,72,.05);
+}
+
+[data-theme="light"] .nv-admin-panel-header {
+  padding-inline: 14px;
+  background: rgba(246,247,252,.64);
+}
+
+[data-theme="light"] .nv-admin-panel-body {
+  padding-inline: 14px;
+}
+
+[data-theme="light"] .nv-admin-tab {
+  color: var(--nv-text-secondary);
+}
+
+[data-theme="light"] .nv-admin-tab:hover {
+  border-color: rgba(78, 67, 155, .08);
+  background: rgba(98,83,234,.055);
+}
+
+[data-theme="light"] .nv-admin-tab.is-active {
+  border-color: rgba(91,72,186,.15);
+  background: linear-gradient(135deg, rgba(59,130,246,.08), rgba(98,83,234,.10));
+  color: #4135a7;
+  box-shadow: inset 0 1px rgba(255,255,255,.86);
+}
+
+[data-theme="light"] .nv-admin-status {
+  border-color: rgba(78,67,155,.10);
+  background: rgba(255,255,255,.72);
+}
+
+/* FileManager uses the same daylight workbench hierarchy without changing its
+   dense table/grid interaction model. */
+[data-theme="light"] .nv-file-manager-shell > .flex.min-w-0.items-end {
+  border-bottom-color: rgba(78, 67, 155, .11) !important;
+}
+
+[data-theme="light"] .nv-file-manager-shell table {
+  background: rgba(255,255,255,.60);
+}
+
+[data-theme="light"] .nv-file-manager-shell thead {
+  background: rgba(240,243,249,.76);
+}
+
+[data-theme="light"] .nv-file-manager-shell tbody tr:hover {
+  background: rgba(98,83,234,.050);
+}
+
+[data-theme="light"] .nv-file-manager-shell .grid.border-y {
+  overflow: hidden;
+  border: 1px solid rgba(78, 67, 155, .10) !important;
+  border-radius: var(--nv-radius-container);
+  background: rgba(255,255,255,.60);
+}
+
+[data-theme="light"] .nv-file-manager-shell .grid.border-y button:hover {
+  background: rgba(98,83,234,.055);
+}
+
+[data-theme="light"] .nv-pagination {
+  color: var(--nv-text-secondary);
+}
+
+[data-theme="light"] .nv-pagination .nv-select {
+  background: rgba(255,255,255,.80);
+}
+
+@media (max-width: 47.99rem) {
+  [data-theme="light"] .nv-browse-toolbar {
+    padding: 8px;
+  }
+
+  [data-theme="light"] .nv-admin-panel-header,
+  [data-theme="light"] .nv-admin-panel-body {
+    padding-inline: 10px;
+  }
+}
+
 /* The video player remains intentionally cinematic/dark in both application
    themes; no player selectors belong in this light-mode specialization. */
