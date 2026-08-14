@@ -1,8 +1,8 @@
 /* Cinema layout only. Visual values come from --nv-player-* semantic roles. */
 .group\/player {
-  --nv-player-side: clamp(14px, 2vw, 28px);
+  --nv-player-side: clamp(14px, 2vw, 30px);
   --nv-player-bottom: max(16px, env(safe-area-inset-bottom, 0px));
-  --nv-player-control-size: 38px;
+  --nv-player-control-size: 40px;
   isolation: isolate;
 }
 
@@ -19,12 +19,14 @@
   padding: 0 !important;
   pointer-events: none;
   background:
-    linear-gradient(to bottom, rgba(5,4,6,.58), transparent 30%),
-    linear-gradient(to top, rgba(5,4,6,.84), rgba(5,4,6,.38) 17%, transparent 38%) !important;
+    linear-gradient(to bottom, rgba(3,7,17,.72), rgba(3,7,17,.18) 25%, transparent 40%),
+    linear-gradient(to top, rgba(3,7,17,.90), rgba(3,7,17,.45) 18%, transparent 42%) !important;
   transition: opacity var(--nv-motion-normal) var(--nv-ease-standard) !important;
 }
 .group\/player .player-controls > * { pointer-events: auto; }
 
+/* Top chrome keeps the real title/mode controls, but presents them as a quiet
+   glass toolbar rather than drawing attention away from the video. */
 .group\/player .player-controls > .absolute.left-4.top-4 {
   top: max(16px, env(safe-area-inset-top, 0px)) !important;
   left: var(--nv-player-side) !important;
@@ -41,46 +43,73 @@
   white-space: nowrap;
   font-family: var(--nv-font-sans) !important;
   font-size: clamp(14px, 1.1vw, 17px) !important;
-  font-weight: 560 !important;
-  letter-spacing: 0 !important;
+  font-weight: 590 !important;
+  letter-spacing: -.01em !important;
+  color: var(--nv-player-text-primary) !important;
+  text-shadow: 0 2px 14px rgba(0,0,0,.45);
 }
 .group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
   width: var(--nv-player-control-size);
   min-width: var(--nv-player-control-size);
   height: var(--nv-player-control-size);
   padding: 0 !important;
+  border: 1px solid var(--nv-player-border) !important;
   border-radius: var(--nv-player-radius-control) !important;
   background: var(--nv-player-surface-soft) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.20) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child:hover {
+  border-color: var(--nv-player-border-hover) !important;
+  background: var(--nv-player-surface-hover) !important;
 }
 
+/* Timeline sits above the glass control dock and uses the only persistent glow
+   in the player chrome. */
 .group\/player .player-controls > .progress-bar {
   position: absolute !important;
-  left: var(--nv-player-side) !important;
-  right: var(--nv-player-side) !important;
-  bottom: calc(var(--nv-player-bottom) + 50px) !important;
+  left: calc(var(--nv-player-side) + 12px) !important;
+  right: calc(var(--nv-player-side) + 12px) !important;
+  bottom: calc(var(--nv-player-bottom) + 64px) !important;
   width: auto !important;
-  height: 3px !important;
+  height: 4px !important;
   margin: 0 !important;
   border-radius: var(--nv-radius-pill) !important;
-  background: rgba(255,255,255,.18) !important;
+  background: rgba(235,238,255,.16) !important;
   transition: height var(--nv-motion-fast) var(--nv-ease-standard) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.28);
 }
-.group\/player .player-controls > .progress-bar:hover { height: 4px !important; }
-.group\/player .progress-bar-fill { background: var(--nv-player-accent) !important; box-shadow: none !important; }
-.group\/player .progress-bar-thumb { width: 10px !important; height: 10px !important; background: var(--nv-player-text-primary) !important; box-shadow: 0 2px 8px rgba(0,0,0,.42) !important; }
+.group\/player .player-controls > .progress-bar:hover { height: 5px !important; }
+.group\/player .progress-bar-fill {
+  background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink)) !important;
+  box-shadow: 0 0 12px rgba(109,93,252,.36) !important;
+}
+.group\/player .progress-bar-thumb {
+  width: 11px !important;
+  height: 11px !important;
+  background: var(--nv-player-text-primary) !important;
+  box-shadow: 0 0 0 3px rgba(117,100,255,.16), 0 0 14px rgba(117,100,255,.56) !important;
+}
 .group\/player .progress-bar:hover .progress-bar-thumb { opacity: 1 !important; }
 
+/* Bottom dock: preserve the existing control tree and interaction handlers. */
 .group\/player .player-controls > .flex.items-center.gap-1 {
   position: absolute !important;
   left: var(--nv-player-side) !important;
   right: var(--nv-player-side) !important;
   bottom: var(--nv-player-bottom) !important;
   min-width: 0;
-  min-height: var(--nv-player-control-size);
-  gap: 1px !important;
+  min-height: 52px;
+  gap: 2px !important;
   align-items: center !important;
+  padding: 6px 9px !important;
+  border: 1px solid var(--nv-player-border) !important;
+  border-radius: 16px !important;
+  background: rgba(9,14,31,.68) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 18px 46px rgba(0,0,0,.25), 0 0 0 1px rgba(110,90,255,.035) !important;
+  backdrop-filter: blur(20px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(125%) !important;
 }
 .group\/player .player-controls > .flex.items-center.gap-1 > button,
 .group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button {
@@ -90,14 +119,42 @@
   align-items: center !important;
   justify-content: center !important;
   padding: 0 9px !important;
+  border: 1px solid transparent !important;
   border-radius: var(--nv-player-radius-control) !important;
   line-height: 1 !important;
+  color: var(--nv-player-text-secondary) !important;
+}
+.group\/player .player-controls > .flex.items-center.gap-1 > button:hover,
+.group\/player .player-controls > .flex.items-center.gap-1 > div.relative > button:hover {
+  border-color: var(--nv-player-border-subtle) !important;
+  background: var(--nv-player-accent-soft) !important;
+  color: var(--nv-player-text-primary) !important;
 }
 .group\/player .player-controls > .flex.items-center.gap-1 > div.relative,
 .group\/player .player-controls > .flex.items-center.gap-1 > .group\/vol {
   display: inline-flex;
   min-height: var(--nv-player-control-size);
   align-items: center;
+}
+
+/* The primary play/pause affordance may live at different indices depending on
+   playback mode, so select it by the Lucide glyph rather than DOM position. */
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  margin-inline: 3px;
+  border-color: rgba(151,124,255,.46) !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #6d5dfc 52%, #a855f7 100%) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.14), 0 0 26px rgba(109,93,252,.34) !important;
+}
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+.group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover {
+  transform: translateY(-1px) scale(1.015);
+  box-shadow: inset 0 1px rgba(255,255,255,.17), 0 0 32px rgba(109,93,252,.44) !important;
 }
 
 .group\/player .group\/vol input[type='range'] {
@@ -115,16 +172,31 @@
   border-radius: var(--nv-player-radius-panel) !important;
   background: var(--nv-player-surface) !important;
   box-shadow: var(--nv-player-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: blur(20px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
 }
 
 @media (max-width: 768px) {
   .group\/player { --nv-player-side: 10px; --nv-player-bottom: max(9px, env(safe-area-inset-bottom, 0px)); --nv-player-control-size: 36px; }
   .group\/player .player-controls > .absolute.left-4.top-4 { top: max(9px, env(safe-area-inset-top, 0px)) !important; }
-  .group\/player .player-controls > .progress-bar { bottom: calc(var(--nv-player-bottom) + 46px) !important; }
+  .group\/player .player-controls > .progress-bar {
+    left: calc(var(--nv-player-side) + 8px) !important;
+    right: calc(var(--nv-player-side) + 8px) !important;
+    bottom: calc(var(--nv-player-bottom) + 58px) !important;
+  }
+  .group\/player .player-controls > .flex.items-center.gap-1 {
+    min-height: 48px;
+    padding: 5px 6px !important;
+    border-radius: 14px !important;
+  }
   .group\/player .group\/vol input[type='range'] { display: none !important; }
   .group\/player .player-controls > .flex.items-center.gap-1 > span { display: none !important; }
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play),
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause) {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -132,4 +204,7 @@
   .group\/player .progress-bar,
   .group\/player .player-controls button,
   .group\/player .group\/vol input[type='range'] { transition-duration: .01ms !important; }
+
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-play):hover,
+  .group\/player .player-controls > .flex.items-center.gap-1 > button:has(svg.lucide-pause):hover { transform: none; }
 }
