@@ -35,14 +35,25 @@ interface RailLinkProps {
   icon: ReactNode
   label: string
   end?: boolean
+  meta?: ReactNode
 }
 
-function RailLink({ to, icon, label, end = false }: RailLinkProps) {
+function RailLink({ to, icon, label, end = false, meta }: RailLinkProps) {
   return (
     <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label}>
       <span className="nv-rail-icon">{icon}</span>
       <span className="nv-rail-label">{label}</span>
+      {meta !== undefined && <span className="nv-rail-meta">{meta}</span>}
     </NavLink>
+  )
+}
+
+function RailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="nv-rail-section">
+      <div className="nv-rail-section-title">{title}</div>
+      <div className="nv-rail-section-links">{children}</div>
+    </section>
   )
 }
 
@@ -89,11 +100,11 @@ export default function Sidebar(_props: SidebarProps) {
 
   const iconForType = (type: string) => {
     switch (type) {
-      case 'movie': return <Film size={18} aria-hidden="true" />
-      case 'tvshow': return <Tv size={18} aria-hidden="true" />
-      case 'mixed': return <Layers size={18} aria-hidden="true" />
-      case 'other': return <Video size={18} aria-hidden="true" />
-      default: return <FolderOpen size={18} aria-hidden="true" />
+      case 'movie': return <Film size={16} aria-hidden="true" />
+      case 'tvshow': return <Tv size={16} aria-hidden="true" />
+      case 'mixed': return <Layers size={16} aria-hidden="true" />
+      case 'other': return <Video size={16} aria-hidden="true" />
+      default: return <FolderOpen size={16} aria-hidden="true" />
     }
   }
 
@@ -102,62 +113,81 @@ export default function Sidebar(_props: SidebarProps) {
     navigate('/login')
   }
 
+  const displayName = user?.nickname?.trim() || user?.username || 'Nowen'
+  const initials = displayName.slice(0, 2).toUpperCase()
+
   return (
     <>
       <aside className="nv-rail" aria-label="主导航">
-        <div className="nv-rail-brand" aria-label="Nowen Video" title="Nowen Video">NV</div>
+        <div className="nv-rail-brand-row">
+          <div className="nv-rail-brand" aria-hidden="true">N</div>
+          <div className="nv-rail-brand-copy">
+            <strong>Nowen Video</strong>
+            <span>媒体中心</span>
+          </div>
+        </div>
 
         <nav className="nv-rail-scroll">
-          <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
-          <RailLink to="/browse" icon={<Layers size={18} aria-hidden="true" />} label="影视库" />
-          <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
-          <RailLink to="/my" icon={<UserRound size={18} aria-hidden="true" />} label="我的" />
+          <RailSection title="浏览">
+            <RailLink to="/" end icon={<Home size={16} aria-hidden="true" />} label={t('nav.home')} />
+            <RailLink to="/browse" icon={<Layers size={16} aria-hidden="true" />} label="影视库" />
+            <RailLink to="/search" icon={<Search size={16} aria-hidden="true" />} label={t('nav.search')} />
+            <RailLink to="/my" icon={<UserRound size={16} aria-hidden="true" />} label="我的" />
+          </RailSection>
 
-          {libraries.length > 0 && <div className="nv-rail-divider" aria-hidden="true" />}
-          {libraries.map((library) => (
-            <RailLink
-              key={library.id}
-              to={`/library/${library.id}`}
-              icon={iconForType(library.type)}
-              label={library.name}
-            />
-          ))}
+          {libraries.length > 0 && (
+            <RailSection title="媒体库">
+              {libraries.map((library) => (
+                <RailLink
+                  key={library.id}
+                  to={`/library/${library.id}`}
+                  icon={iconForType(library.type)}
+                  label={library.name}
+                  meta={typeof library.media_count === 'number' ? library.media_count : undefined}
+                />
+              ))}
+            </RailSection>
+          )}
 
           {user?.role === 'admin' && (
-            <>
-              <div className="nv-rail-divider" aria-hidden="true" />
-              <RailLink to="/admin" icon={<Settings size={18} aria-hidden="true" />} label="管理" />
-              {isFullProfile && <RailLink to="/files" icon={<FolderOpen size={18} aria-hidden="true" />} label="文件" />}
-              {preprocessAvailable && <RailLink to="/preprocess" icon={<Zap size={18} aria-hidden="true" />} label="预处理" />}
-            </>
+            <RailSection title="管理">
+              <RailLink to="/admin" icon={<Settings size={16} aria-hidden="true" />} label="管理中心" />
+              {isFullProfile && <RailLink to="/files" icon={<FolderOpen size={16} aria-hidden="true" />} label="文件管理" />}
+              {preprocessAvailable && <RailLink to="/preprocess" icon={<Zap size={16} aria-hidden="true" />} label="任务中心" />}
+            </RailSection>
           )}
         </nav>
 
         <div className="nv-rail-footer">
-          <LanguageSwitcher compact />
-          <button
-            type="button"
-            className="nv-rail-item"
-            onClick={toggleTheme}
-            aria-label={themeActionLabel}
-            aria-pressed={!isDarkTheme}
-            title={themeActionLabel}
-          >
-            <span className="nv-rail-icon">
-              {isDarkTheme ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
-            </span>
-            <span className="nv-rail-label">{isDarkTheme ? '浅色' : '深色'}</span>
-          </button>
-          <button
-            type="button"
-            className="nv-rail-item"
-            onClick={handleLogout}
-            aria-label={t('nav.logout')}
-            title={t('nav.logout')}
-          >
-            <span className="nv-rail-icon"><LogOut size={17} aria-hidden="true" /></span>
-            <span className="nv-rail-label">退出</span>
-          </button>
+          <div className="nv-rail-profile">
+            <div className="nv-rail-avatar" aria-hidden="true">{initials}</div>
+            <div className="nv-rail-profile-copy">
+              <strong>{displayName}</strong>
+              <span>{user?.role === 'admin' ? 'admin' : 'user'}</span>
+            </div>
+          </div>
+          <div className="nv-rail-footer-actions">
+            <LanguageSwitcher compact />
+            <button
+              type="button"
+              className="nv-rail-action"
+              onClick={toggleTheme}
+              aria-label={themeActionLabel}
+              aria-pressed={!isDarkTheme}
+              title={themeActionLabel}
+            >
+              {isDarkTheme ? <Sun size={15} aria-hidden="true" /> : <Moon size={15} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              className="nv-rail-action"
+              onClick={handleLogout}
+              aria-label={t('nav.logout')}
+              title={t('nav.logout')}
+            >
+              <LogOut size={15} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </aside>
 
