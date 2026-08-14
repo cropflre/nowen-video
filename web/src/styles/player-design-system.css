@@ -36,12 +36,57 @@
   outline-offset: 2px;
 }
 
-.group\/player button[aria-label='返回'] {
-  width: 2rem;
-  min-width: 2rem;
-  height: 2rem;
-  min-height: 2rem;
-  border-radius: var(--nv-player-radius-control);
+/* Keep every playback engine's back affordance visually identical to the
+   media-detail back button: 40px circular glass button with the same ArrowLeft
+   glyph, hover scale and contrast. The more-specific selector also overrides
+   the cinema layout's top-toolbar button rule. */
+.group\/player button[aria-label='返回'],
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child {
+  width: 2.5rem !important;
+  min-width: 2.5rem !important;
+  height: 2.5rem !important;
+  min-height: 2.5rem !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, .15) !important;
+  border-radius: 9999px !important;
+  background: rgba(0, 0, 0, .45) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .18), 0 4px 6px -4px rgba(0, 0, 0, .18) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  font-size: 0;
+  line-height: 1;
+  transition: background-color 160ms var(--nv-ease-standard), transform 160ms var(--nv-ease-standard) !important;
+}
+
+.group\/player button[aria-label='返回'] > svg,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child > svg {
+  display: none !important;
+}
+
+.group\/player button[aria-label='返回']::before,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  background: center / 18px 18px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 19-7-7 7-7'/%3E%3Cpath d='M19 12H5'/%3E%3C/svg%3E");
+}
+
+.group\/player button[aria-label='返回']:hover,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:hover {
+  background: rgba(0, 0, 0, .60) !important;
+  transform: scale(1.03) !important;
+}
+
+.group\/player button[aria-label='返回']:active,
+.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:active {
+  transform: scale(.98) !important;
 }
 
 .group\/player [role='menu'],
