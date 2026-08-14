@@ -41,8 +41,10 @@ function ApplicationTopBar() {
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname])
 
   useEffect(() => {
-    if (location.pathname === '/search') setKeyword(routeKeyword)
-  }, [location.pathname, routeKeyword])
+    // The URL is the source of truth for committed searches. Leaving /search
+    // clears an unsubmitted stale keyword; back/forward restores the route query.
+    setKeyword(routeKeyword)
+  }, [routeKeyword])
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()
