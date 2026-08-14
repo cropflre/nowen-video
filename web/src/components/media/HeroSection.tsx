@@ -54,13 +54,13 @@ const menuClassName = 'absolute left-0 top-full z-40 mt-2 min-w-[230px] overflow
 const menuItemClassName = 'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:bg-[var(--nv-bg-hover)]'
 
 function getBackdropUrl(media: Media, version?: number) {
+  // Series has a dedicated public backdrop stream. Standalone Media currently
+  // exposes poster only, while backdrop_path is a server-local filesystem path.
+  // Keep this UI refactor frontend-only and do not invent a new backend API.
   if (media.series_id) {
     return media.backdrop_path
       ? streamApi.getSeriesBackdropUrl(media.series_id, version)
       : streamApi.getSeriesPosterUrl(media.series_id, version)
-  }
-  if (media.backdrop_path) {
-    return streamApi.withTokenUrl(`/api/media/${media.id}/backdrop${version ? `?v=${version}` : ''}`)
   }
   return streamApi.getPosterUrl(media.id, version)
 }
@@ -131,8 +131,8 @@ export default function HeroSection({
               alt=""
               className={clsx(
                 'h-full w-full object-cover object-center transition-[opacity,transform] duration-500 ease-out',
-                media.backdrop_path ? '' : 'scale-110 blur-2xl',
-                imgLoaded ? (media.backdrop_path ? 'scale-100 opacity-70' : 'opacity-26') : 'scale-[1.025] opacity-0',
+                media.backdrop_path && media.series_id ? '' : 'scale-110 blur-2xl',
+                imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
               )}
               onLoad={() => setImgLoaded(true)}
               onError={(event) => { event.currentTarget.style.display = 'none' }}
