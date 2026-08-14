@@ -52,8 +52,8 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
   }
 
   return (
-    <section className="space-y-5">
-      <div className="flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="nv-series-episode-browser space-y-5">
+      <div className="nv-series-episode-toolbar flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2" role="tablist" aria-label="剧集视图">
           <Button type="button" variant={viewMode === 'season' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('season')}>季视图</Button>
           <Button type="button" variant={viewMode === 'all' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('all')}>全部剧集</Button>
@@ -82,7 +82,7 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
                     key={season.season_num}
                     type="button"
                     onClick={() => setActiveSeason(season.season_num)}
-                    className={`rounded-[var(--nv-radius-control)] border px-3.5 py-2 text-sm font-medium transition-colors ${active ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]'}`}
+                    className={`nv-season-chip rounded-[var(--nv-radius-control)] border px-3.5 py-2 text-sm font-medium transition-colors ${active ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] text-[var(--nv-text-secondary)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]'}`}
                     aria-pressed={active}
                   >
                     {seasonLabel(season.season_num)}
@@ -201,7 +201,7 @@ function EpisodeListCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-list-card group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
     >
       <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="h-16 w-28" />
 
@@ -245,7 +245,7 @@ function EpisodeSlideCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-slide-card group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
     >
       <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full" showEpisodeLabel />
 
@@ -278,7 +278,7 @@ function EpisodeThumb({
   showEpisodeLabel?: boolean
 }) {
   return (
-    <div className={`relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
+    <div className={`nv-episode-thumb relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
       {episode.poster_path ? (
         <img src={streamApi.getPosterUrl(episode.id, posterVersion)} alt={episode.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]" />
       ) : (
@@ -300,7 +300,7 @@ function EpisodeThumb({
       )}
 
       {!status.watched && status.progress > 0 && (
-        <div className="absolute inset-x-0 bottom-0 h-1 bg-black/35">
+        <div className="nv-episode-progress absolute inset-x-0 bottom-0 h-1 bg-black/35">
           <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${status.progress}%` }} />
         </div>
       )}
