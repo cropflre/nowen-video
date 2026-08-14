@@ -10,13 +10,18 @@ export default function Breadcrumb({ folderPath, onNavigate, onGoHome }: Breadcr
   if (!folderPath) return null
 
   const normalized = folderPath.replace(/\\/g, '/')
+  const isAbsoluteUnix = normalized.startsWith('/') && !normalized.startsWith('//')
+  const isUNC = normalized.startsWith('//')
+  const isWindowsDrive = /^[A-Za-z]:\//.test(normalized)
   const parts = normalized.split('/').filter(Boolean)
   const items = parts.map((name, index) => {
-    const path = parts.slice(0, index + 1).join('/')
-    return {
-      name,
-      path: normalized.startsWith('/') ? `/${path}` : path,
-    }
+    const joined = parts.slice(0, index + 1).join('/')
+    let path = joined
+    if (isUNC) path = `//${joined}`
+    else if (isAbsoluteUnix) path = `/${joined}`
+    else if (isWindowsDrive && index === 0) path = `${joined}/`
+
+    return { name, path }
   })
 
   return (
