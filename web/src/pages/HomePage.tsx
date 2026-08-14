@@ -219,7 +219,7 @@ function ContinueWatchingRow({
           </Button>
         )}
 
-        <div ref={scrollRef} className="scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
+        <div ref={scrollRef} className="nv-continue-row-track scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
           {items.map((item) => {
             const percent = formatProgress(item.position, item.duration)
             const displayTitle = item.media.media_type === 'episode' && item.media.series
@@ -358,12 +358,12 @@ function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
           </Button>
         )}
 
-        <div ref={scrollRef} className="scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
+        <div ref={scrollRef} className="nv-genre-row-track scrollbar-hide flex gap-[var(--nv-grid-gap)] overflow-x-auto scroll-smooth pb-2">
           {items.map((item) => {
             const media = item.type === 'movie' ? item.media : item.series
             if (!media) return null
             return (
-              <div key={`${item.type}-${media.id}`} className="w-[150px] flex-shrink-0 sm:w-[176px]">
+              <div key={`${item.type}-${media.id}`} className="nv-genre-card-slot w-[150px] flex-shrink-0 sm:w-[176px]">
                 {item.type === 'series' && item.series
                   ? <MediaCard series={item.series} />
                   : item.media
