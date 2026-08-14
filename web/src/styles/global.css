@@ -187,6 +187,40 @@
     margin: 0 !important;
     border-radius: 0 !important;
   }
+
+  /* iOS Safari zooms focused form controls below 16px and can leave the app
+     visually scaled after the keyboard closes. Keep phone editing stable while
+     desktop/tablet retain the compact product typography. */
+  .nv-search input,
+  .nv-input,
+  .nv-textarea,
+  .nv-select {
+    font-size: 16px !important;
+  }
+
+  /* A seven-button desktop paginator plus touch-size controls easily spans
+     multiple phone rows. Keep the four directional actions and the current
+     page visible; larger viewports retain the full numbered paginator. */
+  .nv-pagination {
+    column-gap: 6px;
+    row-gap: 10px;
+    padding-block: 18px;
+  }
+
+  .nv-pagination-total,
+  .nv-pagination-size {
+    flex: 0 0 auto;
+  }
+
+  .nv-pagination-ellipsis,
+  .nv-pagination-page:not([aria-current='page']),
+  .nv-pagination-jumper {
+    display: none !important;
+  }
+
+  .nv-pagination-page[aria-current='page'] {
+    min-width: 44px;
+  }
 }
 
 @media (hover: none) and (pointer: coarse) {
