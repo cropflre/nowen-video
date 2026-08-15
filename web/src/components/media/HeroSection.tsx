@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
@@ -48,8 +49,99 @@ interface HeroSectionProps {
   onTranscode?: () => void
 }
 
-const menuClassName = 'absolute left-0 top-full z-40 mt-2 min-w-[230px] overflow-hidden rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
+const menuClassName = 'fixed z-[calc(var(--nv-z-dropdown)+1)] min-w-[230px] max-w-[calc(100vw-24px)] max-h-[calc(100vh-24px)] overflow-y-auto rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
 const menuItemClassName = 'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:bg-[var(--nv-bg-hover)]'
+
+interface AnchoredMenuProps {
+  open: boolean
+  anchorRef: RefObject<HTMLElement>
+  ariaLabel: string
+  onClose: () => void
+  children: ReactNode
+}
+
+function AnchoredMenu({ open, anchorRef, ariaLabel, onClose, children }: AnchoredMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0, ready: false })
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition((current) => current.ready ? { ...current, ready: false } : current)
+      return
+    }
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current
+      if (!anchor) return
+
+      const rect = anchor.getBoundingClientRect()
+      const menuWidth = menuRef.current?.offsetWidth || 230
+      const menuHeight = menuRef.current?.offsetHeight || 300
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const edge = 12
+      const gap = 8
+
+      let left = rect.left
+      if (left + menuWidth > viewportWidth - edge) left = rect.right - menuWidth
+      left = Math.max(edge, Math.min(left, viewportWidth - menuWidth - edge))
+
+      let top = rect.bottom + gap
+      const roomBelow = viewportHeight - rect.bottom - edge
+      const roomAbove = rect.top - edge
+      if (roomBelow < menuHeight + gap && roomAbove > roomBelow) {
+        top = rect.top - menuHeight - gap
+      }
+      top = Math.max(edge, Math.min(top, viewportHeight - menuHeight - edge))
+
+      setPosition({ top, left, ready: true })
+    }
+
+    updatePosition()
+    const frame = window.requestAnimationFrame(updatePosition)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [anchorRef, onClose, open])
+
+  if (!open || typeof document === 'undefined') return null
+
+  return createPortal(
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-[var(--nv-z-dropdown)] cursor-default bg-transparent"
+        onClick={onClose}
+        aria-label="关闭菜单"
+      />
+      <div
+        ref={menuRef}
+        className={menuClassName}
+        role="menu"
+        aria-label={ariaLabel}
+        style={{
+          top: position.top,
+          left: position.left,
+          visibility: position.ready ? 'visible' : 'hidden',
+        }}
+      >
+        {children}
+      </div>
+    </>,
+    document.body,
+  )
+}
 
 function getBackdropUrl(media: Media, version?: number) {
   // Series has a dedicated public backdrop stream. Standalone Media currently
@@ -87,6 +179,8 @@ export default function HeroSection({
   const [posterFailed, setPosterFailed] = useState(false)
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const playlistButtonRef = useRef<HTMLButtonElement>(null)
+  const moreButtonRef = useRef<HTMLButtonElement>(null)
 
   const copyFilePath = () => {
     if (!media.file_path) return
@@ -118,247 +212,237 @@ export default function HeroSection({
     : null
 
   return (
-    <>
-      <section className="nv-detail-hero relative overflow-visible border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
+    <section className="nv-detail-hero relative overflow-visible border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
+          <img
+            src={getBackdropUrl(media, posterVersion)}
+            alt=""
+            className={clsx(
+              'h-full w-full object-cover object-center transition-[opacity,transform] duration-500 ease-out',
+              media.backdrop_path && media.series_id ? '' : 'scale-110 blur-2xl',
+              imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
+            )}
+            onLoad={() => setImgLoaded(true)}
+            onError={(event) => { event.currentTarget.style.display = 'none' }}
+          />
+        </div>
+        <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
+        <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
+        <div className="absolute inset-0 opacity-90" style={{ background: 'radial-gradient(circle at 78% 15%, var(--nv-ambient-purple-soft), transparent 32rem)' }} />
+      </div>
+
+      <div className="nv-detail-hero-inner relative mx-auto grid min-h-[clamp(28rem,48vw,42rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[12rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8">
+        <div className="hidden sm:block">
+          <div className="nv-detail-poster relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
             <img
-              src={getBackdropUrl(media, posterVersion)}
-              alt=""
-              className={clsx(
-                'h-full w-full object-cover object-center transition-[opacity,transform] duration-500 ease-out',
-                media.backdrop_path && media.series_id ? '' : 'scale-110 blur-2xl',
-                imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
-              )}
-              onLoad={() => setImgLoaded(true)}
-              onError={(event) => { event.currentTarget.style.display = 'none' }}
+              src={streamApi.getPosterUrl(media.id, posterVersion)}
+              alt={media.title}
+              className={clsx('h-full w-full object-cover', posterFailed && 'hidden')}
+              loading="eager"
+              onError={() => setPosterFailed(true)}
             />
+            {posterFailed && (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
+                <Film size={34} aria-hidden="true" />
+                <span className="text-xs">暂无海报</span>
+              </div>
+            )}
           </div>
-          <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
-          <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
-          <div className="absolute inset-0 opacity-90" style={{ background: 'radial-gradient(circle at 78% 15%, var(--nv-ambient-purple-soft), transparent 32rem)' }} />
         </div>
 
-        <div className="nv-detail-hero-inner relative mx-auto grid min-h-[clamp(28rem,48vw,42rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[12rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8">
-          <div className="hidden sm:block">
-            <div className="nv-detail-poster relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
-              <img
-                src={streamApi.getPosterUrl(media.id, posterVersion)}
-                alt={media.title}
-                className={clsx('h-full w-full object-cover', posterFailed && 'hidden')}
-                loading="eager"
-                onError={() => setPosterFailed(true)}
-              />
-              {posterFailed && (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
-                  <Film size={34} aria-hidden="true" />
-                  <span className="text-xs">暂无海报</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="min-w-0 pb-1">
-            {media.media_type === 'episode' && media.series_id && (
-              <Link
-                to={`/series/${media.series_id}`}
-                className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-muted-hover)]"
-              >
-                <span className="truncate">{media.series?.title || media.title}</span>
-                <ChevronRight size={14} aria-hidden="true" />
-                <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
-                  S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
-                </span>
-              </Link>
-            )}
-
-            <h1
-              className="max-w-[28ch] text-balance font-bold text-[var(--nv-text-primary)]"
-              style={{
-                fontSize: 'var(--nv-type-h1)',
-                lineHeight: 'var(--nv-line-tight)',
-                letterSpacing: 'var(--nv-tracking-tight)',
-              }}
+        <div className="min-w-0 pb-1">
+          {media.media_type === 'episode' && media.series_id && (
+            <Link
+              to={`/series/${media.series_id}`}
+              className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-muted-hover)]"
             >
-              {title}
-            </h1>
+              <span className="truncate">{media.series?.title || media.title}</span>
+              <ChevronRight size={14} aria-hidden="true" />
+              <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
+                S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
+              </span>
+            </Link>
+          )}
 
-            {media.orig_title && media.orig_title !== media.title && media.media_type !== 'episode' && (
-              <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">{media.orig_title}</p>
+          <h1
+            className="max-w-[28ch] text-balance font-bold text-[var(--nv-text-primary)]"
+            style={{
+              fontSize: 'var(--nv-type-h1)',
+              lineHeight: 'var(--nv-line-tight)',
+              letterSpacing: 'var(--nv-tracking-tight)',
+            }}
+          >
+            {title}
+          </h1>
+
+          {media.orig_title && media.orig_title !== media.title && media.media_type !== 'episode' && (
+            <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">{media.orig_title}</p>
+          )}
+          {media.tagline && (
+            <p className="mt-1.5 max-w-3xl text-sm italic text-[var(--nv-text-tertiary)]">{media.tagline}</p>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
+            {media.rating > 0 && (
+              <span className="inline-flex items-center gap-1 font-semibold text-[var(--nv-status-rating)]">
+                <Star size={13} fill="currentColor" aria-hidden="true" />
+                {media.rating.toFixed(1)}
+              </span>
             )}
-            {media.tagline && (
-              <p className="mt-1.5 max-w-3xl text-sm italic text-[var(--nv-text-tertiary)]">{media.tagline}</p>
-            )}
-
-            <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
-              {media.rating > 0 && (
-                <span className="inline-flex items-center gap-1 font-semibold text-[var(--nv-status-rating)]">
-                  <Star size={13} fill="currentColor" aria-hidden="true" />
-                  {media.rating.toFixed(1)}
-                </span>
-              )}
-              {media.year > 0 && <span>{media.year}</span>}
-              {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
-              {media.country && <span>{media.country}</span>}
-              {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
-                <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
-                  {genre.trim()}
-                </Link>
-              ))}
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
-              {media.video_codec && <Tag>{media.video_codec}</Tag>}
-              {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
-            </div>
-
-            {media.overview && (
-              <p className="mt-4 line-clamp-3 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]">{media.overview}</p>
-            )}
-
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
-              <Link
-                to={`/play/${media.id}`}
-                className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                data-variant="primary"
-                data-size="lg"
-                aria-label={isResume ? t('hero.continuePlay', { title: media.title }) : t('hero.playTitle', { title: media.title })}
-              >
-                <Play size={18} fill="currentColor" aria-hidden="true" />
-                {playLabel}
+            {media.year > 0 && <span>{media.year}</span>}
+            {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
+            {media.country && <span>{media.country}</span>}
+            {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
+              <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
+                {genre.trim()}
               </Link>
+            ))}
+          </div>
 
-              {media.trailer_url && onShowTrailer && (
-                <Button variant="secondary" size="lg" onClick={onShowTrailer}>
-                  <Clapperboard size={17} aria-hidden="true" />
-                  {t('media.trailer')}
-                </Button>
-              )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
+            {media.video_codec && <Tag>{media.video_codec}</Tag>}
+            {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
+          </div>
 
-              <Button
-                variant="secondary"
-                size="lg"
-                iconOnly
-                onClick={onFavorite}
-                className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
-                title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
-                aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
-                aria-pressed={isFavorited}
-              >
-                <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+          {media.overview && (
+            <p className="mt-4 line-clamp-3 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]">{media.overview}</p>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+            <Link
+              to={`/play/${media.id}`}
+              className={buttonClassName({ variant: 'primary', size: 'lg' })}
+              data-variant="primary"
+              data-size="lg"
+              aria-label={isResume ? t('hero.continuePlay', { title: media.title }) : t('hero.playTitle', { title: media.title })}
+            >
+              <Play size={18} fill="currentColor" aria-hidden="true" />
+              {playLabel}
+            </Link>
+
+            {media.trailer_url && onShowTrailer && (
+              <Button variant="secondary" size="lg" onClick={onShowTrailer}>
+                <Clapperboard size={17} aria-hidden="true" />
+                {t('media.trailer')}
               </Button>
+            )}
 
-              <div className="relative">
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  iconOnly
-                  onClick={() => {
-                    setShowPlaylistMenu((value) => !value)
-                    setShowMoreMenu(false)
-                  }}
-                  title={t('hero.addToPlaylist')}
-                  aria-label={t('hero.addToPlaylist')}
-                  aria-expanded={showPlaylistMenu}
-                  aria-haspopup="menu"
-                >
-                  <ListPlus size={19} aria-hidden="true" />
-                </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              iconOnly
+              onClick={onFavorite}
+              className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
+              title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
+              aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
+              aria-pressed={isFavorited}
+            >
+              <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+            </Button>
 
-                {showPlaylistMenu && (
-                  <div className={menuClassName} role="menu" aria-label={t('hero.playlists')}>
-                    <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.playlists')}</div>
-                    {playlists.length === 0 ? (
-                      <div className="px-3 py-3 text-sm text-[var(--nv-text-tertiary)]">{t('hero.noPlaylists')}</div>
-                    ) : playlists.map((playlist) => (
-                      <button key={playlist.id} onClick={() => handleAddToPlaylist(playlist.id)} className={menuItemClassName} role="menuitem">
-                        <ListPlus size={14} aria-hidden="true" />
-                        <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
-                        {playlist.items?.some((playlistItem) => playlistItem.media_id === media.id) && (
-                          <Check size={14} className="text-[var(--nv-action-muted-hover)]" aria-hidden="true" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <Button
+              ref={playlistButtonRef}
+              variant="secondary"
+              size="lg"
+              iconOnly
+              onClick={() => {
+                setShowPlaylistMenu((value) => !value)
+                setShowMoreMenu(false)
+              }}
+              title={t('hero.addToPlaylist')}
+              aria-label={t('hero.addToPlaylist')}
+              aria-expanded={showPlaylistMenu}
+              aria-haspopup="menu"
+            >
+              <ListPlus size={19} aria-hidden="true" />
+            </Button>
 
-              <div className="relative">
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  iconOnly
-                  onClick={() => {
-                    setShowMoreMenu((value) => !value)
-                    setShowPlaylistMenu(false)
-                  }}
-                  title={t('hero.moreActions')}
-                  aria-label={t('hero.moreActions')}
-                  aria-haspopup="menu"
-                  aria-expanded={showMoreMenu}
-                >
-                  <MoreHorizontal size={19} aria-hidden="true" />
-                </Button>
+            <AnchoredMenu
+              open={showPlaylistMenu}
+              anchorRef={playlistButtonRef}
+              ariaLabel={t('hero.playlists')}
+              onClose={() => setShowPlaylistMenu(false)}
+            >
+              <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.playlists')}</div>
+              {playlists.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-[var(--nv-text-tertiary)]">{t('hero.noPlaylists')}</div>
+              ) : playlists.map((playlist) => (
+                <button key={playlist.id} onClick={() => handleAddToPlaylist(playlist.id)} className={menuItemClassName} role="menuitem">
+                  <ListPlus size={14} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
+                  {playlist.items?.some((playlistItem) => playlistItem.media_id === media.id) && (
+                    <Check size={14} className="text-[var(--nv-action-muted-hover)]" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
+            </AnchoredMenu>
 
-                {showMoreMenu && (
-                  <div className={menuClassName} role="menu" aria-label={t('hero.moreActions')}>
-                    {isAdmin && (
-                      <>
-                        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
-                        <button onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                          <Link2 size={14} aria-hidden="true" /> {t('hero.manualMatch')}
-                        </button>
-                        <button onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                          <Unlink size={14} aria-hidden="true" /> {t('hero.unmatch')}
-                        </button>
-                        <button onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }} disabled={scraping} className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')} role="menuitem">
-                          <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} aria-hidden="true" />
-                          {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
-                        </button>
-                        <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                          <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
-                        </button>
-                        <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
-                          <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
-                        </button>
-                        <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
-                      </>
-                    )}
-                    <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                      <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(window.location.href)
-                          .then(() => toast.success(t('hero.linkCopied')))
-                          .catch(() => {})
-                        setShowMoreMenu(false)
-                      }}
-                      className={menuItemClassName}
-                      role="menuitem"
-                    >
-                      <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+            <Button
+              ref={moreButtonRef}
+              variant="secondary"
+              size="lg"
+              iconOnly
+              onClick={() => {
+                setShowMoreMenu((value) => !value)
+                setShowPlaylistMenu(false)
+              }}
+              title={t('hero.moreActions')}
+              aria-label={t('hero.moreActions')}
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
+            >
+              <MoreHorizontal size={19} aria-hidden="true" />
+            </Button>
+
+            <AnchoredMenu
+              open={showMoreMenu}
+              anchorRef={moreButtonRef}
+              ariaLabel={t('hero.moreActions')}
+              onClose={() => setShowMoreMenu(false)}
+            >
+              {isAdmin && (
+                <>
+                  <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
+                  <button onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+                    <Link2 size={14} aria-hidden="true" /> {t('hero.manualMatch')}
+                  </button>
+                  <button onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+                    <Unlink size={14} aria-hidden="true" /> {t('hero.unmatch')}
+                  </button>
+                  <button onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }} disabled={scraping} className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')} role="menuitem">
+                    <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} aria-hidden="true" />
+                    {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
+                  </button>
+                  <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+                    <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
+                  </button>
+                  <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
+                    <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
+                  </button>
+                  <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
+                </>
+              )}
+              <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+                <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href)
+                    .then(() => toast.success(t('hero.linkCopied')))
+                    .catch(() => {})
+                  setShowMoreMenu(false)
+                }}
+                className={menuItemClassName}
+                role="menuitem"
+              >
+                <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
+              </button>
+            </AnchoredMenu>
           </div>
         </div>
-      </section>
-
-      {(showPlaylistMenu || showMoreMenu) && (
-        <button
-          type="button"
-          className="fixed inset-0 z-30 cursor-default"
-          onClick={() => {
-            setShowPlaylistMenu(false)
-            setShowMoreMenu(false)
-          }}
-          aria-label="关闭菜单"
-        />
-      )}
-    </>
+      </div>
+    </section>
   )
 }
