@@ -1,0 +1,34 @@
+/* Modern Cinema desktop sidebar alignment correction.
+ *
+ * The legacy icon-rail foundation centers flex children. After the sidebar was
+ * converted to a 208px text-first layout, each section could still shrink to
+ * its content width and remain centered, making the navigation look visually
+ * off-axis against the left-aligned brand and profile areas.
+ */
+
+@media (min-width: 901px) {
+  .nv-rail-scroll {
+    align-items: stretch !important;
+  }
+
+  .nv-rail-section,
+  .nv-rail-section-links {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .nv-rail-section-title {
+    text-align: left !important;
+  }
+
+  .nv-rail > .nv-rail-scroll .nv-rail-item {
+    width: 100% !important;
+  }
+
+  .nv-rail > .nv-rail-scroll .nv-rail-label {
+    width: auto !important;
+    min-width: 0;
+    flex: 1 1 auto;
+    text-align: left !important;
+  }
+}
