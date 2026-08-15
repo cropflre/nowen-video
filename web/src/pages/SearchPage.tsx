@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { aiApi, mediaApi, personApi, streamApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import type { Media, MixedItem, Person, SearchIntent, Series } from '@/types'
 import MediaGrid from '@/components/MediaGrid'
 import Pagination from '@/components/Pagination'
-import { Button, EmptyState, Surface, Tag } from '@/components/design-system'
+import { Button, EmptyState, SearchField, Surface, Tag } from '@/components/design-system'
 import {
   ArrowUpDown,
   Calendar,
@@ -193,9 +193,6 @@ async function loadSearchUniverse(rawQuery: string): Promise<SearchUniverse> {
     }
 
     const result = {
-      // Search is presented at movie / series level. Individual episode hits
-      // stay discoverable through their series detail instead of duplicating
-      // the same show dozens of times in the mixed grid.
       media: uniqueById(media.filter((item) => item.media_type !== 'episode')),
       series: uniqueById(series),
     }
@@ -268,6 +265,7 @@ export default function SearchPage() {
   const parsedRating = Number(searchParams.get('rating') || 0)
   const minRating = Number.isFinite(parsedRating) && parsedRating >= 0 && parsedRating <= 10 ? parsedRating : 0
 
+  const [draftQuery, setDraftQuery] = useState(query)
   const [results, setResults] = useState<MixedItem[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [total, setTotal] = useState(0)
@@ -277,6 +275,7 @@ export default function SearchPage() {
   const [aiLoadingQuery, setAiLoadingQuery] = useState<string | null>(null)
   const aiRequestRef = useRef(0)
   const searchRequestRef = useRef(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const updateUrl = useCallback((changes: Record<string, string | null>, resetPage = true) => {
     setSearchParams((currentParams) => {
@@ -308,6 +307,34 @@ export default function SearchPage() {
       return params
     }, { replace: true })
   }, [setSearchParams])
+
+  useEffect(() => {
+    setDraftQuery(query)
+  }, [query])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      searchInputRef.current?.focus()
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault()
+    const nextQuery = draftQuery.trim()
+    updateUrl({ q: nextQuery || null })
+  }
+
+  const clearSearch = () => {
+    setDraftQuery('')
+    updateUrl({ q: null })
+    requestAnimationFrame(() => searchInputRef.current?.focus())
+  }
 
   const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0
   const validAiIntent = aiState?.sourceQuery === query && aiState.intent.parsed ? aiState.intent : null
@@ -413,38 +440,68 @@ export default function SearchPage() {
 
   const searched = query.length > 0
   const hasAnyResults = total > 0 || people.length > 0
-  const resultSummary = loading
-    ? '正在搜索…'
-    : searched
-      ? `“${query}” · ${total} 个影视结果${people.length > 0 && page === 1 ? ` · ${people.length} 位人物` : ''}`
-      : '搜索标题、原名、题材、剧集或演职人员，并使用筛选快速缩小范围。'
+  const draftChanged = draftQuery.trim() !== query
+  const resultSummary = draftChanged && draftQuery.trim()
+    ? `按 Enter 或点击搜索，查找“${draftQuery.trim()}”`
+    : loading
+      ? '正在搜索…'
+      : searched
+        ? `“${query}” · ${total} 个影视结果${people.length > 0 && page === 1 ? ` · ${people.length} 位人物` : ''}`
+        : '搜索标题、原名、番号、题材、剧集或演职人员。'
 
   return (
     <div className="nv-section-stack nv-library-page nv-search-page">
-      <header className="nv-page-hero-header nv-search-page-toolbar">
-        <div className="nv-page-title-lockup">
-          <div className="nv-page-title-icon" aria-hidden="true">
-            <SearchIcon size={20} />
+      <header className="nv-search-workspace-header">
+        <form className="nv-search-workspace-form" role="search" onSubmit={submitSearch}>
+          <div className="nv-search-workspace-field-wrap">
+            <SearchField
+              ref={searchInputRef}
+              value={draftQuery}
+              onChange={(event) => setDraftQuery(event.target.value)}
+              placeholder="搜索片名、原名、番号、剧集或演员"
+              aria-label="搜索媒体库"
+              enterKeyHint="search"
+              autoComplete="off"
+              wrapperClassName="nv-search-workspace-field"
+            />
+            <span className="nv-search-shortcut" aria-hidden="true">/</span>
           </div>
-          <div className="min-w-0">
-            <h1 className="nv-page-title">搜索</h1>
-            <p className="nv-page-subtitle" aria-live="polite">{resultSummary}</p>
-          </div>
+
+          {draftQuery.length > 0 && (
+            <Button type="button" variant="ghost" size="md" iconOnly onClick={clearSearch} aria-label="清空搜索">
+              <X size={16} aria-hidden="true" />
+            </Button>
+          )}
+
+          <Button type="submit" variant="primary" size="md" disabled={!draftQuery.trim()}>
+            <SearchIcon size={15} aria-hidden="true" />
+            搜索
+          </Button>
+
+          <Button
+            type="button"
+            variant={showFilters || hasActiveFilters ? 'secondary' : 'ghost'}
+            size="md"
+            onClick={() => setShowFilters((value) => !value)}
+            aria-expanded={showFilters}
+            aria-controls="search-filter-panel"
+          >
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            筛选
+            {hasActiveFilters && <span className="nv-search-filter-dot" aria-label="已启用筛选" />}
+          </Button>
+        </form>
+
+        <div className="nv-search-workspace-summary" aria-live="polite">
+          <span>{resultSummary}</span>
+          {searched && !loading && hasAnyResults && (
+            <span className="nv-search-result-context">第 {page} / {totalPages} 页</span>
+          )}
         </div>
-        <Button
-          variant={showFilters || hasActiveFilters ? 'secondary' : 'ghost'}
-          size="sm"
-          onClick={() => setShowFilters((value) => !value)}
-          aria-expanded={showFilters}
-        >
-          <SlidersHorizontal size={14} aria-hidden="true" />
-          {t('search.filterAndSort')}
-          {hasActiveFilters && <Tag tone="brand">已筛选</Tag>}
-        </Button>
       </header>
 
       {showFilters && (
-        <Surface className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
+        <Surface id="search-filter-panel" className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
           <FilterRow icon={<Film size={13} aria-hidden="true" />} label={`${t('search.type')}:`}>
             {[
               { value: '' as SearchType, label: t('search.typeAll') },
@@ -512,6 +569,15 @@ export default function SearchPage() {
         </div>
       )}
 
+      {!searched && (
+        <EmptyState
+          className="nv-search-empty-state"
+          icon={<SearchIcon size={26} aria-hidden="true" />}
+          title="搜索整个媒体库"
+          description="输入片名、原名、番号、题材或演员后按 Enter 开始搜索。任何时候按 / 都可以快速回到搜索框。"
+        />
+      )}
+
       {people.length > 0 && page === 1 && !loading && (
         <section className="nv-search-person-section" aria-labelledby="search-person-title">
           <div className="mb-3 flex items-baseline gap-2">
@@ -524,7 +590,7 @@ export default function SearchPage() {
         </section>
       )}
 
-      <MediaGrid mixedItems={results} loading={loading} />
+      {(searched || loading) && <MediaGrid mixedItems={results} loading={loading} />}
 
       {searched && !loading && !aiLoading && !hasAnyResults && (
         <EmptyState
