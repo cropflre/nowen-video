@@ -38,7 +38,8 @@ function resolveTitle(pathname: string) {
 function ApplicationTopBar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const routeKeyword = location.pathname === '/search'
+  const isSearchRoute = location.pathname === '/search'
+  const routeKeyword = isSearchRoute
     ? new URLSearchParams(location.search).get('q') ?? ''
     : ''
   const [keyword, setKeyword] = useState(routeKeyword)
@@ -58,15 +59,17 @@ function ApplicationTopBar() {
     <header className="nv-topbar pwa-safe-top" aria-label="页面工具栏" style={SAFE_INLINE_STYLE}>
       <h1 className="nv-topbar-title max-w-[20vw] sm:max-w-none">{title}</h1>
       <div className="nv-topbar-spacer" />
-      <form onSubmit={submitSearch} role="search" className="flex min-w-0 flex-1 items-center justify-end sm:flex-initial">
-        <SearchField
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="搜索影片、剧集、演员"
-          aria-label="全局搜索"
-          wrapperClassName="max-w-full"
-        />
-      </form>
+      {!isSearchRoute && (
+        <form onSubmit={submitSearch} role="search" className="flex min-w-0 flex-1 items-center justify-end sm:flex-initial">
+          <SearchField
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索影片、剧集、演员"
+            aria-label="全局搜索"
+            wrapperClassName="max-w-full"
+          />
+        </form>
+      )}
     </header>
   )
 }
