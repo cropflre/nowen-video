@@ -1,0 +1,19 @@
+/* Admin dropdown layer correction.
+ *
+ * Light mode previously clipped admin row popovers because neo-aurora-light.css
+ * set .nv-admin-panel { overflow: hidden }. Keep the rounded panel treatment,
+ * but allow action menus to escape the panel and overlap the following section.
+ */
+
+[data-theme="light"] .nv-admin-panel {
+  overflow: visible !important;
+}
+
+[data-theme="light"] .nv-admin-panel-header {
+  border-radius: calc(var(--nv-radius-container) - 1px) calc(var(--nv-radius-container) - 1px) 0 0;
+}
+
+/* Dropdowns inside library rows must stay above panels rendered later in DOM. */
+.nv-admin-panel .fixed.z-\[var\(--nv-z-dropdown\)\] + .absolute {
+  z-index: calc(var(--nv-z-dropdown) + 2) !important;
+}
