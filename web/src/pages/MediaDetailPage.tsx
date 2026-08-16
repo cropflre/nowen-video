@@ -41,6 +41,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { durations, easeSmooth } from '@/lib/motion'
 import { ChevronLeft, Pencil, RefreshCw } from 'lucide-react'
 
+type DetailTab = 'overview' | 'cast' | 'tech' | 'subtitles' | 'related'
+
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -74,6 +76,7 @@ export default function MediaDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
@@ -110,6 +113,7 @@ export default function MediaDetailPage() {
     setLoading(true)
     setPersons([])
     setWatchProgress(null)
+    setActiveTab('overview')
 
     Promise.all([
       mediaApi.detail(id),
@@ -508,29 +512,91 @@ export default function MediaDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <nav className="nv-detail-section-tabs" aria-label="详情页章节导航">
-              <a href="#detail-overview">简介</a>
-              <a href="#detail-cast">演职人员</a>
-              <a href="#detail-tech">技术规格</a>
-              <a href="#detail-subtitles">字幕</a>
-              <a href="#detail-related">相关推荐</a>
+            <nav className="nv-detail-section-tabs" aria-label="详情页章节导航" role="tablist">
+              <a
+                id="detail-tab-overview"
+                href="#detail-overview"
+                role="tab"
+                aria-selected={activeTab === 'overview'}
+                aria-controls="detail-overview"
+                onClick={(event) => { event.preventDefault(); setActiveTab('overview') }}
+              >
+                简介
+              </a>
+              <a
+                id="detail-tab-cast"
+                href="#detail-cast"
+                role="tab"
+                aria-selected={activeTab === 'cast'}
+                aria-controls="detail-cast"
+                onClick={(event) => { event.preventDefault(); setActiveTab('cast') }}
+              >
+                演职人员
+              </a>
+              <a
+                id="detail-tab-tech"
+                href="#detail-tech"
+                role="tab"
+                aria-selected={activeTab === 'tech'}
+                aria-controls="detail-tech"
+                onClick={(event) => { event.preventDefault(); setActiveTab('tech') }}
+              >
+                技术规格
+              </a>
+              <a
+                id="detail-tab-subtitles"
+                href="#detail-subtitles"
+                role="tab"
+                aria-selected={activeTab === 'subtitles'}
+                aria-controls="detail-subtitles"
+                onClick={(event) => { event.preventDefault(); setActiveTab('subtitles') }}
+              >
+                字幕
+              </a>
+              <a
+                id="detail-tab-related"
+                href="#detail-related"
+                role="tab"
+                aria-selected={activeTab === 'related'}
+                aria-controls="detail-related"
+                onClick={(event) => { event.preventDefault(); setActiveTab('related') }}
+              >
+                相关推荐
+              </a>
             </nav>
 
-            <section id="detail-overview" className="nv-detail-content-section scroll-mt-24">
+            <section
+              id="detail-overview"
+              className="nv-detail-content-section nv-detail-tab-panel"
+              role="tabpanel"
+              aria-labelledby="detail-tab-overview"
+              hidden={activeTab !== 'overview'}
+            >
               <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
+              {id && (
+                <div className="nv-detail-tab-secondary-section">
+                  <CommentSection mediaId={id} />
+                </div>
+              )}
             </section>
 
-            <section id="detail-cast" className="nv-detail-content-section scroll-mt-24">
+            <section
+              id="detail-cast"
+              className="nv-detail-content-section nv-detail-tab-panel"
+              role="tabpanel"
+              aria-labelledby="detail-tab-cast"
+              hidden={activeTab !== 'cast'}
+            >
               <CastGrid persons={persons} />
             </section>
 
-            {media.media_type === 'movie' && id && (
-              <section className="nv-detail-content-section">
-                <CollectionCarousel mediaId={id} />
-              </section>
-            )}
-
-            <section id="detail-tech" className="nv-detail-content-section scroll-mt-24">
+            <section
+              id="detail-tech"
+              className="nv-detail-content-section nv-detail-tab-panel"
+              role="tabpanel"
+              aria-labelledby="detail-tab-tech"
+              hidden={activeTab !== 'tech'}
+            >
               <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
 
               <details className="nv-detail-tech-details">
@@ -549,15 +615,39 @@ export default function MediaDetailPage() {
               </details>
             </section>
 
-            <section id="detail-related" className="nv-detail-content-section scroll-mt-24">
-              <RecommendationCarousel recommendations={recommendations} />
+            <section
+              id="detail-subtitles"
+              className="nv-detail-content-section nv-detail-tab-panel"
+              role="tabpanel"
+              aria-labelledby="detail-tab-subtitles"
+              hidden={activeTab !== 'subtitles'}
+            >
+              <div className="nv-detail-subtitle-tab">
+                <div className="nv-detail-subtitle-tab-copy">
+                  <span className="nv-detail-subtitle-tab-eyebrow">SUBTITLES</span>
+                  <h2>字幕</h2>
+                  <p>查看内嵌与外挂字幕，并管理文本字幕提取。字幕管理会继续使用现有媒体字幕数据和提取流程。</p>
+                </div>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>
+                  管理字幕
+                </Button>
+              </div>
             </section>
 
-            {id && (
-              <section id="detail-comments" className="nv-detail-content-section scroll-mt-24">
-                <CommentSection mediaId={id} />
-              </section>
-            )}
+            <section
+              id="detail-related"
+              className="nv-detail-content-section nv-detail-tab-panel"
+              role="tabpanel"
+              aria-labelledby="detail-tab-related"
+              hidden={activeTab !== 'related'}
+            >
+              {media.media_type === 'movie' && id && (
+                <div className="nv-detail-tab-secondary-section nv-detail-tab-secondary-section-first">
+                  <CollectionCarousel mediaId={id} />
+                </div>
+              )}
+              <RecommendationCarousel recommendations={recommendations} />
+            </section>
           </main>
 
           <MediaDetailSidebar
@@ -618,6 +708,7 @@ export default function MediaDetailPage() {
           editForm={editForm}
           setEditForm={setEditForm}
           currentPoster={streamApi.getPosterUrl(media.id, posterVersion)}
+          currentBackdrop={streamApi.getBackdropUrl(media.id, posterVersion)}
           hasPoster={!!media.poster_path}
           hasBackdrop={!!media.backdrop_path}
           onSave={handleEditSave}
