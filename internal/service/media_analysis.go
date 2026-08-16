@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,7 +23,15 @@ import (
 	"gorm.io/gorm"
 )
 
-const mediaHighlightTaskType = "media_highlight"
+const (
+	mediaHighlightTaskType = "media_highlight"
+	coarseWindowSeconds    = 6.0
+	refineWindowSeconds    = 10.0
+	analysisWorkers        = 2
+	thumbnailWorkers       = 2
+	maxHighlightCount      = 8
+	maxRefineCandidates    = 10
+)
 
 var (
 	ErrMediaAnalysisInProgress = errors.New("media analysis already in progress")
@@ -29,8 +39,8 @@ var (
 )
 
 // MediaAnalysisService provides local FFmpeg-only media understanding.
-// It deliberately has no AIService dependency: highlight generation must work
-// offline, without an API key and without consuming tokens.
+// Highlight generation deliberately has no AIService dependency and uses a
+// sparse two-stage scanner so a movie is not decoded from beginning to end.
 type MediaAnalysisService struct {
 	cfg           *config.Config
 	mediaRepo     *repository.MediaRepo
@@ -39,12 +49,29 @@ type MediaAnalysisService struct {
 	logger        *zap.SugaredLogger
 	wsHub         *WSHub
 	semaphore     chan struct{}
+	previewMu     sync.Mutex
 }
 
 type MediaHighlightList struct {
-	Highlights []model.VideoHighlight `json:"highlights"`
-	Stale      bool                   `json:"stale"`
-	Fingerprint string                `json:"fingerprint,omitempty"`
+	Highlights  []model.VideoHighlight `json:"highlights"`
+	Stale       bool                   `json:"stale"`
+	Fingerprint string                 `json:"fingerprint,omitempty"`
+}
+
+type sparseSample struct {
+	Start      float64
+	Center     float64
+	MeanDB     float64
+	MaxDB      float64
+	AudioScore float64
+	SceneCount int
+	Score      float64
+	Method     string
+}
+
+type sampleResult struct {
+	Sample sparseSample
+	Err    error
 }
 
 func NewMediaAnalysisService(
@@ -60,10 +87,9 @@ func NewMediaAnalysisService(
 		highlightRepo: highlightRepo,
 		taskRepo:      taskRepo,
 		logger:        logger,
-		semaphore:     make(chan struct{}, 1), // NAS-safe default: only one FFmpeg analysis at a time.
+		semaphore:     make(chan struct{}, 1), // NAS-safe default: one movie analysis at a time.
 	}
-	// A process restart cannot safely resume an FFmpeg subprocess. Make stale
-	// running rows explicit instead of leaving the UI stuck forever.
+	// FFmpeg subprocesses cannot safely resume after a process restart.
 	if err := taskRepo.MarkRunningInterrupted(mediaHighlightTaskType); err != nil {
 		logger.Warnf("mark interrupted media analysis tasks: %v", err)
 	}
@@ -171,22 +197,20 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 		}
 	}()
 
-	s.updateTask(task, "audio_analysis", 10, "")
-	segments, audioErr := s.analyzeAudio(media)
-	if audioErr != nil {
-		s.logger.Debugf("media analysis audio fallback media=%s err=%v", media.ID, audioErr)
+	// V2: sparse coarse scan. Input-level -ss seeks into short windows instead of
+	// reading the entire audio stream. A stage budget guarantees fast fallback.
+	s.updateTask(task, "coarse_analysis", 8, "")
+	coarse := s.coarseAnalyze(media, task)
+	if len(coarse) == 0 {
+		s.logger.Debugf("media analysis sparse audio unavailable media=%s, using structural fallback", media.ID)
 	}
-	s.updateTask(task, "audio_analysis", 40, "")
 
-	s.updateTask(task, "scene_analysis", 42, "")
-	scenes, sceneErr := s.detectSceneChanges(media)
-	if sceneErr != nil {
-		s.logger.Debugf("media analysis scene fallback media=%s err=%v", media.ID, sceneErr)
-	}
-	s.updateTask(task, "scene_analysis", 60, "")
+	// V2: only the strongest coarse candidates get short scene refinement.
+	s.updateTask(task, "refine_analysis", 48, "")
+	refined := s.refineAnalyze(media, task, coarse)
 
-	s.updateTask(task, "ranking", 62, "")
-	highlights := s.rankHighlights(media, segments, scenes)
+	s.updateTask(task, "ranking", 69, "")
+	highlights := s.rankSparseHighlights(media, refined)
 	if len(highlights) == 0 {
 		highlights = s.heuristicHighlights(media)
 	}
@@ -195,9 +219,9 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 		highlights[i].MediaID = media.ID
 		highlights[i].Source = "ffmpeg"
 		highlights[i].Fingerprint = fingerprint
-		highlights[i].Version = 1
+		highlights[i].Version = 2
 	}
-	s.updateTask(task, "ranking", 70, "")
+	s.updateTask(task, "ranking", 72, "")
 
 	oldHighlights, _ := s.highlightRepo.ListByMediaID(media.ID)
 	runDir := filepath.Join(s.cfg.Cache.CacheDir, "media-analysis", media.ID, task.ID)
@@ -206,24 +230,9 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 		return
 	}
 
-	for i := range highlights {
-		progressBase := 70.0 + (float64(i)/math.Max(1, float64(len(highlights))))*25.0
-		s.updateTask(task, "thumbnail", progressBase, "")
-		thumb := filepath.Join(runDir, highlights[i].ID+".webp")
-		if err := s.generateThumbnail(media.FilePath, highlights[i], thumb); err == nil {
-			highlights[i].Thumbnail = thumb
-		} else {
-			s.logger.Debugf("generate highlight thumbnail media=%s: %v", media.ID, err)
-		}
-
-		s.updateTask(task, "preview", progressBase+2, "")
-		preview := filepath.Join(runDir, highlights[i].ID+"-preview.webp")
-		if err := s.generatePreview(media.FilePath, highlights[i], preview); err == nil {
-			highlights[i].PreviewPath = preview
-		} else {
-			s.logger.Debugf("generate highlight preview media=%s: %v", media.ID, err)
-		}
-	}
+	// Only static thumbnails block task completion. Animated previews are lazily
+	// generated on first hover, removing up to N extra FFmpeg jobs from the hot path.
+	s.generateThumbnails(media, task, highlights, runDir)
 
 	s.updateTask(task, "persist", 96, "")
 	if err := s.highlightRepo.ReplaceByMediaID(media.ID, highlights); err != nil {
@@ -231,7 +240,6 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 		s.failTask(task, "persist", err)
 		return
 	}
-	// Only after DB replacement succeeds do we remove previous preview assets.
 	for _, old := range oldHighlights {
 		s.removeHighlightAssets(old)
 	}
@@ -242,15 +250,16 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 	task.Progress = 100
 	task.CompletedAt = &completed
 	resultJSON, _ := json.Marshal(map[string]any{
-		"highlight_count": len(highlights),
-		"analysis_method": "audio_scene",
-		"fingerprint": fingerprint,
+		"highlight_count":  len(highlights),
+		"analysis_method": "sparse_audio_scene_v2",
+		"fingerprint":     fingerprint,
+		"engine_version":  2,
 	})
 	task.Result = string(resultJSON)
 	task.Error = ""
 	_ = s.taskRepo.Update(task)
 	s.broadcastTask(task)
-	s.logger.Infof("local media highlights completed media=%s count=%d", media.Title, len(highlights))
+	s.logger.Infof("local media highlights v2 completed media=%s count=%d", media.Title, len(highlights))
 }
 
 func (s *MediaAnalysisService) DeleteHighlights(mediaID string) error {
@@ -269,12 +278,6 @@ func (s *MediaAnalysisService) CleanupMedia(mediaID string) {
 	if err := s.DeleteHighlights(mediaID); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.logger.Warnf("cleanup media analysis assets media=%s: %v", mediaID, err)
 	}
-	_ = s.taskRepoDeleteByMedia(mediaID)
-}
-
-func (s *MediaAnalysisService) taskRepoDeleteByMedia(mediaID string) error {
-	// Keep repository API focused; this table is legacy and cleanup is best effort.
-	return nil
 }
 
 func (s *MediaAnalysisService) HighlightAsset(mediaID, highlightID, kind string) (string, error) {
@@ -296,6 +299,70 @@ func (s *MediaAnalysisService) HighlightAsset(mediaID, highlightID, kind string)
 		return "", err
 	}
 	return path, nil
+}
+
+// EnsureHighlightPreview implements hover-lazy animated previews. It is safe for
+// repeated HTTP requests: the first request creates and persists the preview,
+// subsequent requests serve the cached file.
+func (s *MediaAnalysisService) EnsureHighlightPreview(mediaID, highlightID string) (string, error) {
+	h, err := s.highlightRepo.FindByID(highlightID)
+	if err != nil || h.MediaID != mediaID {
+		return "", gorm.ErrRecordNotFound
+	}
+	if path := existingPreviewPath(h); path != "" {
+		if _, statErr := os.Stat(path); statErr == nil {
+			return path, nil
+		}
+	}
+
+	// Duplicate hover requests for the same page should not spawn duplicate FFmpeg jobs.
+	s.previewMu.Lock()
+	defer s.previewMu.Unlock()
+
+	h, err = s.highlightRepo.FindByID(highlightID)
+	if err != nil || h.MediaID != mediaID {
+		return "", gorm.ErrRecordNotFound
+	}
+	if path := existingPreviewPath(h); path != "" {
+		if _, statErr := os.Stat(path); statErr == nil {
+			return path, nil
+		}
+	}
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	if err := s.ensureSupported(media); err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(s.cfg.Cache.CacheDir, "media-analysis", mediaID, "previews")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	output := filepath.Join(dir, highlightID+"-preview.webp")
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	if err := s.generatePreview(ctx, media.FilePath, *h, output); err != nil {
+		_ = os.Remove(output)
+		return "", err
+	}
+	h.PreviewPath = output
+	if err := s.highlightRepo.Update(h); err != nil {
+		_ = os.Remove(output)
+		return "", err
+	}
+	return output, nil
+}
+
+func existingPreviewPath(h *model.VideoHighlight) string {
+	if h == nil {
+		return ""
+	}
+	if strings.TrimSpace(h.PreviewPath) != "" {
+		return h.PreviewPath
+	}
+	return strings.TrimSpace(h.GifPath)
 }
 
 func (s *MediaAnalysisService) ensureSupported(media *model.Media) error {
@@ -320,183 +387,298 @@ func (s *MediaAnalysisService) mediaFingerprint(media *model.Media) (string, err
 	return fmt.Sprintf("%d:%d:%.3f", info.Size(), info.ModTime().UnixNano(), media.Duration), nil
 }
 
-type analysisAudioSegment struct {
-	Start float64
-	End   float64
-	RMS   float64
+func adaptiveSampleCount(duration float64) int {
+	switch {
+	case duration <= 0:
+		return 0
+	case duration < 20*60:
+		return 12
+	case duration < 60*60:
+		return 18
+	case duration < 120*60:
+		return 24
+	default:
+		return 28
+	}
 }
 
-func (s *MediaAnalysisService) analyzeAudio(media *model.Media) ([]analysisAudioSegment, error) {
-	if media.Duration <= 0 {
-		return nil, errors.New("视频时长未知")
+func sparseSampleStarts(duration, window float64, count int) []float64 {
+	if duration <= 0 || count <= 0 {
+		return nil
 	}
-	segmentDuration := 10.0
-	if media.Duration < 60 {
-		segmentDuration = 5
+	window = math.Min(window, math.Max(1, duration))
+	minCenter := math.Max(window/2, duration*0.05)
+	maxCenter := math.Min(duration-window/2, duration*0.95)
+	if maxCenter <= minCenter {
+		return []float64{math.Max(0, (duration-window)/2)}
 	}
-	samples := int(segmentDuration * 48000)
-	filter := fmt.Sprintf("aresample=48000,asetnsamples=n=%d:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-", samples)
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
-		"-hide_banner", "-nostats", "-i", media.FilePath,
-		"-af", filter,
-		"-vn", "-f", "null", "-",
+	starts := make([]float64, 0, count)
+	if count == 1 {
+		return []float64{math.Max(0, (minCenter+maxCenter)/2-window/2)}
+	}
+	step := (maxCenter - minCenter) / float64(count-1)
+	for i := 0; i < count; i++ {
+		center := minCenter + float64(i)*step
+		starts = append(starts, math.Max(0, math.Min(duration-window, center-window/2)))
+	}
+	return starts
+}
+
+func coarseStageBudget(duration float64) time.Duration {
+	count := adaptiveSampleCount(duration)
+	// Enough budget for HDD seeks while still guaranteeing a fast fallback.
+	return time.Duration(16+count/2) * time.Second
+}
+
+func refineStageBudget(candidateCount int) time.Duration {
+	return time.Duration(12+candidateCount) * time.Second
+}
+
+func (s *MediaAnalysisService) coarseAnalyze(media *model.Media, task *model.AIAnalysisTask) []sparseSample {
+	count := adaptiveSampleCount(media.Duration)
+	starts := sparseSampleStarts(media.Duration, coarseWindowSeconds, count)
+	if len(starts) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), coarseStageBudget(media.Duration))
+	defer cancel()
+	jobs := make(chan float64)
+	results := make(chan sampleResult, len(starts))
+	workers := minInt(analysisWorkers, len(starts))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for start := range jobs {
+				sample, err := s.sampleAudioWindow(ctx, media, start, coarseWindowSeconds)
+				results <- sampleResult{Sample: sample, Err: err}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, start := range starts {
+			select {
+			case jobs <- start:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() { wg.Wait(); close(results) }()
+
+	samples := make([]sparseSample, 0, len(starts))
+	completed := 0
+	for result := range results {
+		completed++
+		if result.Err == nil {
+			samples = append(samples, result.Sample)
+		} else if !errors.Is(result.Err, context.Canceled) && !errors.Is(result.Err, context.DeadlineExceeded) {
+			s.logger.Debugf("sparse audio sample failed media=%s start=%.1f: %v", media.ID, result.Sample.Start, result.Err)
+		}
+		progress := 8 + 38*(float64(completed)/float64(len(starts)))
+		s.updateTask(task, "coarse_analysis", progress, "")
+	}
+	if ctx.Err() != nil {
+		s.logger.Debugf("sparse audio stage budget reached media=%s completed=%d/%d", media.ID, completed, len(starts))
+	}
+	normalizeAudioScores(samples)
+	return samples
+}
+
+func (s *MediaAnalysisService) sampleAudioWindow(ctx context.Context, media *model.Media, start, duration float64) (sparseSample, error) {
+	sample := sparseSample{Start: start, Center: start + duration/2, MeanDB: -120, MaxDB: -120, Method: "sparse_audio"}
+	cmd := exec.CommandContext(ctx, s.cfg.App.FFmpegPath,
+		"-hide_banner", "-nostats", "-loglevel", "info",
+		"-ss", fmt.Sprintf("%.3f", start), "-i", media.FilePath,
+		"-t", fmt.Sprintf("%.2f", duration), "-vn",
+		"-af", "volumedetect", "-f", "null", "-",
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("FFmpeg 音频分析失败: %w", err)
+		if ctx.Err() != nil {
+			return sample, ctx.Err()
+		}
+		return sample, fmt.Errorf("FFmpeg 音频窗口分析失败: %w", err)
 	}
-	segments := make([]analysisAudioSegment, 0, int(media.Duration/segmentDuration)+1)
-	current := 0.0
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.Contains(strings.ToLower(line), "rms_level=") {
-			continue
-		}
-		parts := strings.Split(line, "=")
-		if len(parts) < 2 {
-			continue
-		}
-		value := strings.TrimSpace(parts[len(parts)-1])
-		if strings.EqualFold(value, "-inf") {
-			current += segmentDuration
-			continue
-		}
-		rms, parseErr := strconv.ParseFloat(value, 64)
-		if parseErr != nil {
-			continue
-		}
-		end := math.Min(media.Duration, current+segmentDuration)
-		segments = append(segments, analysisAudioSegment{Start: current, End: end, RMS: rms})
-		current += segmentDuration
-		if current >= media.Duration {
-			break
-		}
+	mean, max, ok := parseVolumeDetect(string(output))
+	if !ok {
+		return sample, errors.New("FFmpeg 音量窗口数据不足")
 	}
-	if len(segments) < 3 {
-		return nil, errors.New("FFmpeg 音频能量样本不足")
-	}
-	return segments, nil
+	sample.MeanDB = mean
+	sample.MaxDB = max
+	return sample, nil
 }
 
-func (s *MediaAnalysisService) detectSceneChanges(media *model.Media) ([]float64, error) {
-	if media.Duration <= 0 {
-		return nil, errors.New("视频时长未知")
+func parseVolumeDetect(output string) (mean, max float64, ok bool) {
+	mean, max = -120, -120
+	meanOK, maxOK := false, false
+	for _, line := range strings.Split(output, "\n") {
+		lower := strings.ToLower(line)
+		if idx := strings.Index(lower, "mean_volume:"); idx >= 0 {
+			if v, parsed := parseDBValue(line[idx+len("mean_volume:"):]); parsed {
+				mean, meanOK = v, true
+			}
+		}
+		if idx := strings.Index(lower, "max_volume:"); idx >= 0 {
+			if v, parsed := parseDBValue(line[idx+len("max_volume:"):]); parsed {
+				max, maxOK = v, true
+			}
+		}
 	}
-	// Analysis is intentionally low-resolution / low-FPS so 4K HEVC media does
-	// not require full-resolution frame analysis on a NAS.
-	filter := "scale=480:-2:flags=fast_bilinear,fps=2,select='gt(scene,0.30)',showinfo"
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
-		"-hide_banner", "-nostats", "-i", media.FilePath,
-		"-vf", filter,
+	return mean, max, meanOK && maxOK
+}
+
+func parseDBValue(value string) (float64, bool) {
+	field := strings.Fields(strings.TrimSpace(value))
+	if len(field) == 0 || strings.EqualFold(field[0], "-inf") {
+		return -120, false
+	}
+	v, err := strconv.ParseFloat(field[0], 64)
+	return v, err == nil
+}
+
+func normalizeAudioScores(samples []sparseSample) {
+	if len(samples) == 0 {
+		return
+	}
+	minMean, maxMean := samples[0].MeanDB, samples[0].MeanDB
+	minPeak, maxPeak := samples[0].MaxDB, samples[0].MaxDB
+	for _, sample := range samples[1:] {
+		minMean = math.Min(minMean, sample.MeanDB)
+		maxMean = math.Max(maxMean, sample.MeanDB)
+		minPeak = math.Min(minPeak, sample.MaxDB)
+		maxPeak = math.Max(maxPeak, sample.MaxDB)
+	}
+	for i := range samples {
+		meanScore := normalizeRange(samples[i].MeanDB, minMean, maxMean)
+		peakScore := normalizeRange(samples[i].MaxDB, minPeak, maxPeak)
+		samples[i].AudioScore = 5.5 + 4.5*(meanScore*0.72+peakScore*0.28)
+		samples[i].Score = samples[i].AudioScore
+	}
+}
+
+func normalizeRange(value, minValue, maxValue float64) float64 {
+	if maxValue-minValue < 0.001 {
+		return 0.5
+	}
+	return math.Max(0, math.Min(1, (value-minValue)/(maxValue-minValue)))
+}
+
+func (s *MediaAnalysisService) refineAnalyze(media *model.Media, task *model.AIAnalysisTask, coarse []sparseSample) []sparseSample {
+	if len(coarse) == 0 {
+		s.updateTask(task, "refine_analysis", 68, "")
+		return nil
+	}
+	ordered := append([]sparseSample(nil), coarse...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].AudioScore > ordered[j].AudioScore })
+	if len(ordered) > maxRefineCandidates {
+		ordered = ordered[:maxRefineCandidates]
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), refineStageBudget(len(ordered)))
+	defer cancel()
+	jobs := make(chan sparseSample)
+	results := make(chan sampleResult, len(ordered))
+	workers := minInt(analysisWorkers, len(ordered))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for sample := range jobs {
+				count, err := s.sampleSceneWindow(ctx, media, sample.Center, refineWindowSeconds)
+				if err == nil {
+					sample.SceneCount = count
+					sceneScore := math.Min(10, 5+float64(count)*0.85)
+					sample.Score = sample.AudioScore*0.75 + sceneScore*0.25
+					sample.Method = "sparse_audio_scene"
+				}
+				results <- sampleResult{Sample: sample, Err: err}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, sample := range ordered {
+			select {
+			case jobs <- sample:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() { wg.Wait(); close(results) }()
+
+	refinedByStart := make(map[string]sparseSample, len(ordered))
+	completed := 0
+	for result := range results {
+		completed++
+		// Scene refinement is optional: retain the audio candidate on any failure.
+		refinedByStart[fmt.Sprintf("%.3f", result.Sample.Start)] = result.Sample
+		if result.Err != nil && !errors.Is(result.Err, context.Canceled) && !errors.Is(result.Err, context.DeadlineExceeded) {
+			s.logger.Debugf("sparse scene sample failed media=%s center=%.1f: %v", media.ID, result.Sample.Center, result.Err)
+		}
+		progress := 48 + 20*(float64(completed)/float64(len(ordered)))
+		s.updateTask(task, "refine_analysis", progress, "")
+	}
+	if ctx.Err() != nil {
+		s.logger.Debugf("sparse scene stage budget reached media=%s completed=%d/%d", media.ID, completed, len(ordered))
+	}
+
+	// Return every coarse sample so spacing/ranking can still fill up to eight
+	// highlights even when only the strongest candidates were scene-refined.
+	out := append([]sparseSample(nil), coarse...)
+	for i := range out {
+		if refined, ok := refinedByStart[fmt.Sprintf("%.3f", out[i].Start)]; ok {
+			out[i] = refined
+		}
+	}
+	return out
+}
+
+func (s *MediaAnalysisService) sampleSceneWindow(ctx context.Context, media *model.Media, center, duration float64) (int, error) {
+	start := math.Max(0, center-duration/2)
+	if start+duration > media.Duration {
+		start = math.Max(0, media.Duration-duration)
+	}
+	filter := "scale=320:-2:flags=fast_bilinear,fps=1,select='gt(scene,0.30)',showinfo"
+	cmd := exec.CommandContext(ctx, s.cfg.App.FFmpegPath,
+		"-hide_banner", "-nostats",
+		"-ss", fmt.Sprintf("%.3f", start), "-i", media.FilePath,
+		"-t", fmt.Sprintf("%.2f", duration), "-vf", filter,
 		"-an", "-vsync", "vfr", "-f", "null", "-",
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("FFmpeg 场景检测失败: %w", err)
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		return 0, fmt.Errorf("FFmpeg 场景窗口分析失败: %w", err)
 	}
-	scenes := make([]float64, 0, 128)
+	count := 0
 	for _, line := range strings.Split(string(output), "\n") {
-		idx := strings.Index(line, "pts_time:")
-		if idx < 0 {
-			continue
-		}
-		value := strings.Fields(line[idx+len("pts_time:"):])
-		if len(value) == 0 {
-			continue
-		}
-		if t, parseErr := strconv.ParseFloat(value[0], 64); parseErr == nil {
-			scenes = append(scenes, t)
+		if strings.Contains(line, "pts_time:") {
+			count++
 		}
 	}
-	return scenes, nil
+	return count, nil
 }
 
-type highlightCandidate struct {
-	Start  float64
-	Score  float64
-	Method string
-}
-
-func (s *MediaAnalysisService) rankHighlights(media *model.Media, audio []analysisAudioSegment, scenes []float64) []model.VideoHighlight {
-	duration := media.Duration
-	if duration <= 0 {
+func (s *MediaAnalysisService) rankSparseHighlights(media *model.Media, samples []sparseSample) []model.VideoHighlight {
+	if media.Duration <= 0 || len(samples) == 0 {
 		return nil
 	}
-	candidates := make([]highlightCandidate, 0, len(audio)+len(scenes))
+	ordered := append([]sparseSample(nil), samples...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Score > ordered[j].Score })
 
-	if len(audio) >= 3 {
-		var sum, sum2 float64
-		valid := 0
-		for _, seg := range audio {
-			if seg.RMS <= -100 {
-				continue
-			}
-			sum += seg.RMS
-			sum2 += seg.RMS * seg.RMS
-			valid++
-		}
-		if valid > 0 {
-			mean := sum / float64(valid)
-			variance := sum2/float64(valid) - mean*mean
-			std := 0.0
-			if variance > 0 {
-				std = math.Sqrt(variance)
-			}
-			threshold := mean + 0.45*std
-			for _, seg := range audio {
-				if seg.RMS <= threshold || seg.RMS <= -100 {
-					continue
-				}
-				audioScore := 6.0
-				if std > 0 {
-					audioScore = math.Min(10, 6+4*((seg.RMS-mean)/(3*std)))
-				}
-				sceneCount := 0
-				center := (seg.Start + seg.End) / 2
-				for _, t := range scenes {
-					if math.Abs(t-center) <= 30 {
-						sceneCount++
-					}
-				}
-				sceneScore := math.Min(10, 5+float64(sceneCount)*0.65)
-				finalScore := audioScore*0.7 + sceneScore*0.3
-				candidates = append(candidates, highlightCandidate{Start: seg.Start, Score: finalScore, Method: "audio_scene"})
-			}
-		}
-	}
-
-	if len(candidates) < 3 && len(scenes) > 0 {
-		for _, center := range scenes {
-			count := 0
-			for _, other := range scenes {
-				if math.Abs(other-center) <= 30 {
-					count++
-				}
-			}
-			if count >= 2 {
-				candidates = append(candidates, highlightCandidate{Start: center, Score: math.Min(9.5, 6+float64(count)*0.45), Method: "scene"})
-			}
-		}
-	}
-
-	// Avoid generic opening/credits regions and rank strongest candidates first.
-	minTime := duration * 0.05
-	maxTime := duration * 0.95
-	filtered := candidates[:0]
-	for _, c := range candidates {
-		if duration >= 300 && (c.Start < minTime || c.Start > maxTime) {
-			continue
-		}
-		filtered = append(filtered, c)
-	}
-	candidates = filtered
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Score > candidates[j].Score })
-
-	selected := make([]highlightCandidate, 0, 8)
-	for _, c := range candidates {
+	selected := make([]sparseSample, 0, maxHighlightCount)
+	for _, candidate := range ordered {
 		tooClose := false
 		for _, existing := range selected {
-			if math.Abs(existing.Start-c.Start) < 45 {
+			if math.Abs(existing.Center-candidate.Center) < 45 {
 				tooClose = true
 				break
 			}
@@ -504,25 +686,31 @@ func (s *MediaAnalysisService) rankHighlights(media *model.Media, audio []analys
 		if tooClose {
 			continue
 		}
-		selected = append(selected, c)
-		if len(selected) >= 8 {
+		selected = append(selected, candidate)
+		if len(selected) >= maxHighlightCount {
 			break
 		}
 	}
-	sort.Slice(selected, func(i, j int) bool { return selected[i].Start < selected[j].Start })
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Center < selected[j].Center })
 
 	result := make([]model.VideoHighlight, 0, len(selected))
-	for i, c := range selected {
-		start := math.Max(0, c.Start-5)
-		end := math.Min(duration, start+30)
-		title := highlightTitle(c.Start, duration, c.Score, i)
+	for i, candidate := range selected {
+		start := math.Max(0, candidate.Center-10)
+		end := math.Min(media.Duration, start+30)
+		if end-start < 15 {
+			start = math.Max(0, end-30)
+		}
+		method := candidate.Method
+		if method == "" {
+			method = "sparse_audio"
+		}
 		result = append(result, model.VideoHighlight{
-			Title:          title,
+			Title:          highlightTitle(candidate.Center, media.Duration, candidate.Score, i),
 			StartTime:      start,
 			EndTime:        end,
-			Score:          math.Round(c.Score*10) / 10,
+			Score:          math.Round(candidate.Score*10) / 10,
 			Tags:           media.Genres,
-			AnalysisMethod: c.Method,
+			AnalysisMethod: method,
 		})
 	}
 	return result
@@ -565,13 +753,13 @@ func (s *MediaAnalysisService) heuristicHighlights(media *model.Media) []model.V
 		{0.75, "第二幕转折", 8.5},
 	}
 	out := make([]model.VideoHighlight, 0, len(points))
-	for _, p := range points {
-		start := math.Max(0, media.Duration*p.ratio-15)
+	for _, point := range points {
+		start := math.Max(0, media.Duration*point.ratio-15)
 		out = append(out, model.VideoHighlight{
-			Title:          p.title,
+			Title:          point.title,
 			StartTime:      start,
 			EndTime:        math.Min(media.Duration, start+30),
-			Score:          p.score,
+			Score:          point.score,
 			Tags:           media.Genres,
 			AnalysisMethod: "heuristic",
 		})
@@ -579,31 +767,87 @@ func (s *MediaAnalysisService) heuristicHighlights(media *model.Media) []model.V
 	return out
 }
 
-func (s *MediaAnalysisService) generateThumbnail(filePath string, highlight model.VideoHighlight, output string) error {
+func (s *MediaAnalysisService) generateThumbnails(media *model.Media, task *model.AIAnalysisTask, highlights []model.VideoHighlight, runDir string) {
+	if len(highlights) == 0 {
+		s.updateTask(task, "thumbnail", 94, "")
+		return
+	}
+	type thumbnailJob struct{ Index int }
+	type thumbnailResult struct {
+		Index int
+		Path  string
+		Err   error
+	}
+	jobs := make(chan thumbnailJob)
+	results := make(chan thumbnailResult, len(highlights))
+	workers := minInt(thumbnailWorkers, len(highlights))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				path := filepath.Join(runDir, highlights[job.Index].ID+".webp")
+				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				err := s.generateThumbnail(ctx, media.FilePath, highlights[job.Index], path)
+				cancel()
+				results <- thumbnailResult{Index: job.Index, Path: path, Err: err}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for i := range highlights {
+			jobs <- thumbnailJob{Index: i}
+		}
+	}()
+	go func() { wg.Wait(); close(results) }()
+
+	completed := 0
+	for result := range results {
+		completed++
+		if result.Err == nil {
+			highlights[result.Index].Thumbnail = result.Path
+		} else {
+			s.logger.Debugf("generate highlight thumbnail media=%s: %v", media.ID, result.Err)
+			_ = os.Remove(result.Path)
+		}
+		progress := 72 + 22*(float64(completed)/float64(len(highlights)))
+		s.updateTask(task, "thumbnail", progress, "")
+	}
+}
+
+func (s *MediaAnalysisService) generateThumbnail(ctx context.Context, filePath string, highlight model.VideoHighlight, output string) error {
 	middle := (highlight.StartTime + highlight.EndTime) / 2
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	cmd := exec.CommandContext(ctx, s.cfg.App.FFmpegPath,
 		"-hide_banner", "-loglevel", "error",
 		"-ss", fmt.Sprintf("%.3f", middle), "-i", filePath,
-		"-frames:v", "1", "-vf", "scale=640:-2:flags=lanczos",
-		"-c:v", "libwebp", "-quality", "78", "-y", output,
+		"-frames:v", "1", "-vf", "scale=640:-2:flags=fast_bilinear",
+		"-c:v", "libwebp", "-quality", "76", "-y", output,
 	)
 	if data, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("thumbnail ffmpeg: %w: %s", err, strings.TrimSpace(string(data)))
 	}
 	return nil
 }
 
-func (s *MediaAnalysisService) generatePreview(filePath string, highlight model.VideoHighlight, output string) error {
-	duration := math.Min(3, math.Max(1, highlight.EndTime-highlight.StartTime))
+func (s *MediaAnalysisService) generatePreview(ctx context.Context, filePath string, highlight model.VideoHighlight, output string) error {
+	duration := math.Min(2.5, math.Max(1, highlight.EndTime-highlight.StartTime))
 	start := highlight.StartTime + math.Max(0, (highlight.EndTime-highlight.StartTime-duration)/2)
-	cmd := exec.Command(s.cfg.App.FFmpegPath,
+	cmd := exec.CommandContext(ctx, s.cfg.App.FFmpegPath,
 		"-hide_banner", "-loglevel", "error",
 		"-ss", fmt.Sprintf("%.3f", start), "-i", filePath,
 		"-t", fmt.Sprintf("%.2f", duration), "-an",
-		"-vf", "fps=6,scale=480:-2:flags=lanczos",
-		"-loop", "0", "-c:v", "libwebp", "-quality", "58", "-y", output,
+		"-vf", "fps=5,scale=420:-2:flags=fast_bilinear",
+		"-loop", "0", "-c:v", "libwebp", "-quality", "54", "-y", output,
 	)
 	if data, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("preview ffmpeg: %w: %s", err, strings.TrimSpace(string(data)))
 	}
 	return nil
@@ -657,4 +901,11 @@ func (s *MediaAnalysisService) broadcastTask(task *model.AIAnalysisTask) {
 		"progress": task.Progress,
 		"error": task.Error,
 	})
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
