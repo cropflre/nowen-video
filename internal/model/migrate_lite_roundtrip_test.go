@@ -355,7 +355,7 @@ func TestSQLiteFullLiteFullRoundTripPreservesDataAndBackup(t *testing.T) {
 	closeProfileDB(t, restoredDB)
 }
 
-func TestFreshLiteMigrationDoesNotCreateFullOnlyTables(t *testing.T) {
+func TestFreshLiteMigrationCreatesLocalAnalysisButNotFullOnlyTables(t *testing.T) {
 	db := openProfileDB(t, filepath.Join(t.TempDir(), "fresh-lite.db"))
 	if err := migrateLiteProfile(db); err != nil {
 		t.Fatal(err)
@@ -365,9 +365,6 @@ func TestFreshLiteMigrationDoesNotCreateFullOnlyTables(t *testing.T) {
 	for name, table := range map[string]any{
 		"preprocess tasks":          &PreprocessTask{},
 		"subtitle preprocess tasks": &SubtitlePreprocessTask{},
-		"video chapters":            &VideoChapter{},
-		"video highlights":          &VideoHighlight{},
-		"AI analysis tasks":         &AIAnalysisTask{},
 		"AI cache":                  &AICacheEntry{},
 	} {
 		if db.Migrator().HasTable(table) {
@@ -376,12 +373,16 @@ func TestFreshLiteMigrationDoesNotCreateFullOnlyTables(t *testing.T) {
 	}
 
 	for name, table := range map[string]any{
-		"users":                &User{},
-		"libraries":            &Library{},
-		"media":                &Media{},
-		"transcode jobs":       &TranscodeJobRecord{},
-		"storage reservations": &TranscodeStorageReservationRecord{},
-		"storage incidents":    &TranscodeStorageIncidentRecord{},
+		"users":                 &User{},
+		"libraries":             &Library{},
+		"media":                 &Media{},
+		"video chapters":        &VideoChapter{},
+		"video highlights":      &VideoHighlight{},
+		"analysis tasks":        &AIAnalysisTask{},
+		"cover candidates":      &CoverCandidate{},
+		"transcode jobs":        &TranscodeJobRecord{},
+		"storage reservations":  &TranscodeStorageReservationRecord{},
+		"storage incidents":     &TranscodeStorageIncidentRecord{},
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("fresh Lite did not create core table: %s", name)
