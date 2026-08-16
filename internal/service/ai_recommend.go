@@ -31,17 +31,25 @@ const recommendReasonSystemPrompt = `你是一个影视推荐助手。根据用�
    - "你喜欢悬疑片？这部绝对不会让你失望"
    - "今年最佳动作片，视觉效果炸裂"`
 
-// GenerateRecommendReason 使用 AI 为推荐结果生成个性化理由
+// GenerateRecommendReason 使用 AI 为推荐结果生成个性化理由。
+// AI 未启用或调用失败时始终回退原有本地推荐理由，不影响推荐主链路。
 func (s *AIService) GenerateRecommendReason(media *model.Media, userGenres []string, originalReason string) string {
+	reason, _ := s.generateRecommendReason(media, userGenres, originalReason)
+	return reason
+}
+
+// generateRecommendReason 与 GenerateRecommendReason 相同，但额外向批处理调用方返回真实错误。
+// 这样认证失败、网络失败等情况下可以立即终止本轮 AI 增强，避免一个页面请求连续打多次失败的外部 API。
+func (s *AIService) generateRecommendReason(media *model.Media, userGenres []string, originalReason string) (string, error) {
 	if !s.IsRecommendReasonEnabled() {
-		return originalReason
+		return originalReason, nil
 	}
 
 	// 检查缓存（基于媒体ID + 用户偏好类型）
 	genreKey := strings.Join(userGenres, ",")
 	cacheKey := fmt.Sprintf("reason:%s:%s", media.ID, genreKey)
 	if cached, ok := s.GetCache(cacheKey); ok {
-		return cached
+		return cached, nil
 	}
 
 	// 构建用户提示
@@ -80,7 +88,7 @@ func (s *AIService) GenerateRecommendReason(media *model.Media, userGenres []str
 	)
 	if err != nil {
 		s.logger.Debugf("AI 推荐理由生成失败: %v", err)
-		return originalReason
+		return originalReason, err
 	}
 
 	// 解析 JSON
@@ -95,17 +103,18 @@ func (s *AIService) GenerateRecommendReason(media *model.Media, userGenres []str
 	}
 
 	if reason.Reason == "" {
-		return originalReason
+		return originalReason, nil
 	}
 
 	// 写入缓存
 	s.SetCache(cacheKey, reason.Reason)
 
-	return reason.Reason
+	return reason.Reason, nil
 }
 
 // BatchGenerateRecommendReasons 批量为推荐结果生成 AI 理由
-// 为了控制 API 调用次数，只为前 N 个结果生成
+// 为了控制 API 调用次数，只为前 N 个结果生成。
+// 任意一次真实 AI 调用失败后立即停止本轮增强，剩余结果继续使用本地推荐理由。
 func (s *AIService) BatchGenerateRecommendReasons(recommendations []RecommendedMedia, userGenres []string, maxCount int) []RecommendedMedia {
 	if !s.IsRecommendReasonEnabled() || len(recommendations) == 0 {
 		return recommendations
@@ -119,11 +128,15 @@ func (s *AIService) BatchGenerateRecommendReasons(recommendations []RecommendedM
 	}
 
 	for i := 0; i < maxCount; i++ {
-		aiReason := s.GenerateRecommendReason(
+		aiReason, err := s.generateRecommendReason(
 			&recommendations[i].Media,
 			userGenres,
 			recommendations[i].Reason,
 		)
+		if err != nil {
+			s.logger.Debugf("AI 推荐理由批处理已停止，剩余结果使用本地推荐理由: %v", err)
+			break
+		}
 		recommendations[i].Reason = aiReason
 	}
 
