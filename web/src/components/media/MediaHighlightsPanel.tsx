@@ -5,6 +5,7 @@ import { Button, EmptyState } from '@/components/design-system'
 import { useToast } from '@/components/Toast'
 import { streamApi } from '@/api'
 import { mediaAnalysisApi, type MediaAnalysisTask, type MediaHighlight } from '@/api/mediaAnalysis'
+import { useWebSocket, WS_EVENTS, type MediaAnalysisProgressData } from '@/hooks/useWebSocket'
 import { formatErrMsg } from '@/utils/error'
 
 interface MediaHighlightsPanelProps {
@@ -52,6 +53,7 @@ function analysisLabel(method: string) {
 export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighlightsPanelProps) {
   const navigate = useNavigate()
   const toast = useToast()
+  const { connected: wsConnected, on: onWS, off: offWS } = useWebSocket()
   const [highlights, setHighlights] = useState<MediaHighlight[]>([])
   const [stale, setStale] = useState(false)
   const [task, setTask] = useState<MediaAnalysisTask | null>(null)
@@ -60,6 +62,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   const [deleting, setDeleting] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
+  const hoverTimerRef = useRef<number | null>(null)
 
   const running = task?.status === 'pending' || task?.status === 'running'
 
@@ -90,14 +93,45 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   }, [refresh])
 
   useEffect(() => {
+    const handleProgress = (data: MediaAnalysisProgressData) => {
+      if (data.media_id !== mediaId) return
+      setTask((previous) => ({
+        id: data.task_id || previous?.id || '',
+        media_id: data.media_id,
+        task_type: previous?.task_type || 'media_highlight',
+        status: data.status,
+        stage: data.stage,
+        progress: data.progress,
+        error: data.error || '',
+        result: previous?.result,
+        started_at: previous?.started_at,
+        completed_at: previous?.completed_at,
+        created_at: previous?.created_at,
+        updated_at: previous?.updated_at,
+      }))
+      if (data.status === 'completed') {
+        void loadHighlights()
+      }
+    }
+
+    onWS(WS_EVENTS.MEDIA_ANALYSIS_PROGRESS, handleProgress)
+    onWS(WS_EVENTS.MEDIA_ANALYSIS_COMPLETE, handleProgress)
+    return () => {
+      offWS(WS_EVENTS.MEDIA_ANALYSIS_PROGRESS, handleProgress)
+      offWS(WS_EVENTS.MEDIA_ANALYSIS_COMPLETE, handleProgress)
+    }
+  }, [loadHighlights, mediaId, offWS, onWS])
+
+  useEffect(() => {
     if (pollRef.current) {
       window.clearInterval(pollRef.current)
       pollRef.current = null
     }
     if (!running) return
 
-    // The backend also broadcasts media_analysis_progress over WebSocket. Keep a
-    // low-frequency HTTP poll as a resilient fallback instead of hitting status every 1.5s.
+    // WebSocket is the primary progress path. HTTP stays as a low-frequency
+    // recovery path for proxies/browsers where the socket is unavailable.
+    const interval = wsConnected ? 15000 : 5000
     pollRef.current = window.setInterval(() => {
       void loadStatus().then((next) => {
         if (!next || (next.status !== 'pending' && next.status !== 'running')) {
@@ -106,13 +140,33 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
           if (next?.status === 'completed') void loadHighlights()
         }
       }).catch(() => {})
-    }, 5000)
+    }, interval)
 
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current)
       pollRef.current = null
     }
-  }, [loadHighlights, loadStatus, running])
+  }, [loadHighlights, loadStatus, running, wsConnected])
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
+  }, [])
+
+  const beginHover = (id: string) => {
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = window.setTimeout(() => {
+      setHoveredId(id)
+      hoverTimerRef.current = null
+    }, 300)
+  }
+
+  const endHover = (id: string) => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    setHoveredId((current) => current === id ? null : current)
+  }
 
   const handleAnalyze = async () => {
     setSubmitting(true)
@@ -250,15 +304,20 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
               key={item.id}
               type="button"
               className="group overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-surface-soft)] text-left shadow-[var(--nv-shadow-card)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-accent)]/40 hover:shadow-[var(--nv-shadow-elevated)]"
-              onMouseEnter={() => setHoveredId(item.id)}
-              onMouseLeave={() => setHoveredId((current) => current === item.id ? null : current)}
+              onMouseEnter={() => beginHover(item.id)}
+              onMouseLeave={() => endHover(item.id)}
               onFocus={() => setHoveredId(item.id)}
-              onBlur={() => setHoveredId((current) => current === item.id ? null : current)}
+              onBlur={() => endHover(item.id)}
               onClick={() => navigate(`/play/${mediaId}?start=${item.start_time.toFixed(3)}&end=${item.end_time.toFixed(3)}&mode=highlight`)}
             >
               <div className="relative aspect-video overflow-hidden bg-[var(--nv-surface-elevated)]">
                 {poster ? (
-                  <img src={poster} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                  <img
+                    src={poster}
+                    alt=""
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                    onError={() => { if (usePreview) setHoveredId(null) }}
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-[var(--nv-text-tertiary)]"><Clapperboard size={32} /></div>
                 )}
