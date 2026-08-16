@@ -1,23 +1,13 @@
-import { useRef } from 'react'
 import type { RecommendedMedia } from '@/types'
 import MediaCard from '@/components/MediaCard'
-import { Button, EmptyState } from '@/components/design-system'
-import { ChevronLeft, ChevronRight, Film } from 'lucide-react'
+import { EmptyState } from '@/components/design-system'
+import { Film } from 'lucide-react'
 
 interface RecommendationCarouselProps {
   recommendations: RecommendedMedia[]
 }
 
 export default function RecommendationCarousel({ recommendations }: RecommendationCarouselProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  const scroll = (direction: 'left' | 'right') => {
-    const element = scrollRef.current
-    if (!element) return
-    const amount = Math.max(280, element.clientWidth * 0.72)
-    element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
-  }
-
   if (recommendations.length === 0) {
     return (
       <EmptyState
@@ -39,25 +29,16 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
           </h2>
           <span className="text-[10px] text-[var(--nv-text-tertiary)]">{recommendations.length}</span>
         </div>
-        <div className="flex items-center gap-0.5" role="group" aria-label="相关推荐滚动控制">
-          <Button variant="ghost" size="sm" iconOnly onClick={() => scroll('left')} aria-label="向左滚动">
-            <ChevronLeft size={17} aria-hidden="true" />
-          </Button>
-          <Button variant="ghost" size="sm" iconOnly onClick={() => scroll('right')} aria-label="向右滚动">
-            <ChevronRight size={17} aria-hidden="true" />
-          </Button>
-        </div>
       </div>
 
       <div
-        ref={scrollRef}
-        className="nv-recommendation-row scrollbar-hide"
-        style={{ scrollbarWidth: 'none' }}
+        className="grid justify-start gap-x-[13px] gap-y-6"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(138px, 166px))' }}
         role="list"
         aria-label="相关推荐媒体列表"
       >
         {recommendations.map((item) => (
-          <div key={item.media.id} className="nv-recommendation-item" role="listitem">
+          <div key={item.media.id} className="min-w-0" role="listitem">
             <MediaCard media={item.media} eyebrow={item.reason} />
           </div>
         ))}
