@@ -31,7 +31,7 @@ import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
-import { Button } from '@/components/design-system'
+import { Button, EmptyState } from '@/components/design-system'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
@@ -39,7 +39,7 @@ import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { AnimatePresence, motion } from 'framer-motion'
 import { durations, easeSmooth } from '@/lib/motion'
-import { ChevronLeft, Pencil, RefreshCw } from 'lucide-react'
+import { Captions, ChevronLeft, Pencil, RefreshCw } from 'lucide-react'
 
 type DetailTab = 'overview' | 'cast' | 'tech' | 'subtitles' | 'related'
 
@@ -443,6 +443,21 @@ export default function MediaDetailPage() {
 
   const isAdmin = user?.role === 'admin'
   const breadcrumbLabel = media.num || media.title
+  const embeddedSubtitleCount = (techSpecs?.streams || []).filter((stream) => stream.codec_type === 'subtitle').length
+  const externalSubtitleCount = (() => {
+    const raw = media.subtitle_paths?.trim()
+    if (!raw) return 0
+    if (raw.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean).length
+      } catch {
+        // Fall back to delimiter parsing for legacy values.
+      }
+    }
+    return raw.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean).length
+  })()
+  const hasSubtitleData = embeddedSubtitleCount + externalSubtitleCount > 0
 
   return (
     <motion.div
@@ -622,16 +637,27 @@ export default function MediaDetailPage() {
               aria-labelledby="detail-tab-subtitles"
               hidden={activeTab !== 'subtitles'}
             >
-              <div className="nv-detail-subtitle-tab">
-                <div className="nv-detail-subtitle-tab-copy">
-                  <span className="nv-detail-subtitle-tab-eyebrow">SUBTITLES</span>
-                  <h2>字幕</h2>
-                  <p>查看内嵌与外挂字幕，并管理文本字幕提取。字幕管理会继续使用现有媒体字幕数据和提取流程。</p>
+              {enhancedLoading && !hasSubtitleData ? (
+                <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" aria-label="正在加载字幕信息" />
+              ) : hasSubtitleData ? (
+                <div className="nv-detail-subtitle-tab">
+                  <div className="nv-detail-subtitle-tab-copy">
+                    <span className="nv-detail-subtitle-tab-eyebrow">SUBTITLES</span>
+                    <h2>字幕</h2>
+                    <p>已检测到 {embeddedSubtitleCount + externalSubtitleCount} 个字幕来源，可查看内嵌与外挂字幕并管理文本字幕提取。</p>
+                  </div>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>
+                    管理字幕
+                  </Button>
                 </div>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>
-                  管理字幕
-                </Button>
-              </div>
+              ) : (
+                <EmptyState
+                  className="nv-detail-tab-empty-state"
+                  icon={<Captions size={23} aria-hidden="true" />}
+                  title="暂无字幕"
+                  description="当前媒体暂未检测到内嵌字幕轨道或外挂字幕文件。"
+                />
+              )}
             </section>
 
             <section
