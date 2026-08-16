@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
@@ -22,13 +24,26 @@ func registerCoreAPI(
 	api := r.Group("/api")
 	api.Use(jwtMiddleware)
 
+	guardLibraryDeleteWhileScanning := func(c *gin.Context) {
+		libraryID := c.Param("id")
+		for _, phase := range services.Library.ActiveScanPhases() {
+			if phase.LibraryID == libraryID {
+				c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+					"error": "媒体库正在扫描，请等待扫描结束后再删除",
+				})
+				return
+			}
+		}
+		c.Next()
+	}
+
 	api.GET("/libraries", handlers.Library.List)
 	api.GET("/libraries/scan-status", middleware.AdminOnly(), handlers.Library.ScanStatus)
 	api.POST("/libraries", middleware.AdminOnly(), handlers.Library.Create)
 	api.PUT("/libraries/:id", middleware.AdminOnly(), handlers.Library.Update)
 	api.POST("/libraries/:id/scan", middleware.AdminOnly(), handlers.Library.Scan)
 	api.POST("/libraries/:id/reindex", middleware.AdminOnly(), handlers.Library.Reindex)
-	api.DELETE("/libraries/:id", middleware.AdminOnly(), handlers.Library.Delete)
+	api.DELETE("/libraries/:id", middleware.AdminOnly(), guardLibraryDeleteWhileScanning, handlers.Library.Delete)
 
 	guardByMediaID := handler.MediaPermissionGuard(services.Permission, repos.Media, "id")
 	guardByLibraryQuery := handler.LibraryPermissionGuard(services.Permission, "")
