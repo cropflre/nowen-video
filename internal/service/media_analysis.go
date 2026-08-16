@@ -426,7 +426,6 @@ func sparseSampleStarts(duration, window float64, count int) []float64 {
 
 func coarseStageBudget(duration float64) time.Duration {
 	count := adaptiveSampleCount(duration)
-	// Enough budget for HDD seeks while still guaranteeing a fast fallback.
 	return time.Duration(16+count/2) * time.Second
 }
 
@@ -616,7 +615,6 @@ func (s *MediaAnalysisService) refineAnalyze(media *model.Media, task *model.AIA
 	completed := 0
 	for result := range results {
 		completed++
-		// Scene refinement is optional: retain the audio candidate on any failure.
 		refinedByStart[fmt.Sprintf("%.3f", result.Sample.Start)] = result.Sample
 		if result.Err != nil && !errors.Is(result.Err, context.Canceled) && !errors.Is(result.Err, context.DeadlineExceeded) {
 			s.logger.Debugf("sparse scene sample failed media=%s center=%.1f: %v", media.ID, result.Sample.Center, result.Err)
@@ -628,8 +626,6 @@ func (s *MediaAnalysisService) refineAnalyze(media *model.Media, task *model.AIA
 		s.logger.Debugf("sparse scene stage budget reached media=%s completed=%d/%d", media.ID, completed, len(ordered))
 	}
 
-	// Return every coarse sample so spacing/ranking can still fill up to eight
-	// highlights even when only the strongest candidates were scene-refined.
 	out := append([]sparseSample(nil), coarse...)
 	for i := range out {
 		if refined, ok := refinedByStart[fmt.Sprintf("%.3f", out[i].Start)]; ok {
@@ -901,11 +897,4 @@ func (s *MediaAnalysisService) broadcastTask(task *model.AIAnalysisTask) {
 		"progress": task.Progress,
 		"error": task.Error,
 	})
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
