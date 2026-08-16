@@ -119,6 +119,54 @@
 }
 
 /* -------------------------------------------------------------------------- */
+/* Compact high-cardinality genre filters                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Adult/private libraries can easily accumulate 1k–3k genre/tag values. Those
+ * values are useful as filters, but they must never become the page layout.
+ * Keep the complete set reachable while containing it inside a compact,
+ * independently scrollable viewport. BrowsePage has an explicit panel class;
+ * LibraryPage is identified by its content-tab contract so the rule does not
+ * leak into unrelated surfaces.
+ */
+.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1,
+.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 {
+  max-height: 148px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: flex-start;
+  padding: 2px 7px 4px 2px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--nv-text-tertiary) 28%, transparent) transparent;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 7px, #000 calc(100% - 9px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 7px, #000 calc(100% - 9px), transparent 100%);
+}
+
+.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1::-webkit-scrollbar,
+.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1::-webkit-scrollbar {
+  width: 6px;
+}
+
+.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1::-webkit-scrollbar-thumb,
+.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nv-text-tertiary) 24%, transparent);
+}
+
+/* One scraper tag can itself be a full sentence. It should not consume an
+ * entire row; the complete value remains available to filtering on click. */
+.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1 > .nv-button,
+.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 > .nv-button {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Daylight treatment                                                          */
 /* -------------------------------------------------------------------------- */
 
@@ -203,5 +251,16 @@
 
   .nv-browse-toolbar > .nv-button:first-of-type {
     margin-left: 0;
+  }
+
+  .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1,
+  .nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 {
+    max-height: 112px;
+    padding-right: 5px;
+  }
+
+  .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1 > .nv-button,
+  .nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 > .nv-button {
+    max-width: 168px;
   }
 }
