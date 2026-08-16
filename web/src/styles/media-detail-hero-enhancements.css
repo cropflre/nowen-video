@@ -1,6 +1,6 @@
 /* Nowen Video · Media detail hero enhancements
  * Highlight frames are real visual content, not a blurred ambience layer.
- * Keep copy readable with localised scrims while preserving frame clarity.
+ * Keep copy readable with a localised side scrim while preserving frame clarity.
  */
 
 .nv-detail-hero {
@@ -25,8 +25,8 @@
   background: var(--nv-bg-surface-soft);
 }
 
-/* Once generated highlights exist, they own the hero background. The original
- * scraped/local backdrop remains only as the no-highlight fallback. */
+/* Generated highlights fully own the hero background. The scraped/local
+ * backdrop remains only as the no-highlight fallback. */
 .nv-detail-hero.nv-detail-hero-has-highlight-slides > .absolute.inset-0 {
   opacity: 0;
 }
@@ -40,46 +40,31 @@
   pointer-events: none;
 }
 
-/* Do not reuse --nv-hero-scrim here. Its light-theme opacity is intentionally
- * strong for poster/backdrop fallback and would wash real highlight frames out.
- * Protect only the copy side and leave the visual half substantially clear. */
+/* Highlight mode intentionally does not reuse --nv-hero-scrim. Protect only
+ * the metadata side; the visual half and lower half remain close to source. */
 .nv-detail-highlight-slideshow::before {
   background: linear-gradient(
     90deg,
-    rgba(11, 9, 13, .82) 0%,
-    rgba(11, 9, 13, .64) 27%,
-    rgba(11, 9, 13, .24) 48%,
-    rgba(11, 9, 13, .06) 66%,
-    transparent 82%
+    rgba(11, 9, 13, .74) 0%,
+    rgba(11, 9, 13, .50) 20%,
+    rgba(11, 9, 13, .18) 39%,
+    rgba(11, 9, 13, .04) 54%,
+    transparent 68%
   );
 }
 
 .nv-detail-highlight-slideshow::after {
-  background: linear-gradient(
-    0deg,
-    rgba(11, 9, 13, .62) 0%,
-    rgba(11, 9, 13, .22) 22%,
-    transparent 50%
-  );
+  background: none;
 }
 
 [data-theme="light"] .nv-detail-highlight-slideshow::before {
   background: linear-gradient(
     90deg,
-    rgba(243, 240, 244, .84) 0%,
-    rgba(243, 240, 244, .62) 27%,
-    rgba(243, 240, 244, .20) 48%,
-    rgba(243, 240, 244, .04) 66%,
-    transparent 82%
-  );
-}
-
-[data-theme="light"] .nv-detail-highlight-slideshow::after {
-  background: linear-gradient(
-    0deg,
-    rgba(243, 240, 244, .58) 0%,
-    rgba(243, 240, 244, .18) 22%,
-    transparent 48%
+    rgba(243, 240, 244, .74) 0%,
+    rgba(243, 240, 244, .50) 20%,
+    rgba(243, 240, 244, .18) 39%,
+    rgba(243, 240, 244, .04) 54%,
+    transparent 68%
   );
 }
 
@@ -88,7 +73,7 @@
   inset: 0;
   z-index: 1;
   opacity: 0;
-  transform: scale(1.018);
+  transform: scale(1.012);
   transition: opacity .9s ease, transform 5.2s ease;
   will-change: opacity, transform;
 }
@@ -107,7 +92,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  filter: saturate(1.04) contrast(1.04) brightness(1.01);
+  filter: saturate(1.05) contrast(1.05) brightness(1.01);
 }
 
 /* Long scraped titles can contain a full synopsis. Keep the title as identity,
@@ -172,21 +157,19 @@
 @media (max-width: 47.999rem) {
   .nv-detail-highlight-slideshow::before {
     background: linear-gradient(
-      90deg,
-      rgba(11, 9, 13, .72) 0%,
-      rgba(11, 9, 13, .36) 55%,
-      rgba(11, 9, 13, .08) 78%,
-      transparent 100%
+      180deg,
+      rgba(11, 9, 13, .08) 0%,
+      rgba(11, 9, 13, .02) 46%,
+      rgba(11, 9, 13, .52) 100%
     );
   }
 
   [data-theme="light"] .nv-detail-highlight-slideshow::before {
     background: linear-gradient(
-      90deg,
-      rgba(243, 240, 244, .76) 0%,
-      rgba(243, 240, 244, .40) 55%,
-      rgba(243, 240, 244, .08) 78%,
-      transparent 100%
+      180deg,
+      rgba(243, 240, 244, .08) 0%,
+      rgba(243, 240, 244, .02) 46%,
+      rgba(243, 240, 244, .52) 100%
     );
   }
 
