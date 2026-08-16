@@ -27,6 +27,7 @@ import './styles/media-detail-shell-fix.css'
 import './styles/admin-menu-layer-fix.css'
 import './styles/search-cinema.css'
 import './styles/sidebar-alignment-fix.css'
+import './styles/streaming-os.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
