@@ -18,6 +18,8 @@ func registerCoreAPI(
 	handlers *handler.Handlers,
 	playbackPlan *handler.PlaybackPlanHandler,
 	playbackSessions *handler.PlaybackSessionHandler,
+	mediaAnalysis *handler.MediaAnalysisHandler,
+	mediaAnalysisService *service.MediaAnalysisService,
 	repos *repository.Repositories,
 	jwtMiddleware gin.HandlerFunc,
 ) {
@@ -28,13 +30,21 @@ func registerCoreAPI(
 		libraryID := c.Param("id")
 		for _, phase := range services.Library.ActiveScanPhases() {
 			if phase.LibraryID == libraryID {
-				c.AbortWithStatusJSON(http.StatusConflict, gin.H{
-					"error": "媒体库正在扫描，请等待扫描结束后再删除",
-				})
+				c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "媒体库正在扫描，请等待扫描结束后再删除"})
 				return
 			}
 		}
 		c.Next()
+	}
+	cleanupLibraryAnalysis := func(c *gin.Context) {
+		mediaRows, _ := repos.Media.ListByLibraryID(c.Param("id"))
+		c.Next()
+		if c.Writer.Status() >= http.StatusBadRequest {
+			return
+		}
+		for _, item := range mediaRows {
+			mediaAnalysisService.CleanupMedia(item.ID)
+		}
 	}
 
 	api.GET("/libraries", handlers.Library.List)
@@ -43,7 +53,7 @@ func registerCoreAPI(
 	api.PUT("/libraries/:id", middleware.AdminOnly(), handlers.Library.Update)
 	api.POST("/libraries/:id/scan", middleware.AdminOnly(), handlers.Library.Scan)
 	api.POST("/libraries/:id/reindex", middleware.AdminOnly(), handlers.Library.Reindex)
-	api.DELETE("/libraries/:id", middleware.AdminOnly(), guardLibraryDeleteWhileScanning, handlers.Library.Delete)
+	api.DELETE("/libraries/:id", middleware.AdminOnly(), guardLibraryDeleteWhileScanning, cleanupLibraryAnalysis, handlers.Library.Delete)
 
 	guardByMediaID := handler.MediaPermissionGuard(services.Permission, repos.Media, "id")
 	guardByLibraryQuery := handler.LibraryPermissionGuard(services.Permission, "")
@@ -60,6 +70,17 @@ func registerCoreAPI(
 	api.GET("/media/:id/versions", guardByMediaID, handlers.Media.Versions)
 	api.POST("/media/:id/scrape", guardByMediaID, middleware.AdminOnly(), handlers.Metadata.ScrapeMedia)
 
+	// Local FFmpeg highlight analysis. Read/play is permission guarded; CPU-heavy
+	// analysis and deletion remain admin-only. Legacy POST /ai/highlights stays as
+	// a compatibility alias but routes to the same non-AI service.
+	api.GET("/media/:id/highlights", guardByMediaID, mediaAnalysis.ListHighlights)
+	api.GET("/media/:id/highlights/status", guardByMediaID, mediaAnalysis.Status)
+	api.GET("/media/:id/highlights/:highlightId/thumbnail", guardByMediaID, mediaAnalysis.Thumbnail)
+	api.GET("/media/:id/highlights/:highlightId/preview", guardByMediaID, mediaAnalysis.Preview)
+	api.POST("/media/:id/highlights/analyze", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlights)
+	api.DELETE("/media/:id/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.DeleteHighlights)
+	api.POST("/media/:id/ai/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlights)
+
 	api.GET("/series", handlers.Series.List)
 	api.GET("/series/:id", handlers.Series.Detail)
 	api.GET("/series/:id/seasons", handlers.Series.Seasons)
@@ -69,8 +90,6 @@ func registerCoreAPI(
 	api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
 	api.GET("/series/:id/persons", handlers.Series.GetPersons)
 
-	// Lite 的常规播放信息接口直接携带 playback_plan，客户端一次请求即可
-	// 得到旧字段和服务端决策。独立 /plan 仍作为诊断与显式重规划接口保留。
 	api.GET("/stream/:id/info", guardByMediaID, playbackPlan.GetInfo)
 	api.GET("/stream/:id/plan", guardByMediaID, playbackPlan.Get)
 	api.GET("/stream/:id/direct", guardByMediaID, handlers.Stream.Direct)
@@ -79,8 +98,6 @@ func registerCoreAPI(
 	api.GET("/stream/:id/strm-check", guardByMediaID, handlers.Stream.STRMCheck)
 	api.GET("/media/:id/poster", handlers.Stream.Poster)
 
-	// Runtime transcode is session-scoped. These routes never resolve a
-	// persistent Artifact and every playlist/segment read holds a Reader Lease.
 	api.POST("/playback/sessions", playbackSessions.Create)
 	api.GET("/playback/sessions/:sessionID/status", playbackSessions.Status)
 	api.POST("/playback/sessions/:sessionID/heartbeat", playbackSessions.Heartbeat)
