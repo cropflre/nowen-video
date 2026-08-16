@@ -4,10 +4,6 @@ import "github.com/nowen-video/nowen-video/internal/config"
 
 const SchemaVersion = 2
 
-// Capability describes both the desired configuration and the actual runtime
-// state. This distinction is important for modules assembled only at process
-// startup: configuration can change immediately while routes, migrations and
-// workers remain unchanged until restart.
 type Capability struct {
 	Available       bool   `json:"available"`
 	Enabled         bool   `json:"enabled"`
@@ -18,61 +14,26 @@ type Capability struct {
 	Mode            string `json:"mode,omitempty"`
 }
 
-// Manifest is the stable contract consumed by Web, desktop and mobile clients.
-// New capabilities can be added without changing the legacy flat feature map.
 type Manifest struct {
 	SchemaVersion int                   `json:"schema_version"`
 	Profile       string                `json:"profile"`
 	Capabilities  map[string]Capability `json:"capabilities"`
 }
 
-// LiteRuntime captures startup-time decisions that cannot be safely inferred
-// from a mutable config later. Keep this value for the life of the process.
-type LiteRuntime struct {
-	aiStarted bool
-}
-
-func NewLiteRuntime(cfg *config.Config) LiteRuntime {
-	return LiteRuntime{aiStarted: cfg.AI.Enabled}
-}
+type LiteRuntime struct { aiStarted bool }
+func NewLiteRuntime(cfg *config.Config) LiteRuntime { return LiteRuntime{aiStarted: cfg.AI.Enabled} }
 
 func always(mode string) Capability {
-	return Capability{
-		Available:  true,
-		Enabled:    true,
-		Configured: true,
-		Mode:       mode,
-	}
+	return Capability{Available: true, Enabled: true, Configured: true, Mode: mode}
 }
-
 func hotConfigurable(configured bool, mode string) Capability {
-	return Capability{
-		Available:    true,
-		Enabled:      configured,
-		Configured:   configured,
-		Configurable: true,
-		Mode:         mode,
-	}
+	return Capability{Available: true, Enabled: configured, Configured: configured, Configurable: true, Mode: mode}
 }
-
 func restartConfigurable(started, configured bool, mode string) Capability {
-	return Capability{
-		Available:       true,
-		Enabled:         started && configured,
-		Configured:      configured,
-		Configurable:    true,
-		RequiresRestart: true,
-		PendingRestart:  started != configured,
-		Mode:            mode,
-	}
+	return Capability{Available: true, Enabled: started && configured, Configured: configured, Configurable: true, RequiresRestart: true, PendingRestart: started != configured, Mode: mode}
 }
+func unavailable(mode string) Capability { return Capability{Available: false, Enabled: false, Configured: false, Mode: mode} }
 
-func unavailable(mode string) Capability {
-	return Capability{Available: false, Enabled: false, Configured: false, Mode: mode}
-}
-
-// Manifest returns the NAS-oriented default profile using actual startup state
-// plus the latest persisted configuration.
 func (r LiteRuntime) Manifest(cfg *config.Config) Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
@@ -86,6 +47,7 @@ func (r LiteRuntime) Manifest(cfg *config.Config) Manifest {
 			"users":               always("core"),
 			"collections":         always("core"),
 			"task_center":         always("core"),
+			"media_analysis":      always("local_ffmpeg"),
 			"ai":                  restartConfigurable(r.aiStarted, cfg.AI.Enabled, "optional"),
 			"webdav":              hotConfigurable(cfg.Storage.WebDAV.Enabled, "optional"),
 			"alist":               hotConfigurable(cfg.Storage.Alist.Enabled, "optional"),
@@ -103,20 +65,15 @@ func (r LiteRuntime) Manifest(cfg *config.Config) Manifest {
 			"user_profiles":       unavailable("full_only"),
 			"comments":            unavailable("full_only"),
 			"danmaku":             unavailable("full_only"),
+			// Legacy full-only AI scene semantics (semantic chapter titles / cover scoring)
+			// remain separate. Highlight extraction now lives in media_analysis.
 			"ai_scene":            unavailable("full_only"),
 		},
 	}
 }
 
-// Lite is convenient for tests and one-shot callers where startup config and
-// current config are identical. Long-running servers should keep LiteRuntime.
-func Lite(cfg *config.Config) Manifest {
-	return NewLiteRuntime(cfg).Manifest(cfg)
-}
+func Lite(cfg *config.Config) Manifest { return NewLiteRuntime(cfg).Manifest(cfg) }
 
-// Full describes the legacy all-in-one server. Its routes and services are
-// assembled unconditionally, so configurable modules such as AI and remote
-// storage can report the latest persisted state without a restart boundary.
 func Full(cfg *config.Config) Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
@@ -130,6 +87,7 @@ func Full(cfg *config.Config) Manifest {
 			"users":               always("core"),
 			"collections":         always("core"),
 			"task_center":         unavailable("lite_only"),
+			"media_analysis":      always("local_ffmpeg"),
 			"ai":                  hotConfigurable(cfg.AI.Enabled, "optional"),
 			"webdav":              hotConfigurable(cfg.Storage.WebDAV.Enabled, "optional"),
 			"alist":               hotConfigurable(cfg.Storage.Alist.Enabled, "optional"),
@@ -152,9 +110,6 @@ func Full(cfg *config.Config) Manifest {
 	}
 }
 
-// LegacyFeatures keeps older clients working while the typed capability
-// manifest is adopted. Flags represent actual runtime state, not merely desired
-// configuration, so clients never call routes that still require a restart.
 func (m Manifest) LegacyFeatures(cfg *config.Config) map[string]any {
 	enabled := func(name string) bool {
 		capability, ok := m.Capabilities[name]
@@ -170,6 +125,7 @@ func (m Manifest) LegacyFeatures(cfg *config.Config) map[string]any {
 		"preprocess":            enabled("preprocess"),
 		"adult_scraper":         enabled("adult_scraper"),
 		"cast":                  enabled("cast"),
+		"media_analysis":        enabled("media_analysis"),
 		"ai_scene":              enabled("ai_scene"),
 		"ai_enabled":            enabled("ai"),
 		"smart_search":          enabled("ai") && cfg.AI.EnableSmartSearch,
