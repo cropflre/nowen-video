@@ -124,22 +124,6 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
   return (
     <>
       <aside id="main-sidebar" className="nv-rail" aria-label="主导航" data-collapsed={collapsed ? 'true' : 'false'}>
-        {onCollapsedChange && (
-          <button
-            type="button"
-            className="nv-rail-collapse-toggle"
-            onClick={() => onCollapsedChange(!collapsed)}
-            aria-label={collapseActionLabel}
-            aria-controls="main-sidebar"
-            aria-expanded={!collapsed}
-            title={collapseActionLabel}
-          >
-            {collapsed
-              ? <PanelLeftOpen size={15} aria-hidden="true" />
-              : <PanelLeftClose size={15} aria-hidden="true" />}
-          </button>
-        )}
-
         <div className="nv-rail-brand-row">
           <div className="nv-rail-brand" aria-hidden="true">N</div>
           <div className="nv-rail-brand-copy">
@@ -189,6 +173,21 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
             </div>
           </div>
           <div className="nv-rail-footer-actions">
+            {onCollapsedChange && (
+              <button
+                type="button"
+                className="nv-rail-action nv-rail-collapse-toggle"
+                onClick={() => onCollapsedChange(!collapsed)}
+                aria-label={collapseActionLabel}
+                aria-controls="main-sidebar"
+                aria-expanded={!collapsed}
+                title={collapseActionLabel}
+              >
+                {collapsed
+                  ? <PanelLeftOpen size={15} aria-hidden="true" />
+                  : <PanelLeftClose size={15} aria-hidden="true" />}
+              </button>
+            )}
             <LanguageSwitcher compact />
             <button
               type="button"
