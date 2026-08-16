@@ -1,0 +1,77 @@
+/* Media detail highlight hero clarity override.
+ * When generated highlight frames own the hero, keep the movie image visible
+ * and protect readability only around the metadata column. */
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::before {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(243, 240, 244, .76) 0%,
+      rgba(243, 240, 244, .58) 22%,
+      rgba(243, 240, 244, .22) 42%,
+      rgba(243, 240, 244, .05) 58%,
+      transparent 72%
+    );
+}
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::after {
+  background: linear-gradient(
+    0deg,
+    rgba(243, 240, 244, .10) 0%,
+    rgba(243, 240, 244, .035) 18%,
+    transparent 38%
+  );
+}
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slide.is-active {
+  opacity: 1;
+}
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slide > img {
+  filter: saturate(1.03) contrast(1.04) brightness(1.01);
+}
+
+[data-theme="dark"] .nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::before {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(11, 9, 13, .76) 0%,
+      rgba(11, 9, 13, .56) 22%,
+      rgba(11, 9, 13, .22) 42%,
+      rgba(11, 9, 13, .05) 58%,
+      transparent 72%
+    );
+}
+
+[data-theme="dark"] .nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::after {
+  background: linear-gradient(
+    0deg,
+    rgba(11, 9, 13, .12) 0%,
+    rgba(11, 9, 13, .04) 18%,
+    transparent 38%
+  );
+}
+
+@media (max-width: 47.999rem) {
+  .nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::before {
+    background: linear-gradient(
+      180deg,
+      rgba(243, 240, 244, .18) 0%,
+      rgba(243, 240, 244, .08) 38%,
+      rgba(243, 240, 244, .58) 100%
+    );
+  }
+
+  [data-theme="dark"] .nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::before {
+    background: linear-gradient(
+      180deg,
+      rgba(11, 9, 13, .18) 0%,
+      rgba(11, 9, 13, .08) 38%,
+      rgba(11, 9, 13, .58) 100%
+    );
+  }
+
+  .nv-detail-hero.nv-detail-hero-has-highlight-slides .nv-detail-highlight-slideshow::after {
+    background: none;
+  }
+}
