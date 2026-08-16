@@ -140,8 +140,6 @@
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--nv-text-tertiary) 28%, transparent) transparent;
-  mask-image: linear-gradient(to bottom, transparent 0, #000 7px, #000 calc(100% - 9px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 7px, #000 calc(100% - 9px), transparent 100%);
 }
 
 .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1::-webkit-scrollbar,
@@ -156,7 +154,7 @@
 }
 
 /* One scraper tag can itself be a full sentence. It should not consume an
- * entire row; the complete value remains available to filtering on click. */
+ * entire row inside the compact filter viewport. */
 .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1 > .nv-button,
 .nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 > .nv-button {
   min-width: 0;
