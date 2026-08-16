@@ -24,6 +24,13 @@
   transform: scale(1);
 }
 
+/* The tab workspace below already owns the section separation. Once a real
+   backdrop is rendered, HeroSection's legacy 1px bottom border becomes a
+   visually prominent double divider, so keep the artwork transition clean. */
+.nv-detail-hero-backdrop-shell .nv-detail-hero {
+  border-bottom: 0 !important;
+}
+
 .nv-detail-hero-backdrop-shell[data-has-backdrop='true'] .nv-detail-hero {
   position: relative;
   z-index: 1;
