@@ -54,25 +54,11 @@
   z-index: 1;
   opacity: 0;
   transform: scale(1.025);
-  transition: opacity 1s ease, transform 6.5s ease;
+  transition: opacity 1s ease, transform 5.2s ease;
   will-change: opacity, transform;
 }
 
 .nv-detail-highlight-slide.is-active {
-  opacity: .82;
-  transform: scale(1);
-}
-
-/* The first DOM slide in the current enhancer is the legacy backdrop. Hide it
- * completely and, while the timer still considers it active, visually promote
- * the first real highlight. This makes the first painted hero frame a clip
- * instead of waiting one interval before the user sees any change. */
-.nv-detail-highlight-slide:first-child {
-  opacity: 0 !important;
-}
-
-.nv-detail-highlight-slideshow:has(.nv-detail-highlight-slide:first-child.is-active)
-  .nv-detail-highlight-slide:nth-child(2) {
   opacity: .82;
   transform: scale(1);
 }
@@ -149,9 +135,7 @@
 }
 
 @media (max-width: 47.999rem) {
-  .nv-detail-highlight-slide.is-active,
-  .nv-detail-highlight-slideshow:has(.nv-detail-highlight-slide:first-child.is-active)
-    .nv-detail-highlight-slide:nth-child(2) {
+  .nv-detail-highlight-slide.is-active {
     opacity: .7;
   }
 
