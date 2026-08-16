@@ -40,6 +40,7 @@ func (r *VideoHighlightRepo) FindByID(id string) (*model.VideoHighlight, error) 
 	err := r.db.First(&highlight, "id = ?", id).Error
 	return &highlight, err
 }
+func (r *VideoHighlightRepo) Update(highlight *model.VideoHighlight) error { return r.db.Save(highlight).Error }
 func (r *VideoHighlightRepo) DeleteByMediaID(mediaID string) error { return r.db.Where("media_id = ?", mediaID).Delete(&model.VideoHighlight{}).Error }
 func (r *VideoHighlightRepo) Delete(id string) error { return r.db.Delete(&model.VideoHighlight{}, "id = ?", id).Error }
 
