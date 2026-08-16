@@ -153,8 +153,28 @@ function LibraryManager({
   }
 
   const handleDelete = async (id: string) => {
-    if (scanning.has(id)) {
-      toast.info('媒体库正在扫描，请等待扫描结束后再删除')
+    // 删除按钮必须保持可点击：本地扫描状态可能因刷新、断线或旧缓存而残留。
+    // 删除前以服务端 scan-status 为准重新确认，既能自愈陈旧状态，也能避免扫描中误删。
+    try {
+      const response = await libraryApi.scanStatus()
+      const activeScanPhases = response.data.data || []
+      const isActuallyScanning = activeScanPhases.some((phase) => phase.library_id === id)
+
+      if (isActuallyScanning) {
+        setScanning((current) => new Set(current).add(id))
+        toast.info('媒体库正在扫描，请等待扫描结束后再删除')
+        return
+      }
+
+      if (scanning.has(id)) {
+        setScanning((current) => {
+          const next = new Set(current)
+          next.delete(id)
+          return next
+        })
+      }
+    } catch {
+      toast.error('无法确认媒体库扫描状态，请稍后重试')
       return
     }
 
@@ -432,7 +452,14 @@ function LibraryRow({
           <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning} title="扫描媒体文件" aria-label="扫描媒体文件">
             <RefreshCw size={16} className={isScanning ? 'animate-spin text-[var(--nv-action-primary)]' : undefined} />
           </Button>
-          <Button variant="danger" size="sm" iconOnly onClick={onDelete} disabled={isScanning} title={isScanning ? '扫描期间不能删除媒体库' : '删除媒体库'} aria-label="删除媒体库">
+          <Button
+            variant="danger"
+            size="sm"
+            iconOnly
+            onClick={onDelete}
+            title={isScanning ? '媒体库正在扫描，点击可重新确认状态' : '删除媒体库'}
+            aria-label="删除媒体库"
+          >
             <Trash2 size={16} />
           </Button>
           <div className="relative">
