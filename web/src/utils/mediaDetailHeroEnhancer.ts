@@ -168,7 +168,7 @@ export function installMediaDetailHeroEnhancer() {
   if (typeof window === 'undefined' || typeof document === 'undefined' || observer) return
 
   observer = new MutationObserver(scheduleSync)
-  observer.observe(document.body, { childList: true, subtree: true })
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true })
   window.addEventListener('popstate', scheduleSync)
   scheduleSync()
 }
