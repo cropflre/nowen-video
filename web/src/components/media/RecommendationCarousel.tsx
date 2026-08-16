@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { RecommendedMedia } from '@/types'
 import MediaCard from '@/components/MediaCard'
-import { Button } from '@/components/design-system'
+import { Button, EmptyState } from '@/components/design-system'
 import { ChevronLeft, ChevronRight, Film } from 'lucide-react'
 
 interface RecommendationCarouselProps {
@@ -18,7 +18,16 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
     element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
-  if (recommendations.length === 0) return null
+  if (recommendations.length === 0) {
+    return (
+      <EmptyState
+        className="nv-detail-tab-empty-state"
+        icon={<Film size={23} aria-hidden="true" />}
+        title="暂无相关推荐"
+        description="当前媒体暂时没有可展示的相似内容推荐。"
+      />
+    )
+  }
 
   return (
     <section className="nv-recommendation-section" aria-labelledby="recommendation-title">
