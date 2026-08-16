@@ -1,0 +1,129 @@
+/* Nowen Video · Media detail tabs
+ * Real tab switching for the detail workspace. This file is loaded after the
+ * legacy detail styling so the active indicator follows aria-selected instead
+ * of being permanently pinned to the first item.
+ */
+
+.nv-detail-section-tabs a:first-child {
+  color: var(--nv-text-tertiary);
+}
+
+.nv-detail-section-tabs a:first-child::after {
+  content: none;
+}
+
+.nv-detail-section-tabs a[aria-selected="true"] {
+  color: var(--nv-text-primary);
+  background: color-mix(in srgb, var(--nv-action-muted) 7%, transparent);
+}
+
+.nv-detail-section-tabs a[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--nv-action-primary);
+}
+
+.nv-detail-section-tabs a:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-primary) 45%, transparent);
+}
+
+.nv-detail-tab-panel[hidden] {
+  display: none !important;
+}
+
+.nv-detail-tab-panel {
+  min-height: 240px;
+  animation: nv-detail-tab-in 160ms var(--nv-ease-standard);
+}
+
+.nv-detail-tab-secondary-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--nv-border-subtle);
+}
+
+.nv-detail-tab-secondary-section-first {
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 24px;
+  border-top: 0;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-detail-subtitle-tab {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: clamp(22px, 3vw, 36px);
+  border: 1px solid var(--nv-border-default);
+  border-radius: var(--nv-radius-container);
+  background:
+    radial-gradient(circle at 82% 20%, color-mix(in srgb, var(--nv-action-muted) 10%, transparent), transparent 34%),
+    color-mix(in srgb, var(--nv-bg-surface) 92%, transparent);
+}
+
+.nv-detail-subtitle-tab-copy {
+  max-width: 44rem;
+}
+
+.nv-detail-subtitle-tab-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--nv-text-disabled);
+  font: 600 9px/1 var(--nv-font-mono);
+  letter-spacing: .12em;
+}
+
+.nv-detail-subtitle-tab h2 {
+  margin: 0;
+  color: var(--nv-text-primary);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -.015em;
+}
+
+.nv-detail-subtitle-tab p {
+  max-width: 56rem;
+  margin: 8px 0 0;
+  color: var(--nv-text-tertiary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@keyframes nv-detail-tab-in {
+  from { opacity: .62; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-detail-tab-panel {
+    min-height: 180px;
+  }
+
+  .nv-detail-subtitle-tab {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .nv-detail-subtitle-tab .nv-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-detail-tab-panel {
+    animation: none;
+  }
+}
