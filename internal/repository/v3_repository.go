@@ -51,8 +51,14 @@ func (r *VideoHighlightRepo) Create(highlight *model.VideoHighlight) error {
 
 func (r *VideoHighlightRepo) ListByMediaID(mediaID string) ([]model.VideoHighlight, error) {
 	var highlights []model.VideoHighlight
-	err := r.db.Where("media_id = ?", mediaID).Order("score DESC").Find(&highlights).Error
+	err := r.db.Where("media_id = ?", mediaID).Order("score DESC, start_time ASC").Find(&highlights).Error
 	return highlights, err
+}
+
+func (r *VideoHighlightRepo) FindByID(id string) (*model.VideoHighlight, error) {
+	var highlight model.VideoHighlight
+	err := r.db.First(&highlight, "id = ?", id).Error
+	return &highlight, err
 }
 
 func (r *VideoHighlightRepo) DeleteByMediaID(mediaID string) error {
@@ -61,6 +67,20 @@ func (r *VideoHighlightRepo) DeleteByMediaID(mediaID string) error {
 
 func (r *VideoHighlightRepo) Delete(id string) error {
 	return r.db.Delete(&model.VideoHighlight{}, "id = ?", id).Error
+}
+
+// ReplaceByMediaID 原子替换一个媒体的全部精彩片段。
+// 新分析完全成功后才调用，避免分析失败时把旧结果提前清空。
+func (r *VideoHighlightRepo) ReplaceByMediaID(mediaID string, highlights []model.VideoHighlight) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("media_id = ?", mediaID).Delete(&model.VideoHighlight{}).Error; err != nil {
+			return err
+		}
+		if len(highlights) == 0 {
+			return nil
+		}
+		return tx.Create(&highlights).Error
+	})
 }
 
 // ==================== V3: AIAnalysisTaskRepo ====================
@@ -93,6 +113,22 @@ func (r *AIAnalysisTaskRepo) ListByStatus(status string, limit int) ([]model.AIA
 	var tasks []model.AIAnalysisTask
 	err := r.db.Where("status = ?", status).Order("created_at ASC").Limit(limit).Find(&tasks).Error
 	return tasks, err
+}
+
+func (r *AIAnalysisTaskRepo) FindActiveByMediaAndType(mediaID, taskType string) (*model.AIAnalysisTask, error) {
+	var task model.AIAnalysisTask
+	err := r.db.Where("media_id = ? AND task_type = ? AND status IN ?", mediaID, taskType, []string{"pending", "running"}).Order("created_at DESC").First(&task).Error
+	return &task, err
+}
+
+func (r *AIAnalysisTaskRepo) MarkRunningInterrupted(taskType string) error {
+	return r.db.Model(&model.AIAnalysisTask{}).
+		Where("task_type = ? AND status = ?", taskType, "running").
+		Updates(map[string]any{
+			"status": "interrupted",
+			"stage":  "interrupted",
+			"error":  "服务重启导致任务中断，请重新分析",
+		}).Error
 }
 
 // ==================== V3: CoverCandidateRepo ====================
