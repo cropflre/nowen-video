@@ -1,5 +1,18 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Grid3X3, LayoutList, Layers, Library as LibraryIcon, Merge, Pencil, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  Grid3X3,
+  LayoutList,
+  Layers,
+  Library as LibraryIcon,
+  Merge,
+  Pencil,
+  RefreshCw,
+  Search as SearchIcon,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { collectionApi, libraryApi } from '@/api'
 import { usePageCache, invalidatePageCachePrefix } from '@/hooks/usePageCache'
@@ -23,7 +36,6 @@ const SORT_OPTIONS = [
 
 type SortValue = typeof SORT_OPTIONS[number]['value']
 
-/** 来源是合集的主分类轴，提升为标签行，与影视库的媒体类型标签保持一致 */
 const SOURCE_TABS = [
   { key: '', label: '全部', icon: Layers },
   { key: 'true', label: '自动匹配', icon: Sparkles },
@@ -33,6 +45,33 @@ const SOURCE_TABS = [
 interface CollectionsData {
   list: MovieCollection[]
   total: number
+}
+
+function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="nv-button nv-search-filter-chip"
+      data-variant={selected ? 'secondary' : 'ghost'}
+      data-size="sm"
+      aria-pressed={selected}
+    >
+      {children}
+    </button>
+  )
+}
+
+function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="nv-search-filter-row flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 inline-flex min-w-20 items-center gap-1.5 text-xs font-medium text-[var(--nv-text-tertiary)]">
+        {icon}
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  )
 }
 
 export default function CollectionsPage() {
@@ -45,6 +84,7 @@ export default function CollectionsPage() {
   const filterLibrary = searchParams.get('library_id') || ''
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchResults, setSearchResults] = useState<MovieCollection[] | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
   const [operating, setOperating] = useState(false)
   const [operationMsg, setOperationMsg] = useState('')
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -85,6 +125,16 @@ export default function CollectionsPage() {
     }
   }, [searchKeyword])
 
+  const handleSearchSubmit = useCallback((event: FormEvent) => {
+    event.preventDefault()
+    void handleSearch()
+  }, [handleSearch])
+
+  const clearSearch = useCallback(() => {
+    setSearchKeyword('')
+    setSearchResults(null)
+  }, [])
+
   const runMaintenance = useCallback(async (operation: 'rematch' | 'merge' | 'cleanup') => {
     if (operating) return
     setOperating(true)
@@ -114,22 +164,28 @@ export default function CollectionsPage() {
     if (searchResults === null) return collections
     let items = [...searchResults]
     if (filterAuto !== '') items = items.filter((collection) => collection.auto_matched === (filterAuto === 'true'))
+    if (filterLibrary !== '') items = items.filter((collection) => collection.library_id === filterLibrary)
     return items
-  }, [collections, filterAuto, searchResults])
+  }, [collections, filterAuto, filterLibrary, searchResults])
 
-  const totalPages = searchResults === null ? Math.ceil(total / pageSize) : Math.ceil(displayList.length / pageSize)
-  const hasActiveFilter = filterAuto !== '' || filterLibrary !== ''
+  const totalPages = searchResults === null ? Math.ceil(total / pageSize) : Math.max(1, Math.ceil(displayList.length / pageSize))
+  const hasActiveFilter = filterAuto !== '' || filterLibrary !== '' || sortValue !== 'created_desc' || viewMode !== 'grid'
 
   const updateParams = useCallback((patch: Record<string, string | null>, resetPage = false) => {
     setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
       Object.entries(patch).forEach(([key, value]) => {
-        if (value === null) prev.delete(key)
-        else prev.set(key, value)
+        if (value === null) next.delete(key)
+        else next.set(key, value)
       })
-      if (resetPage) prev.delete('page')
-      return prev
-    })
+      if (resetPage) next.delete('page')
+      return next
+    }, { replace: true })
   }, [setSearchParams])
+
+  const clearFilters = useCallback(() => {
+    updateParams({ auto: null, library_id: null, sort: null, view: null }, true)
+  }, [updateParams])
 
   const handlePageChange = useCallback((nextPage: number) => {
     updateParams({ page: nextPage <= 1 ? null : String(nextPage) })
@@ -141,81 +197,122 @@ export default function CollectionsPage() {
 
   const emptyTitle = searchResults !== null ? '未找到匹配的合集' : hasActiveFilter ? '没有符合条件的合集' : '暂无影视合集'
   const emptyDescription = searchResults !== null ? '请尝试其他关键词。' : hasActiveFilter ? '尝试调整筛选条件。' : '扫描媒体库后，系统会自动匹配电影系列合集。'
+  const resultSummary = loading
+    ? '正在加载合集…'
+    : searchResults !== null
+      ? `“${searchKeyword.trim()}” · ${displayList.length} 个合集结果`
+      : `${total} 个合集${filterAuto === 'true' ? ' · 自动匹配' : filterAuto === 'false' ? ' · 手动创建' : ''}`
 
   return (
-    <div className="nv-section-stack">
-      <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="合集来源">
-        {SOURCE_TABS.map(({ key, label, icon: Icon }) => {
-          const selected = filterAuto === key
-          return (
-            <button
-              key={key || 'all'}
-              type="button"
-              onClick={() => updateParams({ auto: key === '' ? null : key }, true)}
-              aria-pressed={selected}
-              className="nv-button"
-              data-variant={selected ? 'secondary' : 'ghost'}
-              data-size="sm"
-            >
-              <Icon size={14} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          )
-        })}
-        <Tag className="ml-1"><LibraryIcon size={10} aria-hidden="true" />{total} 个合集</Tag>
-      </div>
+    <div className="nv-section-stack nv-library-page nv-search-page nv-collections-page">
+      <header className="nv-search-workspace-header">
+        <form className="nv-search-workspace-form" role="search" onSubmit={handleSearchSubmit}>
+          <div className="nv-search-workspace-field-wrap">
+            <SearchField
+              value={searchKeyword}
+              onChange={(event) => {
+                setSearchKeyword(event.target.value)
+                if (!event.target.value) setSearchResults(null)
+              }}
+              placeholder="搜索合集名称"
+              aria-label="搜索合集名称"
+              enterKeyHint="search"
+              autoComplete="off"
+              wrapperClassName="nv-search-workspace-field"
+            />
+          </div>
 
-      <div className="nv-browse-toolbar flex flex-wrap items-center gap-1.5">
-        {libraries.length > 1 && (
-          <Select
-            value={filterLibrary}
-            onChange={(event) => updateParams({ library_id: event.target.value || null }, true)}
-            aria-label="媒体库"
-            className="!w-auto min-w-28"
+          {searchKeyword.length > 0 && (
+            <Button type="button" variant="ghost" size="md" iconOnly onClick={clearSearch} aria-label="清空搜索">
+              <X size={16} aria-hidden="true" />
+            </Button>
+          )}
+
+          <Button type="submit" variant="primary" size="md" disabled={!searchKeyword.trim()}>
+            <SearchIcon size={15} aria-hidden="true" />
+            搜索
+          </Button>
+
+          <Button
+            type="button"
+            variant={showFilters || hasActiveFilter ? 'secondary' : 'ghost'}
+            size="md"
+            onClick={() => setShowFilters((value) => !value)}
+            aria-expanded={showFilters}
+            aria-controls="collections-filter-panel"
           >
-            <option value="">全部媒体库</option>
-            {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
-          </Select>
-        )}
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            筛选
+            {hasActiveFilter && <span className="nv-search-filter-dot" aria-label="已启用筛选" />}
+          </Button>
+        </form>
 
-        <SearchField
-          value={searchKeyword}
-          onChange={(event) => {
-            setSearchKeyword(event.target.value)
-            if (!event.target.value) setSearchResults(null)
-          }}
-          onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
-          placeholder="搜索合集名称"
-          wrapperClassName="min-w-[190px] flex-1 lg:max-w-sm"
-          aria-label="搜索合集名称"
-        />
-
-        <Select
-          value={sortValue}
-          onChange={(event) => updateParams({ sort: event.target.value === 'created_desc' ? null : event.target.value }, true)}
-          aria-label="合集排序"
-          className="!w-auto min-w-28"
-        >
-          {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </Select>
-
-        <div className="flex items-center gap-0.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] p-0.5" role="group" aria-label="视图模式">
-          <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => updateParams({ view: null })}><Grid3X3 size={14} /></ViewButton>
-          <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => updateParams({ view: 'list' })}><LayoutList size={14} /></ViewButton>
+        <div className="nv-search-workspace-summary" aria-live="polite">
+          <span>{resultSummary}</span>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <Button type="button" variant="ghost" size="sm" onClick={() => runMaintenance('rematch')} loading={operating} title="清除所有自动匹配的合集并重新匹配，手动创建的合集不受影响">
+              <RefreshCw size={13} aria-hidden="true" />重新匹配
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => runMaintenance('merge')} disabled={operating} title="合并所有同名重复合集，保留最早创建的合集并迁移电影">
+              <Merge size={13} aria-hidden="true" />合并重复
+            </Button>
+            <Button type="button" variant="danger" size="sm" onClick={() => runMaintenance('cleanup')} disabled={operating} title="删除所有没有关联电影的空壳合集">
+              <Trash2 size={13} aria-hidden="true" />清理空壳
+            </Button>
+          </div>
         </div>
+      </header>
 
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Button type="button" variant="ghost" size="sm" onClick={() => runMaintenance('rematch')} loading={operating} title="清除所有自动匹配的合集并重新匹配，手动创建的合集不受影响">
-            <RefreshCw size={14} aria-hidden="true" />重新匹配
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => runMaintenance('merge')} disabled={operating} title="合并所有同名重复合集，保留最早创建的合集并迁移电影">
-            <Merge size={14} aria-hidden="true" />合并重复
-          </Button>
-          <Button type="button" variant="danger" size="sm" onClick={() => runMaintenance('cleanup')} disabled={operating} title="删除所有没有关联电影的空壳合集">
-            <Trash2 size={14} aria-hidden="true" />清理空壳
-          </Button>
-        </div>
-      </div>
+      {showFilters && (
+        <Surface id="collections-filter-panel" className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
+          <FilterRow icon={<Layers size={13} aria-hidden="true" />} label="来源:">
+            {SOURCE_TABS.map(({ key, label, icon: Icon }) => (
+              <FilterChip key={key || 'all'} selected={filterAuto === key} onClick={() => updateParams({ auto: key === '' ? null : key }, true)}>
+                <Icon size={12} aria-hidden="true" />
+                {label}
+              </FilterChip>
+            ))}
+            <Tag><LibraryIcon size={10} aria-hidden="true" />{total} 个合集</Tag>
+          </FilterRow>
+
+          {libraries.length > 1 && (
+            <FilterRow icon={<LibraryIcon size={13} aria-hidden="true" />} label="媒体库:">
+              <Select
+                value={filterLibrary}
+                onChange={(event) => updateParams({ library_id: event.target.value || null }, true)}
+                aria-label="媒体库"
+                className="!w-auto min-w-40"
+              >
+                <option value="">全部媒体库</option>
+                {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
+              </Select>
+            </FilterRow>
+          )}
+
+          <FilterRow icon={<SlidersHorizontal size={13} aria-hidden="true" />} label="排序:">
+            <Select
+              value={sortValue}
+              onChange={(event) => updateParams({ sort: event.target.value === 'created_desc' ? null : event.target.value }, true)}
+              aria-label="合集排序"
+              className="!w-auto min-w-40"
+            >
+              {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </FilterRow>
+
+          <FilterRow icon={<Grid3X3 size={13} aria-hidden="true" />} label="视图:">
+            <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => updateParams({ view: null })}><Grid3X3 size={14} /></ViewButton>
+            <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => updateParams({ view: 'list' })}><LayoutList size={14} /></ViewButton>
+          </FilterRow>
+
+          {hasActiveFilter && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X size={14} aria-hidden="true" />
+              清除筛选
+            </Button>
+          )}
+        </Surface>
+      )}
 
       {operationMsg && (
         <Surface className="nv-collection-notice flex items-center gap-3 px-4 py-3 text-sm text-[var(--nv-text-secondary)]" role="status">
@@ -227,21 +324,33 @@ export default function CollectionsPage() {
 
       {loading ? (
         <div className="nv-media-grid" aria-label="正在加载合集">
-          {Array.from({ length: 12 }).map((_, index) => <div key={index} className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />)}
+          {Array.from({ length: 12 }).map((_, index) => (
+            <div key={index}>
+              <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton mt-2 h-3 w-3/4" />
+              <div className="skeleton mt-1.5 h-2.5 w-1/2" />
+            </div>
+          ))}
         </div>
       ) : displayList.length === 0 ? (
-        <Surface><EmptyState icon={<LibraryIcon size={24} />} title={emptyTitle} description={emptyDescription} /></Surface>
+        <EmptyState
+          className="nv-search-empty-state"
+          icon={<LibraryIcon size={24} />}
+          title={emptyTitle}
+          description={emptyDescription}
+          action={hasActiveFilter ? <Button variant="secondary" size="sm" onClick={clearFilters}>清除筛选</Button> : undefined}
+        />
       ) : viewMode === 'grid' ? (
         <div className="nv-media-grid">
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
         </div>
       ) : (
-        <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
+        <div className="nv-browse-list divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} variant="list" />)}
         </div>
       )}
 
-      {searchResults === null && (
+      {searchResults === null && total > 0 && (
         <Pagination
           page={page}
           totalPages={totalPages}
