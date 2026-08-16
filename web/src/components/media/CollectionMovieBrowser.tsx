@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Calendar, ChevronDown, Clock, Copy, Film, Grid3X3, LayoutList, Play, Star } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { CollectionMediaItem } from '@/types'
 import { groupByMovie, versionLabel, type GroupedMovieItem } from '@/utils/collectionGroup'
@@ -78,7 +78,7 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
     <section className="space-y-5">
       <div className="flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">系列电影</h2>
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--nv-text-primary)]">系列电影</h2>
           <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">{sortedMedia.length} 部电影 · 自动折叠同片多版本</p>
         </div>
 
@@ -86,21 +86,21 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
           <Select value={sortOption} onChange={(event) => setSort(event.target.value as SortOption)} className="h-9 text-xs" aria-label="合集电影排序">
             {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
-          <div className="flex items-center gap-1 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-1">
-            <Button type="button" variant={viewMode === 'grid' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setView('grid')} aria-label="卡片视图" title="卡片视图"><Grid3X3 size={15} /></Button>
-            <Button type="button" variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setView('list')} aria-label="列表视图" title="列表视图"><LayoutList size={15} /></Button>
+          <div className="flex items-center gap-0.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] p-0.5" role="group" aria-label="视图模式">
+            <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setView('grid')} aria-label="卡片视图" title="卡片视图" aria-pressed={viewMode === 'grid'} className={viewMode === 'grid' ? '!bg-[var(--nv-fill-active)] !text-[var(--nv-text-primary)]' : undefined}><Grid3X3 size={14} /></Button>
+            <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setView('list')} aria-label="列表视图" title="列表视图" aria-pressed={viewMode === 'list'} className={viewMode === 'list' ? '!bg-[var(--nv-fill-active)] !text-[var(--nv-text-primary)]' : undefined}><LayoutList size={14} /></Button>
           </div>
         </div>
       </div>
 
       {viewMode === 'grid' ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <div className="nv-media-grid">
           {pagedMedia.map((group, index) => (
             <MovieGridCard key={group.primary.id} group={group} index={(pagination.page - 1) * pagination.size + index + 1} />
           ))}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {pagedMedia.map((group, index) => (
             <MovieListCard key={group.primary.id} group={group} index={(pagination.page - 1) * pagination.size + index + 1} />
           ))}
@@ -122,45 +122,78 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
 
 function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: number }) {
   const item = group.primary
+  const navigate = useNavigate()
   const [versionsOpen, setVersionsOpen] = useState(false)
+  const [posterFailed, setPosterFailed] = useState(false)
   const versions = group.versions
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
   return (
-    <article className="relative overflow-visible rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
-      <Link to={`/media/${item.id}`} className="group block overflow-hidden rounded-[var(--nv-radius-card)]">
-        <div className="relative aspect-[2/3] overflow-hidden bg-[var(--nv-bg-surface-soft)]">
-          <div className="absolute inset-0 flex items-center justify-center text-[var(--nv-text-tertiary)]"><Film size={32} /></div>
-          <img src={streamApi.getPosterUrl(item.id)} alt={item.title} className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
-          <div className="absolute left-2 top-2"><Tag>#{index}</Tag></div>
-          {versions.length > 1 && <div className="absolute right-2 top-2"><Tag tone="brand"><Copy size={10} />{versions.length} 版</Tag></div>}
-          {item.rating > 0 && <div className="absolute bottom-2 left-2"><Tag tone="rating"><Star size={10} fill="currentColor" />{item.rating.toFixed(1)}</Tag></div>}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]"><Play size={17} className="ml-0.5" fill="currentColor" /></div>
+    <article className="nv-media-card group relative">
+      <div className="nv-media-card-poster isolate">
+        {item.poster_path && !posterFailed ? (
+          <img
+            src={streamApi.getPosterUrl(item.id)}
+            alt=""
+            loading="lazy"
+            onError={() => setPosterFailed(true)}
+          />
+        ) : (
+          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+            <Film size={24} aria-hidden="true" />
+            <span className="text-[10px]">暂无海报</span>
           </div>
+        )}
+
+        <Link to={`/media/${item.id}`} className="absolute inset-0 z-10 rounded-[inherit]" aria-label={`查看 ${item.title} 详情`} />
+
+        <div className="nv-media-card-overlay z-20 pointer-events-none">
+          <Button
+            variant="primary"
+            size="sm"
+            iconOnly
+            className="nv-media-card-play pointer-events-auto"
+            onClick={() => navigate(`/play/${item.id}`)}
+            aria-label={`播放 ${item.title}`}
+            title="立即播放"
+          >
+            <Play size={16} fill="currentColor" aria-hidden="true" />
+          </Button>
         </div>
-        <div className="p-3">
-          <h3 className="truncate text-sm font-medium text-[var(--nv-text-primary)] transition-colors group-hover:text-[var(--nv-action-primary)]" title={item.title}>{item.title}</h3>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--nv-text-tertiary)]">
-            {item.year > 0 && <span className="inline-flex items-center gap-1"><Calendar size={10} />{item.year}</span>}
-            {item.runtime > 0 && <span className="inline-flex items-center gap-1"><Clock size={10} />{item.runtime}分钟</span>}
+
+        <Tag className="nv-media-card-badge absolute left-2 top-2 z-30">#{index}</Tag>
+        {versions.length > 1 && (
+          <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30"><Copy size={10} aria-hidden="true" />{versions.length} 版</Tag>
+        )}
+        {item.rating > 0 && (
+          <Tag tone="rating" className="nv-media-card-badge absolute bottom-2 left-2 z-30"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>
+        )}
+
+        {versions.length > 1 && (
+          <Button type="button" variant={versionsOpen ? 'primary' : 'secondary'} size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} className="absolute bottom-2 right-2 z-40" aria-label={versionsOpen ? '收起版本' : '查看所有版本'} title={versionsOpen ? '收起版本' : '查看所有版本'} aria-expanded={versionsOpen}>
+            <ChevronDown size={13} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </Button>
+        )}
+      </div>
+
+      <div className="pb-1 pt-2">
+        <Link to={`/media/${item.id}`} className="nv-media-card-title" title={item.title}>{item.title}</Link>
+        <div className="nv-media-card-meta mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
+          {item.year > 0 && <span className="inline-flex shrink-0 items-center gap-1"><Calendar size={10} aria-hidden="true" />{item.year}</span>}
+          {item.runtime > 0 && (
+            <>
+              {item.year > 0 && <span aria-hidden="true">·</span>}
+              <span className="inline-flex shrink-0 items-center gap-1"><Clock size={10} aria-hidden="true" />{item.runtime} 分钟</span>
+            </>
+          )}
+        </div>
+        {genres.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {genres.slice(0, 3).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
+            {genres.length > 3 && <Tag>+{genres.length - 3}</Tag>}
           </div>
-        </div>
-      </Link>
-
-      {genres.length > 0 && (
-        <div className="-mt-1 flex flex-wrap gap-1 px-3 pb-3">
-          {genres.slice(0, 4).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
-          {genres.length > 4 && <Tag>+{genres.length - 4}</Tag>}
-        </div>
-      )}
-
-      {versions.length > 1 && (
-        <Button type="button" variant={versionsOpen ? 'primary' : 'secondary'} size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} className="absolute bottom-3 right-3" aria-label={versionsOpen ? '收起版本' : '查看所有版本'} title={versionsOpen ? '收起版本' : '查看所有版本'}>
-          <ChevronDown size={13} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
-        </Button>
-      )}
+        )}
+      </div>
 
       {versions.length > 1 && versionsOpen && <VersionMenu versions={versions} currentId={item.id} />}
     </article>
@@ -169,43 +202,62 @@ function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: numbe
 
 function MovieListCard({ group, index }: { group: GroupedMovieItem; index: number }) {
   const item = group.primary
+  const navigate = useNavigate()
   const [versionsOpen, setVersionsOpen] = useState(false)
+  const [posterFailed, setPosterFailed] = useState(false)
   const versions = group.versions
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
   return (
-    <article className="group overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)]">
-      <div className="flex items-center gap-3 p-3 transition-colors hover:bg-[var(--nv-bg-hover)]">
-        <span className="w-7 shrink-0 text-center text-xs font-semibold text-[var(--nv-text-tertiary)]">{index}</span>
-        <Link to={`/media/${item.id}`} className="relative h-20 w-14 shrink-0 overflow-hidden rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]">
-          <div className="absolute inset-0 flex items-center justify-center text-[var(--nv-text-tertiary)]"><Film size={18} /></div>
-          <img src={streamApi.getPosterUrl(item.id)} alt={item.title} className="relative h-full w-full object-cover" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
+    <article className="nv-browse-list-item group transition-colors hover:bg-[var(--nv-fill-hover)]">
+      <div className="flex items-center gap-3 px-1 py-2.5">
+        <span className="w-6 shrink-0 text-center text-[10px] font-semibold tabular-nums text-[var(--nv-text-tertiary)]">{index}</span>
+        <Link to={`/media/${item.id}`} className="relative h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
+          {item.poster_path && !posterFailed ? (
+            <img src={streamApi.getPosterUrl(item.id)} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPosterFailed(true)} />
+          ) : (
+            <div className="nv-media-card-placeholder absolute inset-0 grid place-items-center text-[var(--nv-text-tertiary)]"><Film size={15} aria-hidden="true" /></div>
+          )}
         </Link>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link to={`/media/${item.id}`} className="min-w-0 truncate text-sm font-medium text-[var(--nv-text-primary)] hover:text-[var(--nv-action-primary)]">{item.title}</Link>
-            {versions.length > 1 && <Tag tone="brand"><Copy size={10} />{versions.length} 个版本</Tag>}
+            <Link to={`/media/${item.id}`} className="min-w-0 truncate text-xs font-medium text-[var(--nv-text-primary)]">{item.title}</Link>
+            {versions.length > 1 && <Tag tone="brand"><Copy size={10} aria-hidden="true" />{versions.length} 个版本</Tag>}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">
             {item.year > 0 && <span>{item.year}</span>}
             {item.runtime > 0 && <span>{formatDuration(item.runtime)}</span>}
-            {genres.slice(0, 3).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
-            {genres.length > 3 && <Tag>+{genres.length - 3}</Tag>}
           </div>
+          {genres.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {genres.slice(0, 3).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
+              {genres.length > 3 && <Tag>+{genres.length - 3}</Tag>}
+            </div>
+          )}
         </div>
 
-        {item.rating > 0 && <Tag tone="rating"><Star size={11} fill="currentColor" />{item.rating.toFixed(1)}</Tag>}
+        {item.rating > 0 && <Tag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>}
         {versions.length > 1 && (
-          <Button type="button" variant={versionsOpen ? 'primary' : 'secondary'} size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} aria-label={versionsOpen ? '收起版本' : '展开版本'} title={versionsOpen ? '收起版本' : '展开版本'}>
+          <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} aria-label={versionsOpen ? '收起版本' : '展开版本'} title={versionsOpen ? '收起版本' : '展开版本'} aria-expanded={versionsOpen}>
             <ChevronDown size={14} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
           </Button>
         )}
-        <Link to={`/media/${item.id}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] opacity-0 transition-opacity hover:opacity-90 group-hover:opacity-100" aria-label={`打开 ${item.title}`}><Play size={13} className="ml-0.5" fill="currentColor" /></Link>
+        <Button
+          variant="primary"
+          size="sm"
+          iconOnly
+          className="nv-collection-list-play shrink-0"
+          onClick={() => navigate(`/play/${item.id}`)}
+          aria-label={`播放 ${item.title}`}
+          title="立即播放"
+        >
+          <Play size={13} fill="currentColor" aria-hidden="true" />
+        </Button>
       </div>
 
       {versions.length > 1 && versionsOpen && (
-        <div className="border-t border-dashed border-[var(--nv-border-subtle)] px-3 py-2">
+        <div className="border-t border-dashed border-[var(--nv-border-subtle)] px-1 py-2">
           <div className="space-y-1">{versions.map((version) => <VersionRow key={version.id} version={version} currentId={item.id} />)}</div>
         </div>
       )}

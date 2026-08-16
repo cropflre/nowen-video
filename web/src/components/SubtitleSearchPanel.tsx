@@ -197,7 +197,7 @@ export default function SubtitleSearchPanel({
               <Subtitles className="h-[18px] w-[18px]" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-display text-base font-semibold text-[var(--nv-player-text-primary)]">在线字幕搜索</h3>
+              <h3 className="font-display text-base font-semibold tracking-tight text-[var(--nv-player-text-primary)]">在线字幕搜索</h3>
               <p className="mt-0.5 truncate text-[11px] text-[var(--nv-player-text-tertiary)]">
                 SubtitleCat · {title || '当前视频'}{year ? ` · ${year}` : ''}
               </p>

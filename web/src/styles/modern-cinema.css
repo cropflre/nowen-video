@@ -4,73 +4,21 @@
  * product chrome stays grayscale with one restrained lavender accent.
  */
 
+/* 本层原本重定义了整套暗色调色板、圆角与氛围令牌，但 streaming-os.css 在其之后
+ * 导入且选择器特异性相同，那些值早已不生效。此处只保留 streaming-os 未接管的令牌。 */
 :root,
 [data-theme="dark"] {
-  color-scheme: dark;
-  --nv-bg-canvas: #0d0e11;
-  --nv-bg-surface: #131418;
-  --nv-bg-surface-soft: #17181d;
-  --nv-bg-elevated: #1b1c22;
-  --nv-bg-poster: #15161a;
-  --nv-bg-control: #17181d;
-  --nv-bg-overlay: rgba(6, 7, 9, .82);
-  --nv-fill-hover: rgba(255, 255, 255, .055);
-  --nv-fill-active: rgba(155, 140, 245, .14);
-  --nv-bg-hover: var(--nv-fill-hover);
-  --nv-bg-active: var(--nv-fill-active);
-
-  --nv-text-primary: #f2f2f4;
-  --nv-text-secondary: rgba(242, 242, 244, .70);
-  --nv-text-tertiary: rgba(242, 242, 244, .44);
-  --nv-text-disabled: rgba(242, 242, 244, .26);
-  --nv-text-on-brand: #15131f;
-
-  --nv-border-subtle: rgba(255, 255, 255, .055);
-  --nv-border-default: rgba(255, 255, 255, .08);
-  --nv-border-hover: rgba(255, 255, 255, .16);
-  --nv-border-strong: rgba(255, 255, 255, .22);
-
-  --nv-action-primary: #9b8cf5;
-  --nv-action-primary-hover: #a89cf7;
-  --nv-action-primary-active: #8b7bea;
-  --nv-action-muted: #9b8cf5;
-  --nv-action-muted-hover: #b5aaf8;
-  --nv-focus-ring: rgba(155, 140, 245, .58);
-
   --nv-status-success: #7ec8a9;
   --nv-status-warning: #e0b070;
   --nv-status-danger: #e5893f;
   --nv-status-rating: #e5c25f;
   --nv-status-info: #89a8c8;
-
-  --nv-shadow-card: 0 10px 28px rgba(0, 0, 0, .22);
-  --nv-shadow-card-hover: 0 18px 42px rgba(0, 0, 0, .34);
-  --nv-shadow-elevated: 0 24px 64px rgba(0, 0, 0, .46);
-  --nv-shadow-focus: 0 0 0 3px rgba(155, 140, 245, .14);
-
-  --nv-ambient-cyan: transparent;
-  --nv-ambient-purple-soft: transparent;
-  --nv-hero-scrim: linear-gradient(90deg, rgba(13,14,17,.98) 0%, rgba(13,14,17,.90) 28%, rgba(13,14,17,.60) 52%, rgba(13,14,17,.18) 78%, rgba(13,14,17,.06) 100%);
-  --nv-hero-bottom-scrim: linear-gradient(0deg, #0d0e11 0%, rgba(13,14,17,.92) 20%, rgba(13,14,17,.30) 52%, transparent 78%);
-
-  --nv-radius-sm: 6px;
-  --nv-radius-control: 8px;
-  --nv-radius-card: 10px;
-  --nv-radius-container: 12px;
-  --nv-radius-popover: 12px;
-  --nv-radius-modal: 14px;
-  --nv-radius-hero: 14px;
-  --nv-rail-width: 208px;
   --nv-sidebar-expanded: 208px;
   --nv-sidebar-collapsed: 208px;
   --nv-topbar-height: 52px;
   --nv-content-max: 120rem;
   --nv-content-wide-max: 120rem;
   --nv-page-gutter: clamp(18px, 1.6vw, 28px);
-  --nv-section-gap: clamp(24px, 2vw, 34px);
-  --nv-grid-column: 184px;
-  --nv-grid-gap-x: clamp(12px, 1vw, 16px);
-  --nv-grid-gap-y: clamp(18px, 1.5vw, 24px);
 }
 
 [data-theme="light"] {
@@ -186,7 +134,7 @@ body {
 .nv-rail-brand-copy span,
 .nv-rail-profile-copy span {
   color: var(--nv-text-tertiary);
-  font: 500 9.5px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 500 9.5px/1.25 var(--nv-font-mono);
 }
 
 .nv-rail-scroll {
@@ -202,7 +150,7 @@ body {
 .nv-rail-section-title {
   padding: 0 9px 6px;
   color: var(--nv-text-tertiary);
-  font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 600 9px/1 var(--nv-font-mono);
   letter-spacing: .10em;
   text-transform: uppercase;
 }
@@ -276,7 +224,7 @@ body {
 .nv-rail-meta {
   margin-left: auto;
   color: var(--nv-text-tertiary);
-  font: 500 9.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 500 9.5px/1 var(--nv-font-mono);
 }
 
 .nv-rail-footer {
@@ -304,7 +252,7 @@ body {
   border-radius: 8px;
   background: var(--nv-bg-elevated);
   color: var(--nv-text-secondary);
-  font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 600 9px/1 var(--nv-font-mono);
 }
 .nv-rail-footer-actions { display: flex; align-items: center; gap: 4px; }
 .nv-rail-action {
@@ -495,7 +443,7 @@ body {
 }
 .nv-media-card-meta {
   color: var(--nv-text-tertiary) !important;
-  font: 400 10.5px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  font: 400 10.5px/1.35 var(--nv-font-mono) !important;
 }
 .nv-media-card-progress { height: 3px !important; background: rgba(0,0,0,.55) !important; }
 .nv-media-card-progress > span { background: #9b8cf5 !important; }

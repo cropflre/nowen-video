@@ -178,10 +178,10 @@ function CollectionCard({
       onClick={onClick}
       role="listitem"
       aria-current={isCurrent ? 'true' : undefined}
-      className={`group w-36 flex-shrink-0 overflow-hidden p-0 transition-[background-color,border-color,box-shadow,transform] duration-200 ${
+      className={`nv-collection-carousel-card group w-36 flex-shrink-0 overflow-hidden p-0 ${
         isCurrent
-          ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] shadow-[var(--nv-shadow-card-hover)]'
-          : 'cursor-pointer hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-surface-soft)] hover:shadow-[var(--nv-shadow-card-hover)]'
+          ? 'is-current border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] shadow-[var(--nv-shadow-card-hover)]'
+          : 'cursor-pointer'
       }`}
     >
       <div className="relative aspect-[2/3] overflow-hidden bg-[var(--nv-bg-surface-soft)]">
@@ -212,7 +212,7 @@ function CollectionCard({
         )}
 
         {!isCurrent && (
-          <div className="pointer-events-none absolute bottom-2 left-2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] opacity-0 shadow-[var(--nv-shadow-card)] transition-[opacity,transform] duration-200 group-hover:opacity-100">
+          <div className="nv-collection-carousel-play pointer-events-none absolute bottom-2 left-2 z-30 flex h-8 w-8 items-center justify-center rounded-full">
             <Play size={14} className="ml-0.5" fill="currentColor" aria-hidden="true" />
           </div>
         )}
@@ -346,7 +346,7 @@ function CollectionListItem({
         )}
 
         {!isCurrent && (
-          <div className="pointer-events-none flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="nv-collection-carousel-play pointer-events-none flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full">
             <Play size={12} className="ml-0.5" fill="currentColor" aria-hidden="true" />
           </div>
         )}

@@ -295,7 +295,7 @@
   display: block;
   margin-bottom: 3px;
   color: var(--nv-text-tertiary);
-  font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 600 9px/1 var(--nv-font-mono);
   letter-spacing: .11em;
   text-transform: uppercase;
 }
@@ -360,7 +360,7 @@
   display: block;
   overflow: hidden;
   color: var(--nv-text-primary);
-  font: 550 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 550 11px/1.25 var(--nv-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -391,7 +391,7 @@
   content: "+";
   margin-left: auto;
   color: var(--nv-text-tertiary);
-  font: 500 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 500 15px/1 var(--nv-font-mono);
 }
 .nv-detail-tech-details[open] > summary::after { content: "−"; }
 .nv-detail-tech-details > summary:hover { background: var(--nv-fill-hover); color: var(--nv-text-primary); }
@@ -484,7 +484,7 @@
   gap: 3px 8px;
   margin-top: 4px;
   color: var(--nv-text-tertiary);
-  font: 500 9px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 500 9px/1.35 var(--nv-font-mono);
 }
 
 .nv-detail-version-item code {
@@ -492,7 +492,7 @@
   overflow: hidden;
   margin-top: 6px;
   color: var(--nv-text-disabled);
-  font: 500 8.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 500 8.5px/1.4 var(--nv-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -521,7 +521,7 @@
 .nv-detail-subtitle-item span {
   margin-top: 3px;
   color: var(--nv-text-tertiary);
-  font: 500 8.5px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 500 8.5px/1.3 var(--nv-font-mono);
 }
 .nv-detail-subtitle-more,
 .nv-detail-side-empty {
@@ -555,7 +555,7 @@
   max-width: 96px;
   overflow: hidden;
   color: var(--nv-text-tertiary);
-  font: 500 8.5px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 500 8.5px/1.2 var(--nv-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -577,7 +577,7 @@
 .nv-detail-source-meta strong {
   overflow: hidden;
   color: var(--nv-text-secondary);
-  font: 500 9px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 500 9px/1.3 var(--nv-font-mono);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;

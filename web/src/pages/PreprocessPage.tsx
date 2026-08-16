@@ -751,7 +751,7 @@ export default function PreprocessPage() {
       <PageContainer width="wide" className="space-y-6 py-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="flex items-center gap-2 font-display text-2xl font-bold text-[var(--nv-text-primary)]">
+            <h1 className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight text-[var(--nv-text-primary)]">
               <Zap className="text-[var(--nv-action-primary)]" size={24} aria-hidden={true} />
               视频预处理
             </h1>

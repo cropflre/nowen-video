@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Calendar, ChevronDown, ChevronUp, Layers, Star } from 'lucide-react'
+import { ArrowLeft, Calendar, ChevronDown, ChevronUp, Layers, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { CollectionWithMedia } from '@/types'
@@ -33,27 +33,26 @@ export default function CollectionDetailHero({ data, movieCount, fileCount, onBa
   const hiddenGenreCount = Math.max(0, stats.genres.length - COLLAPSED_GENRE_COUNT)
 
   return (
-    <section className="relative overflow-hidden border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-      <div className="absolute inset-0 overflow-hidden">
+    <section className="nv-collection-hero relative overflow-hidden border-b border-[var(--nv-border-subtle)]">
+      <div className="nv-collection-hero-backdrop absolute inset-0 overflow-hidden" aria-hidden="true">
         <img
           src={streamApi.getCollectionPosterUrl(collection.id)}
           alt=""
-          className="h-full w-full scale-110 object-cover opacity-25 blur-3xl"
           onError={(event) => { event.currentTarget.style.display = 'none' }}
         />
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-4 pb-8 pt-6 sm:px-6 lg:px-8">
-        <Button type="button" variant="secondary" size="sm" onClick={onBack} className="mb-7">
-          <span aria-hidden="true">←</span>
+      <div className="nv-collection-hero-inner relative">
+        <Button type="button" variant="secondary" size="sm" onClick={onBack} className="nv-collection-hero-back">
+          <ArrowLeft size={14} aria-hidden="true" />
           返回
         </Button>
 
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
-          <div className="relative h-56 w-40 shrink-0 overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-strong)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-elevated)] sm:h-64 sm:w-44">
-            <div className="absolute inset-0 flex items-center justify-center text-[var(--nv-text-tertiary)]"><Layers size={42} /></div>
+          <div className="nv-collection-hero-poster relative shrink-0 overflow-hidden">
+            <div className="absolute inset-0 flex items-center justify-center text-[var(--nv-text-tertiary)]"><Layers size={42} aria-hidden="true" /></div>
             <img
               src={streamApi.getCollectionPosterUrl(collection.id)}
               alt={collection.name}
@@ -71,7 +70,7 @@ export default function CollectionDetailHero({ data, movieCount, fileCount, onBa
               {stats.averageRating > 0 && <Tag tone="rating"><Star size={11} fill="currentColor" />均分 {stats.averageRating.toFixed(1)}</Tag>}
             </div>
 
-            <h1 className="max-w-4xl text-3xl font-bold leading-tight tracking-[-0.025em] text-[var(--nv-text-primary)] sm:text-4xl lg:text-5xl">
+            <h1 className="nv-collection-hero-title font-display text-[var(--nv-text-primary)]">
               {collection.name}
             </h1>
 

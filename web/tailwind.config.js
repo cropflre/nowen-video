@@ -9,9 +9,11 @@ export default {
   darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
+      // 字体栈的唯一来源是 design-system.css 的 --nv-font-* 令牌。
       fontFamily: {
-        display: ['Orbitron', 'sans-serif'],
-        body: ['Inter', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+        display: ['var(--nv-font-display)'],
+        body: ['var(--nv-font-sans)'],
+        mono: ['var(--nv-font-mono)'],
       },
       colors: {
         primary: {

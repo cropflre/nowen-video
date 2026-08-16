@@ -75,7 +75,7 @@
   border-radius: 6px;
   background: var(--nv-bg-control);
   color: var(--nv-text-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--nv-font-mono);
   font-size: .88em;
 }
 

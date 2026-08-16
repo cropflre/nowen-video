@@ -947,7 +947,7 @@ export default function VideoPlayer({
             <p className="mb-1 text-xs text-[var(--nv-player-text-tertiary)]">
               {gestureOverlay.type === 'seek' ? '⏩ 进度' : gestureOverlay.type === 'volume' ? '🔊 音量' : '☀️ 亮度'}
             </p>
-            <p className="font-display text-xl font-bold text-[var(--nv-player-text-primary)]">{gestureOverlay.value}</p>
+            <p className="font-mono text-xl font-bold tabular-nums text-[var(--nv-player-text-primary)]">{gestureOverlay.value}</p>
           </div>
         </div>
       )}
@@ -971,11 +971,11 @@ export default function VideoPlayer({
                   className="transition-all duration-1000 ease-linear"
                 />
               </svg>
-              <span className="font-display text-3xl font-bold text-[var(--nv-player-text-primary)]">{nextCountdown}</span>
+              <span className="font-mono text-3xl font-bold tabular-nums text-[var(--nv-player-text-primary)]">{nextCountdown}</span>
             </div>
             <div>
               <p className="text-sm text-[var(--nv-player-text-tertiary)]">即将播放下一集</p>
-              {nextTitle && <p className="mt-1 font-display text-base font-medium text-[var(--nv-player-text-primary)]">{nextTitle}</p>}
+              {nextTitle && <p className="mt-1 font-display text-base font-medium tracking-tight text-[var(--nv-player-text-primary)]">{nextTitle}</p>}
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={() => setNextCountdown(null)} className="rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-5 py-2.5 text-sm font-medium text-[var(--nv-player-text-secondary)] transition-colors hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]">
@@ -993,7 +993,7 @@ export default function VideoPlayer({
         'pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-200',
         seekHint.visible ? 'scale-100 opacity-100' : 'scale-[0.96] opacity-0',
       )}>
-        <div className="rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-surface)] px-6 py-3 font-display text-2xl font-bold tracking-wider text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+        <div className="rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-surface)] px-6 py-3 font-mono text-2xl font-bold tabular-nums text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
           {seekHint.text}
         </div>
       </div>
@@ -1017,7 +1017,7 @@ export default function VideoPlayer({
                 <SkipBack size={18} aria-hidden="true" />
               </button>
             )}
-            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-wide text-[var(--nv-player-text-primary)] drop-shadow-lg">{title}</h2>
+            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-tight text-[var(--nv-player-text-primary)] drop-shadow-lg">{title}</h2>
             <Tag tone="brand" className="shrink-0 text-[10px]">{playbackLabel}</Tag>
             {playbackRate !== 1 && <Tag tone="quality" className="shrink-0 text-[10px]">{playbackRate}x</Tag>}
           </div>
@@ -1049,7 +1049,7 @@ export default function VideoPlayer({
                   }}
                 />
               )}
-              <div className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-2 py-1 font-display text-xs tracking-wide text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md">
+              <div className="rounded-[var(--nv-radius-sm)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-2 py-1 font-mono text-xs tabular-nums text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md">
                 {hoverTime}
               </div>
             </div>
@@ -1091,7 +1091,7 @@ export default function VideoPlayer({
             />
           </div>
 
-          <span className="ml-2 hidden whitespace-nowrap font-display text-xs tracking-wide text-[var(--nv-player-text-tertiary)] md:inline">
+          <span className="ml-2 hidden whitespace-nowrap font-mono text-xs tabular-nums text-[var(--nv-player-text-tertiary)] md:inline">
             {formatTime(currentTime)} <span className="mx-1 text-[var(--nv-player-text-faint)]">/</span> {formatTime(displayDuration)}
           </span>
 

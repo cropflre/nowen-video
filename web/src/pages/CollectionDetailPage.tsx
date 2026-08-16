@@ -27,10 +27,10 @@ export default function CollectionDetailPage() {
 
   if (loading && !data) {
     return (
-      <div className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
-        <div className="skeleton h-[30rem] w-full" />
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="nv-collection-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+        <div className="skeleton nv-collection-detail-hero-skeleton w-full" />
+        <div className="nv-collection-detail-body">
+          <div className="nv-media-grid">
             {Array.from({ length: 12 }).map((_, index) => <div key={index} className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />)}
           </div>
         </div>
@@ -52,7 +52,7 @@ export default function CollectionDetailPage() {
   }
 
   return (
-    <div className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+    <div className="nv-collection-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
       <CollectionDetailHero
         data={data}
         movieCount={movieCount}
@@ -63,7 +63,7 @@ export default function CollectionDetailPage() {
         }}
       />
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="nv-collection-detail-body">
         <CollectionMovieBrowser media={data.media} />
       </div>
     </div>

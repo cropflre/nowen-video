@@ -71,7 +71,7 @@
   border-radius: 6px;
   background: var(--nv-bg-control);
   color: var(--nv-text-tertiary);
-  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font: 600 10px/1 var(--nv-font-mono);
 }
 
 .nv-search-workspace-form > .nv-button {
@@ -92,7 +92,7 @@
 
 .nv-search-result-context {
   flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--nv-font-mono);
   color: var(--nv-text-disabled);
 }
 

@@ -4,33 +4,17 @@
  * state, routes, API contracts and playback behavior stay in existing code.
  */
 
-:root:not([data-theme]),
+/* 本层原本重定义了整套暗色调色板与圆角，但 streaming-os.css 在其之后导入且
+ * 选择器特异性相同，那些值早已不生效（`:root:not([data-theme])` 更是永不匹配，
+ * theme.ts 始终写入 data-theme）。此处只保留 streaming-os 尚未接管的令牌。 */
 [data-theme="dark"] {
-  --nv-bg-canvas: #0d0e11;
-  --nv-bg-surface: #131418;
-  --nv-bg-surface-soft: #17181d;
-  --nv-bg-elevated: #1b1c22;
   --nv-bg-overlay-surface: #23242b;
-  --nv-action-primary: #9b8cf5;
-  --nv-action-primary-hover: #a89cf7;
-  --nv-action-primary-active: #8b7bea;
-  --nv-fill-active: rgba(155, 140, 245, .16);
-  --nv-focus-ring: rgba(155, 140, 245, .58);
   --nv-status-success: #7ec8a9;
   --nv-status-warning: #e0b070;
   --nv-status-danger: #e5893f;
   --nv-status-rating: #e5c25f;
-  --nv-rail-width: 208px;
   --nv-topbar-height: 56px;
-  --nv-radius-control: 8px;
-  --nv-radius-card: 9px;
-  --nv-radius-container: 12px;
-  --nv-radius-popover: 12px;
-  --nv-radius-modal: 14px;
-  --nv-radius-hero: 14px;
   --nv-page-gutter: clamp(20px, 2vw, 28px);
-  --nv-grid-gap-x: 12px;
-  --nv-grid-gap-y: 16px;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -48,7 +32,7 @@
 .nv-pagination-options,
 [aria-labelledby="media-tech-specs-title"] :where(.font-mono, code),
 .group\/player :where(.font-mono, [class*="tabular-nums"]) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+  font-family: var(--nv-font-mono) !important;
 }
 
 .nv-section-title {
@@ -102,7 +86,7 @@
   border-radius: 7px !important;
   background: #9b8cf5 !important;
   color: #141220 !important;
-  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font: 700 11px/1 var(--nv-font-mono) !important;
 }
 
 .nv-rail-brand-copy strong { font-size: 13px !important; font-weight: 600 !important; }
@@ -112,7 +96,7 @@
 .nv-rail-section-title {
   padding: 0 8px 8px !important;
   color: rgba(242,242,244,.30) !important;
-  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font: 600 10px/1 var(--nv-font-mono) !important;
   letter-spacing: .10em !important;
 }
 .nv-rail-section-links { gap: 2px !important; }
@@ -388,7 +372,7 @@
   min-height: 28px !important;
   padding: 0 !important;
   border-radius: 7px !important;
-  font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font: 400 11px/1 var(--nv-font-mono) !important;
 }
 .nv-pagination-page[data-variant="primary"] {
   border-color: #9b8cf5 !important;
@@ -421,7 +405,7 @@
   min-height: 28px !important;
   padding: 0 7px !important;
   border-radius: 7px !important;
-  font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font: 400 11px/1 var(--nv-font-mono) !important;
 }
 .nv-pagination-jumper .nv-input { text-align: center; }
 

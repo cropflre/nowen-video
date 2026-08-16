@@ -299,7 +299,7 @@ export default function WebCodecsPlayerShell({
                 <SkipBack size={18} aria-hidden="true" />
               </button>
             )}
-            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-wide text-[var(--nv-player-text-primary)] drop-shadow-lg">
+            <h2 className="min-w-0 truncate font-display text-base font-medium tracking-tight text-[var(--nv-player-text-primary)] drop-shadow-lg">
               {title}
             </h2>
             <Tag tone="brand" className="shrink-0 text-[10px]">

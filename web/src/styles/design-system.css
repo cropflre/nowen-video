@@ -26,9 +26,15 @@
   --nv-brand-cyan-600: #78647a;
   --nv-ambient-purple: #8d758f;
 
-  /* Typography */
-  --nv-font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --nv-font-brand: var(--nv-font-sans);
+  /* Typography
+   * 不依赖网络字体:各平台系统 UI 字体本身质量足够(macOS/iOS 为 SF Pro,
+   * Windows 11 为 Segoe UI Variable),离线的 NAS 部署也能正常渲染。
+   * 拉丁字形取自系统字体,中文回落到 PingFang SC / Microsoft YaHei。
+   * 三个角色:sans 正文、display 标题(配紧字距)、mono 技术数据。 */
+  --nv-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --nv-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --nv-font-mono: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Code", "Segoe UI Mono", Consolas, "Liberation Mono", monospace;
+  --nv-font-brand: var(--nv-font-display);
   --nv-type-display: clamp(2rem, 1.55rem + 1.5vw, 3.125rem);
   --nv-type-h1: clamp(1.65rem, 1.4rem + .9vw, 2.35rem);
   --nv-type-h2: clamp(1.08rem, 1.02rem + .28vw, 1.3rem);

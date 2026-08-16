@@ -1150,6 +1150,147 @@
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* 后台 · 数字对齐                                                              */
+/* -------------------------------------------------------------------------- */
+
+/* 后台的计数、进度、容量会实时刷新，比例数字会让列宽逐帧跳动。
+ * 与卡片元信息、分页、播放器时间码同样处理：整片后台开启等宽数字。 */
+.nv-admin-page,
+.nv-admin-panel,
+.nv-admin-status,
+.nv-admin-toolbar {
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 影视合集 · 列表与详情                                                        */
+/* -------------------------------------------------------------------------- */
+
+/* 合集详情整页出血，由本层接管容器宽度与留白，页面不再自带内联尺寸 */
+.nv-collection-detail-body {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding: 2rem 1rem 0;
+}
+
+.nv-collection-detail-hero-skeleton {
+  height: clamp(22rem, 38vw, 30rem);
+}
+
+.nv-collection-hero {
+  background: var(--nv-bg-canvas);
+}
+
+.nv-collection-hero-backdrop > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .25;
+  transform: scale(1.1);
+  filter: blur(48px);
+}
+
+.nv-collection-hero-inner {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding: 1.5rem 1rem 2rem;
+}
+
+.nv-collection-hero-back {
+  margin-bottom: 1.75rem;
+}
+
+/* 合集封面沿用详情海报的层级：更强描边 + 更深投影，读作贴在玻璃上 */
+.nv-collection-hero-poster {
+  width: 10rem;
+  height: 14rem;
+  border: 1px solid var(--nv-border-strong);
+  border-radius: var(--nv-radius-hero);
+  background: var(--nv-bg-poster);
+  box-shadow: var(--nv-shadow-elevated);
+  transition: transform var(--nv-motion-normal) var(--nv-ease-emphasized),
+              box-shadow var(--nv-motion-normal) var(--nv-ease-standard);
+}
+
+.nv-collection-hero-poster:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--nv-shadow-card-hover);
+}
+
+.nv-collection-hero-title {
+  max-width: 22ch;
+  font-size: clamp(1.85rem, 3.4vw, 3.4rem);
+  font-weight: 660;
+  line-height: 1.04;
+  letter-spacing: -.038em;
+}
+
+/* 维护操作结果条：用主操作色描边而非填充，避免与卡片层抢注意力 */
+.nv-collection-notice {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 30%, transparent);
+  background: var(--nv-bg-active);
+}
+
+/* 同系列走马灯：卡片抬升与播放键统一到卡片层的物理与配色 */
+.nv-collection-carousel-card {
+  transition:
+    transform var(--nv-motion-normal) var(--nv-ease-emphasized),
+    border-color var(--nv-motion-normal) var(--nv-ease-standard),
+    background-color var(--nv-motion-normal) var(--nv-ease-standard),
+    box-shadow var(--nv-motion-normal) var(--nv-ease-standard);
+}
+
+.nv-collection-carousel-card:not(.is-current):hover,
+.nv-collection-carousel-card:not(.is-current):focus-within {
+  transform: translateY(-5px) scale(1.014);
+  border-color: rgba(128, 147, 255, .28);
+  background: var(--nv-bg-surface-soft);
+  box-shadow: var(--nv-shadow-card-hover);
+}
+
+.nv-collection-carousel-play {
+  color: #fff;
+  background: linear-gradient(135deg, #5a7cff 0%, #6d6dfd 54%, #8068f2 100%);
+  box-shadow: 0 12px 30px rgba(74, 91, 229, .34), 0 0 28px rgba(71, 215, 232, .075);
+  opacity: 0;
+  transform: scale(.82);
+  transition:
+    opacity var(--nv-motion-normal) var(--nv-ease-standard),
+    transform var(--nv-motion-slow) var(--nv-ease-emphasized);
+}
+
+.group:hover .nv-collection-carousel-play,
+.group:focus-within .nv-collection-carousel-play {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 列表行的播放键与影视库一致：静止隐藏，指向该行时才出现 */
+.nv-collection-list-play {
+  opacity: 0;
+  transition: opacity var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-browse-list-item:hover .nv-collection-list-play,
+.nv-browse-list-item:focus-within .nv-collection-list-play {
+  opacity: 1;
+}
+
+@media (min-width: 640px) {
+  .nv-collection-detail-body,
+  .nv-collection-hero-inner { padding-inline: 1.5rem; }
+
+  .nv-collection-hero-poster { width: 11rem; height: 16rem; }
+}
+
+@media (min-width: 1024px) {
+  .nv-collection-detail-body,
+  .nv-collection-hero-inner { padding-inline: 2rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nv-button,
   .nv-rail-item,
@@ -1158,6 +1299,10 @@
   .nv-continue-card .nv-continue-artwork,
   .nv-browse-list-item,
   .nv-browse-poster-card > div:first-child,
+  .nv-collection-hero-poster,
+  .nv-collection-list-play,
+  .nv-collection-carousel-card,
+  .nv-collection-carousel-play,
   .nv-admin-tab {
     transition-duration: .01ms !important;
   }
