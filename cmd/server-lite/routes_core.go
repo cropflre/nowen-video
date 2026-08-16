@@ -97,6 +97,7 @@ func registerCoreAPI(
 	api.GET("/stream/:id/strm-seg", guardByMediaID, handlers.Stream.STRMSegment)
 	api.GET("/stream/:id/strm-check", guardByMediaID, handlers.Stream.STRMCheck)
 	api.GET("/media/:id/poster", handlers.Stream.Poster)
+	api.GET("/media/:id/backdrop", handlers.Stream.Backdrop)
 
 	api.POST("/playback/sessions", playbackSessions.Create)
 	api.GET("/playback/sessions/:sessionID/status", playbackSessions.Status)
