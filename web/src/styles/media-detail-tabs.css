@@ -43,6 +43,22 @@
   animation: nv-detail-tab-in 160ms var(--nv-ease-standard);
 }
 
+/* Empty tabs should communicate state instead of collapsing into a blank canvas. */
+.nv-detail-tab-empty-state {
+  min-height: clamp(220px, 25vw, 310px) !important;
+  margin-block: 6px;
+  border: 1px dashed color-mix(in srgb, var(--nv-border-default) 86%, transparent);
+  border-radius: var(--nv-radius-container);
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--nv-action-muted) 7%, transparent), transparent 42%),
+    color-mix(in srgb, var(--nv-bg-surface) 62%, transparent);
+}
+
+.nv-detail-tab-empty-state .nv-empty-state-icon {
+  border: 1px solid var(--nv-border-subtle);
+  background: color-mix(in srgb, var(--nv-action-muted) 8%, var(--nv-bg-surface));
+}
+
 .nv-detail-tab-secondary-section {
   margin-top: 24px;
   padding-top: 24px;
@@ -107,6 +123,11 @@
 @media (max-width: 47.999rem) {
   .nv-detail-tab-panel {
     min-height: 180px;
+  }
+
+  .nv-detail-tab-empty-state {
+    min-height: 190px !important;
+    margin-block: 2px;
   }
 
   .nv-detail-subtitle-tab {
