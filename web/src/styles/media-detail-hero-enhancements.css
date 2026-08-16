@@ -9,6 +9,7 @@
 
 .nv-detail-hero > .absolute.inset-0 {
   z-index: 0;
+  transition: opacity .45s ease;
 }
 
 .nv-detail-hero .nv-detail-hero-inner {
@@ -22,6 +23,12 @@
   overflow: hidden;
   pointer-events: none;
   background: var(--nv-bg-surface-soft);
+}
+
+/* Once generated highlights exist, they own the hero background. The original
+ * scraped/local backdrop remains only as the no-highlight fallback. */
+.nv-detail-hero.nv-detail-hero-has-highlight-slides > .absolute.inset-0 {
+  opacity: 0;
 }
 
 .nv-detail-highlight-slideshow::before,
@@ -52,7 +59,21 @@
 }
 
 .nv-detail-highlight-slide.is-active {
-  opacity: .72;
+  opacity: .82;
+  transform: scale(1);
+}
+
+/* The first DOM slide in the current enhancer is the legacy backdrop. Hide it
+ * completely and, while the timer still considers it active, visually promote
+ * the first real highlight. This makes the first painted hero frame a clip
+ * instead of waiting one interval before the user sees any change. */
+.nv-detail-highlight-slide:first-child {
+  opacity: 0 !important;
+}
+
+.nv-detail-highlight-slideshow:has(.nv-detail-highlight-slide:first-child.is-active)
+  .nv-detail-highlight-slide:nth-child(2) {
+  opacity: .82;
   transform: scale(1);
 }
 
@@ -65,7 +86,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  filter: saturate(.9) contrast(.96);
+  filter: saturate(.92) contrast(.98);
 }
 
 /* Long scraped titles can contain a full synopsis. Keep the title as identity,
@@ -128,8 +149,10 @@
 }
 
 @media (max-width: 47.999rem) {
-  .nv-detail-highlight-slide.is-active {
-    opacity: .62;
+  .nv-detail-highlight-slide.is-active,
+  .nv-detail-highlight-slideshow:has(.nv-detail-highlight-slide:first-child.is-active)
+    .nv-detail-highlight-slide:nth-child(2) {
+    opacity: .7;
   }
 
   .nv-detail-hero h1,
