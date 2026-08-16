@@ -16,6 +16,8 @@ import {
   Layers,
   LogOut,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   Sun,
@@ -28,6 +30,8 @@ import {
 interface SidebarProps {
   isMobileOpen?: boolean
   onMobileClose?: () => void
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
 interface RailLinkProps {
@@ -40,7 +44,7 @@ interface RailLinkProps {
 
 function RailLink({ to, icon, label, end = false, meta }: RailLinkProps) {
   return (
-    <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label}>
+    <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label} data-label={label}>
       <span className="nv-rail-icon">{icon}</span>
       <span className="nv-rail-label">{label}</span>
       {meta !== undefined && <span className="nv-rail-meta">{meta}</span>}
@@ -57,7 +61,7 @@ function RailSection({ title, children }: { title: string; children: ReactNode }
   )
 }
 
-export default function Sidebar(_props: SidebarProps) {
+export default function Sidebar({ collapsed = false, onCollapsedChange }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
   const manifest = useServerProfileStore((state) => state.manifest)
@@ -70,6 +74,7 @@ export default function Sidebar(_props: SidebarProps) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDarkTheme = theme === 'dark'
   const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
+  const collapseActionLabel = collapsed ? '展开侧边栏' : '收起侧边栏'
 
   const fetchLibraries = useCallback(() => {
     libraryApi.list().then((res) => setLibraries(res.data.data)).catch(() => {})
@@ -118,7 +123,23 @@ export default function Sidebar(_props: SidebarProps) {
 
   return (
     <>
-      <aside className="nv-rail" aria-label="主导航">
+      <aside id="main-sidebar" className="nv-rail" aria-label="主导航" data-collapsed={collapsed ? 'true' : 'false'}>
+        {onCollapsedChange && (
+          <button
+            type="button"
+            className="nv-rail-collapse-toggle"
+            onClick={() => onCollapsedChange(!collapsed)}
+            aria-label={collapseActionLabel}
+            aria-controls="main-sidebar"
+            aria-expanded={!collapsed}
+            title={collapseActionLabel}
+          >
+            {collapsed
+              ? <PanelLeftOpen size={15} aria-hidden="true" />
+              : <PanelLeftClose size={15} aria-hidden="true" />}
+          </button>
+        )}
+
         <div className="nv-rail-brand-row">
           <div className="nv-rail-brand" aria-hidden="true">N</div>
           <div className="nv-rail-brand-copy">
@@ -160,7 +181,7 @@ export default function Sidebar(_props: SidebarProps) {
         </nav>
 
         <div className="nv-rail-footer">
-          <div className="nv-rail-profile">
+          <div className="nv-rail-profile" title={collapsed ? `${displayName} · ${user?.role === 'admin' ? 'admin' : 'user'}` : undefined}>
             <div className="nv-rail-avatar" aria-hidden="true">{initials}</div>
             <div className="nv-rail-profile-copy">
               <strong>{displayName}</strong>
