@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CreateLibraryRequest, LibraryAdvancedSettings } from '@/types'
-import { adminApi, adultScraperApi } from '@/api'
+import { adminApi, adultScraperApi, aiApi } from '@/api'
 import {
   AlertCircle,
   Eye,
@@ -54,7 +54,7 @@ const DEFAULT_ADVANCED: LibraryAdvancedSettings = {
   allow_adult_content: false,
   auto_download_sub: false,
   auto_scrape_metadata: true,
-  auto_organize_mode: 'ai_assisted',
+  auto_organize_mode: 'rule_only',
   organize_output_dir: '',
   enable_file_watch: false,
 }
@@ -175,6 +175,9 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
   const [error, setError] = useState('')
   const [browsingIndex, setBrowsingIndex] = useState<number | null>(null)
   const [metadataSourceTooltip, setMetadataSourceTooltip] = useState(DEFAULT_METADATA_SOURCE_TOOLTIP)
+  const [aiConfigured, setAIConfigured] = useState(false)
+  const [aiStatusLoading, setAIStatusLoading] = useState(false)
+  const [aiStatusUnavailable, setAIStatusUnavailable] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -185,7 +188,55 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
     setShowAdvanced(false)
     setAdvanced({ ...DEFAULT_ADVANCED })
     setError('')
+    setAIConfigured(false)
+    setAIStatusUnavailable(false)
     setTimeout(() => nameInputRef.current?.focus(), 100)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+
+    setAIStatusLoading(true)
+    setAIStatusUnavailable(false)
+    aiApi.getStatus({ allowCachedOnError: false })
+      .then((response) => {
+        if (cancelled) return
+        const status = response.data.data
+        const configured = Boolean(
+          status?.enabled
+          && status?.api_configured
+          && status?.provider
+          && status?.api_base
+          && status?.model,
+        )
+        setAIConfigured(configured)
+        setAIStatusUnavailable(false)
+        if (!configured) {
+          setAdvanced((current) => (
+            current.auto_organize_mode === 'ai_assisted'
+              ? { ...current, auto_organize_mode: 'rule_only' }
+              : current
+          ))
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAIConfigured(false)
+        setAIStatusUnavailable(true)
+        setAdvanced((current) => (
+          current.auto_organize_mode === 'ai_assisted'
+            ? { ...current, auto_organize_mode: 'rule_only' }
+            : current
+        ))
+      })
+      .finally(() => {
+        if (!cancelled) setAIStatusLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [open])
 
   useEffect(() => {
@@ -252,6 +303,11 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
       return
     }
 
+    if (advanced.auto_organize_mode === 'ai_assisted' && !aiConfigured) {
+      setError('AI 尚未配置或启用，请先配置 AI，或改用「仅规则」整理模式')
+      return
+    }
+
     setError('')
     setSubmitting(true)
     try {
@@ -275,18 +331,21 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
       title: 'AI 辅助',
       tag: '推荐',
       description: '规则识别 + 低置信度时调用 AI 兜底',
+      requiresAI: true,
     },
     {
       value: 'rule_only' as const,
       title: '仅规则',
       tag: '半自动',
       description: '只做规则识别与命名建议，不调用 AI',
+      requiresAI: false,
     },
     {
       value: 'off' as const,
       title: '关闭',
       tag: '手动',
       description: '扫描后不做任何自动整理',
+      requiresAI: false,
     },
   ]
 
@@ -533,12 +592,21 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                   <div className="grid gap-2 sm:grid-cols-3">
                     {organizeOptions.map((option) => {
                       const active = advanced.auto_organize_mode === option.value
+                      const disabled = option.requiresAI && (!aiConfigured || aiStatusLoading)
+                      const aiTag = option.requiresAI && !aiConfigured
+                        ? (aiStatusLoading ? '检测中' : '未配置')
+                        : option.tag
                       return (
                         <button
                           key={option.value}
                           type="button"
-                          onClick={() => updateAdvanced('auto_organize_mode', option.value)}
-                          className="rounded-[var(--nv-radius-control)] border p-3 text-left transition-colors"
+                          disabled={disabled}
+                          aria-disabled={disabled}
+                          title={disabled ? (aiStatusLoading ? '正在检测 AI 配置状态' : '请先在管理中心配置并启用 AI') : undefined}
+                          onClick={() => {
+                            if (!disabled) updateAdvanced('auto_organize_mode', option.value)
+                          }}
+                          className="rounded-[var(--nv-radius-control)] border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45"
                           style={{
                             borderColor: active ? 'var(--nv-action-primary)' : 'var(--nv-border-subtle)',
                             background: active ? 'var(--nv-bg-active)' : 'var(--nv-bg-control)',
@@ -546,13 +614,21 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold text-[var(--nv-text-primary)]">{option.title}</span>
-                            <Tag tone={active ? 'brand' : 'neutral'}>{option.tag}</Tag>
+                            <Tag tone={active ? 'brand' : 'neutral'}>{aiTag}</Tag>
                           </div>
                           <div className="mt-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{option.description}</div>
                         </button>
                       )
                     })}
                   </div>
+
+                  {!aiStatusLoading && !aiConfigured && (
+                    <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+                      {aiStatusUnavailable
+                        ? '无法确认 AI 配置状态，已安全禁用「AI 辅助」。请检查服务状态后重试。'
+                        : 'AI 尚未配置或启用，「AI 辅助」暂不可用。请先在管理中心 → AI 设置中完成配置。'}
+                    </div>
+                  )}
 
                   {advanced.auto_organize_mode === 'off' && (
                     <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-3 py-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">
