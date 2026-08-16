@@ -1,0 +1,382 @@
+/* Nowen Video · screenshot-driven Streaming OS refinement
+ *
+ * This layer only adjusts presentation. It intentionally leaves routing,
+ * playback, filtering, pagination, media APIs and state ownership untouched.
+ * The goal is to make the existing real screens read as a cinematic media OS
+ * rather than a dark dashboard with poster grids.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Navigation rail · selected state is an indicator, not a purple block       */
+/* -------------------------------------------------------------------------- */
+
+.nv-rail-item:hover {
+  border-color: transparent !important;
+  background: rgba(92, 112, 244, .035) !important;
+}
+
+.nv-rail-item[aria-current="page"],
+.nv-rail-item.is-active {
+  border-color: transparent !important;
+  background: linear-gradient(90deg, rgba(84, 111, 255, .055), rgba(117, 94, 238, .018) 58%, transparent 100%) !important;
+  color: #f7f9ff !important;
+  box-shadow: inset 2px 0 rgba(121, 139, 255, .82), 0 0 18px rgba(89, 108, 255, .028) !important;
+}
+
+.nv-rail-item[aria-current="page"] .nv-rail-icon,
+.nv-rail-item.is-active .nv-rail-icon {
+  color: #c6ceff !important;
+  filter: drop-shadow(0 0 6px rgba(103, 124, 255, .18)) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Home · hero becomes atmosphere, content becomes streaming shelves           */
+/* -------------------------------------------------------------------------- */
+
+.nv-home-page {
+  --nv-section-gap: clamp(24px, 2vw, 34px);
+}
+
+.nv-home-page > .nv-section + .nv-section,
+.nv-home-page > .nv-home-genre-stack {
+  position: relative;
+}
+
+.nv-home-page .nv-section-header {
+  margin-bottom: 11px;
+}
+
+.nv-home-page .nv-section-title {
+  font-size: clamp(1rem, .94rem + .24vw, 1.22rem);
+  font-weight: 650;
+  letter-spacing: -.016em;
+}
+
+.nv-home-page .nv-hero-carousel {
+  min-height: clamp(430px, 52vh, 630px) !important;
+  border-color: rgba(177, 191, 255, .035) !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.012) !important;
+}
+
+.nv-home-page .nv-hero-carousel::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 9;
+  height: 104px;
+  pointer-events: none;
+  background: linear-gradient(0deg, var(--nv-bg-canvas) 0%, rgba(6,8,18,.72) 34%, rgba(6,8,18,.18) 72%, transparent 100%);
+  opacity: .92;
+}
+
+.nv-home-page .nv-hero-carousel > div:first-of-type img,
+.nv-home-page .nv-hero-carousel img.h-full.w-full {
+  filter: saturate(.86) contrast(1.035) brightness(.84) !important;
+}
+
+.nv-home-page .nv-hero-carousel h2 {
+  max-width: 15ch !important;
+  font-size: clamp(2.55rem, 4vw, 5.1rem) !important;
+  line-height: .98 !important;
+  letter-spacing: -.042em !important;
+}
+
+.nv-home-page .nv-hero-carousel p {
+  max-width: 62ch;
+}
+
+.nv-home-rail {
+  margin-inline: -6px;
+  padding-inline: 6px;
+}
+
+.nv-home-media-rail {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 8px;
+  overscroll-behavior-inline: contain;
+}
+
+.nv-home-media-rail > * {
+  scroll-snap-align: start;
+}
+
+.nv-home-poster-slot {
+  width: clamp(168px, 11.3vw, 208px);
+}
+
+.nv-home-genre-slot {
+  width: clamp(154px, 10.1vw, 186px);
+}
+
+.nv-continue-card {
+  width: clamp(270px, 21vw, 356px);
+}
+
+.nv-continue-card .nv-media-card-title {
+  font-size: .86rem;
+}
+
+.nv-home-rail-arrow {
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  border-color: rgba(174, 188, 255, .12) !important;
+  background: rgba(7, 11, 23, .76) !important;
+  box-shadow: 0 14px 34px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: blur(18px) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(115%) !important;
+  transition: opacity var(--nv-motion-fast) var(--nv-ease-standard), transform var(--nv-motion-fast) var(--nv-ease-standard), border-color var(--nv-motion-fast) var(--nv-ease-standard) !important;
+}
+
+.nv-home-rail:hover .nv-home-rail-arrow,
+.nv-home-rail:focus-within .nv-home-rail-arrow {
+  opacity: 1 !important;
+}
+
+.nv-home-rail-arrow-left:hover {
+  transform: translateY(-50%) translateX(-1px) !important;
+}
+
+.nv-home-rail-arrow-right:hover {
+  transform: translateY(-50%) translateX(1px) !important;
+}
+
+.nv-home-genre-stack {
+  gap: clamp(22px, 1.8vw, 30px) !important;
+}
+
+/* Keep home shelves visually calm: metadata stays, but posters own the row. */
+.nv-home-page .nv-media-card-poster {
+  box-shadow: 0 12px 30px rgba(0,0,0,.21);
+}
+
+.nv-home-page .nv-media-card:hover .nv-media-card-poster,
+.nv-home-page .nv-media-card:focus-within .nv-media-card-poster {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 19px 46px rgba(0,0,0,.34), 0 0 0 1px rgba(112,128,255,.10);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Browse · one lightweight segment row + one real floating toolbelt           */
+/* -------------------------------------------------------------------------- */
+
+.nv-browse-type-tabs {
+  gap: 3px !important;
+  padding: 0 0 10px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--nv-border-subtle) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.nv-browse-type-tabs .nv-button {
+  min-height: 32px;
+  border-color: transparent !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.nv-browse-type-tabs .nv-button:hover {
+  background: rgba(100, 119, 255, .045) !important;
+}
+
+.nv-browse-type-tabs .nv-button[aria-pressed="true"] {
+  border-color: rgba(133, 149, 255, .10) !important;
+  background: rgba(100, 119, 255, .065) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+.nv-browse-toolbar {
+  position: sticky;
+  top: 72px;
+  z-index: 22;
+  gap: 8px !important;
+  padding: 9px 10px !important;
+  border-color: rgba(181, 196, 255, .10) !important;
+  border-radius: 16px !important;
+  background: rgba(9, 14, 28, .76) !important;
+  box-shadow: 0 16px 42px rgba(0,0,0,.20), inset 0 1px rgba(255,255,255,.035) !important;
+  backdrop-filter: blur(22px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(118%) !important;
+}
+
+.nv-browse-toolbar .nv-search,
+.nv-browse-toolbar .nv-input,
+.nv-browse-toolbar .nv-select {
+  background: rgba(12, 18, 34, .58) !important;
+}
+
+.nv-browse-filter-panel {
+  margin-top: -18px;
+}
+
+.nv-browse-list-item:hover {
+  transform: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Media detail · poster fallback is ambience, never a giant blurred poster    */
+/* -------------------------------------------------------------------------- */
+
+.nv-media-detail-page .nv-detail-hero img.blur-2xl {
+  opacity: .26 !important;
+  transform: scale(1.18) !important;
+  filter: blur(36px) saturate(.46) brightness(.40) contrast(1.08) !important;
+}
+
+.nv-media-detail-page .nv-detail-hero img:not(.blur-2xl) {
+  filter: saturate(.82) brightness(.70) contrast(1.04);
+}
+
+.nv-media-detail-page .nv-detail-hero-inner {
+  min-height: clamp(410px, 38vw, 560px) !important;
+  padding-top: 64px !important;
+  padding-bottom: 44px !important;
+}
+
+.nv-media-detail-page .nv-detail-hero-inner h1 {
+  font-size: clamp(2.3rem, 3.5vw, 4.25rem) !important;
+}
+
+.nv-media-detail-page .nv-detail-hero-inner p.line-clamp-3 {
+  max-width: 70ch !important;
+  color: rgba(232, 236, 255, .67) !important;
+}
+
+.nv-media-detail-page .nv-detail-poster {
+  box-shadow: 0 24px 58px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.03) !important;
+}
+
+/* Keep the right inspector visually secondary to the movie itself. */
+.nv-detail-side-card {
+  background: rgba(13, 18, 33, .56) !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.15), inset 0 1px rgba(255,255,255,.025) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Large desktop / 2K / 4K density                                             */
+/* -------------------------------------------------------------------------- */
+
+@media (min-width: 100rem) {
+  .nv-home-page {
+    --nv-section-gap: 32px;
+  }
+
+  .nv-home-poster-slot {
+    width: 198px;
+  }
+
+  .nv-home-genre-slot {
+    width: 180px;
+  }
+
+  .nv-continue-card {
+    width: 336px;
+  }
+
+  .nv-home-page .nv-hero-carousel {
+    min-height: clamp(500px, 48vh, 640px) !important;
+  }
+}
+
+@media (min-width: 125rem) {
+  :root {
+    --nv-content-max: 150rem;
+    --nv-content-wide-max: 160rem;
+    --nv-grid-column: 208px;
+    --nv-page-gutter: clamp(30px, 2vw, 48px);
+  }
+
+  .nv-home-poster-slot {
+    width: 206px;
+  }
+
+  .nv-home-genre-slot {
+    width: 186px;
+  }
+
+  .nv-continue-card {
+    width: 352px;
+  }
+
+  .nv-browse-poster-grid {
+    column-gap: 16px !important;
+    row-gap: 24px !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tablet / mobile                                                             */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 67.99rem) {
+  .nv-browse-toolbar {
+    top: 66px;
+  }
+
+  .nv-home-poster-slot {
+    width: 174px;
+  }
+
+  .nv-home-genre-slot {
+    width: 160px;
+  }
+
+  .nv-continue-card {
+    width: 286px;
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .nv-home-page .nv-hero-carousel {
+    min-height: 390px !important;
+  }
+
+  .nv-home-page .nv-hero-carousel::after {
+    height: 76px;
+  }
+
+  .nv-home-poster-slot,
+  .nv-home-genre-slot {
+    width: 146px;
+  }
+
+  .nv-continue-card {
+    width: min(78vw, 292px);
+  }
+
+  .nv-home-rail {
+    margin-inline: -2px;
+    padding-inline: 2px;
+  }
+
+  .nv-home-rail-arrow {
+    display: none !important;
+  }
+
+  .nv-browse-toolbar {
+    position: static;
+    top: auto;
+  }
+
+  .nv-browse-filter-panel {
+    margin-top: -8px;
+  }
+
+  .nv-media-detail-page .nv-detail-hero img.blur-2xl {
+    opacity: .22 !important;
+    filter: blur(32px) saturate(.42) brightness(.36) contrast(1.06) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-home-rail-arrow,
+  .nv-home-page .nv-media-card-poster {
+    transition-duration: .01ms !important;
+  }
+}
