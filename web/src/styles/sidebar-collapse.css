@@ -16,27 +16,48 @@
     --nv-rail-width: 78px;
   }
 
+  /* Do not rely on the inherited token alone here. Several historical desktop
+     rail layers also participate in sizing, so the user-controlled state owns
+     the final physical width contract explicitly. */
+  .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail {
+    width: 228px !important;
+    min-width: 228px !important;
+    max-width: 228px !important;
+    flex-basis: 228px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] > .nv-rail {
+    width: 78px !important;
+    min-width: 78px !important;
+    max-width: 78px !important;
+    flex-basis: 78px !important;
+    padding: 14px 10px 12px !important;
+    align-items: center !important;
+  }
+
   .nv-rail {
     transition:
       width var(--nv-motion-normal) var(--nv-ease-standard),
       min-width var(--nv-motion-normal) var(--nv-ease-standard),
+      max-width var(--nv-motion-normal) var(--nv-ease-standard),
+      flex-basis var(--nv-motion-normal) var(--nv-ease-standard),
       padding var(--nv-motion-normal) var(--nv-ease-standard);
   }
 
   .nv-rail-collapse-toggle {
     position: absolute;
     top: 20px;
-    right: -13px;
+    right: 12px;
     z-index: 4;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
     border: 1px solid var(--nv-border-default);
     border-radius: 9px;
     background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent);
     color: var(--nv-text-tertiary);
-    box-shadow: 0 8px 22px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .04);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .16), inset 0 1px rgba(255, 255, 255, .04);
     backdrop-filter: blur(16px) saturate(115%);
     -webkit-backdrop-filter: blur(16px) saturate(115%);
     cursor: pointer;
@@ -49,26 +70,54 @@
   }
 
   .nv-rail-collapse-toggle:hover {
-    transform: translateX(1px);
     border-color: var(--nv-border-hover);
     background: color-mix(in srgb, var(--nv-bg-elevated) 98%, var(--nv-fill-hover));
     color: var(--nv-text-primary);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, .22), 0 0 18px color-mix(in srgb, var(--nv-action-primary) 12%, transparent);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .20), 0 0 18px color-mix(in srgb, var(--nv-action-primary) 10%, transparent);
   }
 
   .nv-rail-collapse-toggle:active {
     transform: scale(.96);
   }
 
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail {
-    padding-inline: 12px;
+  /* Expanded brand copy leaves a dedicated slot for the toggle instead of
+     letting the control float across the main content boundary. */
+  .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-brand-row {
+    padding-right: 38px !important;
+  }
+
+  /* Collapsed brand = logo, then a small expand affordance. */
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle {
+    top: 66px;
+    left: 50%;
+    right: auto;
+    width: 34px;
+    height: 30px;
+    transform: translateX(-50%);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle:hover {
+    transform: translateX(-50%);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle:active {
+    transform: translateX(-50%) scale(.96);
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-row {
-    width: 100%;
-    justify-content: center;
-    gap: 0;
-    padding-inline: 0;
+    width: 100% !important;
+    min-height: 42px !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    margin: 0 0 42px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand {
+    width: 40px !important;
+    height: 40px !important;
+    flex: 0 0 40px !important;
+    margin: 0 !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-copy,
@@ -80,86 +129,159 @@
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-scroll {
-    width: 100%;
+    width: 100% !important;
     align-items: center !important;
-    gap: 8px;
+    gap: 9px !important;
+    padding: 0 !important;
+    overflow-x: visible !important;
   }
 
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section {
+    position: relative;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section-links {
     width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section + .nv-rail-section {
-    margin-top: 7px;
-    padding-top: 9px;
-    border-top: 1px solid var(--nv-border-subtle);
+    margin-top: 8px !important;
+    padding-top: 13px !important;
+    border-top: 0 !important;
   }
 
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section + .nv-rail-section::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 30px;
+    height: 1px;
+    transform: translateX(-50%);
+    background: var(--nv-border-subtle);
+  }
+
+  /* The collapsed rail is icon-first. Override the desktop 100%-wide row
+     contract so active/hover surfaces wrap a compact icon slot. */
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item {
-    width: 100% !important;
-    min-height: 42px;
+    width: 46px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+    min-height: 46px !important;
+    height: 46px !important;
+    flex: 0 0 46px !important;
+    flex-direction: column !important;
+    align-items: center !important;
     justify-content: center !important;
     gap: 0 !important;
-    padding: 4px !important;
+    padding: 0 !important;
+    border-radius: 13px !important;
+    overflow: visible !important;
   }
 
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-item:hover {
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item:hover {
     transform: none !important;
+    background: var(--nv-fill-hover) !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"],
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item.is-active {
+    border-color: color-mix(in srgb, var(--nv-action-primary) 16%, transparent) !important;
+    background: color-mix(in srgb, var(--nv-fill-active) 78%, transparent) !important;
+    box-shadow: inset 0 1px rgba(255,255,255,.04), 0 8px 22px rgba(0,0,0,.08) !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"]::before,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item.is-active::before {
+    left: -1px !important;
+    top: 11px !important;
+    bottom: 11px !important;
+    width: 2px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-icon {
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: currentColor !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-icon > svg {
+    display: block !important;
+    width: 18px !important;
+    height: 18px !important;
+    opacity: 1 !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile {
-    width: 100%;
-    justify-content: center;
-    gap: 0;
-    padding: 6px !important;
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border-radius: 13px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-avatar {
-    width: 32px;
-    height: 32px;
-    flex-basis: 32px;
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer {
-    align-items: center;
-    gap: 7px;
+    width: 100% !important;
+    align-items: center !important;
+    gap: 7px !important;
+    padding-top: 10px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions {
-    width: 100%;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    padding-inline: 0;
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding-inline: 0 !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions > * {
-    width: 100%;
+    width: 46px !important;
+    max-width: 46px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-item,
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-action {
-    width: 100% !important;
-    min-height: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3px !important;
-    border-radius: 10px;
+    width: 46px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+    min-height: 40px !important;
+    height: 40px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    border-radius: 11px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-icon {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
+    width: 30px !important;
+    height: 30px !important;
+    flex-basis: 30px !important;
   }
 
   .nv-main-scroll {
