@@ -82,9 +82,21 @@ func buildRouter(
 		logger,
 	)
 
+	// Local Media Analysis is a core Lite capability and is deliberately
+	// initialized without AIService. It works offline using FFmpeg only.
+	mediaAnalysisService := service.NewMediaAnalysisService(
+		cfg,
+		repos.Media,
+		repos.VideoHighlight,
+		repos.AIAnalysisTask,
+		logger,
+	)
+	mediaAnalysisService.SetWSHub(services.WSHub)
+	mediaAnalysisHandler := handler.NewMediaAnalysisHandler(mediaAnalysisService, logger)
+
 	startMaintenanceJobs(repos)
 	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
-	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, repos, jwtMiddleware)
+	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, mediaAnalysisHandler, mediaAnalysisService, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, runtimeHistoryHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
 	r.GET("/api/admin/legacy-source-retirement/:source", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Report)
