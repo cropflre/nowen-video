@@ -29,6 +29,7 @@ import './styles/search-cinema.css'
 import './styles/sidebar-alignment-fix.css'
 import './styles/streaming-os.css'
 import './styles/streaming-os-refinement.css'
+import './styles/streaming-os-calibration.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
