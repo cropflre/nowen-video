@@ -1,6 +1,6 @@
 /* Nowen Video · Media detail hero enhancements
- * Keep highlight imagery atmospheric: it may enrich the hero, but must never
- * compete with metadata, actions, or the poster for interaction priority.
+ * Highlight frames are real visual content, not a blurred ambience layer.
+ * Keep copy readable with localised scrims while preserving frame clarity.
  */
 
 .nv-detail-hero {
@@ -40,12 +40,47 @@
   pointer-events: none;
 }
 
+/* Do not reuse --nv-hero-scrim here. Its light-theme opacity is intentionally
+ * strong for poster/backdrop fallback and would wash real highlight frames out.
+ * Protect only the copy side and leave the visual half substantially clear. */
 .nv-detail-highlight-slideshow::before {
-  background: var(--nv-hero-scrim);
+  background: linear-gradient(
+    90deg,
+    rgba(11, 9, 13, .82) 0%,
+    rgba(11, 9, 13, .64) 27%,
+    rgba(11, 9, 13, .24) 48%,
+    rgba(11, 9, 13, .06) 66%,
+    transparent 82%
+  );
 }
 
 .nv-detail-highlight-slideshow::after {
-  background: var(--nv-hero-bottom-scrim);
+  background: linear-gradient(
+    0deg,
+    rgba(11, 9, 13, .62) 0%,
+    rgba(11, 9, 13, .22) 22%,
+    transparent 50%
+  );
+}
+
+[data-theme="light"] .nv-detail-highlight-slideshow::before {
+  background: linear-gradient(
+    90deg,
+    rgba(243, 240, 244, .84) 0%,
+    rgba(243, 240, 244, .62) 27%,
+    rgba(243, 240, 244, .20) 48%,
+    rgba(243, 240, 244, .04) 66%,
+    transparent 82%
+  );
+}
+
+[data-theme="light"] .nv-detail-highlight-slideshow::after {
+  background: linear-gradient(
+    0deg,
+    rgba(243, 240, 244, .58) 0%,
+    rgba(243, 240, 244, .18) 22%,
+    transparent 48%
+  );
 }
 
 .nv-detail-highlight-slide {
@@ -53,13 +88,13 @@
   inset: 0;
   z-index: 1;
   opacity: 0;
-  transform: scale(1.025);
-  transition: opacity 1s ease, transform 5.2s ease;
+  transform: scale(1.018);
+  transition: opacity .9s ease, transform 5.2s ease;
   will-change: opacity, transform;
 }
 
 .nv-detail-highlight-slide.is-active {
-  opacity: .82;
+  opacity: 1;
   transform: scale(1);
 }
 
@@ -72,7 +107,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  filter: saturate(.92) contrast(.98);
+  filter: saturate(1.04) contrast(1.04) brightness(1.01);
 }
 
 /* Long scraped titles can contain a full synopsis. Keep the title as identity,
@@ -135,8 +170,24 @@
 }
 
 @media (max-width: 47.999rem) {
-  .nv-detail-highlight-slide.is-active {
-    opacity: .7;
+  .nv-detail-highlight-slideshow::before {
+    background: linear-gradient(
+      90deg,
+      rgba(11, 9, 13, .72) 0%,
+      rgba(11, 9, 13, .36) 55%,
+      rgba(11, 9, 13, .08) 78%,
+      transparent 100%
+    );
+  }
+
+  [data-theme="light"] .nv-detail-highlight-slideshow::before {
+    background: linear-gradient(
+      90deg,
+      rgba(243, 240, 244, .76) 0%,
+      rgba(243, 240, 244, .40) 55%,
+      rgba(243, 240, 244, .08) 78%,
+      transparent 100%
+    );
   }
 
   .nv-detail-hero h1,
