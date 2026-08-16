@@ -6,6 +6,7 @@ import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
 import { initI18n } from './i18n'
 import { installSubtitleTrackActivationGuard } from './utils/subtitleTrackActivation'
+import { installMediaDetailHeroEnhancer } from './utils/mediaDetailHeroEnhancer'
 import './styles/global.css'
 import './styles/fluent.css'
 import './styles/design-system.css'
@@ -29,6 +30,7 @@ import './styles/streaming-os-refinement.css'
 import './styles/hero-carousel.css'
 import './styles/browse-layout.css'
 import './styles/media-detail-tabs.css'
+import './styles/media-detail-hero-enhancements.css'
 import './styles/sidebar-collapse.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
@@ -99,6 +101,7 @@ if ('serviceWorker' in navigator) {
 }
 
 installSubtitleTrackActivationGuard()
+installMediaDetailHeroEnhancer()
 
 initTheme()
 initI18n()
