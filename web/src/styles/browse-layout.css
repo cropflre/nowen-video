@@ -22,6 +22,23 @@
   margin-top: 0 !important;
 }
 
+/* Browse owns a compact inline toolbelt, not a floating workspace header.
+ * The Streaming OS layer previously made this row sticky with a high z-index,
+ * which allowed its translucent surface/shadow to sit over the first poster
+ * row. Keep it in normal document flow and reserve a clean content gutter. */
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+  position: relative !important;
+  top: auto !important;
+  z-index: 2 !important;
+  margin-bottom: 4px !important;
+}
+
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-media-grid,
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-list,
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-poster-grid {
+  margin-top: 6px !important;
+}
+
 [data-theme="light"] .nv-browse-type-tabs {
   min-height: 52px;
   padding: 7px 9px !important;
@@ -54,7 +71,7 @@
   border-radius: 14px !important;
   background: rgba(255, 255, 255, .82) !important;
   box-shadow:
-    0 12px 30px rgba(39, 35, 72, .075),
+    0 10px 24px rgba(39, 35, 72, .055),
     inset 0 1px rgba(255, 255, 255, .86) !important;
 }
 
