@@ -1,0 +1,188 @@
+/* Nowen Video · collapsible desktop navigation rail
+ * Loaded after the shared Streaming OS layers so user-controlled sidebar
+ * state can override the responsive wide-rail contract without forking it.
+ */
+
+.nv-rail-collapse-toggle {
+  display: none;
+}
+
+@media (min-width: 68.75rem) {
+  .nv-app-shell[data-sidebar-collapsed="false"] {
+    --nv-rail-width: 228px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] {
+    --nv-rail-width: 78px;
+  }
+
+  .nv-rail {
+    transition:
+      width var(--nv-motion-normal) var(--nv-ease-standard),
+      min-width var(--nv-motion-normal) var(--nv-ease-standard),
+      padding var(--nv-motion-normal) var(--nv-ease-standard);
+  }
+
+  .nv-rail-collapse-toggle {
+    position: absolute;
+    top: 20px;
+    right: -13px;
+    z-index: 4;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--nv-border-default);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent);
+    color: var(--nv-text-tertiary);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .04);
+    backdrop-filter: blur(16px) saturate(115%);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+    cursor: pointer;
+    transition:
+      transform var(--nv-motion-fast) var(--nv-ease-standard),
+      color var(--nv-motion-fast) var(--nv-ease-standard),
+      border-color var(--nv-motion-fast) var(--nv-ease-standard),
+      background-color var(--nv-motion-fast) var(--nv-ease-standard),
+      box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
+  }
+
+  .nv-rail-collapse-toggle:hover {
+    transform: translateX(1px);
+    border-color: var(--nv-border-hover);
+    background: color-mix(in srgb, var(--nv-bg-elevated) 98%, var(--nv-fill-hover));
+    color: var(--nv-text-primary);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .22), 0 0 18px color-mix(in srgb, var(--nv-action-primary) 12%, transparent);
+  }
+
+  .nv-rail-collapse-toggle:active {
+    transform: scale(.96);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail {
+    padding-inline: 12px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-row {
+    width: 100%;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-copy,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section-title,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-label,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-meta,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile-copy {
+    display: none !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-scroll {
+    width: 100%;
+    align-items: center !important;
+    gap: 8px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section-links {
+    width: 100% !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section + .nv-rail-section {
+    margin-top: 7px;
+    padding-top: 9px;
+    border-top: 1px solid var(--nv-border-subtle);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    width: 100% !important;
+    min-height: 42px;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 4px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-item:hover {
+    transform: none !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile {
+    width: 100%;
+    justify-content: center;
+    gap: 0;
+    padding: 6px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-avatar {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer {
+    align-items: center;
+    gap: 7px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding-inline: 0;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions > * {
+    width: 100%;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-item,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-action {
+    width: 100% !important;
+    min-height: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px !important;
+    border-radius: 10px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-icon {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .nv-main-scroll {
+    transition: width var(--nv-motion-normal) var(--nv-ease-standard);
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 68.74rem) {
+  .nv-rail-collapse-toggle {
+    display: none !important;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-rail-collapse-toggle {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-rail,
+  .nv-main-scroll,
+  .nv-rail-collapse-toggle {
+    transition: none !important;
+  }
+}
