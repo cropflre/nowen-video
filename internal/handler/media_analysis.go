@@ -43,12 +43,12 @@ func highlightView(mediaID string, h model.VideoHighlight) mediaHighlightView {
 		ID: h.ID, MediaID: h.MediaID, Title: h.Title,
 		StartTime: h.StartTime, EndTime: h.EndTime, Score: h.Score,
 		Tags: h.Tags, Source: h.Source, AnalysisMethod: h.AnalysisMethod, Version: h.Version,
+		// Preview is intentionally always exposed. The endpoint lazily generates and
+		// persists Animated WebP on the first hover instead of blocking analysis.
+		PreviewURL: "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview",
 	}
 	if h.Thumbnail != "" {
 		view.ThumbnailURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/thumbnail"
-	}
-	if h.PreviewPath != "" || h.GifPath != "" {
-		view.PreviewURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview"
 	}
 	return view
 }
@@ -120,19 +120,25 @@ func (h *MediaAnalysisHandler) DeleteHighlights(c *gin.Context) {
 }
 
 func (h *MediaAnalysisHandler) Thumbnail(c *gin.Context) {
-	h.serveAsset(c, "thumbnail")
-}
-
-func (h *MediaAnalysisHandler) Preview(c *gin.Context) {
-	h.serveAsset(c, "preview")
-}
-
-func (h *MediaAnalysisHandler) serveAsset(c *gin.Context, kind string) {
-	path, err := h.analysis.HighlightAsset(c.Param("id"), c.Param("highlightId"), kind)
+	path, err := h.analysis.HighlightAsset(c.Param("id"), c.Param("highlightId"), "thumbnail")
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
 	}
+	h.serveFile(c, path)
+}
+
+func (h *MediaAnalysisHandler) Preview(c *gin.Context) {
+	path, err := h.analysis.EnsureHighlightPreview(c.Param("id"), c.Param("highlightId"))
+	if err != nil {
+		h.logger.Debugf("lazy highlight preview failed media=%s highlight=%s: %v", c.Param("id"), c.Param("highlightId"), err)
+		c.Status(http.StatusNotFound)
+		return
+	}
+	h.serveFile(c, path)
+}
+
+func (h *MediaAnalysisHandler) serveFile(c *gin.Context, path string) {
 	c.Header("Cache-Control", "private, max-age=86400")
 	c.File(path)
 }
