@@ -18,6 +18,9 @@ export const WS_EVENTS = {
   TRANSCODE_PROGRESS: 'transcode_progress',
   TRANSCODE_COMPLETED: 'transcode_completed',
   TRANSCODE_FAILED: 'transcode_failed',
+  // 本地媒体分析事件
+  MEDIA_ANALYSIS_PROGRESS: 'media_analysis_progress',
+  MEDIA_ANALYSIS_COMPLETE: 'media_analysis_complete',
   // 统一任务事件
   TASK_UPDATED: 'task_updated',
   // 媒体库变更事件
@@ -124,6 +127,15 @@ export interface TranscodeProgressData {
   message: string
 }
 
+export interface MediaAnalysisProgressData {
+  task_id: string
+  media_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
+  stage: string
+  progress: number
+  error?: string
+}
+
 export interface TaskLifecycleUpdatedData {
   kind: 'scan' | 'scrape' | 'transcode'
   source_id?: string
@@ -151,7 +163,7 @@ export interface LibraryChangedData {
 
 export interface WSMessage {
   type: WSEventType
-  data: ScanProgressData | ScanPhaseData | ScrapeProgressData | TranscodeProgressData | TaskUpdatedData
+  data: ScanProgressData | ScanPhaseData | ScrapeProgressData | TranscodeProgressData | MediaAnalysisProgressData | TaskUpdatedData
   timestamp: number
 }
 
@@ -198,7 +210,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const token = useAuthStore((s) => s.token)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
-  // 注册事件监听
   const on = useCallback((event: WSEventType, handler: WSEventHandler) => {
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set())
@@ -206,12 +217,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     listenersRef.current.get(event)!.add(handler)
   }, [])
 
-  // 取消订阅
   const off = useCallback((event: WSEventType, handler: WSEventHandler) => {
     listenersRef.current.get(event)?.delete(handler)
   }, [])
 
-  // 分发事件
   const dispatchEvent = useCallback((msg: WSMessage) => {
     const handlers = listenersRef.current.get(msg.type)
     if (handlers) {
@@ -225,12 +234,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, [])
 
-  // 建立WebSocket连接
   const connect = useCallback(() => {
     if (!token || !isAuthenticated) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    // 构建WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`
 
@@ -240,8 +247,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
       ws.onopen = () => {
         if (ws !== wsRef.current) {
-          // React StrictMode can clean up a connecting socket before it opens.
-          // Close that stale socket without changing the active connection state.
           ws.close()
           return
         }
@@ -252,7 +257,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
       ws.onmessage = (event) => {
         try {
-          // 支持批量消息（用换行分隔）
           const messages = event.data.split('\n')
           messages.forEach((msgStr: string) => {
             if (!msgStr.trim()) return
@@ -271,7 +275,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         setConnected(false)
         wsRef.current = null
 
-        // 自动重连
         if (autoReconnect && retriesRef.current < maxRetries && isAuthenticated) {
           retriesRef.current++
           console.log(`[WS] ${reconnectInterval}ms 后重连 (${retriesRef.current}/${maxRetries})`)
@@ -288,14 +291,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, [token, isAuthenticated, autoReconnect, reconnectInterval, maxRetries, dispatchEvent])
 
-  // 连接管理
   useEffect(() => {
     if (isAuthenticated && token) {
       connect()
     }
 
     return () => {
-      // 清理
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current)
         reconnectTimerRef.current = null
@@ -303,8 +304,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       if (wsRef.current) {
         const ws = wsRef.current
         wsRef.current = null
-        // Closing a CONNECTING WebSocket produces a browser-level console error.
-        // Let it finish connecting, then close it as an intentionally stale socket.
         ws.onclose = null
         ws.onerror = null
         if (ws.readyState === WebSocket.CONNECTING) {
