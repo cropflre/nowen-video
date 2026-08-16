@@ -15,6 +15,8 @@ interface MediaHighlightsPanelProps {
 const stageLabels: Record<string, string> = {
   queued: '等待分析',
   probe: '检查媒体文件',
+  coarse_analysis: '快速采样媒体',
+  refine_analysis: '精筛候选片段',
   audio_analysis: '分析音频能量',
   scene_analysis: '分析场景变化',
   ranking: '筛选精彩片段',
@@ -37,6 +39,14 @@ function formatTime(seconds: number) {
 
 function assetUrl(url?: string) {
   return url ? streamApi.withTokenUrl(url) : ''
+}
+
+function analysisLabel(method: string) {
+  if (method === 'heuristic') return '结构推断'
+  if (method === 'scene') return '场景分析'
+  if (method === 'sparse_audio') return '快速音频采样'
+  if (method === 'sparse_audio_scene') return '快速音频 + 场景'
+  return '音频 + 场景'
 }
 
 export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighlightsPanelProps) {
@@ -86,6 +96,8 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
     }
     if (!running) return
 
+    // The backend also broadcasts media_analysis_progress over WebSocket. Keep a
+    // low-frequency HTTP poll as a resilient fallback instead of hitting status every 1.5s.
     pollRef.current = window.setInterval(() => {
       void loadStatus().then((next) => {
         if (!next || (next.status !== 'pending' && next.status !== 'running')) {
@@ -94,7 +106,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
           if (next?.status === 'completed') void loadHighlights()
         }
       }).catch(() => {})
-    }, 1500)
+    }, 5000)
 
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current)
@@ -166,7 +178,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
                 <h3 className="font-semibold text-[var(--nv-text-primary)]">正在生成精彩片段 · {Math.round(progress)}%</h3>
                 <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">{stageLabel}。可离开当前页面，任务会在后台继续。</p>
               </div>
-              <span className="rounded-full border border-[var(--nv-border-subtle)] px-3 py-1 text-xs text-[var(--nv-text-tertiary)]">本地 FFmpeg</span>
+              <span className="rounded-full border border-[var(--nv-border-subtle)] px-3 py-1 text-xs text-[var(--nv-text-tertiary)]">本地 FFmpeg · 快速分析</span>
             </div>
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--nv-surface-elevated)]">
               <div className="h-full rounded-full bg-[var(--nv-accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} />
@@ -206,7 +218,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
             <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">精彩片段</h2>
             <span className="rounded-full bg-[var(--nv-surface-elevated)] px-2.5 py-1 text-xs text-[var(--nv-text-tertiary)]">{orderedHighlights.length} 个</span>
           </div>
-          <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">本地 FFmpeg 通过音频能量和场景变化分析生成，不复制原视频。</p>
+          <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">本地 FFmpeg 稀疏采样生成；动态预览只在首次悬停时按需生成。</p>
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
@@ -266,7 +278,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
                   <span className="inline-flex items-center gap-1"><Clock3 size={12} />{formatTime(item.start_time)} → {formatTime(item.end_time)}</span>
-                  <span>{item.analysis_method === 'heuristic' ? '结构推断' : item.analysis_method === 'scene' ? '场景分析' : '音频 + 场景'}</span>
+                  <span>{analysisLabel(item.analysis_method)}</span>
                 </div>
               </div>
             </button>
