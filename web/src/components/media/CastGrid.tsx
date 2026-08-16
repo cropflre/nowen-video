@@ -68,7 +68,11 @@ export default function CastGrid({ persons }: CastGridProps) {
         <span className="text-[11px] text-[var(--nv-text-tertiary)]">{dedupedPersons.length}</span>
       </div>
 
-      <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2" role="list" aria-label={t('castGrid.title')}>
+      <div
+        className="flex flex-wrap items-start gap-x-3 gap-y-5 pb-2"
+        role="list"
+        aria-label={t('castGrid.title')}
+      >
         {sortedPersons.map((mediaPerson) => (
           <CastCard key={mediaPerson.id} mediaPerson={mediaPerson} onClick={handleCardClick} />
         ))}
