@@ -120,6 +120,43 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
   )
 }
 
+function ExpandableGenreTags({ genres }: { genres: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (genres.length === 0) return null
+
+  const primary = genres.slice(0, 3)
+  const remaining = genres.slice(3)
+
+  return (
+    <div className={`nv-collection-item-tags mt-1.5 flex flex-wrap items-center gap-1${expanded ? ' is-expanded' : ''}`}>
+      {primary.map((genre) => (
+        <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`} title={genre}>
+          <Tag>{genre}</Tag>
+        </Link>
+      ))}
+      {remaining.length > 0 && (
+        <button
+          type="button"
+          className="nv-collection-tag-toggle"
+          aria-expanded={expanded}
+          aria-label={expanded ? '收起全部标签' : `展开其余 ${remaining.length} 个标签`}
+          title={expanded ? '收起标签' : `展开全部 ${genres.length} 个标签`}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <Tag tone={expanded ? 'brand' : undefined}>
+            {expanded ? '收起' : `+${remaining.length}`}
+          </Tag>
+        </button>
+      )}
+      {expanded && remaining.map((genre) => (
+        <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`} title={genre}>
+          <Tag>{genre}</Tag>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: number }) {
   const item = group.primary
   const navigate = useNavigate()
@@ -187,12 +224,7 @@ function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: numbe
             </>
           )}
         </div>
-        {genres.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {genres.slice(0, 3).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
-            {genres.length > 3 && <Tag>+{genres.length - 3}</Tag>}
-          </div>
-        )}
+        <ExpandableGenreTags genres={genres} />
       </div>
 
       {versions.length > 1 && versionsOpen && <VersionMenu versions={versions} currentId={item.id} />}
@@ -229,12 +261,7 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
             {item.year > 0 && <span>{item.year}</span>}
             {item.runtime > 0 && <span>{formatDuration(item.runtime)}</span>}
           </div>
-          {genres.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {genres.slice(0, 3).map((genre) => <Link key={genre} to={`/search?q=${encodeURIComponent(genre)}`}><Tag>{genre}</Tag></Link>)}
-              {genres.length > 3 && <Tag>+{genres.length - 3}</Tag>}
-            </div>
-          )}
+          <ExpandableGenreTags genres={genres} />
         </div>
 
         {item.rating > 0 && <Tag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>}
