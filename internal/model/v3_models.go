@@ -7,20 +7,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// ==================== V3: AI 场景识别与内容理解 ====================
+// ==================== V3: 场景识别与本地媒体分析 ====================
 
-// VideoChapter 视频章节（AI自动生成或手动标记）
+// VideoChapter 视频章节（自动生成或手动标记）。
 type VideoChapter struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:text"`
 	MediaID     string    `json:"media_id" gorm:"index;type:text;not null"`
-	Title       string    `json:"title" gorm:"type:text;not null"`    // 章节标题
-	StartTime   float64   `json:"start_time"`                         // 开始时间（秒）
-	EndTime     float64   `json:"end_time"`                           // 结束时间（秒）
-	Description string    `json:"description" gorm:"type:text"`       // 章节描述
-	SceneType   string    `json:"scene_type" gorm:"type:text"`        // 场景类型: action/dialogue/landscape/credits 等
-	Confidence  float64   `json:"confidence"`                         // AI识别置信度 0-1
-	Source      string    `json:"source" gorm:"type:text;default:ai"` // 来源: ai / manual
-	Thumbnail   string    `json:"thumbnail" gorm:"type:text"`         // 章节缩略图路径
+	Title       string    `json:"title" gorm:"type:text;not null"`
+	StartTime   float64   `json:"start_time"`
+	EndTime     float64   `json:"end_time"`
+	Description string    `json:"description" gorm:"type:text"`
+	SceneType   string    `json:"scene_type" gorm:"type:text"`
+	Confidence  float64   `json:"confidence"`
+	Source      string    `json:"source" gorm:"type:text;default:analysis"` // analysis / ai / manual
+	Thumbnail   string    `json:"thumbnail" gorm:"type:text"`
 	CreatedAt   time.Time `json:"created_at"`
 
 	Media Media `json:"-" gorm:"foreignKey:MediaID"`
@@ -33,19 +33,25 @@ func (vc *VideoChapter) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// VideoHighlight 视频精彩片段
+// VideoHighlight 视频精彩片段。
+// 片段仅保存原媒体的时间范围和轻量预览资产，不复制生成独立视频文件。
 type VideoHighlight struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:text"`
-	MediaID   string    `json:"media_id" gorm:"index;type:text;not null"`
-	Title     string    `json:"title" gorm:"type:text;not null"`    // 片段标题
-	StartTime float64   `json:"start_time"`                         // 开始时间（秒）
-	EndTime   float64   `json:"end_time"`                           // 结束时间（秒）
-	Score     float64   `json:"score"`                              // 精彩程度评分 0-10
-	Tags      string    `json:"tags" gorm:"type:text"`              // 标签，逗号分隔
-	Thumbnail string    `json:"thumbnail" gorm:"type:text"`         // 精彩片段缩略图
-	GifPath   string    `json:"gif_path" gorm:"type:text"`          // GIF预览路径
-	Source    string    `json:"source" gorm:"type:text;default:ai"` // 来源: ai / manual
-	CreatedAt time.Time `json:"created_at"`
+	ID             string    `json:"id" gorm:"primaryKey;type:text"`
+	MediaID        string    `json:"media_id" gorm:"index;type:text;not null"`
+	Title          string    `json:"title" gorm:"type:text;not null"`
+	StartTime      float64   `json:"start_time"`
+	EndTime        float64   `json:"end_time"`
+	Score          float64   `json:"score"`
+	Tags           string    `json:"tags" gorm:"type:text"`
+	Thumbnail      string    `json:"thumbnail" gorm:"type:text"`
+	GifPath        string    `json:"gif_path" gorm:"type:text"` // 旧字段，保留兼容
+	PreviewPath    string    `json:"preview_path" gorm:"type:text"`
+	Source         string    `json:"source" gorm:"type:text;default:ffmpeg"` // ffmpeg / manual / ai(legacy)
+	AnalysisMethod string    `json:"analysis_method" gorm:"type:text"`       // audio_scene / scene / heuristic
+	Fingerprint    string    `json:"fingerprint" gorm:"type:text;index"`
+	Version        int       `json:"version" gorm:"default:1"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 
 	Media Media `json:"-" gorm:"foreignKey:MediaID"`
 }
@@ -54,17 +60,25 @@ func (vh *VideoHighlight) BeforeCreate(tx *gorm.DB) error {
 	if vh.ID == "" {
 		vh.ID = uuid.New().String()
 	}
+	if vh.Version <= 0 {
+		vh.Version = 1
+	}
+	if vh.Source == "" {
+		vh.Source = "ffmpeg"
+	}
 	return nil
 }
 
-// AIAnalysisTask AI分析任务
+// AIAnalysisTask 是历史表名对应的数据模型。
+// Lite 的本地 Media Analysis 也复用这张持久化任务表，TaskType/Stage 用于区分非 AI 任务。
 type AIAnalysisTask struct {
 	ID          string     `json:"id" gorm:"primaryKey;type:text"`
 	MediaID     string     `json:"media_id" gorm:"index;type:text;not null"`
-	TaskType    string     `json:"task_type" gorm:"type:text;not null"`     // scene_detect / highlight / cover_select / chapter_gen
-	Status      string     `json:"status" gorm:"type:text;default:pending"` // pending / running / completed / failed
-	Progress    float64    `json:"progress"`                                // 0-100
-	Result      string     `json:"result" gorm:"type:text"`                 // JSON格式的分析结果
+	TaskType    string     `json:"task_type" gorm:"type:text;not null;index"` // media_highlight / scene_detect / highlight(legacy) ...
+	Status      string     `json:"status" gorm:"type:text;default:pending;index"`
+	Stage       string     `json:"stage" gorm:"type:text;index"`
+	Progress    float64    `json:"progress"`
+	Result      string     `json:"result" gorm:"type:text"`
 	Error       string     `json:"error" gorm:"type:text"`
 	StartedAt   *time.Time `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at"`
@@ -79,20 +93,19 @@ func (at *AIAnalysisTask) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ==================== V3: AI 驱动的封面优化 ====================
+// ==================== V3: 封面候选 ====================
 
-// CoverCandidate 封面候选帧
 type CoverCandidate struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:text"`
 	MediaID     string    `json:"media_id" gorm:"index;type:text;not null"`
-	FrameTime   float64   `json:"frame_time"`                           // 帧时间点（秒）
-	ImagePath   string    `json:"image_path" gorm:"type:text;not null"` // 候选图片路径
-	Score       float64   `json:"score"`                                // AI评分 0-10
-	Brightness  float64   `json:"brightness"`                           // 亮度评分
-	Sharpness   float64   `json:"sharpness"`                            // 清晰度评分
-	Composition float64   `json:"composition"`                          // 构图评分
-	FaceCount   int       `json:"face_count"`                           // 检测到的人脸数量
-	IsSelected  bool      `json:"is_selected" gorm:"default:false"`     // 是否被选为封面
+	FrameTime   float64   `json:"frame_time"`
+	ImagePath   string    `json:"image_path" gorm:"type:text;not null"`
+	Score       float64   `json:"score"`
+	Brightness  float64   `json:"brightness"`
+	Sharpness   float64   `json:"sharpness"`
+	Composition float64   `json:"composition"`
+	FaceCount   int       `json:"face_count"`
+	IsSelected  bool      `json:"is_selected" gorm:"default:false"`
 	CreatedAt   time.Time `json:"created_at"`
 
 	Media Media `json:"-" gorm:"foreignKey:MediaID"`
