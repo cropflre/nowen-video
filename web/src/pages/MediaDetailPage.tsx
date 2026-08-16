@@ -708,7 +708,6 @@ export default function MediaDetailPage() {
           editForm={editForm}
           setEditForm={setEditForm}
           currentPoster={streamApi.getPosterUrl(media.id, posterVersion)}
-          currentBackdrop={streamApi.getBackdropUrl(media.id, posterVersion)}
           hasPoster={!!media.poster_path}
           hasBackdrop={!!media.backdrop_path}
           onSave={handleEditSave}
