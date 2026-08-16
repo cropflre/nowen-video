@@ -24,6 +24,15 @@
   letter-spacing: -.036em !important;
 }
 
+/* HeroCarousel already renders two explicit scrim layers inside the component.
+ * The legacy ::after veil from Streaming OS duplicates that responsibility and
+ * can cover a visible band of the artwork in light mode. Disable it completely
+ * here so the component owns all artwork shading in both themes. */
+.nv-home-page .nv-hero-carousel::after {
+  content: none !important;
+  display: none !important;
+}
+
 /* Light mode should keep enough daylight behind the copy for dark text, without
  * stacking multiple near-opaque white veils across the whole artwork. */
 [data-theme="light"] .nv-home-page .nv-hero-carousel {
@@ -42,17 +51,6 @@
     rgba(244,246,251,.12) 60%,
     transparent 82%
   );
-}
-
-[data-theme="light"] .nv-home-page .nv-hero-carousel::after {
-  height: 96px !important;
-  background: linear-gradient(
-    0deg,
-    rgba(244,246,251,.72) 0%,
-    rgba(244,246,251,.26) 45%,
-    transparent 100%
-  ) !important;
-  opacity: .72 !important;
 }
 
 [data-theme="light"] .nv-home-page .nv-hero-carousel > div:first-of-type img,
@@ -92,9 +90,5 @@
     max-width: 16ch !important;
     font-size: clamp(2rem, 9vw, 2.75rem) !important;
     line-height: 1.02 !important;
-  }
-
-  [data-theme="light"] .nv-home-page .nv-hero-carousel::after {
-    height: 82px !important;
   }
 }
