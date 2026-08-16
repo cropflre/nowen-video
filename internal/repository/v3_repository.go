@@ -79,9 +79,11 @@ func (r *AIAnalysisTaskRepo) FindActiveByMediaAndType(mediaID, taskType string) 
 	return &task, err
 }
 func (r *AIAnalysisTaskRepo) MarkRunningInterrupted(taskType string) error {
-	return r.db.Model(&model.AIAnalysisTask{}).Where("task_type = ? AND status = ?", taskType, "running").Updates(map[string]any{
-		"status": "interrupted", "stage": "interrupted", "error": "服务重启导致任务中断，请重新分析",
-	}).Error
+	return r.db.Model(&model.AIAnalysisTask{}).
+		Where("task_type = ? AND status IN ?", taskType, []string{"pending", "running"}).
+		Updates(map[string]any{
+			"status": "interrupted", "stage": "interrupted", "error": "服务重启导致任务中断，请重新分析",
+		}).Error
 }
 
 // ==================== V3: CoverCandidateRepo ====================
