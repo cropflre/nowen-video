@@ -1,10 +1,9 @@
 /* Nowen Video Neo Glass / Aurora light-mode specialization.
  *
  * IMPORTANT: neo-aurora.css intentionally provides a dark :root fallback and is
- * loaded after design-system.css. Therefore this final specialization must own
- * the complete light semantic palette, not only accent overrides. Otherwise the
- * later dark :root variables win the cascade and switching theme changes only a
- * few borders/icons while the whole application remains visually dark.
+ * loaded after design-system.css. Light mode therefore owns a complete semantic
+ * palette plus explicit page-level theme contracts for the Streaming OS layers
+ * that are intentionally shared between dark and light themes.
  *
  * Player chrome is intentionally excluded and stays cinematic/dark.
  */
@@ -142,13 +141,10 @@
 
 [data-theme="light"] .nv-rail-item[aria-current="page"],
 [data-theme="light"] .nv-rail-item.is-active {
-  border-color: color-mix(in srgb, var(--nv-action-muted) 27%, var(--nv-border-default));
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--nv-status-info) 10%, var(--nv-bg-elevated)),
-    color-mix(in srgb, var(--nv-action-muted) 14%, var(--nv-bg-elevated)) 58%,
-    color-mix(in srgb, var(--nv-action-muted) 8%, var(--nv-bg-elevated)));
+  border-color: transparent;
+  background: transparent;
   color: var(--nv-text-primary);
-  box-shadow: inset 0 1px rgba(255,255,255,.78), var(--nv-shadow-card);
+  box-shadow: none;
 }
 
 [data-theme="light"] .nv-rail-item[aria-current="page"] .nv-rail-icon,
@@ -533,6 +529,164 @@
 
 [data-theme="light"] .nv-pagination .nv-select {
   background: rgba(255,255,255,.80);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Streaming OS light-mode page contracts                                     */
+/* -------------------------------------------------------------------------- */
+
+/* The shared page-composition layer intentionally ships after this file. Keep
+   these selectors theme-scoped and more specific so dark cinematic treatments
+   never leak into daylight mode. */
+[data-theme="light"] .nv-rail-item[aria-current="page"],
+[data-theme="light"] .nv-rail-item.is-active {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .nv-rail-item[aria-current="page"] .nv-rail-icon,
+[data-theme="light"] .nv-rail-item.is-active .nv-rail-icon {
+  background: rgba(98,83,234,.055) !important;
+  color: var(--nv-action-muted-hover) !important;
+  filter: none !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-section-title {
+  color: var(--nv-text-primary) !important;
+  text-shadow: none !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel {
+  border-color: rgba(78, 67, 155, .11) !important;
+  background: rgba(255,255,255,.24) !important;
+  box-shadow: 0 16px 42px rgba(39,35,72,.09), inset 0 1px rgba(255,255,255,.78) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel::after {
+  background: linear-gradient(
+    0deg,
+    var(--nv-bg-canvas) 0%,
+    rgba(244,246,251,.94) 30%,
+    rgba(244,246,251,.46) 64%,
+    transparent 100%
+  ) !important;
+  opacity: .92 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.54) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel > div:first-of-type img,
+[data-theme="light"] .nv-home-page .nv-hero-carousel img.h-full.w-full {
+  filter: saturate(.92) contrast(1.015) brightness(.96) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-tag[data-tone="brand"] {
+  border-color: rgba(91,72,186,.16) !important;
+  background: rgba(255,255,255,.72) !important;
+  color: #4f419f !important;
+  box-shadow: 0 3px 12px rgba(39,35,72,.07) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-home-rail-arrow {
+  border-color: rgba(78,67,155,.14) !important;
+  background: rgba(255,255,255,.88) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: 0 12px 28px rgba(39,35,72,.13), inset 0 1px rgba(255,255,255,.80) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-media-card-poster {
+  box-shadow: 0 8px 22px rgba(39,35,72,.08) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-media-card:hover .nv-media-card-poster,
+[data-theme="light"] .nv-home-page .nv-media-card:focus-within .nv-media-card-poster {
+  box-shadow: var(--nv-shadow-card-hover) !important;
+}
+
+[data-theme="light"] .nv-browse-toolbar {
+  border-color: rgba(78,67,155,.11) !important;
+  background: rgba(255,255,255,.82) !important;
+  box-shadow: 0 12px 30px rgba(39,35,72,.09), inset 0 1px rgba(255,255,255,.86) !important;
+}
+
+[data-theme="light"] .nv-browse-toolbar .nv-search,
+[data-theme="light"] .nv-browse-toolbar .nv-input,
+[data-theme="light"] .nv-browse-toolbar .nv-select {
+  background: rgba(249,250,253,.92) !important;
+}
+
+[data-theme="light"] .nv-browse-toolbar [role="group"] {
+  border-color: rgba(78,67,155,.10) !important;
+  background: rgba(244,246,251,.72) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero::before {
+  background:
+    radial-gradient(ellipse at 78% 28%, rgba(98,83,234,.075), transparent 42%),
+    radial-gradient(ellipse at 64% 60%, rgba(59,130,246,.045), transparent 42%) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero::after {
+  background: linear-gradient(
+    0deg,
+    var(--nv-bg-canvas) 0%,
+    rgba(244,246,251,.93) 34%,
+    rgba(244,246,251,.38) 68%,
+    transparent 100%
+  ) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero img.blur-2xl {
+  opacity: .26 !important;
+  transform: translateX(4%) scale(1.22) !important;
+  filter: blur(42px) saturate(.52) brightness(.90) contrast(1.02) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero img:not(.blur-2xl) {
+  opacity: .56 !important;
+  filter: saturate(.78) brightness(.92) contrast(1.02) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero-inner h1 {
+  color: var(--nv-text-primary) !important;
+  text-shadow: 0 2px 18px rgba(255,255,255,.72) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero-inner p.line-clamp-3 {
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-poster {
+  border-color: rgba(78,67,155,.14) !important;
+  box-shadow: 0 20px 42px rgba(34,31,58,.16), inset 0 0 0 1px rgba(255,255,255,.72) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-section-tabs {
+  border-color: rgba(78,67,155,.10) !important;
+  background: rgba(255,255,255,.78) !important;
+  box-shadow: 0 10px 26px rgba(39,35,72,.08), inset 0 1px rgba(255,255,255,.86) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-section-tabs a {
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-section-tabs a:hover,
+[data-theme="light"] .nv-media-detail-page .nv-detail-section-tabs a:first-child {
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-side-card {
+  border-color: rgba(78,67,155,.09) !important;
+  background: rgba(255,255,255,.74) !important;
+  box-shadow: 0 10px 26px rgba(39,35,72,.075), inset 0 1px rgba(255,255,255,.86) !important;
+}
+
+[data-theme="light"] .nv-media-detail-page .nv-detail-side-card--quiet {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 @media (max-width: 47.99rem) {
