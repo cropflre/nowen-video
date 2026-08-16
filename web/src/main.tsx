@@ -23,6 +23,7 @@ import './styles/modern-cinema.css'
 import './styles/modern-cinema-reference.css'
 import './styles/modern-cinema-light-fix.css'
 import './styles/media-detail-cinema.css'
+import './styles/media-detail-tabs.css'
 import './styles/search-cinema.css'
 import './styles/streaming-os.css'
 import './styles/streaming-os-refinement.css'
@@ -41,7 +42,7 @@ async function cleanupDevelopmentServiceWorker() {
         .map((registration) => registration.unregister()),
     )
 
-    if ('caches' in window) {
+    if ('caches' in navigator) {
       const keys = await window.caches.keys()
       await Promise.all(keys.filter((key) => key.startsWith('nowen-')).map((key) => window.caches.delete(key)))
     }
