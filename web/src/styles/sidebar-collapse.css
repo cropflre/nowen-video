@@ -16,9 +16,8 @@
     --nv-rail-width: 78px;
   }
 
-  /* Do not rely on the inherited token alone here. Several historical desktop
-     rail layers also participate in sizing, so the user-controlled state owns
-     the final physical width contract explicitly. */
+  /* Several historical desktop layers participate in rail sizing, so the
+     user-controlled state owns the final physical width explicitly. */
   .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail {
     width: 228px !important;
     min-width: 228px !important;
@@ -44,64 +43,37 @@
       padding var(--nv-motion-normal) var(--nv-ease-standard);
   }
 
+  /* Layout controls live with the other persistent utility actions instead of
+     competing with the brand or page title at the top of the application. */
   .nv-rail-collapse-toggle {
-    position: absolute;
-    top: 20px;
-    right: 12px;
-    z-index: 4;
-    width: 28px;
-    height: 28px;
+    position: static;
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
     display: grid;
     place-items: center;
-    border: 1px solid var(--nv-border-default);
+    border: 1px solid transparent;
     border-radius: 9px;
-    background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent);
+    background: transparent;
     color: var(--nv-text-tertiary);
-    box-shadow: 0 8px 22px rgba(0, 0, 0, .16), inset 0 1px rgba(255, 255, 255, .04);
-    backdrop-filter: blur(16px) saturate(115%);
-    -webkit-backdrop-filter: blur(16px) saturate(115%);
+    box-shadow: none;
     cursor: pointer;
     transition:
       transform var(--nv-motion-fast) var(--nv-ease-standard),
       color var(--nv-motion-fast) var(--nv-ease-standard),
       border-color var(--nv-motion-fast) var(--nv-ease-standard),
-      background-color var(--nv-motion-fast) var(--nv-ease-standard),
-      box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
+      background-color var(--nv-motion-fast) var(--nv-ease-standard);
   }
 
   .nv-rail-collapse-toggle:hover {
-    border-color: var(--nv-border-hover);
-    background: color-mix(in srgb, var(--nv-bg-elevated) 98%, var(--nv-fill-hover));
+    transform: translateY(-1px);
+    border-color: var(--nv-border-subtle);
+    background: var(--nv-fill-hover);
     color: var(--nv-text-primary);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, .20), 0 0 18px color-mix(in srgb, var(--nv-action-primary) 10%, transparent);
   }
 
   .nv-rail-collapse-toggle:active {
     transform: scale(.96);
-  }
-
-  /* Expanded brand copy leaves a dedicated slot for the toggle instead of
-     letting the control float across the main content boundary. */
-  .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-brand-row {
-    padding-right: 38px !important;
-  }
-
-  /* Collapsed brand = logo, then a small expand affordance. */
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle {
-    top: 66px;
-    left: 50%;
-    right: auto;
-    width: 34px;
-    height: 30px;
-    transform: translateX(-50%);
-  }
-
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle:hover {
-    transform: translateX(-50%);
-  }
-
-  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-collapse-toggle:active {
-    transform: translateX(-50%) scale(.96);
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-row {
@@ -110,7 +82,7 @@
     justify-content: center !important;
     gap: 0 !important;
     padding: 0 !important;
-    margin: 0 0 42px !important;
+    margin: 0 0 12px !important;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand {
