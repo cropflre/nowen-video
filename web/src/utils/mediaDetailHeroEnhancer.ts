@@ -5,7 +5,7 @@ const HERO_SELECTOR = '.nv-media-detail-page .nv-detail-hero'
 const INNER_SELECTOR = '.nv-detail-hero-inner'
 const SLIDESHOW_CLASS = 'nv-detail-highlight-slideshow'
 const MAX_HIGHLIGHT_SLIDES = 6
-const SLIDE_INTERVAL_MS = 6500
+const SLIDE_INTERVAL_MS = 5200
 const REFRESH_INTERVAL_MS = 60_000
 
 interface HeroSession {
@@ -36,17 +36,14 @@ function enhanceTitle(hero: HTMLElement) {
   title.classList.toggle('nv-detail-title-very-long', text.length > 88)
 }
 
-function originalBackdropUrl(hero: HTMLElement) {
-  const image = hero.querySelector<HTMLImageElement>(':scope > div.absolute.inset-0 img')
-  return image?.currentSrc || image?.src || ''
-}
-
 function highlightUrls(highlights: MediaHighlight[]) {
-  return [...highlights]
+  const selected = [...highlights]
     .filter((item) => Boolean(item.thumbnail_url))
     .sort((left, right) => right.score - left.score || left.start_time - right.start_time)
     .slice(0, MAX_HIGHLIGHT_SLIDES)
-    .map((item) => streamApi.withTokenUrl(item.thumbnail_url!))
+    .sort((left, right) => left.start_time - right.start_time)
+
+  return selected.map((item) => streamApi.withTokenUrl(item.thumbnail_url!))
 }
 
 function uniqueUrls(urls: string[]) {
@@ -70,7 +67,7 @@ function clearSlides(target: HeroSession) {
 
 function renderSlides(target: HeroSession, urls: string[]) {
   clearSlides(target)
-  if (urls.length < 2 || !target.hero.isConnected) return
+  if (urls.length === 0 || !target.hero.isConnected) return
 
   const layer = document.createElement('div')
   layer.className = SLIDESHOW_CLASS
@@ -97,7 +94,7 @@ function renderSlides(target: HeroSession, urls: string[]) {
   target.layer = layer
   target.hero.classList.add('nv-detail-hero-has-highlight-slides')
 
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  if (slides.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
   let activeIndex = 0
   target.slideTimer = window.setInterval(() => {
@@ -114,8 +111,7 @@ async function refreshHighlights(target: HeroSession) {
     const response = await mediaAnalysisApi.getHighlights(target.mediaId)
     if (target.controller.signal.aborted || session !== target || !target.hero.isConnected) return
 
-    const base = originalBackdropUrl(target.hero)
-    const urls = uniqueUrls([base, ...highlightUrls(response.data.data?.highlights || [])])
+    const urls = uniqueUrls(highlightUrls(response.data.data?.highlights || []))
     renderSlides(target, urls)
   } catch {
     if (session === target) clearSlides(target)
