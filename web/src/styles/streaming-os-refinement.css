@@ -1,36 +1,86 @@
-/* Nowen Video · screenshot-driven Streaming OS refinement
+/* Nowen Video · Streaming OS page contracts
  *
- * This layer only adjusts presentation. It intentionally leaves routing,
- * playback, filtering, pagination, media APIs and state ownership untouched.
- * The goal is to make the existing real screens read as a cinematic media OS
- * rather than a dark dashboard with poster grids.
+ * Responsibility boundary:
+ * - streaming-os.css owns tokens, shared primitives and cross-page visual roles.
+ * - this file owns page composition for Home / Browse / Detail plus the small
+ *   compatibility rules that cannot yet move into their component stylesheet.
+ *
+ * Keep this file semantic and stable. Do not add screenshot-specific "final",
+ * "fix" or "calibration" layers after it; fold future page refinements here or
+ * into the component that actually owns the behavior.
  */
 
 /* -------------------------------------------------------------------------- */
-/* Navigation rail · selected state is an indicator, not a purple block       */
+/* Media OS navigation rail                                                    */
 /* -------------------------------------------------------------------------- */
+
+.nv-rail-item {
+  position: relative;
+  overflow: hidden;
+}
 
 .nv-rail-item:hover {
   border-color: transparent !important;
-  background: rgba(92, 112, 244, .035) !important;
+  background: rgba(103, 120, 255, .028) !important;
 }
 
 .nv-rail-item[aria-current="page"],
 .nv-rail-item.is-active {
   border-color: transparent !important;
-  background: linear-gradient(90deg, rgba(84, 111, 255, .055), rgba(117, 94, 238, .018) 58%, transparent 100%) !important;
+  background: transparent !important;
   color: #f7f9ff !important;
-  box-shadow: inset 2px 0 rgba(121, 139, 255, .82), 0 0 18px rgba(89, 108, 255, .028) !important;
+  box-shadow: none !important;
+}
+
+.nv-rail-item[aria-current="page"]::before,
+.nv-rail-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #6f8cff 0%, #7d75ff 56%, #57cddd 100%);
+  box-shadow: 0 0 10px rgba(108, 126, 255, .28);
 }
 
 .nv-rail-item[aria-current="page"] .nv-rail-icon,
 .nv-rail-item.is-active .nv-rail-icon {
-  color: #c6ceff !important;
-  filter: drop-shadow(0 0 6px rgba(103, 124, 255, .18)) !important;
+  background: rgba(102, 120, 255, .045) !important;
+  color: #d4d9ff !important;
+  filter: drop-shadow(0 0 5px rgba(103, 124, 255, .16)) !important;
+}
+
+@media (min-width: 901px) {
+  .nv-rail-scroll {
+    align-items: stretch !important;
+  }
+
+  .nv-rail-section,
+  .nv-rail-section-links {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .nv-rail-section-title {
+    text-align: left !important;
+  }
+
+  .nv-rail > .nv-rail-scroll .nv-rail-item {
+    width: 100% !important;
+  }
+
+  .nv-rail > .nv-rail-scroll .nv-rail-label {
+    width: auto !important;
+    min-width: 0;
+    flex: 1 1 auto;
+    text-align: left !important;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Home · hero becomes atmosphere, content becomes streaming shelves           */
+/* Home · cinematic hero + single-row streaming shelves                        */
 /* -------------------------------------------------------------------------- */
 
 .nv-home-page {
@@ -47,6 +97,7 @@
 }
 
 .nv-home-page .nv-section-title {
+  color: rgba(246, 248, 255, .93);
   font-size: clamp(1rem, .94rem + .24vw, 1.22rem);
   font-weight: 650;
   letter-spacing: -.016em;
@@ -54,9 +105,10 @@
 
 .nv-home-page .nv-hero-carousel {
   min-height: clamp(430px, 52vh, 630px) !important;
-  border-color: rgba(177, 191, 255, .035) !important;
+  border-color: rgba(182, 195, 255, .025) !important;
+  border-radius: 22px !important;
   background: transparent !important;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.012) !important;
+  box-shadow: 0 18px 58px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .018) !important;
 }
 
 .nv-home-page .nv-hero-carousel::after {
@@ -64,10 +116,10 @@
   position: absolute;
   inset: auto 0 0;
   z-index: 9;
-  height: 104px;
+  height: 122px !important;
   pointer-events: none;
-  background: linear-gradient(0deg, var(--nv-bg-canvas) 0%, rgba(6,8,18,.72) 34%, rgba(6,8,18,.18) 72%, transparent 100%);
-  opacity: .92;
+  background: linear-gradient(0deg, var(--nv-bg-canvas) 0%, rgba(6, 8, 18, .80) 30%, rgba(6, 8, 18, .28) 64%, transparent 100%) !important;
+  opacity: .94;
 }
 
 .nv-home-page .nv-hero-carousel > div:first-of-type img,
@@ -76,14 +128,21 @@
 }
 
 .nv-home-page .nv-hero-carousel h2 {
-  max-width: 15ch !important;
+  max-width: 17ch !important;
   font-size: clamp(2.55rem, 4vw, 5.1rem) !important;
   line-height: .98 !important;
   letter-spacing: -.042em !important;
+  text-wrap: balance;
 }
 
 .nv-home-page .nv-hero-carousel p {
   max-width: 62ch;
+}
+
+.nv-home-page .nv-hero-carousel .nv-tag[data-tone="brand"] {
+  border-color: rgba(138, 151, 255, .18) !important;
+  background: rgba(16, 21, 41, .50) !important;
+  color: rgba(226, 231, 255, .82) !important;
 }
 
 .nv-home-rail {
@@ -92,6 +151,7 @@
 }
 
 .nv-home-media-rail {
+  gap: clamp(11px, .85vw, 16px) !important;
   scroll-snap-type: x proximity;
   scroll-padding-inline: 8px;
   overscroll-behavior-inline: contain;
@@ -117,13 +177,25 @@
   font-size: .86rem;
 }
 
+.nv-home-page .nv-media-card-title {
+  margin-top: 1px;
+  font-size: .82rem;
+  line-height: 1.35;
+}
+
+.nv-home-page .nv-media-card-meta {
+  margin-top: 2px;
+  font-size: .70rem;
+  opacity: .84;
+}
+
 .nv-home-rail-arrow {
   width: 38px !important;
   min-width: 38px !important;
   height: 38px !important;
   border-color: rgba(174, 188, 255, .12) !important;
   background: rgba(7, 11, 23, .76) !important;
-  box-shadow: 0 14px 34px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.04) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .34), inset 0 1px rgba(255, 255, 255, .04) !important;
   backdrop-filter: blur(18px) saturate(115%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(115%) !important;
   transition: opacity var(--nv-motion-fast) var(--nv-ease-standard), transform var(--nv-motion-fast) var(--nv-ease-standard), border-color var(--nv-motion-fast) var(--nv-ease-standard) !important;
@@ -146,24 +218,25 @@
   gap: clamp(22px, 1.8vw, 30px) !important;
 }
 
-/* Keep home shelves visually calm: metadata stays, but posters own the row. */
 .nv-home-page .nv-media-card-poster {
-  box-shadow: 0 12px 30px rgba(0,0,0,.21);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .21);
 }
 
 .nv-home-page .nv-media-card:hover .nv-media-card-poster,
 .nv-home-page .nv-media-card:focus-within .nv-media-card-poster {
   transform: translateY(-4px) scale(1.01);
-  box-shadow: 0 19px 46px rgba(0,0,0,.34), 0 0 0 1px rgba(112,128,255,.10);
+  box-shadow: 0 19px 46px rgba(0, 0, 0, .34), 0 0 0 1px rgba(112, 128, 255, .10);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Browse · one lightweight segment row + one real floating toolbelt           */
+/* Browse · light segmented navigation + one floating media toolbelt           */
 /* -------------------------------------------------------------------------- */
 
 .nv-browse-type-tabs {
+  min-height: 38px;
   gap: 3px !important;
-  padding: 0 0 10px !important;
+  margin-bottom: -2px;
+  padding: 0 0 7px !important;
   border: 0 !important;
   border-bottom: 1px solid var(--nv-border-subtle) !important;
   border-radius: 0 !important;
@@ -186,21 +259,27 @@
 }
 
 .nv-browse-type-tabs .nv-button[aria-pressed="true"] {
-  border-color: rgba(133, 149, 255, .10) !important;
-  background: rgba(100, 119, 255, .065) !important;
+  border-color: transparent !important;
+  background: rgba(100, 119, 255, .045) !important;
   color: var(--nv-text-primary) !important;
+  box-shadow: inset 0 -1px rgba(129, 145, 255, .34) !important;
+}
+
+.nv-browse-type-tabs + .nv-browse-toolbar {
+  margin-top: -2px;
 }
 
 .nv-browse-toolbar {
   position: sticky;
-  top: 72px;
+  top: 60px !important;
   z-index: 22;
+  min-height: 52px;
   gap: 8px !important;
-  padding: 9px 10px !important;
-  border-color: rgba(181, 196, 255, .10) !important;
-  border-radius: 16px !important;
-  background: rgba(9, 14, 28, .76) !important;
-  box-shadow: 0 16px 42px rgba(0,0,0,.20), inset 0 1px rgba(255,255,255,.035) !important;
+  padding: 7px 9px !important;
+  border-color: rgba(181, 196, 255, .085) !important;
+  border-radius: 14px !important;
+  background: rgba(9, 14, 28, .82) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .025) !important;
   backdrop-filter: blur(22px) saturate(118%) !important;
   -webkit-backdrop-filter: blur(22px) saturate(118%) !important;
 }
@@ -208,54 +287,143 @@
 .nv-browse-toolbar .nv-search,
 .nv-browse-toolbar .nv-input,
 .nv-browse-toolbar .nv-select {
+  min-height: 36px;
   background: rgba(12, 18, 34, .58) !important;
 }
 
+.nv-browse-toolbar [role="group"] {
+  border-color: rgba(176, 190, 255, .09) !important;
+  background: rgba(10, 15, 29, .30);
+}
+
 .nv-browse-filter-panel {
-  margin-top: -18px;
+  margin-top: 0 !important;
 }
 
 .nv-browse-list-item:hover {
   transform: none !important;
 }
 
+.nv-browse-toolbar ~ .nv-media-grid,
+.nv-browse-toolbar ~ .nv-browse-poster-grid,
+.nv-browse-toolbar ~ .nv-browse-list {
+  margin-top: 4px;
+}
+
 /* -------------------------------------------------------------------------- */
-/* Media detail · poster fallback is ambience, never a giant blurred poster    */
+/* Media detail · cinematic artwork + quiet inspector                          */
 /* -------------------------------------------------------------------------- */
 
+.nv-page-container--detail {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.nv-page-container--detail > .nv-media-detail-page {
+  margin-top: 0 !important;
+}
+
+.nv-media-detail-page .nv-detail-hero {
+  isolation: isolate;
+}
+
+.nv-media-detail-page .nv-detail-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 78% 28%, rgba(91, 105, 226, .085), transparent 42%), radial-gradient(ellipse at 64% 60%, rgba(52, 164, 190, .035), transparent 42%);
+}
+
 .nv-media-detail-page .nv-detail-hero img.blur-2xl {
-  opacity: .26 !important;
-  transform: scale(1.18) !important;
-  filter: blur(36px) saturate(.46) brightness(.40) contrast(1.08) !important;
+  opacity: .36 !important;
+  transform: translateX(4%) scale(1.27) !important;
+  filter: blur(44px) saturate(.58) brightness(.48) contrast(1.08) !important;
 }
 
 .nv-media-detail-page .nv-detail-hero img:not(.blur-2xl) {
-  filter: saturate(.82) brightness(.70) contrast(1.04);
+  opacity: .74;
+  filter: saturate(.84) brightness(.68) contrast(1.04) !important;
 }
 
 .nv-media-detail-page .nv-detail-hero-inner {
-  min-height: clamp(410px, 38vw, 560px) !important;
-  padding-top: 64px !important;
-  padding-bottom: 44px !important;
+  position: relative;
+  z-index: 3;
+  min-height: clamp(400px, 36vw, 540px) !important;
+  padding-top: 58px !important;
+  padding-bottom: 40px !important;
 }
 
 .nv-media-detail-page .nv-detail-hero-inner h1 {
-  font-size: clamp(2.3rem, 3.5vw, 4.25rem) !important;
+  max-width: 19ch !important;
+  font-size: clamp(2.35rem, 3.35vw, 4.1rem) !important;
+  line-height: 1.01 !important;
+  text-wrap: balance;
 }
 
 .nv-media-detail-page .nv-detail-hero-inner p.line-clamp-3 {
-  max-width: 70ch !important;
+  max-width: 66ch !important;
+  line-height: 1.68 !important;
   color: rgba(232, 236, 255, .67) !important;
 }
 
 .nv-media-detail-page .nv-detail-poster {
-  box-shadow: 0 24px 58px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.03) !important;
+  border-color: rgba(187, 199, 255, .095) !important;
+  box-shadow: 0 22px 56px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .012) !important;
 }
 
-/* Keep the right inspector visually secondary to the movie itself. */
+.nv-detail-content-shell {
+  padding-top: 20px !important;
+}
+
+.nv-detail-section-tabs {
+  min-height: 44px;
+  margin-bottom: 4px;
+  background: rgba(9, 14, 28, .62) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .14), inset 0 1px rgba(255, 255, 255, .025) !important;
+}
+
+.nv-detail-content-section {
+  padding-block: 22px !important;
+}
+
+.nv-detail-sidebar {
+  gap: 10px !important;
+}
+
 .nv-detail-side-card {
-  background: rgba(13, 18, 33, .56) !important;
-  box-shadow: 0 12px 34px rgba(0,0,0,.15), inset 0 1px rgba(255,255,255,.025) !important;
+  border-color: rgba(179, 193, 255, .065) !important;
+  background: rgba(12, 17, 31, .48) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .12), inset 0 1px rgba(255, 255, 255, .018) !important;
+}
+
+.nv-detail-side-card--quiet {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.nv-detail-side-card--quiet .nv-detail-side-mini-row {
+  color: var(--nv-text-tertiary);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin compatibility · dropdowns may escape rounded panels                   */
+/* -------------------------------------------------------------------------- */
+
+[data-theme="light"] .nv-admin-panel {
+  overflow: visible !important;
+}
+
+[data-theme="light"] .nv-admin-panel-header {
+  border-radius: calc(var(--nv-radius-container) - 1px) calc(var(--nv-radius-container) - 1px) 0 0;
+}
+
+.nv-admin-panel .fixed.z-\[var\(--nv-z-dropdown\)\] + .absolute {
+  z-index: calc(var(--nv-z-dropdown) + 2) !important;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -267,20 +435,28 @@
     --nv-section-gap: 32px;
   }
 
+  .nv-home-page .nv-hero-carousel {
+    min-height: clamp(470px, 44vh, 600px) !important;
+  }
+
   .nv-home-poster-slot {
-    width: 198px;
+    width: 190px !important;
   }
 
   .nv-home-genre-slot {
-    width: 180px;
+    width: 174px !important;
   }
 
   .nv-continue-card {
-    width: 336px;
+    width: 324px !important;
   }
 
-  .nv-home-page .nv-hero-carousel {
-    min-height: clamp(500px, 48vh, 640px) !important;
+  .nv-browse-toolbar {
+    top: 58px !important;
+  }
+
+  .nv-media-detail-page .nv-detail-hero-inner {
+    min-height: clamp(420px, 32vw, 520px) !important;
   }
 }
 
@@ -290,18 +466,6 @@
     --nv-content-wide-max: 160rem;
     --nv-grid-column: 208px;
     --nv-page-gutter: clamp(30px, 2vw, 48px);
-  }
-
-  .nv-home-poster-slot {
-    width: 206px;
-  }
-
-  .nv-home-genre-slot {
-    width: 186px;
-  }
-
-  .nv-continue-card {
-    width: 352px;
   }
 
   .nv-browse-poster-grid {
@@ -316,7 +480,7 @@
 
 @media (max-width: 67.99rem) {
   .nv-browse-toolbar {
-    top: 66px;
+    top: 56px !important;
   }
 
   .nv-home-poster-slot {
@@ -338,7 +502,7 @@
   }
 
   .nv-home-page .nv-hero-carousel::after {
-    height: 76px;
+    height: 76px !important;
   }
 
   .nv-home-poster-slot,
@@ -360,21 +524,24 @@
   }
 
   .nv-browse-toolbar {
-    position: static;
-    top: auto;
-  }
-
-  .nv-browse-filter-panel {
-    margin-top: -8px;
+    position: static !important;
+    top: auto !important;
   }
 
   .nv-media-detail-page .nv-detail-hero img.blur-2xl {
-    opacity: .22 !important;
-    filter: blur(32px) saturate(.42) brightness(.36) contrast(1.06) !important;
+    opacity: .27 !important;
+    transform: scale(1.20) !important;
+    filter: blur(34px) saturate(.48) brightness(.42) contrast(1.06) !important;
+  }
+
+  .nv-media-detail-page .nv-detail-hero-inner {
+    min-height: 420px !important;
+    padding-top: 78px !important;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .nv-rail-item::before,
   .nv-home-rail-arrow,
   .nv-home-page .nv-media-card-poster {
     transition-duration: .01ms !important;
