@@ -42,7 +42,7 @@ async function cleanupDevelopmentServiceWorker() {
         .map((registration) => registration.unregister()),
     )
 
-    if ('caches' in navigator) {
+    if ('caches' in window) {
       const keys = await window.caches.keys()
       await Promise.all(keys.filter((key) => key.startsWith('nowen-')).map((key) => window.caches.delete(key)))
     }
