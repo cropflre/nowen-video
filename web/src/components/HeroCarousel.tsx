@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
 import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
@@ -69,16 +69,49 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
   return null
 }
 
-function getHeroArtwork(media: Media) {
-  // Series already exposes a real authenticated backdrop endpoint. Standalone
-  // media currently exposes poster only, so keep using that public contract
-  // instead of inventing a frontend-only /backdrop URL.
+interface HeroArtwork {
+  primary: string
+  fallback?: string
+  isBackdrop: boolean
+}
+
+function getHeroArtwork(media: Media): HeroArtwork {
   if (media.series_id) {
-    return media.backdrop_path
-      ? streamApi.getSeriesBackdropUrl(media.series_id)
-      : streamApi.getSeriesPosterUrl(media.series_id)
+    if (media.backdrop_path) {
+      return {
+        primary: streamApi.getSeriesBackdropUrl(media.series_id),
+        fallback: streamApi.getSeriesPosterUrl(media.series_id),
+        isBackdrop: true,
+      }
+    }
+    return {
+      primary: streamApi.getSeriesPosterUrl(media.series_id),
+      isBackdrop: false,
+    }
   }
-  return streamApi.getPosterUrl(media.id)
+
+  // Standalone movies now share the real local backdrop endpoint used by the
+  // detail hero. Probe it even for older DB rows so a newly-added
+  // `movie-backdrop.*` file becomes useful without requiring a rescan first.
+  return {
+    primary: streamApi.withTokenUrl(`/api/media/${media.id}/backdrop`),
+    fallback: streamApi.getPosterUrl(media.id),
+    isBackdrop: true,
+  }
+}
+
+function handleArtworkError(
+  event: SyntheticEvent<HTMLImageElement>,
+  fallback?: string,
+) {
+  const image = event.currentTarget
+  if (fallback && image.dataset.fallbackApplied !== 'true') {
+    image.dataset.fallbackApplied = 'true'
+    image.src = fallback
+    image.classList.add('scale-110', 'blur-2xl')
+    return
+  }
+  image.style.display = 'none'
 }
 
 interface HeroCarouselProps {
@@ -178,7 +211,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   const item = items[current]
   if (!item) return null
 
-  const imageUrl = getHeroArtwork(item.media)
+  const artwork = getHeroArtwork(item.media)
   const playLink = item.media.media_type === 'episode' && item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/play/${item.media.id}`
@@ -210,25 +243,31 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
           onDragEnd={handleDragEnd}
         >
           <img
-            src={imageUrl}
+            src={artwork.primary}
             alt=""
-            className="h-full w-full select-none object-cover object-center"
+            data-artwork-kind={artwork.isBackdrop ? 'backdrop' : 'poster'}
+            className={`h-full w-full select-none object-cover object-center${artwork.isBackdrop ? '' : ' scale-110 blur-2xl'}`}
             loading="eager"
             draggable={false}
-            onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none' }}
+            onError={(event) => handleArtworkError(event, artwork.fallback)}
           />
         </motion.div>
       </AnimatePresence>
 
-      {items.map((recommendation, index) => index !== current && (
-        <img
-          key={`hero-preload-${recommendation.media.id}`}
-          src={getHeroArtwork(recommendation.media)}
-          alt=""
-          className="hidden"
-          loading="lazy"
-        />
-      ))}
+      {items.map((recommendation, index) => {
+        if (index === current) return null
+        const preloadArtwork = getHeroArtwork(recommendation.media)
+        return (
+          <img
+            key={`hero-preload-${recommendation.media.id}`}
+            src={preloadArtwork.primary}
+            alt=""
+            className="hidden"
+            loading="lazy"
+            onError={(event) => handleArtworkError(event, preloadArtwork.fallback)}
+          />
+        )
+      })}
 
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
