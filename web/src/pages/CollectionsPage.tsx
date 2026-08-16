@@ -164,9 +164,8 @@ export default function CollectionsPage() {
     if (searchResults === null) return collections
     let items = [...searchResults]
     if (filterAuto !== '') items = items.filter((collection) => collection.auto_matched === (filterAuto === 'true'))
-    if (filterLibrary !== '') items = items.filter((collection) => collection.library_id === filterLibrary)
     return items
-  }, [collections, filterAuto, filterLibrary, searchResults])
+  }, [collections, filterAuto, searchResults])
 
   const totalPages = searchResults === null ? Math.ceil(total / pageSize) : Math.max(1, Math.ceil(displayList.length / pageSize))
   const hasActiveFilter = filterAuto !== '' || filterLibrary !== '' || sortValue !== 'created_desc' || viewMode !== 'grid'
