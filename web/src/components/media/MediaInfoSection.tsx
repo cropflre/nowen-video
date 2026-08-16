@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
-import { Button, Tag } from '@/components/design-system'
-import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { Button, EmptyState, Tag } from '@/components/design-system'
+import { ChevronDown, ChevronUp, ExternalLink, FileText } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
 
@@ -88,20 +88,19 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
     directors.length > 0 || actors.length > 0
   )
 
-  const hasIntro = !!(media.orig_title || media.tagline || media.outline || media.overview || media.original_plot)
+  const hasIntro = !!(media.tagline || media.outline || media.overview || media.original_plot)
   const hasClassifications = genreList.length > 0 || (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
 
   return (
     <div className="nv-media-info divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
-      {(extractedNum || media.mpaa || media.resolution) && (
+      {(extractedNum || media.mpaa) && (
         <div className="nv-media-info-badges flex flex-wrap items-center gap-1.5 py-3" aria-label="媒体标识">
           {extractedNum && <Tag>{extractedNum}</Tag>}
           {media.mpaa && <Tag>{media.mpaa}</Tag>}
-          {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
         </div>
       )}
 
-      {hasIntro && (
+      {hasIntro ? (
         <section className="nv-media-info-intro py-5 sm:py-6">
           <div className="mb-4">
             <h2 className="text-sm font-semibold text-[var(--nv-text-primary)]">影片简介</h2>
@@ -155,6 +154,13 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
             )}
           </div>
         </section>
+      ) : (
+        <EmptyState
+          className="nv-detail-tab-empty-state"
+          icon={<FileText size={23} aria-hidden="true" />}
+          title="暂无简介"
+          description="当前媒体暂未提供剧情简介或相关文字信息。"
+        />
       )}
 
       {hasClassifications && (
