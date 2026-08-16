@@ -33,6 +33,13 @@ func AutoMigrateLite(db *gorm.DB, enableAI bool) error {
 		&MovieCollection{},
 		&SystemLog{},
 		&FileOperationLog{},
+
+		// Local Media Analysis 是 Lite 核心能力，不依赖 AI 配置。
+		// 保留历史表模型名以兼容 Full / 旧数据库，但运行语义已与 AI 解耦。
+		&VideoChapter{},
+		&VideoHighlight{},
+		&AIAnalysisTask{},
+		&CoverCandidate{},
 	}
 
 	if enableAI {
