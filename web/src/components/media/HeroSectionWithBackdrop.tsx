@@ -16,8 +16,11 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [failedKey, setFailedKey] = useState<string | null>(null)
 
-  const hasDeclaredBackdrop = Boolean(media.backdrop_path)
-  const shouldRequestBackdrop = hasDeclaredBackdrop && failedKey !== backdropKey
+  // Standalone media always gets one cheap backdrop probe. This lets older
+  // database rows benefit from a newly-added `-backdrop.*` file without forcing
+  // a rescan first. Episodes keep the existing Series artwork path.
+  const shouldProbeStandaloneBackdrop = media.media_type !== 'episode'
+  const shouldRequestBackdrop = shouldProbeStandaloneBackdrop && failedKey !== backdropKey
   const isBackdropReady = shouldRequestBackdrop && loadedKey === backdropKey
 
   return (
