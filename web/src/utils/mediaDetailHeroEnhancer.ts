@@ -94,7 +94,10 @@ function renderSlides(target: HeroSession, urls: string[]) {
   target.layer = layer
   target.hero.classList.add('nv-detail-hero-has-highlight-slides')
 
-  if (slides.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  // Reduced-motion only removes the crossfade/zoom transition in CSS. It must
+  // not disable the slideshow itself; users who request less motion still get
+  // discrete frame changes at the normal interval.
+  if (slides.length < 2) return
 
   let activeIndex = 0
   target.slideTimer = window.setInterval(() => {
