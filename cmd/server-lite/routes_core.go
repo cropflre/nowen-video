@@ -156,6 +156,13 @@ func registerCoreAPI(
 	api.PUT("/bookmarks/:id", handlers.Bookmark.Update)
 	api.DELETE("/bookmarks/:id", handlers.Bookmark.Delete)
 
+	// Comments are part of the normal media-detail experience in Lite as well.
+	// Listing/creating are guarded by the same media permission contract as the
+	// detail endpoint; deletion is still restricted by CommentService to owner/admin.
+	api.GET("/media/:id/comments", guardByMediaID, handlers.Comment.ListByMedia)
+	api.POST("/media/:id/comments", guardByMediaID, handlers.Comment.Create)
+	api.DELETE("/comments/:id", handlers.Comment.Delete)
+
 	api.POST("/stats/playback", handlers.Stats.RecordPlayback)
 	api.GET("/stats/me", handlers.Stats.GetUserStats)
 
