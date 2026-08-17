@@ -111,7 +111,18 @@ data class MediaCard(
 ) {
     val displayTitle: String get() = title.ifBlank { name.ifBlank { "未命名媒体" } }
     val resolvedId: String get() = mediaId?.takeIf { it.isNotBlank() } ?: id
-    val resolvedPoster: String? get() = posterUrl ?: posterPath ?: poster
+    val resolvedPoster: String?
+        get() {
+            val targetId = resolvedId.takeIf(String::isNotBlank)
+            if (targetId != null) {
+                return if (type.equals("series", ignoreCase = true)) {
+                    "/api/series/$targetId/poster"
+                } else {
+                    "/api/media/$targetId/poster"
+                }
+            }
+            return posterUrl ?: posterPath ?: poster
+        }
     val normalizedProgress: Float get() = when {
         progressPercent > 1 -> (progressPercent / 100).toFloat()
         progress > 1 -> (progress / 100).toFloat()
@@ -154,12 +165,18 @@ object MediaCardSerializer : KSerializer<MediaCard> {
         val historyProgress = if (outerDuration > 0) outerPosition / outerDuration else 0.0
         val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
         val outerMediaId = root["media_id"]?.jsonPrimitive?.content
+        val inferredType = when {
+            outerType.isNotBlank() -> outerType
+            nestedSeries != null -> "series"
+            nestedMedia != null -> payload.type.ifBlank { payload.mediaType.ifBlank { "media" } }
+            else -> payload.type.ifBlank { payload.mediaType }
+        }
 
         return MediaCard(
             id = payload.id,
             title = payload.title,
             name = payload.name,
-            type = outerType.ifBlank { payload.type.ifBlank { payload.mediaType } },
+            type = inferredType,
             year = payload.year,
             poster = payload.poster,
             posterUrl = payload.posterUrl,

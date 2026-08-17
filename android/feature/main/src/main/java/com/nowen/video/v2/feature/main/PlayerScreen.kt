@@ -13,18 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -98,6 +91,7 @@ private const val MIN_PROGRESS_INTERVAL_MS = 8_000L
 private const val NEXT_EPISODE_COUNTDOWN_SECONDS = 5
 private const val FALLBACK_NOTICE_DURATION_MS = 4_000L
 private const val DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS = 15_000L
+private const val PLAYER_CONTROLS_TIMEOUT_MS = 3_500L
 
 data class PlayerUiState(
     val loading: Boolean = true,
@@ -318,14 +312,10 @@ class PlayerViewModel @Inject constructor(
                 sessionId = result.session.id,
                 sessionGenerationId = result.session.currentGenerationId,
                 sessionOffsetMs = offsetMs.coerceAtLeast(0L),
-                sessionHeartbeatIntervalMs = result.heartbeatIntervalSec
-                    .coerceAtLeast(5)
-                    .toLong() * 1_000L,
-                sessionProfileId = generation?.profileId
-                    ?.takeIf(String::isNotBlank)
+                sessionHeartbeatIntervalMs = result.heartbeatIntervalSec.coerceAtLeast(5).toLong() * 1_000L,
+                sessionProfileId = generation?.profileId?.takeIf(String::isNotBlank)
                     ?: plan.sessionTemplate?.profileId.orEmpty().ifBlank { "auto" },
-                sessionMaxBitrate = generation?.maxBitrate
-                    ?.takeIf { value -> value > 0 }
+                sessionMaxBitrate = generation?.maxBitrate?.takeIf { value -> value > 0 }
                     ?: plan.sessionTemplate?.maxBitrate
                     ?: 0,
                 sessionRestarting = false,
@@ -380,9 +370,7 @@ class PlayerViewModel @Inject constructor(
                         it.copy(
                             sessionRestarting = false,
                             fallbackNotice = "跳转失败，继续当前播放",
-                            playbackDiagnostics = it.playbackDiagnostics.copy(
-                                lastError = error.message.orEmpty(),
-                            ),
+                            playbackDiagnostics = it.playbackDiagnostics.copy(lastError = error.message.orEmpty()),
                         )
                     }
                     return@withLock
@@ -406,11 +394,8 @@ class PlayerViewModel @Inject constructor(
                         resumePositionMs = 0L,
                         sessionGenerationId = result.session.currentGenerationId,
                         sessionOffsetMs = target,
-                        sessionHeartbeatIntervalMs = result.heartbeatIntervalSec
-                            .coerceAtLeast(5)
-                            .toLong() * 1_000L,
-                        sessionProfileId = result.session.generation?.profileId
-                            ?.takeIf(String::isNotBlank)
+                        sessionHeartbeatIntervalMs = result.heartbeatIntervalSec.coerceAtLeast(5).toLong() * 1_000L,
+                        sessionProfileId = result.session.generation?.profileId?.takeIf(String::isNotBlank)
                             ?: it.sessionProfileId,
                         sessionRestarting = false,
                         fallbackNotice = "已从 ${formatPlaybackTime(target)} 继续播放",
@@ -421,16 +406,11 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun heartbeat(
-        relativePositionMs: Long,
-        relativeBufferedEndMs: Long,
-        paused: Boolean,
-    ) {
+    fun heartbeat(relativePositionMs: Long, relativeBufferedEndMs: Long, paused: Boolean) {
         val current = _state.value
         if (!current.sessionManaged || current.sessionId.isBlank() || current.sessionGenerationId <= 0L) return
         val position = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativePositionMs)
-        val buffered = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativeBufferedEndMs)
-            .coerceAtLeast(position)
+        val buffered = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativeBufferedEndMs).coerceAtLeast(position)
         viewModelScope.launch {
             repository.heartbeatPlaybackSession(
                 current.sessionId,
@@ -502,12 +482,7 @@ class PlayerViewModel @Inject constructor(
                     )
                     if (playlist.isNullOrBlank()) {
                         closeSessionAsync(result.session.id, "missing_fallback_playlist")
-                        _state.update {
-                            it.copy(
-                                sessionRestarting = false,
-                                error = "兼容转码未返回播放地址",
-                            )
-                        }
+                        _state.update { it.copy(sessionRestarting = false, error = "兼容转码未返回播放地址") }
                         return@withLock
                     }
                     applySessionResult(
@@ -581,12 +556,7 @@ class PlayerViewModel @Inject constructor(
         _state.update { it.copy(fallbackNotice = null) }
     }
 
-    fun reportProgress(
-        mediaId: String,
-        positionMs: Long,
-        durationMs: Long,
-        force: Boolean = false,
-    ) {
+    fun reportProgress(mediaId: String, positionMs: Long, durationMs: Long, force: Boolean = false) {
         if (mediaId.isBlank()) return
         val current = _state.value
         val absolutePosition = absolutePlaybackPositionMs(
@@ -600,9 +570,7 @@ class PlayerViewModel @Inject constructor(
         if (!force &&
             abs(absolutePosition - lastReportedPositionMs) < MIN_PROGRESS_DELTA_MS &&
             now - lastReportElapsedMs < MIN_PROGRESS_INTERVAL_MS
-        ) {
-            return
-        }
+        ) return
         lastReportedPositionMs = absolutePosition
         lastReportElapsedMs = now
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -682,19 +650,20 @@ fun PlayerScreen(
     var subtitlesDisabled by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     var showNextEpisodePanel by rememberSaveable(mediaId) { mutableStateOf(false) }
-    var nextEpisodeCountdown by rememberSaveable(mediaId) {
-        mutableIntStateOf(NEXT_EPISODE_COUNTDOWN_SECONDS)
-    }
-    var sessionDisplayPositionMs by remember(mediaId) { mutableStateOf(0L) }
-    var sessionSeekPreviewMs by remember(mediaId) { mutableStateOf<Long?>(null) }
+    var nextEpisodeCountdown by rememberSaveable(mediaId) { mutableIntStateOf(NEXT_EPISODE_COUNTDOWN_SECONDS) }
+    var displayPositionMs by remember(mediaId) { mutableStateOf(0L) }
+    var playerDurationMs by remember(mediaId) { mutableStateOf(0L) }
+    var seekPreviewMs by remember(mediaId) { mutableStateOf<Long?>(null) }
+    var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(true) }
+    var controlsEpoch by remember(mediaId) { mutableIntStateOf(0) }
+    var isPlaying by remember(mediaId) { mutableStateOf(false) }
+    var boostingSpeed by remember(mediaId) { mutableStateOf<Float?>(null) }
 
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
 
     val player = remember(token) {
         val httpFactory = DefaultHttpDataSource.Factory().apply {
-            if (token.isNotBlank()) {
-                setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
-            }
+            if (token.isNotBlank()) setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
             setAllowCrossProtocolRedirects(true)
         }
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
@@ -703,10 +672,15 @@ fun PlayerScreen(
             .build()
     }
 
+    fun revealControls() {
+        controlsVisible = true
+        controlsEpoch += 1
+    }
+
     fun reportCurrentProgress(force: Boolean) {
         val current = viewModel.state.value
-        val playerDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-        val duration = current.mediaDurationMs.takeIf { it > 0L } ?: playerDuration ?: 0L
+        val exoDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+        val duration = current.mediaDurationMs.takeIf { it > 0L } ?: exoDuration ?: 0L
         viewModel.reportProgress(
             mediaId = mediaId,
             positionMs = player.currentPosition.coerceAtLeast(0L),
@@ -726,9 +700,32 @@ fun PlayerScreen(
         action()
     }
 
-    BackHandler {
-        leavePlayback("navigate_back", onBack)
+    fun effectiveDurationMs(): Long = state.mediaDurationMs.takeIf { it > 0L }
+        ?: playerDurationMs.takeIf { it > 0L }
+        ?: 0L
+
+    fun seekToAbsolute(targetMs: Long, reason: String) {
+        val duration = effectiveDurationMs()
+        if (duration <= 0L) return
+        val target = clampPlaybackTargetMs(targetMs, duration)
+        seekPreviewMs = null
+        displayPositionMs = target
+        if (state.sessionManaged) {
+            player.pause()
+            isPlaying = false
+            viewModel.restartPlaybackSession(target, reason)
+        } else {
+            player.seekTo(target)
+        }
+        revealControls()
     }
+
+    fun seekBy(deltaMs: Long) {
+        val base = seekPreviewMs ?: displayPositionMs
+        seekToAbsolute(base + deltaMs, "android_gesture_seek")
+    }
+
+    BackHandler { leavePlayback("navigate_back", onBack) }
 
     LaunchedEffect(state.playbackUrl, state.resumePositionMs, state.externalSubtitles, session.activeServer?.baseUrl) {
         if (state.playbackUrl.isNotBlank()) {
@@ -741,13 +738,11 @@ fun PlayerScreen(
                     ),
                 )
                 .build()
-            if (state.resumePositionMs > 0L && !state.sessionManaged) {
-                player.setMediaItem(item, state.resumePositionMs)
-            } else {
-                player.setMediaItem(item)
-            }
+            if (state.resumePositionMs > 0L && !state.sessionManaged) player.setMediaItem(item, state.resumePositionMs)
+            else player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
+            revealControls()
         }
     }
 
@@ -758,12 +753,19 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(state.playbackSpeed) {
-        player.setPlaybackSpeed(state.playbackSpeed)
+    LaunchedEffect(state.playbackSpeed, boostingSpeed) {
+        if (boostingSpeed == null) player.setPlaybackSpeed(state.playbackSpeed)
     }
 
     LaunchedEffect(state.resizeMode, playerView) {
         playerView?.resizeMode = resizeModeForPreference(state.resizeMode)
+    }
+
+    LaunchedEffect(controlsVisible, controlsEpoch, isPlaying, showSettings) {
+        if (controlsVisible && isPlaying && !showSettings) {
+            delay(PLAYER_CONTROLS_TIMEOUT_MS)
+            controlsVisible = false
+        }
     }
 
     LaunchedEffect(player, mediaId) {
@@ -773,12 +775,7 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(
-        player,
-        state.sessionId,
-        state.sessionGenerationId,
-        state.sessionHeartbeatIntervalMs,
-    ) {
+    LaunchedEffect(player, state.sessionId, state.sessionGenerationId, state.sessionHeartbeatIntervalMs) {
         if (!state.sessionManaged || state.sessionId.isBlank()) return@LaunchedEffect
         while (true) {
             delay(state.sessionHeartbeatIntervalMs.coerceAtLeast(5_000L))
@@ -790,12 +787,14 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(player, state.sessionManaged, state.sessionOffsetMs) {
-        if (!state.sessionManaged) return@LaunchedEffect
-        sessionDisplayPositionMs = state.sessionOffsetMs
+    LaunchedEffect(player, state.sessionManaged, state.sessionOffsetMs, state.mediaDurationMs) {
         while (true) {
-            sessionDisplayPositionMs = viewModel.absolutePositionMs(player.currentPosition)
-            delay(500L)
+            displayPositionMs = if (state.sessionManaged) viewModel.absolutePositionMs(player.currentPosition)
+            else player.currentPosition.coerceAtLeast(0L)
+            val reportedDuration = state.mediaDurationMs.takeIf { it > 0L }
+            val exoDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            playerDurationMs = reportedDuration ?: exoDuration ?: playerDurationMs
+            delay(250L)
         }
     }
 
@@ -812,18 +811,22 @@ fun PlayerScreen(
 
     DisposableEffect(player, mediaId, lifecycleOwner) {
         val playerListener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (!isPlaying && player.playbackState == Player.STATE_READY) {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (!playing && player.playbackState == Player.STATE_READY) {
                     reportCurrentProgress(force = true)
+                    revealControls()
                 }
                 viewModel.heartbeat(
                     relativePositionMs = player.currentPosition.coerceAtLeast(0L),
                     relativeBufferedEndMs = player.bufferedPosition.coerceAtLeast(0L),
-                    paused = !isPlaying,
+                    paused = !playing,
                 )
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+                if (duration != null) playerDurationMs = duration
                 if (playbackState == Player.STATE_ENDED) {
                     val current = viewModel.state.value
                     val relativeEnd = if (current.sessionManaged) {
@@ -833,13 +836,12 @@ fun PlayerScreen(
                             absolutePositionMs = current.mediaDurationMs,
                         )
                     } else {
-                        player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-                            ?: current.mediaDurationMs
+                        player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: current.mediaDurationMs
                     }
                     viewModel.reportProgress(
                         mediaId = mediaId,
                         positionMs = relativeEnd,
-                        durationMs = current.mediaDurationMs,
+                        durationMs = current.mediaDurationMs.takeIf { it > 0L } ?: playerDurationMs,
                         force = true,
                     )
                     viewModel.closePlaybackSession("playback_ended")
@@ -898,6 +900,8 @@ fun PlayerScreen(
         }
     }
 
+    val durationMs = effectiveDurationMs()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -913,92 +917,82 @@ fun PlayerScreen(
                 message = state.error!!,
                 actionLabel = "返回",
                 onAction = { leavePlayback("playback_error_back", onBack) },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(20.dp),
+                modifier = Modifier.align(Alignment.Center).padding(20.dp),
             )
-            else -> AndroidView(
-                factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        useController = true
-                        controllerShowTimeoutMs = 3_500
-                        this.player = player
-                        keepScreenOn = true
-                        resizeMode = resizeModeForPreference(state.resizeMode)
-                        playerView = this
-                    }
-                },
-                update = {
-                    it.player = player
-                    it.resizeMode = resizeModeForPreference(state.resizeMode)
-                    playerView = it
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+            else -> {
+                AndroidView(
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            useController = false
+                            this.player = player
+                            keepScreenOn = true
+                            resizeMode = resizeModeForPreference(state.resizeMode)
+                            playerView = this
+                        }
+                    },
+                    update = {
+                        it.useController = false
+                        it.player = player
+                        it.resizeMode = resizeModeForPreference(state.resizeMode)
+                        playerView = it
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
 
-        IconButton(
-            onClick = { leavePlayback("navigate_back", onBack) },
-            modifier = Modifier
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(8.dp)
-                .background(Color.Black.copy(alpha = 0.55f), MaterialTheme.shapes.large),
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "退出播放",
-                tint = Color.White,
-            )
-        }
+                PlayerGestureLayer(
+                    currentSpeed = state.playbackSpeed,
+                    enabled = !showSettings && !state.sessionRestarting,
+                    onTap = {
+                        controlsVisible = !controlsVisible
+                        controlsEpoch += 1
+                    },
+                    onSeekBy = ::seekBy,
+                    onBoostStart = { speed ->
+                        boostingSpeed = speed
+                        player.setPlaybackSpeed(speed)
+                    },
+                    onBoostEnd = { restoreSpeed ->
+                        boostingSpeed = null
+                        player.setPlaybackSpeed(restoreSpeed)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
 
-        IconButton(
-            onClick = { showSettings = true },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(8.dp)
-                .background(Color.Black.copy(alpha = 0.55f), MaterialTheme.shapes.large),
-        ) {
-            Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)
-        }
-
-        if (state.sessionManaged && state.mediaDurationMs > 0L && state.error == null) {
-            val preview = sessionSeekPreviewMs ?: sessionDisplayPositionMs
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(horizontal = 18.dp, vertical = 62.dp)
-                    .fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = Color.Black.copy(alpha = 0.68f),
-            ) {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(formatPlaybackTime(preview), color = Color.White)
-                        Text(formatPlaybackTime(state.mediaDurationMs), color = Color.White.copy(alpha = 0.72f))
-                    }
-                    Slider(
-                        value = (preview.toDouble() / state.mediaDurationMs.toDouble())
-                            .coerceIn(0.0, 1.0)
-                            .toFloat(),
-                        onValueChange = { fraction ->
-                            sessionSeekPreviewMs = (state.mediaDurationMs * fraction)
-                                .toLong()
-                                .coerceIn(0L, state.mediaDurationMs)
-                        },
-                        onValueChangeFinished = {
-                            val target = sessionSeekPreviewMs ?: sessionDisplayPositionMs
-                            sessionSeekPreviewMs = null
-                            player.pause()
-                            viewModel.restartPlaybackSession(target, "android_timeline_seek")
-                        },
-                        enabled = !state.sessionRestarting,
-                    )
-                }
+                NowenPlayerControls(
+                    visible = controlsVisible && !showSettings,
+                    title = state.title,
+                    isPlaying = isPlaying,
+                    positionMs = displayPositionMs,
+                    durationMs = durationMs,
+                    seekPreviewMs = seekPreviewMs,
+                    playbackSpeed = state.playbackSpeed,
+                    boostingSpeed = boostingSpeed,
+                    seekingEnabled = !state.sessionRestarting,
+                    onBack = { leavePlayback("navigate_back", onBack) },
+                    onSettings = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
+                    onPlayPause = {
+                        if (player.isPlaying) player.pause() else player.play()
+                        revealControls()
+                    },
+                    onSeekBy = ::seekBy,
+                    onSeekFractionChange = { fraction ->
+                        if (durationMs > 0L) {
+                            seekPreviewMs = (durationMs * fraction).toLong().coerceIn(0L, durationMs)
+                        }
+                        revealControls()
+                    },
+                    onSeekFinished = {
+                        val target = seekPreviewMs ?: displayPositionMs
+                        seekToAbsolute(target, "android_timeline_seek")
+                    },
+                    onSpeedClick = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
+                )
             }
         }
 
@@ -1008,12 +1002,12 @@ fun PlayerScreen(
                 state.progressQueued -> "当前离线，观看进度将在恢复连接后自动同步"
                 else -> null
             }
-        if (statusNotice != null && !showNextEpisodePanel) {
+        if (statusNotice != null && !showNextEpisodePanel && !showSettings) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = if (controlsVisible) 86.dp else 16.dp),
                 shape = MaterialTheme.shapes.large,
                 color = Color.Black.copy(alpha = 0.76f),
             ) {
@@ -1040,11 +1034,7 @@ fun PlayerScreen(
             ) {
                 Column(Modifier.padding(18.dp)) {
                     Text(
-                        text = if (state.autoPlayNext) {
-                            "$nextEpisodeCountdown 秒后播放下一集"
-                        } else {
-                            "下一集已准备好"
-                        },
+                        text = if (state.autoPlayNext) "$nextEpisodeCountdown 秒后播放下一集" else "下一集已准备好",
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -1055,24 +1045,18 @@ fun PlayerScreen(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { showNextEpisodePanel = false }) {
-                            Text("取消")
-                        }
+                        TextButton(onClick = { showNextEpisodePanel = false }) { Text("取消") }
                         Spacer(Modifier.width(8.dp))
                         Button(
                             onClick = {
                                 showNextEpisodePanel = false
                                 leavePlayback("next_media", action = { onPlayNext(next.id) })
                             },
-                        ) {
-                            Text("立即播放")
-                        }
+                        ) { Text("立即播放") }
                     }
                 }
             }
@@ -1081,7 +1065,10 @@ fun PlayerScreen(
 
     if (showSettings) {
         PlayerSettingsSheet(
-            onDismiss = { showSettings = false },
+            onDismiss = {
+                showSettings = false
+                revealControls()
+            },
             playbackDiagnostics = state.playbackDiagnostics,
             playbackSpeed = state.playbackSpeed,
             onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
@@ -1124,13 +1111,10 @@ internal fun resolveServerResource(baseUrl: String?, path: String?): String? {
 }
 
 internal fun formatPlaybackTime(positionMs: Long): String {
-    val totalSeconds = (positionMs.coerceAtLeast(0L) / 1_000L)
+    val totalSeconds = positionMs.coerceAtLeast(0L) / 1_000L
     val hours = totalSeconds / 3_600L
     val minutes = (totalSeconds % 3_600L) / 60L
     val seconds = totalSeconds % 60L
-    return if (hours > 0L) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
-    } else {
-        "%02d:%02d".format(minutes, seconds)
-    }
+    return if (hours > 0L) "%d:%02d:%02d".format(hours, minutes, seconds)
+    else "%02d:%02d".format(minutes, seconds)
 }

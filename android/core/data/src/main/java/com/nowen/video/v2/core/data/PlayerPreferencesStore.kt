@@ -19,7 +19,20 @@ private val KEY_PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
 private val KEY_RESIZE_MODE = intPreferencesKey("resize_mode")
 private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
 
-private val supportedSpeeds = setOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+internal val supportedPlaybackSpeeds = listOf(
+    0.5f,
+    0.75f,
+    1f,
+    1.25f,
+    1.5f,
+    1.75f,
+    2f,
+    3f,
+    4f,
+    6f,
+    8f,
+)
+private val supportedPlaybackSpeedSet = supportedPlaybackSpeeds.toSet()
 private val supportedResizeModes = setOf(0, 1, 2)
 
 data class PlayerPreferences(
@@ -40,7 +53,7 @@ class PlayerPreferencesStore @Inject constructor(
         .map { values ->
             PlayerPreferences(
                 playbackSpeed = values[KEY_PLAYBACK_SPEED]
-                    ?.takeIf(supportedSpeeds::contains)
+                    ?.takeIf(supportedPlaybackSpeedSet::contains)
                     ?: 1f,
                 resizeMode = values[KEY_RESIZE_MODE]
                     ?.takeIf(supportedResizeModes::contains)
@@ -51,7 +64,7 @@ class PlayerPreferencesStore @Inject constructor(
 
     suspend fun setPlaybackSpeed(speed: Float) {
         context.playerPreferencesDataStore.edit { values ->
-            values[KEY_PLAYBACK_SPEED] = speed.takeIf(supportedSpeeds::contains) ?: 1f
+            values[KEY_PLAYBACK_SPEED] = speed.takeIf(supportedPlaybackSpeedSet::contains) ?: 1f
         }
     }
 
