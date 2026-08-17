@@ -168,7 +168,7 @@ class OfflineDownloadRepository @Inject constructor(
                 }
                 OfflineDownloadStatus.Queued,
                 OfflineDownloadStatus.Downloading,
-                -> return@runCatching existing
+                -> return@runCatching ensureServerOrigin(existing, scope.baseUrl)
                 OfflineDownloadStatus.Paused -> {
                     resume(existing.id).getOrThrow()
                     return@runCatching requireNotNull(store.find(existing.id))
@@ -204,6 +204,7 @@ class OfflineDownloadRepository @Inject constructor(
             title = detail.displayTitle.ifBlank { stream.title.ifBlank { "未命名媒体" } },
             posterPath = detail.posterPath,
             sourceUrl = sourceUrl,
+            serverBaseUrl = scope.baseUrl,
             mimeType = stream.mimeType,
             durationSeconds = stream.duration,
             fileName = fileName,
@@ -236,12 +237,14 @@ class OfflineDownloadRepository @Inject constructor(
 
     suspend fun resume(id: String): Result<Unit> = runCatching {
         val record = requireNotNull(ownedRecord(id)) { "下载任务不存在" }
+        val scope = requireActiveScope()
         check(record.status == OfflineDownloadStatus.Paused || record.status == OfflineDownloadStatus.Failed) {
             "当前任务不可继续"
         }
         val queued = requireNotNull(
             store.update(id) {
                 it.copy(
+                    serverBaseUrl = it.serverBaseUrl.ifBlank { scope.baseUrl },
                     status = OfflineDownloadStatus.Queued,
                     downloadedBytes = File(it.partialPath).length(),
                     error = "",
@@ -276,9 +279,11 @@ class OfflineDownloadRepository @Inject constructor(
     suspend fun setWifiOnly(enabled: Boolean) {
         val next = store.policyNow().copy(wifiOnly = enabled).normalized()
         store.setPolicy(next)
+        val activeBaseUrl = activeScope()?.baseUrl.orEmpty()
         downloads.first().filter(OfflineDownloadRecord::isActive).forEach { record ->
             val queued = store.update(record.id) {
                 it.copy(
+                    serverBaseUrl = it.serverBaseUrl.ifBlank { activeBaseUrl },
                     status = OfflineDownloadStatus.Queued,
                     updatedAtEpochMs = System.currentTimeMillis(),
                 )
@@ -315,10 +320,12 @@ class OfflineDownloadRepository @Inject constructor(
 
     suspend fun reconcileActiveDownloads() {
         val currentPolicy = store.policyNow()
+        val activeBaseUrl = activeScope()?.baseUrl.orEmpty()
         downloads.first().filter { it.status == OfflineDownloadStatus.Queued || it.status == OfflineDownloadStatus.Downloading }
             .forEach { record ->
                 val queued = store.update(record.id) {
                     it.copy(
+                        serverBaseUrl = it.serverBaseUrl.ifBlank { activeBaseUrl },
                         status = OfflineDownloadStatus.Queued,
                         downloadedBytes = File(it.partialPath).length(),
                         updatedAtEpochMs = System.currentTimeMillis(),
@@ -326,6 +333,13 @@ class OfflineDownloadRepository @Inject constructor(
                 } ?: return@forEach
                 enqueueOfflineWork(context, queued, currentPolicy)
             }
+    }
+
+    private suspend fun ensureServerOrigin(record: OfflineDownloadRecord, baseUrl: String): OfflineDownloadRecord {
+        if (record.serverBaseUrl.isNotBlank()) return record
+        return store.update(record.id) {
+            it.copy(serverBaseUrl = baseUrl, updatedAtEpochMs = System.currentTimeMillis())
+        } ?: record
     }
 
     private suspend fun ownedRecord(id: String): OfflineDownloadRecord? {

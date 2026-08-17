@@ -24,6 +24,29 @@ class OfflineDownloadRulesTest {
     }
 
     @Test
+    fun bearerTokenIsOnlySentToServerOrigin() {
+        assertTrue(
+            shouldAuthorizeDownload(
+                "https://video.example",
+                "https://video.example/api/download/movie.mp4",
+            ),
+        )
+        assertFalse(
+            shouldAuthorizeDownload(
+                "https://video.example",
+                "https://cdn.example/movie.mp4",
+            ),
+        )
+        assertFalse(
+            shouldAuthorizeDownload(
+                "https://video.example",
+                "http://video.example/movie.mp4",
+            ),
+        )
+        assertFalse(shouldAuthorizeDownload("", "https://video.example/movie.mp4"))
+    }
+
+    @Test
     fun hlsSourcesAreRejectedForRangeDownload() {
         assertTrue(isHlsDownload("https://example.test/video.m3u8", "application/octet-stream"))
         assertTrue(isHlsDownload("https://example.test/stream", "application/vnd.apple.mpegurl"))

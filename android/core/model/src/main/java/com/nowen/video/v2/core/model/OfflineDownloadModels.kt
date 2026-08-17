@@ -22,6 +22,7 @@ data class OfflineDownloadRecord(
     val title: String,
     val posterPath: String = "",
     val sourceUrl: String,
+    val serverBaseUrl: String = "",
     val mimeType: String = "",
     val durationSeconds: Double = 0.0,
     val fileName: String,

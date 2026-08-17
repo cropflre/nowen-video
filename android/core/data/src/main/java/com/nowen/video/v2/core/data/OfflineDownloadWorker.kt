@@ -102,8 +102,10 @@ class OfflineDownloadWorker(
         val request = Request.Builder()
             .url(initialRecord.sourceUrl)
             .header("Accept-Encoding", "identity")
-            .header("Authorization", "Bearer $token")
             .apply {
+                if (shouldAuthorizeDownload(initialRecord.serverBaseUrl, initialRecord.sourceUrl)) {
+                    header("Authorization", "Bearer $token")
+                }
                 if (existingBytes > 0L) header("Range", "bytes=$existingBytes-")
             }
             .build()
@@ -260,8 +262,12 @@ class OfflineDownloadRecoveryWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        val store = OfflineDownloadStore(applicationContext, offlineWorkerJson())
+        val json = offlineWorkerJson()
+        val store = OfflineDownloadStore(applicationContext, json)
         val vault = CredentialVault(applicationContext)
+        val sessionStore = ServerSessionStore(applicationContext, vault, json)
+        sessionStore.bootstrap()
+        val servers = sessionStore.snapshot.value.servers.associateBy { it.id }
         val policy = store.policyNow()
         store.recordsNow().forEach { record ->
             when (record.status) {
@@ -269,8 +275,10 @@ class OfflineDownloadRecoveryWorker(
                 OfflineDownloadStatus.Downloading,
                 -> {
                     if (vault.readToken(record.serverId) != null) {
+                        val baseUrl = record.serverBaseUrl.ifBlank { servers[record.serverId]?.baseUrl.orEmpty() }
                         val queued = store.update(record.id) {
                             it.copy(
+                                serverBaseUrl = baseUrl,
                                 status = OfflineDownloadStatus.Queued,
                                 downloadedBytes = File(it.partialPath).length(),
                                 updatedAtEpochMs = System.currentTimeMillis(),
