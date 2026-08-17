@@ -18,6 +18,7 @@ private val Context.playerPreferencesDataStore by preferencesDataStore(name = "n
 private val KEY_PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
 private val KEY_RESIZE_MODE = intPreferencesKey("resize_mode")
 private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
+private val KEY_PICTURE_IN_PICTURE = booleanPreferencesKey("picture_in_picture")
 
 internal val supportedPlaybackSpeeds = listOf(
     0.5f,
@@ -39,6 +40,7 @@ data class PlayerPreferences(
     val playbackSpeed: Float = 1f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
+    val pictureInPictureEnabled: Boolean = true,
 )
 
 @Singleton
@@ -59,6 +61,7 @@ class PlayerPreferencesStore @Inject constructor(
                     ?.takeIf(supportedResizeModes::contains)
                     ?: 0,
                 autoPlayNext = values[KEY_AUTO_PLAY_NEXT] ?: true,
+                pictureInPictureEnabled = values[KEY_PICTURE_IN_PICTURE] ?: true,
             )
         }
 
@@ -77,6 +80,12 @@ class PlayerPreferencesStore @Inject constructor(
     suspend fun setAutoPlayNext(enabled: Boolean) {
         context.playerPreferencesDataStore.edit { values ->
             values[KEY_AUTO_PLAY_NEXT] = enabled
+        }
+    }
+
+    suspend fun setPictureInPictureEnabled(enabled: Boolean) {
+        context.playerPreferencesDataStore.edit { values ->
+            values[KEY_PICTURE_IN_PICTURE] = enabled
         }
     }
 }

@@ -1,6 +1,11 @@
 package com.nowen.video.v2.feature.main
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -20,9 +25,18 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,9 +47,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.nowen.video.v2.core.data.NowenRepository
+import com.nowen.video.v2.core.data.PlayerPreferences
+import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ServerSessionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class MainTab(
@@ -60,12 +80,20 @@ private const val HISTORY_ROUTE = "history"
 private const val COLLECTIONS_ROUTE = "collections"
 private const val COLLECTION_DETAIL_ROUTE = "collection/{collectionId}"
 private const val PERSON_DETAIL_ROUTE = "person/{personId}"
+private const val SETTINGS_ROUTE = "settings"
 
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
     private val repository: NowenRepository,
+    playerPreferencesStore: PlayerPreferencesStore,
     val store: ServerSessionStore,
 ) : ViewModel() {
+    val playerPreferences: StateFlow<PlayerPreferences> = playerPreferencesStore.preferences.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        PlayerPreferences(),
+    )
+
     fun logout() {
         viewModelScope.launch { repository.logout() }
     }
@@ -78,6 +106,24 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     val currentRoute = backStackEntry?.destination?.route
     val currentTab = MainTab.entries.firstOrNull { it.route == currentRoute }
     val showBottomBar = currentTab != null
+    val playerPreferences by viewModel.playerPreferences.collectAsState()
+    val context = LocalContext.current
+    var askedDownloadNotificationPermission by rememberSaveable { mutableStateOf(false) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+
+    LaunchedEffect(currentTab) {
+        if (
+            currentTab == MainTab.Downloads &&
+            !askedDownloadNotificationPermission &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askedDownloadNotificationPermission = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     fun openDetail(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("detail/${Uri.encode(mediaId)}")
@@ -164,8 +210,12 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onFavorites = { navController.navigate(FAVORITES_ROUTE) },
                     onHistory = { navController.navigate(HISTORY_ROUTE) },
                     onCollections = { navController.navigate(COLLECTIONS_ROUTE) },
+                    onSettings = { navController.navigate(SETTINGS_ROUTE) },
                     onLogout = viewModel::logout,
                 )
+            }
+            composable(SETTINGS_ROUTE) {
+                MobileSettingsScreen(onBack = { navController.popBackStack() })
             }
             composable(FAVORITES_ROUTE) {
                 PagedFavoritesScreen(
@@ -235,27 +285,50 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
-                PlayerScreen(
-                    mediaId = mediaId,
-                    onBack = { navController.popBackStack() },
-                    onPlayNext = { nextId ->
-                        navController.navigate("player/${Uri.encode(nextId)}") {
-                            popUpTo(entry.destination.id) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                )
+                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { inPip ->
+                    PlayerScreen(
+                        mediaId = mediaId,
+                        pictureInPictureMode = inPip,
+                        onBack = { navController.popBackStack() },
+                        onPlayNext = { nextId ->
+                            navController.navigate("player/${Uri.encode(nextId)}") {
+                                popUpTo(entry.destination.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
             }
             composable(
                 route = OFFLINE_PLAYER_ROUTE,
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
-                OfflinePlayerScreen(
-                    mediaId = mediaId,
-                    onBack = { navController.popBackStack() },
-                )
+                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) {
+                    OfflinePlayerScreen(
+                        mediaId = mediaId,
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun PlaybackPictureInPictureBinding(
+    enabled: Boolean,
+    content: @Composable (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val host = remember(context) { context.findPlaybackPictureInPictureHost() }
+    val fallbackMode = remember { MutableStateFlow(false) }
+    val inPictureInPictureMode by (host?.pictureInPictureMode ?: fallbackMode).collectAsState()
+
+    DisposableEffect(host, enabled) {
+        host?.setPlaybackPictureInPictureActive(enabled)
+        onDispose { host?.setPlaybackPictureInPictureActive(false) }
+    }
+
+    content(inPictureInPictureMode)
 }

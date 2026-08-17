@@ -27,12 +27,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -40,9 +44,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 private const val LONG_PRESS_BOOST_SPEED = 2f
+private const val DOUBLE_TAP_SEEK_MS = 10_000L
+
+internal fun playerDoubleTapSeekDeltaMs(x: Float, width: Float): Long =
+    if (x < width / 2f) -DOUBLE_TAP_SEEK_MS else DOUBLE_TAP_SEEK_MS
+
+internal fun temporaryBoostSpeed(currentSpeed: Float): Float = maxOf(currentSpeed, LONG_PRESS_BOOST_SPEED)
+
+@Composable
+private fun rememberPictureInPictureMode(): Boolean {
+    val context = LocalContext.current
+    val host = remember(context) { context.findPlaybackPictureInPictureHost() }
+    val fallback = remember { MutableStateFlow(false) }
+    val inPictureInPictureMode by (host?.pictureInPictureMode ?: fallback).collectAsState()
+    return inPictureInPictureMode
+}
 
 @Composable
 internal fun PlayerGestureLayer(
@@ -56,14 +76,15 @@ internal fun PlayerGestureLayer(
 ) {
     val viewConfiguration = LocalViewConfiguration.current
     val hapticFeedback = LocalHapticFeedback.current
+    val inPictureInPictureMode = rememberPictureInPictureMode()
 
     Box(
-        modifier = modifier.pointerInput(currentSpeed, enabled) {
-            if (!enabled) return@pointerInput
+        modifier = modifier.pointerInput(currentSpeed, enabled, inPictureInPictureMode) {
+            if (!enabled || inPictureInPictureMode) return@pointerInput
             detectTapGestures(
                 onTap = { onTap() },
                 onDoubleTap = { offset ->
-                    onSeekBy(if (offset.x < size.width / 2f) -10_000L else 10_000L)
+                    onSeekBy(playerDoubleTapSeekDeltaMs(offset.x, size.width.toFloat()))
                 },
                 onLongPress = {},
                 onPress = {
@@ -74,7 +95,7 @@ internal fun PlayerGestureLayer(
                             delay(viewConfiguration.longPressTimeoutMillis.toLong())
                             boosting = true
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onBoostStart(maxOf(restoreSpeed, LONG_PRESS_BOOST_SPEED))
+                            onBoostStart(temporaryBoostSpeed(restoreSpeed))
                         }
                         try {
                             tryAwaitRelease()
@@ -109,8 +130,10 @@ internal fun NowenPlayerControls(
     onSpeedClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val inPictureInPictureMode = rememberPictureInPictureMode()
+
     Box(modifier = modifier.fillMaxSize()) {
-        if (visible) {
+        if (visible && !inPictureInPictureMode) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -160,7 +183,7 @@ internal fun NowenPlayerControls(
                 horizontalArrangement = Arrangement.spacedBy(28.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SeekButton(label = "↶ 10", onClick = { onSeekBy(-10_000L) })
+                SeekButton(label = "↶ 10", onClick = { onSeekBy(-DOUBLE_TAP_SEEK_MS) })
                 Surface(
                     shape = MaterialTheme.shapes.extraLarge,
                     color = Color.White,
@@ -174,7 +197,7 @@ internal fun NowenPlayerControls(
                         )
                     }
                 }
-                SeekButton(label = "10 ↷", onClick = { onSeekBy(10_000L) })
+                SeekButton(label = "10 ↷", onClick = { onSeekBy(DOUBLE_TAP_SEEK_MS) })
             }
 
             val preview = seekPreviewMs ?: positionMs
@@ -220,7 +243,7 @@ internal fun NowenPlayerControls(
             }
         }
 
-        if (boostingSpeed != null) {
+        if (boostingSpeed != null && !inPictureInPictureMode) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
