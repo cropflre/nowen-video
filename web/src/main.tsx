@@ -33,6 +33,7 @@ import './styles/media-detail-tabs.css'
 import './styles/media-detail-hero-enhancements.css'
 import './styles/sidebar-collapse.css'
 import './styles/personal-media-workspace.css'
+import './styles/series-detail-cinema.css'
 
 const SW_DEV_RELOAD_KEY = 'nowen-sw-dev-cleanup-reload'
 const SW_UPDATE_RELOAD_KEY = 'nowen-sw-production-update-reload'
