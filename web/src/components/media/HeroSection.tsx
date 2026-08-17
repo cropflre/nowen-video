@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } fro
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
+import { usePosterVersion } from '@/stores/mediaRefresh'
 import { useToast } from '@/components/Toast'
 import { Button, Tag, buttonClassName } from '@/components/design-system'
 import { useTranslation } from '@/i18n'
@@ -173,6 +174,7 @@ export default function HeroSection({
   onEditMetadata,
   onDelete,
 }: HeroSectionProps) {
+  const assetRefreshVersion = usePosterVersion()
   const toast = useToast()
   const { t } = useTranslation()
   const [imgLoaded, setImgLoaded] = useState(false)
@@ -181,6 +183,9 @@ export default function HeroSection({
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const playlistButtonRef = useRef<HTMLButtonElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
+  const effectivePosterVersion = posterVersion === undefined
+    ? (assetRefreshVersion || undefined)
+    : posterVersion + assetRefreshVersion
 
   const copyFilePath = () => {
     if (!media.file_path) return
@@ -216,11 +221,11 @@ export default function HeroSection({
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
           <img
-            src={getBackdropUrl(media, posterVersion)}
+            src={getBackdropUrl(media, effectivePosterVersion)}
             alt=""
             className={clsx(
-              'h-full w-full object-cover object-center transition-[opacity,transform] duration-500 ease-out',
-              media.backdrop_path && media.series_id ? '' : 'scale-110 blur-2xl',
+              'h-full w-full object-center transition-[opacity,transform] duration-500 ease-out',
+              media.backdrop_path && media.series_id ? 'object-contain' : 'object-cover scale-110 blur-2xl',
               imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
             )}
             onLoad={() => setImgLoaded(true)}
@@ -236,7 +241,7 @@ export default function HeroSection({
         <div className="hidden sm:block">
           <div className="nv-detail-poster relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
             <img
-              src={streamApi.getPosterUrl(media.id, posterVersion)}
+              src={streamApi.getPosterUrl(media.id, effectivePosterVersion)}
               alt={media.title}
               className={clsx('h-full w-full object-cover', posterFailed && 'hidden')}
               loading="eager"
