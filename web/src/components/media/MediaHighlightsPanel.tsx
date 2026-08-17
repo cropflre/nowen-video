@@ -6,6 +6,7 @@ import { useToast } from '@/components/Toast'
 import { streamApi } from '@/api'
 import { mediaAnalysisApi, type MediaAnalysisTask, type MediaHighlight } from '@/api/mediaAnalysis'
 import { useWebSocket, WS_EVENTS, type MediaAnalysisProgressData } from '@/hooks/useWebSocket'
+import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { formatErrMsg } from '@/utils/error'
 
 interface MediaHighlightsPanelProps {
@@ -63,8 +64,15 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
   const hoverTimerRef = useRef<number | null>(null)
+  const completionNotifiedRef = useRef(false)
 
   const running = task?.status === 'pending' || task?.status === 'running'
+
+  const notifyAnalysisCompleted = useCallback(() => {
+    if (completionNotifiedRef.current) return
+    completionNotifiedRef.current = true
+    bumpPosterVersion()
+  }, [])
 
   const loadHighlights = useCallback(async () => {
     const response = await mediaAnalysisApi.getHighlights(mediaId)
@@ -109,8 +117,12 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
         created_at: previous?.created_at,
         updated_at: previous?.updated_at,
       }))
+      if (data.status === 'pending' || data.status === 'running') {
+        completionNotifiedRef.current = false
+      }
       if (data.status === 'completed') {
         void loadHighlights()
+        notifyAnalysisCompleted()
       }
     }
 
@@ -120,7 +132,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
       offWS(WS_EVENTS.MEDIA_ANALYSIS_PROGRESS, handleProgress)
       offWS(WS_EVENTS.MEDIA_ANALYSIS_COMPLETE, handleProgress)
     }
-  }, [loadHighlights, mediaId, offWS, onWS])
+  }, [loadHighlights, mediaId, notifyAnalysisCompleted, offWS, onWS])
 
   useEffect(() => {
     if (pollRef.current) {
@@ -137,7 +149,10 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
         if (!next || (next.status !== 'pending' && next.status !== 'running')) {
           if (pollRef.current) window.clearInterval(pollRef.current)
           pollRef.current = null
-          if (next?.status === 'completed') void loadHighlights()
+          if (next?.status === 'completed') {
+            void loadHighlights()
+            notifyAnalysisCompleted()
+          }
         }
       }).catch(() => {})
     }, interval)
@@ -146,7 +161,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
       if (pollRef.current) window.clearInterval(pollRef.current)
       pollRef.current = null
     }
-  }, [loadHighlights, loadStatus, running, wsConnected])
+  }, [loadHighlights, loadStatus, notifyAnalysisCompleted, running, wsConnected])
 
   useEffect(() => () => {
     if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current)
@@ -169,6 +184,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   }
 
   const handleAnalyze = async () => {
+    completionNotifiedRef.current = false
     setSubmitting(true)
     try {
       const response = await mediaAnalysisApi.analyzeHighlights(mediaId)
