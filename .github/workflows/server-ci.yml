@@ -45,6 +45,7 @@ on:
       - 'scripts/release-advanced.sh'
       - 'scripts/android-*.sh'
       - 'scripts/android-*.py'
+      - 'scripts/docker-entrypoint.sh'
       - 'scripts/sync-version.ps1'
       - 'Dockerfile'
       - 'Dockerfile.full'
@@ -73,6 +74,7 @@ jobs:
           bash -n scripts/android-version.sh
           bash -n scripts/android-signing-preflight.sh
           bash -n scripts/android-signing-bootstrap.sh
+          bash -n scripts/docker-entrypoint.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -223,6 +225,18 @@ jobs:
             return 1
           }
 
+          assert_runtime_ids() {
+            local container="$1"
+            local expected_uid="$2"
+            local expected_gid="$3"
+            local actual_uid
+            local actual_gid
+            actual_uid="$(docker exec "$container" sh -c "awk '/^Uid:/ {print \\$2}' /proc/1/status")"
+            actual_gid="$(docker exec "$container" sh -c "awk '/^Gid:/ {print \\$2}' /proc/1/status")"
+            test "$actual_uid" = "$expected_uid"
+            test "$actual_gid" = "$expected_gid"
+          }
+
           smoke_profile() {
             local profile="$1"
             local image="$2"
@@ -254,6 +268,23 @@ jobs:
             docker exec "$container" test -s /data/nowen.db
             docker exec "$container" test -d /cache/transcode/workspaces
             docker exec "$container" test -d /cache/transcode/artifacts
+            docker rm -f "$container" >/dev/null
+
+            # Regression: host PGID values may already be occupied by Alpine
+            # system groups. GID 10 reproduces the reported NAS deployment
+            # failure and must work without deleting/recreating named accounts.
+            docker run -d \
+              --name "$container" \
+              -p "${port}:8080" \
+              -e PUID=1000 \
+              -e PGID=10 \
+              -v "${data_volume}:/data" \
+              -v "${cache_volume}:/cache" \
+              "$image" >/dev/null
+            wait_health "$container" "$port"
+            assert_runtime_ids "$container" 1000 10
+            docker exec "$container" test -s /data/nowen.db
+            docker exec "$container" test -d /cache/transcode
             docker rm -f "$container" >/dev/null
           }
 
