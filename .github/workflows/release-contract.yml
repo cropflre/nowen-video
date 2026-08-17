@@ -41,11 +41,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -d scripts/fpk/template/app
+          test -d scripts/fpk/template/cmd
+          test -d scripts/fpk/template/wizard
+          test -f scripts/fpk/template/manifest
+          test -f scripts/fpk/template/config/privilege
+          test -f scripts/fpk/template/config/resource
           grep -Fq 'version               = {{VERSION}}' scripts/fpk/template/manifest
           grep -Fq 'image: {{DOCKERHUB_REPO}}:{{IMAGE_TAG}}' scripts/fpk/template/app/docker/docker-compose.yaml
           grep -Fq 'nowen-video/data:/data' scripts/fpk/template/app/docker/docker-compose.yaml
           grep -Fq 'nowen-video/cache:/cache' scripts/fpk/template/app/docker/docker-compose.yaml
           grep -Fq 'nowen-video/media:/media' scripts/fpk/template/app/docker/docker-compose.yaml
+          grep -Fq "FNPACK_TOOL_VERSION = process.env.FNPACK_TOOL_VERSION || '1.2.3'" scripts/fpk/build-fpk.mjs
+          grep -Fq "FNPACK_OFFICIAL_BASE_URL = 'https://static2.fnnas.com/fnpack'" scripts/fpk/build-fpk.mjs
+          grep -Fq "execFileSync(fnpack, ['build', '--directory', work]" scripts/fpk/build-fpk.mjs
           grep -Fq 'FPK_IMAGE_TAG="v${VERSION}"' scripts/release.sh
           grep -Fq 'nowen-video-android-${VERSION}.apk' scripts/release.sh
           grep -Fq 'nowen-video-${VERSION}.fpk' scripts/release.sh
