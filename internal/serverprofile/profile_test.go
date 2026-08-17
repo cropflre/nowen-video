@@ -10,8 +10,8 @@ func TestLiteCoreAndUnsupportedCapabilities(t *testing.T) {
 	cfg := &config.Config{}
 	manifest := Lite(cfg)
 
-	if manifest.Profile != "lite" {
-		t.Fatalf("expected lite profile, got %q", manifest.Profile)
+	if manifest.Profile != "nowen-video" {
+		t.Fatalf("expected nowen-video profile, got %q", manifest.Profile)
 	}
 	if manifest.SchemaVersion != SchemaVersion {
 		t.Fatalf("expected schema version %d, got %d", SchemaVersion, manifest.SchemaVersion)
@@ -56,7 +56,7 @@ func TestLiteOptionalCapabilitiesFollowConfig(t *testing.T) {
 	}
 
 	legacy := manifest.LegacyFeatures(cfg)
-	if legacy["profile"] != "lite" {
+	if legacy["profile"] != "nowen-video" {
 		t.Fatalf("legacy feature profile mismatch: %#v", legacy["profile"])
 	}
 	if legacy["ai_enabled"] != true || legacy["smart_search"] != true {
