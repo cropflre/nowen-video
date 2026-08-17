@@ -177,6 +177,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 PagedHistoryScreen(
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
+                    onPlay = ::openPlayer,
                 )
             }
             composable(COLLECTIONS_ROUTE) {
