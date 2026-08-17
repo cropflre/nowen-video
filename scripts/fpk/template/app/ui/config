@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "nowen-video.Application": {
+      "title": "Nowen Video",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "",
+      "port": "8080",
+      "url": "/",
+      "allUsers": false
+    }
+  }
+}
