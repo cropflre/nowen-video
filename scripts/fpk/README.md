@@ -21,7 +21,7 @@ node scripts/fpk/build-fpk.mjs
 
 ```text
 dist-fpk/nowen-video-1.2.6.fpk
-dist-fpk/SHA256SUMS.txt
+dist-fpk/SHA256SUMS-fpk.txt
 ```
 
 ## 正式发版
@@ -39,7 +39,7 @@ dist-fpk/SHA256SUMS.txt
 - 飞牛 fnOS `.fpk`
 - Git tag + GitHub Draft Release
 
-FPK 的 manifest 使用纯 `X.Y.Z`；包内 compose 镜像使用 `vX.Y.Z`，与 Docker Hub 实际 tag 保持严格一致。
+FPK 的 manifest 使用纯 `X.Y.Z`；包内 compose 镜像使用 `vX.Y.Z`，与 Docker Hub 实际 tag 保持严格一致。Android 和 FPK 使用不同 checksum 文件，避免 Release 资产互相覆盖。
 
 ## fnOS 数据目录
 
