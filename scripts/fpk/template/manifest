@@ -1,0 +1,10 @@
+appname               = nowen-video
+version               = {{VERSION}}
+display_name          = Nowen Video
+desc                  = 轻量级家庭媒体服务器，支持电影与剧集管理、元数据刮削、字幕、播放进度与 HLS 转码。
+arch                  = x86_64
+source                = thirdparty
+maintainer            = Nowen
+ disributor            = Nowen
+desktop_uidir         = ui
+desktop_applaunchname = nowen-video.Application
