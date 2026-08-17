@@ -1,14 +1,19 @@
 package com.nowen.video.v2.feature.main
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Collections
@@ -17,25 +22,29 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.CatalogRepository
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
+import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SocialCatalogRepository
 import com.nowen.video.v2.core.designsystem.ElevatedPanel
@@ -45,6 +54,7 @@ import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.MediaPerson
 import com.nowen.video.v2.core.model.OfflineDownloadRecord
 import com.nowen.video.v2.core.model.OfflineDownloadStatus
+import com.nowen.video.v2.core.model.SubtitleTracksResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -60,6 +70,8 @@ data class MediaDetailUiState(
     val media: MediaDetail? = null,
     val persons: List<MediaPerson> = emptyList(),
     val collection: CollectionWithMedia? = null,
+    val subtitles: SubtitleTracksResponse = SubtitleTracksResponse(),
+    val resumePositionSeconds: Double = 0.0,
     val favorite: Boolean = false,
     val favoriteActionRunning: Boolean = false,
     val favoriteMessage: String? = null,
@@ -67,12 +79,16 @@ data class MediaDetailUiState(
     val downloadActionRunning: Boolean = false,
     val downloadMessage: String? = null,
     val error: String? = null,
-)
+) {
+    val hasResumeProgress: Boolean
+        get() = resumePositionSeconds >= 5.0
+}
 
 @HiltViewModel
 class MediaDetailViewModel @Inject constructor(
     private val repository: CatalogRepository,
     private val socialRepository: SocialCatalogRepository,
+    private val progressRepository: ProgressRepository,
     private val offlineDownloads: OfflineDownloadRepository,
     val sessionStore: ServerSessionStore,
 ) : ViewModel() {
@@ -99,15 +115,25 @@ class MediaDetailViewModel @Inject constructor(
             _state.value = MediaDetailUiState(loading = true, download = currentDownload)
             runCatching {
                 coroutineScope {
-                    val media = async { repository.detail(id).getOrThrow() }
+                    val mediaDeferred = async { repository.detail(id).getOrThrow() }
                     val favorite = async { socialRepository.favoriteStatus(id).getOrDefault(false) }
                     val persons = async { socialRepository.mediaPersons(id).getOrDefault(emptyList()) }
                     val collection = async { socialRepository.mediaCollection(id).getOrNull() }
+                    val subtitles = async { repository.subtitles(id).getOrDefault(SubtitleTracksResponse()) }
+                    val resume = async {
+                        val media = mediaDeferred.await()
+                        val duration = media.duration.takeIf { it > 0.0 }
+                            ?: media.runtime.takeIf { it > 0 }?.times(60.0)
+                            ?: 0.0
+                        progressRepository.restorePosition(id, duration)
+                    }
                     RelatedMediaDetail(
-                        media = media.await(),
+                        media = mediaDeferred.await(),
                         favorite = favorite.await(),
                         persons = persons.await(),
                         collection = collection.await(),
+                        subtitles = subtitles.await(),
+                        resumePositionSeconds = resume.await(),
                     )
                 }
             }.onSuccess { result ->
@@ -118,6 +144,8 @@ class MediaDetailViewModel @Inject constructor(
                         favorite = result.favorite,
                         persons = result.persons,
                         collection = result.collection,
+                        subtitles = result.subtitles,
+                        resumePositionSeconds = result.resumePositionSeconds,
                         error = null,
                     )
                 }
@@ -193,7 +221,16 @@ private data class RelatedMediaDetail(
     val favorite: Boolean,
     val persons: List<MediaPerson>,
     val collection: CollectionWithMedia?,
+    val subtitles: SubtitleTracksResponse,
+    val resumePositionSeconds: Double,
 )
+
+private enum class MediaDetailTab(val label: String) {
+    Overview("概览"),
+    Cast("演职人员"),
+    Technical("媒体信息"),
+    Subtitles("字幕"),
+}
 
 @Composable
 fun MediaDetailScreen(
@@ -206,13 +243,10 @@ fun MediaDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val session by viewModel.sessionStore.snapshot.collectAsState()
+    var selectedTab by rememberSaveable(mediaId) { mutableIntStateOf(0) }
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             state.error != null -> MessagePanel(
@@ -226,77 +260,26 @@ fun MediaDetailScreen(
             )
             state.media != null -> {
                 val media = state.media!!
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
+                val tabs = MediaDetailTab.entries
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 36.dp),
                 ) {
-                    Box(Modifier.fillMaxWidth().height(280.dp)) {
-                        AsyncImage(
-                            model = resolveImage(session.activeServer?.baseUrl, media.backdropPath),
-                            contentDescription = media.displayTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color.Transparent, MaterialTheme.colorScheme.background),
-                                    ),
-                                ),
-                        )
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .offset(y = (-52).dp),
-                    ) {
-                        AsyncImage(
-                            model = resolveImage(session.activeServer?.baseUrl, media.posterPath),
-                            contentDescription = media.displayTitle,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .width(116.dp)
-                                .aspectRatio(2f / 3f)
-                                .clip(MaterialTheme.shapes.large)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        )
-                        Spacer(Modifier.width(18.dp))
-                        Column(Modifier.weight(1f).padding(top = 42.dp)) {
-                            Text(media.displayTitle, style = MaterialTheme.typography.headlineMedium)
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                listOfNotNull(
-                                    media.year.takeIf { it > 0 }?.toString(),
-                                    media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
-                                    media.resolution.takeIf { it.isNotBlank() },
-                                    media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-                                ).joinToString(" · "),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp)
-                            .offset(y = (-32).dp),
-                    ) {
-                        Button(
-                            onClick = { onPlay(media.id) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("立即播放")
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    item {
+                        MobileDetailHero(
+                            title = media.displayTitle,
+                            originalTitle = media.originalTitle,
+                            metadata = mediaMetadataLabel(media),
+                            overview = media.overview,
+                            backdropUrl = resolveImage(session.activeServer?.baseUrl, media.backdropPath),
+                            posterUrl = resolveImage(session.activeServer?.baseUrl, media.posterPath),
+                            primaryActionLabel = if (state.hasResumeProgress) {
+                                "继续播放 · ${formatResumeTime(state.resumePositionSeconds)}"
+                            } else {
+                                "立即播放"
+                            },
+                            onPrimaryAction = { onPlay(media.id) },
+                            onBack = onBack,
                         ) {
                             FilledTonalButton(
                                 onClick = viewModel::toggleFavorite,
@@ -311,7 +294,7 @@ fun MediaDetailScreen(
                                         contentDescription = null,
                                     )
                                 }
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.size(8.dp))
                                 Text(if (state.favorite) "已收藏" else "收藏")
                             }
                             FilledTonalButton(
@@ -325,138 +308,176 @@ fun MediaDetailScreen(
                                 } else {
                                     Icon(downloadActionIcon(state.download?.status), contentDescription = null)
                                 }
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.size(8.dp))
                                 Text(downloadCompactLabel(state.download?.status))
                             }
                         }
-                        state.favoriteMessage?.let { message ->
-                            Text(
-                                message,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                        state.download?.let { download ->
-                            if (download.status != OfflineDownloadStatus.Completed) {
-                                Spacer(Modifier.height(8.dp))
-                                LinearProgressIndicator(
-                                    progress = { download.progress },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Text(
-                                    "${downloadStatusLabel(download.status)} · ${(download.progress * 100).toInt()}%",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
-                        }
-                        state.downloadMessage?.let { message ->
-                            Text(
-                                message,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                        if (media.genres.isNotBlank()) {
-                            Spacer(Modifier.height(18.dp))
-                            Text(media.genres, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        Text("简介", style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            media.overview.ifBlank { "暂无简介" },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    }
+
+                    item {
+                        DetailTabStrip(
+                            labels = tabs.map(MediaDetailTab::label),
+                            selectedIndex = selectedTab,
+                            onSelected = { selectedTab = it },
                         )
+                    }
 
-                        state.collection?.collection?.takeIf { it.id.isNotBlank() }?.let { collection ->
-                            Spacer(Modifier.height(24.dp))
-                            ElevatedPanel(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onCollectionClick(collection.id) },
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.Collections,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
+                    when (tabs[selectedTab]) {
+                        MediaDetailTab.Overview -> {
+                            item {
+                                DetailSection("剧情简介") {
+                                    Text(
+                                        media.overview.ifBlank { "暂无简介" },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    Spacer(Modifier.width(14.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text("所属合集", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(collection.name, style = MaterialTheme.typography.titleMedium)
-                                        Text(
-                                            listOfNotNull(
-                                                collection.yearRange.takeIf(String::isNotBlank),
-                                                state.collection?.media?.size?.takeIf { it > 0 }?.let { "$it 部作品" },
-                                            ).joinToString(" · "),
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
+                                    val genres = splitGenres(media.genres)
+                                    if (genres.isNotEmpty()) {
+                                        Spacer(Modifier.height(14.dp))
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(genres, key = { it }) { genre ->
+                                                SuggestionChip(onClick = {}, label = { Text(genre) })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            state.collection?.collection?.takeIf { it.id.isNotBlank() }?.let { collection ->
+                                item {
+                                    DetailSection("所属合集") {
+                                        ElevatedPanel(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable { onCollectionClick(collection.id) },
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.Collections,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                                Spacer(Modifier.size(14.dp))
+                                                androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                                                    Text(collection.name, style = MaterialTheme.typography.titleMedium)
+                                                    Text(
+                                                        listOfNotNull(
+                                                            collection.yearRange.takeIf(String::isNotBlank),
+                                                            state.collection?.media?.size?.takeIf { it > 0 }?.let { "$it 部作品" },
+                                                        ).joinToString(" · ").ifBlank { "电影合集" },
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            item {
+                                val messages = listOfNotNull(
+                                    state.favoriteMessage,
+                                    state.downloadMessage,
+                                )
+                                if (messages.isNotEmpty() || state.download != null) {
+                                    DetailSection("本机状态") {
+                                        state.download?.let { download ->
+                                            Text(
+                                                downloadActionLabel(download.status),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            if (download.status != OfflineDownloadStatus.Completed) {
+                                                Spacer(Modifier.height(8.dp))
+                                                LinearProgressIndicator(
+                                                    progress = { download.progress },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                            }
+                                        }
+                                        messages.forEach { message ->
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        if (state.persons.isNotEmpty()) {
-                            Spacer(Modifier.height(24.dp))
-                            Text("演职人员", style = MaterialTheme.typography.titleLarge)
-                            Spacer(Modifier.height(12.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(state.persons.take(16), key = { it.id }) { credit ->
-                                    Column(
-                                        modifier = Modifier
-                                            .width(96.dp)
-                                            .clickable { onPersonClick(credit.person.id) },
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        AsyncImage(
-                                            model = personProfileUrl(session.activeServer?.baseUrl, credit.person.id),
-                                            contentDescription = credit.person.name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(82.dp)
-                                                .clip(MaterialTheme.shapes.large)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(
-                                            credit.person.name,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            style = MaterialTheme.typography.titleSmall,
-                                        )
-                                        Text(
-                                            credit.roleLabel,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
+                        MediaDetailTab.Cast -> item {
+                            DetailSection(
+                                title = "演职人员",
+                                subtitle = if (state.persons.isEmpty()) "当前媒体暂无演职人员信息" else "点击人物查看相关作品",
+                            ) {
+                                if (state.persons.isEmpty()) {
+                                    MessagePanel("暂无演职人员", "服务器暂未返回该媒体的演职人员信息。")
+                                } else {
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                        items(state.persons.take(24), key = { it.id }) { credit ->
+                                            DetailCreditCard(
+                                                name = credit.person.name,
+                                                role = credit.roleLabel,
+                                                imageUrl = personProfileUrl(session.activeServer?.baseUrl, credit.person.id),
+                                                onClick = { onPersonClick(credit.person.id) },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                        Spacer(Modifier.height(36.dp))
+
+                        MediaDetailTab.Technical -> item {
+                            DetailSection("媒体信息", "只展示当前文件真实存在的技术信息") {
+                                DetailInfoPanel(mediaTechnicalRows(media))
+                            }
+                        }
+
+                        MediaDetailTab.Subtitles -> item {
+                            val embedded = state.subtitles.embedded
+                            val external = state.subtitles.external
+                            DetailSection(
+                                title = "字幕",
+                                subtitle = "内嵌 ${embedded.size} · 外挂 ${external.size}",
+                            ) {
+                                if (embedded.isEmpty() && external.isEmpty()) {
+                                    MessagePanel("暂无字幕", "服务器没有检测到可用的内嵌或外挂字幕。")
+                                } else {
+                                    DetailInfoPanel(
+                                        (embedded.map { "内嵌" to it.displayLabel } +
+                                            external.map { "外挂" to it.displayLabel }),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(8.dp)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f), MaterialTheme.shapes.large),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-        }
     }
+}
+
+private fun mediaMetadataLabel(media: MediaDetail): String = listOfNotNull(
+    media.year.takeIf { it > 0 }?.toString(),
+    media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+    media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+).joinToString(" · ")
+
+private fun mediaTechnicalRows(media: MediaDetail): List<Pair<String, String>> = listOfNotNull(
+    media.resolution.takeIf(String::isNotBlank)?.let { "分辨率" to it },
+    media.videoCodec.takeIf(String::isNotBlank)?.let { "视频编码" to it },
+    media.audioCodec.takeIf(String::isNotBlank)?.let { "音频编码" to it },
+    media.runtime.takeIf { it > 0 }?.let { "片长" to "$it 分钟" },
+    media.duration.takeIf { it > 0.0 }?.let { "媒体时长" to formatResumeTime(it) },
+)
+
+private fun splitGenres(genres: String): List<String> = genres
+    .split(',', '，', '/', '|')
+    .map(String::trim)
+    .filter(String::isNotBlank)
+    .distinct()
+
+private fun formatResumeTime(seconds: Double): String {
+    val total = seconds.toLong().coerceAtLeast(0L)
+    val hours = total / 3600
+    val minutes = (total % 3600) / 60
+    return if (hours > 0) "${hours}小时${minutes}分" else "${minutes.coerceAtLeast(1)}分钟"
 }
 
 private fun downloadActionMessage(status: OfflineDownloadStatus?): String = when (status) {
