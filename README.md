@@ -1,25 +1,27 @@
 <div align="center">
 
-<h1>🎬 nowen-video</h1>
+<h1>🎬 Nowen Video</h1>
 
-<p><b>你的私人家庭影音中心 — 自托管、为 NAS 而生。</b></p>
+<p><b>为 NAS 与自托管场景打造的私人家庭影音平台。</b></p>
 
 <p>
-  <img src="https://img.shields.io/badge/Go-1.22-00ADD8?style=flat-square&logo=go" alt="Go">
+  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go" alt="Go">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/Android-Kotlin%20%2B%20Compose-3DDC84?style=flat-square&logo=android" alt="Android">
   <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite" alt="SQLite">
+  <img src="https://img.shields.io/badge/FFmpeg-8.1.2-007808?style=flat-square&logo=ffmpeg" alt="FFmpeg">
   <img src="https://img.shields.io/badge/Docker-Alpine-2496ED?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="License">
 </p>
 
 <p>
   <a href="./README_EN.md">English</a> •
+  <a href="#-核心特性">核心特性</a> •
   <a href="#-快速开始">快速开始</a> •
-  <a href="#-核心特性">特性</a> •
+  <a href="#-客户端与平台">客户端与平台</a> •
   <a href="#%EF%B8%8F-配置说明">配置</a> •
   <a href="./docs/SERVER.md">服务端架构</a> •
-  <a href="./desktop/README.md">桌面客户端</a> •
+  <a href="./desktop/README.md">桌面端</a> •
   <a href="./android/README.md">Android</a>
 </p>
 
@@ -27,66 +29,131 @@
 
 ---
 
-基于 **Go + React** 构建的家庭媒体服务器，类似 Jellyfin / Emby，专为 NAS 与自托管部署优化。
-**单二进制 + SQLite**，Docker 一键启动，零配置即可使用。
+Nowen Video 是基于 **Go + React + SQLite + FFmpeg** 构建的家庭媒体平台，面向 NAS、家庭服务器和自托管用户。
 
-> **服务端版本说明**：Nowen Video 现在只有一个对外正式服务端。此前的 NAS 核心架构已经正式扶正，不再以 Lite 作为独立产品版本；旧完整服务只保留用于迁移、回滚和兼容验证。详见 [服务端架构说明](./docs/SERVER.md)。
->
-> 🖥️ **PC 桌面客户端** 支持 MKV / HEVC / HDR / 杜比视界 / DTS / Atmos 等本地能力 → 详见 [desktop/README.md](./desktop/README.md)
->
-> 📱 **Android** 使用 Kotlin + Jetpack Compose，具备服务器发现、扫码登录、媒体库、聚合搜索、剧集导航、原生播放和离线能力。仓库只保留这一套正式 Android 实现 → 详见 [android/README.md](./android/README.md)
+它提供从 **媒体扫描、元数据刮削、影视库管理、详情浏览、搜索、收藏与历史，到直接播放、Remux、按需 HLS 转码、字幕和多端访问** 的完整链路，并持续围绕长期稳定运行、低维护成本和跨端体验进行优化。
+
+> **产品说明**：Nowen Video 当前只有一个对外正式服务端。历史上的 Lite / Full 产品区分已经退出正式产品体系；旧兼容运行时只保留用于迁移、回滚和历史验证。详见 [服务端架构说明](./docs/SERVER.md)。
 
 ## 📸 功能截图
 
-![截图1](1.png)
-![截图2](2.png)
+![Nowen Video Screenshot 1](1.png)
+![Nowen Video Screenshot 2](2.png)
 
 ## ✨ 核心特性
 
-- 🎬 **媒体库** — 自动扫描 MKV / MP4 / AVI / MOV / WebM / TS / RMVB 等媒体，支持 FFprobe 元数据、外挂字幕、NFO 与文件监听
-- 📺 **智能播放** — 服务端播放规划器统一决策直接播放、Remux 与按需 HLS 转码，并提供自动降级路径
-- ⚡ **硬件加速** — 自动检测可用硬件能力，保留软件兜底；转码缓存、产物校验和恢复链路针对 NAS 长时间运行优化
-- 🎨 **多源刮削** — TMDb、豆瓣、TheTVDB、Bangumi、Fanart.tv 等元数据源协同工作
-- 📂 **剧集与合集** — 自动识别常见剧集命名，支持电影合集与剧集导航
-- 🔤 **字幕** — 外挂字幕、内嵌字幕处理、在线字幕搜索，以及播放端字幕选择
-- 👨‍👩‍👧‍👦 **多用户** — JWT 认证、独立观看历史/收藏/播放列表、媒体库权限与内容分级
-- 🧠 **AI 可选能力** — 支持配置状态、实际运行状态与待重启状态分离；关闭时不会强行启动相关运行组件
-- 🌐 **远程存储** — WebDAV / Alist / S3 按配置启用，不需要的能力不会作为常驻服务启动
-- ✅ **统一任务中心** — 聚合媒体库扫描、刮削及转码维护任务，支持状态、进度、重试与生命周期事件
-- 📱 **多端访问** — Web、桌面端与 Android 共用稳定的登录、媒体库、搜索、播放、收藏、历史和进度 API
-- 🛡️ **安全** — JWT、bcrypt、CORS、安全响应头、限流和访问日志
-- 🌍 **国际化** — 简体中文 / English / 日本語
-- 🪶 **NAS 优先** — 单二进制 + SQLite (WAL)，Alpine Docker 镜像，健康检查，PUID/PGID 与持久化目录
+### 🎬 媒体库与刮削
 
-> 历史版本中曾经存在的 Emby 兼容、音乐/图片库、投屏、插件、联邦、预处理等高级模块不再作为当前正式运行时的默认能力宣传。旧兼容运行时仅用于迁移、回滚与历史验证。
+- 自动扫描 MKV / MP4 / AVI / MOV / WebM / TS / RMVB 等常见媒体文件
+- 基于 FFprobe 获取媒体轨道、编码、时长等基础信息
+- 支持 NFO、外挂字幕、文件监听和媒体资源刷新
+- 支持 TMDb、豆瓣、TheTVDB、Bangumi、Fanart.tv 等元数据来源
+- 自动识别常见电影、剧集与季集命名结构
+- 支持电影合集、剧集导航和媒体详情工作区
+
+### ▶️ 播放、Remux 与转码
+
+- 服务端统一播放规划器，根据客户端和媒体能力选择 **直接播放 / Remux / 按需 HLS 转码**
+- 播放失败时提供自动降级路径，减少手工切换
+- Docker 正式镜像内置 FFmpeg 8.1.2
+- 支持 Intel / AMD `/dev/dri` 硬件加速环境，并保留软件转码兜底
+- 转码任务具备持久执行状态、缓存产物、校验、恢复与清理机制
+- 播放器支持字幕、倍速、剧集切换等常用播放控制
+
+### ✨ 本地媒体分析与精彩片段
+
+- 支持本地媒体分析任务与实时进度事件
+- 支持稀疏两阶段精彩片段分析，降低无意义的全量处理
+- 支持精彩片段独立 Tab 与精彩片段播放模式
+- 动态预览按需生成并可持久化，避免一次性生成大量无用资源
+- 分析完成后可刷新详情页相关媒体素材
+
+> 本地媒体分析属于持续演进中的能力，不要求所有媒体都预先完成分析后才能正常浏览或播放。
+
+### 🎨 Aurora / Neo Glass 影视界面
+
+- 首页、影视库、搜索、收藏、播放历史、详情页与播放器逐步统一到 Aurora 视觉体系
+- 媒体详情页支持独立背景图、Hero 轮播、状态侧栏与真实 Tab 导航
+- 收藏、历史和继续观看使用统一媒体工作区
+- 侧边栏支持折叠，播放器控制层采用统一玻璃拟态视觉
+- 针对长标题、空状态、窄屏和高密度媒体库持续优化布局
+
+### 🔤 字幕
+
+- 外挂字幕扫描与播放选择
+- 内嵌字幕轨道处理
+- 在线字幕搜索
+- Web / 桌面 / Android 播放端共享字幕相关接口能力
+
+### 👨‍👩‍👧‍👦 用户与个人空间
+
+- JWT 登录认证与 bcrypt 密码存储
+- 首个注册用户自动成为管理员
+- 独立收藏、观看历史、继续观看与播放进度
+- 媒体库权限与内容分级能力
+- 统一任务中心展示扫描、刮削和转码维护任务的状态、进度与生命周期
+
+### 🌐 远程存储与可选能力
+
+- WebDAV / Alist / S3 等远程存储能力按配置启用
+- AI 相关能力按配置和实际运行状态启用，不作为默认常驻组件强制启动
+- WebSocket 用于任务和媒体分析等实时进度事件
+
+### 🛡️ NAS 与长期运行
+
+- SQLite WAL 持久化
+- Alpine Docker 正式镜像
+- `/data` 与 `/cache` 独立持久化
+- 支持 PUID / PGID 运行身份
+- 容器健康检查
+- 针对转码缓存、任务恢复、资源边界和长期运行场景进行专门治理
 
 ## 🚀 快速开始
 
 ### 一、Docker 部署（推荐）
 
+直接使用 Docker Hub 正式镜像：
+
 ```bash
-git clone https://github.com/cropflre/nowen-video.git
-cd nowen-video
-docker-compose up -d
+docker run -d \
+  --name nowen-video \
+  -p 8080:8080 \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=Asia/Shanghai \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/cache:/cache \
+  -v /path/to/media:/media:ro \
+  --restart unless-stopped \
+  cropflre/nowen-video:latest
 ```
 
-打开浏览器访问 `http://你的主机IP:8080`。
+如果需要 Intel / AMD 硬件加速，在 Linux / NAS 环境中额外透传 `/dev/dri`：
 
-### 二、NAS 部署（群晖 / 威联通 / Unraid）
+```bash
+--device /dev/dri:/dev/dri
+```
 
-编辑 `docker-compose.yml`：
+启动后访问：
+
+```text
+http://你的主机IP:8080
+```
+
+首次注册的用户会自动成为管理员。
+
+### 二、Docker Compose
 
 ```yaml
 services:
   nowen-video:
-    image: nowen-video:latest
+    image: cropflre/nowen-video:latest
     container_name: nowen-video
     ports:
       - "8080:8080"
     environment:
       - PUID=1000
       - PGID=1000
-      - NOWEN_SECRETS_JWT_SECRET=change-me-please
       - TZ=Asia/Shanghai
     volumes:
       - ./data:/data
@@ -97,25 +164,20 @@ services:
     restart: unless-stopped
 ```
 
-**容器参数说明：**
+> 没有硬件加速需求时可删除 `devices` 段。
 
-| 环境变量 / 参数 | 默认值 | 说明 |
-|---|---|---|
-| `PUID` / `PGID` | `1000` | 运行用户的 UID/GID（需匹配宿主机媒体目录权限） |
-| `TZ` | `UTC` | 时区，国内建议 `Asia/Shanghai` |
-| `NOWEN_APP_PORT` | `8080` | HTTP 端口 |
-| `NOWEN_SECRETS_JWT_SECRET` | *(必填)* | JWT 签名密钥，首次部署务必修改 |
-| `NOWEN_APP_DATA_DIR` | `/data` | 数据目录（数据库 + 上传文件） |
-| `NOWEN_LOGGING_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `/dev/dri` 设备 | — | 可选，透传 Intel/AMD GPU 用于硬件加速 |
+JWT Secret 未显式配置时，服务端会在首次启动时自动生成随机密钥并持久化到数据目录；如有统一密钥管理需求，也可以通过 `NOWEN_SECRETS_JWT_SECRET` 显式指定。
 
 ### 三、源码构建
 
-环境要求：**Go、Node.js 20+、FFmpeg**
+环境要求：**Go 1.25、Node.js 20+、FFmpeg**
 
 ```bash
-go mod tidy
-cd web && npm install && cd ..
+git clone https://github.com/cropflre/nowen-video.git
+cd nowen-video
+
+go mod download
+cd web && npm ci && cd ..
 
 # 正式服务端开发模式
 make dev
@@ -128,19 +190,59 @@ make build
 ./bin/nowen-video
 ```
 
-`make build`、`make dev`、默认 `Dockerfile` 都指向同一个 Nowen Video 正式服务端。
+`make build`、`make dev` 与默认 `Dockerfile` 都对应同一个 Nowen Video 正式服务端。
 
-旧版兼容运行时只用于迁移/回滚验证，不应作为新的正式部署方式。详见 [docs/SERVER.md](./docs/SERVER.md)。
+## 📱 客户端与平台
 
-### 四、Android
+### Web
 
-正式 Android 客户端源码位于仓库根目录 `android/`，最低支持 Android 8.0 / API 26。旧 Android V1 与 `clients/android-v2` 已从当前代码树移除，不再维护 V1/V2 双轨和旧数据迁移逻辑。
+Web 是 Nowen Video 的主要管理与观影入口，提供媒体库、搜索、详情页、播放、收藏、历史、继续观看、任务状态与管理功能。
 
-- [Android README](./android/README.md)
-- [Release Guide](./android/RELEASE.md)
-- [Smoke Test](./android/SMOKE_TEST.md)
+### 🖥️ Desktop
 
-> Android 正式版从现在开始使用新的长期生产签名。此前已经安装旧 V1 且签名不同的设备需要先卸载旧应用再安装当前版本；后续版本将持续使用新的生产 keystore 正常覆盖升级。
+桌面客户端基于 **Tauri 2.0 + libmpv**，面向 Windows / macOS / Linux，并支持 Web `<video>` 与原生 mpv 双播放内核。
+
+在本地播放环境下可覆盖 MKV、HEVC、AV1、HDR、杜比视界、DTS、TrueHD、Atmos 等 Web 浏览器不擅长的媒体场景。
+
+详见 [desktop/README.md](./desktop/README.md)。
+
+### 📱 Android
+
+仓库根目录 `android/` 是唯一正式 Android 客户端：
+
+- Kotlin + Jetpack Compose
+- Media3
+- Hilt
+- Retrofit / OkHttp
+- Paging 3
+- WorkManager
+- Android Keystore
+- 最低 Android 8.0 / API 26
+- targetSdk API 35
+- applicationId：`com.nowen.video`
+
+项目不再维护 V1 / V2 两套 Android 产品。
+
+> 旧 V1 与当前正式版可能使用不同签名。已安装旧版且签名不一致的设备可能需要先卸载再安装；后续正式版本将持续使用当前生产签名进行覆盖升级。
+
+详见 [android/README.md](./android/README.md)。
+
+### 🐮 飞牛 fnOS
+
+Nowen Video 已具备正式 fnOS `.fpk` 构建与发布链路，包括应用资源、Docker Project、桌面入口、安装 / 升级 / 卸载生命周期、权限声明与 fnpack 校验。
+
+正式发布版本可从 GitHub Release 获取对应 `.fpk` 安装包。
+
+## 📦 发布渠道
+
+正式版本统一覆盖：
+
+- **Docker Hub**：`cropflre/nowen-video:<version>` / `cropflre/nowen-video:latest`
+- **Android**：APK / AAB
+- **飞牛 fnOS**：`.fpk`
+- **GitHub Release**：源码、版本说明及对应发布资产
+
+发布流程会校验 Server CI、Release Contract、客户端正式候选构建、Docker 远端 manifest、Git Tag、GitHub Release 资产和渠道产物完整性。
 
 ## ⚙️ 配置说明
 
@@ -153,45 +255,59 @@ make build
 4. NOWEN_* 环境变量
 ```
 
+常用配置：
+
+| 配置 | 默认值 | 说明 |
+|---|---|---|
+| `PUID` / `PGID` | 镜像内默认用户 | 容器运行 UID / GID |
+| `TZ` | `Asia/Shanghai`（正式镜像） | 时区 |
+| `NOWEN_APP_PORT` | `8080` | HTTP 服务端口 |
+| `NOWEN_APP_DATA_DIR` | `/data` | 数据目录 |
+| `NOWEN_DATABASE_DB_PATH` | `/data/nowen.db` | SQLite 数据库路径 |
+| `NOWEN_CACHE_CACHE_DIR` | `/cache` | 转码与任务缓存目录 |
+| `NOWEN_LOGGING_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `NOWEN_SECRETS_JWT_SECRET` | 自动生成 | 可选，自定义 JWT 签名密钥 |
+
 `config/` 目录下常用分片：
 
 | 文件 | 用途 |
 |---|---|
 | `app.yaml` | 端口、调试、路径、FFmpeg 位置 |
 | `database.yaml` | SQLite 路径、WAL、连接池 |
-| `secrets.yaml` | JWT 密钥、第三方 API Key（切勿提交到 Git） |
+| `secrets.yaml` | JWT 密钥、第三方 API Key |
 | `logging.yaml` | 日志级别、格式、轮转 |
-| `cache.yaml` | 转码缓存目录与清理策略 |
+| `cache.yaml` | 转码缓存与清理策略 |
 | `ai.yaml` | AI 提供商与模型配置 |
 
-> 硬件加速、并发、转码执行与资源边界由服务端统一管理，避免 NAS 环境因为配置漂移进入不可恢复状态。
+> 不要把真实 Token、API Key、JWT Secret 或私人服务器地址提交到 Git。
 
 ## 🏗️ 技术栈
 
-**后端** Go · Gin · GORM + SQLite (WAL) · Zap · Viper · gorilla/websocket · fsnotify · FFmpeg
+**后端**：Go 1.25 · Gin · GORM · SQLite (WAL) · Zap · Viper · gorilla/websocket · fsnotify · FFmpeg 8.1.2
 
-**Web 前端** React · TypeScript · Vite · Tailwind CSS · Zustand · HLS.js · React Router
+**Web**：React 18 · TypeScript · Vite · Tailwind CSS · Fluent UI · Framer Motion · Zustand · HLS.js · React Router
 
-**Android** Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
+**Desktop**：Tauri 2.0 · Rust · WebView · mpv / libmpv
 
-**部署** Docker (Alpine) · docker-compose
+**Android**：Kotlin · Jetpack Compose · Media3 · Paging 3 · WorkManager · Hilt · Retrofit · Android Keystore
 
-## 🗺️ 路线图
+**部署**：Docker (Alpine) · Docker Compose · 飞牛 fnOS
 
-当前主线重点：
+## 🗺️ 当前演进方向
 
-- ✅ NAS 核心服务端正式扶正为唯一正式版
-- ✅ 服务端播放规划、自动回退与统一任务中心
-- ✅ 持久转码执行状态、Lease、恢复与关闭协议
-- ✅ Web 统一 Design System 与播放器体验收口
-- ✅ Android 模块化客户端成为唯一正式实现
-- 🧪 Android 新生产签名与正式发布验证
-- 🚀 后续继续围绕播放稳定性、字幕、跨端体验与 NAS 资源效率演进
+- ✅ 单一正式服务端产品身份
+- ✅ 直接播放 / Remux / HLS 转码与自动回退
+- ✅ 持久转码执行状态、Lease、恢复与产物治理
+- ✅ Aurora / Neo Glass Web 视觉体系
+- ✅ 本地媒体分析与精彩片段能力
+- ✅ Android 模块化正式客户端
+- ✅ Docker / Android / fnOS / GitHub Release 统一发布流程
+- 🚀 持续优化播放稳定性、字幕体验、跨端一致性、媒体分析和 NAS 资源效率
 
 ## 💬 交流与反馈
 
 - **QQ 群**：`1093473044`
-- **Issues**：欢迎在 GitHub 上提交问题与建议
+- **GitHub Issues**：欢迎提交 Bug、功能建议与兼容性反馈
 - 提交问题时请勿公开 Token、密钥或私人服务器地址
 
 ## ☕ 赞赏支持
@@ -201,11 +317,11 @@ make build
 <p align="center">
   <img src="./weixin.jpg" alt="微信赞赏码" width="260">
   <br>
-  <i>Drug 的赞赏码 — "支持作者买键盘 / 修 Bug"</i>
+  <i>Drug 的赞赏码 — “支持作者买键盘 / 修 Bug”</i>
 </p>
 
 ## 📜 开源协议
 
 本项目采用 [GNU General Public License v3.0](./LICENSE)（GPL-3.0）开源协议发布。
 
-你可以自由地运行、研究、修改和分发本软件。基于本项目的任何派生作品在对外分发时，必须同样以 GPL-3.0 协议开源，并保留原作者版权声明。本软件按“原样”提供，不附带任何明示或默示的担保。
+你可以自由运行、研究、修改和分发本软件。基于本项目的派生作品在对外分发时必须遵守 GPL-3.0，并保留相应版权与许可证声明。本软件按“原样”提供，不附带任何明示或默示担保。
