@@ -58,9 +58,11 @@ RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
 COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
 COPY --from=frontend /app/web/dist /app/web/dist
+COPY scripts/docker-entrypoint.sh /entrypoint.sh
 
 RUN mkdir -p /data /cache /media \
-    && chown -R nowen:nowen /data /cache /media
+    && chown -R nowen:nowen /data /cache /media \
+    && chmod +x /entrypoint.sh
 
 ENV NOWEN_APP_PORT=8080
 ENV NOWEN_APP_DATA_DIR=/data
@@ -75,26 +77,5 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD /bin/busybox wget -q -O /dev/null http://localhost:8080/api/health || exit 1
-
-# PUID/PGID may intentionally match host IDs that are already assigned to
-# system accounts inside Alpine (for example GID 10). Do not delete/recreate
-# runtime accounts: su-exec accepts numeric uid:gid directly, which avoids
-# collisions while preserving bind-mount ownership semantics.
-RUN printf '#!/bin/sh\n\
-PUID=${PUID:-$(id -u nowen)}\n\
-PGID=${PGID:-$(id -g nowen)}\n\
-case "$PUID" in\n\
-  ""|*[!0-9]*) echo "Invalid PUID: $PUID" >&2; exit 64 ;;\n\
-esac\n\
-case "$PGID" in\n\
-  ""|*[!0-9]*) echo "Invalid PGID: $PGID" >&2; exit 64 ;;\n\
-esac\n\
-if [ "$PUID" = "0" ]; then\n\
-  exec nowen-video\n\
-fi\n\
-chown -R "$PUID:$PGID" /data /cache 2>/dev/null || true\n\
-chown "$PUID:$PGID" /media 2>/dev/null || true\n\
-exec su-exec "$PUID:$PGID" nowen-video\n' > /entrypoint.sh \
-    && chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
