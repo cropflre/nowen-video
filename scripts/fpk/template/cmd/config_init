@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Called before Nowen Video configuration changes are applied.
+
+exit 0
