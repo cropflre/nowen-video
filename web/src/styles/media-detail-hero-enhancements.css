@@ -7,8 +7,8 @@
   isolation: isolate;
   --nv-detail-hero-layer-backdrop: 0;
   --nv-detail-hero-layer-highlight: 1;
-  --nv-detail-hero-layer-content: 2;
-  --nv-detail-hero-layer-scrim: 3;
+  --nv-detail-hero-layer-scrim: 2;
+  --nv-detail-hero-layer-content: 3;
 }
 
 /* The structural cinema layer used to enforce a 360–440px minimum plus large
@@ -20,15 +20,22 @@
   padding-bottom: 20px !important;
 }
 
-/* Explicit layer contract: fallback backdrop < highlight slideshow < content.
- * Keep content above the visual layers so poster/actions stay interactive. */
+/* Explicit layer contract: fallback backdrop < highlight slideshow < scrims <
+ * content. Hero decoration must never capture pointer input intended for the
+ * playback/favorite/playlist/action controls. */
 .nv-detail-hero > .absolute.inset-0 {
   z-index: var(--nv-detail-hero-layer-backdrop);
+  pointer-events: none;
   transition: opacity .45s ease;
 }
 
+.nv-detail-hero::before,
+.nv-detail-hero::after {
+  pointer-events: none !important;
+}
+
 .nv-detail-hero .nv-detail-hero-inner {
-  z-index: var(--nv-detail-hero-layer-content);
+  z-index: var(--nv-detail-hero-layer-content) !important;
 }
 
 .nv-detail-highlight-slideshow {
@@ -44,6 +51,14 @@
  * backdrop remains only as the no-highlight fallback. */
 .nv-detail-hero.nv-detail-hero-has-highlight-slides > .absolute.inset-0 {
   opacity: 0;
+}
+
+/* The legacy light-theme hero::after adds a full-width bottom wash. Once real
+ * highlight artwork owns the Hero, that wash both obscures the artwork and can
+ * visually sit over the action row, so disable it in highlight mode. */
+.nv-detail-hero.nv-detail-hero-has-highlight-slides::after {
+  content: none !important;
+  display: none !important;
 }
 
 .nv-detail-highlight-slideshow::before,
