@@ -141,7 +141,12 @@ class SocialCatalogRepository @Inject constructor(
         if (!accepted) throw ServerException(response.code(), "收藏状态更新失败")
     }
 
-    suspend fun history(): Result<PaginatedEnvelope<WatchHistoryRecord>> = call { api.history() }
+    suspend fun history(
+        page: Int = 1,
+        size: Int = SOCIAL_PAGE_SIZE,
+    ): Result<PaginatedEnvelope<WatchHistoryRecord>> = call {
+        api.history(page.coerceAtLeast(1), size.coerceIn(1, 100))
+    }
 
     suspend fun deleteHistory(mediaId: String): Result<Unit> = call {
         val response = api.deleteHistory(mediaId)
