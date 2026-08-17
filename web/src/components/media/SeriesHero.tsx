@@ -46,7 +46,7 @@ export default function SeriesHero({
   }
 
   return (
-    <section className="nv-detail-hero nv-series-hero relative overflow-hidden border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
+    <section className="nv-detail-hero nv-series-hero relative border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
       <div className="nv-series-backdrop absolute inset-0 overflow-hidden" aria-hidden="true">
         {series.backdrop_path ? (
           <img
