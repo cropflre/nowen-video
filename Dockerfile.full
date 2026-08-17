@@ -83,22 +83,25 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -q --spider http://localhost:8080/api/health || exit 1
 
+# PUID/PGID may intentionally match host IDs that are already assigned to
+# system accounts inside Alpine. Keep the baked-in nowen account as the
+# default only; numeric uid:gid execution avoids runtime account collisions.
 RUN printf '#!/bin/sh\n\
 PUID=${PUID:-$(id -u nowen)}\n\
 PGID=${PGID:-$(id -g nowen)}\n\
-if [ "$PUID" != "$(id -u nowen)" ] || [ "$PGID" != "$(id -g nowen)" ]; then\n\
-  deluser nowen 2>/dev/null || true\n\
-  delgroup nowen 2>/dev/null || true\n\
-  addgroup -g "$PGID" -S nowen\n\
-  adduser -u "$PUID" -G nowen -S nowen\n\
-fi\n\
-chown -R nowen:nowen /data /cache 2>/dev/null || true\n\
-chown nowen:nowen /media 2>/dev/null || true\n\
-chown -R nowen:nowen /app/scripts 2>/dev/null || true\n\
+case "$PUID" in\n\
+  ""|*[!0-9]*) echo "Invalid PUID: $PUID" >&2; exit 64 ;;\n\
+esac\n\
+case "$PGID" in\n\
+  ""|*[!0-9]*) echo "Invalid PGID: $PGID" >&2; exit 64 ;;\n\
+esac\n\
 if [ "$PUID" = "0" ]; then\n\
   exec nowen-video\n\
 fi\n\
-exec su-exec nowen nowen-video\n' > /entrypoint.sh \
+chown -R "$PUID:$PGID" /data /cache 2>/dev/null || true\n\
+chown "$PUID:$PGID" /media 2>/dev/null || true\n\
+chown -R "$PUID:$PGID" /app/scripts 2>/dev/null || true\n\
+exec su-exec "$PUID:$PGID" nowen-video\n' > /entrypoint.sh \
     && chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
