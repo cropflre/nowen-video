@@ -23,6 +23,7 @@ func AutoMigrateLite(db *gorm.DB, enableAI bool) error {
 		&Playlist{},
 		&PlaylistItem{},
 		&Bookmark{},
+		&Comment{},
 		&ContentRating{},
 		&UserPermission{},
 		&PlaybackStats{},
