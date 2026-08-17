@@ -160,6 +160,29 @@ jobs:
             NOWEN_VERSION=ci
           cache-from: type=gha,scope=server
           cache-to: type=gha,mode=max,scope=server
+      - name: Report production image footprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="nowen-video:ci"
+          size_bytes="$(docker image inspect "$image" --format '{{.Size}}')"
+          size_mib="$(awk -v bytes="$size_bytes" 'BEGIN { printf "%.2f", bytes / 1024 / 1024 }')"
+
+          echo "Production image size: ${size_mib} MiB (${size_bytes} bytes)"
+          echo "Largest image layers:"
+          docker history --format '{{.Size}}\t{{.CreatedBy}}' "$image" | sed -n '1,12p'
+
+          {
+            echo '### Docker production image footprint'
+            echo
+            echo "- Image: \`$image\`"
+            echo "- Size: **${size_mib} MiB**"
+            echo
+            echo '#### Largest layers'
+            echo '```text'
+            docker history --format '{{.Size}}\t{{.CreatedBy}}' "$image" | sed -n '1,12p'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build legacy compatibility image
         uses: docker/build-push-action@v6
         with:

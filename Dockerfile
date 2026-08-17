@@ -33,27 +33,26 @@ ARG TARGETARCH
 ARG NOWEN_VERSION=0.1.0
 ARG FFMPEG_VERSION=8.1.2-r0
 
+# Keep the runtime dependency surface minimal. Alpine's BusyBox already
+# provides the health-check client and standard process utilities we need.
 RUN apk add --no-cache \
       "ffmpeg=${FFMPEG_VERSION}" \
       tzdata \
       ca-certificates \
       su-exec \
-      coreutils \
-      wget \
-    && rm -rf /var/cache/apk/* \
-    && ln -sf /bin/nice /usr/bin/nice \
     && ffmpeg -version | head -n 1 | grep -F "ffmpeg version 8.1.2" \
     && ffprobe -version | head -n 1 | grep -F "ffprobe version 8.1.2"
 
 # Hardware acceleration drivers are part of the official image because direct
 # play, remux and on-demand fallback transcoding are core playback capabilities.
+# libva-utils is intentionally omitted: it only provides diagnostics such as
+# vainfo and is not required by FFmpeg for VA-API/QSV runtime acceleration.
 RUN set -eux; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
-      apk add --no-cache intel-media-driver libva-intel-driver mesa-va-gallium libva-utils; \
+      apk add --no-cache intel-media-driver libva-intel-driver mesa-va-gallium; \
     else \
-      apk add --no-cache mesa-va-gallium libva-utils; \
-    fi; \
-    rm -rf /var/cache/apk/*
+      apk add --no-cache mesa-va-gallium; \
+    fi
 
 RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
@@ -75,7 +74,7 @@ ENV TZ=Asia/Shanghai
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/health || exit 1
+  CMD /bin/busybox wget -q -O /dev/null http://localhost:8080/api/health || exit 1
 
 RUN printf '#!/bin/sh\n\
 PUID=${PUID:-$(id -u nowen)}\n\
