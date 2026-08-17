@@ -424,7 +424,10 @@ fun MediaDetailScreen(
                         }
 
                         MediaDetailTab.Technical -> item {
-                            DetailSection("媒体信息", "只展示当前文件真实存在的技术信息") {
+                            DetailSection(
+                                title = "媒体信息",
+                                subtitle = "只展示当前文件真实存在的技术信息",
+                            ) {
                                 DetailInfoPanel(mediaTechnicalRows(media))
                             }
                         }
