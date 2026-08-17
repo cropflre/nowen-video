@@ -3,16 +3,14 @@ name: Release Contract
 on:
   push:
     branches: [main, refactor/server-lite-v1]
-    paths:
-      - 'scripts/release.sh'
-      - 'scripts/release-advanced.sh'
-      - 'scripts/fpk/**'
-      - '.github/workflows/release-contract.yml'
   pull_request:
     paths:
       - 'scripts/release.sh'
       - 'scripts/release-advanced.sh'
+      - 'scripts/dockerhub-auth-preflight.mjs'
+      - 'scripts/generate-release-notes.mjs'
       - 'scripts/fpk/**'
+      - '.gitignore'
       - '.github/workflows/release-contract.yml'
 
 permissions:
@@ -20,23 +18,38 @@ permissions:
 
 jobs:
   validate:
-    name: Validate release and fnOS contracts
+    name: Validate unified release contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Validate shell and Node syntax
         run: |
           bash -n scripts/release.sh
           bash -n scripts/release-advanced.sh
+          node --check scripts/dockerhub-auth-preflight.mjs
+          node --check scripts/generate-release-notes.mjs
           node --check scripts/fpk/build-fpk.mjs
+
+      - name: Validate release announcement generator
+        run: |
+          node scripts/generate-release-notes.mjs \
+            --version 9.9.9 \
+            --no-android \
+            --no-fpk \
+            --output /tmp/nowen-video-release-notes.md
+          grep -Fq 'Nowen Video v9.9.9 发布公告' /tmp/nowen-video-release-notes.md
+          grep -Fq '发布完整性' /tmp/nowen-video-release-notes.md
+
       - name: Validate fnOS JSON templates
         run: |
           python3 -m json.tool scripts/fpk/template/config/privilege >/dev/null
           python3 -m json.tool scripts/fpk/template/config/resource >/dev/null
           python3 -m json.tool scripts/fpk/template/app/ui/config >/dev/null
+
       - name: Validate fnOS release invariants
         shell: bash
         run: |
@@ -55,6 +68,22 @@ jobs:
           grep -Fq "FNPACK_TOOL_VERSION = process.env.FNPACK_TOOL_VERSION || '1.2.3'" scripts/fpk/build-fpk.mjs
           grep -Fq "FNPACK_OFFICIAL_BASE_URL = 'https://static2.fnnas.com/fnpack'" scripts/fpk/build-fpk.mjs
           grep -Fq "execFileSync(fnpack, ['build', '--directory', work]" scripts/fpk/build-fpk.mjs
+
+      - name: Validate strict release gating invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'dockerhub-auth-preflight.mjs' scripts/release.sh
+          grep -Fq 'Git remote tag push 权限: PASS (dry-run)' scripts/release.sh
+          grep -Fq 'check_required_workflow "server-ci.yml" "Server CI"' scripts/release.sh
+          grep -Fq 'check_required_workflow "release-contract.yml" "Release Contract"' scripts/release.sh
+          grep -Fq 'Android production signing Secrets: 4/4' scripts/release.sh
+          grep -Fq '任一渠道/门禁失败，整次发版均判定失败' scripts/release.sh
+          grep -Fq 'Nowen Video v${VERSION} 全渠道发版成功' scripts/release.sh
+          grep -Fq 'auth.docker.io/token' scripts/dockerhub-auth-preflight.mjs
+          grep -Fq "actions.includes('push')" scripts/dockerhub-auth-preflight.mjs
           grep -Fq 'FPK_IMAGE_TAG="v${VERSION}"' scripts/release.sh
           grep -Fq 'nowen-video-android-${VERSION}.apk' scripts/release.sh
           grep -Fq 'nowen-video-${VERSION}.fpk' scripts/release.sh
+          grep -Fq 'dist-fpk/' .gitignore
+          grep -Fq 'dist-release/' .gitignore
