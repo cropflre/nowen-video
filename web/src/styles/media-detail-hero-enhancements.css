@@ -7,6 +7,15 @@
   isolation: isolate;
 }
 
+/* The structural cinema layer used to enforce a 360–440px minimum plus large
+ * vertical padding. Let the poster/content determine the desktop hero height
+ * instead, so short metadata does not leave a large dead band above the tabs. */
+.nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+  min-height: 0 !important;
+  padding-top: 24px !important;
+  padding-bottom: 20px !important;
+}
+
 .nv-detail-hero > .absolute.inset-0 {
   z-index: 0;
   transition: opacity .45s ease;
@@ -155,6 +164,11 @@
 }
 
 @media (max-width: 47.999rem) {
+  .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    min-height: 0 !important;
+    padding: 24px 14px !important;
+  }
+
   .nv-detail-highlight-slideshow::before {
     background: linear-gradient(
       180deg,
@@ -183,6 +197,13 @@
 
   .nv-collection-item-tags.is-expanded {
     max-height: 88px;
+  }
+}
+
+@media (max-width: 35rem) {
+  .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    min-height: 0 !important;
+    padding: 56px 14px 22px !important;
   }
 }
 
