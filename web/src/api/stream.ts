@@ -368,6 +368,9 @@ export const streamApi = {
   getPosterUrl: (mediaId: string, version?: number) =>
     withToken(`/api/media/${mediaId}/poster${version ? `?v=${version}` : ''}`),
 
+  getBackdropUrl: (mediaId: string, version?: number) =>
+    withToken(`/api/media/${mediaId}/backdrop${version ? `?v=${version}` : ''}`),
+
   getSeriesPosterUrl: (seriesId: string, version?: number) =>
     withToken(`/api/series/${seriesId}/poster${version ? `?v=${version}` : ''}`),
 
