@@ -16,6 +16,39 @@ interface HistoryData {
   total: number
 }
 
+interface HistoryGroup {
+  label: string
+  items: WatchHistory[]
+}
+
+function getHistoryBucket(dateStr: string) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const diffDays = Math.floor((today - target) / (24 * 60 * 60 * 1000))
+
+  if (diffDays <= 0) return '今天'
+  if (diffDays < 7) return '最近 7 天'
+  return '更早'
+}
+
+function groupHistory(items: WatchHistory[]): HistoryGroup[] {
+  const order = ['今天', '最近 7 天', '更早']
+  const buckets = new Map<string, WatchHistory[]>()
+
+  items.forEach((item) => {
+    const label = getHistoryBucket(item.updated_at)
+    const group = buckets.get(label) ?? []
+    group.push(item)
+    buckets.set(label, group)
+  })
+
+  return order
+    .map((label) => ({ label, items: buckets.get(label) ?? [] }))
+    .filter((group) => group.items.length > 0)
+}
+
 export default function HistoryPage() {
   const { page, size, setPage, setSize, totalPages } = usePagination({
     initialSize: 20,
@@ -83,130 +116,179 @@ export default function HistoryPage() {
   }
 
   const pages = totalPages(total)
+  const historyGroups = groupHistory(histories)
 
   return (
-    <div className="nv-section-stack nv-library-page nv-history-page">
-      <header className="nv-page-hero-header nv-page-hero-header--actions">
+    <div className="nv-personal-workspace nv-history-page">
+      <header className="nv-personal-workspace-header nv-personal-workspace-header--actions">
         <div className="nv-page-title-lockup">
           <div className="nv-page-title-icon" aria-hidden="true">
             <Clock size={20} />
           </div>
           <div className="min-w-0">
+            <span className="nv-personal-workspace-eyebrow">WATCH HISTORY</span>
             <h1 className="nv-page-title">{t('history.title')}</h1>
-            <p className="nv-page-subtitle">
-              {total > 0 ? `共 ${total} 条观看记录` : '回到最近播放过的内容，并从上次位置继续观看。'}
-            </p>
+            <p className="nv-page-subtitle">回到最近播放过的内容，并从上次位置继续观看。</p>
           </div>
         </div>
-        {histories.length > 0 && (
-          <Button variant="danger" size="sm" onClick={handleClear}>
-            <Trash2 size={14} aria-hidden="true" />
-            {t('history.clearAll')}
-          </Button>
-        )}
+
+        <div className="nv-personal-workspace-header-actions">
+          <div className="nv-personal-workspace-stat" aria-label={`共 ${total} 条观看记录`}>
+            <strong>{total}</strong>
+            <span>条记录</span>
+          </div>
+          {histories.length > 0 && (
+            <Button variant="danger" size="sm" onClick={handleClear}>
+              <Trash2 size={14} aria-hidden="true" />
+              {t('history.clearAll')}
+            </Button>
+          )}
+        </div>
       </header>
 
-      {loading && (
-        <div className="space-y-3" aria-busy="true" aria-label="正在加载观看历史">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="nv-history-card flex gap-4 p-3 sm:p-4">
-              <div className="skeleton h-20 w-32 shrink-0 rounded-[var(--nv-radius-control)] sm:w-36" />
-              <div className="flex-1 space-y-2 py-1">
-                <div className="skeleton h-5 w-1/3" />
-                <div className="skeleton h-4 w-1/4" />
-              </div>
-            </div>
-          ))}
+      <section className="nv-personal-workspace-panel" aria-labelledby="recent-history-title">
+        <div className="nv-personal-workspace-toolbar">
+          <div>
+            <h2 id="recent-history-title">最近观看</h2>
+            <p>{total > 0 ? '按最近播放时间整理，点击即可继续观看。' : '最近播放过的媒体会出现在这里。'}</p>
+          </div>
+          {total > 0 && <span className="nv-personal-workspace-count">{total} 项</span>}
         </div>
-      )}
 
-      {!loading && histories.length > 0 && (
-        <div className="space-y-3">
-          {histories.map((item) => {
-            const progress = formatProgress(item.position, item.duration)
-            const displayTitle = item.media?.media_type === 'episode' && item.media?.series
-              ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
-              : (item.media?.title || t('history.unknownMedia'))
-            const historyArtwork = item.media?.media_type === 'episode' && item.media?.series?.backdrop_path
-              ? streamApi.getSeriesBackdropUrl(item.media.series.id)
-              : streamApi.getPosterUrl(item.media_id)
-
-            return (
-              <article key={item.id} className="nv-history-card group flex gap-3 p-3 sm:gap-4 sm:p-4">
-                <Link
-                  to={`/play/${item.media_id}`}
-                  className="nv-history-thumb relative h-20 w-28 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] sm:w-36"
-                  aria-label={`继续播放 ${displayTitle}`}
-                >
-                  <img
-                    src={historyArtwork}
-                    alt=""
-                    className="h-full w-full object-cover transition-[transform,filter] duration-300 group-hover:scale-[1.015] group-hover:brightness-90"
-                    onError={(event) => { event.currentTarget.style.display = 'none' }}
-                  />
-                  <div className="nv-history-play-overlay absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-                    <span className="nv-history-play-button flex h-8 w-8 items-center justify-center rounded-full">
-                      <Play size={14} fill="currentColor" aria-hidden="true" />
-                    </span>
-                  </div>
-                  <div className="nv-history-progress-track absolute bottom-0 left-0 right-0 h-1">
-                    <div className="nv-history-progress h-full" style={{ width: `${progress}%` }} />
-                  </div>
-                </Link>
-
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <Link
-                    to={`/media/${item.media_id}`}
-                    className="truncate text-sm font-semibold text-[var(--nv-text-primary)] transition-colors hover:text-[var(--nv-action-primary)]"
-                  >
-                    {displayTitle}
-                  </Link>
-                  {item.media?.media_type === 'episode' && item.media?.episode_title && (
-                    <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{item.media.episode_title}</p>
-                  )}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
-                    <span>{t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{item.completed ? t('history.completed') : `${progress}%`}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{formatDate(item.updated_at)}</span>
-                  </div>
+        {loading && (
+          <div className="nv-history-grid" aria-busy="true" aria-label="正在加载观看历史">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="nv-history-card nv-history-card--loading">
+                <div className="skeleton nv-history-thumb" />
+                <div className="flex-1 space-y-3 py-2">
+                  <div className="skeleton h-5 w-2/3" />
+                  <div className="skeleton h-4 w-1/2" />
+                  <div className="skeleton h-8 w-28" />
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  onClick={() => handleDelete(item.media_id)}
-                  className="self-center opacity-70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-                  title={t('history.deleteRecord')}
-                  aria-label={`${t('history.deleteRecord')}：${displayTitle}`}
-                >
-                  <X size={15} aria-hidden="true" />
-                </Button>
-              </article>
-            )
-          })}
-        </div>
-      )}
+        {!loading && historyGroups.map((group) => (
+          <section key={group.label} className="nv-history-group" aria-labelledby={`history-${group.label}`}>
+            <div className="nv-history-group-header">
+              <h3 id={`history-${group.label}`}>{group.label}</h3>
+              <span>{group.items.length}</span>
+            </div>
 
-      {!loading && histories.length === 0 && (
-        <EmptyState
-          icon={<Clock size={26} aria-hidden="true" />}
-          title={t('history.empty')}
-          description={t('history.emptyHint')}
-        />
-      )}
+            <div className="nv-history-grid">
+              {group.items.map((item) => {
+                const progress = formatProgress(item.position, item.duration)
+                const displayTitle = item.media?.media_type === 'episode' && item.media?.series
+                  ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
+                  : (item.media?.title || t('history.unknownMedia'))
+                const historyArtwork = item.media?.media_type === 'episode' && item.media?.series?.backdrop_path
+                  ? streamApi.getSeriesBackdropUrl(item.media.series.id)
+                  : streamApi.getBackdropUrl(item.media_id)
+                const fallbackPoster = streamApi.getPosterUrl(item.media_id)
 
-      <Pagination
-        page={page}
-        totalPages={pages}
-        total={total}
-        pageSize={size}
-        pageSizeOptions={[10, 20, 50, 100]}
-        onPageChange={setPage}
-        onPageSizeChange={setSize}
-      />
+                return (
+                  <article key={item.id} className="nv-history-card group">
+                    <Link
+                      to={`/play/${item.media_id}`}
+                      className="nv-history-thumb"
+                      aria-label={`继续播放 ${displayTitle}`}
+                    >
+                      <img
+                        src={historyArtwork}
+                        alt=""
+                        onError={(event) => {
+                          const image = event.currentTarget
+                          if (image.dataset.fallbackApplied !== 'true') {
+                            image.dataset.fallbackApplied = 'true'
+                            image.src = fallbackPoster
+                            return
+                          }
+                          image.style.display = 'none'
+                        }}
+                      />
+                      <div className="nv-history-play-overlay" aria-hidden="true">
+                        <span className="nv-history-play-button">
+                          <Play size={16} fill="currentColor" />
+                        </span>
+                      </div>
+                      <div className="nv-history-progress-track">
+                        <div className="nv-history-progress" style={{ width: `${progress}%` }} />
+                      </div>
+                    </Link>
+
+                    <div className="nv-history-card-body">
+                      <div className="nv-history-card-heading">
+                        <div className="min-w-0">
+                          <Link
+                            to={`/media/${item.media_id}`}
+                            className="nv-history-title"
+                            title={displayTitle}
+                          >
+                            {displayTitle}
+                          </Link>
+                          {item.media?.media_type === 'episode' && item.media?.episode_title && (
+                            <p className="nv-history-episode-title">{item.media.episode_title}</p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          iconOnly
+                          onClick={() => handleDelete(item.media_id)}
+                          className="nv-history-delete"
+                          title={t('history.deleteRecord')}
+                          aria-label={`${t('history.deleteRecord')}：${displayTitle}`}
+                        >
+                          <X size={15} aria-hidden="true" />
+                        </Button>
+                      </div>
+
+                      <div className="nv-history-meta">
+                        <span>{t('history.watchedTo', { position: formatTime(item.position), duration: formatTime(item.duration) })}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{item.completed ? t('history.completed') : `${progress}%`}</span>
+                      </div>
+
+                      <div className="nv-history-card-footer">
+                        <Link to={`/play/${item.media_id}`} className="nv-history-continue-action">
+                          <Play size={13} fill="currentColor" aria-hidden="true" />
+                          继续播放
+                        </Link>
+                        <span>{formatDate(item.updated_at)}</span>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+
+        {!loading && histories.length === 0 && (
+          <EmptyState
+            className="nv-personal-workspace-empty"
+            icon={<Clock size={26} aria-hidden="true" />}
+            title={t('history.empty')}
+            description={t('history.emptyHint')}
+          />
+        )}
+
+        {total > 0 && (
+          <div className="nv-personal-workspace-pagination">
+            <Pagination
+              page={page}
+              totalPages={pages}
+              total={total}
+              pageSize={size}
+              pageSizeOptions={[10, 20, 50, 100]}
+              onPageChange={setPage}
+              onPageSizeChange={setSize}
+            />
+          </div>
+        )}
+      </section>
     </div>
   )
 }
