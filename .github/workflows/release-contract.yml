@@ -1,0 +1,51 @@
+name: Release Contract
+
+on:
+  push:
+    branches: [main, refactor/server-lite-v1]
+    paths:
+      - 'scripts/release.sh'
+      - 'scripts/release-advanced.sh'
+      - 'scripts/fpk/**'
+      - '.github/workflows/release-contract.yml'
+  pull_request:
+    paths:
+      - 'scripts/release.sh'
+      - 'scripts/release-advanced.sh'
+      - 'scripts/fpk/**'
+      - '.github/workflows/release-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release and fnOS contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate shell and Node syntax
+        run: |
+          bash -n scripts/release.sh
+          bash -n scripts/release-advanced.sh
+          node --check scripts/fpk/build-fpk.mjs
+      - name: Validate fnOS JSON templates
+        run: |
+          python3 -m json.tool scripts/fpk/template/config/privilege >/dev/null
+          python3 -m json.tool scripts/fpk/template/config/resource >/dev/null
+          python3 -m json.tool scripts/fpk/template/app/ui/config >/dev/null
+      - name: Validate fnOS release invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'version               = {{VERSION}}' scripts/fpk/template/manifest
+          grep -Fq 'image: {{DOCKERHUB_REPO}}:{{IMAGE_TAG}}' scripts/fpk/template/app/docker/docker-compose.yaml
+          grep -Fq 'nowen-video/data:/data' scripts/fpk/template/app/docker/docker-compose.yaml
+          grep -Fq 'nowen-video/cache:/cache' scripts/fpk/template/app/docker/docker-compose.yaml
+          grep -Fq 'nowen-video/media:/media' scripts/fpk/template/app/docker/docker-compose.yaml
+          grep -Fq 'FPK_IMAGE_TAG="v${VERSION}"' scripts/release.sh
+          grep -Fq 'nowen-video-android-${VERSION}.apk' scripts/release.sh
+          grep -Fq 'nowen-video-${VERSION}.fpk' scripts/release.sh
