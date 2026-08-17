@@ -1,0 +1,7 @@
+{
+  "defaults": {
+    "run-as": "package"
+  },
+  "username": "docker-nowen-video",
+  "groupname": "docker-nowen-video"
+}
