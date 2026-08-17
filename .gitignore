@@ -1,6 +1,10 @@
 # nowen-video 构建产物
 bin/
 dist/
+dist-fpk/
+fnpack
+fnpack.exe
+fnpack-*
 
 # TypeScript 增量编译缓存
 *.tsbuildinfo
