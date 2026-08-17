@@ -145,15 +145,20 @@ function AnchoredMenu({ open, anchorRef, ariaLabel, onClose, children }: Anchore
 }
 
 function getBackdropUrl(media: Media, version?: number) {
-  // Series has a dedicated public backdrop stream. Standalone Media currently
-  // exposes poster only, while backdrop_path is a server-local filesystem path.
-  // Keep this UI refactor frontend-only and do not invent a new backend API.
+  // Always probe the dedicated backdrop endpoint first. The media object can be
+  // stale while local analysis is completing, so backdrop_path must not decide
+  // whether the client attempts to load newly generated artwork.
   if (media.series_id) {
-    return media.backdrop_path
-      ? streamApi.getSeriesBackdropUrl(media.series_id, version)
-      : streamApi.getSeriesPosterUrl(media.series_id, version)
+    return streamApi.getSeriesBackdropUrl(media.series_id, version)
   }
-  return streamApi.getPosterUrl(media.id, version)
+  const suffix = version ? `?v=${version}` : ''
+  return streamApi.withTokenUrl(`/api/media/${media.id}/backdrop${suffix}`)
+}
+
+function getBackdropFallbackUrl(media: Media, version?: number) {
+  return media.series_id
+    ? streamApi.getSeriesPosterUrl(media.series_id, version)
+    : streamApi.getPosterUrl(media.id, version)
 }
 
 export default function HeroSection({
@@ -179,6 +184,7 @@ export default function HeroSection({
   const { t } = useTranslation()
   const [imgLoaded, setImgLoaded] = useState(false)
   const [posterFailed, setPosterFailed] = useState(false)
+  const [failedBackdropKey, setFailedBackdropKey] = useState<string | null>(null)
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const playlistButtonRef = useRef<HTMLButtonElement>(null)
@@ -186,6 +192,11 @@ export default function HeroSection({
   const effectivePosterVersion = posterVersion === undefined
     ? (assetRefreshVersion || undefined)
     : posterVersion + assetRefreshVersion
+  const backdropAttemptKey = `${media.id}:${media.series_id || ''}:${effectivePosterVersion || 0}`
+  const backdropFailed = failedBackdropKey === backdropAttemptKey
+  const backdropUrl = backdropFailed
+    ? getBackdropFallbackUrl(media, effectivePosterVersion)
+    : getBackdropUrl(media, effectivePosterVersion)
 
   const copyFilePath = () => {
     if (!media.file_path) return
@@ -221,15 +232,23 @@ export default function HeroSection({
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[var(--nv-bg-surface-soft)]">
           <img
-            src={getBackdropUrl(media, effectivePosterVersion)}
+            key={`${backdropAttemptKey}:${backdropFailed ? 'poster' : 'backdrop'}`}
+            src={backdropUrl}
             alt=""
             className={clsx(
               'h-full w-full object-center transition-[opacity,transform] duration-500 ease-out',
-              media.backdrop_path && media.series_id ? 'object-contain' : 'object-cover scale-110 blur-2xl',
-              imgLoaded ? (media.backdrop_path && media.series_id ? 'scale-100 opacity-70' : 'opacity-32') : 'scale-[1.025] opacity-0',
+              backdropFailed ? 'object-cover scale-110 blur-2xl' : 'object-contain',
+              imgLoaded ? (backdropFailed ? 'opacity-32' : 'scale-100 opacity-70') : 'scale-[1.025] opacity-0',
             )}
             onLoad={() => setImgLoaded(true)}
-            onError={(event) => { event.currentTarget.style.display = 'none' }}
+            onError={(event) => {
+              if (!backdropFailed) {
+                setImgLoaded(false)
+                setFailedBackdropKey(backdropAttemptKey)
+                return
+              }
+              event.currentTarget.style.display = 'none'
+            }}
           />
         </div>
         <div className="absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
