@@ -5,6 +5,10 @@
 
 .nv-detail-hero {
   isolation: isolate;
+  --nv-detail-hero-layer-backdrop: 0;
+  --nv-detail-hero-layer-highlight: 1;
+  --nv-detail-hero-layer-content: 2;
+  --nv-detail-hero-layer-scrim: 3;
 }
 
 /* The structural cinema layer used to enforce a 360–440px minimum plus large
@@ -16,19 +20,21 @@
   padding-bottom: 20px !important;
 }
 
+/* Explicit layer contract: fallback backdrop < highlight slideshow < content.
+ * Keep content above the visual layers so poster/actions stay interactive. */
 .nv-detail-hero > .absolute.inset-0 {
-  z-index: 0;
+  z-index: var(--nv-detail-hero-layer-backdrop);
   transition: opacity .45s ease;
 }
 
 .nv-detail-hero .nv-detail-hero-inner {
-  z-index: 2;
+  z-index: var(--nv-detail-hero-layer-content);
 }
 
 .nv-detail-highlight-slideshow {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: var(--nv-detail-hero-layer-highlight);
   overflow: hidden;
   pointer-events: none;
   background: var(--nv-bg-surface-soft);
@@ -45,7 +51,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: var(--nv-detail-hero-layer-scrim);
   pointer-events: none;
 }
 
