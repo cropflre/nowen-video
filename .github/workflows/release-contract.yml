@@ -88,7 +88,8 @@ jobs:
           node scripts/fpk/build-fpk.mjs
           test -s /tmp/nowen-video-fpk-smoke/nowen-video-9.9.9.fpk
           test -s /tmp/nowen-video-fpk-smoke/SHA256SUMS-fpk.txt
-          sha256sum -c /tmp/nowen-video-fpk-smoke/SHA256SUMS-fpk.txt --ignore-missing
+          cd /tmp/nowen-video-fpk-smoke
+          sha256sum -c SHA256SUMS-fpk.txt
 
       - name: Validate strict release gating invariants
         shell: bash
