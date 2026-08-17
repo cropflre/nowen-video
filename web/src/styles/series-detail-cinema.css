@@ -16,11 +16,14 @@
 
 .nv-series-detail-page .nv-series-hero {
   isolation: isolate;
+  z-index: 21;
   min-height: 0 !important;
+  overflow: visible !important;
 }
 
 .nv-series-detail-page .nv-series-backdrop {
   z-index: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
