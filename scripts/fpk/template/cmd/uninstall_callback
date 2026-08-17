@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Called after the user uninstalls Nowen Video.
+
+exit 0
