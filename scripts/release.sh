@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Nowen Video product release guard
-#
 # Default stable release from main:
 #   Docker amd64/arm64 + Android APK/AAB + fnOS FPK + Git tag + GitHub Release.
-# The underlying Docker/Android/Desktop contract remains in release-advanced.sh.
-# This wrapper adds fnOS preflight packaging and only publishes the draft GitHub
-# Release after all requested product assets are verified remotely.
 # =============================================================================
 set -euo pipefail
 
@@ -34,6 +30,21 @@ die()  { echo "${C_RED}[✗]${C_RESET} $*" >&2; exit 1; }
 step() { echo; echo "${C_BOLD}${C_CYAN}==== $* ====${C_RESET}"; }
 trap 'echo; die "已取消发版"' INT
 
+usage() {
+  cat <<'EOF'
+用法:
+  ./scripts/release.sh                         # 交互式四渠道正式发版
+  ./scripts/release.sh -v 1.2.6 -y --no-desktop
+
+Wrapper 选项:
+  --no-fpk       不构建/上传飞牛 fnOS .fpk
+  --draft        全资产核验后仍保留 GitHub Draft Release
+
+其它参数原样透传给 scripts/release-advanced.sh。
+默认正式版：Docker + Android APK/AAB + fnOS FPK + GitHub Release。
+EOF
+}
+
 validate_version() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; }
 latest_stable_version() {
   git tag --list 'v*' --sort=-v:refname 2>/dev/null | sed -n -E 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | head -1
@@ -48,10 +59,14 @@ suggest_next_patch() {
 PUBLISH_FPK=1
 KEEP_DRAFT=0
 DRY_RUN=0
+DO_PULL=1
 VERSION=""
 HAS_ANDROID=1
 HAS_GIT_TAG=1
 WAIT_ACTIONS=1
+FPK_SOURCE_SHA=""
+FPK_FILE=""
+FPK_SUM=""
 PASSTHROUGH=()
 
 parse_args() {
@@ -59,9 +74,11 @@ parse_args() {
   while [ "$i" -lt "${#args[@]}" ]; do
     arg="${args[$i]}"
     case "$arg" in
+      -h|--help) usage; exit 0 ;;
       --no-fpk) PUBLISH_FPK=0 ;;
       --draft) KEEP_DRAFT=1 ;;
       --dry-run) DRY_RUN=1; PASSTHROUGH+=("$arg") ;;
+      --no-pull) DO_PULL=0; PASSTHROUGH+=("$arg") ;;
       --server-only) HAS_ANDROID=0; HAS_GIT_TAG=0; PUBLISH_FPK=0; PASSTHROUGH+=("$arg") ;;
       --no-android) HAS_ANDROID=0; PASSTHROUGH+=("$arg") ;;
       --no-git-tag) HAS_GIT_TAG=0; PASSTHROUGH+=("$arg") ;;
@@ -78,42 +95,51 @@ parse_args() {
   done
 }
 
+lock_release_source() {
+  [ "$PUBLISH_FPK" = "1" ] || return 0
+  [ "$DRY_RUN" = "0" ] || return 0
+  command -v git >/dev/null 2>&1 || die "缺少 git"
+  [ -z "$(git status --porcelain)" ] || die "正式发版前工作区必须完全干净"
+  [ "$(git rev-parse --abbrev-ref HEAD)" = "$DEFAULT_BRANCH" ] || die "四渠道正式发版必须从 main 执行"
+  git fetch origin "$DEFAULT_BRANCH" --tags --prune
+  if [ "$DO_PULL" = "1" ]; then git pull --ff-only origin "$DEFAULT_BRANCH"; fi
+  local local_sha remote_sha
+  local_sha="$(git rev-parse HEAD)"
+  remote_sha="$(git rev-parse "origin/${DEFAULT_BRANCH}")"
+  [ "$local_sha" = "$remote_sha" ] || die "本地 main 不等于 origin/main；拒绝用不同 commit 生成 FPK"
+  FPK_SOURCE_SHA="$local_sha"
+  ok "四渠道源码锁定: ${FPK_SOURCE_SHA}"
+}
+
 prepare_fpk() {
   [ "$PUBLISH_FPK" = "1" ] || return 0
   [ "$DRY_RUN" = "0" ] || { info "DRY-RUN：跳过 fnOS 实际打包"; return 0; }
   [[ "$VERSION" != *-* ]] || die "fnOS manifest 要求纯 X.Y.Z；预发布 ${VERSION} 请加 --no-fpk"
   command -v node >/dev/null 2>&1 || die "飞牛打包需要 Node.js 20+"
-
   step "飞牛 fnOS FPK 发布前打包"
   rm -rf "$REPO_ROOT/dist-fpk"
-  FPK_VERSION="$VERSION" \
-  FPK_IMAGE_TAG="v${VERSION}" \
-  DOCKERHUB_REPO="$IMAGE_NAME" \
-    node "$FPK_SCRIPT"
-
+  FPK_VERSION="$VERSION" FPK_IMAGE_TAG="v${VERSION}" DOCKERHUB_REPO="$IMAGE_NAME" node "$FPK_SCRIPT"
   FPK_FILE="$REPO_ROOT/dist-fpk/nowen-video-${VERSION}.fpk"
   FPK_SUM="$REPO_ROOT/dist-fpk/SHA256SUMS-fpk.txt"
   [ -s "$FPK_FILE" ] || die "FPK 产物不存在: $FPK_FILE"
   [ -s "$FPK_SUM" ] || die "FPK checksum 不存在: $FPK_SUM"
-  ok "fnOS 候选产物已生成: $(basename "$FPK_FILE")"
+  [ "$(git rev-parse HEAD)" = "$FPK_SOURCE_SHA" ] || die "FPK 打包期间源码 commit 已变化"
+  ok "fnOS 候选产物: $(basename "$FPK_FILE")"
 }
 
 publish_and_verify_fpk() {
   [ "$PUBLISH_FPK" = "1" ] || return 0
   [ "$DRY_RUN" = "0" ] || return 0
+  [ "$(git rev-parse HEAD)" = "$FPK_SOURCE_SHA" ] || die "产品发布 commit 与 FPK commit 不一致"
   command -v gh >/dev/null 2>&1 || die "上传 FPK 需要 gh CLI"
-  local tag="v${VERSION}" fpk="nowen-video-${VERSION}.fpk" checksum="SHA256SUMS-fpk.txt"
-  local tmp names
-
+  local tag="v${VERSION}" fpk="nowen-video-${VERSION}.fpk" checksum="SHA256SUMS-fpk.txt" tmp names
   step "上传并核验飞牛 fnOS Release 资产"
   gh release view "$tag" --repo "$GITHUB_REPO" >/dev/null 2>&1 || die "未找到 ${tag} GitHub Release"
   gh release upload "$tag" "$FPK_FILE" "$FPK_SUM" --repo "$GITHUB_REPO" --clobber
   names="$(gh release view "$tag" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name')"
   printf '%s\n' "$names" | grep -Fxq "$fpk" || die "GitHub Release 缺少 $fpk"
   printf '%s\n' "$names" | grep -Fxq "$checksum" || die "GitHub Release 缺少 $checksum"
-
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/nowen-video-fpk.XXXXXX")"
-  trap 'rm -rf -- "${tmp:-}"' RETURN
   gh release download "$tag" --repo "$GITHUB_REPO" --pattern "$fpk" --pattern "$checksum" --dir "$tmp"
   node - "$tmp/$fpk" "$tmp/$checksum" <<'NODE'
 const fs = require('fs'); const crypto = require('crypto');
@@ -124,15 +150,14 @@ if (!expected || expected !== actual) { console.error(`FPK checksum mismatch: ${
 console.log(`FPK remote checksum OK: ${actual}`);
 NODE
   rm -rf -- "$tmp"
-  trap - RETURN
   ok "飞牛 FPK 远端资产与 SHA256 均已核验"
 }
 
-verify_product_release() {
+verify_and_publish_release() {
   [ "$DRY_RUN" = "0" ] || return 0
   [ "$HAS_GIT_TAG" = "1" ] || return 0
-  local tag="v${VERSION}" names
   command -v gh >/dev/null 2>&1 || die "最终 Release 核验需要 gh CLI"
+  local tag="v${VERSION}" names
   names="$(gh release view "$tag" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name' 2>/dev/null || true)"
   if [ "$HAS_ANDROID" = "1" ]; then
     printf '%s\n' "$names" | grep -Fxq "nowen-video-android-${VERSION}.apk" || die "Release 缺少 Android APK"
@@ -141,11 +166,7 @@ verify_product_release() {
   if [ "$PUBLISH_FPK" = "1" ]; then
     printf '%s\n' "$names" | grep -Fxq "nowen-video-${VERSION}.fpk" || die "Release 缺少 fnOS FPK"
   fi
-
-  if [ "$KEEP_DRAFT" = "1" ]; then
-    ok "所有请求渠道已核验；按 --draft 要求保留 Draft"
-    return 0
-  fi
+  if [ "$KEEP_DRAFT" = "1" ]; then ok "所有请求渠道已核验；按 --draft 保留 Draft"; return 0; fi
   if [[ "$VERSION" == *-* ]]; then
     gh release edit "$tag" --repo "$GITHUB_REPO" --draft=false --prerelease=true >/dev/null
   else
@@ -158,66 +179,54 @@ run_product_release() {
   [ -n "$VERSION" ] || die "无法确定版本号"
   validate_version "$VERSION" || die "版本格式不正确: $VERSION"
   if [ "$PUBLISH_FPK" = "1" ]; then
-    [ "$HAS_ANDROID" = "1" ] || die "默认 FPK 发布依赖 Android workflow 创建产品 Release；使用 --no-android 时请同时加 --no-fpk"
+    [ "$HAS_ANDROID" = "1" ] || die "FPK 默认依赖 Android workflow 创建产品 Release；--no-android 时请同时加 --no-fpk"
     [ "$HAS_GIT_TAG" = "1" ] || die "FPK 发布需要产品 git tag"
     [ "$WAIT_ACTIONS" = "1" ] || die "FPK 发布需要等待 GitHub Release；请移除 --no-wait-actions 或加 --no-fpk"
   fi
+  lock_release_source
   prepare_fpk
   step "Docker / Android / GitHub 产品发布"
   bash "$ADVANCED_SCRIPT" "${PASSTHROUGH[@]}"
+  if [ "$DRY_RUN" = "1" ]; then ok "四渠道 DRY-RUN 完成；未执行任何发布写操作"; return 0; fi
   publish_and_verify_fpk
-  verify_product_release
-
+  verify_and_publish_release
   step "统一发版完成"
   echo "  commit        : $(git rev-parse HEAD)"
   echo "  Docker        : ${IMAGE_NAME}:v${VERSION}"
   [ "$HAS_ANDROID" = "1" ] && echo "  Android       : APK + AAB"
   [ "$PUBLISH_FPK" = "1" ] && echo "  飞牛 fnOS     : nowen-video-${VERSION}.fpk"
   [ "$HAS_GIT_TAG" = "1" ] && echo "  GitHub        : v${VERSION} Release"
-  ok "Nowen Video v${VERSION} 四渠道发布完成"
+  ok "Nowen Video v${VERSION} 发布完成"
 }
 
 cd "$REPO_ROOT"
-
 if [ "$#" -gt 0 ]; then
   parse_args "$@"
-  if [ "$PUBLISH_FPK" = "1" ] && [ -z "$VERSION" ]; then
-    die "带参数并发布 FPK 时请显式提供 -v X.Y.Z；或使用 --no-fpk"
-  fi
+  [ "$PUBLISH_FPK" = "0" ] || [ -n "$VERSION" ] || die "带参数发布 FPK 时请显式提供 -v X.Y.Z；或使用 --no-fpk"
   run_product_release
   exit 0
 fi
 
-# -------------------- zero-argument interactive wizard --------------------
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "当前目录不是 Git 仓库"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
   warn "当前分支是 ${CURRENT_BRANCH}，正式发版需要 main。"
   read -r -p "是否自动切换到 main？[Y/n] " answer
-  case "${answer:-y}" in
-    y|Y|yes|YES|Yes) [ -z "$(git status --porcelain)" ] || die "工作区不干净"; git checkout main ;;
-    *) die "请切换到 main 后再发版" ;;
-  esac
+  case "${answer:-y}" in y|Y|yes|YES|Yes) [ -z "$(git status --porcelain)" ] || die "工作区不干净"; git checkout main ;; *) die "请切换到 main 后再发版" ;; esac
 fi
 
 git fetch origin main --tags --prune || die "获取 origin/main 失败"
-LATEST="$(latest_stable_version)"
-SUGGEST="$(suggest_next_patch "$LATEST")"
-
-echo
-printf '%s\n' "${C_BOLD}Nowen Video 一键产品发版${C_RESET}"
+LATEST="$(latest_stable_version)"; SUGGEST="$(suggest_next_patch "$LATEST")"
+echo; printf '%s\n' "${C_BOLD}Nowen Video 一键产品发版${C_RESET}"
 echo "默认目标：Docker + Android + 飞牛 fnOS + GitHub Release"
-echo
 read -r -p "版本号 [${SUGGEST}]: " VERSION
 VERSION="${VERSION:-$SUGGEST}"; VERSION="${VERSION#v}"
 validate_version "$VERSION" || die "版本格式不正确: $VERSION"
 
-echo
-echo "1) Docker + Android + 飞牛 fnOS + GitHub Release  [默认]"
+echo; echo "1) Docker + Android + 飞牛 fnOS + GitHub Release  [默认]"
 echo "2) 上述全部 + Windows Desktop"
 echo "3) 仅 Docker Server"
-read -r -p "请选择 [1/2/3，默认 1]: " choice
-choice="${choice:-1}"
+read -r -p "请选择 [1/2/3，默认 1]: " choice; choice="${choice:-1}"
 PASSTHROUGH=(-v "$VERSION" -y)
 case "$choice" in
   1) PASSTHROUGH+=(--no-desktop) ;;
@@ -226,14 +235,12 @@ case "$choice" in
   *) die "无效选择: $choice" ;;
 esac
 
-echo
-printf '%s\n' "版本      : v${VERSION}"
-printf '%s\n' "源码      : main @ $(git rev-parse --short=12 HEAD)"
-printf '%s\n' "Docker    : linux/amd64 + linux/arm64"
-[ "$HAS_ANDROID" = "1" ] && printf '%s\n' "Android   : APK + AAB（production signing）"
-[ "$PUBLISH_FPK" = "1" ] && printf '%s\n' "飞牛      : nowen-video-${VERSION}.fpk"
-[ "$HAS_GIT_TAG" = "1" ] && printf '%s\n' "GitHub    : v${VERSION}（全资产验证后自动公开）"
-echo
+echo; echo "版本      : v${VERSION}"
+echo "源码      : main @ $(git rev-parse --short=12 HEAD)"
+echo "Docker    : linux/amd64 + linux/arm64"
+[ "$HAS_ANDROID" = "1" ] && echo "Android   : APK + AAB（production signing）"
+[ "$PUBLISH_FPK" = "1" ] && echo "飞牛      : nowen-video-${VERSION}.fpk"
+[ "$HAS_GIT_TAG" = "1" ] && echo "GitHub    : v${VERSION}（全资产验证后自动公开）"
 read -r -p "确认开始？[Y/n] " answer
 case "${answer:-y}" in y|Y|yes|YES|Yes) ;; *) die "已取消" ;; esac
 run_product_release
