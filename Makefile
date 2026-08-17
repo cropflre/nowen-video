@@ -19,7 +19,7 @@ build-lite: build
 build-full: build-web build-server-full
 
 build-server:
-	CGO_ENABLED=1 NOWEN_VERSION=$(VERSION) go build -ldflags "$(GO_LDFLAGS)" -o bin/nowen-video ./cmd/server-lite
+	@CGO_ENABLED=1 NOWEN_VERSION=$(VERSION) go build -ldflags "$(GO_LDFLAGS)" -o bin/nowen-video ./cmd/server-lite
 
 build-server-full:
 	CGO_ENABLED=1 NOWEN_VERSION=$(VERSION) go build -ldflags "$(GO_LDFLAGS)" -o bin/nowen-video-full ./cmd/server
@@ -32,7 +32,7 @@ build-web:
 # 它不再代表一个对外的 Lite 产品版本。
 # Go 服务直接读取 web/dist，因此每次启动前必须重建当前分支前端。
 dev: build-web
-	NOWEN_APP_PORT=$(DEV_SERVER_PORT) NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
+	@NOWEN_APP_PORT=$(DEV_SERVER_PORT) NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
 
 # 旧版完整服务，仅用于兼容验证与必要回滚。
 dev-full: build-web
@@ -41,7 +41,7 @@ dev-full: build-web
 # 仅供明确需要复用现有 dist 的后端调试场景使用。
 # 常规开发请使用 make dev。
 dev-server:
-	NOWEN_APP_PORT=$(DEV_SERVER_PORT) NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
+	@NOWEN_APP_PORT=$(DEV_SERVER_PORT) NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server-lite
 
 dev-server-full:
 	NOWEN_APP_PORT=$(DEV_SERVER_PORT) NOWEN_DEBUG=true NOWEN_VERSION=$(VERSION) go run -ldflags "$(GO_LDFLAGS)" ./cmd/server
