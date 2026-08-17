@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Called before the user uninstalls Nowen Video.
+# Persistent user data is not deleted here.
+
+exit 0
