@@ -22,9 +22,7 @@ if (!/^\d+\.\d+\.\d+$/.test(VERSION)) {
 
 function replaceTokens(path, replacements) {
   let content = readFileSync(path, 'utf8')
-  for (const [key, value] of Object.entries(replacements)) {
-    content = content.replaceAll(`{{${key}}}`, value)
-  }
+  for (const [key, value] of Object.entries(replacements)) content = content.replaceAll(`{{${key}}}`, value)
   if (/\{\{[^}]+\}\}/.test(content)) throw new Error(`[fpk] ${path} 仍有未解析模板变量`)
   writeFileSync(path, content)
 }
@@ -89,9 +87,7 @@ function findFnpack() {
 
 function fpkFiles(dir) {
   if (!existsSync(dir)) return []
-  return readdirSync(dir)
-    .filter((name) => name.toLowerCase().endsWith('.fpk'))
-    .map((name) => join(dir, name))
+  return readdirSync(dir).filter((name) => name.toLowerCase().endsWith('.fpk')).map((name) => join(dir, name))
 }
 
 mkdirSync(OUT, { recursive: true })
@@ -99,12 +95,8 @@ const work = join(OUT, `nowen-video-${VERSION}-work`)
 rmSync(work, { recursive: true, force: true })
 mkdirSync(work, { recursive: true })
 cpSync(TEMPLATE, work, { recursive: true })
-
 replaceTokens(join(work, 'manifest'), { VERSION })
-replaceTokens(join(work, 'app', 'docker', 'docker-compose.yaml'), {
-  DOCKERHUB_REPO,
-  IMAGE_TAG,
-})
+replaceTokens(join(work, 'app', 'docker', 'docker-compose.yaml'), { DOCKERHUB_REPO, IMAGE_TAG })
 
 const uiImages = join(work, 'app', 'ui', 'images')
 mkdirSync(uiImages, { recursive: true })
@@ -135,8 +127,7 @@ if (candidates.length === 0) throw new Error('[fpk] fnpack 返回成功，但没
 const target = join(OUT, `nowen-video-${VERSION}.fpk`)
 if (resolve(candidates[0]) !== resolve(target)) cpSync(candidates[0], target)
 const sha256 = createHash('sha256').update(readFileSync(target)).digest('hex')
-writeFileSync(join(OUT, 'SHA256SUMS.txt'), `${sha256}  nowen-video-${VERSION}.fpk\n`)
+writeFileSync(join(OUT, 'SHA256SUMS-fpk.txt'), `${sha256}  nowen-video-${VERSION}.fpk\n`)
 rmSync(work, { recursive: true, force: true })
-
 console.log(`[fpk] 完成: ${target}`)
 console.log(`[fpk] SHA256: ${sha256}`)
