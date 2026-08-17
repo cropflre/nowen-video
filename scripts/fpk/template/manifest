@@ -5,6 +5,6 @@ desc                  = 轻量级家庭媒体服务器，支持电影与剧集�
 arch                  = x86_64
 source                = thirdparty
 maintainer            = Nowen
- disributor            = Nowen
+distributor           = Nowen
 desktop_uidir         = ui
 desktop_applaunchname = nowen-video.Application
