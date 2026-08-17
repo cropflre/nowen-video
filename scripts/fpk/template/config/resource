@@ -1,0 +1,38 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "nowen-video",
+        "path": "docker"
+      }
+    ]
+  },
+  "data-share": {
+    "shares": [
+      {
+        "name": "nowen-video",
+        "permission": {
+          "rw": ["docker-nowen-video"]
+        }
+      },
+      {
+        "name": "nowen-video/data",
+        "permission": {
+          "rw": ["docker-nowen-video"]
+        }
+      },
+      {
+        "name": "nowen-video/cache",
+        "permission": {
+          "rw": ["docker-nowen-video"]
+        }
+      },
+      {
+        "name": "nowen-video/media",
+        "permission": {
+          "rw": ["docker-nowen-video"]
+        }
+      }
+    ]
+  }
+}
