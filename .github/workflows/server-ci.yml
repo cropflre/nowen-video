@@ -231,8 +231,8 @@ jobs:
             local expected_gid="$3"
             local actual_uid
             local actual_gid
-            actual_uid="$(docker exec "$container" sh -c "awk '/^Uid:/ {print \\$2}' /proc/1/status")"
-            actual_gid="$(docker exec "$container" sh -c "awk '/^Gid:/ {print \\$2}' /proc/1/status")"
+            actual_uid="$(docker exec "$container" awk '/^Uid:/ {print $2}' /proc/1/status)"
+            actual_gid="$(docker exec "$container" awk '/^Gid:/ {print $2}' /proc/1/status)"
             test "$actual_uid" = "$expected_uid"
             test "$actual_gid" = "$expected_gid"
           }
