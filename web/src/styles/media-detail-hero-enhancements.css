@@ -70,16 +70,18 @@
   pointer-events: none;
 }
 
-/* Highlight mode intentionally does not reuse --nv-hero-scrim. Protect only
- * the metadata side; the visual half and lower half remain close to source. */
+/* Highlight mode intentionally does not reuse --nv-hero-scrim. The artwork is
+ * the primary visual; only the metadata side receives a reading scrim. Keep the
+ * right side and lower frame close to source instead of bringing back a full
+ * hero wash. */
 .nv-detail-highlight-slideshow::before {
   background: linear-gradient(
     90deg,
-    rgba(11, 9, 13, .74) 0%,
-    rgba(11, 9, 13, .50) 20%,
-    rgba(11, 9, 13, .18) 39%,
-    rgba(11, 9, 13, .04) 54%,
-    transparent 68%
+    rgba(9, 10, 15, .88) 0%,
+    rgba(9, 10, 15, .72) 30%,
+    rgba(9, 10, 15, .42) 50%,
+    rgba(9, 10, 15, .14) 66%,
+    transparent 80%
   );
 }
 
@@ -87,15 +89,45 @@
   background: none;
 }
 
+/* Light mode needs a stronger local reading field because bright/high-detail
+ * frames otherwise compete directly with black copy. This remains local to the
+ * left copy area and fades away before the visual focal region. */
 [data-theme="light"] .nv-detail-highlight-slideshow::before {
   background: linear-gradient(
     90deg,
-    rgba(243, 240, 244, .74) 0%,
-    rgba(243, 240, 244, .50) 20%,
-    rgba(243, 240, 244, .18) 39%,
-    rgba(243, 240, 244, .04) 54%,
-    transparent 68%
+    rgba(247, 247, 245, .94) 0%,
+    rgba(247, 247, 245, .84) 34%,
+    rgba(247, 247, 245, .52) 56%,
+    rgba(247, 247, 245, .16) 72%,
+    transparent 82%
   );
+}
+
+/* Raise semantic copy contrast only while highlight artwork is active. Other
+ * pages and non-highlight detail heroes retain the normal theme palette. */
+.nv-detail-hero.nv-detail-hero-has-highlight-slides {
+  --nv-text-secondary: rgba(238, 241, 250, .82);
+  --nv-text-tertiary: rgba(228, 233, 247, .64);
+}
+
+[data-theme="light"] .nv-detail-hero.nv-detail-hero-has-highlight-slides {
+  --nv-text-secondary: rgba(24, 25, 29, .79);
+  --nv-text-tertiary: rgba(24, 25, 29, .61);
+}
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides h1 {
+  text-shadow: 0 2px 20px rgba(0, 0, 0, .26);
+}
+
+[data-theme="light"] .nv-detail-hero.nv-detail-hero-has-highlight-slides h1 {
+  color: #151619 !important;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, .44),
+    0 5px 22px rgba(255, 255, 255, .34) !important;
+}
+
+.nv-detail-hero.nv-detail-hero-has-highlight-slides p.line-clamp-3 {
+  color: var(--nv-text-secondary) !important;
 }
 
 .nv-detail-highlight-slide {
@@ -194,17 +226,17 @@
     background: linear-gradient(
       180deg,
       rgba(11, 9, 13, .08) 0%,
-      rgba(11, 9, 13, .02) 46%,
-      rgba(11, 9, 13, .52) 100%
+      rgba(11, 9, 13, .02) 42%,
+      rgba(11, 9, 13, .58) 100%
     );
   }
 
   [data-theme="light"] .nv-detail-highlight-slideshow::before {
     background: linear-gradient(
       180deg,
-      rgba(243, 240, 244, .08) 0%,
-      rgba(243, 240, 244, .02) 46%,
-      rgba(243, 240, 244, .52) 100%
+      rgba(247, 247, 245, .16) 0%,
+      rgba(247, 247, 245, .05) 40%,
+      rgba(247, 247, 245, .66) 100%
     );
   }
 
