@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Called before the user installs Nowen Video.
+# Docker application resources are prepared by fnOS App Center.
+
+exit 0
