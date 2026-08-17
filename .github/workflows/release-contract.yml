@@ -104,6 +104,9 @@ jobs:
           grep -Fq 'Nowen Video v${VERSION} 全渠道发版成功' scripts/release.sh
           grep -Fq 'auth.docker.io/token' scripts/dockerhub-auth-preflight.mjs
           grep -Fq "actions.includes('push')" scripts/dockerhub-auth-preflight.mjs
+          grep -Fq 'if length == 0 then empty' scripts/release-advanced.sh
+          grep -Fq '当前提交未触发，SKIP（后续正式候选门禁仍会执行）' scripts/release-advanced.sh
+          grep -Fq 'run_id" =~ ^[0-9]+$' scripts/release-advanced.sh
           grep -Fq 'FPK_IMAGE_TAG="v${VERSION}"' scripts/release.sh
           grep -Fq 'nowen-video-android-${VERSION}.apk' scripts/release.sh
           grep -Fq 'nowen-video-${VERSION}.fpk' scripts/release.sh
