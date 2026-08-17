@@ -18,11 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items as lazyItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -209,8 +207,8 @@ fun PagedFavoritesScreen(
                 }
             }
 
-            gridItems(favorites.itemCount) { index ->
-                val favorite = favorites[index] ?: return@gridItems
+            items(count = favorites.itemCount) { index ->
+                val favorite = favorites[index] ?: return@items
                 val media = favorite.media
                 val mediaId = favorite.mediaId.ifBlank { media.resolvedId }
                 FavoriteWorkspaceCard(
@@ -306,8 +304,8 @@ fun PagedHistoryScreen(
                 }
             }
 
-            lazyItems(historyItems.itemCount) { index ->
-                val history = historyItems[index] ?: return@lazyItems
+            items(count = historyItems.itemCount) { index ->
+                val history = historyItems[index] ?: return@items
                 val media = history.media
                 val mediaId = history.mediaId.ifBlank { media.resolvedId }
                 HistoryWorkspaceCard(
