@@ -260,7 +260,10 @@ fun SeriesDetailScreen(
                     when (tabs[selectedTab]) {
                         SeriesDetailTab.Episodes -> {
                             item {
-                                DetailSection("观看进度", "回到上次播放位置，或继续下一集") {
+                                DetailSection(
+                                    title = "观看进度",
+                                    subtitle = "回到上次播放位置，或继续下一集",
+                                ) {
                                     DetailInfoPanel(
                                         listOfNotNull(
                                             "观看进度" to "${state.watchedCount} / ${state.orderedEpisodes.size} 集",
