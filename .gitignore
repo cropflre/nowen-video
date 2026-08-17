@@ -2,6 +2,7 @@
 bin/
 dist/
 dist-fpk/
+dist-release/
 fnpack
 fnpack.exe
 fnpack-*
