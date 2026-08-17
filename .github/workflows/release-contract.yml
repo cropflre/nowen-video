@@ -60,6 +60,14 @@ jobs:
           test -f scripts/fpk/template/manifest
           test -f scripts/fpk/template/config/privilege
           test -f scripts/fpk/template/config/resource
+          for hook in \
+            install_init install_callback \
+            upgrade_init upgrade_callback \
+            uninstall_init uninstall_callback \
+            config_init config_callback; do
+            test -f "scripts/fpk/template/cmd/${hook}"
+            grep -Fq 'exit 0' "scripts/fpk/template/cmd/${hook}"
+          done
           grep -Fq 'version               = {{VERSION}}' scripts/fpk/template/manifest
           grep -Fq 'image: {{DOCKERHUB_REPO}}:{{IMAGE_TAG}}' scripts/fpk/template/app/docker/docker-compose.yaml
           grep -Fq 'nowen-video/data:/data' scripts/fpk/template/app/docker/docker-compose.yaml
@@ -68,6 +76,19 @@ jobs:
           grep -Fq "FNPACK_TOOL_VERSION = process.env.FNPACK_TOOL_VERSION || '1.2.3'" scripts/fpk/build-fpk.mjs
           grep -Fq "FNPACK_OFFICIAL_BASE_URL = 'https://static2.fnnas.com/fnpack'" scripts/fpk/build-fpk.mjs
           grep -Fq "execFileSync(fnpack, ['build', '--directory', work]" scripts/fpk/build-fpk.mjs
+
+      - name: Smoke build fnOS package with official fnpack
+        env:
+          FPK_VERSION: 9.9.9
+          FPK_IMAGE_TAG: v9.9.9
+          FPK_OUT_DIR: /tmp/nowen-video-fpk-smoke
+          DOCKERHUB_REPO: cropflre/nowen-video
+        run: |
+          set -euo pipefail
+          node scripts/fpk/build-fpk.mjs
+          test -s /tmp/nowen-video-fpk-smoke/nowen-video-9.9.9.fpk
+          test -s /tmp/nowen-video-fpk-smoke/SHA256SUMS-fpk.txt
+          sha256sum -c /tmp/nowen-video-fpk-smoke/SHA256SUMS-fpk.txt --ignore-missing
 
       - name: Validate strict release gating invariants
         shell: bash
