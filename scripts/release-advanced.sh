@@ -290,15 +290,22 @@ check_android_secret_names() {
 check_workflow_for_commit() {
     local workflow="$1" label="$2" required="$3" line run_id status conclusion url
     line="$(gh run list --repo "$GITHUB_REPO" --workflow "$workflow" --commit "$GIT_SHA" --event push --limit 1 \
-        --json databaseId,status,conclusion,url --jq '.[0] | [.databaseId, .status, (.conclusion // ""), .url] | @tsv' 2>/dev/null || true)"
-    if [ -z "$line" ]; then
+        --json databaseId,status,conclusion,url \
+        --jq 'if length == 0 then empty else .[0] | [.databaseId, .status, (.conclusion // ""), (.url // "")] | @tsv end' \
+        2>/dev/null || true)"
+    if [ -z "${line//[$'\t\r\n ']/}" ]; then
         [ "$required" = "1" ] && die "未找到 ${label} 对 ${GIT_SHORT_SHA} 的 CI 记录"
-        info "${label}: 当前提交未触发，跳过已有运行检查"
-        return
+        info "${label}: 当前提交未触发，SKIP（后续正式候选门禁仍会执行）"
+        return 0
     fi
     IFS=$'\t' read -r run_id status conclusion url <<EOF_RUN
 $line
 EOF_RUN
+    if ! [[ "$run_id" =~ ^[0-9]+$ ]]; then
+        [ "$required" = "1" ] && die "${label} 返回了无效 workflow run id: ${run_id:-empty}"
+        warn "${label}: 未获得有效 run id，SKIP（后续正式候选门禁仍会执行）"
+        return 0
+    fi
     if [ "$status" != "completed" ]; then
         info "${label}: 等待 run #${run_id}"
         gh run watch "$run_id" --repo "$GITHUB_REPO" --exit-status
