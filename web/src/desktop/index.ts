@@ -2,7 +2,7 @@
  * Nowen Video Desktop 2.0 平台入口。
  *
  * Desktop 只暴露平台能力、原生 Player Core、更新与服务器连接能力；
- * 不再向产品层暴露 Web/mpv 引擎决策器或技术型播放器切换提示。
+ * mpv 作为底层实现只存在 Rust Player Core 内部。
  */
 export { desktop } from './bridge'
 export type {
@@ -12,12 +12,12 @@ export type {
   PlatformInfo,
   UpdateInfo,
   PlayerStartResult,
-  MpvVideoInfo,
+  PlayerVideoInfo,
 } from './bridge'
 
 export { useDesktop } from './useDesktop'
-export { default as MpvEmbedPlayer, mpvControl } from './MpvEmbedPlayer'
-export type { MpvEmbedHandle } from './MpvEmbedPlayer'
+export { default as DesktopPlayer, desktopPlayerControl } from './DesktopPlayer'
+export type { DesktopPlayerHandle } from './DesktopPlayer'
 export { default as UpdateBanner } from './UpdateBanner'
 export { default as DesktopEventBinder } from './DesktopEventBinder'
 export { default as DesktopServerPicker } from './DesktopServerPicker'
