@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaApi, recommendApi, streamApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -9,8 +9,9 @@ import { formatProgress } from '@/utils/format'
 import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
-import { Button, EmptyState, Section, Tag } from '@/components/design-system'
-import { Play, Clock, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react'
+import { EmptyState, Section, Tag } from '@/components/design-system'
+import { MediaRail } from '@/ui'
+import { Play, Clock, Sparkles } from 'lucide-react'
 
 interface HomeData {
   recentItems: MixedItem[]
@@ -161,89 +162,6 @@ export default function HomePage() {
         />
       )}
     </div>
-  )
-}
-
-function MediaRail({
-  title,
-  ariaLabel,
-  itemCount,
-  children,
-}: {
-  title: ReactNode
-  ariaLabel: string
-  itemCount: number
-  children: ReactNode
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [canScrollLeft, setCanScrollLeft] = useState(false)
-  const [canScrollRight, setCanScrollRight] = useState(false)
-
-  const updateScrollState = useCallback(() => {
-    const element = scrollRef.current
-    if (!element) return
-    setCanScrollLeft(element.scrollLeft > 10)
-    setCanScrollRight(element.scrollLeft < element.scrollWidth - element.clientWidth - 10)
-  }, [])
-
-  useEffect(() => {
-    const element = scrollRef.current
-    if (!element) return
-    element.addEventListener('scroll', updateScrollState, { passive: true })
-    window.addEventListener('resize', updateScrollState)
-    const frame = window.requestAnimationFrame(updateScrollState)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      element.removeEventListener('scroll', updateScrollState)
-      window.removeEventListener('resize', updateScrollState)
-    }
-  }, [itemCount, updateScrollState])
-
-  const scroll = (direction: 'left' | 'right') => {
-    const element = scrollRef.current
-    if (!element) return
-    const amount = element.clientWidth * .78
-    element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
-  }
-
-  return (
-    <Section title={title}>
-      <div className="nv-home-rail relative">
-        {canScrollLeft && (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={() => scroll('left')}
-            className="nv-home-rail-arrow nv-home-rail-arrow-left absolute left-1 top-[42%] z-30 -translate-y-1/2 opacity-0"
-            aria-label={`${ariaLabel} 向左滚动`}
-          >
-            <ChevronLeft size={17} aria-hidden="true" />
-          </Button>
-        )}
-
-        <div
-          ref={scrollRef}
-          className="nv-home-media-rail scrollbar-hide flex gap-[var(--nv-grid-gap-x)] overflow-x-auto scroll-smooth pb-3 pt-1"
-          aria-label={ariaLabel}
-        >
-          {children}
-        </div>
-
-        {canScrollRight && (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={() => scroll('right')}
-            className="nv-home-rail-arrow nv-home-rail-arrow-right absolute right-1 top-[42%] z-30 -translate-y-1/2 opacity-0"
-            aria-label={`${ariaLabel} 向右滚动`}
-          >
-            <ChevronRight size={17} aria-hidden="true" />
-          </Button>
-        )}
-      </div>
-    </Section>
   )
 }
 
