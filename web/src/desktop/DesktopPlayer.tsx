@@ -66,6 +66,20 @@ function DesktopPlayerInner(
     [sessionId],
   )
 
+  const applyVideoInfo = useCallback((info: PlayerVideoInfo, event = 'state') => {
+    setVideoInfo(info)
+    setPaused(info.paused)
+    setMuted(info.mute)
+    setVolume(info.volume)
+
+    const store = usePlayerStore.getState()
+    store.setCurrentTime(info.position)
+    store.setDuration(info.duration)
+    store.setPlaying(event === 'end-file' ? false : !info.paused)
+    store.setMuted(info.mute)
+    store.setVolume(Math.max(0, Math.min(1, info.volume / 100)))
+  }, [])
+
   useImperativeHandle(ref, (): DesktopPlayerHandle => ({
     async play() {
       await setProperty('pause', 'no')
@@ -176,35 +190,35 @@ function DesktopPlayerInner(
     }
   }, [ready])
 
-  // Render/事件泵接入前的单点兼容同步。业务状态只在这一处读取 Player Core 快照。
+  // Player Core 事件驱动状态同步：启动时读取一次缓存快照，之后只消费 player-state。
   useEffect(() => {
     if (!ready || !desktop.isDesktop) return
-    let canceled = false
+    let active = true
+    let unlisten: (() => void) | undefined
 
-    const tick = async () => {
-      const info = await desktop.playerVideoInfo(sessionId)
-      if (!info || canceled) return
+    ;(async () => {
+      unlisten = await desktop.onPlayerState((event) => {
+        if (!active || event.session_id !== sessionId) return
+        applyVideoInfo(event.state, event.event)
+      })
 
-      setVideoInfo(info)
-      setPaused(info.paused)
-      setMuted(info.mute)
-      setVolume(info.volume)
+      if (!active) {
+        unlisten()
+        return
+      }
 
-      const store = usePlayerStore.getState()
-      store.setCurrentTime(info.position)
-      store.setDuration(info.duration)
-      store.setPlaying(!info.paused)
-      store.setMuted(info.mute)
-      store.setVolume(Math.max(0, Math.min(1, info.volume / 100)))
-    }
+      // 监听建立后再读一次快照，补齐订阅建立前可能已发生的初始属性事件。
+      const bootstrap = await desktop.playerVideoInfo(sessionId)
+      if (active && bootstrap) applyVideoInfo(bootstrap, 'bootstrap')
+    })().catch((cause) => {
+      console.warn('[desktop] Player Core 状态订阅失败:', cause)
+    })
 
-    tick()
-    const timer = window.setInterval(tick, 750)
     return () => {
-      canceled = true
-      window.clearInterval(timer)
+      active = false
+      unlisten?.()
     }
-  }, [ready, sessionId])
+  }, [applyVideoInfo, ready, sessionId])
 
   const resetHideTimer = useCallback(() => {
     setControlsVisible(true)
