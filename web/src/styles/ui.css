@@ -1,0 +1,9 @@
+/* Nowen UI 2.0 · Stable application UI entrypoint
+ *
+ * New shared UI styles must be reachable from this file. Historical page CSS is
+ * intentionally kept outside this entrypoint in legacy-ui-*.css so it can be
+ * retired without touching the application bootstrap again.
+ */
+
+@import './ui-primitives.css';
+@import './ui-system.css';
