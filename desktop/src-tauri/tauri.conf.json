@@ -1,7 +1,6 @@
-
 {
   "$schema": "https://schema.tauri.app/config/2.0",
-  "productName": "nowen-video",
+  "productName": "Nowen Video",
   "version": "1.2.5",
   "identifier": "com.nowen.video.desktop",
   "build": {
@@ -14,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "nowen-video",
+        "title": "Nowen Video",
         "width": 1400,
         "height": 900,
         "minWidth": 1024,
@@ -29,16 +28,12 @@
       }
     ],
     "security": {
-      "csp": null,
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["**"]
-      }
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; connect-src 'self' ipc: http://ipc.localhost http: https: ws: wss:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'"
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true,
-      "tooltip": "nowen-video"
+      "tooltip": "Nowen Video"
     }
   },
   "bundle": {
@@ -63,14 +58,14 @@
     "fileAssociations": [
       {
         "ext": ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "ts", "m2ts", "rmvb", "m4v"],
-        "name": "Video File",
-        "description": "nowen-video 支持的视频文件",
+        "name": "Nowen Video",
+        "description": "Nowen Video 支持的视频文件",
         "role": "Viewer"
       }
     ],
     "category": "Entertainment",
-    "shortDescription": "原画原音观影体验",
-    "longDescription": "nowen-video 桌面客户端 —— 基于 Tauri 2.0 + libmpv，支持 4K / HEVC / HDR / DV / Atmos 零转码播放。",
+    "shortDescription": "Nowen Video 桌面媒体中心",
+    "longDescription": "Nowen Video Desktop 2.0 —— 基于 Tauri 2、Go Media Core 与 libmpv 的本地优先桌面媒体中心。",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
@@ -96,7 +91,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/your-org/nowen-video/releases/latest/download/latest.json"
+        "https://github.com/cropflre/nowen-video/releases/latest/download/latest.json"
       ],
       "pubkey": "",
       "dialog": false
@@ -108,4 +103,3 @@
     }
   }
 }
-
