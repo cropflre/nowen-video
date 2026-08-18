@@ -1,0 +1,82 @@
+name: Desktop CI
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/server-lite-v1
+    paths:
+      - 'desktop/**'
+      - 'web/src/desktop/**'
+      - 'web/src/api/mediaAnalysis.ts'
+      - 'web/src/App.tsx'
+      - 'internal/service/media_analysis_worker*.go'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop-ci.yml'
+      - '.github/workflows/release-desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'web/src/desktop/**'
+      - 'web/src/api/mediaAnalysis.ts'
+      - 'web/src/App.tsx'
+      - 'internal/service/media_analysis_worker*.go'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop-ci.yml'
+      - '.github/workflows/release-desktop.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-check:
+    name: Windows Tauri + libmpv compile
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Cache libmpv resource
+        uses: actions/cache@v4
+        id: mpv-cache
+        with:
+          path: desktop/src-tauri/resources/mpv
+          key: desktop-ci-mpv-${{ hashFiles('scripts/fetch-assets.ps1') }}
+
+      - name: Fetch libmpv only
+        if: steps.mpv-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./scripts/fetch-assets.ps1 -Skip 'yt-dlp;shaders;fonts'
+
+      - name: Verify libmpv resource
+        shell: pwsh
+        run: |
+          $dll = 'desktop/src-tauri/resources/mpv/libmpv-2.dll'
+          if (-not (Test-Path $dll)) {
+            throw "Desktop CI 缺少 libmpv-2.dll: $dll"
+          }
+          Get-Item $dll | Format-List FullName,Length,LastWriteTime
+
+      - name: Compile desktop Rust contract
+        shell: pwsh
+        run: cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Verify highlight compute source contract
+        shell: pwsh
+        run: |
+          $source = Get-Content 'desktop/src-tauri/src/highlight_compute.rs' -Raw
+          if ($source -notmatch 'highlight_capture_frame') { throw '缺少 highlight_capture_frame 命令' }
+          if ($source -notmatch 'vo-image-format", "webp') { throw '桌面精彩片段必须输出 WebP' }
+          if ($source -notmatch 'hwdec", "auto-copy') { throw '桌面精彩片段必须保留安全硬解回拷模式' }
+          if ($source -notmatch 'frames", 1_i64') { throw '桌面精彩片段必须限制单次只抽取一帧' }
