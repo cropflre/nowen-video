@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMediaAnalysisExecutionModes(t *testing.T) {
 	for _, mode := range []string{
@@ -20,39 +23,39 @@ func TestMediaAnalysisExecutionModes(t *testing.T) {
 
 func TestMediaAnalysisWorkerEligibility(t *testing.T) {
 	cases := []struct {
-		name string
+		name  string
 		input MediaAnalysisWorkerHeartbeat
-		want bool
+		want  bool
 	}{
 		{
-			name: "安卓充电并使用无线网络",
+			name:  "安卓充电并使用无线网络",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "android", Network: "wifi", Charging: true, BatteryPercent: 10, Capabilities: []string{"highlight_v1"}},
-			want: true,
+			want:  true,
 		},
 		{
-			name: "安卓电量充足并使用无线网络",
+			name:  "安卓电量充足并使用无线网络",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "android", Network: "wifi", BatteryPercent: 60, Capabilities: []string{"highlight_v1"}},
-			want: true,
+			want:  true,
 		},
 		{
-			name: "安卓低电量不参与",
+			name:  "安卓低电量不参与",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "android", Network: "wifi", BatteryPercent: 20, Capabilities: []string{"highlight_v1"}},
-			want: false,
+			want:  false,
 		},
 		{
-			name: "安卓移动网络不参与",
+			name:  "安卓移动网络不参与",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "android", Network: "cellular", Charging: true, BatteryPercent: 100, Capabilities: []string{"highlight_v1"}},
-			want: false,
+			want:  false,
 		},
 		{
-			name: "桌面节点可参与",
+			name:  "桌面节点可参与",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "desktop", Capabilities: []string{"highlight_v1"}},
-			want: true,
+			want:  true,
 		},
 		{
-			name: "缺少能力声明不参与",
+			name:  "缺少能力声明不参与",
 			input: MediaAnalysisWorkerHeartbeat{Kind: "desktop"},
-			want: false,
+			want:  false,
 		},
 	}
 	for _, tc := range cases {
@@ -61,6 +64,46 @@ func TestMediaAnalysisWorkerEligibility(t *testing.T) {
 				t.Fatalf("workerEligible() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPreferredDesktopWorkerSelection(t *testing.T) {
+	now := time.Now()
+	eligibleDesktop := MediaAnalysisWorkerView{
+		MediaAnalysisWorkerHeartbeat: MediaAnalysisWorkerHeartbeat{
+			WorkerID:     "desktop-1",
+			Kind:         "desktop",
+			Capabilities: []string{"highlight_v1"},
+		},
+		LastSeen: now,
+		State:    "idle",
+	}
+
+	state := &mediaAnalysisWorkerState{workers: map[string]MediaAnalysisWorkerView{"desktop-1": eligibleDesktop}}
+	if !hasPreferredDesktopWorkerLocked(state, now, "android-1") {
+		t.Fatal("刚在线且空闲的桌面节点应优先于 Android")
+	}
+
+	busy := eligibleDesktop
+	busy.State = "busy"
+	state.workers["desktop-1"] = busy
+	if hasPreferredDesktopWorkerLocked(state, now, "android-1") {
+		t.Fatal("正在计算的桌面节点不应阻塞 Android")
+	}
+
+	stale := eligibleDesktop
+	stale.LastSeen = now.Add(-remoteDesktopPreferenceTTL - time.Second)
+	state.workers["desktop-1"] = stale
+	if hasPreferredDesktopWorkerLocked(state, now, "android-1") {
+		t.Fatal("过期桌面心跳不应阻塞 Android")
+	}
+
+	unavailable := eligibleDesktop
+	unavailable.State = "unavailable"
+	unavailable.Capabilities = nil
+	state.workers["desktop-1"] = unavailable
+	if hasPreferredDesktopWorkerLocked(state, now, "android-1") {
+		t.Fatal("不可用桌面节点不应阻塞 Android")
 	}
 }
 
