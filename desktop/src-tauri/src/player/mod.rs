@@ -6,6 +6,9 @@
 //! Player Core 的控制 handle 与状态事件 handle 相互独立：控制命令继续通过主 Mpv
 //! handle 执行；事件泵使用 `mpv_create_client` 创建独立 client，专门消费
 //! `observe_property` / `mpv_wait_event`，避免事件队列与同步控制互相干扰。
+//!
+//! 轨道和章节列表不参与高频状态事件。它们通过 mpv 的标量子属性按需读取，
+//! 只在文件加载、轨道变化、章节变化以及用户主动切换时刷新。
 
 pub mod surface;
 
@@ -111,6 +114,16 @@ impl PlayerManager {
     }
 
     #[cfg(feature = "embed-mpv")]
+    pub fn media_info(&self, session_id: &str) -> Result<PlayerMediaInfo> {
+        Ok(self.session(session_id)?.media_info())
+    }
+
+    #[cfg(not(feature = "embed-mpv"))]
+    pub fn media_info(&self, _session_id: &str) -> Result<PlayerMediaInfo> {
+        Err(anyhow!("当前构建未启用 Desktop Player Core"))
+    }
+
+    #[cfg(feature = "embed-mpv")]
     fn session(&self, session_id: &str) -> Result<&native::NativePlayer> {
         self.sessions
             .get(session_id)
@@ -138,6 +151,34 @@ pub struct PlayOptions {
     pub user_agent: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct PlayerTrack {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub language: String,
+    pub codec: String,
+    pub codec_desc: String,
+    pub selected: bool,
+    pub is_default: bool,
+    pub forced: bool,
+    pub external: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct PlayerChapter {
+    pub index: i64,
+    pub title: String,
+    pub time: f64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct PlayerMediaInfo {
+    pub tracks: Vec<PlayerTrack>,
+    pub chapters: Vec<PlayerChapter>,
+    pub current_chapter: i64,
+}
+
 #[cfg(feature = "embed-mpv")]
 pub type PlayerVideoInfo = native::VideoInfo;
 
@@ -161,7 +202,7 @@ pub struct PlayerVideoInfo {
 
 #[cfg(feature = "embed-mpv")]
 mod native {
-    use super::PlayOptions;
+    use super::{PlayOptions, PlayerChapter, PlayerMediaInfo, PlayerTrack};
     use anyhow::{anyhow, Result};
     use libmpv2::Mpv;
     use libmpv2_sys as sys;
@@ -188,6 +229,11 @@ mod native {
     const OBS_PRIMARIES: u64 = 11;
     const OBS_GAMMA: u64 = 12;
     const OBS_COLOR_MATRIX: u64 = 13;
+    const OBS_AUDIO_SELECTION: u64 = 14;
+    const OBS_SUB_SELECTION: u64 = 15;
+    const OBS_CHAPTER_SELECTION: u64 = 16;
+    const OBS_TRACK_LIST: u64 = 17;
+    const OBS_CHAPTER_LIST: u64 = 18;
 
     fn map_err<T>(
         result: std::result::Result<T, libmpv2::Error>,
@@ -333,6 +379,98 @@ mod native {
                 .map(|state| state.info.clone())
                 .unwrap_or_default()
         }
+
+        pub fn media_info(&self) -> PlayerMediaInfo {
+            let track_count = self
+                .mpv
+                .get_property::<i64>("track-list/count")
+                .unwrap_or(0)
+                .clamp(0, 256);
+            let mut tracks = Vec::with_capacity(track_count as usize);
+
+            for index in 0..track_count {
+                let prefix = format!("track-list/{index}");
+                let kind = self
+                    .mpv
+                    .get_property::<String>(&format!("{prefix}/type"))
+                    .unwrap_or_default();
+                if kind.is_empty() {
+                    continue;
+                }
+
+                tracks.push(PlayerTrack {
+                    id: self
+                        .mpv
+                        .get_property::<i64>(&format!("{prefix}/id"))
+                        .unwrap_or(0),
+                    kind,
+                    title: self
+                        .mpv
+                        .get_property::<String>(&format!("{prefix}/title"))
+                        .unwrap_or_default(),
+                    language: self
+                        .mpv
+                        .get_property::<String>(&format!("{prefix}/lang"))
+                        .unwrap_or_default(),
+                    codec: self
+                        .mpv
+                        .get_property::<String>(&format!("{prefix}/codec"))
+                        .unwrap_or_default(),
+                    codec_desc: self
+                        .mpv
+                        .get_property::<String>(&format!("{prefix}/codec-desc"))
+                        .unwrap_or_default(),
+                    selected: self
+                        .mpv
+                        .get_property::<bool>(&format!("{prefix}/selected"))
+                        .unwrap_or(false),
+                    is_default: self
+                        .mpv
+                        .get_property::<bool>(&format!("{prefix}/default"))
+                        .unwrap_or(false),
+                    forced: self
+                        .mpv
+                        .get_property::<bool>(&format!("{prefix}/forced"))
+                        .unwrap_or(false),
+                    external: self
+                        .mpv
+                        .get_property::<bool>(&format!("{prefix}/external"))
+                        .unwrap_or(false),
+                });
+            }
+
+            let chapter_count = self
+                .mpv
+                .get_property::<i64>("chapter-list/count")
+                .unwrap_or(0)
+                .clamp(0, 4096);
+            let mut chapters = Vec::with_capacity(chapter_count as usize);
+            for index in 0..chapter_count {
+                let prefix = format!("chapter-list/{index}");
+                let title = self
+                    .mpv
+                    .get_property::<String>(&format!("{prefix}/title"))
+                    .unwrap_or_else(|_| format!("章节 {}", index + 1));
+                chapters.push(PlayerChapter {
+                    index,
+                    title: if title.trim().is_empty() {
+                        format!("章节 {}", index + 1)
+                    } else {
+                        title
+                    },
+                    time: self
+                        .mpv
+                        .get_property::<f64>(&format!("{prefix}/time"))
+                        .unwrap_or(0.0),
+                });
+            }
+
+            PlayerMediaInfo {
+                tracks,
+                chapters,
+                current_chapter: self.mpv.get_property::<i64>("chapter").unwrap_or(-1),
+            }
+        }
     }
 
     impl Drop for NativePlayer {
@@ -429,7 +567,12 @@ mod native {
             match event.event_id {
                 sys::mpv_event_id_MPV_EVENT_NONE => {}
                 sys::mpv_event_id_MPV_EVENT_PROPERTY_CHANGE => {
-                    if event.error >= 0 && apply_property_change(event.reply_userdata, event.data, &state) {
+                    if is_media_info_observation(event.reply_userdata) {
+                        dirty = true;
+                        event_kind = "media-info-change";
+                    } else if event.error >= 0
+                        && apply_property_change(event.reply_userdata, event.data, &state)
+                    {
                         dirty = true;
                         event_kind = "state";
                     }
@@ -459,7 +602,11 @@ mod native {
             }
 
             let force_emit = event_kind != "state";
-            if dirty && (force_emit || last_emit.elapsed() >= emit_interval || event.event_id == sys::mpv_event_id_MPV_EVENT_NONE) {
+            if dirty
+                && (force_emit
+                    || last_emit.elapsed() >= emit_interval
+                    || event.event_id == sys::mpv_event_id_MPV_EVENT_NONE)
+            {
                 emit_state(&app, &session_id, event_kind, &state);
                 dirty = false;
                 event_kind = "state";
@@ -483,10 +630,35 @@ mod native {
             (OBS_HEIGHT, "video-params/h", sys::mpv_format_MPV_FORMAT_INT64),
             (OBS_CODEC, "video-codec-name", sys::mpv_format_MPV_FORMAT_STRING),
             (OBS_CONTAINER, "file-format", sys::mpv_format_MPV_FORMAT_STRING),
-            (OBS_PIXEL_FORMAT, "video-params/pixelformat", sys::mpv_format_MPV_FORMAT_STRING),
-            (OBS_PRIMARIES, "video-params/primaries", sys::mpv_format_MPV_FORMAT_STRING),
+            (
+                OBS_PIXEL_FORMAT,
+                "video-params/pixelformat",
+                sys::mpv_format_MPV_FORMAT_STRING,
+            ),
+            (
+                OBS_PRIMARIES,
+                "video-params/primaries",
+                sys::mpv_format_MPV_FORMAT_STRING,
+            ),
             (OBS_GAMMA, "video-params/gamma", sys::mpv_format_MPV_FORMAT_STRING),
-            (OBS_COLOR_MATRIX, "video-params/colormatrix", sys::mpv_format_MPV_FORMAT_STRING),
+            (
+                OBS_COLOR_MATRIX,
+                "video-params/colormatrix",
+                sys::mpv_format_MPV_FORMAT_STRING,
+            ),
+            (OBS_AUDIO_SELECTION, "aid", sys::mpv_format_MPV_FORMAT_NONE),
+            (OBS_SUB_SELECTION, "sid", sys::mpv_format_MPV_FORMAT_NONE),
+            (
+                OBS_CHAPTER_SELECTION,
+                "chapter",
+                sys::mpv_format_MPV_FORMAT_NONE,
+            ),
+            (OBS_TRACK_LIST, "track-list", sys::mpv_format_MPV_FORMAT_NONE),
+            (
+                OBS_CHAPTER_LIST,
+                "chapter-list",
+                sys::mpv_format_MPV_FORMAT_NONE,
+            ),
         ];
 
         for (id, name, format) in observations {
@@ -498,6 +670,17 @@ mod native {
                 log::warn!("订阅 Player Core 属性失败: {} ({})", name, result);
             }
         }
+    }
+
+    fn is_media_info_observation(id: u64) -> bool {
+        matches!(
+            id,
+            OBS_AUDIO_SELECTION
+                | OBS_SUB_SELECTION
+                | OBS_CHAPTER_SELECTION
+                | OBS_TRACK_LIST
+                | OBS_CHAPTER_LIST
+        )
     }
 
     fn apply_property_change(
@@ -518,19 +701,44 @@ mod native {
         };
 
         match id {
-            OBS_POSITION => current.info.position = unsafe { read_double(property.data) }.unwrap_or(0.0),
-            OBS_DURATION => current.info.duration = unsafe { read_double(property.data) }.unwrap_or(0.0),
-            OBS_PAUSE => current.info.paused = unsafe { read_flag(property.data) }.unwrap_or(false),
-            OBS_VOLUME => current.info.volume = unsafe { read_double(property.data) }.unwrap_or(0.0),
+            OBS_POSITION => {
+                current.info.position = unsafe { read_double(property.data) }.unwrap_or(0.0)
+            }
+            OBS_DURATION => {
+                current.info.duration = unsafe { read_double(property.data) }.unwrap_or(0.0)
+            }
+            OBS_PAUSE => {
+                current.info.paused = unsafe { read_flag(property.data) }.unwrap_or(false)
+            }
+            OBS_VOLUME => {
+                current.info.volume = unsafe { read_double(property.data) }.unwrap_or(0.0)
+            }
             OBS_MUTE => current.info.mute = unsafe { read_flag(property.data) }.unwrap_or(false),
-            OBS_WIDTH => current.info.width = unsafe { read_i64(property.data) }.unwrap_or(0).max(0) as u32,
-            OBS_HEIGHT => current.info.height = unsafe { read_i64(property.data) }.unwrap_or(0).max(0) as u32,
-            OBS_CODEC => current.info.codec = unsafe { read_string(property.data) }.unwrap_or_default(),
-            OBS_CONTAINER => current.info.container = unsafe { read_string(property.data) }.unwrap_or_default(),
-            OBS_PIXEL_FORMAT => current.info.pixel_format = unsafe { read_string(property.data) }.unwrap_or_default(),
-            OBS_PRIMARIES => current.info.primaries = unsafe { read_string(property.data) }.unwrap_or_default(),
-            OBS_GAMMA => current.info.gamma = unsafe { read_string(property.data) }.unwrap_or_default(),
-            OBS_COLOR_MATRIX => current.color_matrix = unsafe { read_string(property.data) }.unwrap_or_default(),
+            OBS_WIDTH => {
+                current.info.width = unsafe { read_i64(property.data) }.unwrap_or(0).max(0) as u32
+            }
+            OBS_HEIGHT => {
+                current.info.height = unsafe { read_i64(property.data) }.unwrap_or(0).max(0) as u32
+            }
+            OBS_CODEC => {
+                current.info.codec = unsafe { read_string(property.data) }.unwrap_or_default()
+            }
+            OBS_CONTAINER => {
+                current.info.container = unsafe { read_string(property.data) }.unwrap_or_default()
+            }
+            OBS_PIXEL_FORMAT => {
+                current.info.pixel_format =
+                    unsafe { read_string(property.data) }.unwrap_or_default()
+            }
+            OBS_PRIMARIES => {
+                current.info.primaries = unsafe { read_string(property.data) }.unwrap_or_default()
+            }
+            OBS_GAMMA => {
+                current.info.gamma = unsafe { read_string(property.data) }.unwrap_or_default()
+            }
+            OBS_COLOR_MATRIX => {
+                current.color_matrix = unsafe { read_string(property.data) }.unwrap_or_default()
+            }
             _ => return false,
         }
 
