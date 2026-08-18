@@ -33,6 +33,7 @@ func main() {
 	if err := applyRuntimePortOverride(cfg); err != nil {
 		log.Fatalf("应用运行端口失败: %v", err)
 	}
+	desktopRuntime := isDesktopRuntime()
 
 	logger, _ := zap.NewProduction()
 	if cfg.App.Debug {
@@ -49,7 +50,6 @@ func main() {
 	repos := repository.NewRepositories(db)
 	services := service.NewLiteServices(repos, cfg, sugar)
 	playbackSessions, err := service.NewPlaybackSessionServiceWithExecution(
-
 		repos.Media,
 		services.MediaExecution,
 		cfg,
@@ -67,11 +67,18 @@ func main() {
 
 	router := buildRouter(cfg, services, playbackSessions, handlers, repos, appVer, sugar)
 	mdnsService := service.NewMdnsService(cfg.Emby.ServerName, cfg.App.Port, appVer, sugar)
-	if err := mdnsService.Start(); err != nil {
-		sugar.Warnf("mDNS 服务发现启动失败（可忽略）: %v", err)
+	if !desktopRuntime {
+		if err := mdnsService.Start(); err != nil {
+			sugar.Warnf("mDNS 服务发现启动失败（可忽略）: %v", err)
+		}
+	} else {
+		sugar.Info("Desktop Runtime 已禁用 mDNS 服务发现")
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
+	if desktopRuntime {
+		addr = fmt.Sprintf("127.0.0.1:%d", cfg.App.Port)
+	}
 	srv := &http.Server{Addr: addr, Handler: router}
 	go func() {
 		sugar.Infof("nowen-video 启动于 %s", addr)
@@ -85,7 +92,9 @@ func main() {
 	<-quit
 	signal.Stop(quit)
 	sugar.Info("正在关闭 nowen-video...")
-	mdnsService.Stop()
+	if !desktopRuntime {
+		mdnsService.Stop()
+	}
 
 	// Stop accepting new API requests first, so no new playback session can
 	// race with shutdown. Persistent Runtime submissions are permanently retired.
@@ -115,6 +124,10 @@ func main() {
 	transcodeCancel()
 
 	sugar.Info("nowen-video 已优雅关闭")
+}
+
+func isDesktopRuntime() bool {
+	return strings.TrimSpace(os.Getenv("NOWEN_DESKTOP_RUNTIME")) == "1"
 }
 
 // applyRuntimePortOverride restores the documented precedence for development
