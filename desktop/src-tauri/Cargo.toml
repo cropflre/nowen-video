@@ -40,11 +40,10 @@ thiserror = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 
 sysinfo = "0.31"
-which = "6.0"
 dirs = "5.0"
 url = "2.5"
 
-# Desktop 2.0 正式播放器核心。当前 FFI 嵌入实现会在 Player Core 阶段继续收敛。
+# Desktop 2.0 唯一正式播放器核心。
 libmpv2 = { version = "4.1", optional = true }
 
 window-vibrancy = "0.5"
