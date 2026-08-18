@@ -73,8 +73,10 @@ func (h *MediaAnalysisHandler) UpdateWorkerConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"execution_mode": h.analysis.ExecutionMode()}})
 }
 
+// Workers 继续沿用历史 URL，但响应已经升级为 Media Compute Node V2 节点视图。
+// 这样管理台和已发布客户端不需要同时迁移路由，协议可以先稳定下来。
 func (h *MediaAnalysisHandler) Workers(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"data": h.analysis.Workers()})
+	c.JSON(http.StatusOK, gin.H{"data": h.analysis.ComputeNodes()})
 }
 
 func (h *MediaAnalysisHandler) WorkerHeartbeat(c *gin.Context) {
@@ -83,16 +85,18 @@ func (h *MediaAnalysisHandler) WorkerHeartbeat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "worker_id 不能为空"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": h.analysis.HeartbeatWorker(request)})
+	c.JSON(http.StatusOK, gin.H{"data": h.analysis.HeartbeatComputeNode(request)})
 }
 
+// WorkerClaim 是 V2 任务信封入口。当前 URL 为兼容旧客户端暂不改名；
+// V2 响应同时携带 job_type/input 和 V1 扁平字段。
 func (h *MediaAnalysisHandler) WorkerClaim(c *gin.Context) {
 	var request service.MediaAnalysisWorkerClaimRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.WorkerID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "计算节点参数无效"})
 		return
 	}
-	claim, err := h.analysis.ClaimWorkerTask(request)
+	claim, err := h.analysis.ClaimComputeTask(request)
 	if errors.Is(err, service.ErrMediaAnalysisWorkerNoTask) {
 		c.Status(http.StatusNoContent)
 		return

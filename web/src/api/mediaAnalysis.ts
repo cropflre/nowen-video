@@ -1,5 +1,8 @@
 import api from './client'
 
+export const MEDIA_COMPUTE_PROTOCOL_VERSION = 2
+export const MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = 'highlight_v1'
+
 export interface MediaHighlight {
   id: string
   media_id: string
@@ -54,14 +57,14 @@ export interface MediaAnalysisWorkerHeartbeat {
 }
 
 export interface MediaAnalysisWorker extends MediaAnalysisWorkerHeartbeat {
+  client_protocol_version?: number
   last_seen: string
   state: 'idle' | 'busy' | 'unavailable' | string
   task_id?: string
+  current_job_type?: string
 }
 
-export interface MediaAnalysisWorkerClaim {
-  task_id: string
-  claim_token: string
+export interface MediaComputeHighlightInput {
   media_id: string
   fingerprint: string
   duration: number
@@ -69,8 +72,31 @@ export interface MediaAnalysisWorkerClaim {
   sample_times: number[]
   max_highlights: number
   engine_version: number
-  lease_expires_at: string
 }
+
+export interface MediaAnalysisWorkerClaim {
+  // Media Compute Node V2 envelope.
+  protocol_version?: number
+  job_type?: string
+  required_capability?: string
+  input?: MediaComputeHighlightInput
+
+  task_id: string
+  claim_token: string
+  lease_expires_at: string
+
+  // V1 compatibility fields. The server intentionally keeps them while released
+  // Android/Desktop clients migrate to the V2 input envelope.
+  media_id: string
+  fingerprint: string
+  duration: number
+  stream_url: string
+  sample_times: number[]
+  max_highlights: number
+  engine_version: number
+}
+
+export type MediaComputeTaskClaim = MediaAnalysisWorkerClaim
 
 export interface MediaAnalysisWorkerProgress {
   claim_token: string
@@ -126,8 +152,10 @@ export const mediaAnalysisApi = {
   heartbeatWorker: (heartbeat: MediaAnalysisWorkerHeartbeat) =>
     api.post<{ data: MediaAnalysisWorker }>('/media-analysis/workers/heartbeat', heartbeat),
 
+  // The historical URL is intentionally retained as a compatibility transport.
+  // Its response is already a Media Compute Node V2 task envelope.
   claimWorkerTask: (heartbeat: MediaAnalysisWorkerHeartbeat) =>
-    api.post<{ data?: MediaAnalysisWorkerClaim }>('/media-analysis/workers/claim', heartbeat),
+    api.post<{ data?: MediaComputeTaskClaim }>('/media-analysis/workers/claim', heartbeat),
 
   updateWorkerProgress: (taskId: string, progress: MediaAnalysisWorkerProgress) =>
     api.post<void>(`/media-analysis/workers/tasks/${taskId}/progress`, progress),

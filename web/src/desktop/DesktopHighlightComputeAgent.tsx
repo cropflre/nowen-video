@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
 import {
+  MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+  MEDIA_COMPUTE_PROTOCOL_VERSION,
   mediaAnalysisApi,
   type MediaAnalysisWorkerClaim,
   type MediaAnalysisWorkerHeartbeat,
   type MediaAnalysisWorkerResultItem,
+  type MediaComputeHighlightInput,
 } from '@/api/mediaAnalysis'
 import { useAuthStore } from '@/stores/auth'
 import { desktop, type HighlightCaptureFrameResult, type PlatformInfo } from './bridge'
@@ -47,7 +50,7 @@ function workerName(platform: PlatformInfo | null) {
 
 function workerVersion() {
   const appVersion = String(import.meta.env.VITE_APP_VERSION || '').trim()
-  return `desktop-v1/${appVersion || 'dev'}`
+  return `desktop-v${MEDIA_COMPUTE_PROTOCOL_VERSION}/${appVersion || 'dev'}`
 }
 
 function heartbeat(workerId: string, platform: PlatformInfo | null, available: boolean): MediaAnalysisWorkerHeartbeat {
@@ -56,7 +59,7 @@ function heartbeat(workerId: string, platform: PlatformInfo | null, available: b
     kind: 'desktop',
     name: workerName(platform),
     version: workerVersion(),
-    capabilities: available ? ['highlight_v1'] : [],
+    capabilities: available ? [MEDIA_COMPUTE_JOB_HIGHLIGHT_V1] : [],
     network: 'desktop',
     charging: false,
     battery_percent: 100,
@@ -68,9 +71,29 @@ function resolveStreamUrl(streamUrl: string) {
   const apiBase = new URL(rawApiBase, window.location.origin)
   const target = new URL(streamUrl, apiBase)
   if (target.origin !== apiBase.origin) {
-    throw new Error('服务器返回的精彩片段媒体流跨越了当前服务器源，已拒绝发送登录凭证')
+    throw new Error('服务器返回的媒体计算流跨越了当前服务器源，已拒绝发送登录凭证')
   }
   return target.toString()
+}
+
+function resolveHighlightInput(claim: MediaAnalysisWorkerClaim): MediaComputeHighlightInput {
+  const protocolVersion = claim.protocol_version ?? 1
+  const jobType = claim.job_type || MEDIA_COMPUTE_JOB_HIGHLIGHT_V1
+  if (protocolVersion >= MEDIA_COMPUTE_PROTOCOL_VERSION && jobType !== MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+    throw new Error(`桌面媒体计算节点暂不支持任务类型：${jobType}`)
+  }
+  if (claim.required_capability && claim.required_capability !== MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+    throw new Error(`桌面媒体计算节点缺少任务能力：${claim.required_capability}`)
+  }
+  return claim.input ?? {
+    media_id: claim.media_id,
+    fingerprint: claim.fingerprint,
+    duration: claim.duration,
+    stream_url: claim.stream_url,
+    sample_times: claim.sample_times,
+    max_highlights: claim.max_highlights,
+    engine_version: claim.engine_version,
+  }
 }
 
 function bytesFromBase64(value: string) {
@@ -179,22 +202,23 @@ function selectHighlights(samples: DesktopSample[], requestedLimit: number) {
 }
 
 async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
-  if (!Number.isFinite(claim.duration) || claim.duration <= 0 || claim.sample_times.length === 0) {
+  const input = resolveHighlightInput(claim)
+  if (!Number.isFinite(input.duration) || input.duration <= 0 || input.sample_times.length === 0) {
     throw new Error('服务器没有返回可用的桌面精彩片段采样计划')
   }
-  const streamUrl = resolveStreamUrl(claim.stream_url)
+  const streamUrl = resolveStreamUrl(input.stream_url)
   const samples: DesktopSample[] = []
 
-  for (let index = 0; index < claim.sample_times.length; index += 1) {
-    const time = claim.sample_times[index]
-    if (!Number.isFinite(time) || time < 0 || time > claim.duration + 1) continue
+  for (let index = 0; index < input.sample_times.length; index += 1) {
+    const time = input.sample_times[index]
+    if (!Number.isFinite(time) || time < 0 || time > input.duration + 1) continue
     const thumbnail = await captureThumbnail(streamUrl, token, time)
     const rawScore = await visualInformationScore(thumbnail)
     samples.push({ time, rawScore, normalizedScore: 5.5, thumbnail })
     await mediaAnalysisApi.updateWorkerProgress(claim.task_id, {
       claim_token: claim.claim_token,
       stage: 'client_sampling',
-      progress: 8 + 72 * (index + 1) / claim.sample_times.length,
+      progress: 8 + 72 * (index + 1) / input.sample_times.length,
     })
   }
 
@@ -203,7 +227,7 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
   }
 
   normalizeScores(samples)
-  const selected = selectHighlights(samples, claim.max_highlights)
+  const selected = selectHighlights(samples, input.max_highlights)
   if (selected.length === 0) {
     throw new Error('桌面客户端没有生成有效精彩片段候选')
   }
@@ -217,7 +241,7 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
 
   const highlights: MediaAnalysisWorkerResultItem[] = selected.map((sample) => {
     const start = Math.max(0, sample.time - 10)
-    const end = Math.min(claim.duration, start + 30)
+    const end = Math.min(input.duration, start + 30)
     if (end <= start) throw new Error('桌面客户端生成了无效精彩片段时间范围')
     return {
       start_time: start,
@@ -231,7 +255,7 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
 
   await mediaAnalysisApi.completeWorkerTask(claim.task_id, {
     claim_token: claim.claim_token,
-    fingerprint: claim.fingerprint,
+    fingerprint: input.fingerprint || claim.fingerprint,
     highlights,
   })
 }
@@ -239,14 +263,14 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message
   const responseMessage = (error as any)?.response?.data?.error
-  return typeof responseMessage === 'string' && responseMessage ? responseMessage : '桌面客户端精彩片段计算失败'
+  return typeof responseMessage === 'string' && responseMessage ? responseMessage : '桌面客户端媒体计算失败'
 }
 
 /**
- * 桌面精彩片段计算节点：
+ * Desktop Media Compute Node V2：
  * - 只在 Tauri + 管理员登录 + libmpv 可用时领取任务；
- * - 一次只处理一个任务；
- * - 播放页期间暂停领取新任务，避免后台分析与观影争抢解码资源；
+ * - 先按 job_type 分派，再读取任务 input；当前首个适配器为 highlight_v1；
+ * - 一次只处理一个任务，播放页期间暂停领取，避免后台计算与观影争抢解码资源；
  * - 计算结果继续由服务端执行租约、fingerprint 与图片安全校验。
  */
 export default function DesktopHighlightComputeAgent() {

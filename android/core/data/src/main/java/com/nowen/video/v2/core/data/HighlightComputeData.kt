@@ -51,6 +51,8 @@ private const val HIGHLIGHT_MIN_BATTERY_PERCENT = 40
 private const val HIGHLIGHT_MIN_SEPARATION_SECONDS = 45.0
 private const val HIGHLIGHT_THUMBNAIL_MAX_WIDTH = 640
 private const val HIGHLIGHT_THUMBNAIL_SOFT_LIMIT = 480 * 1024
+private const val MEDIA_COMPUTE_PROTOCOL_VERSION = 2
+private const val MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = "highlight_v1"
 
 @Serializable
 data class HighlightWorkerHeartbeat(
@@ -58,7 +60,7 @@ data class HighlightWorkerHeartbeat(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf("highlight_v1"),
+    val capabilities: List<String> = listOf(MEDIA_COMPUTE_JOB_HIGHLIGHT_V1),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
@@ -70,20 +72,36 @@ data class HighlightWorkerClaimRequest(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf("highlight_v1"),
+    val capabilities: List<String> = listOf(MEDIA_COMPUTE_JOB_HIGHLIGHT_V1),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
 )
 
 @Serializable
+data class MediaComputeHighlightInput(
+    @SerialName("media_id") val mediaId: String = "",
+    val fingerprint: String = "",
+    val duration: Double = 0.0,
+    @SerialName("stream_url") val streamUrl: String = "",
+    @SerialName("sample_times") val sampleTimes: List<Double> = emptyList(),
+    @SerialName("max_highlights") val maxHighlights: Int = 8,
+    @SerialName("engine_version") val engineVersion: Int = 3,
+)
+
+@Serializable
 data class HighlightWorkerClaim(
+    @SerialName("protocol_version") val protocolVersion: Int = 1,
+    @SerialName("job_type") val jobType: String = MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+    @SerialName("required_capability") val requiredCapability: String = MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
     @SerialName("task_id") val taskId: String,
     @SerialName("claim_token") val claimToken: String,
-    @SerialName("media_id") val mediaId: String,
-    val fingerprint: String,
-    val duration: Double,
-    @SerialName("stream_url") val streamUrl: String,
+    val input: MediaComputeHighlightInput? = null,
+    // V1 compatibility fields. V2 clients prefer input, while older servers still only return these.
+    @SerialName("media_id") val mediaId: String = "",
+    val fingerprint: String = "",
+    val duration: Double = 0.0,
+    @SerialName("stream_url") val streamUrl: String = "",
     @SerialName("sample_times") val sampleTimes: List<Double> = emptyList(),
     @SerialName("max_highlights") val maxHighlights: Int = 8,
     @SerialName("engine_version") val engineVersion: Int = 3,
@@ -121,6 +139,7 @@ data class HighlightWorkerFailure(
 )
 
 interface HighlightComputeApi {
+    // 历史 URL 作为兼容传输层继续保留；响应已升级为 Media Compute Node V2 task envelope。
     @POST("media-analysis/workers/claim")
     suspend fun claim(@Body request: HighlightWorkerClaimRequest): Response<ApiEnvelope<HighlightWorkerClaim>>
 
@@ -183,8 +202,8 @@ class HighlightComputeAgent @Inject constructor(
     }
 
     /**
-     * 仅在 Activity 前台生命周期内调用。循环本身不会创建后台常驻服务，
-     * 因此退出应用后不会继续耗电或偷偷占用移动数据。
+     * Media Compute Node V2 当前只在 Activity 前台生命周期内运行。
+     * 循环本身不会创建后台常驻服务，因此退出应用后不会继续耗电或偷偷占用移动数据。
      */
     suspend fun runForegroundLoop() {
         while (currentCoroutineContext().isActive) {
@@ -209,7 +228,7 @@ class HighlightComputeAgent @Inject constructor(
             val request = HighlightWorkerClaimRequest(
                 workerId = workerId,
                 name = androidWorkerName(),
-                version = "android-v1/${Build.VERSION.RELEASE}",
+                version = "android-v$MEDIA_COMPUTE_PROTOCOL_VERSION/${Build.VERSION.RELEASE}",
                 network = device.network,
                 charging = device.charging,
                 batteryPercent = device.batteryPercent,
@@ -242,9 +261,27 @@ class HighlightComputeAgent @Inject constructor(
                 }
                 throw cancelled
             } catch (error: Throwable) {
-                reportFailure(claim, error.message ?: "Android 客户端精彩片段计算失败")
+                reportFailure(claim, error.message ?: "Android 客户端媒体计算失败")
             }
         }
+    }
+
+    private fun resolveHighlightInput(claim: HighlightWorkerClaim): MediaComputeHighlightInput {
+        if (claim.protocolVersion >= MEDIA_COMPUTE_PROTOCOL_VERSION && claim.jobType != MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+            error("Android 媒体计算节点暂不支持任务类型：${claim.jobType}")
+        }
+        if (claim.requiredCapability.isNotBlank() && claim.requiredCapability != MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+            error("Android 媒体计算节点缺少任务能力：${claim.requiredCapability}")
+        }
+        return claim.input ?: MediaComputeHighlightInput(
+            mediaId = claim.mediaId,
+            fingerprint = claim.fingerprint,
+            duration = claim.duration,
+            streamUrl = claim.streamUrl,
+            sampleTimes = claim.sampleTimes,
+            maxHighlights = claim.maxHighlights,
+            engineVersion = claim.engineVersion,
+        )
     }
 
     private suspend fun processClaim(
@@ -252,18 +289,19 @@ class HighlightComputeAgent @Inject constructor(
         token: String,
         claim: HighlightWorkerClaim,
     ) = withContext(Dispatchers.IO) {
-        if (claim.sampleTimes.isEmpty() || claim.duration <= 0.0) {
+        val input = resolveHighlightInput(claim)
+        if (input.sampleTimes.isEmpty() || input.duration <= 0.0) {
             error("服务器没有返回可用的精彩片段采样计划")
         }
-        val streamUrl = requireNotNull(UrlNormalizer.apiUrl(serverBaseUrl, claim.streamUrl)) {
+        val streamUrl = requireNotNull(UrlNormalizer.apiUrl(serverBaseUrl, input.streamUrl)) {
             "服务器返回的媒体流地址无效"
         }
         val headers = mapOf("Authorization" to "Bearer $token")
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(streamUrl, headers)
-            val samples = ArrayList<VisualSample>(claim.sampleTimes.size)
-            claim.sampleTimes.forEachIndexed { index, time ->
+            val samples = ArrayList<VisualSample>(input.sampleTimes.size)
+            input.sampleTimes.forEachIndexed { index, time ->
                 val bitmap = extractFrame(retriever, time) ?: return@forEachIndexed
                 try {
                     samples += VisualSample(time = time, rawScore = visualInformationScore(bitmap))
@@ -273,14 +311,14 @@ class HighlightComputeAgent @Inject constructor(
                 reportProgress(
                     claim,
                     stage = "client_sampling",
-                    progress = 8.0 + 54.0 * (index + 1).toDouble() / claim.sampleTimes.size.toDouble(),
+                    progress = 8.0 + 54.0 * (index + 1).toDouble() / input.sampleTimes.size.toDouble(),
                 )
             }
             if (samples.isEmpty()) {
                 error("Android 硬件解码器无法从该媒体提取采样帧")
             }
             normalizeVisualScores(samples)
-            val selected = selectHighlights(samples, claim.maxHighlights.coerceIn(1, 8))
+            val selected = selectHighlights(samples, input.maxHighlights.coerceIn(1, 8))
             if (selected.isEmpty()) {
                 error("客户端没有生成有效的精彩片段候选")
             }
@@ -294,7 +332,7 @@ class HighlightComputeAgent @Inject constructor(
                     frame.recycle()
                 }
                 val start = max(0.0, sample.time - 10.0)
-                val end = min(claim.duration, start + 30.0)
+                val end = min(input.duration, start + 30.0)
                 if (end <= start) error("精彩片段时间范围无效")
                 reportProgress(
                     claim,
@@ -314,7 +352,7 @@ class HighlightComputeAgent @Inject constructor(
                 claim.taskId,
                 HighlightWorkerComplete(
                     claimToken = claim.claimToken,
-                    fingerprint = claim.fingerprint,
+                    fingerprint = input.fingerprint.ifBlank { claim.fingerprint },
                     highlights = results,
                 ),
             )
