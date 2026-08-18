@@ -1,0 +1,64 @@
+name: Desktop 2.0 CI
+
+on:
+  push:
+    branches:
+      - refactor/server-lite-v1
+    paths:
+      - 'desktop/**'
+      - 'web/**'
+      - 'cmd/server-lite/**'
+      - 'internal/**'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop2-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: desktop2-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web TypeScript / Vite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 安装 Web 依赖
+        working-directory: web
+        run: npm ci
+      - name: 构建 Web
+        working-directory: web
+        run: npm run build
+
+  sidecar:
+    name: Go Media Core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: 编译桌面端 Sidecar
+        run: go build ./cmd/server-lite
+
+  desktop:
+    name: Tauri / Rust / libmpv
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+      - name: 获取 libmpv 运行资源
+        shell: pwsh
+        run: ./scripts/fetch-assets.ps1
+      - name: 检查 Rust 桌面运行时
+        working-directory: desktop/src-tauri
+        run: cargo check --all-targets
