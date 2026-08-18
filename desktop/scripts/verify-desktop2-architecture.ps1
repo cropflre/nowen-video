@@ -46,6 +46,7 @@ $player = Read-RequiredFile "desktop/src-tauri/src/player/mod.rs"
 $surface = Read-RequiredFile "desktop/src-tauri/src/player/surface/windows.rs"
 $desktopPlayer = Read-RequiredFile "web/src/desktop/DesktopPlayer.tsx"
 $bridge = Read-RequiredFile "web/src/platform/desktop/bridge.ts"
+$desktopCompatBridge = Read-RequiredFile "web/src/desktop/bridge.ts"
 
 # Windows 正式播放器必须由初始化器切入 libmpv Render API，而不是 wid。
 Assert-Contains $player "Mpv::with_initializer" "Windows Player Core 必须在 mpv_initialize 前配置原生渲染"
@@ -66,5 +67,10 @@ Assert-NotContains $bridge "__TAURI_INTERNALS__" "业务层不允许直接访问
 Assert-NotContains $bridge "window.__TAURI__" "不允许恢复 Tauri v1 全局对象兼容"
 Assert-Contains $desktopPlayer "desktop.onPlayerState" "DesktopPlayer 必须消费 player-state 事件"
 Assert-NotContains $desktopPlayer "setInterval(" "DesktopPlayer 不允许恢复高频定时轮询"
+
+# Windows 原生 Surface 位于透明 WebView 后方；播放期间必须关闭 Mica/Acrylic，
+# 否则透明区域会被窗口特效占据并表现为白屏/浅色底。销毁播放器后必须恢复特效。
+Assert-Contains $desktopCompatBridge "windowSetEffect(false)" "原生播放启动前必须关闭窗口 Mica/Acrylic 特效"
+Assert-Contains $desktopCompatBridge "windowSetEffect(true)" "原生播放器销毁后必须恢复窗口特效"
 
 Write-Host "[OK] Desktop 2.0 架构契约通过" -ForegroundColor Green
