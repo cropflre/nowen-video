@@ -2,8 +2,7 @@
 //!
 //! 对前端只暴露产品能力命名，不再暴露外部 mpv、播放内核决策等实验接口。
 
-use crate::embed_window;
-use crate::mpv::PlayOptions;
+use crate::player::{self, PlayOptions, PlayerVideoInfo};
 use crate::settings::Settings;
 use crate::sidecar::SidecarStatus;
 use crate::updater::{self, UpdateInfo};
@@ -32,8 +31,8 @@ pub async fn sidecar_restart(app: AppHandle, state: State<'_, AppState>) -> Resu
 
 #[tauri::command]
 pub fn player_available(state: State<AppState>) -> Result<bool, String> {
-    let player = state.mpv.lock().map_err(|error| error.to_string())?;
-    Ok(player.is_embed_available())
+    let player = state.player.lock().map_err(|error| error.to_string())?;
+    Ok(player.is_available())
 }
 
 #[tauri::command]
@@ -44,13 +43,21 @@ pub fn player_start(
     url: String,
     options: Option<PlayOptions>,
 ) -> Result<PlayerStartResult, String> {
-    let wid = embed_window::ensure_embed_window(&app).map_err(|error| error.to_string())?;
-    let mut player = state.mpv.lock().map_err(|error| error.to_string())?;
+    let native_window_id = player::surface::ensure(&app).map_err(|error| error.to_string())?;
+    let mut player = state.player.lock().map_err(|error| error.to_string())?;
     player
-        .play_embedded(&session_id, &url, wid, options.unwrap_or_default())
+        .start(
+            &session_id,
+            &url,
+            native_window_id,
+            options.unwrap_or_default(),
+        )
         .map_err(|error| error.to_string())?;
 
-    Ok(PlayerStartResult { wid, session_id })
+    Ok(PlayerStartResult {
+        wid: native_window_id,
+        session_id,
+    })
 }
 
 #[derive(Serialize)]
@@ -61,7 +68,7 @@ pub struct PlayerStartResult {
 
 #[tauri::command]
 pub fn player_stop(state: State<AppState>, session_id: String) -> Result<(), String> {
-    let mut player = state.mpv.lock().map_err(|error| error.to_string())?;
+    let mut player = state.player.lock().map_err(|error| error.to_string())?;
     player.stop(&session_id);
     Ok(())
 }
@@ -75,7 +82,7 @@ pub fn player_sync_surface(
     height: u32,
     visible: bool,
 ) -> Result<(), String> {
-    embed_window::sync_embed_bounds(&app, x, y, width, height, visible)
+    player::surface::sync_bounds(&app, x, y, width, height, visible)
         .map_err(|error| error.to_string())
 }
 
@@ -86,9 +93,9 @@ pub fn player_command(
     command: String,
     args: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let mut player = state.mpv.lock().map_err(|error| error.to_string())?;
+    let player = state.player.lock().map_err(|error| error.to_string())?;
     player
-        .send_embed_command(&session_id, &command, &args.unwrap_or_default())
+        .command(&session_id, &command, &args.unwrap_or_default())
         .map_err(|error| error.to_string())
 }
 
@@ -99,25 +106,25 @@ pub fn player_set_property(
     name: String,
     value: String,
 ) -> Result<(), String> {
-    let mut player = state.mpv.lock().map_err(|error| error.to_string())?;
+    let player = state.player.lock().map_err(|error| error.to_string())?;
     player
-        .set_embed_property(&session_id, &name, &value)
+        .set_property(&session_id, &name, &value)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn player_destroy(app: AppHandle) -> Result<(), String> {
-    embed_window::destroy_embed_window(&app).map_err(|error| error.to_string())
+    player::surface::destroy(&app).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn player_video_info(
     state: State<AppState>,
     session_id: String,
-) -> Result<crate::mpv::EmbedVideoInfo, String> {
-    let player = state.mpv.lock().map_err(|error| error.to_string())?;
+) -> Result<PlayerVideoInfo, String> {
+    let player = state.player.lock().map_err(|error| error.to_string())?;
     player
-        .get_embed_video_info(&session_id)
+        .video_info(&session_id)
         .map_err(|error| error.to_string())
 }
 
