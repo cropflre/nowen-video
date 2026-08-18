@@ -1,6 +1,6 @@
 //! Desktop 2.0 Tauri IPC。
 //!
-//! 对前端只暴露产品能力命名，不再暴露外部 mpv、播放内核决策等实验接口。
+//! 对前端只暴露产品能力命名，不再暴露外部 mpv、播放内核决策、wid/hwnd 等实现细节。
 
 use crate::player::{self, PlayOptions, PlayerVideoInfo};
 use crate::settings::Settings;
@@ -43,26 +43,23 @@ pub fn player_start(
     url: String,
     options: Option<PlayOptions>,
 ) -> Result<PlayerStartResult, String> {
-    let native_window_id = player::surface::ensure(&app).map_err(|error| error.to_string())?;
+    let surface = player::surface::ensure(&app).map_err(|error| error.to_string())?;
     let mut player = state.player.lock().map_err(|error| error.to_string())?;
     player
         .start(
+            &app,
             &session_id,
             &url,
-            native_window_id,
+            surface,
             options.unwrap_or_default(),
         )
         .map_err(|error| error.to_string())?;
 
-    Ok(PlayerStartResult {
-        wid: native_window_id,
-        session_id,
-    })
+    Ok(PlayerStartResult { session_id })
 }
 
 #[derive(Serialize)]
 pub struct PlayerStartResult {
-    pub wid: i64,
     pub session_id: String,
 }
 
@@ -117,6 +114,10 @@ pub fn player_destroy(app: AppHandle) -> Result<(), String> {
     player::surface::destroy(&app).map_err(|error| error.to_string())
 }
 
+/// 单次读取 Player Core 当前缓存快照。
+///
+/// 正常播放状态由 `player-state` 事件推送；该命令仅用于启动 bootstrap、诊断和事件丢失兜底，
+/// 不应再被前端定时轮询。
 #[tauri::command]
 pub fn player_video_info(
     state: State<AppState>,
@@ -234,179 +235,110 @@ pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
     receiver.await.map_err(|error| error.to_string())
 }
 
-// ============ 窗口 ============
-
 #[tauri::command]
 pub fn window_minimize(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window.minimize().map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .minimize()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_toggle_fullscreen(app: AppHandle) -> Result<bool, String> {
-    if let Some(window) = app.get_webview_window("main") {
-        let fullscreen = window.is_fullscreen().map_err(|error| error.to_string())?;
-        window
-            .set_fullscreen(!fullscreen)
-            .map_err(|error| error.to_string())?;
-        return Ok(!fullscreen);
-    }
-    Ok(false)
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    let next = !window.is_fullscreen().map_err(|error| error.to_string())?;
+    window
+        .set_fullscreen(next)
+        .map_err(|error| error.to_string())?;
+    Ok(next)
 }
 
 #[tauri::command]
 pub fn window_hide_to_tray(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window.hide().map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .hide()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_toggle_maximize(app: AppHandle) -> Result<bool, String> {
-    if let Some(window) = app.get_webview_window("main") {
-        let maximized = window.is_maximized().map_err(|error| error.to_string())?;
-        if maximized {
-            window.unmaximize().map_err(|error| error.to_string())?;
-        } else {
-            window.maximize().map_err(|error| error.to_string())?;
-        }
-        return Ok(!maximized);
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    let maximized = window.is_maximized().map_err(|error| error.to_string())?;
+    if maximized {
+        window.unmaximize().map_err(|error| error.to_string())?;
+    } else {
+        window.maximize().map_err(|error| error.to_string())?;
     }
-    Ok(false)
+    Ok(!maximized)
 }
 
 #[tauri::command]
 pub fn window_is_maximized(app: AppHandle) -> Result<bool, String> {
-    if let Some(window) = app.get_webview_window("main") {
-        return window.is_maximized().map_err(|error| error.to_string());
-    }
-    Ok(false)
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .is_maximized()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_close(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.close();
-    }
-    Ok(())
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .close()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_set_effect(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        if enabled {
-            crate::vibrancy::apply_effect(&window);
-        } else {
-            crate::vibrancy::clear_effect(&window);
-        }
-    }
-    Ok(())
-}
-
-static PIP_STATE: std::sync::Mutex<Option<PipState>> = std::sync::Mutex::new(None);
-
-#[derive(Clone, Copy, Debug)]
-struct PipState {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    maximized: bool,
+    crate::vibrancy::set_main_window_effect(&app, enabled).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_pip_enter(app: AppHandle) -> Result<(), String> {
-    use tauri::{LogicalPosition, LogicalSize};
-
     let window = app
         .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let size = window.outer_size().map_err(|error| error.to_string())?;
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let maximized = window.is_maximized().map_err(|error| error.to_string())?;
-
-    let mut state = PIP_STATE.lock().map_err(|error| error.to_string())?;
-    if state.is_none() {
-        *state = Some(PipState {
-            x: (position.x as f64 / scale) as i32,
-            y: (position.y as f64 / scale) as i32,
-            width: (size.width as f64 / scale) as u32,
-            height: (size.height as f64 / scale) as u32,
-            maximized,
-        });
-    }
-    drop(state);
-
-    if maximized {
-        let _ = window.unmaximize();
-    }
-
-    let monitor = window.current_monitor().map_err(|error| error.to_string())?;
-    let (screen_width, screen_height) = monitor
-        .map(|monitor| {
-            let size = monitor.size();
-            let scale = monitor.scale_factor();
-            (
-                (size.width as f64 / scale) as u32,
-                (size.height as f64 / scale) as u32,
-            )
-        })
-        .unwrap_or((1920, 1080));
-
-    let width = 480_u32;
-    let height = 270_u32;
-    let margin = 24_i32;
-    let x = screen_width as i32 - width as i32 - margin;
-    let y = screen_height as i32 - height as i32 - margin;
-
-    let _ = window.set_always_on_top(true);
-    let _ = window.set_size(LogicalSize::new(width, height));
-    let _ = window.set_position(LogicalPosition::new(x, y));
-    let _ = window.set_resizable(true);
-    Ok(())
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    window
+        .set_always_on_top(true)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_decorations(false)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(tauri::PhysicalSize::new(480, 270))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_pip_exit(app: AppHandle) -> Result<(), String> {
-    use tauri::{LogicalPosition, LogicalSize};
-
     let window = app
         .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-
-    let mut guard = PIP_STATE.lock().map_err(|error| error.to_string())?;
-    let state = guard.take();
-    drop(guard);
-
-    let _ = window.set_always_on_top(false);
-
-    if let Some(state) = state {
-        let _ = window.set_size(LogicalSize::new(state.width, state.height));
-        let _ = window.set_position(LogicalPosition::new(state.x, state.y));
-        if state.maximized {
-            let _ = window.maximize();
-        }
-    }
-    Ok(())
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    window
+        .set_always_on_top(false)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(tauri::PhysicalSize::new(1400, 900))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub fn window_pip_is_active() -> Result<bool, String> {
-    let state = PIP_STATE.lock().map_err(|error| error.to_string())?;
-    Ok(state.is_some())
+pub fn window_pip_is_active(app: AppHandle) -> Result<bool, String> {
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .is_always_on_top()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn window_set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window
-            .set_always_on_top(enabled)
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .set_always_on_top(enabled)
+        .map_err(|error| error.to_string())
 }
