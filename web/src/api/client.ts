@@ -2,54 +2,47 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { desktop } from '@/platform/desktop/bridge'
 
-/**
- * 计算 API 基础地址。
- *
- * Desktop 2.0 的环境判断统一通过 platform/desktop，业务代码不再读取
- * window.__TAURI__ / window.__TAURI_INTERNALS__。
- *
- * 当前阶段仍保留固定 sidecar 端口 21114；动态端口和运行时令牌会在
- * Sidecar Runtime 阶段切换为启动握手协议。
- */
-function resolveApiBaseURL(): string {
-  if (typeof window === 'undefined' || !desktop.isDesktop) return '/api'
+let currentApiBaseURL = '/api'
 
-  try {
-    const custom = window.localStorage.getItem('nowen_server_url')
-    if (custom && /^https?:\/\//i.test(custom)) {
-      return custom.replace(/\/+$/, '') + '/api'
-    }
-  } catch {
-    /* localStorage 不可用时忽略 */
+function publishApiBaseURL(baseURL: string) {
+  currentApiBaseURL = baseURL
+  if (typeof window !== 'undefined') {
+    ;(window as Window & { __NOWEN_API_BASE__?: string }).__NOWEN_API_BASE__ = baseURL
   }
-
-  const runtimeWindow = window as Window & { __NOWEN_SERVER_URL__?: string; __NOWEN_API_BASE__?: string }
-  if (
-    typeof runtimeWindow.__NOWEN_SERVER_URL__ === 'string' &&
-    /^https?:\/\//i.test(runtimeWindow.__NOWEN_SERVER_URL__)
-  ) {
-    return runtimeWindow.__NOWEN_SERVER_URL__.replace(/\/+$/, '') + '/api'
-  }
-
-  let port = 21114
-  try {
-    const override = window.localStorage.getItem('nowen_sidecar_port')
-    if (override && /^\d+$/.test(override)) port = parseInt(override, 10)
-  } catch {
-    /* localStorage 不可用时忽略 */
-  }
-
-  return `http://127.0.0.1:${port}/api`
 }
 
-const API_BASE = resolveApiBaseURL()
+/**
+ * 返回当前平台真实 API 地址。
+ *
+ * Web 始终使用同源 /api；Desktop 从 Tauri Runtime 获取远程服务器配置或
+ * 当前动态 Sidecar 端口，不再假设 localhost:21114。
+ */
+export async function resolveApiBaseURL(): Promise<string> {
+  if (typeof window === 'undefined' || !desktop.isDesktop) {
+    publishApiBaseURL('/api')
+    return '/api'
+  }
 
-if (typeof window !== 'undefined') {
-  ;(window as Window & { __NOWEN_API_BASE__?: string }).__NOWEN_API_BASE__ = API_BASE
+  const serverBase = await desktop.serverBaseUrl()
+  if (!serverBase) {
+    throw new Error('Desktop Media Core 尚未就绪')
+  }
+
+  const baseURL = `${serverBase.replace(/\/+$/, '')}/api`
+  publishApiBaseURL(baseURL)
+  return baseURL
+}
+
+/**
+ * 同步读取最近一次已解析的 API 地址。
+ * 用于 pagehide / keepalive 等无法等待异步 Tauri IPC 的生命周期场景。
+ */
+export function getResolvedApiBaseURL(): string {
+  return currentApiBaseURL
 }
 
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: '/api',
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
@@ -58,11 +51,12 @@ const api = axios.create({
 
 type AuthRequestConfig = AxiosRequestConfig & {
   _retry?: boolean
-  /** 发出请求时使用的 Token，用于识别跨登录会话的迟到 401。 */
   _authToken?: string | null
 }
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
+  config.baseURL = await resolveApiBaseURL()
+
   const token = useAuthStore.getState().token
   const authConfig = config as AuthRequestConfig
   authConfig._authToken = token
@@ -86,12 +80,13 @@ async function refreshAccessToken(expectedToken: string): Promise<string | null>
 
   const promise = (async () => {
     try {
-      const resp = await axios.post<{ token: string; user: unknown; expires_at: number }>(
-        `${API_BASE}/auth/refresh`,
+      const baseURL = await resolveApiBaseURL()
+      const response = await axios.post<{ token: string; user: unknown; expires_at: number }>(
+        `${baseURL}/auth/refresh`,
         {},
         { headers: { Authorization: `Bearer ${expectedToken}` }, timeout: 10000 },
       )
-      const { token, user } = resp.data as { token: string; user: any }
+      const { token, user } = response.data as { token: string; user: any }
       if (!token || !user) return null
 
       const tokenBeforeApply = useAuthStore.getState().token
@@ -145,40 +140,40 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const cfg = error.config as AuthRequestConfig | undefined
-    const failedToken = cfg?._authToken ?? null
+    const config = error.config as AuthRequestConfig | undefined
+    const failedToken = config?._authToken ?? null
     const currentToken = useAuthStore.getState().token
-    const serverErr = (error.response?.data as any)?.error || ''
-    console.warn(`[auth] 401 on ${url}: ${serverErr}`)
+    const serverError = (error.response?.data as any)?.error || ''
+    console.warn(`[auth] 401 on ${url}: ${serverError}`)
 
-    if (cfg && currentToken && failedToken !== currentToken) {
-      if (cfg._retry) return Promise.reject(error)
-      cfg._retry = true
-      cfg._authToken = currentToken
-      cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${currentToken}` }
-      return api.request(cfg)
+    if (config && currentToken && failedToken !== currentToken) {
+      if (config._retry) return Promise.reject(error)
+      config._retry = true
+      config._authToken = currentToken
+      config.headers = { ...(config.headers || {}), Authorization: `Bearer ${currentToken}` }
+      return api.request(config)
     }
 
-    if (!cfg || cfg._retry) {
-      doLogout(serverErr || '令牌无效', failedToken)
+    if (!config || config._retry) {
+      doLogout(serverError || '令牌无效', failedToken)
       return Promise.reject(error)
     }
 
     if (!currentToken) {
-      doLogout(serverErr || '缺少登录凭证', failedToken)
+      doLogout(serverError || '缺少登录凭证', failedToken)
       return Promise.reject(error)
     }
 
     const newToken = await refreshAccessToken(currentToken)
     if (!newToken) {
-      doLogout(serverErr || '令牌刷新失败', currentToken)
+      doLogout(serverError || '令牌刷新失败', currentToken)
       return Promise.reject(error)
     }
 
-    cfg._retry = true
-    cfg._authToken = newToken
-    cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${newToken}` }
-    return api.request(cfg)
+    config._retry = true
+    config._authToken = newToken
+    config.headers = { ...(config.headers || {}), Authorization: `Bearer ${newToken}` }
+    return api.request(config)
   },
 )
 
