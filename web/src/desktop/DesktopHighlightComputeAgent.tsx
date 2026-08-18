@@ -84,7 +84,11 @@ function bytesFromBase64(value: string) {
 
 async function visualInformationScore(thumbnail: HighlightCaptureFrameResult) {
   const bytes = bytesFromBase64(thumbnail.data_base64)
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: thumbnail.mime }))
+  // 显式复制到普通 ArrayBuffer，避免较新的 DOM/TypeScript lib 将
+  // Uint8Array<ArrayBufferLike> 收紧后不再直接接受为 BlobPart。
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  const bitmap = await createImageBitmap(new Blob([buffer], { type: thumbnail.mime }))
   try {
     const width = Math.max(1, Math.min(96, bitmap.width))
     const height = Math.max(1, Math.round(bitmap.height * width / Math.max(1, bitmap.width)))
@@ -204,9 +208,10 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
     throw new Error('桌面客户端没有生成有效精彩片段候选')
   }
 
+  // 沿用已经在详情页定义过的 client_analysis 阶段，避免引入前端未知 stage 文案。
   await mediaAnalysisApi.updateWorkerProgress(claim.task_id, {
     claim_token: claim.claim_token,
-    stage: 'client_ranking',
+    stage: 'client_analysis',
     progress: 92,
   })
 
