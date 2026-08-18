@@ -71,9 +71,41 @@ export interface PlayerVideoInfo {
   mute: boolean
 }
 
+export interface PlayerTrack {
+  id: number
+  kind: 'audio' | 'video' | 'sub' | string
+  title: string
+  language: string
+  codec: string
+  codec_desc: string
+  selected: boolean
+  is_default: boolean
+  forced: boolean
+  external: boolean
+}
+
+export interface PlayerChapter {
+  index: number
+  title: string
+  time: number
+}
+
+export interface PlayerMediaInfo {
+  tracks: PlayerTrack[]
+  chapters: PlayerChapter[]
+  current_chapter: number
+}
+
 export interface PlayerStateEvent {
   session_id: string
-  event: 'state' | 'file-loaded' | 'playback-restart' | 'end-file' | 'queue-overflow' | string
+  event:
+    | 'state'
+    | 'file-loaded'
+    | 'playback-restart'
+    | 'media-info-change'
+    | 'end-file'
+    | 'queue-overflow'
+    | string
   state: PlayerVideoInfo
 }
 
@@ -198,6 +230,11 @@ export const desktop = {
   /** 仅供启动 bootstrap / 诊断使用，正常状态同步请监听 onPlayerState。 */
   async playerVideoInfo(sessionId: string): Promise<PlayerVideoInfo | null> {
     return invoke<PlayerVideoInfo>('player_video_info', { sessionId })
+  },
+
+  /** 音轨 / 字幕 / 章节按需读取，不参与高频状态事件。 */
+  async playerMediaInfo(sessionId: string): Promise<PlayerMediaInfo | null> {
+    return invoke<PlayerMediaInfo>('player_media_info', { sessionId })
   },
 
   async checkUpdate(): Promise<UpdateInfo | null> {
