@@ -13,9 +13,9 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 use window_vibrancy::{apply_acrylic, apply_mica, clear_acrylic, clear_mica};
 
 #[cfg(target_os = "macos")]
-use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+use window_vibrancy::{apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
-/// 应用主窗口的默认视觉特效。按"Mica → Acrylic → 透明回退"的优先级尝试
+/// 应用主窗口的默认视觉特效。按“Mica → Acrylic → 透明回退”的优先级尝试。
 pub fn apply_main_window_effect(app: &AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
         log::warn!("vibrancy: 主窗口未找到，跳过视觉特效应用");
@@ -24,16 +24,27 @@ pub fn apply_main_window_effect(app: &AppHandle) {
     apply_effect(&win);
 }
 
-/// 应用效果到指定窗口
+/// 运行时启用/禁用主窗口特效。
+pub fn set_main_window_effect(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    if enabled {
+        apply_effect(&window);
+    } else {
+        clear_effect(&window);
+    }
+    Ok(())
+}
+
+/// 应用效果到指定窗口。
 pub fn apply_effect(window: &WebviewWindow) {
     #[cfg(target_os = "windows")]
     {
-        // Windows 11（22000+）优先 Mica
         if is_win11_or_newer() {
             match apply_mica(window, None) {
                 Ok(_) => {
                     log::info!("vibrancy: 已应用 Mica（Windows 11）");
-                    // Mica 要求窗口背景透明交给系统，前端要让 body 背景半透明
                     return;
                 }
                 Err(e) => {
@@ -42,8 +53,6 @@ pub fn apply_effect(window: &WebviewWindow) {
             }
         }
 
-        // Windows 10 或 Mica 失败 → Acrylic
-        // 参数：(R, G, B, A) 背景薄雾颜色，调成暗色稍微透明
         match apply_acrylic(window, Some((18, 18, 18, 125))) {
             Ok(_) => log::info!("vibrancy: 已应用 Acrylic"),
             Err(e) => log::warn!("vibrancy: Acrylic 应用失败: {}", e),
@@ -56,7 +65,7 @@ pub fn apply_effect(window: &WebviewWindow) {
             window,
             NSVisualEffectMaterial::HudWindow,
             Some(NSVisualEffectState::Active),
-            Some(12.0), // 圆角
+            Some(12.0),
         ) {
             Ok(_) => log::info!("vibrancy: 已应用 macOS HUD Window Vibrancy"),
             Err(e) => log::warn!("vibrancy: macOS Vibrancy 应用失败: {}", e),
@@ -70,20 +79,28 @@ pub fn apply_effect(window: &WebviewWindow) {
     }
 }
 
-/// 清除窗口特效（用于播放器沉浸模式切换）
-#[allow(dead_code, unused_variables)]
+/// 清除窗口特效（用于播放器沉浸模式切换）。
 pub fn clear_effect(window: &WebviewWindow) {
     #[cfg(target_os = "windows")]
     {
         let _ = clear_mica(window);
         let _ = clear_acrylic(window);
     }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = clear_vibrancy(window);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = window;
+    }
 }
 
-/// 是否 Windows 11 或更新版本（build ≥ 22000）
+/// 是否 Windows 11 或更新版本（build ≥ 22000）。
 #[cfg(target_os = "windows")]
 fn is_win11_or_newer() -> bool {
-    // 读取系统版本。Windows 11 的内部版本号仍然是 10.0，但 build ≥ 22000
     use std::mem::MaybeUninit;
     #[link(name = "ntdll")]
     extern "system" {

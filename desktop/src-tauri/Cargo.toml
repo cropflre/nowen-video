@@ -42,7 +42,8 @@ libmpv2-sys = { version = "4.0", optional = true }
 window-vibrancy = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.56", features = [
+# 与 Tauri 2.11 当前 Windows ABI 版本对齐，避免 HWND 跨 windows-core 0.56/0.61 类型边界。
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",

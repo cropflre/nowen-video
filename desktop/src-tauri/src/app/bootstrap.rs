@@ -72,7 +72,7 @@ fn start_sidecar(handle: tauri::AppHandle) {
                 }
             }
             Err(error) => log::error!("获取 SidecarManager 失败: {}", error),
-        }
+        };
     });
 }
 
