@@ -6,6 +6,12 @@ export { PersonCard, type PersonCardProps } from './media/PersonCard'
 export { AppShell, type AppShellProps } from './layout/AppShell'
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader'
 export { MediaGrid, type MediaGridProps, type MediaGridVariant } from './layout/MediaGrid'
+export { FilterChip, type FilterChipProps } from './primitives/FilterChip'
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedControlItem,
+} from './primitives/SegmentedControl'
 export {
   BottomNavigation,
   type BottomNavigationProps,
