@@ -16,13 +16,17 @@ interface MediaHighlightsPanelProps {
 
 const stageLabels: Record<string, string> = {
   queued: '等待分析',
+  waiting_client: '等待可用客户端计算节点',
+  client_analysis: '客户端已领取计算任务',
+  client_sampling: '客户端正在采样并分析画面',
+  client_thumbnail: '客户端正在生成缩略图',
   probe: '检查媒体文件',
-  coarse_analysis: '快速采样媒体',
-  refine_analysis: '精筛候选片段',
-  audio_analysis: '分析音频能量',
-  scene_analysis: '分析场景变化',
+  coarse_analysis: '服务端快速采样媒体',
+  refine_analysis: '服务端精筛候选片段',
+  audio_analysis: '服务端分析音频能量',
+  scene_analysis: '服务端分析场景变化',
   ranking: '筛选精彩片段',
-  thumbnail: '生成片段缩略图',
+  thumbnail: '服务端生成片段缩略图',
   preview: '生成动态预览',
   persist: '保存分析结果',
   completed: '分析完成',
@@ -48,7 +52,20 @@ function analysisLabel(method: string) {
   if (method === 'scene') return '场景分析'
   if (method === 'sparse_audio') return '快速音频采样'
   if (method === 'sparse_audio_scene') return '快速音频 + 场景'
+  if (method.startsWith('android_')) return 'Android 客户端分析'
+  if (method.startsWith('desktop_')) return '桌面客户端分析'
+  if (method.startsWith('client_')) return '客户端分析'
   return '音频 + 场景'
+}
+
+function executionBadge(stage?: string) {
+  if (!stage) return '智能调度'
+  if (stage === 'waiting_client') return '等待客户端'
+  if (stage.startsWith('client_')) return '客户端计算 · 服务器仅协调'
+  if (['probe', 'coarse_analysis', 'refine_analysis', 'audio_analysis', 'scene_analysis', 'ranking', 'thumbnail', 'persist'].includes(stage)) {
+    return '服务端兜底 · Sparse V2'
+  }
+  return '智能调度'
 }
 
 export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighlightsPanelProps) {
@@ -213,7 +230,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   }
 
   const progress = Math.max(0, Math.min(100, task?.progress || 0))
-  const stageLabel = stageLabels[task?.stage || ''] || task?.stage || '本地媒体分析'
+  const stageLabel = stageLabels[task?.stage || ''] || task?.stage || '精彩片段分析'
   const orderedHighlights = useMemo(
     () => [...highlights].sort((a, b) => a.start_time - b.start_time),
     [highlights],
@@ -246,9 +263,9 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="font-semibold text-[var(--nv-text-primary)]">正在生成精彩片段 · {Math.round(progress)}%</h3>
-                <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">{stageLabel}。可离开当前页面，任务会在后台继续。</p>
+                <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">{stageLabel}。可离开当前页面，任务会继续调度。</p>
               </div>
-              <span className="rounded-full border border-[var(--nv-border-subtle)] px-3 py-1 text-xs text-[var(--nv-text-tertiary)]">本地 FFmpeg · 快速分析</span>
+              <span className="rounded-full border border-[var(--nv-border-subtle)] px-3 py-1 text-xs text-[var(--nv-text-tertiary)]">{executionBadge(task?.stage)}</span>
             </div>
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--nv-surface-elevated)]">
               <div className="h-full rounded-full bg-[var(--nv-accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} />
@@ -269,7 +286,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
           ? `上次分析失败：${task.error || '未知错误'}`
           : task?.status === 'interrupted'
             ? '上次分析因服务重启而中断，可以重新生成。'
-            : '当前媒体尚未生成精彩片段。精彩片段完全在本机使用 FFmpeg 分析，不需要 AI。'}
+            : '当前媒体尚未生成精彩片段。系统会优先交给可用客户端计算；自动模式下没有客户端时再由服务端 Sparse V2 兜底。'}
         action={isAdmin ? (
           <Button type="button" variant="primary" size="sm" onClick={handleAnalyze} disabled={submitting}>
             {submitting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
@@ -288,7 +305,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
             <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">精彩片段</h2>
             <span className="rounded-full bg-[var(--nv-surface-elevated)] px-2.5 py-1 text-xs text-[var(--nv-text-tertiary)]">{orderedHighlights.length} 个</span>
           </div>
-          <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">本地 FFmpeg 稀疏采样生成；动态预览只在首次悬停时按需生成。</p>
+          <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">服务端统一调度和保存结果；客户端可承担采样、评分与缩略图生成，弱 NAS 仅在需要时兜底。</p>
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
