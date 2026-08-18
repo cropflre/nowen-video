@@ -344,6 +344,7 @@ impl RenderThread {
             };
             let _ = RegisterClassW(&class);
 
+            // windows-rs 0.56 的 CreateWindowExW 直接返回 HWND；0 表示失败。
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
                 CLASS_NAME,
@@ -355,10 +356,12 @@ impl RenderThread {
                 16,
                 None,
                 None,
-                Some(instance),
+                instance,
                 None,
-            )
-            .context("创建 Win32 Player Surface 窗口失败")?;
+            );
+            if hwnd.0 == 0 {
+                return Err(anyhow!("创建 Win32 Player Surface 窗口失败"));
+            }
 
             let hdc = GetDC(hwnd);
             if hdc.0 == 0 {
