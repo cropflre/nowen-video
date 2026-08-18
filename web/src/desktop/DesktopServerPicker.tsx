@@ -1,17 +1,9 @@
-/**
- * DesktopServerPicker —— 桌面端首次启动“服务器地址”引导。
- * 探活、localStorage 写入与 reload 行为保持不变，仅统一视觉语义。
- */
 import { useEffect, useState, useCallback } from 'react'
 import { Server, Wifi } from 'lucide-react'
 import { desktop } from './bridge'
 import { Button, Input, Surface } from '@/components/design-system'
 
 const LS_KEY = 'nowen_server_url'
-const DEFAULT_CANDIDATES = [
-  'http://127.0.0.1:21114',
-  'http://127.0.0.1:8080',
-]
 
 async function probe(base: string, timeoutMs = 1500): Promise<boolean> {
   try {
@@ -26,6 +18,12 @@ async function probe(base: string, timeoutMs = 1500): Promise<boolean> {
   }
 }
 
+/**
+ * Desktop 2.0 服务器连接引导。
+ *
+ * 内嵌模式首先读取 Tauri Runtime 分配的动态 Sidecar 地址；只有内嵌 Media Core
+ * 确实不可用、且用户也没有配置远程服务器时，才显示手动连接界面。
+ */
 export default function DesktopServerPicker() {
   const [need, setNeed] = useState(false)
   const [input, setInput] = useState('http://127.0.0.1:8080')
@@ -37,16 +35,27 @@ export default function DesktopServerPicker() {
     let cancelled = false
 
     ;(async () => {
+      let configured: string | null = null
       try {
-        if (localStorage.getItem(LS_KEY)) return
+        configured = localStorage.getItem(LS_KEY)
       } catch {
         // ignore
       }
 
-      for (const base of DEFAULT_CANDIDATES) {
-        if (cancelled) return
-        if (await probe(base)) return
+      if (configured) {
+        if (await probe(configured, 2500)) return
+        if (!cancelled) {
+          setInput(configured)
+          setNeed(true)
+          setError('已保存的服务器当前无法连接，请检查地址或改用其他服务器')
+        }
+        return
       }
+
+      const runtimeBase = await desktop.serverBaseUrl()
+      if (cancelled) return
+      if (runtimeBase && await probe(runtimeBase, 3000)) return
+
       if (!cancelled) setNeed(true)
     })()
 
@@ -94,7 +103,7 @@ export default function DesktopServerPicker() {
             <div>
               <h2 className="text-lg font-semibold tracking-[-0.015em] text-[var(--nv-text-primary)]">连接到 Nowen Video 服务器</h2>
               <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
-                未检测到可用后端。请填写本机或局域网内运行的 Nowen Video 服务器地址（包含协议与端口）。
+                内嵌 Media Core 当前不可用。你可以连接局域网、NAS 或远程运行的 Nowen Video Server。
               </p>
             </div>
           </div>
@@ -118,7 +127,7 @@ export default function DesktopServerPicker() {
 
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setInput('http://127.0.0.1:8080')}>
-              使用本机 8080
+              使用本机服务器
             </Button>
             <Button type="submit" variant="primary" loading={submitting} disabled={submitting}>
               {!submitting && <Wifi size={15} aria-hidden="true" />}
@@ -126,7 +135,9 @@ export default function DesktopServerPicker() {
             </Button>
           </div>
 
-          <p className="mt-4 border-t border-[var(--nv-border-subtle)] pt-3 text-xs leading-5 text-[var(--nv-text-tertiary)]">保存后会写入本地配置并重新加载页面；之后可在设置中重置服务器地址。</p>
+          <p className="mt-4 border-t border-[var(--nv-border-subtle)] pt-3 text-xs leading-5 text-[var(--nv-text-tertiary)]">
+            手动保存的地址优先于内嵌模式；之后可在设置中清除远程服务器配置恢复本地 Media Core。
+          </p>
         </Surface>
       </form>
     </div>
