@@ -10,7 +10,7 @@ import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
-import { DesktopEventBinder, DesktopServerPicker, UpdateBanner } from '@/desktop'
+import { DesktopEventBinder, DesktopHighlightComputeAgent, DesktopServerPicker, UpdateBanner } from '@/desktop'
 
 // 懒加载页面组件 — 按需加载，减少首屏 JS 体积
 const HomePage = lazy(() => import('@/pages/HomePage'))
@@ -121,6 +121,7 @@ export default function App() {
           <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />
+          <DesktopHighlightComputeAgent />
           <UpdateBanner />
           <div className="nv-app-shell flex h-dvh min-h-0 flex-col overflow-hidden">
             <TitleBar />
