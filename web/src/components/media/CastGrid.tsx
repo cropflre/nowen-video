@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
 import { EmptyState, Tag } from '@/components/design-system'
-import { User, Users } from 'lucide-react'
+import { PersonCard } from '@/ui'
+import { Users } from 'lucide-react'
 import { useTranslation } from '@/i18n'
 
 interface CastGridProps {
@@ -28,6 +29,7 @@ const rolePriority: Record<string, number> = { director: 0, writer: 1, actor: 2 
 export default function CastGrid({ persons }: CastGridProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const getRoleLabel = useRoleLabel()
 
   const dedupedPersons = useMemo(() => {
     const seen = new Set<string>()
@@ -73,47 +75,26 @@ export default function CastGrid({ persons }: CastGridProps) {
         role="list"
         aria-label={t('castGrid.title')}
       >
-        {sortedPersons.map((mediaPerson) => (
-          <CastCard key={mediaPerson.id} mediaPerson={mediaPerson} onClick={handleCardClick} />
-        ))}
+        {sortedPersons.map((mediaPerson) => {
+          const person = mediaPerson.person
+          const roleLabel = getRoleLabel(mediaPerson.role)
+          const subtitle = mediaPerson.character
+            ? t('castGrid.asRole', { character: mediaPerson.character })
+            : roleLabel
+
+          return (
+            <PersonCard
+              key={mediaPerson.id}
+              name={person?.name || t('castGrid.unknown')}
+              subtitle={subtitle}
+              imageSrc={person?.id ? streamApi.getPersonProfileUrl(person.id) : null}
+              badge={mediaPerson.role && mediaPerson.role !== 'actor' ? <Tag tone="quality">{roleLabel}</Tag> : undefined}
+              onClick={() => handleCardClick(mediaPerson)}
+              ariaLabel={`${person?.name || t('castGrid.unknown')} · ${roleLabel}`}
+            />
+          )
+        })}
       </div>
     </section>
-  )
-}
-
-function CastCard({ mediaPerson, onClick }: { mediaPerson: MediaPerson; onClick: (person: MediaPerson) => void }) {
-  const { t } = useTranslation()
-  const getRoleLabel = useRoleLabel()
-  const [imgError, setImgError] = useState(false)
-  const person = mediaPerson.person
-  const profileSrc = person?.id ? streamApi.getPersonProfileUrl(person.id) : null
-  const roleLabel = getRoleLabel(mediaPerson.role)
-
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(mediaPerson)}
-      className="group w-[84px] flex-shrink-0 text-left sm:w-[96px]"
-      role="listitem"
-      aria-label={`${person?.name || t('castGrid.unknown')} · ${roleLabel}`}
-    >
-      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-        {profileSrc && !imgError ? (
-          <img src={profileSrc} alt={person?.name || ''} className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.88]" loading="lazy" onError={() => setImgError(true)} />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-            <User size={28} strokeWidth={1.4} aria-hidden="true" />
-          </div>
-        )}
-        {mediaPerson.role && mediaPerson.role !== 'actor' && (
-          <Tag tone="quality" className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] truncate">{roleLabel}</Tag>
-        )}
-      </div>
-
-      <p className="mt-1.5 truncate text-xs font-medium text-[var(--nv-text-primary)]">{person?.name || t('castGrid.unknown')}</p>
-      <p className="mt-0.5 truncate text-[10px] text-[var(--nv-text-tertiary)]" title={mediaPerson.character || roleLabel}>
-        {mediaPerson.character ? t('castGrid.asRole', { character: mediaPerson.character }) : roleLabel}
-      </p>
-    </button>
   )
 }
