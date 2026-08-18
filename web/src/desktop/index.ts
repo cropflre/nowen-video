@@ -10,7 +10,6 @@ export type {
   SidecarStatus,
   DesktopSettings,
   PlatformInfo,
-  MpvAvailability,
   UpdateInfo,
   EmbedStartResult,
   MpvVideoInfo,
