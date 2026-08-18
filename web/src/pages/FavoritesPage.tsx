@@ -7,6 +7,7 @@ import { usePagination } from '@/hooks/usePagination'
 import type { Favorite } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
+import { MediaGrid as SharedMediaGrid } from '@/ui'
 import { Heart } from 'lucide-react'
 
 interface FavoritesData {
@@ -67,7 +68,7 @@ export default function FavoritesPage() {
         </div>
 
         {loading && (
-          <div className="nv-personal-media-grid" aria-busy="true" aria-label="正在加载收藏内容">
+          <SharedMediaGrid aria-busy="true" aria-label="正在加载收藏内容">
             {Array.from({ length: 10 }).map((_, index) => (
               <div key={index}>
                 <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
@@ -75,13 +76,13 @@ export default function FavoritesPage() {
                 <div className="skeleton mt-1.5 h-2.5 w-1/2" />
               </div>
             ))}
-          </div>
+          </SharedMediaGrid>
         )}
 
         {!loading && media.length > 0 && (
-          <div className="nv-personal-media-grid">
+          <SharedMediaGrid>
             {media.map((item) => <MediaCard key={item.id} media={item} />)}
-          </div>
+          </SharedMediaGrid>
         )}
 
         {!loading && media.length === 0 && (
