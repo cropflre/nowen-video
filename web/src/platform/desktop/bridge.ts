@@ -131,6 +131,10 @@ export const desktop = {
     })
   },
 
+  async playerStop(sessionId: string): Promise<void> {
+    await invoke<void>('stop_mpv', { sessionId })
+  },
+
   async playerSyncSurface(params: {
     x: number
     y: number
