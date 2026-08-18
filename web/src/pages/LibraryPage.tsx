@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button, EmptyState, SearchField, Select, Surface, Tag } from '@/components/design-system'
-import clsx from 'clsx'
+import { MediaArtwork, MediaGrid as SharedMediaGrid } from '@/ui'
 
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '最近添加' },
@@ -317,7 +317,7 @@ export default function LibraryPage() {
       </div>
 
       {showFilters && (
-        <Surface className="space-y-2.5 p-3 sm:p-4">
+        <Surface variant="glass" className="space-y-2.5 p-3 sm:p-4">
           {allGenres.length > 0 && <FilterGroup icon={<TagIcon size={12} />} label="类型" count={selectedGenres.length}>{allGenres.map((genre) => <FilterChip key={genre} selected={selectedGenres.includes(genre)} onClick={() => toggleGenre(genre)}>{genre}</FilterChip>)}</FilterGroup>}
           {allCountries.length > 0 && <FilterGroup icon={<Globe size={12} />} label="地区"><FilterChip selected={!selectedCountry} onClick={() => updateUrl({ country: null })}>全部</FilterChip>{allCountries.map((country) => <FilterChip key={country} selected={selectedCountry === country} onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}>{country}</FilterChip>)}</FilterGroup>}
           <FilterGroup icon={<Calendar size={12} />} label="年份">{YEAR_RANGES.map((range) => <FilterChip key={range.label} selected={yearRange.min === range.min && yearRange.max === range.max} onClick={() => updateUrl({ year_min: range.min > 0 ? String(range.min) : null, year_max: range.max > 0 ? String(range.max) : null })}>{range.label}</FilterChip>)}</FilterGroup>
@@ -335,20 +335,20 @@ export default function LibraryPage() {
         pagedMixed.length === 0 ? (
           <EmptyState icon={<Film size={24} />} title={hasLocalFilter ? '没有找到匹配的内容' : '此媒体库暂无内容'} description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '扫描媒体文件后，内容会显示在这里。'} action={hasLocalFilter ? <Button variant="secondary" size="sm" onClick={clearAllFilters}>清除所有筛选</Button> : undefined} />
         ) : viewMode === 'grid' ? (
-          <div className="nv-media-grid">{pagedMixed.map((item) => item.type === 'series' && item.series ? <MediaCard key={`s-${item.series.id}`} series={item.series} /> : item.media ? <MediaCard key={`m-${item.media.id}`} media={item.media} /> : null)}</div>
+          <SharedMediaGrid>{pagedMixed.map((item) => item.type === 'series' && item.series ? <MediaCard key={`s-${item.series.id}`} series={item.series} /> : item.media ? <MediaCard key={`m-${item.media.id}`} media={item.media} /> : null)}</SharedMediaGrid>
         ) : viewMode === 'list' ? (
           <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">{pagedMixed.map((item) => <LibraryListItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}</div>
         ) : (
-          <div className="grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">{pagedMixed.map((item) => <LibraryPosterItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}</div>
+          <SharedMediaGrid variant="poster">{pagedMixed.map((item) => <LibraryPosterItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}</SharedMediaGrid>
         )
       ) : pagedSeries.length === 0 ? (
         <EmptyState icon={<Tv size={24} />} title={hasLocalFilter ? '没有找到匹配的剧集' : '此媒体库暂无剧集合集'} description={hasLocalFilter ? '尝试调整筛选条件或使用其他关键词。' : '识别到剧集后，合集会显示在这里。'} action={hasLocalFilter ? <Button variant="secondary" size="sm" onClick={clearAllFilters}>清除所有筛选</Button> : undefined} />
       ) : viewMode === 'grid' ? (
-        <div className="nv-media-grid">{pagedSeries.map((series) => <MediaCard key={series.id} series={series} />)}</div>
+        <SharedMediaGrid>{pagedSeries.map((series) => <MediaCard key={series.id} series={series} />)}</SharedMediaGrid>
       ) : viewMode === 'list' ? (
         <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">{pagedSeries.map((series) => <LibraryListItem key={series.id} series={series} />)}</div>
       ) : (
-        <div className="grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">{pagedSeries.map((series) => <LibraryPosterItem key={series.id} series={series} />)}</div>
+        <SharedMediaGrid variant="poster">{pagedSeries.map((series) => <LibraryPosterItem key={series.id} series={series} />)}</SharedMediaGrid>
       )}
 
       <Pagination page={page} totalPages={totalPages} total={resultCount} pageSize={size} pageSizeOptions={[20, 30, 50, 100]} onPageChange={setPage} onPageSizeChange={setSize} />
@@ -358,14 +358,28 @@ export default function LibraryPage() {
 
 function LibrarySkeleton({ viewMode }: { viewMode: LibraryViewMode }) {
   const list = viewMode === 'list'
+  if (list) {
+    return (
+      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-busy="true">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 py-2.5">
+            <div className="skeleton h-16 w-11 shrink-0 rounded-[9px]" />
+            <div className="flex-1 space-y-2"><div className="skeleton h-3 w-3/4" /><div className="skeleton h-2.5 w-1/2" /></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className={clsx(viewMode === 'poster' ? 'grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8' : list ? 'divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]' : 'nv-media-grid')}>
-      {Array.from({ length: list ? 8 : 12 }).map((_, index) => list ? (
-        <div key={index} className="flex items-center gap-3 py-2.5"><div className="skeleton h-16 w-11 shrink-0 rounded-[9px]" /><div className="flex-1 space-y-2"><div className="skeleton h-3 w-3/4" /><div className="skeleton h-2.5 w-1/2" /></div></div>
-      ) : (
-        <div key={index}><div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />{viewMode !== 'poster' && <><div className="skeleton mt-2 h-3 w-3/4" /><div className="skeleton mt-1.5 h-2.5 w-1/2" /></>}</div>
+    <SharedMediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'} aria-busy="true">
+      {Array.from({ length: 12 }).map((_, index) => (
+        <div key={index}>
+          <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+          {viewMode !== 'poster' && <><div className="skeleton mt-2 h-3 w-3/4" /><div className="skeleton mt-1.5 h-2.5 w-1/2" /></>}
+        </div>
       ))}
-    </div>
+    </SharedMediaGrid>
   )
 }
 
@@ -392,10 +406,17 @@ function LibraryListItem({ item, series: seriesProp }: { item?: MixedItem; serie
   const visibleTags = tagsExpanded ? genreList : genreList.slice(0, 3)
   const linkTo = series ? `/series/${series.id}` : media?.series_id ? `/series/${media.series_id}` : `/media/${media?.id}`
   const posterUrl = series ? streamApi.getSeriesPosterUrl(series.id) : media?.series_id ? streamApi.getSeriesPosterUrl(media.series_id) : streamApi.getPosterUrl(media?.id || '')
+  const hasPoster = series ? !!series.poster_path : media?.series_id ? !!media.series?.poster_path || !!media.poster_path : !!media?.poster_path
 
   return (
     <Link to={linkTo} className="group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
-      <div className="h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]"><img src={posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} /></div>
+      <MediaArtwork
+        src={hasPoster ? posterUrl : null}
+        alt=""
+        ratio="poster"
+        className="h-16 w-11 shrink-0 rounded-[9px]"
+        fallback={isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2"><h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{title}</h3>{isSeries && <Tag>剧集</Tag>}</div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">{year > 0 && <span>{year}</span>}{country && <span>{country}</span>}{duration > 0 && <span>{formatDuration(duration)}</span>}{series && <span>{series.season_count} 季 · {series.episode_count} 集</span>}</div>
@@ -415,15 +436,24 @@ function LibraryPosterItem({ item, series: seriesProp }: { item?: MixedItem; ser
   const rating = series?.rating || media?.rating || 0
   const linkTo = series ? `/series/${series.id}` : media?.series_id ? `/series/${media.series_id}` : `/media/${media?.id}`
   const posterUrl = series ? streamApi.getSeriesPosterUrl(series.id) : media?.series_id ? streamApi.getSeriesPosterUrl(media.series_id) : streamApi.getPosterUrl(media?.id || '')
+  const hasPoster = series ? !!series.poster_path : media?.series_id ? !!media.series?.poster_path || !!media.poster_path : !!media?.poster_path
 
   return (
     <Link to={linkTo} className="group block min-w-0" aria-label={title}>
-      <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-        <img src={posterUrl} alt="" className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none' }} />
-        <div className="absolute inset-0 grid place-items-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span></div>
-        {rating > 0 && <Tag tone="quality" className="absolute left-1.5 top-1.5"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</Tag>}
-        {isSeries && <Tag tone="quality" className="absolute bottom-1.5 right-1.5">剧集</Tag>}
-      </div>
+      <MediaArtwork
+        src={hasPoster ? posterUrl : null}
+        alt=""
+        ratio="poster"
+        className="nv-media-card-poster"
+        imageClassName="transition-[filter,transform] duration-200 group-hover:brightness-[.82]"
+        fallback={isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
+      >
+        <div className="absolute inset-0 z-20 grid place-items-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span>
+        </div>
+        {rating > 0 && <Tag tone="quality" className="absolute left-1.5 top-1.5 z-30"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</Tag>}
+        {isSeries && <Tag tone="quality" className="absolute bottom-1.5 right-1.5 z-30">剧集</Tag>}
+      </MediaArtwork>
       <p className="mt-1.5 truncate text-[11px] font-medium text-[var(--nv-text-primary)]">{title}</p>
     </Link>
   )
