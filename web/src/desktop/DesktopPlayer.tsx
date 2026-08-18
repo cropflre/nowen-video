@@ -1,6 +1,24 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Pause, Play, Volume2, VolumeX, Maximize, Subtitles, Loader2 } from 'lucide-react'
-import { desktop, type PlayOptions, type PlayerVideoInfo } from './bridge'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  AudioLines,
+  Check,
+  ChevronUp,
+  ListVideo,
+  Loader2,
+  Maximize,
+  Pause,
+  Play,
+  Subtitles,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
+import {
+  desktop,
+  type PlayOptions,
+  type PlayerMediaInfo,
+  type PlayerTrack,
+  type PlayerVideoInfo,
+} from './bridge'
 import { usePlayerStore } from '@/stores/player'
 
 interface Props {
@@ -28,7 +46,16 @@ export interface DesktopPlayerHandle {
   loadFile(url: string): Promise<void>
 }
 
+type PickerKind = 'audio' | 'subtitle' | 'chapter'
+
+const EMPTY_MEDIA_INFO: PlayerMediaInfo = {
+  tracks: [],
+  chapters: [],
+  current_chapter: -1,
+}
+
 const CONTROL_CLASS = 'flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-[var(--nv-player-surface-subtle)] text-[var(--nv-player-text-primary)] transition-[background-color,border-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]'
+const PICKER_PANEL_CLASS = 'absolute bottom-[4.75rem] right-4 z-20 max-h-[min(58vh,30rem)] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-[var(--nv-radius-lg)] border border-[var(--nv-player-border)] bg-[color-mix(in_srgb,var(--nv-player-canvas)_92%,transparent)] shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
 
 function DesktopPlayerInner(
   {
@@ -47,6 +74,7 @@ function DesktopPlayerInner(
 ) {
   const surfaceRef = useRef<HTMLDivElement>(null)
   const hideTimer = useRef<number | null>(null)
+  const mediaInfoTimer = useRef<number | null>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
@@ -54,6 +82,8 @@ function DesktopPlayerInner(
   const [volume, setVolume] = useState(initialVolume)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [videoInfo, setVideoInfo] = useState<PlayerVideoInfo | null>(null)
+  const [mediaInfo, setMediaInfo] = useState<PlayerMediaInfo>(EMPTY_MEDIA_INFO)
+  const [picker, setPicker] = useState<PickerKind | null>(null)
   const [seeking, setSeeking] = useState(false)
   const [seekPreview, setSeekPreview] = useState<number | null>(null)
 
@@ -79,6 +109,27 @@ function DesktopPlayerInner(
     store.setMuted(info.mute)
     store.setVolume(Math.max(0, Math.min(1, info.volume / 100)))
   }, [])
+
+  const refreshMediaInfo = useCallback(async () => {
+    const info = await desktop.playerMediaInfo(sessionId)
+    if (info) setMediaInfo(info)
+  }, [sessionId])
+
+  const scheduleMediaInfoRefresh = useCallback(() => {
+    if (mediaInfoTimer.current) window.clearTimeout(mediaInfoTimer.current)
+    mediaInfoTimer.current = window.setTimeout(() => {
+      void refreshMediaInfo()
+    }, 60)
+  }, [refreshMediaInfo])
+
+  const audioTracks = useMemo(
+    () => mediaInfo.tracks.filter((track) => track.kind === 'audio'),
+    [mediaInfo.tracks],
+  )
+  const subtitleTracks = useMemo(
+    () => mediaInfo.tracks.filter((track) => track.kind === 'sub'),
+    [mediaInfo.tracks],
+  )
 
   useImperativeHandle(ref, (): DesktopPlayerHandle => ({
     async play() {
@@ -106,14 +157,16 @@ function DesktopPlayerInner(
     },
     async setSubtitle(sid) {
       await setProperty('sid', String(sid))
+      scheduleMediaInfoRefresh()
     },
     async setAudioTrack(aid) {
       await setProperty('aid', String(aid))
+      scheduleMediaInfoRefresh()
     },
     async loadFile(url) {
       await command('loadfile', [url, 'replace'])
     },
-  }), [command, setProperty])
+  }), [command, scheduleMediaInfoRefresh, setProperty])
 
   useEffect(() => {
     if (!desktop.isDesktop || !streamUrl) return
@@ -200,6 +253,13 @@ function DesktopPlayerInner(
       unlisten = await desktop.onPlayerState((event) => {
         if (!active || event.session_id !== sessionId) return
         applyVideoInfo(event.state, event.event)
+        if (
+          event.event === 'file-loaded'
+          || event.event === 'media-info-change'
+          || event.event === 'queue-overflow'
+        ) {
+          scheduleMediaInfoRefresh()
+        }
       })
 
       if (!active) {
@@ -207,9 +267,14 @@ function DesktopPlayerInner(
         return
       }
 
-      // 监听建立后再读一次快照，补齐订阅建立前可能已发生的初始属性事件。
-      const bootstrap = await desktop.playerVideoInfo(sessionId)
-      if (active && bootstrap) applyVideoInfo(bootstrap, 'bootstrap')
+      // 监听建立后读取一次快照，补齐订阅建立前可能已发生的初始属性/轨道事件。
+      const [bootstrap, navigation] = await Promise.all([
+        desktop.playerVideoInfo(sessionId),
+        desktop.playerMediaInfo(sessionId),
+      ])
+      if (!active) return
+      if (bootstrap) applyVideoInfo(bootstrap, 'bootstrap')
+      if (navigation) setMediaInfo(navigation)
     })().catch((cause) => {
       console.warn('[desktop] Player Core 状态订阅失败:', cause)
     })
@@ -218,12 +283,19 @@ function DesktopPlayerInner(
       active = false
       unlisten?.()
     }
-  }, [applyVideoInfo, ready, sessionId])
+  }, [applyVideoInfo, ready, scheduleMediaInfoRefresh, sessionId])
+
+  useEffect(() => () => {
+    if (mediaInfoTimer.current) window.clearTimeout(mediaInfoTimer.current)
+  }, [])
 
   const resetHideTimer = useCallback(() => {
     setControlsVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
-    hideTimer.current = window.setTimeout(() => setControlsVisible(false), 3500)
+    hideTimer.current = window.setTimeout(() => {
+      setControlsVisible(false)
+      setPicker(null)
+    }, 3500)
   }, [])
 
   useEffect(() => {
@@ -267,6 +339,25 @@ function DesktopPlayerInner(
     await command('seek', [String(seconds), 'absolute'])
     resetHideTimer()
   }, [command, resetHideTimer])
+
+  const selectTrack = useCallback(async (kind: 'audio' | 'subtitle', trackId: number | 'no') => {
+    await setProperty(kind === 'audio' ? 'aid' : 'sid', String(trackId))
+    scheduleMediaInfoRefresh()
+    setPicker(null)
+    resetHideTimer()
+  }, [resetHideTimer, scheduleMediaInfoRefresh, setProperty])
+
+  const selectChapter = useCallback(async (chapterIndex: number) => {
+    await setProperty('chapter', String(chapterIndex))
+    scheduleMediaInfoRefresh()
+    setPicker(null)
+    resetHideTimer()
+  }, [resetHideTimer, scheduleMediaInfoRefresh, setProperty])
+
+  const togglePicker = useCallback((kind: PickerKind) => {
+    setPicker((current) => current === kind ? null : kind)
+    resetHideTimer()
+  }, [resetHideTimer])
 
   if (!desktop.isDesktop) return null
 
@@ -324,6 +415,18 @@ function DesktopPlayerInner(
         </div>
       )}
 
+      {ready && picker && (
+        <PlayerPicker
+          kind={picker}
+          audioTracks={audioTracks}
+          subtitleTracks={subtitleTracks}
+          mediaInfo={mediaInfo}
+          onAudio={(id) => void selectTrack('audio', id)}
+          onSubtitle={(id) => void selectTrack('subtitle', id)}
+          onChapter={(index) => void selectChapter(index)}
+        />
+      )}
+
       {ready && (
         <div
           className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
@@ -377,9 +480,44 @@ function DesktopPlayerInner(
               style={{ background: `linear-gradient(to right, var(--nv-player-accent) ${muted ? 0 : volume}%, color-mix(in srgb, var(--nv-player-text-primary) 15%, transparent) ${muted ? 0 : volume}%)` }}
               aria-label="音量"
             />
-            <button type="button" onClick={async () => { await command('cycle', ['sid']); resetHideTimer() }} className={CONTROL_CLASS} title="切换字幕" aria-label="切换字幕">
+
+            {audioTracks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => togglePicker('audio')}
+                className={`${CONTROL_CLASS} ${picker === 'audio' ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]' : ''}`}
+                title="音轨"
+                aria-label="选择音轨"
+                aria-expanded={picker === 'audio'}
+              >
+                <AudioLines className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => togglePicker('subtitle')}
+              className={`${CONTROL_CLASS} ${picker === 'subtitle' ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]' : ''}`}
+              title="字幕"
+              aria-label="选择字幕"
+              aria-expanded={picker === 'subtitle'}
+            >
               <Subtitles className="h-4 w-4" aria-hidden="true" />
             </button>
+
+            {mediaInfo.chapters.length > 0 && (
+              <button
+                type="button"
+                onClick={() => togglePicker('chapter')}
+                className={`${CONTROL_CLASS} ${picker === 'chapter' ? 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]' : ''}`}
+                title="章节"
+                aria-label="选择章节"
+                aria-expanded={picker === 'chapter'}
+              >
+                <ListVideo className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+
             <div className="flex-1" />
             <button type="button" onClick={toggleFullscreen} className={CONTROL_CLASS} title="全屏" aria-label="全屏">
               <Maximize className="h-4 w-4" aria-hidden="true" />
@@ -389,6 +527,133 @@ function DesktopPlayerInner(
       )}
     </div>
   )
+}
+
+function PlayerPicker({
+  kind,
+  audioTracks,
+  subtitleTracks,
+  mediaInfo,
+  onAudio,
+  onSubtitle,
+  onChapter,
+}: {
+  kind: PickerKind
+  audioTracks: PlayerTrack[]
+  subtitleTracks: PlayerTrack[]
+  mediaInfo: PlayerMediaInfo
+  onAudio: (id: number) => void
+  onSubtitle: (id: number | 'no') => void
+  onChapter: (index: number) => void
+}) {
+  const title = kind === 'audio' ? '音轨' : kind === 'subtitle' ? '字幕' : '章节'
+
+  return (
+    <div className={PICKER_PANEL_CLASS} role="dialog" aria-label={`选择${title}`} onDoubleClick={(event) => event.stopPropagation()}>
+      <div className="flex items-center justify-between border-b border-[var(--nv-player-border)] px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-[var(--nv-player-text-primary)]">
+          {kind === 'audio' ? <AudioLines className="h-4 w-4" aria-hidden="true" /> : kind === 'subtitle' ? <Subtitles className="h-4 w-4" aria-hidden="true" /> : <ListVideo className="h-4 w-4" aria-hidden="true" />}
+          {title}
+        </div>
+        <ChevronUp className="h-4 w-4 text-[var(--nv-player-text-tertiary)]" aria-hidden="true" />
+      </div>
+
+      <div className="max-h-[min(50vh,25rem)] overflow-y-auto p-2">
+        {kind === 'audio' && audioTracks.map((track, index) => (
+          <TrackOption key={`audio-${track.id}-${index}`} track={track} index={index} fallback="音轨" onClick={() => onAudio(track.id)} />
+        ))}
+
+        {kind === 'subtitle' && (
+          <>
+            <PickerOption
+              selected={!subtitleTracks.some((track) => track.selected)}
+              title="关闭字幕"
+              subtitle="不显示字幕"
+              onClick={() => onSubtitle('no')}
+            />
+            {subtitleTracks.map((track, index) => (
+              <TrackOption key={`sub-${track.id}-${index}`} track={track} index={index} fallback="字幕" onClick={() => onSubtitle(track.id)} />
+            ))}
+          </>
+        )}
+
+        {kind === 'chapter' && mediaInfo.chapters.map((chapter) => (
+          <PickerOption
+            key={`chapter-${chapter.index}`}
+            selected={chapter.index === mediaInfo.current_chapter}
+            title={chapter.title}
+            subtitle={formatTime(chapter.time)}
+            onClick={() => onChapter(chapter.index)}
+          />
+        ))}
+
+        {kind === 'audio' && audioTracks.length === 0 && <EmptyPicker text="没有可用音轨" />}
+        {kind === 'chapter' && mediaInfo.chapters.length === 0 && <EmptyPicker text="当前视频没有章节" />}
+      </div>
+    </div>
+  )
+}
+
+function TrackOption({
+  track,
+  index,
+  fallback,
+  onClick,
+}: {
+  track: PlayerTrack
+  index: number
+  fallback: string
+  onClick: () => void
+}) {
+  const details = [
+    formatLanguage(track.language),
+    track.codec_desc || track.codec?.toUpperCase(),
+    track.external ? '外挂' : '',
+    track.forced ? '强制' : '',
+    track.is_default ? '默认' : '',
+  ].filter(Boolean)
+
+  return (
+    <PickerOption
+      selected={track.selected}
+      title={track.title || `${fallback} ${index + 1}`}
+      subtitle={details.join(' · ') || track.codec || undefined}
+      onClick={onClick}
+    />
+  )
+}
+
+function PickerOption({
+  selected,
+  title,
+  subtitle,
+  onClick,
+}: {
+  selected: boolean
+  title: string
+  subtitle?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-[var(--nv-radius-control)] px-3 py-2.5 text-left transition-colors ${selected ? 'bg-[var(--nv-player-accent-soft)]' : 'hover:bg-[var(--nv-player-surface-hover)]'}`}
+      aria-pressed={selected}
+    >
+      <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border ${selected ? 'border-[var(--nv-player-accent-border)] text-[var(--nv-player-accent)]' : 'border-[var(--nv-player-border)] text-transparent'}`}>
+        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-sm ${selected ? 'font-medium text-[var(--nv-player-text-primary)]' : 'text-[var(--nv-player-text-secondary)]'}`}>{title}</span>
+        {subtitle && <span className="mt-0.5 block truncate text-xs text-[var(--nv-player-text-tertiary)]">{subtitle}</span>}
+      </span>
+    </button>
+  )
+}
+
+function EmptyPicker({ text }: { text: string }) {
+  return <div className="px-3 py-8 text-center text-sm text-[var(--nv-player-text-tertiary)]">{text}</div>
 }
 
 const DesktopPlayer = forwardRef<DesktopPlayerHandle, Props>(DesktopPlayerInner)
@@ -403,6 +668,29 @@ function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const pad = (value: number) => String(value).padStart(2, '0')
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+}
+
+function formatLanguage(language: string): string {
+  const normalized = language.trim().toLowerCase()
+  if (!normalized) return ''
+  const known: Record<string, string> = {
+    chi: '中文',
+    zho: '中文',
+    cmn: '中文',
+    eng: '英语',
+    en: '英语',
+    jpn: '日语',
+    ja: '日语',
+    kor: '韩语',
+    ko: '韩语',
+    yue: '粤语',
+    fra: '法语',
+    fre: '法语',
+    deu: '德语',
+    ger: '德语',
+    spa: '西班牙语',
+  }
+  return known[normalized] || language.toUpperCase()
 }
 
 export const desktopPlayerControl = {
@@ -423,5 +711,8 @@ export const desktopPlayerControl = {
   },
   setAudioTrack(sessionId: string, aid: number | 'no') {
     return desktop.playerSetProperty({ sessionId, name: 'aid', value: String(aid) })
+  },
+  setChapter(sessionId: string, chapter: number) {
+    return desktop.playerSetProperty({ sessionId, name: 'chapter', value: String(chapter) })
   },
 }
