@@ -47,15 +47,16 @@ $surface = Read-RequiredFile "desktop/src-tauri/src/player/surface/windows.rs"
 $desktopPlayer = Read-RequiredFile "web/src/desktop/DesktopPlayer.tsx"
 $bridge = Read-RequiredFile "web/src/platform/desktop/bridge.ts"
 
-# Windows 正式播放器必须是 libmpv Render API，而不是 wid。
-Assert-Contains $player 'init.set_option("vo", "libmpv")' "Windows Player Core 必须在初始化前启用 vo=libmpv"
+# Windows 正式播放器必须由初始化器切入 libmpv Render API，而不是 wid。
+Assert-Contains $player "Mpv::with_initializer" "Windows Player Core 必须在 mpv_initialize 前配置原生渲染"
+Assert-Contains $player "libmpv" "Windows Player Core 必须保留 libmpv VO / Render API 配置"
 Assert-Contains $surface "mpv_render_context_create" "Windows Surface 必须创建 libmpv Render Context"
 Assert-Contains $surface "mpv_render_context_render" "Windows Surface 必须通过 Render API 绘制视频帧"
 Assert-Contains $surface "mpv_render_context_report_swap" "Windows Surface 必须向 libmpv 报告 swap"
 Assert-Contains $surface "SwapBuffers" "Windows Surface 必须由宿主交换 framebuffer"
 Assert-Contains $surface "WS_POPUP" "Windows Surface 必须使用纯 Win32 原生窗口"
 Assert-NotContains $surface "WebviewWindow" "Windows 视频 Surface 不允许恢复第二个 Tauri WebView"
-Assert-NotContains $surface 'set_property("wid"' "Windows 视频 Surface 不允许恢复 wid 嵌入"
+Assert-NotContains $surface "wid" "Windows 视频 Surface 不允许恢复 wid 嵌入"
 
 # Web 产品层只允许使用正式 Tauri 2 bridge，并由事件驱动同步播放器状态。
 Assert-Contains $bridge "@tauri-apps/api/core" "Desktop bridge 必须使用官方 Tauri 2 API"
