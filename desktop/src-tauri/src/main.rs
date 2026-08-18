@@ -10,7 +10,6 @@ mod resources;
 mod runtime;
 mod settings;
 mod sidecar;
-mod strategy;
 mod tray;
 mod updater;
 mod vibrancy;
@@ -97,8 +96,8 @@ fn main() {
                 log::info!("窗口 {} 关闭，释放 Desktop 运行时资源", window.label());
                 let state: tauri::State<AppState> = app.state();
 
-                if let Ok(mut mpv) = state.mpv.lock() {
-                    mpv.stop_all();
+                if let Ok(mut player) = state.mpv.lock() {
+                    player.stop_all();
                 }
 
                 if window.label() == "main" {
@@ -111,17 +110,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::sidecar_status,
             commands::sidecar_restart,
-            commands::play_with_mpv,
-            commands::stop_mpv,
-            commands::mpv_available,
-            commands::decide_engine,
-            commands::mpv_embed_start,
-            commands::mpv_embed_sync,
-            commands::mpv_embed_command,
-            commands::mpv_embed_set_property,
-            commands::mpv_embed_destroy,
-            commands::mpv_embed_set_anime4k,
-            commands::mpv_embed_video_info,
+            commands::player_available,
+            commands::player_start,
+            commands::player_stop,
+            commands::player_sync_surface,
+            commands::player_command,
+            commands::player_set_property,
+            commands::player_destroy,
+            commands::player_video_info,
             commands::check_update,
             commands::install_update,
             commands::get_settings,
