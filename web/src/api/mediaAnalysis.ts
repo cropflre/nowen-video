@@ -3,6 +3,8 @@ import api from './client'
 export const MEDIA_COMPUTE_PROTOCOL_VERSION = 2
 export const MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = 'highlight_v1'
 export const MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1 = 'highlight_v1'
+export const MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1 = 'preview_thumbnail_v1'
+export const MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1 = 'preview_thumbnail_v1'
 
 export interface MediaHighlight {
   id: string
@@ -73,6 +75,28 @@ export interface MediaComputeHighlightInput {
   sample_times: number[]
   max_highlights: number
   engine_version: number
+}
+
+export interface MediaComputePreviewThumbnailInput {
+  media_id: string
+  highlight_id: string
+  fingerprint: string
+  stream_url: string
+  frame_times: number[]
+  max_width: number
+  frame_rate: number
+}
+
+export interface MediaComputePreviewFrame {
+  time: number
+  mime: string
+  data_base64: string
+}
+
+export interface MediaComputePreviewThumbnailResult {
+  fingerprint: string
+  highlight_id: string
+  frames: MediaComputePreviewFrame[]
 }
 
 export interface MediaComputeTaskClaim<TInput = unknown> {

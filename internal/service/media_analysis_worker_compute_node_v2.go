@@ -298,9 +298,18 @@ func hasPreferredDesktopForCapabilityLocked(state *mediaAnalysisWorkerState, now
 	return false
 }
 
+func mediaComputeJobUsesAnalysisMode(jobType string) bool {
+	switch jobType {
+	case MediaComputeJobHighlightV1, MediaComputeJobPreviewThumbnailV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // ClaimComputeTask 是 Media Compute Node V2 的 capability-aware 领取器。
-// 它不再全局假设任务一定是 highlight_v1。现有 highlight dispatcher 仍负责 auto/server fallback，
-// 因而 server_only/off 时 selector 会明确跳过 highlight，避免模式切换期间被客户端抢到。
+// 它不再全局假设任务一定是 highlight_v1。现有 highlight/preview 都遵循 execution_mode，
+// 后续业务可以按自己的 dispatcher/fallback 策略决定是否接入同一模式开关。
 func (s *MediaAnalysisService) ClaimComputeTask(input MediaAnalysisWorkerClaimRequest) (*MediaComputeTaskClaim, error) {
 	node := s.HeartbeatComputeNode(input.MediaAnalysisWorkerHeartbeat)
 	if node.WorkerID == "" {
@@ -315,7 +324,7 @@ func (s *MediaAnalysisService) ClaimComputeTask(input MediaAnalysisWorkerClaimRe
 		Capabilities: node.Capabilities, Network: node.Network, Charging: node.Charging,
 		BatteryPercent: node.BatteryPercent,
 	}
-	highlightMode := s.ExecutionMode()
+	analysisMode := s.ExecutionMode()
 	state := mediaAnalysisState(s)
 	now := time.Now()
 	state.mu.Lock()
@@ -335,8 +344,8 @@ func (s *MediaAnalysisService) ClaimComputeTask(input MediaAnalysisWorkerClaimRe
 			task.LeaseUntil = time.Time{}
 		}
 		descriptor := mediaComputeDescriptor(s, task.TaskID)
-		if descriptor.JobType == MediaComputeJobHighlightV1 &&
-			(highlightMode == MediaAnalysisModeServerOnly || highlightMode == MediaAnalysisModeOff) {
+		if mediaComputeJobUsesAnalysisMode(descriptor.JobType) &&
+			(analysisMode == MediaAnalysisModeServerOnly || analysisMode == MediaAnalysisModeOff) {
 			continue
 		}
 		if !mediaComputeNodeCanRun(heartbeat, descriptor.RequiredCapability) {
@@ -464,6 +473,8 @@ func (s *MediaAnalysisService) CompleteComputeTask(taskID string, input MediaCom
 			descriptors.mu.Unlock()
 		}
 		return err
+	case MediaComputeJobPreviewThumbnailV1:
+		return s.completePreviewThumbnailComputeTask(taskID, remote, descriptor, input.Result)
 	default:
 		return ErrMediaComputeUnsupportedJob
 	}

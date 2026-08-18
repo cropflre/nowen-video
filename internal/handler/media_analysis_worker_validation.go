@@ -16,7 +16,7 @@ import (
 const maxMediaAnalysisWorkerRequestBytes int64 = 5 * 1024 * 1024
 
 // ValidateMediaAnalysisWorkerComplete 同时校验 V1 highlight body 与 V2 generic result envelope。
-// 未知 job 这里只执行总请求大小限制，具体 result adapter 由服务层拒绝或校验。
+// 已注册 job 在进入业务层前先做图片魔数校验；服务层继续负责 fingerprint、条数、单图/总大小等业务约束。
 func ValidateMediaAnalysisWorkerComplete(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxMediaAnalysisWorkerRequestBytes)
 	body, err := io.ReadAll(c.Request.Body)
@@ -52,6 +52,20 @@ func ValidateMediaAnalysisWorkerComplete(c *gin.Context) {
 		if err := validateMediaAnalysisHighlightThumbnails(highlights); err != nil {
 			c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 			return
+		}
+	}
+	if jobType == service.MediaComputeJobPreviewThumbnailV1 {
+		var result service.MediaComputePreviewThumbnailResult
+		if len(payload.Result) == 0 || json.Unmarshal(payload.Result, &result) != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "预览图计算 result 格式无效"})
+			return
+		}
+		for _, frame := range result.Frames {
+			data, decodeErr := base64.StdEncoding.DecodeString(strings.TrimSpace(frame.DataBase64))
+			if decodeErr != nil || !validMediaAnalysisThumbnail(frame.Mime, data) {
+				c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": "客户端预览帧格式与内容不匹配"})
+				return
+			}
 		}
 	}
 

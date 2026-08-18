@@ -47,15 +47,19 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 private const val HIGHLIGHT_WORKER_HOST = "placeholder.invalid"
-private const val HIGHLIGHT_WORKER_IDLE_POLL_MS = 8_000L
+private const val HIGHLIGHT_WORKER_IDLE_POLL_MS = 4_000L
 private const val HIGHLIGHT_WORKER_INELIGIBLE_POLL_MS = 15_000L
 private const val HIGHLIGHT_MIN_BATTERY_PERCENT = 40
 private const val HIGHLIGHT_MIN_SEPARATION_SECONDS = 45.0
 private const val HIGHLIGHT_THUMBNAIL_MAX_WIDTH = 640
 private const val HIGHLIGHT_THUMBNAIL_SOFT_LIMIT = 480 * 1024
+private const val PREVIEW_THUMBNAIL_MAX_WIDTH = 420
+private const val PREVIEW_FRAME_SOFT_LIMIT = 240 * 1024
 private const val MEDIA_COMPUTE_PROTOCOL_VERSION = 2
 private const val MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = "highlight_v1"
 private const val MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1 = "highlight_v1"
+private const val MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1 = "preview_thumbnail_v1"
+private const val MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1 = "preview_thumbnail_v1"
 
 @Serializable
 data class HighlightWorkerHeartbeat(
@@ -63,7 +67,10 @@ data class HighlightWorkerHeartbeat(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf(MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1),
+    val capabilities: List<String> = listOf(
+        MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
+        MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
+    ),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
@@ -75,7 +82,10 @@ data class HighlightWorkerClaimRequest(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf(MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1),
+    val capabilities: List<String> = listOf(
+        MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
+        MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
+    ),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
@@ -90,6 +100,17 @@ data class MediaComputeHighlightInput(
     @SerialName("sample_times") val sampleTimes: List<Double> = emptyList(),
     @SerialName("max_highlights") val maxHighlights: Int = 8,
     @SerialName("engine_version") val engineVersion: Int = 3,
+)
+
+@Serializable
+data class MediaComputePreviewThumbnailInput(
+    @SerialName("media_id") val mediaId: String = "",
+    @SerialName("highlight_id") val highlightId: String = "",
+    val fingerprint: String = "",
+    @SerialName("stream_url") val streamUrl: String = "",
+    @SerialName("frame_times") val frameTimes: List<Double> = emptyList(),
+    @SerialName("max_width") val maxWidth: Int = PREVIEW_THUMBNAIL_MAX_WIDTH,
+    @SerialName("frame_rate") val frameRate: Int = 2,
 )
 
 @Serializable
@@ -142,6 +163,27 @@ data class MediaComputeHighlightComplete(
 )
 
 @Serializable
+data class MediaComputePreviewFrame(
+    val time: Double,
+    val mime: String,
+    @SerialName("data_base64") val dataBase64: String,
+)
+
+@Serializable
+data class MediaComputePreviewThumbnailResult(
+    val fingerprint: String,
+    @SerialName("highlight_id") val highlightId: String,
+    val frames: List<MediaComputePreviewFrame>,
+)
+
+@Serializable
+data class MediaComputePreviewComplete(
+    @SerialName("claim_token") val claimToken: String,
+    @SerialName("job_type") val jobType: String = MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1,
+    val result: MediaComputePreviewThumbnailResult,
+)
+
+@Serializable
 data class HighlightWorkerFailure(
     @SerialName("claim_token") val claimToken: String,
     val error: String,
@@ -159,9 +201,15 @@ interface HighlightComputeApi {
     ): Response<Unit>
 
     @POST("media-analysis/workers/tasks/{taskId}/complete")
-    suspend fun complete(
+    suspend fun completeHighlight(
         @Path("taskId") taskId: String,
         @Body request: MediaComputeHighlightComplete,
+    ): Response<Unit>
+
+    @POST("media-analysis/workers/tasks/{taskId}/complete")
+    suspend fun completePreview(
+        @Path("taskId") taskId: String,
+        @Body request: MediaComputePreviewComplete,
     ): Response<Unit>
 
     @POST("media-analysis/workers/tasks/{taskId}/fail")
@@ -213,7 +261,7 @@ class HighlightComputeAgent @Inject constructor(
 
     /**
      * Android Media Compute Node V2 仅在 Activity 前台生命周期内运行。
-     * 节点只声明真实 capabilities；未来 job 复用同一 Claim/租约协议，并在 processClaim 分派执行器。
+     * 当前声明 highlight_v1 + preview_thumbnail_v1；两个 job 都复用 MediaMetadataRetriever 硬件抽帧。
      */
     suspend fun runForegroundLoop() {
         while (currentCoroutineContext().isActive) {
@@ -298,9 +346,19 @@ class HighlightComputeAgent @Inject constructor(
         )
     }
 
+    private fun resolvePreviewThumbnailInput(claim: MediaComputeTaskClaim): MediaComputePreviewThumbnailInput {
+        if (claim.requiredCapability != MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1) {
+            error("Android 媒体计算节点缺少任务能力：${claim.requiredCapability}")
+        }
+        val element = claim.input ?: error("服务器没有返回 preview_thumbnail_v1 input")
+        return runCatching { json.decodeFromJsonElement<MediaComputePreviewThumbnailInput>(element) }
+            .getOrElse { error("服务器返回的 preview_thumbnail_v1 input 格式无效") }
+    }
+
     private suspend fun processClaim(serverBaseUrl: String, token: String, claim: MediaComputeTaskClaim) {
         when (claim.jobType) {
             MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 -> processHighlightClaim(serverBaseUrl, token, claim)
+            MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1 -> processPreviewThumbnailClaim(serverBaseUrl, token, claim)
             else -> error("Android 媒体计算节点尚未注册执行器：${claim.jobType}")
         }
     }
@@ -369,7 +427,7 @@ class HighlightComputeAgent @Inject constructor(
                 )
             }
 
-            val completed = api.complete(
+            val completed = api.completeHighlight(
                 claim.taskId,
                 MediaComputeHighlightComplete(
                     claimToken = claim.claimToken,
@@ -381,6 +439,61 @@ class HighlightComputeAgent @Inject constructor(
             )
             if (!completed.isSuccessful) {
                 error("服务器拒绝客户端精彩片段结果：HTTP ${completed.code()}")
+            }
+        } finally {
+            retriever.release()
+        }
+    }
+
+    private suspend fun processPreviewThumbnailClaim(
+        serverBaseUrl: String,
+        token: String,
+        claim: MediaComputeTaskClaim,
+    ) = withContext(Dispatchers.IO) {
+        val input = resolvePreviewThumbnailInput(claim)
+        if (input.fingerprint.isBlank() || input.highlightId.isBlank() || input.streamUrl.isBlank() ||
+            input.frameTimes.size !in 2..8
+        ) {
+            error("服务器没有返回可用的预览图采样计划")
+        }
+        val streamUrl = requireNotNull(UrlNormalizer.apiUrl(serverBaseUrl, input.streamUrl)) {
+            "服务器返回的预览媒体流地址无效"
+        }
+        val headers = mapOf("Authorization" to "Bearer $token")
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(streamUrl, headers)
+            val frames = input.frameTimes.map { time ->
+                if (!time.isFinite() || time < 0.0) error("服务器返回了无效预览帧时间点")
+                val bitmap = extractFrame(retriever, time) ?: error("Android 无法提取预览帧")
+                val encoded = try {
+                    encodeThumbnail(
+                        source = bitmap,
+                        maxWidth = input.maxWidth.coerceIn(160, PREVIEW_THUMBNAIL_MAX_WIDTH),
+                        softLimit = PREVIEW_FRAME_SOFT_LIMIT,
+                    )
+                } finally {
+                    bitmap.recycle()
+                }
+                MediaComputePreviewFrame(
+                    time = time,
+                    mime = encoded.second,
+                    dataBase64 = Base64.encodeToString(encoded.first, Base64.NO_WRAP),
+                )
+            }
+            val completed = api.completePreview(
+                claim.taskId,
+                MediaComputePreviewComplete(
+                    claimToken = claim.claimToken,
+                    result = MediaComputePreviewThumbnailResult(
+                        fingerprint = input.fingerprint,
+                        highlightId = input.highlightId,
+                        frames = frames,
+                    ),
+                ),
+            )
+            if (!completed.isSuccessful) {
+                error("服务器拒绝客户端预览图结果：HTTP ${completed.code()}")
             }
         } finally {
             retriever.release()
@@ -483,8 +596,12 @@ class HighlightComputeAgent @Inject constructor(
         return chosen.sortedBy { it.time }
     }
 
-    private fun encodeThumbnail(source: Bitmap): Pair<ByteArray, String> {
-        val width = min(HIGHLIGHT_THUMBNAIL_MAX_WIDTH, source.width).coerceAtLeast(1)
+    private fun encodeThumbnail(
+        source: Bitmap,
+        maxWidth: Int = HIGHLIGHT_THUMBNAIL_MAX_WIDTH,
+        softLimit: Int = HIGHLIGHT_THUMBNAIL_SOFT_LIMIT,
+    ): Pair<ByteArray, String> {
+        val width = min(maxWidth, source.width).coerceAtLeast(1)
         val height = max(1, (source.height.toDouble() * width / source.width.coerceAtLeast(1)).toInt())
         val bitmap = if (source.width == width && source.height == height) source else Bitmap.createScaledBitmap(source, width, height, true)
         try {
@@ -492,10 +609,13 @@ class HighlightComputeAgent @Inject constructor(
             val isWebP = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
             val format = if (isWebP) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.JPEG
             val mime = if (isWebP) "image/webp" else "image/jpeg"
-            for (quality in intArrayOf(72, 62, 52, 42)) {
+            for (quality in intArrayOf(72, 62, 52, 42, 34)) {
                 output.reset()
                 bitmap.compress(format, quality, output)
-                if (output.size() <= HIGHLIGHT_THUMBNAIL_SOFT_LIMIT) break
+                if (output.size() <= softLimit) break
+            }
+            if (output.size() > softLimit) {
+                error("Android 媒体计算帧超过大小限制：${output.size()} 字节")
             }
             return output.toByteArray() to mime
         } finally {

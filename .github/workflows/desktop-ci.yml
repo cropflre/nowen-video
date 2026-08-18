@@ -11,6 +11,7 @@ on:
       - 'web/src/api/mediaAnalysis.ts'
       - 'web/src/App.tsx'
       - 'internal/service/media_analysis_worker*.go'
+      - 'internal/service/media_analysis_preview_compute*.go'
       - 'scripts/fetch-assets.ps1'
       - '.github/workflows/desktop-ci.yml'
       - '.github/workflows/release-desktop.yml'
@@ -21,6 +22,7 @@ on:
       - 'web/src/api/mediaAnalysis.ts'
       - 'web/src/App.tsx'
       - 'internal/service/media_analysis_worker*.go'
+      - 'internal/service/media_analysis_preview_compute*.go'
       - 'scripts/fetch-assets.ps1'
       - '.github/workflows/desktop-ci.yml'
       - '.github/workflows/release-desktop.yml'
@@ -72,11 +74,17 @@ jobs:
         shell: pwsh
         run: cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
 
-      - name: Verify highlight compute source contract
+      - name: Verify media compute libmpv source contract
         shell: pwsh
         run: |
           $source = Get-Content 'desktop/src-tauri/src/highlight_compute.rs' -Raw
           if ($source -notmatch 'highlight_capture_frame') { throw '缺少 highlight_capture_frame 命令' }
-          if ($source -notmatch 'vo-image-format", "webp') { throw '桌面精彩片段必须输出 WebP' }
-          if ($source -notmatch 'hwdec", "auto-copy') { throw '桌面精彩片段必须保留安全硬解回拷模式' }
-          if ($source -notmatch 'frames", 1_i64') { throw '桌面精彩片段必须限制单次只抽取一帧' }
+          if ($source -notmatch 'vo-image-format", "webp') { throw '桌面媒体计算必须输出 WebP' }
+          if ($source -notmatch 'hwdec", "auto-copy') { throw '桌面媒体计算必须保留安全硬解回拷模式' }
+          if ($source -notmatch 'frames", 1_i64') { throw '桌面媒体计算必须限制单次只抽取一帧' }
+
+          $agent = Get-Content 'web/src/desktop/DesktopHighlightComputeAgent.tsx' -Raw
+          if ($agent -notmatch 'MEDIA_COMPUTE_JOB_HIGHLIGHT_V1') { throw 'Desktop 缺少 highlight_v1 执行器' }
+          if ($agent -notmatch 'MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1') { throw 'Desktop 缺少 preview_thumbnail_v1 执行器' }
+          if ($agent -notmatch 'processPreviewThumbnailClaim') { throw 'Desktop 缺少预览图任务处理函数' }
+          if ($agent -notmatch 'capturePreviewFrame') { throw 'Desktop 预览图任务必须复用单帧捕获能力' }

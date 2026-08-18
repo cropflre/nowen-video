@@ -2,8 +2,8 @@ package com.nowen.video.v2.core.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 
@@ -49,6 +49,38 @@ class MediaComputeClaimV2Test {
         val input = json.decodeFromJsonElement<MediaComputeHighlightInput>(assertNotNull(claim.input))
         assertEquals("media-1", input.mediaId)
         assertEquals(listOf(120.0, 360.0), input.sampleTimes)
+    }
+
+    @Test
+    fun `v2 preview claim decodes second real media compute job`() {
+        val claim = json.decodeFromString<MediaComputeTaskClaim>(
+            """
+            {
+              "protocol_version": 2,
+              "job_type": "preview_thumbnail_v1",
+              "required_capability": "preview_thumbnail_v1",
+              "task_id": "preview-task",
+              "claim_token": "preview-claim",
+              "input": {
+                "media_id": "media-1",
+                "highlight_id": "highlight-1",
+                "fingerprint": "fp-1",
+                "stream_url": "/api/stream/media-1/direct",
+                "frame_times": [100.25, 100.75, 101.25, 101.75, 102.25],
+                "max_width": 420,
+                "frame_rate": 2
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals("preview_thumbnail_v1", claim.jobType)
+        assertEquals("preview_thumbnail_v1", claim.requiredCapability)
+        val input = json.decodeFromJsonElement<MediaComputePreviewThumbnailInput>(assertNotNull(claim.input))
+        assertEquals("highlight-1", input.highlightId)
+        assertEquals(5, input.frameTimes.size)
+        assertEquals(420, input.maxWidth)
+        assertEquals(2, input.frameRate)
     }
 
     @Test

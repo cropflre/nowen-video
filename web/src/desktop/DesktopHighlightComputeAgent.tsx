@@ -1,12 +1,15 @@
 import { useEffect } from 'react'
 import {
   MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
+  MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
   MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+  MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1,
   MEDIA_COMPUTE_PROTOCOL_VERSION,
   mediaAnalysisApi,
   type MediaAnalysisWorkerHeartbeat,
   type MediaAnalysisWorkerResultItem,
   type MediaComputeHighlightInput,
+  type MediaComputePreviewThumbnailInput,
   type MediaComputeTaskClaim,
 } from '@/api/mediaAnalysis'
 import { useAuthStore } from '@/stores/auth'
@@ -17,6 +20,7 @@ const IDLE_POLL_MS = 4_000
 const INELIGIBLE_POLL_MS = 8_000
 const DESKTOP_MIN_SEPARATION_SECONDS = 45
 const DESKTOP_THUMBNAIL_SOFT_LIMIT = 300 * 1024
+const DESKTOP_PREVIEW_FRAME_SOFT_LIMIT = 240 * 1024
 const DESKTOP_CAPTURE_WIDTHS = [640, 480, 360, 320]
 
 type DesktopSample = {
@@ -60,7 +64,9 @@ function heartbeat(workerId: string, platform: PlatformInfo | null, available: b
     kind: 'desktop',
     name: workerName(platform),
     version: workerVersion(),
-    capabilities: available ? [MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1] : [],
+    capabilities: available
+      ? [MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1, MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1]
+      : [],
     network: 'desktop',
     charging: false,
     battery_percent: 100,
@@ -89,6 +95,18 @@ function isHighlightInput(value: unknown): value is MediaComputeHighlightInput {
     && typeof input.engine_version === 'number'
 }
 
+function isPreviewThumbnailInput(value: unknown): value is MediaComputePreviewThumbnailInput {
+  if (!value || typeof value !== 'object') return false
+  const input = value as Partial<MediaComputePreviewThumbnailInput>
+  return typeof input.media_id === 'string'
+    && typeof input.highlight_id === 'string'
+    && typeof input.fingerprint === 'string'
+    && typeof input.stream_url === 'string'
+    && Array.isArray(input.frame_times)
+    && typeof input.max_width === 'number'
+    && typeof input.frame_rate === 'number'
+}
+
 function resolveHighlightInput(claim: MediaComputeTaskClaim): MediaComputeHighlightInput {
   const protocolVersion = claim.protocol_version ?? 1
   const jobType = claim.job_type || MEDIA_COMPUTE_JOB_HIGHLIGHT_V1
@@ -113,6 +131,16 @@ function resolveHighlightInput(claim: MediaComputeTaskClaim): MediaComputeHighli
     max_highlights: claim.max_highlights || 8,
     engine_version: claim.engine_version || 3,
   }
+}
+
+function resolvePreviewThumbnailInput(claim: MediaComputeTaskClaim): MediaComputePreviewThumbnailInput {
+  if (claim.required_capability !== MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1) {
+    throw new Error(`桌面媒体计算节点缺少任务能力：${claim.required_capability || 'unknown'}`)
+  }
+  if (!isPreviewThumbnailInput(claim.input)) {
+    throw new Error('服务器返回的 preview_thumbnail_v1 input 格式无效')
+  }
+  return claim.input
 }
 
 function bytesFromBase64(value: string) {
@@ -191,6 +219,33 @@ async function captureThumbnail(url: string, token: string, time: number) {
   }
   if (!last || last.byte_size > DESKTOP_THUMBNAIL_SOFT_LIMIT) {
     throw new Error(`桌面精彩片段缩略图仍然过大：${last?.byte_size || 0} 字节`)
+  }
+  return last
+}
+
+async function capturePreviewFrame(url: string, token: string, time: number, requestedWidth: number) {
+  const widths = Array.from(new Set([
+    Math.max(160, Math.min(420, Math.round(requestedWidth || 420))),
+    360,
+    320,
+    240,
+  ])).filter((width) => width <= Math.max(160, Math.min(420, requestedWidth || 420)))
+  let last: HighlightCaptureFrameResult | null = null
+  for (const maxWidth of widths) {
+    const result = await desktop.highlightCaptureFrame({
+      url,
+      time,
+      max_width: maxWidth,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!result?.data_base64 || result.mime !== 'image/webp') {
+      throw new Error('桌面 libmpv 未生成有效预览 WebP 帧')
+    }
+    last = result
+    if (result.byte_size <= DESKTOP_PREVIEW_FRAME_SOFT_LIMIT) return result
+  }
+  if (!last || last.byte_size > DESKTOP_PREVIEW_FRAME_SOFT_LIMIT) {
+    throw new Error(`桌面预览帧仍然过大：${last?.byte_size || 0} 字节`)
   }
   return last
 }
@@ -279,11 +334,37 @@ async function processHighlightClaim(claim: MediaComputeTaskClaim, token: string
   })
 }
 
+async function processPreviewThumbnailClaim(claim: MediaComputeTaskClaim, token: string) {
+  const input = resolvePreviewThumbnailInput(claim)
+  if (!input.fingerprint || !input.highlight_id || !input.stream_url || input.frame_times.length < 2 || input.frame_times.length > 8) {
+    throw new Error('服务器没有返回可用的预览图采样计划')
+  }
+  const streamUrl = resolveStreamUrl(input.stream_url)
+  const frames = [] as Array<{ time: number; mime: string; data_base64: string }>
+  for (const time of input.frame_times) {
+    if (!Number.isFinite(time) || time < 0) throw new Error('服务器返回了无效预览帧时间点')
+    const frame = await capturePreviewFrame(streamUrl, token, time, input.max_width)
+    frames.push({ time, mime: frame.mime, data_base64: frame.data_base64 })
+  }
+  await mediaAnalysisApi.completeComputeTask(claim.task_id, {
+    claim_token: claim.claim_token,
+    job_type: MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1,
+    result: {
+      fingerprint: input.fingerprint,
+      highlight_id: input.highlight_id,
+      frames,
+    },
+  })
+}
+
 async function processClaim(claim: MediaComputeTaskClaim, token: string) {
   const jobType = claim.job_type || MEDIA_COMPUTE_JOB_HIGHLIGHT_V1
   switch (jobType) {
     case MEDIA_COMPUTE_JOB_HIGHLIGHT_V1:
       await processHighlightClaim(claim, token)
+      return
+    case MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1:
+      await processPreviewThumbnailClaim(claim, token)
       return
     default:
       throw new Error(`桌面媒体计算节点尚未注册执行器：${jobType}`)
@@ -298,9 +379,9 @@ function errorMessage(error: unknown) {
 
 /**
  * Desktop Media Compute Node V2：
- * - 只声明真实可执行的 capabilities；
- * - Claim 后先按 job_type 分派执行器，再解析对应 input；
- * - 当前第一个 adapter 是 highlight_v1，后续任务不需要重造心跳/Claim/租约协议；
+ * - 声明 highlight_v1 + preview_thumbnail_v1 两项真实能力；
+ * - 两个 job 都复用 Tauri 已有 libmpv 单帧随机 Seek，不引入第二套 FFmpeg；
+ * - preview job 上传少量受限 WebP 帧，由 Server 做安全校验与轻量 Animated WebP 封装；
  * - 播放页期间暂停领取，避免后台计算与观影争抢 libmpv 解码资源。
  */
 export default function DesktopHighlightComputeAgent() {

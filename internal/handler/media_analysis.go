@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -13,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// MediaAnalysisHandler exposes FFmpeg-only highlight analysis.
+// MediaAnalysisHandler exposes local/distributed media analysis.
 // It intentionally does not accept or inspect AI configuration.
 type MediaAnalysisHandler struct {
 	analysis *service.MediaAnalysisService
@@ -48,16 +47,9 @@ func highlightView(mediaID string, h model.VideoHighlight) mediaHighlightView {
 	if h.Thumbnail != "" {
 		view.ThumbnailURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/thumbnail"
 	}
-
-	// 服务端 Sparse V2 仍按原设计在首次悬停时懒生成 Animated WebP。
-	// 客户端 Worker 已经承担分析和缩略图生成；如果它没有主动上传预览，
-	// 就不要因为 Web 悬停再次让弱 NAS 启动 FFmpeg。未来客户端支持预览上传后，
-	// 只要 PreviewPath/GifPath 已落盘，这里会自然恢复 preview_url。
-	clientGenerated := strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Source)), "client_")
-	hasStoredPreview := strings.TrimSpace(h.PreviewPath) != "" || strings.TrimSpace(h.GifPath) != ""
-	if !clientGenerated || hasStoredPreview {
-		view.PreviewURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview"
-	}
+	// preview_thumbnail_v1 已把客户端生成的精彩片段也接入同一 lazy preview URL。
+	// 首次请求时由 Media Compute Node V2 尝试 Desktop -> Android，auto 再回退 Server。
+	view.PreviewURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview"
 	return view
 }
 
@@ -137,9 +129,9 @@ func (h *MediaAnalysisHandler) Thumbnail(c *gin.Context) {
 }
 
 func (h *MediaAnalysisHandler) Preview(c *gin.Context) {
-	path, err := h.analysis.EnsureHighlightPreview(c.Param("id"), c.Param("highlightId"))
+	path, err := h.analysis.EnsureHighlightPreviewDistributed(c.Param("id"), c.Param("highlightId"))
 	if err != nil {
-		h.logger.Debugf("lazy highlight preview failed media=%s highlight=%s: %v", c.Param("id"), c.Param("highlightId"), err)
+		h.logger.Debugf("distributed lazy highlight preview failed media=%s highlight=%s: %v", c.Param("id"), c.Param("highlightId"), err)
 		c.Status(http.StatusNotFound)
 		return
 	}

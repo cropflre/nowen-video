@@ -6,7 +6,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 )
 
-func TestHighlightViewDoesNotTriggerServerPreviewForClientResult(t *testing.T) {
+func TestHighlightViewExposesDistributedPreviewForClientResult(t *testing.T) {
 	highlight := model.VideoHighlight{
 		ID:        "highlight-client",
 		MediaID:   "media-1",
@@ -18,8 +18,8 @@ func TestHighlightViewDoesNotTriggerServerPreviewForClientResult(t *testing.T) {
 	if view.ThumbnailURL == "" {
 		t.Fatal("客户端结果应继续暴露静态缩略图")
 	}
-	if view.PreviewURL != "" {
-		t.Fatalf("客户端未上传动态预览时不应触发服务端 FFmpeg，得到 %q", view.PreviewURL)
+	if view.PreviewURL == "" {
+		t.Fatal("preview_thumbnail_v1 接入后，客户端精彩片段也应暴露统一 lazy preview URL")
 	}
 }
 
@@ -48,6 +48,6 @@ func TestHighlightViewExposesAlreadyStoredClientPreview(t *testing.T) {
 
 	view := highlightView("media-1", highlight)
 	if view.PreviewURL == "" {
-		t.Fatal("客户端已经上传并持久化预览时应暴露 preview_url")
+		t.Fatal("客户端已经持久化预览时应继续暴露 preview_url")
 	}
 }
