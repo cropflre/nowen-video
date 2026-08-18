@@ -7,6 +7,9 @@
 //! handle 执行；事件泵使用 `mpv_create_client` 创建独立 client，专门消费
 //! `observe_property` / `mpv_wait_event`，避免事件队列与同步控制互相干扰。
 //!
+//! Windows 使用 `vo=libmpv` + app-owned OpenGL Surface + libmpv Render API；
+//! HWND/WGL/Render Context 全部封装在 `player/surface/windows.rs`，不进入 IPC/React。
+//!
 //! 轨道和章节列表不参与高频状态事件。它们通过 mpv 的标量子属性按需读取，
 //! 只在文件加载、轨道变化、章节变化以及用户主动切换时刷新。
 
@@ -59,11 +62,17 @@ impl PlayerManager {
         surface: surface::PlayerSurface,
         options: PlayOptions,
     ) -> Result<()> {
+        // Windows 首发只有一个 app-owned Render Surface，一个 Surface 同时只绑定一个
+        // mpv_render_context；切换媒体时先完整释放旧会话。
+        #[cfg(target_os = "windows")]
+        self.stop_all();
+        #[cfg(not(target_os = "windows"))]
         self.stop(session_id);
+
         let player = native::NativePlayer::new(
             app.clone(),
             session_id,
-            surface.native_window_id(),
+            surface,
             &options,
         )?;
         player.load(url)?;
@@ -202,7 +211,7 @@ pub struct PlayerVideoInfo {
 
 #[cfg(feature = "embed-mpv")]
 mod native {
-    use super::{PlayOptions, PlayerChapter, PlayerMediaInfo, PlayerTrack};
+    use super::{surface, PlayOptions, PlayerChapter, PlayerMediaInfo, PlayerTrack};
     use anyhow::{anyhow, Result};
     use libmpv2::Mpv;
     use libmpv2_sys as sys;
@@ -247,43 +256,55 @@ mod native {
         state: Arc<RwLock<NativeState>>,
         stop_events: Arc<AtomicBool>,
         event_thread: Option<JoinHandle<()>>,
+        #[cfg(target_os = "windows")]
+        surface: surface::PlayerSurface,
     }
 
     impl NativePlayer {
         pub fn new(
             app: AppHandle,
             session_id: &str,
-            native_window_id: i64,
+            surface: surface::PlayerSurface,
             options: &PlayOptions,
         ) -> Result<Self> {
+            #[cfg(target_os = "windows")]
+            let mpv = map_err(
+                Mpv::with_initializer(|init| {
+                    // Render API 模式必须在 mpv_initialize 前选择 libmpv VO。
+                    init.set_option("vo", "libmpv")?;
+                    Ok(())
+                }),
+                "创建 libmpv Render API 实例失败",
+            )?;
+
+            #[cfg(not(target_os = "windows"))]
             let mpv = map_err(Mpv::new(), "创建 libmpv 实例失败")?;
+
+            #[cfg(not(target_os = "windows"))]
             map_err(
-                mpv.set_property("wid", native_window_id),
+                mpv.set_property("wid", surface.native_window_id()),
                 "绑定 Player Surface 失败",
             )?;
 
             mpv.set_property("keep-open", "yes").ok();
-            mpv.set_property("force-window", "yes").ok();
-            mpv.set_property("input-default-bindings", "yes").ok();
-            mpv.set_property("input-vo-keyboard", "yes").ok();
             mpv.set_property("osc", "no").ok();
             mpv.set_property("idle", "yes").ok();
             mpv.set_property("msg-level", "all=warn").ok();
 
             #[cfg(target_os = "windows")]
             {
-                mpv.set_property("vo", "gpu-next").ok();
-                mpv.set_property("gpu-api", "d3d11").ok();
-                mpv.set_property("gpu-context", "d3d11").ok();
+                // Render API 使用 OpenGL 输出；硬解保持 copy 模式以避免把 D3D11 纹理共享
+                // 复杂度带进第一版 Render Surface，后续可基于验证结果升级零拷贝路径。
                 mpv.set_property("hwdec", "d3d11va-copy").ok();
-                mpv.set_property("d3d11-flip", "yes").ok();
-                mpv.set_property("d3d11-sync-interval", "1").ok();
             }
 
             #[cfg(not(target_os = "windows"))]
             {
                 mpv.set_property("vo", "gpu-next").ok();
                 mpv.set_property("hwdec", "auto-safe").ok();
+                mpv.set_property("force-window", "yes").ok();
+                mpv.set_property("input-default-bindings", "yes").ok();
+                mpv.set_property("input-vo-keyboard", "yes").ok();
             }
 
             mpv.set_property("target-colorspace-hint", "yes").ok();
@@ -336,21 +357,33 @@ mod native {
                 let _ = mpv.command("sub-add", &[subtitle, "auto"]);
             }
 
+            #[cfg(target_os = "windows")]
+            surface.attach_renderer(mpv.ctx.as_ptr())?;
+
             let state = Arc::new(RwLock::new(NativeState::default()));
             let stop_events = Arc::new(AtomicBool::new(false));
-            let event_thread = spawn_event_pump(
+            let event_thread = match spawn_event_pump(
                 &mpv,
                 app,
                 session_id.to_string(),
                 Arc::clone(&state),
                 Arc::clone(&stop_events),
-            )?;
+            ) {
+                Ok(thread) => thread,
+                Err(error) => {
+                    #[cfg(target_os = "windows")]
+                    surface.detach_renderer();
+                    return Err(error);
+                }
+            };
 
             Ok(Self {
                 mpv,
                 state,
                 stop_events,
                 event_thread: Some(event_thread),
+                #[cfg(target_os = "windows")]
+                surface,
             })
         }
 
@@ -479,6 +512,8 @@ mod native {
             if let Some(thread) = self.event_thread.take() {
                 let _ = thread.join();
             }
+            #[cfg(target_os = "windows")]
+            self.surface.detach_renderer();
         }
     }
 
