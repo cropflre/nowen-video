@@ -445,7 +445,7 @@ class HighlightComputeAgent @Inject constructor(
     private fun deviceState(): HighlightDeviceState {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         val network = connectivity?.activeNetwork
-        val capabilities = network?.let(connectivity::getNetworkCapabilities)
+        val capabilities = network?.let { activeNetwork -> connectivity?.getNetworkCapabilities(activeNetwork) }
         val onWifi = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
 
         val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
