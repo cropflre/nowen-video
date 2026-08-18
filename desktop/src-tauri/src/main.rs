@@ -5,6 +5,7 @@
 mod commands;
 mod embed_window;
 mod file_assoc;
+mod highlight_compute;
 mod mpv;
 mod resources;
 mod settings;
@@ -224,6 +225,8 @@ fn main() {
             commands::mpv_embed_destroy,
             commands::mpv_embed_set_anime4k,
             commands::mpv_embed_video_info,
+            // 精彩片段桌面计算节点
+            highlight_compute::highlight_capture_frame,
             // 自动更新（M5）
             commands::check_update,
             commands::install_update,
@@ -256,7 +259,7 @@ fn main() {
         .expect("Tauri 应用启动失败");
 }
 
-/// M2: 把 libmpv-2.dll 所在目录加入进程 DLL 搜索路径
+/// M2: 把 libmpv-2.dll 所在目录加入 DLL 搜索路径
 ///
 /// 搜索优先级（命中即返回）：
 /// 1. 开发模式 `<manifest_dir>/resources/mpv`（cargo run 时用）
