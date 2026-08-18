@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { adminApi, libraryApi } from '@/api'
 import type { Library, CreateLibraryRequest } from '@/types'
 import { getLibraryPaths } from '@/types'
@@ -77,6 +77,9 @@ function LibraryManager({
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [scanAllLoading, setScanAllLoading] = useState(false)
   const [editingLibrary, setEditingLibrary] = useState<Library | null>(null)
+  const [deletingLibraries, setDeletingLibraries] = useState<Set<string>>(new Set())
+  // ref 在 React 状态提交前就能立即生效，用于拦截快速连点造成的重复确认/重复 DELETE。
+  const deleteFlowRef = useRef<Set<string>>(new Set())
 
   const sortedLibraries = [...libraries].sort((a, b) => {
     let cmp = 0
@@ -105,6 +108,7 @@ function LibraryManager({
   }
 
   const handleScan = async (id: string) => {
+    if (deletingLibraries.has(id)) return
     setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.scan(id)
@@ -119,9 +123,9 @@ function LibraryManager({
   }
 
   const handleScanAll = async () => {
-    const toScan = libraries.filter((library) => !scanning.has(library.id))
+    const toScan = libraries.filter((library) => !scanning.has(library.id) && !deletingLibraries.has(library.id))
     if (toScan.length === 0) {
-      toast.info('所有媒体库已在扫描中')
+      toast.info('所有媒体库已在扫描或删除中')
       return
     }
 
@@ -153,54 +157,73 @@ function LibraryManager({
   }
 
   const handleDelete = async (id: string) => {
-    // 删除按钮必须保持可点击：本地扫描状态可能因刷新、断线或旧缓存而残留。
-    // 删除前以服务端 scan-status 为准重新确认，既能自愈陈旧状态，也能避免扫描中误删。
-    try {
-      const response = await libraryApi.scanStatus()
-      const activeScanPhases = response.data.data || []
-      const isActuallyScanning = activeScanPhases.some((phase) => phase.library_id === id)
+    // 在任何异步检查之前先占位，防止用户连续点击打开多个确认框。
+    if (deleteFlowRef.current.has(id)) return
+    deleteFlowRef.current.add(id)
 
-      if (isActuallyScanning) {
-        setScanning((current) => new Set(current).add(id))
-        toast.info('媒体库正在扫描，请等待扫描结束后再删除')
+    try {
+      // 删除按钮必须允许修复陈旧扫描状态：本地 scanning 可能因刷新、断线或旧缓存残留。
+      // 删除前以服务端 scan-status 为准重新确认，既能自愈陈旧状态，也能避免扫描中误删。
+      try {
+        const response = await libraryApi.scanStatus()
+        const activeScanPhases = response.data.data || []
+        const isActuallyScanning = activeScanPhases.some((phase) => phase.library_id === id)
+
+        if (isActuallyScanning) {
+          setScanning((current) => new Set(current).add(id))
+          toast.info('媒体库正在扫描，请等待扫描结束后再删除')
+          return
+        }
+
+        if (scanning.has(id)) {
+          setScanning((current) => {
+            const next = new Set(current)
+            next.delete(id)
+            return next
+          })
+        }
+      } catch {
+        toast.error('无法确认媒体库扫描状态，请稍后重试')
         return
       }
 
-      if (scanning.has(id)) {
+      const ok = await dialog.confirm({
+        title: '删除媒体库',
+        message: '确定删除此媒体库？关联的媒体记录、推荐快照和本地缓存也会被彻底清除。',
+        confirmText: '删除',
+        variant: 'danger',
+      })
+      if (!ok) return
+
+      setActiveMenu(null)
+      setDeletingLibraries((current) => new Set(current).add(id))
+
+      try {
+        await libraryApi.delete(id)
+        invalidateMediaListCaches()
+        setLibraries((current) => current.filter((library) => library.id !== id))
         setScanning((current) => {
           const next = new Set(current)
           next.delete(id)
           return next
         })
+        toast.success('媒体库已删除，派生缓存将在后台继续回收')
+      } catch (err: any) {
+        toast.error(err?.response?.data?.error || '删除失败')
       }
-    } catch {
-      toast.error('无法确认媒体库扫描状态，请稍后重试')
-      return
-    }
-
-    const ok = await dialog.confirm({
-      title: '删除媒体库',
-      message: '确定删除此媒体库？关联的媒体记录、推荐快照和本地缓存也会被彻底清除。',
-      confirmText: '删除',
-      variant: 'danger',
-    })
-    if (!ok) return
-    try {
-      await libraryApi.delete(id)
-      invalidateMediaListCaches()
-      setLibraries((current) => current.filter((library) => library.id !== id))
-      setScanning((current) => {
+    } finally {
+      deleteFlowRef.current.delete(id)
+      setDeletingLibraries((current) => {
+        if (!current.has(id)) return current
         const next = new Set(current)
         next.delete(id)
         return next
       })
-      toast.success('媒体库已删除')
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || '删除失败')
     }
   }
 
   const handleReindex = async (id: string) => {
+    if (deletingLibraries.has(id)) return
     const ok = await dialog.confirm({
       title: '重建索引',
       message: '确定重建索引？这将清除现有媒体记录并重新扫描文件。',
@@ -283,6 +306,7 @@ function LibraryManager({
                 library={library}
                 isLast={index === sortedLibraries.length - 1}
                 isScanning={scanning.has(library.id)}
+                isDeleting={deletingLibraries.has(library.id)}
                 progress={scanProgress[library.id]}
                 scrape={scrapeProgress[library.id]}
                 phase={scanPhase[library.id]}
@@ -361,6 +385,7 @@ function LibraryRow({
   library,
   isLast,
   isScanning,
+  isDeleting,
   progress,
   scrape,
   phase,
@@ -376,6 +401,7 @@ function LibraryRow({
   library: Library
   isLast: boolean
   isScanning: boolean
+  isDeleting: boolean
   progress?: ScanProgressData
   scrape?: ScrapeProgressData
   phase?: ScanPhaseData
@@ -427,12 +453,17 @@ function LibraryRow({
           </div>
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)]">{library.name}</h3>
-            {isScanning && (
+            {isDeleting ? (
+              <div className="mt-1 flex items-center gap-2">
+                <AdminStatus tone="active">删除中</AdminStatus>
+                <span className="truncate text-xs text-[var(--nv-text-tertiary)]">正在清理媒体库索引</span>
+              </div>
+            ) : isScanning ? (
               <div className="mt-1 flex items-center gap-2">
                 <AdminStatus tone="active">进行中</AdminStatus>
                 <span className="truncate text-xs text-[var(--nv-text-tertiary)]">{stageLabel}</span>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -449,7 +480,7 @@ function LibraryRow({
         </div>
 
         <div className="flex items-center gap-1 lg:justify-center">
-          <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning} title="扫描媒体文件" aria-label="扫描媒体文件">
+          <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning || isDeleting} title={isDeleting ? '媒体库正在删除' : '扫描媒体文件'} aria-label="扫描媒体文件">
             <RefreshCw size={16} className={isScanning ? 'animate-spin text-[var(--nv-action-primary)]' : undefined} />
           </Button>
           <Button
@@ -457,16 +488,17 @@ function LibraryRow({
             size="sm"
             iconOnly
             onClick={onDelete}
-            title={isScanning ? '媒体库正在扫描，点击可重新确认状态' : '删除媒体库'}
-            aria-label="删除媒体库"
+            disabled={isDeleting}
+            title={isDeleting ? '媒体库正在删除' : isScanning ? '媒体库正在扫描，点击可重新确认状态' : '删除媒体库'}
+            aria-label={isDeleting ? '正在删除媒体库' : '删除媒体库'}
           >
-            <Trash2 size={16} />
+            {isDeleting ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
           </Button>
           <div className="relative">
-            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} aria-label="更多操作">
+            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} disabled={isDeleting} aria-label="更多操作">
               <MoreHorizontal size={16} />
             </Button>
-            {activeMenu && (
+            {activeMenu && !isDeleting && (
               <>
                 <div className="fixed inset-0 z-[var(--nv-z-dropdown)]" onClick={onCloseMenu} />
                 <div className="absolute right-0 top-full z-[calc(var(--nv-z-dropdown)+1)] mt-1 w-44 overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)]">
@@ -474,7 +506,7 @@ function LibraryRow({
                     <Pencil size={14} />
                     编辑媒体库
                   </button>
-                  <button type="button" onClick={onReindex} disabled={isScanning} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] disabled:opacity-50">
+                  <button type="button" onClick={onReindex} disabled={isScanning || isDeleting} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] disabled:opacity-50">
                     <RotateCcw size={14} />
                     重建索引
                   </button>
@@ -485,7 +517,7 @@ function LibraryRow({
         </div>
       </div>
 
-      {isScanning && (progress || scrape || phase) && (
+      {isScanning && !isDeleting && (progress || scrape || phase) && (
         <div className="px-4 pb-4 sm:px-5">
           <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
             <div className="grid grid-cols-3 gap-2">
