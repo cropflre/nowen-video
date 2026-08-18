@@ -1,6 +1,7 @@
 import type { RecommendedMedia } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import { EmptyState } from '@/components/design-system'
+import { MediaGrid } from '@/ui'
 import { Film } from 'lucide-react'
 
 interface RecommendationCarouselProps {
@@ -24,25 +25,22 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
       <div className="nv-recommendation-header">
         <div className="flex items-center gap-2">
           <Film size={15} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
-          <h2 id="recommendation-title" className="nv-section-title">
-            相关推荐
-          </h2>
+          <h2 id="recommendation-title" className="nv-section-title">相关推荐</h2>
           <span className="text-[10px] text-[var(--nv-text-tertiary)]">{recommendations.length}</span>
         </div>
       </div>
 
-      <div
-        className="grid justify-start gap-x-[13px] gap-y-6"
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(138px, 166px))' }}
+      <MediaGrid
+        className="!grid-cols-[repeat(auto-fill,minmax(138px,166px))] !gap-x-[13px] !gap-y-6"
         role="list"
         aria-label="相关推荐媒体列表"
       >
         {recommendations.map((item) => (
           <div key={item.media.id} className="min-w-0" role="listitem">
-            <MediaCard media={item.media} eyebrow={item.reason} />
+            <MediaCard media={item.media} eyebrow={item.reason} variant="recommendation" />
           </div>
         ))}
-      </div>
+      </MediaGrid>
     </section>
   )
 }
