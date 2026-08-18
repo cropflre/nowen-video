@@ -277,9 +277,9 @@ export default function DesktopHighlightComputeAgent() {
           continue
         }
 
-        // 用户正在桌面端观影时不领取新的分析任务；已经领取的任务会完整收尾。
+        // 用户正在桌面端观影时暂停领取，并主动声明 unavailable，避免 Android 被桌面优先级误阻塞。
         if (window.location.pathname.startsWith('/play/')) {
-          await mediaAnalysisApi.heartbeatWorker(heartbeat(workerId, platform, true)).catch(() => {})
+          await mediaAnalysisApi.heartbeatWorker(heartbeat(workerId, platform, false)).catch(() => {})
           await sleep(INELIGIBLE_POLL_MS)
           continue
         }
