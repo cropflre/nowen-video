@@ -1,0 +1,246 @@
+/* Nowen UI 2.0 · Light theme compatibility
+ *
+ * Semantic light-theme corrections for historical page geometry that still
+ * carries dark-first selectors. New components should rely on --nv-* roles and
+ * should not require additions to this compatibility layer.
+ */
+
+[data-theme="light"] {
+  --nv-bg-overlay-surface: #ffffff;
+}
+
+/* Shell / sidebar */
+[data-theme="light"] .nv-rail {
+  border-right-color: var(--nv-border-default) !important;
+  background: #f1f1ee !important;
+}
+
+[data-theme="light"] .nv-rail-section-title {
+  color: var(--nv-text-tertiary) !important;
+}
+
+[data-theme="light"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-rail > .nv-rail-scroll .nv-rail-item:hover {
+  background: rgba(24,25,29,.055) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"] {
+  background: rgba(111,96,204,.11) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: inset 2px 0 0 var(--nv-action-primary) !important;
+}
+
+[data-theme="light"] .nv-rail-meta {
+  color: var(--nv-text-tertiary) !important;
+}
+
+[data-theme="light"] .nv-rail-footer {
+  border-top-color: var(--nv-border-subtle) !important;
+}
+
+[data-theme="light"] .nv-rail-profile {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+}
+
+/* Top bar / search */
+[data-theme="light"] .nv-topbar {
+  border-bottom-color: var(--nv-border-subtle) !important;
+  background: color-mix(in srgb, var(--nv-bg-canvas) 94%, transparent) !important;
+}
+
+[data-theme="light"] .nv-topbar .nv-search {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+}
+
+[data-theme="light"] .nv-topbar .nv-search:hover {
+  border-color: var(--nv-border-hover) !important;
+}
+
+[data-theme="light"] .nv-topbar .nv-search:focus-within {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 48%, var(--nv-border-default)) !important;
+  background: var(--nv-bg-elevated) !important;
+}
+
+/* Shared controls */
+[data-theme="light"] .nv-button[data-variant="primary"] {
+  border-color: var(--nv-action-primary) !important;
+  background: var(--nv-action-primary) !important;
+  color: var(--nv-text-on-brand) !important;
+}
+
+[data-theme="light"] .nv-button[data-variant="primary"]:hover {
+  background: var(--nv-action-primary-hover) !important;
+}
+
+[data-theme="light"] .nv-button[data-variant="secondary"] {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-button[data-variant="secondary"]:hover,
+[data-theme="light"] .nv-button[data-variant="ghost"]:hover {
+  border-color: var(--nv-border-hover) !important;
+  background: var(--nv-fill-hover) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-input,
+[data-theme="light"] .nv-select,
+[data-theme="light"] .nv-textarea {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-elevated) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-input:focus,
+[data-theme="light"] .nv-select:focus,
+[data-theme="light"] .nv-textarea:focus {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 45%, var(--nv-border-default)) !important;
+  background: var(--nv-bg-elevated) !important;
+}
+
+[data-theme="light"] .nv-tag {
+  border-color: var(--nv-border-default) !important;
+  background: rgba(24,25,29,.035) !important;
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-tag[data-tone="brand"] {
+  border-color: rgba(111,96,204,.24) !important;
+  background: rgba(111,96,204,.10) !important;
+  color: var(--nv-action-muted) !important;
+}
+
+[data-theme="light"] .nv-tag[data-tone="quality"] {
+  border-color: rgba(255,255,255,.26) !important;
+  background: rgba(25,25,28,.72) !important;
+  color: rgba(255,255,255,.90) !important;
+}
+
+/* Home */
+[data-theme="light"] .nv-hero-carousel {
+  border-color: var(--nv-border-subtle) !important;
+  background: var(--nv-bg-surface) !important;
+}
+
+[data-theme="light"] .nv-continue-artwork,
+[data-theme="light"] .nv-media-card-poster {
+  border-color: var(--nv-border-subtle) !important;
+}
+
+[data-theme="light"] .nv-media-card:hover .nv-media-card-poster,
+[data-theme="light"] .nv-media-card:focus-within .nv-media-card-poster {
+  border-color: var(--nv-border-hover) !important;
+}
+
+/* Browse workspace */
+[data-theme="light"] .nv-browse-type-tabs {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+}
+
+[data-theme="light"] .nv-browse-type-tabs .nv-button[aria-pressed="true"] {
+  background: var(--nv-fill-active) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-browse-toolbar [aria-expanded="true"],
+[data-theme="light"] .nv-browse-toolbar .nv-button[data-variant="secondary"] {
+  border-color: rgba(111,96,204,.28) !important;
+  background: rgba(111,96,204,.09) !important;
+  color: var(--nv-action-muted) !important;
+}
+
+[data-theme="light"] .nv-browse-filter-panel {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+}
+
+[data-theme="light"] [aria-label="已选类型标签"] {
+  border-bottom-color: var(--nv-border-subtle) !important;
+}
+
+[data-theme="light"] .nv-browse-list {
+  border-color: var(--nv-border-subtle) !important;
+  background: transparent !important;
+}
+
+[data-theme="light"] .nv-browse-list > * {
+  background: transparent !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-browse-list > *:hover {
+  background: rgba(24,25,29,.035) !important;
+}
+
+/* Pagination */
+[data-theme="light"] .nv-pagination,
+[data-theme="light"] .nv-pagination-size,
+[data-theme="light"] .nv-pagination-jumper {
+  color: var(--nv-text-tertiary) !important;
+}
+
+[data-theme="light"] .nv-pagination-page[data-variant="primary"] {
+  border-color: var(--nv-action-primary) !important;
+  background: var(--nv-action-primary) !important;
+  color: var(--nv-text-on-brand) !important;
+}
+
+[data-theme="light"] .nv-pagination-page[data-variant="ghost"] {
+  color: var(--nv-text-secondary) !important;
+}
+
+[data-theme="light"] .nv-pagination-ellipsis {
+  color: var(--nv-text-disabled) !important;
+}
+
+/* Media detail */
+[data-theme="light"] .nv-detail-hero {
+  border-bottom-color: var(--nv-border-subtle) !important;
+}
+
+[data-theme="light"] .nv-detail-poster {
+  border-color: rgba(24,25,29,.12) !important;
+  box-shadow: 0 18px 46px rgba(30,28,34,.12) !important;
+}
+
+[data-theme="light"] .nv-media-info {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] section[aria-labelledby="cast-grid-title"] [role="listitem"] > div:first-child {
+  border-color: var(--nv-border-default) !important;
+}
+
+[data-theme="light"] section[aria-labelledby="media-tech-specs-title"] > .grid > div {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-surface) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+/* Shared elevated content that inherits old dark calibration. */
+[data-theme="light"] .nv-surface,
+[data-theme="light"] .nv-menu {
+  border-color: var(--nv-border-default) !important;
+  background: var(--nv-bg-elevated) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+/* Mobile navigation follows the active theme, while the player itself stays dark. */
+@media (max-width: 900px) {
+  [data-theme="light"] .nv-mobile-nav {
+    border-color: var(--nv-border-default) !important;
+    background: color-mix(in srgb, var(--nv-bg-elevated) 94%, transparent) !important;
+    box-shadow: 0 16px 42px rgba(30,28,34,.14) !important;
+  }
+}
