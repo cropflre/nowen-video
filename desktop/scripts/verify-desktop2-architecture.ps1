@@ -56,7 +56,8 @@ Assert-Contains $surface "mpv_render_context_report_swap" "Windows Surface 必�
 Assert-Contains $surface "SwapBuffers" "Windows Surface 必须由宿主交换 framebuffer"
 Assert-Contains $surface "WS_POPUP" "Windows Surface 必须使用纯 Win32 原生窗口"
 Assert-NotContains $surface "WebviewWindow" "Windows 视频 Surface 不允许恢复第二个 Tauri WebView"
-Assert-NotContains $surface "wid" "Windows 视频 Surface 不允许恢复 wid 嵌入"
+# 精确检查 mpv 的 wid 属性 token，避免把 width 等正常标识符误判为旧 wid 嵌入。
+Assert-NotContains $surface '"wid"' "Windows 视频 Surface 不允许恢复 wid 嵌入"
 
 # Web 产品层只允许使用正式 Tauri 2 bridge，并由事件驱动同步播放器状态。
 Assert-Contains $bridge "@tauri-apps/api/core" "Desktop bridge 必须使用官方 Tauri 2 API"
