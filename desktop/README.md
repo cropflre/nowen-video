@@ -1,251 +1,172 @@
+# Nowen Video Desktop 2.0
 
-# 🖥️ nowen-video Desktop（PC 端）
+Nowen Video Desktop 2.0 是桌面端正式架构基线。旧桌面端从未进入正式环境，因此 2.0 不保留 Web/mpv 双内核、外部 mpv 进程、播放器策略器和 Tauri v1 兼容层。
 
-基于 **Tauri 2.0 + libmpv** 的跨平台桌面客户端，为 Windows / macOS / Linux 提供**原画原音**的极致观影体验。
+## 技术栈
 
-## ✨ 特性
+- **UI**：React 18 + TypeScript + Vite，复用 `web/` 产品界面与设计系统。
+- **Desktop Runtime**：Tauri 2 + Rust。
+- **Player Core**：libmpv，桌面端唯一正式播放器内核。
+- **Media Core**：Go `cmd/server-lite` sidecar，复用正式服务端媒体库、刮削、搜索、字幕、FFmpeg 与 SQLite 能力。
+- **Web Player**：只属于浏览器平台，继续使用 Direct / WebCodecs / Remux / HLS，不参与 Desktop 播放内核选择。
 
-### 🎬 播放能力
-- **双内核播放**：Web `<video>` + 原生 mpv，策略引擎自动选择
-- **libmpv 嵌入**（可选）：mpv 渲染直接嵌入 Tauri 窗口，零闪烁、前端 UI 可控
-- **全格式支持**：4K / HEVC / AV1 / HDR10+ / 杜比视界 / DTS / TrueHD / Atmos 零转码
-- **字幕完美**：libass 渲染 ASS/PGS 字幕
+## 架构
 
-### 🪶 系统集成
-- ✅ **系统托盘**：最小化后驻留，右键菜单快速访问
-- ✅ **原生菜单栏**：文件 / 播放 / 工具 / 帮助 四级菜单
-- ✅ **文件关联**：双击 `.mkv`/`.mp4` 等自动打开
-- ✅ **Deep Link**：`nowen-video://play?media_id=123` URL 协议
-- ✅ **全局快捷键**：`Ctrl+Shift+N` 从任意位置呼出
-- ✅ **单实例**：重复启动自动复用已打开窗口
-- ✅ **自动更新**：启动静默检查，一键下载安装
-
-### 🔒 隐私与性能
-- **本地优先**：内置 Go 后端 sidecar，断网也能刷本地媒体库
-- **极致轻量**：打包产物 ~80MB（Infuse 200MB+、VidHub 150MB+）
-- **秒启动**：Tauri WebView 共享系统内核，冷启动 <500ms
-- **低内存**：120-180MB（Electron 同类 400MB+）
-
-## 🏗️ 架构
-
-```
-┌─────────────────────────────────────────────────────┐
-│         Tauri 2.0 桌面壳（Rust + WebView2）         │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  前端（复用 web/ 构建产物）                          │
-│   ├─ 海报墙 / 详情页 / 设置                          │
-│   ├─ DesktopEventBinder（菜单/文件/DeepLink 桥接）   │
-│   ├─ UpdateBanner（更新提示）                        │
-│   ├─ DesktopPlayerBadge（播放内核切换）              │
-│   └─ MpvEmbedPlayer（M4 嵌入式播放器）               │
-│             ↓ Tauri invoke / event                  │
-│                                                     │
-│  Rust 壳层（src-tauri/src/）                        │
-│   ├─ main.rs          应用入口                      │
-│   ├─ sidecar.rs       Go sidecar 生命周期           │
-│   ├─ mpv.rs           mpv 双模式（进程+FFI）        │
-│   ├─ embed_window.rs  M4 嵌入窗口                   │
-│   ├─ strategy.rs      播放决策引擎                  │
-│   ├─ tray.rs          M7 菜单/托盘                  │
-│   ├─ updater.rs       M5 自动更新                   │
-│   ├─ file_assoc.rs    M6 文件关联/DeepLink          │
-│   ├─ settings.rs      持久化设置                    │
-│   └─ commands.rs      IPC 命令                      │
-│             ↓ HTTP localhost:8080                   │
-│                                                     │
-│  Go sidecar（复用 cmd/server）                      │
-│   ├─ 元数据 / 刮削 / 推荐                            │
-│   ├─ 媒体库 / 搜索 / 字幕                            │
-│   └─ 按需转码（仅边界场景）                          │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+```text
+React / TypeScript
+        │
+        │ platform/desktop + custom Tauri IPC
+        ▼
+Tauri 2 / Rust Runtime
+        │
+        ├── Player Core (libmpv)
+        │
+        └── Go Media Core sidecar
+                 │
+                 ├── SQLite
+                 ├── FFmpeg
+                 ├── metadata / scraper
+                 ├── subtitle / search
+                 └── media API
 ```
 
-## 🚀 快速开始
+职责边界：
 
-### 前置依赖
+- React 只负责产品 UI、交互和状态展示。
+- Rust 负责窗口、托盘、Deep Link、文件关联、更新入口、Sidecar 生命周期和原生播放器。
+- Go 负责媒体业务，不在 Rust 中复制服务端业务逻辑。
+- mpv 是 Rust Player Core 的实现细节，React 业务层只使用 `DesktopPlayer` / `player_*` API。
 
-- **Rust** ≥ 1.77（[安装](https://www.rust-lang.org/tools/install)）
-- **Node.js** ≥ 18
-- **Go** ≥ 1.22
-- **Tauri CLI**：`cargo install tauri-cli --version "^2.0" --locked`
-- **mpv**（外部进程模式必需）
-  - Windows: `winget install mpv`
-  - macOS: `brew install mpv`
-  - Linux: `apt install mpv`
-- **libmpv**（可选，M4 嵌入模式必需）
-  - Windows: 下载 [mpv-lib](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/) 解压至 `%PATH%`
-  - macOS: `brew install mpv`（自带 libmpv）
-  - Linux: `apt install libmpv-dev`
+## 目录
 
-### 开发模式（一键启动）
+```text
+desktop/
+├── scripts/
+│   ├── build-sidecar.ps1
+│   ├── build-sidecar.sh
+│   ├── dev.ps1
+│   └── dev.sh
+└── src-tauri/
+    ├── capabilities/
+    ├── bin/
+    ├── resources/
+    └── src/
+        ├── app/          # 应用启动与生命周期
+        ├── runtime/      # 全局运行时状态
+        ├── player/       # Desktop Player Core + Surface
+        ├── commands.rs   # 产品级自定义 IPC
+        ├── sidecar.rs    # Go Media Core 生命周期
+        ├── settings.rs
+        ├── file_assoc.rs
+        ├── tray.rs
+        ├── updater.rs
+        └── vibrancy.rs
+```
+
+Web 侧桌面适配入口：
+
+```text
+web/src/platform/desktop/bridge.ts
+web/src/desktop/DesktopPlayer.tsx
+web/src/desktop/DesktopEventBinder.tsx
+web/src/desktop/DesktopServerPicker.tsx
+```
+
+## Media Core 运行方式
+
+内嵌模式启动时由 Rust：
+
+1. 在 `127.0.0.1` 选择动态空闲端口；
+2. 设置 `NOWEN_APP_PORT=<port>`；
+3. 设置 `NOWEN_DESKTOP_RUNTIME=1`；
+4. 启动 `nowen-video-server-<target-triple>`；
+5. Web 平台桥接从 Tauri IPC 获取真实端口；
+6. API、海报/背景图和原生播放器媒体 URL 全部使用同一个运行时服务器地址。
+
+Desktop Runtime 下 Go Media Core 只监听 `127.0.0.1`，并关闭 mDNS 服务发现。远程模式仍可连接 NAS / Docker 部署的 Nowen Video Server。
+
+## 播放器规则
+
+Desktop 2.0 普通播放固定使用原生 Player Core，不再存在：
+
+- `auto / web / mpv` 设置；
+- `decide_engine`；
+- 外部 `mpv.exe` 播放进程；
+- `DesktopPlayerBadge`；
+- Web 播放失败后切 mpv 或 mpv 失败后回 Web 的双向回退。
+
+如果桌面 Player Core 不可用，客户端会明确提示运行时错误，而不是静默切回浏览器播放器。
+
+当前 Windows 首发实现把原生渲染 Surface 封装在 `player/surface.rs`。下一阶段将只在该边界内切换到 libmpv Render API；业务 IPC 和 React `DesktopPlayer` 不需要再次重构。
+
+播放器状态当前集中由 `DesktopPlayer` 从 Player Core 快照同步。后续接入 libmpv `observe_property` 事件泵后，只替换这一同步层。
+
+## 安全基线
+
+- Tauri 已启用 CSP，不再使用 `csp: null`。
+- 不再开放全局 `assetProtocol: **`。
+- WebView Capability 只保留核心事件监听和标题栏拖拽能力。
+- Web 业务不直接访问 `window.__TAURI__` / `window.__TAURI_INTERNALS__`。
+- 文件、窗口、系统能力统一通过自定义 Rust IPC 暴露。
+- 内嵌 Go Media Core 使用动态端口并仅监听 loopback。
+
+## 开发
+
+Windows：
 
 ```powershell
-# Windows
 pwsh desktop/scripts/dev.ps1
+```
 
-# macOS / Linux
+强制重建 Sidecar：
+
+```powershell
+pwsh desktop/scripts/dev.ps1 -RebuildSidecar
+```
+
+macOS / Linux：
+
+```bash
 bash desktop/scripts/dev.sh
 ```
 
-该脚本会自动：
-1. 构建 Go sidecar 到 `desktop/bin/`
-2. 启动 Vite dev server（:3000）
-3. 启动 Tauri dev 模式（调试模式热重载）
+脚本会统一从 `./cmd/server-lite` 构建正式 Go Media Core，并把 Tauri sidecar 产物放到：
 
-### 生产打包
-
-```powershell
-# Windows
-pwsh desktop/scripts/build-sidecar.ps1 -Production
-cd desktop/src-tauri
-cargo tauri build
-
-# 启用 libmpv 嵌入模式
-cargo tauri build -- --features embed-mpv
+```text
+desktop/src-tauri/bin/nowen-video-server-<target-triple>[.exe]
 ```
 
-产物：
-- Windows: `desktop/src-tauri/target/release/bundle/nsis/*.exe`
-- macOS: `desktop/src-tauri/target/release/bundle/dmg/*.dmg`
-- Linux: `desktop/src-tauri/target/release/bundle/appimage/*.AppImage`
+## CI
 
-## 🎬 播放策略
+`.github/workflows/desktop2-ci.yml` 对 `refactor/server-lite-v1` 的 Desktop/Web/Media Core 改动执行：
 
-应用启动时自动决策播放内核：
+- Web：`npm ci` + `npm run build`
+- Go：`go build ./cmd/server-lite`
+- Windows Desktop：获取 libmpv 资源后执行 `cargo check --all-targets`
 
-| 场景 | 内核 | 说明 |
-|---|---|---|
-| MP4 + H.264 + AAC | Web | 浏览器原生，启动快 |
-| MKV / HEVC / AV1 / VC-1 | **mpv** | 浏览器不支持，必须 mpv |
-| DTS / TrueHD / E-AC3 / Atmos | **mpv** | 浏览器音频黑洞 |
-| HDR10 / HDR10+ / Dolby Vision | **mpv** | 色彩空间正确处理 |
-| ASS / PGS 字幕 | **mpv** | libass 完美渲染 |
+正式发布流水线使用同一个 `cmd/server-lite` 和同一个 `nowen-video-server-<target-triple>` Sidecar 命名。
 
-用户也可在设置中全局强制：**`自动` / `总是 mpv` / `总是 Web`**。
+## 自动更新
 
-## 🎮 快捷键
+Tauri Updater 代码保留，但在正式签名公钥和更新产物配置完成前默认关闭。只有编译时显式设置：
 
-| 快捷键 | 功能 |
-|---|---|
-| `Ctrl+Shift+N` | 全局：从任意位置唤出窗口 |
-| `Ctrl+O` | 打开文件 |
-| `Ctrl+Shift+O` | 打开文件夹 |
-| `Ctrl+,` | 打开设置 |
-| `Ctrl+Q` | 退出 |
-| `F11` | 切换全屏 |
-| `Space` | 播放/暂停 |
-
-## 🔗 Deep Link 协议
-
-其他应用/网页可以通过以下 URL 直接调用：
-
-```
-nowen-video://play?media_id=12345    # 跳转播放
-nowen-video://settings                # 打开设置
+```text
+NOWEN_DESKTOP_UPDATER_ENABLED=1
 ```
 
-## 🔄 自动更新
+才会执行更新检查与安装。不要在公钥为空或未生成签名更新产物时启用。
 
-- 启动后 3 秒静默检查更新
-- 有新版本时右下角弹出横幅
-- 点击"下载并安装"自动完成所有流程
-- 基于 Tauri Updater 签名校验，防篡改
+## Desktop 2.0 首发边界
 
-### 配置发布端点
+首发目标优先保证 Windows x64：媒体库、详情/搜索、Local/Remote Server、原生 libmpv 播放、进度/音量/字幕/音轨、硬件解码、HDR 基础链路、全屏、文件关联、Deep Link 和应用生命周期。
 
-编辑 [`tauri.conf.json`](./src-tauri/tauri.conf.json) 中的 `plugins.updater.endpoints`：
+Anime4K、高级 Shader、复杂 PiP/色彩调校等不作为 2.0 首发核心能力。
 
-```json
-{
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/YOUR_ORG/nowen-video/releases/latest/download/latest.json"
-      ],
-      "pubkey": "<你的公钥>"
-    }
-  }
-}
-```
+尚未完成且不能标记为正式完成的深层项：
 
-生成签名密钥：
+- `player/surface.rs` 从当前原生窗口承载切换到 libmpv Render API；
+- Player Core 从快照轮询切换到 `observe_property` 事件驱动；
+- 在不破坏 HLS/媒体子请求的前提下增加完整 Desktop Runtime Token 握手；
+- 配置真实 Tauri Updater 公钥、签名产物并开启更新开关。
 
-```bash
-cargo tauri signer generate -w ~/.tauri/myapp.key
-```
-
-## 📁 文件关联
-
-打包后应用会自动注册以下扩展名（NSIS/DMG/DEB 安装器一并处理）：
-
-`mp4` `mkv` `avi` `mov` `wmv` `flv` `webm` `ts` `m2ts` `rmvb` `m4v`
-
-用户双击任一视频文件，会自动唤起本应用并加载播放。
-
-## ⚙️ 配置文件
-
-应用配置持久化在：
-
-- Windows: `%APPDATA%\nowen-video\settings.json`
-- macOS: `~/Library/Application Support/nowen-video/settings.json`
-- Linux: `~/.config/nowen-video/settings.json`
-
-完整字段：
-
-```json
-{
-  "server": {
-    "mode": "embedded",
-    "remote_url": "",
-    "sidecar_port": 8080
-  },
-  "player": {
-    "engine": "auto",
-    "mpv_path": "",
-    "mpv_args": ["--hwdec=auto-safe", "--keep-open=yes"],
-    "hardware_accel": true
-  },
-  "window": {
-    "width": 1400,
-    "height": 900,
-    "remember_size": true,
-    "minimize_to_tray": false
-  }
-}
-```
-
-## 🗺️ 路线图
-
-- [x] **M0** Tauri 骨架 + 加载现有前端
-- [x] **M1** Go sidecar 自动启动/退出
-- [x] **M2** mpv 外部进程播放内核
-- [x] **M3** 策略决策引擎 + 前端 desktopBridge
-- [x] **M4** libmpv FFI 嵌入原生窗口（`--features embed-mpv`）
-- [x] **M5** 自动更新（Tauri Updater + GitHub Releases）
-- [x] **M6** 文件关联 + Deep Link 协议（nowen-video://）
-- [x] **M7** 原生菜单 + 托盘 + 全局快捷键 + 单实例
-
-## 🔧 故障排查
-
-### "未找到 mpv 可执行文件"
-- 安装 mpv，或在设置中指定完整路径
-- Windows 注意避免 `C:\Users\X\AppData\Local\Microsoft\WindowsApps\` 下的别名
-
-### "嵌入式 mpv 启动失败"
-- 确保编译时加了 `--features embed-mpv`
-- 确保系统装了 libmpv（非 mpv 二进制，是开发库）
-
-### 自动更新不生效
-- 检查 `tauri.conf.json` 的 endpoints 是否正确
-- 签名密钥必须与发布包匹配
-- 开发模式下不检查更新
-
-### Windows 双击文件没反应
-- 用管理员权限运行一次安装包
-- 或手动在"默认应用"中指定 nowen-video
-
-## 📝 许可
-
-与主项目一致。
+这些工作已经被隔离在 Player/Runtime/Updater 边界内，不需要恢复旧双内核架构。
