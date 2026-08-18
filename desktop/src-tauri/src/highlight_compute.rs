@@ -77,7 +77,7 @@ fn is_webp(data: &[u8]) -> bool {
 #[cfg(feature = "embed-mpv")]
 fn encode_base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut output = String::with_capacity(data.len().div_ceil(3) * 4);
+    let mut output = String::with_capacity(((data.len() + 2) / 3) * 4);
     let mut index = 0;
     while index + 3 <= data.len() {
         let value = ((data[index] as u32) << 16)
