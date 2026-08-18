@@ -8,6 +8,7 @@ import { groupByMovie } from '@/utils/collectionGroup'
 import CollectionDetailHero from '@/components/media/CollectionDetailHero'
 import CollectionMovieBrowser from '@/components/media/CollectionMovieBrowser'
 import { Button, EmptyState, Surface } from '@/components/design-system'
+import { MediaGrid } from '@/ui'
 
 export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -30,9 +31,9 @@ export default function CollectionDetailPage() {
       <div className="nv-collection-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
         <div className="skeleton nv-collection-detail-hero-skeleton w-full" />
         <div className="nv-collection-detail-body">
-          <div className="nv-media-grid">
+          <MediaGrid aria-busy="true" aria-label="合集内容加载中">
             {Array.from({ length: 12 }).map((_, index) => <div key={index} className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />)}
-          </div>
+          </MediaGrid>
         </div>
       </div>
     )
@@ -40,7 +41,7 @@ export default function CollectionDetailPage() {
 
   if (error || !data) {
     return (
-      <Surface className="mx-auto max-w-3xl">
+      <Surface variant="raised" className="mx-auto max-w-3xl">
         <EmptyState
           icon={<Layers size={24} />}
           title={error ? '合集不存在或加载失败' : '合集不存在'}
