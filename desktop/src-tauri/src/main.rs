@@ -3,9 +3,8 @@
 
 mod app;
 mod commands;
-mod embed_window;
 mod file_assoc;
-mod mpv;
+mod player;
 mod resources;
 mod runtime;
 mod settings;
@@ -96,7 +95,7 @@ fn main() {
                 log::info!("窗口 {} 关闭，释放 Desktop 运行时资源", window.label());
                 let state: tauri::State<AppState> = app.state();
 
-                if let Ok(mut player) = state.mpv.lock() {
+                if let Ok(mut player) = state.player.lock() {
                     player.stop_all();
                 }
 
