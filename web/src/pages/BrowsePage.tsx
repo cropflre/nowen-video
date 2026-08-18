@@ -420,7 +420,7 @@ export default function BrowsePage() {
   const hasSearchOrFilters = mediaType !== '' || !!searchQuery || activeFilterCount > 0
 
   return (
-    <div className="nv-section-stack">
+    <div className={clsx('nv-section-stack')}>
       <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="媒体类型">
         {[
           { key: '' as const, label: '全部', icon: Layers, value: stats.total },
