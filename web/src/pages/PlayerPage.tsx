@@ -23,6 +23,12 @@ function formatClipTime(seconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
+function toAbsoluteDesktopUrl(url: string, serverBaseUrl: string | null): string {
+  if (!url || /^https?:\/\//i.test(url) || !serverBaseUrl) return url
+  const base = serverBaseUrl.replace(/\/+$/, '')
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`
+}
+
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -126,12 +132,24 @@ export default function PlayerPage() {
     toast.info(`当前播放方式不兼容，已自动切换到${target}`)
   }, [toast])
 
-  if (loading || !media || !playInfo || !id) {
+  if (loading || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || !playInfo || !id) {
     return (
       <div className="group/player flex h-screen items-center justify-center bg-[var(--nv-player-canvas)]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
           <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在加载播放信息...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!highlightMode && desktopRuntime.isDesktop && !desktopRuntime.playerAvailable) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--nv-player-canvas)] p-6">
+        <div className="max-w-lg rounded-[var(--nv-radius-lg)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] p-6 text-center">
+          <h2 className="text-lg font-semibold text-[var(--nv-player-text-primary)]">原生播放器不可用</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--nv-player-text-secondary)]">Desktop 2.0 只使用原生 Player Core，不会回退到浏览器播放器。请检查 libmpv 运行资源后重新启动客户端。</p>
+          <button type="button" onClick={() => navigate(-1)} className="mt-5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm text-[var(--nv-player-text-primary)] hover:bg-[var(--nv-player-surface-hover)]">返回</button>
         </div>
       </div>
     )
@@ -144,9 +162,9 @@ export default function PlayerPage() {
   const browserSupportsHEVC = browserCaps.video.hevc.main !== 'unsupported'
   const canDirectHEVC = isHEVCSource && browserSupportsHEVC && !isPreprocessed && playInfo.can_direct_play
 
-  // Desktop 2.0：正式桌面播放只使用原生 Player Core。
-  // 精彩片段暂时继续走浏览器播放器，以复用现有精确 end-time 合约；普通播放不再存在引擎选择。
-  const useDesktopPlayer = !highlightMode && desktopRuntime.isDesktop && desktopRuntime.playerAvailable
+  // Desktop 2.0：普通播放固定走原生 Player Core。
+  // 精彩片段仍暂时复用 Web 播放器的精确 end-time 合约，后续单独迁入原生片段控制器。
+  const useDesktopPlayer = !highlightMode && desktopRuntime.isDesktop
 
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
   const isRandomAccessMp4 = playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v'
@@ -180,8 +198,7 @@ export default function PlayerPage() {
             ? ''
             : streamApi.getMasterUrl(id)
 
-  // libmpv 直接读取原始媒体流，不经过浏览器兼容性决策和不必要转码。
-  const desktopSrc = streamApi.getDirectUrl(id)
+  const desktopSrc = toAbsoluteDesktopUrl(streamApi.getDirectUrl(id), desktopRuntime.serverBaseUrl)
 
   const effectiveBrowserMode = runtimeMode || (mode === 'webcodecs' ? null : mode)
   const browserPlaybackResetKey = `${id}:${isPreprocessed ? playInfo.preprocessed_url : 'planned'}:${webcodecsFailed ? 'wc-fallback' : 'initial'}:${highlightMode ? `${clipStart}-${clipEnd}` : 'full'}`
