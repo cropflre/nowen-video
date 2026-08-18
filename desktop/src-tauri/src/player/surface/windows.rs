@@ -17,7 +17,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use windows::core::{w, PCSTR};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
 use windows::Win32::Graphics::OpenGL::{
     wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent, ChoosePixelFormat,
@@ -26,7 +26,7 @@ use windows::Win32::Graphics::OpenGL::{
 };
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetModuleHandleW, GetProcAddress};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowRect, PeekMessageW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, PeekMessageW,
     RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, CS_OWNDC, MSG, PM_REMOVE, SW_HIDE,
     SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, WINDOW_EX_STYLE,
     WNDCLASSW, WM_ERASEBKGND, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
@@ -41,6 +41,15 @@ const RENDER_PARAM_API_TYPE: u32 = 1;
 const RENDER_PARAM_OPENGL_INIT_PARAMS: u32 = 2;
 const RENDER_PARAM_OPENGL_FBO: u32 = 3;
 const RENDER_PARAM_FLIP_Y: u32 = 4;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SurfaceLayout {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    visible: bool,
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 struct SurfaceBounds {
@@ -89,12 +98,13 @@ impl WakeState {
 
 enum SurfaceCommand {
     SetBounds(SurfaceBounds),
-    Resync,
     AttachRenderer {
         mpv_handle: usize,
         reply: mpsc::SyncSender<std::result::Result<(), String>>,
     },
-    DetachRenderer,
+    DetachRenderer {
+        reply: Option<mpsc::SyncSender<()>>,
+    },
     Shutdown,
 }
 
@@ -132,8 +142,21 @@ impl PlayerSurface {
         }
     }
 
+    /// 同步释放 Render Context。
+    ///
+    /// `mpv_render_context` 引用主 mpv core；这里必须等渲染线程真正 free 完成后
+    /// NativePlayer 才能继续 drop 主 Mpv handle，避免悬挂引用。
     pub(crate) fn detach_renderer(&self) {
-        let _ = self.send(SurfaceCommand::DetachRenderer);
+        let (reply_tx, reply_rx) = mpsc::sync_channel(1);
+        if let Err(error) = self.send(SurfaceCommand::DetachRenderer {
+            reply: Some(reply_tx),
+        }) {
+            log::warn!("请求释放 Windows Render Context 失败: {}", error);
+            return;
+        }
+        if let Err(error) = reply_rx.recv_timeout(Duration::from_secs(5)) {
+            log::warn!("等待 Windows Render Context 释放超时: {}", error);
+        }
     }
 
     fn send(&self, command: SurfaceCommand) -> Result<()> {
@@ -156,9 +179,14 @@ impl PlayerSurface {
 }
 
 static SURFACE: OnceLock<Mutex<Option<PlayerSurface>>> = OnceLock::new();
+static LAST_LAYOUT: OnceLock<Mutex<Option<SurfaceLayout>>> = OnceLock::new();
 
 fn surface_slot() -> &'static Mutex<Option<PlayerSurface>> {
     SURFACE.get_or_init(|| Mutex::new(None))
+}
+
+fn layout_slot() -> &'static Mutex<Option<SurfaceLayout>> {
+    LAST_LAYOUT.get_or_init(|| Mutex::new(None))
 }
 
 pub fn ensure(app: &AppHandle) -> Result<PlayerSurface> {
@@ -219,39 +247,68 @@ pub fn ensure(app: &AppHandle) -> Result<PlayerSurface> {
 }
 
 pub fn sync_bounds(
-    _app: &AppHandle,
+    app: &AppHandle,
     x: i32,
     y: i32,
     width: u32,
     height: u32,
     visible: bool,
 ) -> Result<()> {
+    let layout = SurfaceLayout {
+        x,
+        y,
+        width: width.max(1),
+        height: height.max(1),
+        visible,
+    };
+    if let Ok(mut last) = layout_slot().lock() {
+        *last = Some(layout);
+    }
+    apply_layout(app, layout)
+}
+
+pub fn resync(app: &AppHandle) -> Result<()> {
+    let layout = layout_slot()
+        .lock()
+        .map_err(|_| anyhow!("Player Surface 布局锁已损坏"))?
+        .as_ref()
+        .copied();
+    if let Some(layout) = layout {
+        apply_layout(app, layout)?;
+    }
+    Ok(())
+}
+
+fn apply_layout(app: &AppHandle, layout: SurfaceLayout) -> Result<()> {
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| anyhow!("主窗口不存在"))?;
+    let origin = main
+        .inner_position()
+        .context("获取主窗口客户区屏幕坐标失败")?;
+    let minimized = main.is_minimized().unwrap_or(false);
+
+    let bounds = SurfaceBounds {
+        x: origin.x + layout.x,
+        y: origin.y + layout.y,
+        width: layout.width,
+        height: layout.height,
+        visible: layout.visible && !minimized,
+    };
+
     let slot = surface_slot()
         .lock()
         .map_err(|_| anyhow!("Player Surface 状态锁已损坏"))?;
     let surface = slot
         .as_ref()
         .ok_or_else(|| anyhow!("Windows Player Surface 尚未创建"))?;
-    surface.send(SurfaceCommand::SetBounds(SurfaceBounds {
-        x,
-        y,
-        width: width.max(1),
-        height: height.max(1),
-        visible,
-    }))
-}
-
-pub fn resync(_app: &AppHandle) -> Result<()> {
-    let slot = surface_slot()
-        .lock()
-        .map_err(|_| anyhow!("Player Surface 状态锁已损坏"))?;
-    if let Some(surface) = slot.as_ref() {
-        surface.send(SurfaceCommand::Resync)?;
-    }
-    Ok(())
+    surface.send(SurfaceCommand::SetBounds(bounds))
 }
 
 pub fn destroy(_app: &AppHandle) -> Result<()> {
+    if let Ok(mut layout) = layout_slot().lock() {
+        *layout = None;
+    }
     let surface = surface_slot()
         .lock()
         .map_err(|_| anyhow!("Player Surface 状态锁已损坏"))?
@@ -356,12 +413,16 @@ impl RenderThread {
                         self.bounds = bounds;
                         self.apply_bounds();
                     }
-                    SurfaceCommand::Resync => self.apply_bounds(),
                     SurfaceCommand::AttachRenderer { mpv_handle, reply } => {
                         let result = self.attach_renderer(mpv_handle as *mut mpv::mpv_handle);
                         let _ = reply.send(result.map_err(|error| error.to_string()));
                     }
-                    SurfaceCommand::DetachRenderer => self.detach_renderer(),
+                    SurfaceCommand::DetachRenderer { reply } => {
+                        self.detach_renderer();
+                        if let Some(reply) = reply {
+                            let _ = reply.send(());
+                        }
+                    }
                     SurfaceCommand::Shutdown => {
                         running = false;
                         break;
@@ -394,18 +455,13 @@ impl RenderThread {
                 return;
             }
 
-            let mut rect = RECT::default();
-            if GetWindowRect(self.main_hwnd, &mut rect).is_err() {
-                return;
-            }
-            let x = rect.left + self.bounds.x;
-            let y = rect.top + self.bounds.y;
-            // 把视频 Surface 放在主窗口之后，透明的 WebView/React 控件层始终位于视频上方。
+            // hWndInsertAfter=main：Surface 放在主窗口之后，透明 WebView/React 控件层
+            // 保持在视频之上；坐标已在 Tauri 主线程换算为客户区的屏幕物理坐标。
             let _ = SetWindowPos(
                 self.hwnd,
                 Some(self.main_hwnd),
-                x,
-                y,
+                self.bounds.x,
+                self.bounds.y,
                 self.bounds.width.max(1) as i32,
                 self.bounds.height.max(1) as i32,
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
