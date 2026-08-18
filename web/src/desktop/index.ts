@@ -7,6 +7,7 @@
  *   2. 在 PlayerPage 挂 <DesktopPlayerBadge /> 提示可切 mpv
  *   3. 想要 libmpv 嵌入体验时，改用 <MpvEmbedPlayer />
  *   4. 自动更新：在布局挂 <UpdateBanner />
+ *   5. 精彩片段卸载：根组件挂载 <DesktopHighlightComputeAgent />
  *
  * 设计原则：
  * 1. Web 端零侵入 —— 未运行在 Tauri 时所有方法安全降级
@@ -23,6 +24,8 @@ export type {
   DesktopSettings,
   PlatformInfo,
   MpvAvailability,
+  HighlightCaptureFrameRequest,
+  HighlightCaptureFrameResult,
   UpdateInfo,
   EmbedStartResult,
 } from './bridge'
@@ -36,3 +39,4 @@ export type { Anime4KLevel } from './Anime4KPanel'
 export { default as UpdateBanner } from './UpdateBanner'
 export { default as DesktopEventBinder } from './DesktopEventBinder'
 export { default as DesktopServerPicker } from './DesktopServerPicker'
+export { default as DesktopHighlightComputeAgent } from './DesktopHighlightComputeAgent'
