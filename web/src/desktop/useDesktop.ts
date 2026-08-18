@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { desktop, PlatformInfo, MpvAvailability } from './bridge'
+import { desktop, PlatformInfo } from './bridge'
 
 /**
  * Desktop 2.0 环境 Hook。
@@ -20,15 +20,14 @@ export function useDesktop() {
 
     let canceled = false
     ;(async () => {
-      const [platformInfo, player] = await Promise.all([
+      const [platformInfo, available] = await Promise.all([
         desktop.platformInfo(),
-        desktop.mpvAvailable(),
+        desktop.playerAvailable(),
       ])
       if (canceled) return
 
-      const availability: MpvAvailability = player
       setPlatform(platformInfo)
-      setPlayerAvailable(availability.embed_available)
+      setPlayerAvailable(available)
       setReady(true)
     })()
 
@@ -41,8 +40,6 @@ export function useDesktop() {
     isDesktop: desktop.isDesktop,
     platform,
     playerAvailable,
-    // 兼容过渡：旧调用方在完全迁移前仍可读取 embedAvailable。
-    embedAvailable: playerAvailable,
     ready,
   }
 }
