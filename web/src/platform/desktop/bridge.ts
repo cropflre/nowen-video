@@ -71,6 +71,12 @@ export interface PlayerVideoInfo {
   mute: boolean
 }
 
+export interface PlayerStateEvent {
+  session_id: string
+  event: 'state' | 'file-loaded' | 'playback-restart' | 'end-file' | 'queue-overflow' | string
+  state: PlayerVideoInfo
+}
+
 const IS_DESKTOP = typeof window !== 'undefined' && isTauri()
 let cachedEmbeddedServerBase: string | null = null
 
@@ -189,6 +195,7 @@ export const desktop = {
     await invoke<void>('player_destroy')
   },
 
+  /** 仅供启动 bootstrap / 诊断使用，正常状态同步请监听 onPlayerState。 */
   async playerVideoInfo(sessionId: string): Promise<PlayerVideoInfo | null> {
     return invoke<PlayerVideoInfo>('player_video_info', { sessionId })
   },
@@ -280,6 +287,10 @@ export const desktop = {
 
   async windowSetEffect(enabled: boolean): Promise<void> {
     await invoke<void>('window_set_effect', { enabled })
+  },
+
+  async onPlayerState(handler: (event: PlayerStateEvent) => void): Promise<() => void> {
+    return listen<PlayerStateEvent>('player-state', handler)
   },
 
   async onMenuAction(handler: (actionId: string) => void): Promise<() => void> {
