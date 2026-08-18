@@ -1,5 +1,6 @@
 export { MediaArtwork, type MediaArtworkProps, type MediaArtworkRatio } from './media/MediaArtwork'
 export { MediaRail, type MediaRailProps } from './media/MediaRail'
+export { HeroContent, type HeroContentProps, type HeroHeadingLevel } from './media/HeroContent'
 export { MediaHeroContent, type MediaHeroContentProps } from './media/MediaHeroContent'
 export { AppShell, type AppShellProps } from './layout/AppShell'
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader'
