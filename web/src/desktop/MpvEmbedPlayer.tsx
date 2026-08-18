@@ -135,7 +135,10 @@ function MpvEmbedPlayerInner(
         desktop.playerDestroy().catch(() => {})
       }
     }
-  }, [autoDestroy, initialVolume, onError, onReady, playOptions, sessionId, setProperty, streamUrl])
+    // 播放会话只由媒体 URL / sessionId 决定；父级播放进度更新造成的重渲染
+    // 不得因为新的对象引用（playOptions / 回调）反复销毁并重启 libmpv。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamUrl, sessionId])
 
   useEffect(() => {
     if (!ready || !placeholderRef.current || !desktop.isDesktop) return
