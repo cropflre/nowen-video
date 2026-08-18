@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -43,12 +44,19 @@ func highlightView(mediaID string, h model.VideoHighlight) mediaHighlightView {
 		ID: h.ID, MediaID: h.MediaID, Title: h.Title,
 		StartTime: h.StartTime, EndTime: h.EndTime, Score: h.Score,
 		Tags: h.Tags, Source: h.Source, AnalysisMethod: h.AnalysisMethod, Version: h.Version,
-		// Preview is intentionally always exposed. The endpoint lazily generates and
-		// persists Animated WebP on the first hover instead of blocking analysis.
-		PreviewURL: "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview",
 	}
 	if h.Thumbnail != "" {
 		view.ThumbnailURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/thumbnail"
+	}
+
+	// 服务端 Sparse V2 仍按原设计在首次悬停时懒生成 Animated WebP。
+	// 客户端 Worker 已经承担分析和缩略图生成；如果它没有主动上传预览，
+	// 就不要因为 Web 悬停再次让弱 NAS 启动 FFmpeg。未来客户端支持预览上传后，
+	// 只要 PreviewPath/GifPath 已落盘，这里会自然恢复 preview_url。
+	clientGenerated := strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Source)), "client_")
+	hasStoredPreview := strings.TrimSpace(h.PreviewPath) != "" || strings.TrimSpace(h.GifPath) != ""
+	if !clientGenerated || hasStoredPreview {
+		view.PreviewURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview"
 	}
 	return view
 }
