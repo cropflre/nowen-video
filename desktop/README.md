@@ -23,6 +23,7 @@ Tauri 2 / Rust Runtime
         │      ├── control handle
         │      ├── independent event client
         │      └── Player Surface
+        │             └── Windows: Win32 + OpenGL + Render API
         │
         └── Go Media Core sidecar
                  │
@@ -57,6 +58,8 @@ desktop/
         ├── app/              # 应用启动与生命周期
         ├── runtime/          # 全局运行时状态
         ├── player/           # Desktop Player Core + Surface + event pump
+        │   └── surface/
+        │       └── windows.rs# Win32/OpenGL Render API 后端
         ├── player_commands.rs# 低频轨道/章节查询 IPC
         ├── commands.rs       # 通用产品级自定义 IPC
         ├── sidecar.rs        # Go Media Core 生命周期
@@ -141,9 +144,39 @@ React 收到事件后按需读取 `player_media_info`。播放器 UI 当前支�
 
 ## Player Surface / Render API
 
-当前 Windows 首发实现把原生渲染 Surface 封装在 `player/surface.rs`，PlayerManager 和 Web IPC 不再接触 `wid` / HWND。
+Windows x64 首发路径已经从 `wid + 第二 WebView` 切换为 app-owned Render Surface POC：
 
-libmpv Render API 不是把视频直接绘制进 React DOM；它要求宿主拥有可供 libmpv 渲染的图形上下文/帧缓冲。因此下一阶段只在 `player/surface.rs` 与 NativePlayer renderer 初始化边界内实现 app-owned native GL surface + libmpv Render Context，不再改 React、IPC 和状态管理。
+```text
+React controls / transparent Tauri WebView
+                 │
+                 │ 只同步播放区域 bounds
+                 ▼
+       Win32 WS_POPUP Surface
+                 │
+              WGL/OpenGL
+                 │
+                 ▼
+      libmpv Render Context
+                 │
+                 ▼
+      default framebuffer
+                 │
+          SwapBuffers
+```
+
+关键规则：
+
+- Windows Player Core 在 `mpv_initialize` 前设置 `vo=libmpv`，不再设置 `wid`；
+- Surface 是纯 Win32 窗口，不再创建第二个 Tauri WebView；
+- OpenGL Context、Render Context、framebuffer 和 SwapBuffers 全部归 `player/surface/windows.rs`；
+- libmpv update callback 只负责唤醒渲染线程，不在回调中执行 OpenGL/mpv 命令；
+- Render Context 创建、render、free 都固定在同一个渲染线程；
+- Render Context detach 使用同步 ACK，确认完全释放后才允许主 Mpv handle drop；
+- React 仍然拥有控制层，Desktop 普通播放期间 `html/body/#root` 临时透明，离开播放器立即恢复；
+- 播放区域坐标使用 Tauri `inner_position()` + DOM 物理像素布局，主窗口移动、缩放、DPI 变化时会重新同步；
+- 第一版 Windows Render POC 使用 `d3d11va-copy`，暂不把 D3D11 零拷贝/ANGLE 互操作复杂度带入首发验证。
+
+macOS/Linux 当前仍保留兼容 Surface 后端，不代表它们已完成 Render API 迁移。Windows POC 也必须经过真实 Windows x64 构建与媒体矩阵测试后才能标记为生产稳定。
 
 ## 安全基线
 
@@ -206,10 +239,14 @@ NOWEN_DESKTOP_UPDATER_ENABLED=1
 
 Anime4K、高级 Shader、复杂 PiP/色彩调校等不作为 2.0 首发核心能力。
 
-尚未完成且不能标记为正式完成的深层项：
+下一阶段必须完成的验证/深层项：
 
-- `player/surface.rs` 从当前原生窗口承载切换到 app-owned graphics surface + libmpv Render API；
+- Windows x64 `cargo check`、Tauri dev/build 与真实 Render API 运行验证；
+- 1080p/4K、H264/HEVC/AV1、HDR10、ASS/PGS、DTS/TrueHD 等播放矩阵；
+- 多显示器、DPI、窗口移动/缩放、全屏、最小化/恢复的 Surface 稳定性；
+- 根据 Windows 实测决定是否升级现代 WGL Context、ANGLE 或 D3D11 零拷贝路径；
 - 在不破坏 HLS/媒体子请求的前提下增加完整 Desktop Runtime Token 握手；
-- 配置真实 Tauri Updater 公钥、签名产物并开启更新开关。
+- 配置真实 Tauri Updater 公钥、签名产物并开启更新开关；
+- macOS/Linux 各自的 app-owned Render Surface。
 
-这些工作已经被隔离在 Player/Runtime/Updater 边界内，不需要恢复旧双内核架构。
+以上工作继续限定在 Player/Runtime/Updater 平台边界内，不需要恢复旧双内核架构。
