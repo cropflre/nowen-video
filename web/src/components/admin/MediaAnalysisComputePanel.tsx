@@ -65,6 +65,12 @@ function workerState(worker: MediaAnalysisWorker): { label: string; tone: AdminS
   }
 }
 
+function workerKindLabel(kind: string) {
+  if (kind === 'android') return 'Android'
+  if (kind === 'desktop') return 'Desktop'
+  return kind || 'Client'
+}
+
 function relativeSeen(value: string) {
   const timestamp = new Date(value).getTime()
   if (!Number.isFinite(timestamp)) return '刚刚'
@@ -126,7 +132,7 @@ export default function MediaAnalysisComputePanel() {
   return (
     <AdminPanel
       title="精彩片段计算节点"
-      description="精彩片段与 AI 配置相互独立。服务端负责调度、结果校验与持久化，客户端可承担稀疏解码、评分和缩略图生成。"
+      description="精彩片段与 AI 配置相互独立。服务端负责调度、结果校验与持久化，Desktop / Android 客户端可承担稀疏解码、评分和缩略图生成。"
       icon={<Zap size={18} />}
       actions={(
         <div className="flex items-center gap-2">
@@ -186,17 +192,17 @@ export default function MediaAnalysisComputePanel() {
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--nv-text-primary)]">在线计算节点</h3>
-                <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">节点超过约 90 秒未上报会自动从列表移除。</p>
+                <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">节点超过约 90 秒未上报会自动从列表移除；正在计算的节点会随进度自动续租并刷新在线状态。</p>
               </div>
               <AdminStatus tone={workers.length > 0 ? 'success' : 'neutral'}>{workers.length} 个已发现</AdminStatus>
             </div>
 
             {workers.length === 0 ? (
               <div className="rounded-[var(--nv-radius-control)] border border-dashed border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] px-4 py-8 text-center">
-                <Smartphone size={24} className="mx-auto text-[var(--nv-text-tertiary)]" />
+                <Monitor size={24} className="mx-auto text-[var(--nv-text-tertiary)]" />
                 <div className="mt-3 text-sm font-medium text-[var(--nv-text-secondary)]">暂无在线客户端计算节点</div>
                 <p className="mx-auto mt-1 max-w-xl text-xs leading-5 text-[var(--nv-text-tertiary)]">
-                  Android 管理员客户端在前台、连接 Wi-Fi，并处于充电状态或电量不少于 40% 时会自动参与。自动模式下没有客户端也会回退服务端。
+                  Desktop 管理员客户端在 libmpv 可用且未处于播放页时优先参与；Android 管理员客户端在前台、Wi-Fi 且充电中或电量不少于 40% 时参与。自动模式下没有客户端会回退服务端。
                 </p>
               </div>
             ) : (
@@ -215,7 +221,7 @@ export default function MediaAnalysisComputePanel() {
                             <AdminStatus tone={state.tone}>{state.label}</AdminStatus>
                           </div>
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
-                            <span>{worker.kind === 'android' ? 'Android' : worker.kind}</span>
+                            <span>{workerKindLabel(worker.kind)}</span>
                             <span>最后在线 {relativeSeen(worker.last_seen)}</span>
                             {worker.network && <span>{worker.network.toUpperCase()}</span>}
                             {worker.kind === 'android' && (
