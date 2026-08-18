@@ -75,6 +75,41 @@ fn is_webp(data: &[u8]) -> bool {
 }
 
 #[cfg(feature = "embed-mpv")]
+fn encode_base64(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(data.len().div_ceil(3) * 4);
+    let mut index = 0;
+    while index + 3 <= data.len() {
+        let value = ((data[index] as u32) << 16)
+            | ((data[index + 1] as u32) << 8)
+            | data[index + 2] as u32;
+        output.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+        output.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+        output.push(TABLE[((value >> 6) & 0x3f) as usize] as char);
+        output.push(TABLE[(value & 0x3f) as usize] as char);
+        index += 3;
+    }
+    match data.len() - index {
+        1 => {
+            let value = (data[index] as u32) << 16;
+            output.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+            output.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+            output.push('=');
+            output.push('=');
+        }
+        2 => {
+            let value = ((data[index] as u32) << 16) | ((data[index + 1] as u32) << 8);
+            output.push(TABLE[((value >> 18) & 0x3f) as usize] as char);
+            output.push(TABLE[((value >> 12) & 0x3f) as usize] as char);
+            output.push(TABLE[((value >> 6) & 0x3f) as usize] as char);
+            output.push('=');
+        }
+        _ => {}
+    }
+    output
+}
+
+#[cfg(feature = "embed-mpv")]
 struct TempCaptureDir(std::path::PathBuf);
 
 #[cfg(feature = "embed-mpv")]
@@ -86,7 +121,6 @@ impl Drop for TempCaptureDir {
 
 #[cfg(feature = "embed-mpv")]
 fn capture_frame_blocking(request: HighlightCaptureRequest) -> Result<HighlightCaptureResult, String> {
-    use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
     use libmpv2::events::Event;
     use libmpv2::Mpv;
     use std::fs;
@@ -169,7 +203,7 @@ fn capture_frame_blocking(request: HighlightCaptureRequest) -> Result<HighlightC
                 return Err("桌面 libmpv 返回的缩略图不是有效 WebP".to_string());
             }
             return Ok(HighlightCaptureResult {
-                data_base64: BASE64_STANDARD.encode(&bytes),
+                data_base64: encode_base64(&bytes),
                 mime: "image/webp".to_string(),
                 byte_size: bytes.len(),
                 max_width,
@@ -192,7 +226,7 @@ fn capture_frame_blocking(request: HighlightCaptureRequest) -> Result<HighlightC
                     .map_err(|error| format!("读取桌面精彩片段缩略图失败: {error}"))?;
                 if bytes.len() <= MAX_CAPTURE_BYTES && is_webp(&bytes) {
                     return Ok(HighlightCaptureResult {
-                        data_base64: BASE64_STANDARD.encode(&bytes),
+                        data_base64: encode_base64(&bytes),
                         mime: "image/webp".to_string(),
                         byte_size: bytes.len(),
                         max_width,
