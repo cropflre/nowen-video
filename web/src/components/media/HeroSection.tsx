@@ -5,6 +5,7 @@ import { streamApi } from '@/api'
 import { usePosterVersion } from '@/stores/mediaRefresh'
 import { useToast } from '@/components/Toast'
 import { Button, Tag, buttonClassName } from '@/components/design-system'
+import { HeroContent, MediaArtwork } from '@/ui'
 import { useTranslation } from '@/i18n'
 import { formatDuration, formatDurationShort } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
@@ -13,7 +14,6 @@ import {
   ChevronRight,
   Clapperboard,
   Copy,
-  Film,
   Heart,
   Link2,
   ListPlus,
@@ -145,12 +145,7 @@ function AnchoredMenu({ open, anchorRef, ariaLabel, onClose, children }: Anchore
 }
 
 function getBackdropUrl(media: Media, version?: number) {
-  // Always probe the dedicated backdrop endpoint first. The media object can be
-  // stale while local analysis is completing, so backdrop_path must not decide
-  // whether the client attempts to load newly generated artwork.
-  if (media.series_id) {
-    return streamApi.getSeriesBackdropUrl(media.series_id, version)
-  }
+  if (media.series_id) return streamApi.getSeriesBackdropUrl(media.series_id, version)
   const suffix = version ? `?v=${version}` : ''
   return streamApi.withTokenUrl(`/api/media/${media.id}/backdrop${suffix}`)
 }
@@ -183,7 +178,6 @@ export default function HeroSection({
   const toast = useToast()
   const { t } = useTranslation()
   const [imgLoaded, setImgLoaded] = useState(false)
-  const [posterFailed, setPosterFailed] = useState(false)
   const [failedBackdropKey, setFailedBackdropKey] = useState<string | null>(null)
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
@@ -227,6 +221,160 @@ export default function HeroSection({
         : { label: t('hero.needTranscode'), tone: 'warning' as const }
     : null
 
+  const episodeEyebrow = media.media_type === 'episode' && media.series_id ? (
+    <Link
+      to={`/series/${media.series_id}`}
+      className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-muted-hover)]"
+    >
+      <span className="truncate">{media.series?.title || media.title}</span>
+      <ChevronRight size={14} aria-hidden="true" />
+      <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
+        S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
+      </span>
+    </Link>
+  ) : undefined
+
+  const subtitle = media.media_type !== 'episode' && (media.orig_title || media.tagline) ? (
+    <div className="space-y-1">
+      {media.orig_title && media.orig_title !== media.title && <div>{media.orig_title}</div>}
+      {media.tagline && <div className="text-[var(--nv-text-tertiary)] italic">{media.tagline}</div>}
+    </div>
+  ) : undefined
+
+  const heroActions = (
+    <>
+      <Link
+        to={`/play/${media.id}`}
+        className={buttonClassName({ variant: 'primary', size: 'lg' })}
+        data-variant="primary"
+        data-size="lg"
+        aria-label={isResume ? t('hero.continuePlay', { title: media.title }) : t('hero.playTitle', { title: media.title })}
+      >
+        <Play size={18} fill="currentColor" aria-hidden="true" />
+        {playLabel}
+      </Link>
+
+      {media.trailer_url && onShowTrailer && (
+        <Button variant="secondary" size="lg" onClick={onShowTrailer}>
+          <Clapperboard size={17} aria-hidden="true" />
+          {t('media.trailer')}
+        </Button>
+      )}
+
+      <Button
+        variant="secondary"
+        size="lg"
+        iconOnly
+        onClick={onFavorite}
+        className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
+        title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
+        aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
+        aria-pressed={isFavorited}
+      >
+        <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+      </Button>
+
+      <Button
+        ref={playlistButtonRef}
+        variant="secondary"
+        size="lg"
+        iconOnly
+        onClick={() => {
+          setShowPlaylistMenu((value) => !value)
+          setShowMoreMenu(false)
+        }}
+        title={t('hero.addToPlaylist')}
+        aria-label={t('hero.addToPlaylist')}
+        aria-expanded={showPlaylistMenu}
+        aria-haspopup="menu"
+      >
+        <ListPlus size={19} aria-hidden="true" />
+      </Button>
+
+      <AnchoredMenu
+        open={showPlaylistMenu}
+        anchorRef={playlistButtonRef}
+        ariaLabel={t('hero.playlists')}
+        onClose={() => setShowPlaylistMenu(false)}
+      >
+        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.playlists')}</div>
+        {playlists.length === 0 ? (
+          <div className="px-3 py-3 text-sm text-[var(--nv-text-tertiary)]">{t('hero.noPlaylists')}</div>
+        ) : playlists.map((playlist) => (
+          <button key={playlist.id} onClick={() => handleAddToPlaylist(playlist.id)} className={menuItemClassName} role="menuitem">
+            <ListPlus size={14} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
+            {playlist.items?.some((playlistItem) => playlistItem.media_id === media.id) && (
+              <Check size={14} className="text-[var(--nv-action-muted-hover)]" aria-hidden="true" />
+            )}
+          </button>
+        ))}
+      </AnchoredMenu>
+
+      <Button
+        ref={moreButtonRef}
+        variant="secondary"
+        size="lg"
+        iconOnly
+        onClick={() => {
+          setShowMoreMenu((value) => !value)
+          setShowPlaylistMenu(false)
+        }}
+        title={t('hero.moreActions')}
+        aria-label={t('hero.moreActions')}
+        aria-haspopup="menu"
+        aria-expanded={showMoreMenu}
+      >
+        <MoreHorizontal size={19} aria-hidden="true" />
+      </Button>
+
+      <AnchoredMenu
+        open={showMoreMenu}
+        anchorRef={moreButtonRef}
+        ariaLabel={t('hero.moreActions')}
+        onClose={() => setShowMoreMenu(false)}
+      >
+        {isAdmin && (
+          <>
+            <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
+            <button onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+              <Link2 size={14} aria-hidden="true" /> {t('hero.manualMatch')}
+            </button>
+            <button onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+              <Unlink size={14} aria-hidden="true" /> {t('hero.unmatch')}
+            </button>
+            <button onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }} disabled={scraping} className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')} role="menuitem">
+              <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} aria-hidden="true" />
+              {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
+            </button>
+            <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+              <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
+            </button>
+            <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
+              <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
+            </button>
+            <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
+          </>
+        )}
+        <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+          <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
+        </button>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(window.location.href)
+              .then(() => toast.success(t('hero.linkCopied')))
+              .catch(() => {})
+            setShowMoreMenu(false)
+          }}
+          className={menuItemClassName}
+          role="menuitem"
+        >
+          <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
+        </button>
+      </AnchoredMenu>
+    </>
+  )
+
   return (
     <section className="nv-detail-hero relative overflow-visible border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
       <div className="absolute inset-0 overflow-hidden">
@@ -258,214 +406,49 @@ export default function HeroSection({
 
       <div className="nv-detail-hero-inner relative mx-auto grid min-h-[clamp(28rem,48vw,42rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[12rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8">
         <div className="hidden sm:block">
-          <div className="nv-detail-poster relative aspect-[2/3] w-full overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]">
-            <img
-              src={streamApi.getPosterUrl(media.id, effectivePosterVersion)}
-              alt={media.title}
-              className={clsx('h-full w-full object-cover', posterFailed && 'hidden')}
-              loading="eager"
-              onError={() => setPosterFailed(true)}
-            />
-            {posterFailed && (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
-                <Film size={34} aria-hidden="true" />
-                <span className="text-xs">暂无海报</span>
-              </div>
-            )}
-          </div>
+          <MediaArtwork
+            src={streamApi.getPosterUrl(media.id, effectivePosterVersion)}
+            alt={media.title}
+            ratio="poster"
+            loading="eager"
+            className="nv-detail-poster w-full shadow-[var(--nv-shadow-card)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+          />
         </div>
 
-        <div className="min-w-0 pb-1">
-          {media.media_type === 'episode' && media.series_id && (
-            <Link
-              to={`/series/${media.series_id}`}
-              className="mb-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-action-muted-hover)]"
-            >
-              <span className="truncate">{media.series?.title || media.title}</span>
-              <ChevronRight size={14} aria-hidden="true" />
-              <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
-                S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
-              </span>
-            </Link>
-          )}
-
-          <h1
-            className="max-w-[28ch] text-balance font-bold text-[var(--nv-text-primary)]"
-            style={{
-              fontSize: 'var(--nv-type-h1)',
-              lineHeight: 'var(--nv-line-tight)',
-              letterSpacing: 'var(--nv-tracking-tight)',
-            }}
-          >
-            {title}
-          </h1>
-
-          {media.orig_title && media.orig_title !== media.title && media.media_type !== 'episode' && (
-            <p className="mt-2 max-w-3xl text-sm text-[var(--nv-text-secondary)] sm:text-base">{media.orig_title}</p>
-          )}
-          {media.tagline && (
-            <p className="mt-1.5 max-w-3xl text-sm italic text-[var(--nv-text-tertiary)]">{media.tagline}</p>
-          )}
-
-          <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
-            {media.rating > 0 && (
-              <span className="inline-flex items-center gap-1 font-semibold text-[var(--nv-status-rating)]">
-                <Star size={13} fill="currentColor" aria-hidden="true" />
-                {media.rating.toFixed(1)}
-              </span>
-            )}
-            {media.year > 0 && <span>{media.year}</span>}
-            {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
-            {media.country && <span>{media.country}</span>}
-            {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
-              <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
-                {genre.trim()}
-              </Link>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
-            {media.video_codec && <Tag>{media.video_codec}</Tag>}
-            {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
-          </div>
-
-          {media.overview && (
-            <p className="mt-4 line-clamp-3 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]">{media.overview}</p>
-          )}
-
-          <div className="mt-5 flex flex-wrap items-center gap-2.5">
-            <Link
-              to={`/play/${media.id}`}
-              className={buttonClassName({ variant: 'primary', size: 'lg' })}
-              data-variant="primary"
-              data-size="lg"
-              aria-label={isResume ? t('hero.continuePlay', { title: media.title }) : t('hero.playTitle', { title: media.title })}
-            >
-              <Play size={18} fill="currentColor" aria-hidden="true" />
-              {playLabel}
-            </Link>
-
-            {media.trailer_url && onShowTrailer && (
-              <Button variant="secondary" size="lg" onClick={onShowTrailer}>
-                <Clapperboard size={17} aria-hidden="true" />
-                {t('media.trailer')}
-              </Button>
-            )}
-
-            <Button
-              variant="secondary"
-              size="lg"
-              iconOnly
-              onClick={onFavorite}
-              className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
-              title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
-              aria-label={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
-              aria-pressed={isFavorited}
-            >
-              <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
-            </Button>
-
-            <Button
-              ref={playlistButtonRef}
-              variant="secondary"
-              size="lg"
-              iconOnly
-              onClick={() => {
-                setShowPlaylistMenu((value) => !value)
-                setShowMoreMenu(false)
-              }}
-              title={t('hero.addToPlaylist')}
-              aria-label={t('hero.addToPlaylist')}
-              aria-expanded={showPlaylistMenu}
-              aria-haspopup="menu"
-            >
-              <ListPlus size={19} aria-hidden="true" />
-            </Button>
-
-            <AnchoredMenu
-              open={showPlaylistMenu}
-              anchorRef={playlistButtonRef}
-              ariaLabel={t('hero.playlists')}
-              onClose={() => setShowPlaylistMenu(false)}
-            >
-              <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.playlists')}</div>
-              {playlists.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-[var(--nv-text-tertiary)]">{t('hero.noPlaylists')}</div>
-              ) : playlists.map((playlist) => (
-                <button key={playlist.id} onClick={() => handleAddToPlaylist(playlist.id)} className={menuItemClassName} role="menuitem">
-                  <ListPlus size={14} aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
-                  {playlist.items?.some((playlistItem) => playlistItem.media_id === media.id) && (
-                    <Check size={14} className="text-[var(--nv-action-muted-hover)]" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
-            </AnchoredMenu>
-
-            <Button
-              ref={moreButtonRef}
-              variant="secondary"
-              size="lg"
-              iconOnly
-              onClick={() => {
-                setShowMoreMenu((value) => !value)
-                setShowPlaylistMenu(false)
-              }}
-              title={t('hero.moreActions')}
-              aria-label={t('hero.moreActions')}
-              aria-haspopup="menu"
-              aria-expanded={showMoreMenu}
-            >
-              <MoreHorizontal size={19} aria-hidden="true" />
-            </Button>
-
-            <AnchoredMenu
-              open={showMoreMenu}
-              anchorRef={moreButtonRef}
-              ariaLabel={t('hero.moreActions')}
-              onClose={() => setShowMoreMenu(false)}
-            >
-              {isAdmin && (
-                <>
-                  <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
-                  <button onClick={() => { onManualMatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                    <Link2 size={14} aria-hidden="true" /> {t('hero.manualMatch')}
-                  </button>
-                  <button onClick={() => { onUnmatch?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                    <Unlink size={14} aria-hidden="true" /> {t('hero.unmatch')}
-                  </button>
-                  <button onClick={() => { onRefreshMetadata?.(); setShowMoreMenu(false) }} disabled={scraping} className={clsx(menuItemClassName, 'disabled:cursor-not-allowed disabled:opacity-45')} role="menuitem">
-                    <RefreshCw size={14} className={clsx(scraping && 'animate-spin')} aria-hidden="true" />
-                    {scraping ? t('hero.refreshing') : t('hero.refreshMetadata')}
-                  </button>
-                  <button onClick={() => { onEditMetadata?.(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                    <Pencil size={14} aria-hidden="true" /> {t('hero.editMetadata')}
-                  </button>
-                  <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
-                    <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
-                  </button>
-                  <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
-                </>
+        <HeroContent
+          compact
+          className="pb-1"
+          eyebrow={episodeEyebrow}
+          title={title}
+          subtitle={subtitle}
+          meta={(
+            <>
+              {media.rating > 0 && (
+                <span className="inline-flex items-center gap-1 font-semibold text-[var(--nv-status-rating)]">
+                  <Star size={13} fill="currentColor" aria-hidden="true" />
+                  {media.rating.toFixed(1)}
+                </span>
               )}
-              <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-                <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
-              </button>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href)
-                    .then(() => toast.success(t('hero.linkCopied')))
-                    .catch(() => {})
-                  setShowMoreMenu(false)
-                }}
-                className={menuItemClassName}
-                role="menuitem"
-              >
-                <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
-              </button>
-            </AnchoredMenu>
-          </div>
-        </div>
+              {media.year > 0 && <span>{media.year}</span>}
+              {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
+              {media.country && <span>{media.country}</span>}
+              {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
+                <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
+                  {genre.trim()}
+                </Link>
+              ))}
+            </>
+          )}
+          badges={(
+            <>
+              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
+              {media.video_codec && <Tag>{media.video_codec}</Tag>}
+              {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
+            </>
+          )}
+          overview={media.overview || undefined}
+          actions={heroActions}
+        />
       </div>
     </section>
   )
