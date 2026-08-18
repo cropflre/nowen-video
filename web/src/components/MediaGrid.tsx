@@ -1,6 +1,7 @@
 import type { Media, MixedItem } from '@/types'
 import MediaCard from './MediaCard'
 import { Section } from '@/components/design-system'
+import { MediaGrid as MediaGridLayout } from '@/ui'
 
 interface MediaGridProps {
   items?: Media[]
@@ -13,7 +14,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
   if (loading) {
     return (
       <Section title={title}>
-        <div className="nv-media-grid" aria-busy="true" aria-label="媒体内容加载中">
+        <MediaGridLayout aria-busy="true" aria-label="媒体内容加载中">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i}>
               <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
@@ -21,7 +22,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
               <div className="skeleton mt-1.5 h-2.5 w-1/2" />
             </div>
           ))}
-        </div>
+        </MediaGridLayout>
       </Section>
     )
   }
@@ -30,7 +31,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
     if (mixedItems.length === 0) return null
     return (
       <Section title={title}>
-        <div className="nv-media-grid">
+        <MediaGridLayout>
           {mixedItems.map((item) => {
             if (item.type === 'series' && item.series) {
               return <MediaCard key={`s-${item.series.id}`} series={item.series} />
@@ -40,7 +41,7 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
             }
             return null
           })}
-        </div>
+        </MediaGridLayout>
       </Section>
     )
   }
@@ -49,9 +50,9 @@ export default function MediaGrid({ items, mixedItems, title, loading }: MediaGr
 
   return (
     <Section title={title}>
-      <div className="nv-media-grid">
+      <MediaGridLayout>
         {items.map((media) => <MediaCard key={media.id} media={media} />)}
-      </div>
+      </MediaGridLayout>
     </Section>
   )
 }
