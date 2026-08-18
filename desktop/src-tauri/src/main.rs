@@ -5,6 +5,7 @@ mod app;
 mod commands;
 mod file_assoc;
 mod player;
+mod player_commands;
 mod resources;
 mod runtime;
 mod settings;
@@ -111,6 +112,7 @@ fn main() {
             commands::player_set_property,
             commands::player_destroy,
             commands::player_video_info,
+            player_commands::player_media_info,
             commands::check_update,
             commands::install_update,
             commands::get_settings,
