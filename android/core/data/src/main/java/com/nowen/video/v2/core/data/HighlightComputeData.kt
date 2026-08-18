@@ -28,6 +28,7 @@ import kotlin.math.min
 import kotlin.math.sqrt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -49,6 +50,7 @@ private const val HIGHLIGHT_WORKER_INELIGIBLE_POLL_MS = 15_000L
 private const val HIGHLIGHT_MIN_BATTERY_PERCENT = 40
 private const val HIGHLIGHT_MIN_SEPARATION_SECONDS = 45.0
 private const val HIGHLIGHT_THUMBNAIL_MAX_WIDTH = 640
+private const val HIGHLIGHT_THUMBNAIL_SOFT_LIMIT = 480 * 1024
 
 @Serializable
 data class HighlightWorkerHeartbeat(
@@ -232,9 +234,12 @@ class HighlightComputeAgent @Inject constructor(
             }
 
             try {
-                processClaim(server.baseUrl, token, claim)
+                val currentToken = sessionStore.snapshot.value.token?.takeIf(String::isNotBlank) ?: token
+                processClaim(server.baseUrl, currentToken, claim)
             } catch (cancelled: CancellationException) {
-                reportFailure(claim, "Android 客户端离开前台，任务已释放")
+                withContext(NonCancellable) {
+                    reportFailure(claim, "Android 客户端离开前台，任务已释放")
+                }
                 throw cancelled
             } catch (error: Throwable) {
                 reportFailure(claim, error.message ?: "Android 客户端精彩片段计算失败")
@@ -259,8 +264,7 @@ class HighlightComputeAgent @Inject constructor(
             retriever.setDataSource(streamUrl, headers)
             val samples = ArrayList<VisualSample>(claim.sampleTimes.size)
             claim.sampleTimes.forEachIndexed { index, time ->
-                val bitmap = extractFrame(retriever, time)
-                    ?: return@forEachIndexed
+                val bitmap = extractFrame(retriever, time) ?: return@forEachIndexed
                 try {
                     samples += VisualSample(time = time, rawScore = visualInformationScore(bitmap))
                 } finally {
@@ -290,7 +294,8 @@ class HighlightComputeAgent @Inject constructor(
                     frame.recycle()
                 }
                 val start = max(0.0, sample.time - 10.0)
-                val end = min(claim.duration, max(start + 1.0, start + 30.0))
+                val end = min(claim.duration, start + 30.0)
+                if (end <= start) error("精彩片段时间范围无效")
                 reportProgress(
                     claim,
                     stage = "client_thumbnail",
@@ -352,11 +357,7 @@ class HighlightComputeAgent @Inject constructor(
     private fun visualInformationScore(source: Bitmap): Double {
         val width = min(96, source.width).coerceAtLeast(1)
         val height = max(1, (source.height.toDouble() * width / source.width.coerceAtLeast(1)).toInt())
-        val bitmap = if (source.width == width && source.height == height) {
-            source
-        } else {
-            Bitmap.createScaledBitmap(source, width, height, true)
-        }
+        val bitmap = if (source.width == width && source.height == height) source else Bitmap.createScaledBitmap(source, width, height, true)
         try {
             val pixels = IntArray(width * height)
             bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
@@ -368,9 +369,9 @@ class HighlightComputeAgent @Inject constructor(
                 val r = (color shr 16) and 0xff
                 val g = (color shr 8) and 0xff
                 val b = color and 0xff
-                val y = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                luminance[i] = y
-                sum += y
+                val value = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                luminance[i] = value
+                sum += value
             }
             val mean = sum / luminance.size
             var variance = 0.0
@@ -412,11 +413,11 @@ class HighlightComputeAgent @Inject constructor(
 
     private fun selectHighlights(samples: List<VisualSample>, limit: Int): List<VisualSample> {
         val chosen = ArrayList<VisualSample>(limit)
-        samples.sortedByDescending { it.normalizedScore }.forEach { candidate ->
-            if (chosen.none { abs(it.time - candidate.time) >= 0 && abs(it.time - candidate.time) < HIGHLIGHT_MIN_SEPARATION_SECONDS }) {
+        for (candidate in samples.sortedByDescending { it.normalizedScore }) {
+            if (chosen.all { abs(it.time - candidate.time) >= HIGHLIGHT_MIN_SEPARATION_SECONDS }) {
                 chosen += candidate
             }
-            if (chosen.size >= limit) return@forEach
+            if (chosen.size >= limit) break
         }
         return chosen.sortedBy { it.time }
     }
@@ -427,12 +428,13 @@ class HighlightComputeAgent @Inject constructor(
         val bitmap = if (source.width == width && source.height == height) source else Bitmap.createScaledBitmap(source, width, height, true)
         try {
             val output = ByteArrayOutputStream()
-            val mime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 72, output)
-                "image/webp"
-            } else {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 72, output)
-                "image/jpeg"
+            val isWebP = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+            val format = if (isWebP) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.JPEG
+            val mime = if (isWebP) "image/webp" else "image/jpeg"
+            for (quality in intArrayOf(72, 62, 52, 42)) {
+                output.reset()
+                bitmap.compress(format, quality, output)
+                if (output.size() <= HIGHLIGHT_THUMBNAIL_SOFT_LIMIT) break
             }
             return output.toByteArray() to mime
         } finally {
