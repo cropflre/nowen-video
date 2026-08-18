@@ -28,9 +28,6 @@ export interface DesktopSettings {
   }
   player: {
     hardware_accel: boolean
-    engine?: 'auto' | 'mpv' | 'web'
-    mpv_path?: string
-    mpv_args?: string[]
   }
   window: {
     width: number
@@ -47,11 +44,6 @@ export interface PlatformInfo {
   is_desktop: boolean
 }
 
-interface PlayerAvailability {
-  available: boolean
-  embed_available: boolean
-}
-
 export interface UpdateInfo {
   available: boolean
   version: string
@@ -60,7 +52,7 @@ export interface UpdateInfo {
   pub_date: string
 }
 
-export interface EmbedStartResult {
+export interface PlayerStartResult {
   wid: number
   session_id: string
 }
@@ -80,8 +72,6 @@ export interface MpvVideoInfo {
   volume: number
   mute: boolean
 }
-
-export type Anime4KLevel = 'off' | 'low' | 'medium' | 'high'
 
 const IS_DESKTOP = typeof window !== 'undefined' && isTauri()
 
@@ -105,26 +95,20 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
   }
 }
 
-/**
- * Desktop 2.0 平台适配层。
- *
- * React 业务只能通过这里访问桌面能力。Web/mpv 引擎选择、外部 mpv 进程等
- * Desktop 1.x 实验接口已从产品层删除。
- */
+/** Desktop 2.0 唯一桌面平台适配层。 */
 export const desktop = {
   isDesktop: IS_DESKTOP,
 
   async playerAvailable(): Promise<boolean> {
-    const result = await invoke<PlayerAvailability>('mpv_available')
-    return Boolean(result?.embed_available)
+    return Boolean(await invoke<boolean>('player_available'))
   },
 
   async playerStart(params: {
     sessionId: string
     url: string
     options?: PlayOptions
-  }): Promise<EmbedStartResult | null> {
-    return invoke<EmbedStartResult>('mpv_embed_start', {
+  }): Promise<PlayerStartResult | null> {
+    return invoke<PlayerStartResult>('player_start', {
       sessionId: params.sessionId,
       url: params.url,
       options: params.options,
@@ -132,7 +116,7 @@ export const desktop = {
   },
 
   async playerStop(sessionId: string): Promise<void> {
-    await invoke<void>('stop_mpv', { sessionId })
+    await invoke<void>('player_stop', { sessionId })
   },
 
   async playerSyncSurface(params: {
@@ -142,7 +126,7 @@ export const desktop = {
     height: number
     visible: boolean
   }): Promise<boolean> {
-    const result = await invoke<void>('mpv_embed_sync', params)
+    const result = await invoke<void>('player_sync_surface', params)
     return result !== null
   },
 
@@ -151,7 +135,7 @@ export const desktop = {
     command: string
     args?: string[]
   }): Promise<boolean> {
-    const result = await invoke<void>('mpv_embed_command', params)
+    const result = await invoke<void>('player_command', params)
     return result !== null
   },
 
@@ -160,24 +144,16 @@ export const desktop = {
     name: string
     value: string
   }): Promise<boolean> {
-    const result = await invoke<void>('mpv_embed_set_property', params)
+    const result = await invoke<void>('player_set_property', params)
     return result !== null
   },
 
   async playerDestroy(): Promise<void> {
-    await invoke<void>('mpv_embed_destroy')
-  },
-
-  async playerSetAnime4K(params: {
-    sessionId: string
-    level: Anime4KLevel
-  }): Promise<boolean> {
-    const result = await invoke<void>('mpv_embed_set_anime4k', params)
-    return result !== null
+    await invoke<void>('player_destroy')
   },
 
   async playerVideoInfo(sessionId: string): Promise<MpvVideoInfo | null> {
-    return invoke<MpvVideoInfo>('mpv_embed_video_info', { sessionId })
+    return invoke<MpvVideoInfo>('player_video_info', { sessionId })
   },
 
   async checkUpdate(): Promise<UpdateInfo | null> {
