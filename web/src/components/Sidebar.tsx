@@ -9,6 +9,7 @@ import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Library } from '@/types'
 import { useTranslation } from '@/i18n'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
+import { BottomNavigation } from '@/ui'
 import {
   Film,
   FolderOpen,
@@ -120,6 +121,12 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
 
   const displayName = user?.nickname?.trim() || user?.username || 'Nowen'
   const initials = displayName.slice(0, 2).toUpperCase()
+  const mobileNavigationItems = [
+    { to: '/', end: true, icon: <Home size={18} aria-hidden="true" />, label: t('nav.home') },
+    { to: '/browse', icon: <Film size={18} aria-hidden="true" />, label: '影视库' },
+    { to: '/search', icon: <Search size={18} aria-hidden="true" />, label: t('nav.search') },
+    { to: '/my', icon: <UserRound size={18} aria-hidden="true" />, label: '我的' },
+  ]
 
   return (
     <>
@@ -212,19 +219,7 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
         </div>
       </aside>
 
-      <nav
-        className="nv-mobile-nav"
-        aria-label="移动端主导航"
-        style={{
-          left: 'max(8px, env(safe-area-inset-left, 0px))',
-          right: 'max(8px, env(safe-area-inset-right, 0px))',
-        }}
-      >
-        <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
-        <RailLink to="/browse" icon={<Film size={18} aria-hidden="true" />} label="影视库" />
-        <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
-        <RailLink to="/my" icon={<UserRound size={18} aria-hidden="true" />} label="我的" />
-      </nav>
+      <BottomNavigation items={mobileNavigationItems} />
     </>
   )
 }
