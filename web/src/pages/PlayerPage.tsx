@@ -62,6 +62,26 @@ export default function PlayerPage() {
   useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
   useEffect(() => { detectWebCodecs().then(setWebcodecsCap).catch(() => setWebcodecsCap(null)) }, [])
 
+  // Windows Render Surface 位于透明 Tauri WebView 下方。只在 Desktop 普通播放路由临时
+  // 清除浏览器根节点的全局 Aurora 背景，离开播放页后完整恢复，不影响 Web/其他页面。
+  useEffect(() => {
+    if (!desktopRuntime.isDesktop || highlightMode) return
+
+    const nodes = [document.documentElement, document.body, document.getElementById('root')]
+      .filter((node): node is HTMLElement => Boolean(node))
+    const previous = nodes.map((node) => node.style.background)
+
+    nodes.forEach((node) => {
+      node.style.background = 'transparent'
+    })
+
+    return () => {
+      nodes.forEach((node, index) => {
+        node.style.background = previous[index]
+      })
+    }
+  }, [desktopRuntime.isDesktop, highlightMode])
+
   useEffect(() => {
     if (!highlightMode || !clipEnd) return
     if (currentTime < clipEnd - 0.35) {
