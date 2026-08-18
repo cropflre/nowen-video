@@ -20,6 +20,7 @@ import type { Library, MovieCollection } from '@/types'
 import Pagination from '@/components/Pagination'
 import CollectionCard from '@/components/media/CollectionCard'
 import { Button, EmptyState, SearchField, Select, Surface, Tag } from '@/components/design-system'
+import { MediaGrid as SharedMediaGrid } from '@/ui'
 
 type ViewMode = 'grid' | 'list'
 
@@ -143,7 +144,11 @@ export default function CollectionsPage() {
       if (operation === 'rematch') {
         const res = await collectionApi.rematch()
         setOperationMsg(res.data.message || `重新匹配完成，新建 ${res.data.created} 个合集`)
-        setSearchParams((prev) => { prev.set('page', '1'); return prev })
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('page', '1')
+          return next
+        })
       } else if (operation === 'merge') {
         const res = await collectionApi.mergeDuplicates()
         setOperationMsg(res.data.message || `已合并 ${res.data.merged} 组重复合集`)
@@ -263,7 +268,7 @@ export default function CollectionsPage() {
       </header>
 
       {showFilters && (
-        <Surface id="collections-filter-panel" className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
+        <Surface variant="glass" id="collections-filter-panel" className="nv-search-filter-panel space-y-3 p-3 sm:p-4">
           <FilterRow icon={<Layers size={13} aria-hidden="true" />} label="来源:">
             {SOURCE_TABS.map(({ key, label, icon: Icon }) => (
               <FilterChip key={key || 'all'} selected={filterAuto === key} onClick={() => updateParams({ auto: key === '' ? null : key }, true)}>
@@ -314,7 +319,7 @@ export default function CollectionsPage() {
       )}
 
       {operationMsg && (
-        <Surface className="nv-collection-notice flex items-center gap-3 px-4 py-3 text-sm text-[var(--nv-text-secondary)]" role="status">
+        <Surface variant="raised" className="nv-collection-notice flex items-center gap-3 px-4 py-3 text-sm text-[var(--nv-text-secondary)]" role="status">
           <Tag tone="brand">操作完成</Tag>
           <span className="min-w-0 flex-1">{operationMsg}</span>
           <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setOperationMsg('')} aria-label="关闭提示"><X size={14} /></Button>
@@ -322,7 +327,7 @@ export default function CollectionsPage() {
       )}
 
       {loading ? (
-        <div className="nv-media-grid" aria-label="正在加载合集">
+        <SharedMediaGrid aria-label="正在加载合集" aria-busy="true">
           {Array.from({ length: 12 }).map((_, index) => (
             <div key={index}>
               <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
@@ -330,7 +335,7 @@ export default function CollectionsPage() {
               <div className="skeleton mt-1.5 h-2.5 w-1/2" />
             </div>
           ))}
-        </div>
+        </SharedMediaGrid>
       ) : displayList.length === 0 ? (
         <EmptyState
           className="nv-search-empty-state"
@@ -340,9 +345,9 @@ export default function CollectionsPage() {
           action={hasActiveFilter ? <Button variant="secondary" size="sm" onClick={clearFilters}>清除筛选</Button> : undefined}
         />
       ) : viewMode === 'grid' ? (
-        <div className="nv-media-grid">
+        <SharedMediaGrid>
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
-        </div>
+        </SharedMediaGrid>
       ) : (
         <div className="nv-browse-list divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} variant="list" />)}
