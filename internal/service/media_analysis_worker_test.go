@@ -107,6 +107,49 @@ func TestPreferredDesktopWorkerSelection(t *testing.T) {
 	}
 }
 
+func TestExtendRemoteLeaseRefreshesWorkerHeartbeat(t *testing.T) {
+	analysis := &MediaAnalysisService{}
+	defer mediaAnalysisWorkerStates.Delete(analysis)
+
+	oldSeen := time.Now().Add(-2 * time.Minute)
+	oldLease := time.Now().Add(30 * time.Second)
+	state := mediaAnalysisState(analysis)
+	state.mu.Lock()
+	state.remoteTasks["task-1"] = &mediaAnalysisRemoteTask{
+		TaskID:     "task-1",
+		ClaimedBy:  "desktop-1",
+		ClaimToken: "claim-1",
+		LeaseUntil: oldLease,
+	}
+	state.workers["desktop-1"] = MediaAnalysisWorkerView{
+		MediaAnalysisWorkerHeartbeat: MediaAnalysisWorkerHeartbeat{
+			WorkerID:     "desktop-1",
+			Kind:         "desktop",
+			Capabilities: []string{"highlight_v1"},
+		},
+		LastSeen: oldSeen,
+		State:    "busy",
+		TaskID:   "task-1",
+	}
+	state.mu.Unlock()
+
+	analysis.extendRemoteLease("task-1", "claim-1")
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	remote := state.remoteTasks["task-1"]
+	worker := state.workers["desktop-1"]
+	if !remote.LeaseUntil.After(oldLease) {
+		t.Fatalf("进度上报后租约应延长，原=%v 新=%v", oldLease, remote.LeaseUntil)
+	}
+	if !worker.LastSeen.After(oldSeen) {
+		t.Fatalf("进度上报后节点在线时间应刷新，原=%v 新=%v", oldSeen, worker.LastSeen)
+	}
+	if worker.State != "busy" || worker.TaskID != "task-1" {
+		t.Fatalf("续租后节点应保持计算中，state=%q task=%q", worker.State, worker.TaskID)
+	}
+}
+
 func TestMediaAnalysisWorkerUtilities(t *testing.T) {
 	if got := normalizeWorkerKind("windows"); got != "desktop" {
 		t.Fatalf("windows kind = %q", got)
