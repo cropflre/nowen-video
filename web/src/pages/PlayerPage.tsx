@@ -9,7 +9,7 @@ import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
 import { Zap, Loader2, Cpu, Clapperboard } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
-import { MpvEmbedPlayer, useDesktop } from '@/desktop'
+import { DesktopPlayer, useDesktop } from '@/desktop'
 import { getMediaCapabilities, type BrowserMediaCapability } from '@/utils/media-capabilities'
 
 function getBrowserCaps(): BrowserMediaCapability {
@@ -272,7 +272,7 @@ export default function PlayerPage() {
       </div>
 
       {useDesktopPlayer ? (
-        <MpvEmbedPlayer
+        <DesktopPlayer
           streamUrl={desktopSrc}
           sessionId={`media-${id}`}
           title={playerTitle}
