@@ -86,6 +86,20 @@ export interface MpvAvailability {
   embed_available: boolean
 }
 
+export interface HighlightCaptureFrameRequest {
+  url: string
+  time: number
+  headers?: Record<string, string>
+  max_width?: number
+}
+
+export interface HighlightCaptureFrameResult {
+  data_base64: string
+  mime: string
+  byte_size: number
+  max_width: number
+}
+
 export interface UpdateInfo {
   available: boolean
   version: string
@@ -211,6 +225,11 @@ export const desktop = {
   async mpvAvailable(): Promise<MpvAvailability> {
     const r = await invoke<MpvAvailability>('mpv_available')
     return r ?? { available: false, embed_available: false }
+  },
+
+  /** 使用无窗口 libmpv 从远程媒体流抽取单帧，供精彩片段 Desktop Worker 使用。 */
+  async highlightCaptureFrame(request: HighlightCaptureFrameRequest): Promise<HighlightCaptureFrameResult | null> {
+    return invoke<HighlightCaptureFrameResult>('highlight_capture_frame', { request })
   },
 
   /** 用 mpv 播放（独立窗口） */
