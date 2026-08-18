@@ -544,10 +544,13 @@ func (s *LibraryService) Delete(id string) error {
 		return err
 	}
 
-	// 清理磁盘上的刮削缓存（海报/背景、缩略图、转码、预处理）
-	s.cleanScrapedCacheFiles(mediaIDs, seriesIDs, libName)
+	// 海报、缩略图、转码、预处理等均属于可重建磁盘缓存。
+	// 主数据已经删除后立即返回，避免大量 os.Stat / RemoveAll 继续占用 DELETE 请求。
+	mediaIDsForCleanup := append([]string(nil), mediaIDs...)
+	seriesIDsForCleanup := append([]string(nil), seriesIDs...)
+	go s.cleanScrapedCacheFiles(mediaIDsForCleanup, seriesIDsForCleanup, libName)
 
-	s.logger.Infof("媒体库 %s 已删除（关联数据及刮削缓存已清理）", libName)
+	s.logger.Infof("媒体库 %s 已删除（关联数据已清理，刮削缓存后台回收中）", libName)
 
 	// 广播媒体库删除事件，通知前端刷新
 	if s.wsHub != nil {
@@ -616,7 +619,7 @@ func (s *LibraryService) UpdateSeries(series *model.Series) error {
 	return s.seriesRepo.Update(series)
 }
 
-// GetSeriesByID 获取单个剧集合集（用于管理操作）
+// GetSeriesByID 获取剧集合集信息
 func (s *LibraryService) GetSeriesByID(id string) (*model.Series, error) {
 	return s.seriesRepo.FindByID(id)
 }
