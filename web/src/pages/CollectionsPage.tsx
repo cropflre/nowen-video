@@ -20,7 +20,7 @@ import type { Library, MovieCollection } from '@/types'
 import Pagination from '@/components/Pagination'
 import CollectionCard from '@/components/media/CollectionCard'
 import { Button, EmptyState, SearchField, Select, Surface, Tag } from '@/components/design-system'
-import { MediaGrid as SharedMediaGrid } from '@/ui'
+import { FilterChip, MediaGrid, SegmentedControl } from '@/ui'
 
 type ViewMode = 'grid' | 'list'
 
@@ -46,21 +46,6 @@ const SOURCE_TABS = [
 interface CollectionsData {
   list: MovieCollection[]
   total: number
-}
-
-function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="nv-button nv-search-filter-chip"
-      data-variant={selected ? 'secondary' : 'ghost'}
-      data-size="sm"
-      aria-pressed={selected}
-    >
-      {children}
-    </button>
-  )
 }
 
 function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
@@ -305,8 +290,16 @@ export default function CollectionsPage() {
           </FilterRow>
 
           <FilterRow icon={<Grid3X3 size={13} aria-hidden="true" />} label="视图:">
-            <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => updateParams({ view: null })}><Grid3X3 size={14} /></ViewButton>
-            <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => updateParams({ view: 'list' })}><LayoutList size={14} /></ViewButton>
+            <SegmentedControl<ViewMode>
+              value={viewMode}
+              ariaLabel="合集视图"
+              iconOnly
+              items={[
+                { value: 'grid', label: '网格视图', icon: <Grid3X3 size={14} aria-hidden="true" /> },
+                { value: 'list', label: '列表视图', icon: <LayoutList size={14} aria-hidden="true" /> },
+              ]}
+              onChange={(nextView) => updateParams({ view: nextView === 'grid' ? null : nextView })}
+            />
           </FilterRow>
 
           {hasActiveFilter && (
@@ -327,7 +320,7 @@ export default function CollectionsPage() {
       )}
 
       {loading ? (
-        <SharedMediaGrid aria-label="正在加载合集" aria-busy="true">
+        <MediaGrid aria-label="正在加载合集" aria-busy="true">
           {Array.from({ length: 12 }).map((_, index) => (
             <div key={index}>
               <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
@@ -335,7 +328,7 @@ export default function CollectionsPage() {
               <div className="skeleton mt-1.5 h-2.5 w-1/2" />
             </div>
           ))}
-        </SharedMediaGrid>
+        </MediaGrid>
       ) : displayList.length === 0 ? (
         <EmptyState
           className="nv-search-empty-state"
@@ -345,9 +338,9 @@ export default function CollectionsPage() {
           action={hasActiveFilter ? <Button variant="secondary" size="sm" onClick={clearFilters}>清除筛选</Button> : undefined}
         />
       ) : viewMode === 'grid' ? (
-        <SharedMediaGrid>
+        <MediaGrid>
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
-        </SharedMediaGrid>
+        </MediaGrid>
       ) : (
         <div className="nv-browse-list divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {displayList.map((collection) => <CollectionCard key={collection.id} collection={collection} variant="list" />)}
@@ -366,23 +359,5 @@ export default function CollectionsPage() {
         />
       )}
     </div>
-  )
-}
-
-function ViewButton({ active, title, onClick, children }: { active: boolean; title: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      iconOnly
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      aria-pressed={active}
-      className={active ? '!bg-[var(--nv-fill-active)] !text-[var(--nv-text-primary)]' : undefined}
-    >
-      {children}
-    </Button>
   )
 }
