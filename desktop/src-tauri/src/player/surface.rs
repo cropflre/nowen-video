@@ -8,7 +8,7 @@
 mod windows;
 
 #[cfg(target_os = "windows")]
-pub use windows::{destroy, detach_renderer, ensure, resync, sync_bounds, PlayerSurface};
+pub use windows::{destroy, ensure, resync, sync_bounds, PlayerSurface};
 
 #[cfg(not(target_os = "windows"))]
 mod fallback {
@@ -115,8 +115,6 @@ mod fallback {
         Ok(())
     }
 
-    pub fn detach_renderer() {}
-
     pub fn destroy(app: &AppHandle) -> Result<()> {
         if let Some(surface) = app.get_webview_window(PLAYER_SURFACE_LABEL) {
             surface.close().ok();
@@ -126,4 +124,4 @@ mod fallback {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub use fallback::{destroy, detach_renderer, ensure, resync, sync_bounds, PlayerSurface};
+pub use fallback::{destroy, ensure, resync, sync_bounds, PlayerSurface};
