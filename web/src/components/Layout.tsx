@@ -1,7 +1,8 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from './Sidebar'
-import { PageContainer, SearchField } from './design-system'
+import { PageContainer } from './design-system'
+import { AppShell, PageHeader } from '@/ui'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
 const SIDEBAR_COLLAPSED_KEY = 'nowen_sidebar_collapsed'
@@ -58,28 +59,19 @@ function ApplicationTopBar() {
     setKeyword(routeKeyword)
   }, [location.pathname, routeKeyword])
 
-  const submitSearch = (event: FormEvent) => {
-    event.preventDefault()
-    const value = keyword.trim()
+  const submitSearch = (value: string) => {
     navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search')
   }
 
   return (
-    <header className="nv-topbar pwa-safe-top" aria-label="页面工具栏" style={SAFE_INLINE_STYLE}>
-      <h1 className="nv-topbar-title max-w-[20vw] sm:max-w-none">{title}</h1>
-      <div className="nv-topbar-spacer" />
-      {!isSearchRoute && (
-        <form onSubmit={submitSearch} role="search" className="flex min-w-0 flex-1 items-center justify-end sm:flex-initial">
-          <SearchField
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索影片、剧集、演员"
-            aria-label="全局搜索"
-            wrapperClassName="max-w-full"
-          />
-        </form>
-      )}
-    </header>
+    <PageHeader
+      title={title}
+      searchValue={keyword}
+      onSearchValueChange={setKeyword}
+      onSearchSubmit={submitSearch}
+      showSearch={!isSearchRoute}
+      style={SAFE_INLINE_STYLE}
+    />
   )
 }
 
@@ -128,11 +120,10 @@ export default function Layout() {
   }, [location.pathname, location.search])
 
   return (
-    <div
-      className="nv-app-shell relative flex h-full min-h-0 overflow-hidden"
-      data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}
+    <AppShell
+      sidebar={<Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />}
+      sidebarCollapsed={sidebarCollapsed}
     >
-      <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
         ref={mainRef}
         id="main-scroll-container"
@@ -147,6 +138,6 @@ export default function Layout() {
           <Outlet />
         </PageContainer>
       </main>
-    </div>
+    </AppShell>
   )
 }
