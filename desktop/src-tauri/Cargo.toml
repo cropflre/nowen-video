@@ -27,10 +27,9 @@ tauri-plugin-deep-link = "2.0"
 tauri-plugin-single-instance = { version = "2.0", features = ["deep-link"] }
 tauri-plugin-global-shortcut = "2.0"
 
-# JSON / 二进制编码
+# JSON 处理
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-base64 = "0.22"
 
 # 日志
 log = "0.4"
