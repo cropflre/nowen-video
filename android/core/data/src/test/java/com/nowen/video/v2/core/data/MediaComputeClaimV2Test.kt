@@ -3,7 +3,9 @@ package com.nowen.video.v2.core.data
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 
 class MediaComputeClaimV2Test {
     private val json = Json {
@@ -12,8 +14,8 @@ class MediaComputeClaimV2Test {
     }
 
     @Test
-    fun `v2 highlight claim decodes generic envelope and nested input`() {
-        val claim = json.decodeFromString<HighlightWorkerClaim>(
+    fun `v2 claim decodes generic envelope before highlight adapter parses input`() {
+        val claim = json.decodeFromString<MediaComputeTaskClaim>(
             """
             {
               "protocol_version": 2,
@@ -44,13 +46,14 @@ class MediaComputeClaimV2Test {
         assertEquals(2, claim.protocolVersion)
         assertEquals("highlight_v1", claim.jobType)
         assertEquals("highlight_v1", claim.requiredCapability)
-        assertEquals("media-1", claim.input?.mediaId)
-        assertEquals(listOf(120.0, 360.0), claim.input?.sampleTimes)
+        val input = json.decodeFromJsonElement<MediaComputeHighlightInput>(assertNotNull(claim.input))
+        assertEquals("media-1", input.mediaId)
+        assertEquals(listOf(120.0, 360.0), input.sampleTimes)
     }
 
     @Test
     fun `v1 flattened claim remains decodable`() {
-        val claim = json.decodeFromString<HighlightWorkerClaim>(
+        val claim = json.decodeFromString<MediaComputeTaskClaim>(
             """
             {
               "task_id": "task-legacy",

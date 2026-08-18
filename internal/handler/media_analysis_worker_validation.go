@@ -15,41 +15,62 @@ import (
 
 const maxMediaAnalysisWorkerRequestBytes int64 = 5 * 1024 * 1024
 
-// ValidateMediaAnalysisWorkerComplete 在业务层持久化之前校验客户端上传负载。
-// 服务层仍会继续执行条数、时间范围、单图大小、总大小和 fingerprint 校验；
-// 这里专门阻断过大的 JSON 与“声明为图片但实际不是图片”的二进制内容。
+// ValidateMediaAnalysisWorkerComplete 同时校验 V1 highlight body 与 V2 generic result envelope。
+// 未知 job 这里只执行总请求大小限制，具体 result adapter 由服务层拒绝或校验。
 func ValidateMediaAnalysisWorkerComplete(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxMediaAnalysisWorkerRequestBytes)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "客户端精彩片段结果超过允许大小"})
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "客户端媒体计算结果超过允许大小"})
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "无法读取客户端精彩片段结果"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "无法读取客户端媒体计算结果"})
 		return
 	}
 
-	var payload service.MediaAnalysisWorkerComplete
+	var payload service.MediaComputeTaskComplete
 	if err := json.Unmarshal(body, &payload); err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "客户端精彩片段结果格式无效"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "客户端媒体计算结果格式无效"})
 		return
 	}
-	for _, item := range payload.Highlights {
-		encoded := strings.TrimSpace(item.ThumbnailBase64)
-		if encoded == "" {
-			continue
+
+	highlights := payload.Highlights
+	jobType := strings.TrimSpace(payload.JobType)
+	if len(payload.Result) > 0 && (jobType == "" || jobType == service.MediaComputeJobHighlightV1) {
+		var result struct {
+			Highlights []service.MediaAnalysisWorkerHighlight `json:"highlights"`
 		}
-		data, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil || !validMediaAnalysisThumbnail(item.ThumbnailMime, data) {
-			c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": "客户端精彩片段缩略图格式与内容不匹配"})
+		if err := json.Unmarshal(payload.Result, &result); err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "精彩片段计算 result 格式无效"})
+			return
+		}
+		highlights = result.Highlights
+	}
+	if jobType == "" || jobType == service.MediaComputeJobHighlightV1 {
+		if err := validateMediaAnalysisHighlightThumbnails(highlights); err != nil {
+			c.AbortWithStatusJSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 			return
 		}
 	}
 
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
 	c.Next()
+}
+
+func validateMediaAnalysisHighlightThumbnails(highlights []service.MediaAnalysisWorkerHighlight) error {
+	for _, item := range highlights {
+		encoded := strings.TrimSpace(item.ThumbnailBase64)
+		if encoded == "" {
+			continue
+		}
+		data, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil || !validMediaAnalysisThumbnail(item.ThumbnailMime, data) {
+			return errors.New("客户端精彩片段缩略图格式与内容不匹配")
+		}
+	}
+	return nil
 }
 
 func validMediaAnalysisThumbnail(mime string, data []byte) bool {

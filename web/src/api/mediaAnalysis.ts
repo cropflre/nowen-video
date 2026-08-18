@@ -2,6 +2,7 @@ import api from './client'
 
 export const MEDIA_COMPUTE_PROTOCOL_VERSION = 2
 export const MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = 'highlight_v1'
+export const MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1 = 'highlight_v1'
 
 export interface MediaHighlight {
   id: string
@@ -74,29 +75,26 @@ export interface MediaComputeHighlightInput {
   engine_version: number
 }
 
-export interface MediaAnalysisWorkerClaim {
-  // Media Compute Node V2 envelope.
+export interface MediaComputeTaskClaim<TInput = unknown> {
   protocol_version?: number
   job_type?: string
   required_capability?: string
-  input?: MediaComputeHighlightInput
-
   task_id: string
   claim_token: string
-  lease_expires_at: string
+  input?: TInput
+  lease_expires_at?: string
 
-  // V1 compatibility fields. The server intentionally keeps them while released
-  // Android/Desktop clients migrate to the V2 input envelope.
-  media_id: string
-  fingerprint: string
-  duration: number
-  stream_url: string
-  sample_times: number[]
-  max_highlights: number
-  engine_version: number
+  // V1 compatibility mirror. Only highlight_v1 should ever populate these.
+  media_id?: string
+  fingerprint?: string
+  duration?: number
+  stream_url?: string
+  sample_times?: number[]
+  max_highlights?: number
+  engine_version?: number
 }
 
-export type MediaComputeTaskClaim = MediaAnalysisWorkerClaim
+export type MediaAnalysisWorkerClaim = MediaComputeTaskClaim<MediaComputeHighlightInput>
 
 export interface MediaAnalysisWorkerProgress {
   claim_token: string
@@ -118,6 +116,17 @@ export interface MediaAnalysisWorkerComplete {
   claim_token: string
   fingerprint: string
   highlights: MediaAnalysisWorkerResultItem[]
+}
+
+export interface MediaComputeHighlightResult {
+  fingerprint: string
+  highlights: MediaAnalysisWorkerResultItem[]
+}
+
+export interface MediaComputeTaskComplete<TResult = unknown> {
+  claim_token: string
+  job_type: string
+  result: TResult
 }
 
 export interface MediaAnalysisWorkerFailure {
@@ -152,15 +161,19 @@ export const mediaAnalysisApi = {
   heartbeatWorker: (heartbeat: MediaAnalysisWorkerHeartbeat) =>
     api.post<{ data: MediaAnalysisWorker }>('/media-analysis/workers/heartbeat', heartbeat),
 
-  // The historical URL is intentionally retained as a compatibility transport.
-  // Its response is already a Media Compute Node V2 task envelope.
+  // Historical transport URL, V2 generic claim envelope.
   claimWorkerTask: (heartbeat: MediaAnalysisWorkerHeartbeat) =>
     api.post<{ data?: MediaComputeTaskClaim }>('/media-analysis/workers/claim', heartbeat),
 
   updateWorkerProgress: (taskId: string, progress: MediaAnalysisWorkerProgress) =>
     api.post<void>(`/media-analysis/workers/tasks/${taskId}/progress`, progress),
 
+  // V1 compatibility call kept for already-shipped clients and any old web bundle.
   completeWorkerTask: (taskId: string, result: MediaAnalysisWorkerComplete) =>
+    api.post<{ message: string }>(`/media-analysis/workers/tasks/${taskId}/complete`, result),
+
+  // V2 uses the same transport path but sends a job-scoped generic result envelope.
+  completeComputeTask: <TResult>(taskId: string, result: MediaComputeTaskComplete<TResult>) =>
     api.post<{ message: string }>(`/media-analysis/workers/tasks/${taskId}/complete`, result),
 
   failWorkerTask: (taskId: string, failure: MediaAnalysisWorkerFailure) =>

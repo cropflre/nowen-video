@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
 import {
+  MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
   MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
   MEDIA_COMPUTE_PROTOCOL_VERSION,
   mediaAnalysisApi,
-  type MediaAnalysisWorkerClaim,
   type MediaAnalysisWorkerHeartbeat,
   type MediaAnalysisWorkerResultItem,
   type MediaComputeHighlightInput,
+  type MediaComputeTaskClaim,
 } from '@/api/mediaAnalysis'
 import { useAuthStore } from '@/stores/auth'
 import { desktop, type HighlightCaptureFrameResult, type PlatformInfo } from './bridge'
@@ -59,7 +60,7 @@ function heartbeat(workerId: string, platform: PlatformInfo | null, available: b
     kind: 'desktop',
     name: workerName(platform),
     version: workerVersion(),
-    capabilities: available ? [MEDIA_COMPUTE_JOB_HIGHLIGHT_V1] : [],
+    capabilities: available ? [MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1] : [],
     network: 'desktop',
     charging: false,
     battery_percent: 100,
@@ -76,23 +77,41 @@ function resolveStreamUrl(streamUrl: string) {
   return target.toString()
 }
 
-function resolveHighlightInput(claim: MediaAnalysisWorkerClaim): MediaComputeHighlightInput {
+function isHighlightInput(value: unknown): value is MediaComputeHighlightInput {
+  if (!value || typeof value !== 'object') return false
+  const input = value as Partial<MediaComputeHighlightInput>
+  return typeof input.media_id === 'string'
+    && typeof input.fingerprint === 'string'
+    && typeof input.duration === 'number'
+    && typeof input.stream_url === 'string'
+    && Array.isArray(input.sample_times)
+    && typeof input.max_highlights === 'number'
+    && typeof input.engine_version === 'number'
+}
+
+function resolveHighlightInput(claim: MediaComputeTaskClaim): MediaComputeHighlightInput {
   const protocolVersion = claim.protocol_version ?? 1
   const jobType = claim.job_type || MEDIA_COMPUTE_JOB_HIGHLIGHT_V1
   if (protocolVersion >= MEDIA_COMPUTE_PROTOCOL_VERSION && jobType !== MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
     throw new Error(`桌面媒体计算节点暂不支持任务类型：${jobType}`)
   }
-  if (claim.required_capability && claim.required_capability !== MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+  if (claim.required_capability && claim.required_capability !== MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1) {
     throw new Error(`桌面媒体计算节点缺少任务能力：${claim.required_capability}`)
   }
-  return claim.input ?? {
-    media_id: claim.media_id,
-    fingerprint: claim.fingerprint,
-    duration: claim.duration,
-    stream_url: claim.stream_url,
-    sample_times: claim.sample_times,
-    max_highlights: claim.max_highlights,
-    engine_version: claim.engine_version,
+  if (claim.input !== undefined) {
+    if (!isHighlightInput(claim.input)) {
+      throw new Error('服务器返回的 highlight_v1 input 格式无效')
+    }
+    return claim.input
+  }
+  return {
+    media_id: claim.media_id || '',
+    fingerprint: claim.fingerprint || '',
+    duration: claim.duration || 0,
+    stream_url: claim.stream_url || '',
+    sample_times: claim.sample_times || [],
+    max_highlights: claim.max_highlights || 8,
+    engine_version: claim.engine_version || 3,
   }
 }
 
@@ -107,8 +126,6 @@ function bytesFromBase64(value: string) {
 
 async function visualInformationScore(thumbnail: HighlightCaptureFrameResult) {
   const bytes = bytesFromBase64(thumbnail.data_base64)
-  // 显式复制到普通 ArrayBuffer，避免较新的 DOM/TypeScript lib 将
-  // Uint8Array<ArrayBufferLike> 收紧后不再直接接受为 BlobPart。
   const buffer = new ArrayBuffer(bytes.byteLength)
   new Uint8Array(buffer).set(bytes)
   const bitmap = await createImageBitmap(new Blob([buffer], { type: thumbnail.mime }))
@@ -201,7 +218,7 @@ function selectHighlights(samples: DesktopSample[], requestedLimit: number) {
   return selected.sort((a, b) => a.time - b.time)
 }
 
-async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
+async function processHighlightClaim(claim: MediaComputeTaskClaim, token: string) {
   const input = resolveHighlightInput(claim)
   if (!Number.isFinite(input.duration) || input.duration <= 0 || input.sample_times.length === 0) {
     throw new Error('服务器没有返回可用的桌面精彩片段采样计划')
@@ -232,7 +249,6 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
     throw new Error('桌面客户端没有生成有效精彩片段候选')
   }
 
-  // 沿用已经在详情页定义过的 client_analysis 阶段，避免引入前端未知 stage 文案。
   await mediaAnalysisApi.updateWorkerProgress(claim.task_id, {
     claim_token: claim.claim_token,
     stage: 'client_analysis',
@@ -253,11 +269,25 @@ async function processClaim(claim: MediaAnalysisWorkerClaim, token: string) {
     }
   })
 
-  await mediaAnalysisApi.completeWorkerTask(claim.task_id, {
+  await mediaAnalysisApi.completeComputeTask(claim.task_id, {
     claim_token: claim.claim_token,
-    fingerprint: input.fingerprint || claim.fingerprint,
-    highlights,
+    job_type: MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+    result: {
+      fingerprint: input.fingerprint,
+      highlights,
+    },
   })
+}
+
+async function processClaim(claim: MediaComputeTaskClaim, token: string) {
+  const jobType = claim.job_type || MEDIA_COMPUTE_JOB_HIGHLIGHT_V1
+  switch (jobType) {
+    case MEDIA_COMPUTE_JOB_HIGHLIGHT_V1:
+      await processHighlightClaim(claim, token)
+      return
+    default:
+      throw new Error(`桌面媒体计算节点尚未注册执行器：${jobType}`)
+  }
 }
 
 function errorMessage(error: unknown) {
@@ -268,10 +298,10 @@ function errorMessage(error: unknown) {
 
 /**
  * Desktop Media Compute Node V2：
- * - 只在 Tauri + 管理员登录 + libmpv 可用时领取任务；
- * - 先按 job_type 分派，再读取任务 input；当前首个适配器为 highlight_v1；
- * - 一次只处理一个任务，播放页期间暂停领取，避免后台计算与观影争抢解码资源；
- * - 计算结果继续由服务端执行租约、fingerprint 与图片安全校验。
+ * - 只声明真实可执行的 capabilities；
+ * - Claim 后先按 job_type 分派执行器，再解析对应 input；
+ * - 当前第一个 adapter 是 highlight_v1，后续任务不需要重造心跳/Claim/租约协议；
+ * - 播放页期间暂停领取，避免后台计算与观影争抢 libmpv 解码资源。
  */
 export default function DesktopHighlightComputeAgent() {
   useEffect(() => {
@@ -306,14 +336,13 @@ export default function DesktopHighlightComputeAgent() {
           continue
         }
 
-        // 用户正在桌面端观影时暂停领取，并主动声明 unavailable，避免 Android 被桌面优先级误阻塞。
         if (window.location.pathname.startsWith('/play/')) {
           await mediaAnalysisApi.heartbeatWorker(heartbeat(workerId, platform, false)).catch(() => {})
           await sleep(INELIGIBLE_POLL_MS)
           continue
         }
 
-        let claim: MediaAnalysisWorkerClaim | undefined
+        let claim: MediaComputeTaskClaim | undefined
         try {
           const response = await mediaAnalysisApi.claimWorkerTask(heartbeat(workerId, platform, true))
           claim = response.status === 204 ? undefined : response.data?.data

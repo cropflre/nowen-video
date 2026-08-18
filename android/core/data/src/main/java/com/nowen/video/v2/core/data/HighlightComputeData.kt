@@ -36,6 +36,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Response
@@ -53,6 +55,7 @@ private const val HIGHLIGHT_THUMBNAIL_MAX_WIDTH = 640
 private const val HIGHLIGHT_THUMBNAIL_SOFT_LIMIT = 480 * 1024
 private const val MEDIA_COMPUTE_PROTOCOL_VERSION = 2
 private const val MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = "highlight_v1"
+private const val MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1 = "highlight_v1"
 
 @Serializable
 data class HighlightWorkerHeartbeat(
@@ -60,7 +63,7 @@ data class HighlightWorkerHeartbeat(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf(MEDIA_COMPUTE_JOB_HIGHLIGHT_V1),
+    val capabilities: List<String> = listOf(MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
@@ -72,7 +75,7 @@ data class HighlightWorkerClaimRequest(
     val kind: String = "android",
     val name: String,
     val version: String,
-    val capabilities: List<String> = listOf(MEDIA_COMPUTE_JOB_HIGHLIGHT_V1),
+    val capabilities: List<String> = listOf(MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1),
     val network: String,
     val charging: Boolean,
     @SerialName("battery_percent") val batteryPercent: Int,
@@ -90,14 +93,14 @@ data class MediaComputeHighlightInput(
 )
 
 @Serializable
-data class HighlightWorkerClaim(
+data class MediaComputeTaskClaim(
     @SerialName("protocol_version") val protocolVersion: Int = 1,
     @SerialName("job_type") val jobType: String = MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
-    @SerialName("required_capability") val requiredCapability: String = MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+    @SerialName("required_capability") val requiredCapability: String = MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
     @SerialName("task_id") val taskId: String,
     @SerialName("claim_token") val claimToken: String,
-    val input: MediaComputeHighlightInput? = null,
-    // V1 compatibility fields. V2 clients prefer input, while older servers still only return these.
+    val input: JsonObject? = null,
+    // V1 compatibility mirror. Only highlight_v1 uses these fields.
     @SerialName("media_id") val mediaId: String = "",
     val fingerprint: String = "",
     val duration: Double = 0.0,
@@ -126,10 +129,16 @@ data class HighlightWorkerResultItem(
 )
 
 @Serializable
-data class HighlightWorkerComplete(
-    @SerialName("claim_token") val claimToken: String,
+data class HighlightComputeResult(
     val fingerprint: String,
     val highlights: List<HighlightWorkerResultItem>,
+)
+
+@Serializable
+data class MediaComputeHighlightComplete(
+    @SerialName("claim_token") val claimToken: String,
+    @SerialName("job_type") val jobType: String = MEDIA_COMPUTE_JOB_HIGHLIGHT_V1,
+    val result: HighlightComputeResult,
 )
 
 @Serializable
@@ -139,9 +148,9 @@ data class HighlightWorkerFailure(
 )
 
 interface HighlightComputeApi {
-    // 历史 URL 作为兼容传输层继续保留；响应已升级为 Media Compute Node V2 task envelope。
+    // Historical URL is retained as the transport; response/body contracts are Media Compute Node V2.
     @POST("media-analysis/workers/claim")
-    suspend fun claim(@Body request: HighlightWorkerClaimRequest): Response<ApiEnvelope<HighlightWorkerClaim>>
+    suspend fun claim(@Body request: HighlightWorkerClaimRequest): Response<ApiEnvelope<MediaComputeTaskClaim>>
 
     @POST("media-analysis/workers/tasks/{taskId}/progress")
     suspend fun progress(
@@ -152,7 +161,7 @@ interface HighlightComputeApi {
     @POST("media-analysis/workers/tasks/{taskId}/complete")
     suspend fun complete(
         @Path("taskId") taskId: String,
-        @Body request: HighlightWorkerComplete,
+        @Body request: MediaComputeHighlightComplete,
     ): Response<Unit>
 
     @POST("media-analysis/workers/tasks/{taskId}/fail")
@@ -193,6 +202,7 @@ class HighlightComputeAgent @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: HighlightComputeApi,
     private val sessionStore: ServerSessionStore,
+    private val json: Json,
 ) {
     private val workerId: String by lazy {
         val preferences = context.getSharedPreferences("nowen_highlight_worker", Context.MODE_PRIVATE)
@@ -202,8 +212,8 @@ class HighlightComputeAgent @Inject constructor(
     }
 
     /**
-     * Media Compute Node V2 当前只在 Activity 前台生命周期内运行。
-     * 循环本身不会创建后台常驻服务，因此退出应用后不会继续耗电或偷偷占用移动数据。
+     * Android Media Compute Node V2 仅在 Activity 前台生命周期内运行。
+     * 节点只声明真实 capabilities；未来 job 复用同一 Claim/租约协议，并在 processClaim 分派执行器。
      */
     suspend fun runForegroundLoop() {
         while (currentCoroutineContext().isActive) {
@@ -266,14 +276,18 @@ class HighlightComputeAgent @Inject constructor(
         }
     }
 
-    private fun resolveHighlightInput(claim: HighlightWorkerClaim): MediaComputeHighlightInput {
+    private fun resolveHighlightInput(claim: MediaComputeTaskClaim): MediaComputeHighlightInput {
         if (claim.protocolVersion >= MEDIA_COMPUTE_PROTOCOL_VERSION && claim.jobType != MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
             error("Android 媒体计算节点暂不支持任务类型：${claim.jobType}")
         }
-        if (claim.requiredCapability.isNotBlank() && claim.requiredCapability != MEDIA_COMPUTE_JOB_HIGHLIGHT_V1) {
+        if (claim.requiredCapability.isNotBlank() && claim.requiredCapability != MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1) {
             error("Android 媒体计算节点缺少任务能力：${claim.requiredCapability}")
         }
-        return claim.input ?: MediaComputeHighlightInput(
+        claim.input?.let { element ->
+            return runCatching { json.decodeFromJsonElement<MediaComputeHighlightInput>(element) }
+                .getOrElse { error("服务器返回的 highlight_v1 input 格式无效") }
+        }
+        return MediaComputeHighlightInput(
             mediaId = claim.mediaId,
             fingerprint = claim.fingerprint,
             duration = claim.duration,
@@ -284,10 +298,17 @@ class HighlightComputeAgent @Inject constructor(
         )
     }
 
-    private suspend fun processClaim(
+    private suspend fun processClaim(serverBaseUrl: String, token: String, claim: MediaComputeTaskClaim) {
+        when (claim.jobType) {
+            MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 -> processHighlightClaim(serverBaseUrl, token, claim)
+            else -> error("Android 媒体计算节点尚未注册执行器：${claim.jobType}")
+        }
+    }
+
+    private suspend fun processHighlightClaim(
         serverBaseUrl: String,
         token: String,
-        claim: HighlightWorkerClaim,
+        claim: MediaComputeTaskClaim,
     ) = withContext(Dispatchers.IO) {
         val input = resolveHighlightInput(claim)
         if (input.sampleTimes.isEmpty() || input.duration <= 0.0) {
@@ -350,10 +371,12 @@ class HighlightComputeAgent @Inject constructor(
 
             val completed = api.complete(
                 claim.taskId,
-                HighlightWorkerComplete(
+                MediaComputeHighlightComplete(
                     claimToken = claim.claimToken,
-                    fingerprint = input.fingerprint.ifBlank { claim.fingerprint },
-                    highlights = results,
+                    result = HighlightComputeResult(
+                        fingerprint = input.fingerprint,
+                        highlights = results,
+                    ),
                 ),
             )
             if (!completed.isSuccessful) {
@@ -364,7 +387,7 @@ class HighlightComputeAgent @Inject constructor(
         }
     }
 
-    private suspend fun reportProgress(claim: HighlightWorkerClaim, stage: String, progress: Double) {
+    private suspend fun reportProgress(claim: MediaComputeTaskClaim, stage: String, progress: Double) {
         runCatching {
             api.progress(
                 claim.taskId,
@@ -377,7 +400,7 @@ class HighlightComputeAgent @Inject constructor(
         }
     }
 
-    private suspend fun reportFailure(claim: HighlightWorkerClaim, message: String) {
+    private suspend fun reportFailure(claim: MediaComputeTaskClaim, message: String) {
         runCatching {
             api.fail(
                 claim.taskId,

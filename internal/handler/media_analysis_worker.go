@@ -74,7 +74,6 @@ func (h *MediaAnalysisHandler) UpdateWorkerConfig(c *gin.Context) {
 }
 
 // Workers 继续沿用历史 URL，但响应已经升级为 Media Compute Node V2 节点视图。
-// 这样管理台和已发布客户端不需要同时迁移路由，协议可以先稳定下来。
 func (h *MediaAnalysisHandler) Workers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": h.analysis.ComputeNodes()})
 }
@@ -88,8 +87,7 @@ func (h *MediaAnalysisHandler) WorkerHeartbeat(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": h.analysis.HeartbeatComputeNode(request)})
 }
 
-// WorkerClaim 是 V2 任务信封入口。当前 URL 为兼容旧客户端暂不改名；
-// V2 响应同时携带 job_type/input 和 V1 扁平字段。
+// WorkerClaim 是 V2 capability-aware 任务领取入口。历史 URL 继续作为兼容传输层。
 func (h *MediaAnalysisHandler) WorkerClaim(c *gin.Context) {
 	var request service.MediaAnalysisWorkerClaimRequest
 	if err := c.ShouldBindJSON(&request); err != nil || request.WorkerID == "" {
@@ -121,17 +119,20 @@ func (h *MediaAnalysisHandler) WorkerProgress(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// WorkerComplete 同一路由兼容两种 body：
+// V1: claim_token + fingerprint + highlights
+// V2: claim_token + job_type + result
 func (h *MediaAnalysisHandler) WorkerComplete(c *gin.Context) {
-	var request service.MediaAnalysisWorkerComplete
+	var request service.MediaComputeTaskComplete
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "计算结果格式无效"})
 		return
 	}
-	if err := h.analysis.CompleteWorkerTask(c.Param("taskId"), request); err != nil {
+	if err := h.analysis.CompleteComputeTask(c.Param("taskId"), request); err != nil {
 		writeMediaAnalysisWorkerError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "精彩片段客户端计算结果已接收"})
+	c.JSON(http.StatusOK, gin.H{"message": "客户端媒体计算结果已接收"})
 }
 
 func (h *MediaAnalysisHandler) WorkerFail(c *gin.Context) {
@@ -153,8 +154,10 @@ func writeMediaAnalysisWorkerError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": "计算任务租约已失效，请重新领取"})
 	case errors.Is(err, service.ErrMediaAnalysisFingerprintChanged):
 		c.JSON(http.StatusConflict, gin.H{"error": "媒体文件在计算期间已发生变化，请重新分析"})
+	case errors.Is(err, service.ErrMediaComputeUnsupportedJob):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "服务端尚未注册该媒体计算任务的结果适配器"})
 	case errors.Is(err, service.ErrMediaAnalysisWorkerResult):
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "客户端提交的精彩片段结果无效"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "客户端提交的媒体计算结果无效"})
 	case errors.Is(err, service.ErrMediaNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "媒体或任务不存在"})
 	default:
