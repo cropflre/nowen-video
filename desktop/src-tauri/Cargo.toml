@@ -37,6 +37,9 @@ url = "2.5"
 
 # Desktop 2.0 唯一正式播放器核心。
 libmpv2 = { version = "4.1", optional = true }
+# 事件泵使用独立 libmpv client handle，避免和主控制 handle 共用 event queue。
+# libmpv2 4.x 本身也依赖同一套 4.x bindings，因此不会引入第二套 libmpv ABI。
+libmpv2-sys = { version = "4.0", optional = true }
 window-vibrancy = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -49,7 +52,7 @@ windows = { version = "0.56", features = [
 [features]
 default = ["embed-mpv"]
 custom-protocol = ["tauri/custom-protocol"]
-embed-mpv = ["dep:libmpv2"]
+embed-mpv = ["dep:libmpv2", "dep:libmpv2-sys"]
 
 [profile.release]
 panic = "abort"
