@@ -24,7 +24,6 @@ export interface DesktopSettings {
   server: {
     mode: 'embedded' | 'remote'
     remote_url: string
-    sidecar_port: number
   }
   player: {
     hardware_accel: boolean
@@ -74,6 +73,7 @@ export interface MpvVideoInfo {
 }
 
 const IS_DESKTOP = typeof window !== 'undefined' && isTauri()
+let cachedEmbeddedServerBase: string | null = null
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!IS_DESKTOP) return null
@@ -95,9 +95,48 @@ async function listen<T>(event: string, handler: (payload: T) => void): Promise<
   }
 }
 
+function localStorageServerBase(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const value = window.localStorage.getItem('nowen_server_url')?.trim().replace(/\/+$/, '')
+    return value && /^https?:\/\//i.test(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+async function resolveServerBase(): Promise<string | null> {
+  const configured = localStorageServerBase()
+  if (configured) return configured
+  if (!IS_DESKTOP) return null
+  if (cachedEmbeddedServerBase) return cachedEmbeddedServerBase
+
+  const settings = await invoke<DesktopSettings>('get_settings')
+  if (settings?.server.mode === 'remote') {
+    const remote = settings.server.remote_url.trim().replace(/\/+$/, '')
+    return /^https?:\/\//i.test(remote) ? remote : null
+  }
+
+  // Tauri 窗口可能比 Go Sidecar 更早完成首屏加载，首个 API 请求在这里等待运行时端口就绪。
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const status = await invoke<SidecarStatus>('sidecar_status')
+    if (status?.running && status.port > 0) {
+      cachedEmbeddedServerBase = `http://127.0.0.1:${status.port}`
+      return cachedEmbeddedServerBase
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 100))
+  }
+
+  return null
+}
+
 /** Desktop 2.0 唯一桌面平台适配层。 */
 export const desktop = {
   isDesktop: IS_DESKTOP,
+
+  async serverBaseUrl(): Promise<string | null> {
+    return resolveServerBase()
+  },
 
   async playerAvailable(): Promise<boolean> {
     return Boolean(await invoke<boolean>('player_available'))
@@ -170,6 +209,7 @@ export const desktop = {
   },
 
   async sidecarRestart(): Promise<boolean> {
+    cachedEmbeddedServerBase = null
     const result = await invoke<void>('sidecar_restart')
     return result !== null
   },
@@ -179,6 +219,7 @@ export const desktop = {
   },
 
   async saveSettings(settings: DesktopSettings): Promise<boolean> {
+    cachedEmbeddedServerBase = null
     const result = await invoke<void>('save_settings', { newSettings: settings })
     return result !== null
   },
