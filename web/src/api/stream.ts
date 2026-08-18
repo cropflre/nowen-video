@@ -2,7 +2,7 @@ import { useAuthStore } from '@/stores/auth'
 import type {
   MediaPlayInfo,
 } from '@/types'
-import api from './client'
+import api, { getResolvedApiBaseURL } from './client'
 import {
   getMediaCapabilities,
   buildClientCapabilities,
@@ -195,7 +195,6 @@ function planParams(caps: BrowserMediaCapability, overrides?: {
     supports_hevc: base.supports_hevc,
     force_transcode: overrides?.forceTranscode ?? false,
     max_bitrate: overrides?.maxBitrate,
-    // 扩展精确能力参数
     hevc_hardware: base.hevc_hardware,
     audio_supports_ac3: base.audio_supports_ac3,
     audio_supports_eac3: base.audio_supports_eac3,
@@ -233,11 +232,29 @@ function applyPlaybackPlan(info: MediaPlayInfo, plan: PlaybackPlan): MediaPlayIn
   return next
 }
 
+/**
+ * 把 /api/... 资源地址映射到 Desktop 2.0 当前真实服务器。
+ * Web 端的 getResolvedApiBaseURL() 仍是 /api，因此保持同源相对路径。
+ */
+function resolveRuntimeUrl(url: string): string {
+  if (!url || /^(https?:|blob:|data:)/i.test(url)) return url
+
+  const apiBase = getResolvedApiBaseURL().replace(/\/+$/, '')
+  if (!/^https?:\/\//i.test(apiBase)) return url
+
+  const serverBase = apiBase.replace(/\/api$/, '')
+  if (url.startsWith('/api/')) return `${serverBase}${url}`
+  if (url === '/api') return apiBase
+  if (url.startsWith('/')) return `${serverBase}${url}`
+  return `${apiBase}/${url}`
+}
+
 function withToken(url: string): string {
+  const resolvedUrl = resolveRuntimeUrl(url)
   const token = useAuthStore.getState().token
-  if (!token) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}token=${encodeURIComponent(token)}`
+  if (!token) return resolvedUrl
+  const sep = resolvedUrl.includes('?') ? '&' : '?'
+  return `${resolvedUrl}${sep}token=${encodeURIComponent(token)}`
 }
 
 function playbackSessionEndpoint(sessionId: string, suffix = ''): string {
@@ -263,7 +280,6 @@ export const streamApi = {
       playbackPlanCache.set(mediaId, plan)
       response.data.data = applyPlaybackPlan(response.data.data, plan) as PlannedMediaPlayInfo
     } catch {
-      // Older servers may not expose /plan. Preserve their legacy info response.
       playbackPlanCache.delete(mediaId)
     }
 
@@ -315,11 +331,18 @@ export const streamApi = {
     const token = useAuthStore.getState().token
     const headers: Record<string, string> = {}
     if (token) headers.Authorization = `Bearer ${token}`
-    return fetch(`/api${playbackSessionEndpoint(sessionId)}?reason=${encodeURIComponent(reason)}`, {
+
+    const apiBase = getResolvedApiBaseURL().replace(/\/+$/, '')
+    const relative = `/api${playbackSessionEndpoint(sessionId)}?reason=${encodeURIComponent(reason)}`
+    const url = /^https?:\/\//i.test(apiBase)
+      ? `${apiBase}${playbackSessionEndpoint(sessionId)}?reason=${encodeURIComponent(reason)}`
+      : relative
+
+    return fetch(url, {
       method: 'DELETE',
       headers,
       keepalive: true,
-      credentials: 'same-origin',
+      credentials: /^https?:\/\//i.test(apiBase) ? 'omit' : 'same-origin',
     })
   },
 

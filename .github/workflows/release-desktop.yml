@@ -1,11 +1,11 @@
-# Nowen Video — desktop Release build
+# Nowen Video Desktop 2.0 — Windows release / RC build
 #
 # Trigger:
-#  1. push tag v*.*.*         -> build + attach artifacts to a draft Release
-#  2. workflow_dispatch       -> build only, used as release-candidate smoke
+#  1. push tag v*.*.*   -> build Windows NSIS + attach to draft Release
+#  2. workflow_dispatch -> build Windows RC artifact only
 #
-# The bundled Go sidecar must use the same official server runtime as Docker.
-# cmd/server is legacy compatibility-only and must not ship in new desktop builds.
+# Desktop 2.0 首发只保证 Windows x64。macOS/Linux 在各自 Render Surface
+# 完成前不进入正式发布矩阵。
 name: release-desktop
 run-name: >-
   release-desktop
@@ -18,56 +18,54 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Product version, for example 1.2.9 or 1.2.9-rc.1'
+        description: 'Product version, for example 2.0.0-rc.1'
         required: false
-        default: '0.1.0'
-      target:
-        description: 'Target platform (windows/macos/linux/all)'
-        required: false
-        default: 'windows'
+        default: '2.0.0-rc.1'
 
 jobs:
   fetch-assets:
-    name: Fetch MPV Assets (shared)
+    name: 准备 Windows Desktop 运行资源
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache MPV + shaders
+      - name: 缓存 Desktop 运行资源
         uses: actions/cache@v4
-        id: mpv-cache
+        id: desktop-resource-cache
         with:
           path: desktop/src-tauri/resources
-          key: mpv-v1-${{ hashFiles('scripts/fetch-assets.ps1') }}
+          key: desktop2-resources-v2-${{ hashFiles('scripts/fetch-assets.ps1') }}
 
-      - name: Download mpv / libmpv / Anime4K
-        if: steps.mpv-cache.outputs.cache-hit != 'true'
+      - name: 下载 libmpv / yt-dlp / 字幕字体
+        if: steps.desktop-resource-cache.outputs.cache-hit != 'true'
         shell: pwsh
-        run: ./scripts/fetch-assets.ps1
+        run: ./scripts/fetch-assets.ps1 -Skip "shaders"
 
-      - name: Upload resources artifact
+      - name: 严格校验 Desktop 运行资源
+        shell: pwsh
+        run: |
+          $mpv = "desktop/src-tauri/resources/mpv/libmpv-2.dll"
+          $ytdlp = "desktop/src-tauri/resources/yt-dlp.exe"
+          $fonts = "desktop/src-tauri/resources/fonts"
+          if (-not (Test-Path $mpv)) { throw "缺少 libmpv-2.dll" }
+          if ((Get-Item $mpv).Length -lt 10MB) { throw "libmpv-2.dll 尺寸异常" }
+          if (-not (Test-Path $ytdlp)) { throw "缺少 yt-dlp.exe" }
+          if (-not (Test-Path $fonts)) { throw "缺少字幕字体目录" }
+          if ((Get-ChildItem $fonts -File -Recurse | Measure-Object).Count -eq 0) { throw "字幕字体目录为空" }
+          Write-Host "[OK] Desktop 运行资源完整" -ForegroundColor Green
+
+      - name: 上传 Desktop 运行资源
         uses: actions/upload-artifact@v4
         with:
           name: desktop-resources
           path: desktop/src-tauri/resources
+          if-no-files-found: error
           retention-days: 1
 
-  build-desktop:
+  build-windows:
+    name: 构建 Windows x64 RC
     needs: fetch-assets
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-            bundles: 'nsis,msi'
-          # Future expansion:
-          # - { os: macos-latest, platform: macos, bundles: 'dmg,app' }
-          # - { os: ubuntu-22.04, platform: linux, bundles: 'appimage,deb' }
-
-    runs-on: ${{ matrix.os }}
-    name: Build (${{ matrix.platform }})
-
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -75,10 +73,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
@@ -92,13 +90,17 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Download resources artifact
+      - name: 下载 Desktop 运行资源
         uses: actions/download-artifact@v4
         with:
           name: desktop-resources
           path: desktop/src-tauri/resources
 
-      - name: Resolve app version
+      - name: 校验 Desktop 2.0 架构契约
+        shell: pwsh
+        run: ./desktop/scripts/verify-desktop2-architecture.ps1
+
+      - name: 解析并同步产品版本
         shell: pwsh
         run: |
           $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '${{ inputs.version_name }}' }
@@ -110,60 +112,57 @@ jobs:
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version $version
 
-      - name: Install Tauri CLI
+      - name: 安装 Tauri CLI
         run: cargo install tauri-cli --version "^2.0" --locked
 
-      - name: Build official Go sidecar
+      - name: 构建正式 Go Media Core Sidecar
         shell: pwsh
-        run: |
-          $triple = (rustc -vV | Select-String host) -replace 'host: ',''
-          $triple = $triple.Trim()
-          Write-Host "Target triple: $triple"
-          $outDir = "desktop/src-tauri/bin"
-          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $versionPackage = "github.com/nowen-video/nowen-video/internal/version.Version"
-          if ($env:RUNNER_OS -eq 'Windows') {
-            $env:GOOS = 'windows'
-            $env:GOARCH = 'amd64'
-            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple.exe" ./cmd/server-lite
-          } else {
-            go build -ldflags "-s -w -X $versionPackage=$env:NOWEN_VERSION" -o "$outDir/nowen-video-server-$triple" ./cmd/server-lite
-          }
-          Get-ChildItem $outDir
+        run: ./desktop/scripts/build-sidecar.ps1 -Production
 
-      - name: Install web deps
+      - name: 安装 Web 依赖
         working-directory: web
         run: npm ci
 
-      - name: Build web bundle
+      - name: 构建 Web 产品界面
         working-directory: web
         run: npm run build
         env:
           VITE_APP_VERSION: ${{ env.NOWEN_VERSION }}
 
-      - name: Tauri build
+      - name: 检查 Rust / Windows Render API
+        working-directory: desktop/src-tauri
+        run: cargo check --all-targets
+
+      - name: 构建 Windows NSIS 安装包
         working-directory: desktop/src-tauri
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NOWEN_VERSION: ${{ env.NOWEN_VERSION }}
           APP_VERSION: ${{ env.NOWEN_VERSION }}
-        run: cargo tauri build --bundles ${{ matrix.bundles }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: cargo tauri build --bundles nsis
 
-      - name: Upload bundle
+      - name: 严格校验 Windows RC 产物
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem "desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" -File -ErrorAction SilentlyContinue)
+          if ($installers.Count -eq 0) { throw "未生成 Windows NSIS 安装包" }
+          foreach ($installer in $installers) {
+            if ($installer.Length -lt 10MB) { throw "NSIS 安装包尺寸异常: $($installer.FullName)" }
+            Write-Host "[OK] $($installer.Name) $([math]::Round($installer.Length / 1MB, 2)) MB" -ForegroundColor Green
+          }
+
+      - name: 上传 Windows RC 安装包
         uses: actions/upload-artifact@v4
         with:
-          name: nowen-video-${{ matrix.platform }}
-          path: |
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/dmg/*.dmg
-            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
-          if-no-files-found: warn
+          name: nowen-video-desktop2-windows-rc
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
           retention-days: 14
 
   release:
-    needs: build-desktop
+    name: 创建 Draft Release
+    needs: build-windows
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -171,17 +170,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: nowen-video-desktop2-windows-rc
+          path: dist
 
-      - name: Flatten artifacts
+      - name: 校验 Release 文件
         run: |
-          mkdir -p dist
-          find artifacts -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' -o -name '*.AppImage' \) -exec cp {} dist/ \;
-          ls -la dist
+          test -n "$(find dist -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          ls -lah dist
 
-      - name: Create GitHub Release (draft)
+      - name: 创建 GitHub Draft Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: true
-          files: dist/*
+          files: dist/*.exe

@@ -1,13 +1,7 @@
 /**
- * TitleBar
+ * Nowen Video Desktop 2.0 自绘标题栏。
  *
- * Hills Lite 风格自绘标题栏：
- *   [拖拽区：Logo + 标题] ... [全局搜索] ... [最小化 / 最大化 / 关闭]
- *
- * - 仅在 Tauri 桌面端渲染（浏览器 / 移动端返回 null）
- * - 高度 32px（紧凑模式），与 Windows 11 系统标题栏一致
- * - 拖拽使用 Tauri 的 `data-tauri-drag-region` 约定
- * - 三键图标采用 Fluent Icons，符合 WinUI 3 设计
+ * 仅在 Tauri 桌面环境渲染；浏览器端直接返回 null。
  */
 import { useEffect, useState, useCallback, memo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -26,7 +20,6 @@ function TitleBarImpl() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // 初始化并定时同步最大化状态（窗口可以通过系统快捷键/拖边改变）
   useEffect(() => {
     let alive = true
     const sync = async () => {
@@ -64,7 +57,6 @@ function TitleBarImpl() {
     [search, navigate],
   )
 
-  // 在播放页隐藏标题栏（沉浸模式）
   const isPlayer = location.pathname.startsWith('/play/')
   if (isPlayer) return null
 
@@ -86,7 +78,6 @@ function TitleBarImpl() {
         userSelect: 'none',
       }}
     >
-      {/* Logo 区（拖拽） */}
       <div
         data-tauri-drag-region
         style={{
@@ -106,7 +97,6 @@ function TitleBarImpl() {
         <span style={{ color: 'var(--nv-text-secondary)' }}>OWEN · VIDEO</span>
       </div>
 
-      {/* 中间搜索条（Hills 的核心视觉之一） */}
       <form
         onSubmit={onSearchSubmit}
         style={{
@@ -151,27 +141,17 @@ function TitleBarImpl() {
         </label>
       </form>
 
-      {/* 三键（不拖拽） */}
       <div
         className="nv-titlebar-controls"
         style={{ display: 'flex', flex: '0 0 auto', pointerEvents: 'auto' }}
       >
-        <TitleBarButton
-          label="最小化"
-          onClick={onMinimize}
-          icon={<Subtract16Regular />}
-        />
+        <TitleBarButton label="最小化" onClick={onMinimize} icon={<Subtract16Regular />} />
         <TitleBarButton
           label={maximized ? '还原' : '最大化'}
           onClick={onToggleMax}
           icon={maximized ? <SquareMultiple16Regular /> : <Square16Regular />}
         />
-        <TitleBarButton
-          label="关闭"
-          onClick={onClose}
-          icon={<Dismiss16Regular />}
-          danger
-        />
+        <TitleBarButton label="关闭" onClick={onClose} icon={<Dismiss16Regular />} danger />
       </div>
     </div>
   )
@@ -192,6 +172,7 @@ function TitleBarButton({ label, icon, onClick, danger }: TitleBarButtonProps) {
       : 'var(--nv-bg-hover)'
     : 'transparent'
   const color = hover && danger ? '#ffffff' : 'var(--nv-text-secondary)'
+
   return (
     <button
       type="button"
@@ -218,13 +199,8 @@ function TitleBarButton({ label, icon, onClick, danger }: TitleBarButtonProps) {
   )
 }
 
-const isTauri =
-  typeof window !== 'undefined' &&
-  Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__)
-
 function TitleBar() {
-  // 浏览器环境不渲染
-  if (!isTauri) return null
+  if (!desktop.isDesktop) return null
   return <TitleBarImpl />
 }
 
