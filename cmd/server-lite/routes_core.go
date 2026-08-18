@@ -87,7 +87,7 @@ func registerCoreAPI(
 	api.POST("/media-analysis/workers/heartbeat", middleware.AdminOnly(), mediaAnalysis.WorkerHeartbeat)
 	api.POST("/media-analysis/workers/claim", middleware.AdminOnly(), mediaAnalysis.WorkerClaim)
 	api.POST("/media-analysis/workers/tasks/:taskId/progress", middleware.AdminOnly(), mediaAnalysis.WorkerProgress)
-	api.POST("/media-analysis/workers/tasks/:taskId/complete", middleware.AdminOnly(), mediaAnalysis.WorkerComplete)
+	api.POST("/media-analysis/workers/tasks/:taskId/complete", middleware.AdminOnly(), handler.ValidateMediaAnalysisWorkerComplete, mediaAnalysis.WorkerComplete)
 	api.POST("/media-analysis/workers/tasks/:taskId/fail", middleware.AdminOnly(), mediaAnalysis.WorkerFail)
 
 	api.GET("/series", handlers.Series.List)
