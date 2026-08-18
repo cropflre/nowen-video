@@ -52,11 +52,10 @@ export interface UpdateInfo {
 }
 
 export interface PlayerStartResult {
-  wid: number
   session_id: string
 }
 
-export interface MpvVideoInfo {
+export interface PlayerVideoInfo {
   width: number
   height: number
   codec: string
@@ -117,7 +116,6 @@ async function resolveServerBase(): Promise<string | null> {
     return /^https?:\/\//i.test(remote) ? remote : null
   }
 
-  // Tauri 窗口可能比 Go Sidecar 更早完成首屏加载，首个 API 请求在这里等待运行时端口就绪。
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const status = await invoke<SidecarStatus>('sidecar_status')
     if (status?.running && status.port > 0) {
@@ -191,8 +189,8 @@ export const desktop = {
     await invoke<void>('player_destroy')
   },
 
-  async playerVideoInfo(sessionId: string): Promise<MpvVideoInfo | null> {
-    return invoke<MpvVideoInfo>('player_video_info', { sessionId })
+  async playerVideoInfo(sessionId: string): Promise<PlayerVideoInfo | null> {
+    return invoke<PlayerVideoInfo>('player_video_info', { sessionId })
   },
 
   async checkUpdate(): Promise<UpdateInfo | null> {
