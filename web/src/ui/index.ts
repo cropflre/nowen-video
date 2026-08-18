@@ -11,3 +11,4 @@ export {
   type BottomNavigationProps,
   type BottomNavigationItem,
 } from './navigation/BottomNavigation'
+export { DetailTabs, type DetailTabsProps, type DetailTabItem } from './navigation/DetailTabs'
