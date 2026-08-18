@@ -6,6 +6,7 @@ import { streamApi } from '@/api'
 import { Button, EmptyState, Tag } from '@/components/design-system'
 import Pagination from '@/components/Pagination'
 import { usePagination } from '@/hooks/usePagination'
+import { MediaArtwork } from '@/ui'
 
 interface SeriesEpisodeBrowserProps {
   seasons: SeasonInfo[]
@@ -319,7 +320,7 @@ function EpisodeSlideCard({
       to={`/media/${episode.id}`}
       className="nv-episode-slide-card group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
     >
-      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full" showEpisodeLabel />
+      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full !rounded-none !border-0" showEpisodeLabel />
 
       <div className="p-3">
         <h3 className={`truncate text-sm font-medium ${status.watched ? 'text-[var(--nv-text-tertiary)]' : 'text-[var(--nv-text-primary)]'}`}>
@@ -349,46 +350,35 @@ function EpisodeThumb({
   className: string
   showEpisodeLabel?: boolean
 }) {
-  const [posterFailed, setPosterFailed] = useState(false)
-
-  useEffect(() => {
-    setPosterFailed(false)
-  }, [episode.id, episode.poster_path, posterVersion])
-
   return (
-    <div className={`nv-episode-thumb relative shrink-0 overflow-hidden bg-[var(--nv-bg-surface-soft)] ${className}`}>
-      {episode.poster_path && !posterFailed ? (
-        <img
-          src={streamApi.getPosterUrl(episode.id, posterVersion)}
-          alt={episode.title}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
-          loading="lazy"
-          onError={() => setPosterFailed(true)}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]"><Play size={22} aria-hidden="true" /></div>
-      )}
-
-      <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+    <MediaArtwork
+      src={episode.poster_path ? streamApi.getPosterUrl(episode.id, posterVersion) : null}
+      alt={episode.title}
+      ratio="landscape"
+      className={`nv-episode-thumb shrink-0 ${className}`}
+      imageClassName="transition-transform duration-300 group-hover:scale-[1.025]"
+      fallback={<Play size={22} aria-hidden="true" />}
+    >
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]">
           <Play size={16} fill="currentColor" className="ml-0.5" aria-hidden="true" />
         </div>
       </div>
 
-      {showEpisodeLabel && <div className="absolute left-2 top-2"><Tag tone="brand">E{pad(episode.episode_num)}</Tag></div>}
+      {showEpisodeLabel && <div className="absolute left-2 top-2 z-30"><Tag tone="brand">E{pad(episode.episode_num)}</Tag></div>}
 
       {status.watched && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/45">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--nv-status-success)] text-white"><Check size={16} aria-hidden="true" /></div>
         </div>
       )}
 
       {!status.watched && status.progress > 0 && (
-        <div className="nv-episode-progress absolute inset-x-0 bottom-0 h-1 bg-black/35">
+        <div className="nv-episode-progress absolute inset-x-0 bottom-0 z-30 h-1 bg-black/35">
           <div className="h-full bg-[var(--nv-action-primary)]" style={{ width: `${status.progress}%` }} />
         </div>
       )}
-    </div>
+    </MediaArtwork>
   )
 }
 
