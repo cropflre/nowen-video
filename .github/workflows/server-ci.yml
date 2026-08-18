@@ -21,6 +21,7 @@ on:
       - 'internal/service/transcode*.go'
       - 'internal/service/stream_artifacts.go'
       - 'internal/service/ondemand.go'
+      - 'internal/service/media_analysis_worker*.go'
       - 'internal/handler/lite.go'
       - 'internal/handler/handler.go'
       - 'internal/handler/stream_artifacts.go'
@@ -41,6 +42,7 @@ on:
       - 'docs/PLAYBACK_*.md'
       - 'web/**'
       - 'android/**'
+      - 'desktop/**'
       - 'scripts/release.sh'
       - 'scripts/release-advanced.sh'
       - 'scripts/android-*.sh'
@@ -137,6 +139,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run build
+      - name: Validate distributed highlight desktop contract
+        run: |
+          grep -Fq 'mod highlight_compute;' ../desktop/src-tauri/src/main.rs
+          grep -Fq 'highlight_compute::highlight_capture_frame' ../desktop/src-tauri/src/main.rs
+          grep -Fq 'pub async fn highlight_capture_frame' ../desktop/src-tauri/src/highlight_compute.rs
+          grep -Fq '<DesktopHighlightComputeAgent />' src/App.tsx
+          grep -Fq "analysis_method: 'desktop_mpv_sparse_v1'" src/desktop/DesktopHighlightComputeAgent.tsx
       - name: Reject retired Pulse UI copy
         run: |
           if grep -R -n -E 'Pulse 数据中心|Pulse (Data )?Center|Pulse データセンター|nav\.pulse|pulse\.' dist; then
