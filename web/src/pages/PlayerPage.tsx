@@ -251,7 +251,7 @@ export default function PlayerPage() {
       : 'var(--nv-player-accent)'
 
   return (
-    <div className="group/player relative h-screen w-screen bg-[var(--nv-player-canvas)]">
+    <div className={`group/player relative h-screen w-screen ${useDesktopPlayer ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'}`}>
       <div className="nv-player-runtime-status absolute right-4 top-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-200">
         {!highlightMode && playInfo.is_strm && <STRMDiagnostics mediaId={id} compact />}
         {statusContent && (
