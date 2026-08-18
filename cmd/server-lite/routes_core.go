@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
@@ -38,16 +39,41 @@ func registerCoreAPI(
 		}
 		c.Next()
 	}
-	cleanupLibraryAnalysis := func(c *gin.Context) {
-		mediaRows, _ := repos.Media.ListByLibraryID(c.Param("id"))
-		c.Next()
-		if c.Writer.Status() >= http.StatusBadRequest {
+
+	// 同一个媒体库只允许一个删除请求进入真实清理链路。
+	// 大媒体库删除期间如果用户重复点击，直接返回 409，避免多组级联 SQL、
+	// watcher 注销和缓存回收并发执行，把一次删除放大成数倍 I/O。
+	var deletingLibraries sync.Map
+	guardDuplicateLibraryDelete := func(c *gin.Context) {
+		libraryID := c.Param("id")
+		if _, loaded := deletingLibraries.LoadOrStore(libraryID, struct{}{}); loaded {
+			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "媒体库正在删除，请勿重复操作"})
 			return
 		}
+		defer deletingLibraries.Delete(libraryID)
+		c.Next()
+	}
+
+	cleanupLibraryAnalysis := func(c *gin.Context) {
+		mediaRows, _ := repos.Media.ListByLibraryID(c.Param("id"))
+		mediaIDs := make([]string, 0, len(mediaRows))
 		for _, item := range mediaRows {
-			mediaAnalysisService.CleanupMedia(item.ID)
-			mediaAnalysisService.CleanupChapters(item.ID)
+			mediaIDs = append(mediaIDs, item.ID)
 		}
+
+		c.Next()
+		if c.Writer.Status() >= http.StatusBadRequest || len(mediaIDs) == 0 {
+			return
+		}
+
+		// 精彩片段/章节属于可重建的磁盘与派生数据，不应继续占用 DELETE
+		// 请求的用户等待时间。主数据库关系删除成功后转后台回收即可。
+		go func(ids []string) {
+			for _, mediaID := range ids {
+				mediaAnalysisService.CleanupMedia(mediaID)
+				mediaAnalysisService.CleanupChapters(mediaID)
+			}
+		}(mediaIDs)
 	}
 
 	api.GET("/libraries", handlers.Library.List)
@@ -56,7 +82,7 @@ func registerCoreAPI(
 	api.PUT("/libraries/:id", middleware.AdminOnly(), handlers.Library.Update)
 	api.POST("/libraries/:id/scan", middleware.AdminOnly(), handlers.Library.Scan)
 	api.POST("/libraries/:id/reindex", middleware.AdminOnly(), handlers.Library.Reindex)
-	api.DELETE("/libraries/:id", middleware.AdminOnly(), guardLibraryDeleteWhileScanning, cleanupLibraryAnalysis, handlers.Library.Delete)
+	api.DELETE("/libraries/:id", middleware.AdminOnly(), guardLibraryDeleteWhileScanning, guardDuplicateLibraryDelete, cleanupLibraryAnalysis, handlers.Library.Delete)
 
 	guardByMediaID := handler.MediaPermissionGuard(services.Permission, repos.Media, "id")
 	guardByLibraryQuery := handler.LibraryPermissionGuard(services.Permission, "")
