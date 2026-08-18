@@ -1,0 +1,39 @@
+/* Nowen UI 2.0 · Shared selection controls */
+
+.nv-filter-chip {
+  min-height: 30px !important;
+  border-radius: 9px !important;
+  padding-inline: 10px !important;
+  font-size: 11px !important;
+}
+
+.nv-filter-chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 26%, var(--nv-border-default)) !important;
+  background: var(--nv-fill-active) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+.nv-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: var(--nv-radius-control);
+  background: color-mix(in srgb, var(--nv-bg-surface) 72%, transparent);
+}
+
+.nv-segmented-control .nv-button {
+  border-color: transparent !important;
+}
+
+.nv-segmented-control .nv-button.is-active,
+.nv-segmented-control .nv-button[aria-pressed="true"] {
+  background: var(--nv-fill-active) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-primary) 18%, transparent);
+}
+
+[data-theme="light"] .nv-segmented-control {
+  background: color-mix(in srgb, var(--nv-bg-elevated) 76%, transparent);
+}
