@@ -29,12 +29,12 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
           key={item.to}
           to={item.to}
           end={item.end}
-          className="nv-mobile-nav-item"
+          className="nv-rail-item nv-mobile-nav-item"
           aria-label={item.label}
           title={item.label}
         >
-          <span className="nv-mobile-nav-icon">{item.icon}</span>
-          <span className="nv-mobile-nav-label">{item.label}</span>
+          <span className="nv-rail-icon nv-mobile-nav-icon">{item.icon}</span>
+          <span className="nv-rail-label nv-mobile-nav-label">{item.label}</span>
         </NavLink>
       ))}
     </nav>
