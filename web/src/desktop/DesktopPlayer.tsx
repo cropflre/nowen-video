@@ -380,11 +380,11 @@ function DesktopPlayerInner(
 
   return (
     <div
-      className={`group/player relative overflow-hidden bg-[var(--nv-player-canvas)] ${className}`}
+      className={`group/player relative overflow-hidden ${ready ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'} ${className}`}
       onMouseMove={resetHideTimer}
       onDoubleClick={toggleFullscreen}
     >
-      <div ref={surfaceRef} className="absolute inset-0" data-desktop-player-surface />
+      <div ref={surfaceRef} className="absolute inset-0 bg-transparent" data-desktop-player-surface />
 
       {!ready && (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-[var(--nv-player-text-tertiary)]">
