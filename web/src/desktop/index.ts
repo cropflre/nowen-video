@@ -11,15 +11,13 @@ export type {
   DesktopSettings,
   PlatformInfo,
   UpdateInfo,
-  EmbedStartResult,
+  PlayerStartResult,
   MpvVideoInfo,
 } from './bridge'
 
 export { useDesktop } from './useDesktop'
 export { default as MpvEmbedPlayer, mpvControl } from './MpvEmbedPlayer'
 export type { MpvEmbedHandle } from './MpvEmbedPlayer'
-export { default as Anime4KPanel } from './Anime4KPanel'
-export type { Anime4KLevel } from './Anime4KPanel'
 export { default as UpdateBanner } from './UpdateBanner'
 export { default as DesktopEventBinder } from './DesktopEventBinder'
 export { default as DesktopServerPicker } from './DesktopServerPicker'
