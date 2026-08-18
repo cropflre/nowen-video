@@ -39,10 +39,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Response
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.http.Body
@@ -52,7 +50,7 @@ import retrofit2.http.PUT
 import retrofit2.http.Query
 
 private val Context.sessionDataStore by preferencesDataStore(name = "nowen_v2_session")
-private const val PLACEHOLDER_HOST = "placeholder.invalid"
+internal const val PLACEHOLDER_HOST = "placeholder.invalid"
 
 object UrlNormalizer {
     fun normalize(input: String): String? {
@@ -139,19 +137,20 @@ class ServerSessionStore @Inject constructor(
     private val _snapshot = MutableStateFlow(SessionSnapshot())
     val snapshot: StateFlow<SessionSnapshot> = _snapshot
     private var accounts: Map<String, UserProfile> = emptyMap()
+    private var expirations: Map<String, Long> = emptyMap()
 
     suspend fun bootstrap() {
         val prefs = context.sessionDataStore.data.first()
         val servers = decodeServers(prefs[KEY_SERVERS])
         accounts = decodeAccounts(prefs[KEY_ACCOUNTS])
+        expirations = decodeExpirations(prefs[KEY_EXPIRATIONS])
         val activeId = prefs[KEY_ACTIVE_SERVER].takeIf { id -> servers.any { it.id == id } }
-        val token = activeId?.let(vault::readToken)
-        val user = activeId?.let(accounts::get).takeIf { token != null }
+        val restored = activeId?.let { restoreAuthentication(it) }
         _snapshot.value = SessionSnapshot(
             servers = servers,
             activeServerId = activeId,
-            user = user,
-            token = token,
+            user = restored?.second,
+            token = restored?.first,
             initialized = true,
         )
     }
@@ -172,12 +171,12 @@ class ServerSessionStore @Inject constructor(
         )
         val servers = current.servers.filterNot { it.id == server.id } + server
         persistServers(servers, server.id)
-        val token = vault.readToken(server.id)
+        val restored = restoreAuthentication(server.id)
         _snapshot.value = current.copy(
             servers = servers,
             activeServerId = server.id,
-            user = accounts[server.id].takeIf { token != null },
-            token = token,
+            user = restored.second,
+            token = restored.first,
         )
         return server
     }
@@ -185,12 +184,12 @@ class ServerSessionStore @Inject constructor(
     suspend fun activate(serverId: String) {
         val current = _snapshot.value
         require(current.servers.any { it.id == serverId })
-        val token = vault.readToken(serverId)
+        val restored = restoreAuthentication(serverId)
         context.sessionDataStore.edit { it[KEY_ACTIVE_SERVER] = serverId }
         _snapshot.value = current.copy(
             activeServerId = serverId,
-            user = accounts[serverId].takeIf { token != null },
-            token = token,
+            user = restored.second,
+            token = restored.first,
         )
     }
 
@@ -204,10 +203,12 @@ class ServerSessionStore @Inject constructor(
         val servers = current.servers.filterNot { it.id == serverId }
         vault.clearToken(serverId)
         accounts = accounts - serverId
+        expirations = expirations - serverId
         val nextActive = if (current.activeServerId == serverId) null else current.activeServerId
         context.sessionDataStore.edit {
             it[KEY_SERVERS] = json.encodeToString(servers)
             it[KEY_ACCOUNTS] = json.encodeToString(accounts)
+            it[KEY_EXPIRATIONS] = json.encodeToString(expirations)
             if (nextActive == null) it.remove(KEY_ACTIVE_SERVER) else it[KEY_ACTIVE_SERVER] = nextActive
         }
         _snapshot.value = current.copy(
@@ -218,22 +219,53 @@ class ServerSessionStore @Inject constructor(
         )
     }
 
-    suspend fun saveAuthenticatedSession(token: String, user: UserProfile) {
+    suspend fun saveAuthenticatedSession(
+        token: String,
+        user: UserProfile,
+        expiresAtEpochSeconds: Long = 0L,
+    ) {
         val activeId = requireNotNull(_snapshot.value.activeServerId)
         vault.saveToken(activeId, token)
         accounts = accounts + (activeId to user)
-        context.sessionDataStore.edit { it[KEY_ACCOUNTS] = json.encodeToString(accounts) }
+        expirations = if (expiresAtEpochSeconds > 0L) {
+            expirations + (activeId to expiresAtEpochSeconds)
+        } else {
+            expirations - activeId
+        }
+        context.sessionDataStore.edit {
+            it[KEY_ACCOUNTS] = json.encodeToString(accounts)
+            it[KEY_EXPIRATIONS] = json.encodeToString(expirations)
+        }
         _snapshot.value = _snapshot.value.copy(token = token, user = user)
     }
 
     suspend fun clearAuthentication() {
         val activeId = _snapshot.value.activeServerId
-        if (activeId != null) {
-            vault.clearToken(activeId)
-            accounts = accounts - activeId
-            context.sessionDataStore.edit { it[KEY_ACCOUNTS] = json.encodeToString(accounts) }
-        }
+        if (activeId != null) clearPersistedAuthentication(activeId)
         _snapshot.value = _snapshot.value.copy(token = null, user = null)
+    }
+
+    fun expiresAtEpochSeconds(serverId: String? = _snapshot.value.activeServerId): Long =
+        serverId?.let(expirations::get) ?: 0L
+
+    private suspend fun restoreAuthentication(serverId: String): Pair<String?, UserProfile?> {
+        val token = vault.readToken(serverId) ?: return null to null
+        val expiresAt = expirations[serverId] ?: 0L
+        if (expiresAt > 0L && expiresAt <= currentEpochSeconds()) {
+            clearPersistedAuthentication(serverId)
+            return null to null
+        }
+        return token to accounts[serverId]
+    }
+
+    private suspend fun clearPersistedAuthentication(serverId: String) {
+        vault.clearToken(serverId)
+        accounts = accounts - serverId
+        expirations = expirations - serverId
+        context.sessionDataStore.edit {
+            it[KEY_ACCOUNTS] = json.encodeToString(accounts)
+            it[KEY_EXPIRATIONS] = json.encodeToString(expirations)
+        }
     }
 
     private suspend fun persistServers(servers: List<ServerProfile>, activeId: String?) {
@@ -251,10 +283,15 @@ class ServerSessionStore @Inject constructor(
         raw?.let { runCatching { json.decodeFromString<Map<String, UserProfile>>(it) }.getOrDefault(emptyMap()) }
             ?: emptyMap()
 
+    private fun decodeExpirations(raw: String?): Map<String, Long> =
+        raw?.let { runCatching { json.decodeFromString<Map<String, Long>>(it) }.getOrDefault(emptyMap()) }
+            ?: emptyMap()
+
     private companion object {
         val KEY_SERVERS = stringPreferencesKey("servers")
         val KEY_ACTIVE_SERVER = stringPreferencesKey("active_server")
         val KEY_ACCOUNTS = stringPreferencesKey("accounts")
+        val KEY_EXPIRATIONS = stringPreferencesKey("token_expirations")
     }
 }
 
@@ -278,33 +315,6 @@ data class SearchResponse(
     fun all(): List<MediaCard> = (data + media + series).distinctBy { it.resolvedId }
 }
 
-class SessionInterceptor(
-    private val sessionStore: ServerSessionStore,
-) : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val snapshot = sessionStore.snapshot.value
-        val original = chain.request()
-        val server = snapshot.activeServer
-        val targetUrl = if (server != null && original.url.host == PLACEHOLDER_HOST) {
-            val base = server.baseUrl.toHttpUrlOrNull()
-            base?.newBuilder()
-                ?.addPathSegments(original.url.encodedPath.trimStart('/'))
-                ?.encodedQuery(original.url.encodedQuery)
-                ?.build()
-                ?: original.url
-        } else original.url
-
-        val request = original.newBuilder()
-            .url(targetUrl)
-            .header("Accept", "application/json")
-            .apply {
-                snapshot.token?.takeIf { it.isNotBlank() }?.let { header("Authorization", "Bearer $it") }
-            }
-            .build()
-        return chain.proceed(request)
-    }
-}
-
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
@@ -320,9 +330,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun okHttp(sessionStore: ServerSessionStore): OkHttpClient =
+    fun okHttp(
+        sessionStore: ServerSessionStore,
+        refreshCoordinator: SessionRefreshCoordinator,
+    ): OkHttpClient =
         OkHttpClient.Builder()
-            .addInterceptor(SessionInterceptor(sessionStore))
+            .addInterceptor(SessionInterceptor(sessionStore, refreshCoordinator))
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(45, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -377,7 +390,7 @@ class NowenRepository @Inject constructor(
         val user = response.user.copy(
             mustChangePassword = response.user.mustChangePassword || response.mustChangePassword,
         )
-        sessionStore.saveAuthenticatedSession(response.token, user)
+        sessionStore.saveAuthenticatedSession(response.token, user, response.expiresAt)
         response.copy(user = user)
     }
 
@@ -386,7 +399,7 @@ class NowenRepository @Inject constructor(
         val token = requireNotNull(response.data) {
             response.message.ifBlank { "密码已修改，但服务器未返回新会话" }
         }
-        sessionStore.saveAuthenticatedSession(token.token, token.user)
+        sessionStore.saveAuthenticatedSession(token.token, token.user, token.expiresAt)
         token
     }
 
@@ -413,6 +426,8 @@ class NowenRepository @Inject constructor(
         }
     }
 }
+
+internal fun currentEpochSeconds(): Long = System.currentTimeMillis() / 1_000L
 
 private fun Throwable.asConnectionFailure(): Throwable = when (this) {
     is IllegalArgumentException -> this

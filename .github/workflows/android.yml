@@ -9,6 +9,7 @@ on:
       - 'scripts/android-signing-preflight.sh'
       - 'scripts/android-signing-bootstrap.sh'
       - 'cmd/server/main.go'
+      - 'cmd/server-lite/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
       - 'internal/model/**'
@@ -19,7 +20,9 @@ on:
       - 'go.sum'
       - '.github/workflows/android.yml'
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'refactor/**'
     paths:
       - 'android/**'
       - 'scripts/android-version.sh'
@@ -27,6 +30,7 @@ on:
       - 'scripts/android-signing-preflight.sh'
       - 'scripts/android-signing-bootstrap.sh'
       - 'cmd/server/main.go'
+      - 'cmd/server-lite/main.go'
       - 'internal/handler/**'
       - 'internal/middleware/**'
       - 'internal/model/**'

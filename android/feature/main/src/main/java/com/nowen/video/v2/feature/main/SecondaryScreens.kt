@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -290,6 +291,7 @@ fun ProfileScreen(
     onFavorites: () -> Unit,
     onHistory: () -> Unit,
     onCollections: () -> Unit,
+    onSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val session by sessionStore.snapshot.collectAsState()
@@ -344,6 +346,15 @@ fun ProfileScreen(
             title = "系列合集",
             subtitle = "按电影系列浏览馆藏内容",
             onClick = onCollections,
+        )
+        Spacer(Modifier.height(22.dp))
+        Text("客户端", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(10.dp))
+        ProfileDestinationRow(
+            icon = Icons.Default.Settings,
+            title = "客户端设置",
+            subtitle = "播放、画中画、下载、通知与服务器切换",
+            onClick = onSettings,
         )
         Spacer(Modifier.height(22.dp))
         OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {

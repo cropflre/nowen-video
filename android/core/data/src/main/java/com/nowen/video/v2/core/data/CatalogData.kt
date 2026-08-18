@@ -78,14 +78,10 @@ interface CatalogApi {
     ): ApiEnvelope<StreamInfo>
 
     @POST("playback/sessions")
-    suspend fun createPlaybackSession(
-        @Body request: CreatePlaybackSessionRequest,
-    ): ApiEnvelope<PlaybackSessionResult>
+    suspend fun createPlaybackSession(@Body request: CreatePlaybackSessionRequest): ApiEnvelope<PlaybackSessionResult>
 
     @GET("playback/sessions/{sessionId}/status")
-    suspend fun playbackSessionStatus(
-        @Path("sessionId") sessionId: String,
-    ): ApiEnvelope<PlaybackSessionResult>
+    suspend fun playbackSessionStatus(@Path("sessionId") sessionId: String): ApiEnvelope<PlaybackSessionResult>
 
     @POST("playback/sessions/{sessionId}/heartbeat")
     suspend fun heartbeatPlaybackSession(
@@ -105,8 +101,7 @@ interface CatalogApi {
         @Query("reason") reason: String,
     ): Response<Unit>
 
-    @GET("subtitle/{id}/tracks")
-    suspend fun subtitles(@Path("id") id: String): ApiEnvelope<SubtitleTracksResponse>
+    @GET("subtitle/{id}/tracks") suspend fun subtitles(@Path("id") id: String): ApiEnvelope<SubtitleTracksResponse>
 
     @GET("series/{id}/next")
     suspend fun nextEpisode(
@@ -116,10 +111,7 @@ interface CatalogApi {
     ): NullableMediaDetailEnvelope
 
     @PUT("users/me/progress/{mediaId}")
-    suspend fun updateProgress(
-        @Path("mediaId") mediaId: String,
-        @Body progress: ProgressUpdate,
-    )
+    suspend fun updateProgress(@Path("mediaId") mediaId: String, @Body progress: ProgressUpdate)
 
     @GET("users/me/progress/{mediaId}")
     suspend fun progress(@Path("mediaId") mediaId: String): ApiEnvelope<WatchProgress?>
@@ -130,13 +122,12 @@ interface CatalogApi {
 object CatalogNetworkModule {
     @Provides
     @Singleton
-    fun catalogApi(client: OkHttpClient, json: Json): CatalogApi =
-        Retrofit.Builder()
-            .baseUrl("https://$CATALOG_PLACEHOLDER/api/")
-            .client(client)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .build()
-            .create(CatalogApi::class.java)
+    fun catalogApi(client: OkHttpClient, json: Json): CatalogApi = Retrofit.Builder()
+        .baseUrl("https://$CATALOG_PLACEHOLDER/api/")
+        .client(client)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+        .create(CatalogApi::class.java)
 }
 
 @Singleton
@@ -154,20 +145,14 @@ class CatalogRepository @Inject constructor(
         pagingSourceFactory = { CatalogPagingSource(api, filter.normalized()) },
     ).flow
 
-    suspend fun media(
-        page: Int = 1,
-        size: Int = 60,
-        libraryId: String? = null,
-    ): Result<PaginatedEnvelope<MediaCard>> = call {
+    suspend fun media(page: Int = 1, size: Int = 60, libraryId: String? = null): Result<PaginatedEnvelope<MediaCard>> = call {
         api.media(page.coerceAtLeast(1), size.coerceIn(1, 200), libraryId)
     }
 
-    suspend fun libraries(): Result<List<LibrarySummary>> = call {
-        api.libraries().data
-    }
+    suspend fun libraries(): Result<List<LibrarySummary>> = call { api.libraries().data }
 
     suspend fun detail(id: String): Result<MediaDetail> = call {
-        api.detail(id).data
+        api.detail(id).data.withCanonicalImageRoutes()
     }
 
     suspend fun stream(id: String): Result<StreamInfo> = call {
@@ -180,9 +165,7 @@ class CatalogRepository @Inject constructor(
         ).data
     }
 
-    suspend fun createPlaybackSession(
-        request: CreatePlaybackSessionRequest,
-    ): Result<PlaybackSessionResult> = call {
+    suspend fun createPlaybackSession(request: CreatePlaybackSessionRequest): Result<PlaybackSessionResult> = call {
         awaitPlaybackSessionReady(api.createPlaybackSession(request).data)
     }
 
@@ -196,9 +179,7 @@ class CatalogRepository @Inject constructor(
     suspend fun heartbeatPlaybackSession(
         sessionId: String,
         request: PlaybackSessionHeartbeatRequest,
-    ): Result<PlaybackSessionResult> = call {
-        api.heartbeatPlaybackSession(sessionId, request).data
-    }
+    ): Result<PlaybackSessionResult> = call { api.heartbeatPlaybackSession(sessionId, request).data }
 
     suspend fun closePlaybackSession(sessionId: String, reason: String): Result<Unit> = call {
         val response = api.closePlaybackSession(sessionId, reason.ifBlank { "android_client_closed" })
@@ -207,16 +188,10 @@ class CatalogRepository @Inject constructor(
         }
     }
 
-    suspend fun subtitles(id: String): Result<SubtitleTracksResponse> = call {
-        api.subtitles(id).data
-    }
+    suspend fun subtitles(id: String): Result<SubtitleTracksResponse> = call { api.subtitles(id).data }
 
-    suspend fun nextEpisode(
-        seriesId: String,
-        season: Int,
-        episode: Int,
-    ): Result<MediaDetail?> = call {
-        api.nextEpisode(seriesId, season, episode).data
+    suspend fun nextEpisode(seriesId: String, season: Int, episode: Int): Result<MediaDetail?> = call {
+        api.nextEpisode(seriesId, season, episode).data?.withCanonicalImageRoutes()
     }
 
     private suspend fun awaitPlaybackSessionReady(
@@ -226,31 +201,28 @@ class CatalogRepository @Inject constructor(
         var current = initial
         while (!current.firstSegmentReady || current.playlistUrl.isBlank()) {
             if (current.isTerminalFailure) {
-                throw IllegalStateException(
-                    current.failureMessage.ifBlank { "实时转码会话启动失败" },
-                )
+                throw IllegalStateException(current.failureMessage.ifBlank { "实时转码会话启动失败" })
             }
             val sessionId = current.session.id
-            if (sessionId.isBlank()) {
-                throw IllegalStateException("服务器未返回播放会话标识")
-            }
+            if (sessionId.isBlank()) throw IllegalStateException("服务器未返回播放会话标识")
             delay(PLAYBACK_SESSION_POLL_INTERVAL_MS)
             current = api.playbackSessionStatus(sessionId).data
         }
         current
     }
 
-    private suspend fun <T> call(block: suspend () -> T): Result<T> =
-        runCatching { block() }.recoverCatching { error ->
-            throw mapApiError(error)
-        }
+    private suspend fun <T> call(block: suspend () -> T): Result<T> = runCatching { block() }.recoverCatching { error ->
+        throw mapApiError(error)
+    }
 }
 
+private fun MediaDetail.withCanonicalImageRoutes(): MediaDetail = copy(
+    posterPath = "/api/media/$id/poster",
+    backdropPath = "/api/media/$id/backdrop",
+)
+
 internal fun mapApiError(error: Throwable): Throwable = when (error) {
-    is HttpException -> {
-        if (error.code() == 401) UnauthorizedException()
-        else ServerException(error.code(), error.message())
-    }
+    is HttpException -> if (error.code() == 401) UnauthorizedException() else ServerException(error.code(), error.message())
     is IOException -> NetworkException(error.message ?: "网络不可用")
     else -> error
 }
