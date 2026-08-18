@@ -24,13 +24,6 @@ pub struct ServerSettings {
     pub mode: ServerMode,
     #[serde(default)]
     pub remote_url: String,
-    #[serde(default = "default_sidecar_port")]
-    pub sidecar_port: u16,
-}
-
-fn default_sidecar_port() -> u16 {
-    // Sidecar Runtime 下一阶段会切到动态端口；在启动握手完成前保留独立固定端口。
-    21114
 }
 
 /// Desktop 2.0 不再暴露播放器引擎、外部 mpv 路径或 mpv CLI 参数。
