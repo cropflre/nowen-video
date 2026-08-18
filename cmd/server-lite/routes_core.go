@@ -25,6 +25,7 @@ func registerCoreAPI(
 ) {
 	api := r.Group("/api")
 	api.Use(jwtMiddleware)
+	service.AttachMediaAnalysisWorkerSettings(mediaAnalysisService, repos.SystemSetting)
 
 	guardLibraryDeleteWhileScanning := func(c *gin.Context) {
 		libraryID := c.Param("id")
@@ -70,16 +71,24 @@ func registerCoreAPI(
 	api.GET("/media/:id/versions", guardByMediaID, handlers.Media.Versions)
 	api.POST("/media/:id/scrape", guardByMediaID, middleware.AdminOnly(), handlers.Metadata.ScrapeMedia)
 
-	// Local FFmpeg highlight analysis. Read/play is permission guarded; CPU-heavy
-	// analysis and deletion remain admin-only. Legacy POST /ai/highlights stays as
-	// a compatibility alias but routes to the same non-AI service.
+	// 精彩片段由服务端统一调度与持久化。默认 auto 模式优先交给合格客户端，
+	// 没有客户端时自动回退现有 Sparse V2；读/播继续沿用媒体权限，重计算与节点接口仅管理员可用。
 	api.GET("/media/:id/highlights", guardByMediaID, mediaAnalysis.ListHighlights)
 	api.GET("/media/:id/highlights/status", guardByMediaID, mediaAnalysis.Status)
 	api.GET("/media/:id/highlights/:highlightId/thumbnail", guardByMediaID, mediaAnalysis.Thumbnail)
 	api.GET("/media/:id/highlights/:highlightId/preview", guardByMediaID, mediaAnalysis.Preview)
-	api.POST("/media/:id/highlights/analyze", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlights)
+	api.POST("/media/:id/highlights/analyze", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlightsDistributed)
 	api.DELETE("/media/:id/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.DeleteHighlights)
-	api.POST("/media/:id/ai/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlights)
+	api.POST("/media/:id/ai/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlightsDistributed)
+
+	api.GET("/admin/media-analysis/config", middleware.AdminOnly(), mediaAnalysis.WorkerConfig)
+	api.PUT("/admin/media-analysis/config", middleware.AdminOnly(), mediaAnalysis.UpdateWorkerConfig)
+	api.GET("/admin/media-analysis/workers", middleware.AdminOnly(), mediaAnalysis.Workers)
+	api.POST("/media-analysis/workers/heartbeat", middleware.AdminOnly(), mediaAnalysis.WorkerHeartbeat)
+	api.POST("/media-analysis/workers/claim", middleware.AdminOnly(), mediaAnalysis.WorkerClaim)
+	api.POST("/media-analysis/workers/tasks/:taskId/progress", middleware.AdminOnly(), mediaAnalysis.WorkerProgress)
+	api.POST("/media-analysis/workers/tasks/:taskId/complete", middleware.AdminOnly(), mediaAnalysis.WorkerComplete)
+	api.POST("/media-analysis/workers/tasks/:taskId/fail", middleware.AdminOnly(), mediaAnalysis.WorkerFail)
 
 	api.GET("/series", handlers.Series.List)
 	api.GET("/series/:id", handlers.Series.Detail)
