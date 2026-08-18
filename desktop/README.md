@@ -15,11 +15,14 @@ Nowen Video Desktop 2.0 是桌面端正式架构基线。旧桌面端从未进�
 ```text
 React / TypeScript
         │
-        │ platform/desktop + custom Tauri IPC
+        │ platform/desktop + custom Tauri IPC / events
         ▼
 Tauri 2 / Rust Runtime
         │
         ├── Player Core (libmpv)
+        │      ├── control handle
+        │      ├── independent event client
+        │      └── Player Surface
         │
         └── Go Media Core sidecar
                  │
@@ -51,11 +54,12 @@ desktop/
     ├── bin/
     ├── resources/
     └── src/
-        ├── app/          # 应用启动与生命周期
-        ├── runtime/      # 全局运行时状态
-        ├── player/       # Desktop Player Core + Surface
-        ├── commands.rs   # 产品级自定义 IPC
-        ├── sidecar.rs    # Go Media Core 生命周期
+        ├── app/              # 应用启动与生命周期
+        ├── runtime/          # 全局运行时状态
+        ├── player/           # Desktop Player Core + Surface + event pump
+        ├── player_commands.rs# 低频轨道/章节查询 IPC
+        ├── commands.rs       # 通用产品级自定义 IPC
+        ├── sidecar.rs        # Go Media Core 生命周期
         ├── settings.rs
         ├── file_assoc.rs
         ├── tray.rs
@@ -97,9 +101,49 @@ Desktop 2.0 普通播放固定使用原生 Player Core，不再存在：
 
 如果桌面 Player Core 不可用，客户端会明确提示运行时错误，而不是静默切回浏览器播放器。
 
-当前 Windows 首发实现把原生渲染 Surface 封装在 `player/surface.rs`。下一阶段将只在该边界内切换到 libmpv Render API；业务 IPC 和 React `DesktopPlayer` 不需要再次重构。
+### 状态同步
 
-播放器状态当前集中由 `DesktopPlayer` 从 Player Core 快照同步。后续接入 libmpv `observe_property` 事件泵后，只替换这一同步层。
+Player Core 已改为事件驱动，不再由 React 每 750ms 轮询：
+
+```text
+libmpv observe_property
+        │
+        ▼
+independent mpv client event queue
+        │
+        ▼
+Rust player-state event
+        │
+        ▼
+Desktop bridge
+        │
+        ▼
+DesktopPlayer + Zustand
+```
+
+主控制 handle 负责命令和属性设置；独立 libmpv client 只消费 `observe_property` / `mpv_wait_event`，因此两者不会争抢同一个事件队列。前端在订阅建立后只读取一次 bootstrap 快照，之后由事件更新进度、时长、播放/暂停、音量、静音、分辨率、codec 和 HDR 基础状态。
+
+### 音轨、字幕与章节
+
+轨道和章节属于低频结构数据，不塞进高频 `player-state` payload。Player Core 在以下时机发出 `media-info-change`：
+
+- `aid` / `sid` / `chapter` 变化；
+- `track-list` / `chapter-list` 变化；
+- 文件加载完成或事件队列需要重新同步。
+
+React 收到事件后按需读取 `player_media_info`。播放器 UI 当前支持：
+
+- 明确选择音轨，不再盲目 cycle；
+- 字幕开/关和指定字幕轨；
+- 显示语言、codec、默认/强制/外挂标记；
+- 显示章节标题与时间并跳转章节；
+- 当前音轨、字幕和章节选中状态同步。
+
+## Player Surface / Render API
+
+当前 Windows 首发实现把原生渲染 Surface 封装在 `player/surface.rs`，PlayerManager 和 Web IPC 不再接触 `wid` / HWND。
+
+libmpv Render API 不是把视频直接绘制进 React DOM；它要求宿主拥有可供 libmpv 渲染的图形上下文/帧缓冲。因此下一阶段只在 `player/surface.rs` 与 NativePlayer renderer 初始化边界内实现 app-owned native GL surface + libmpv Render Context，不再改 React、IPC 和状态管理。
 
 ## 安全基线
 
@@ -158,14 +202,13 @@ NOWEN_DESKTOP_UPDATER_ENABLED=1
 
 ## Desktop 2.0 首发边界
 
-首发目标优先保证 Windows x64：媒体库、详情/搜索、Local/Remote Server、原生 libmpv 播放、进度/音量/字幕/音轨、硬件解码、HDR 基础链路、全屏、文件关联、Deep Link 和应用生命周期。
+首发目标优先保证 Windows x64：媒体库、详情/搜索、Local/Remote Server、原生 libmpv 播放、进度/音量/字幕/音轨/章节、硬件解码、HDR 基础链路、全屏、文件关联、Deep Link 和应用生命周期。
 
 Anime4K、高级 Shader、复杂 PiP/色彩调校等不作为 2.0 首发核心能力。
 
 尚未完成且不能标记为正式完成的深层项：
 
-- `player/surface.rs` 从当前原生窗口承载切换到 libmpv Render API；
-- Player Core 从快照轮询切换到 `observe_property` 事件驱动；
+- `player/surface.rs` 从当前原生窗口承载切换到 app-owned graphics surface + libmpv Render API；
 - 在不破坏 HLS/媒体子请求的前提下增加完整 Desktop Runtime Token 握手；
 - 配置真实 Tauri Updater 公钥、签名产物并开启更新开关。
 
