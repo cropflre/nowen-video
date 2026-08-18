@@ -1,10 +1,11 @@
-# 构建 Go sidecar 二进制供 Tauri 桌面端使用
+# 构建 Desktop 2.0 Go Media Core sidecar。
 #
-# 用法:
-#   pwsh desktop/scripts/build-sidecar.ps1             # dev 构建（当前平台）
-#   pwsh desktop/scripts/build-sidecar.ps1 -Production # release 构建（当前平台）
+# 用法：
+#   pwsh desktop/scripts/build-sidecar.ps1
+#   pwsh desktop/scripts/build-sidecar.ps1 -Production
 #
-# 产物：desktop/bin/nowen-video-<target>.exe
+# Tauri externalBin 要求产物位于 src-tauri/bin，并命名为
+# nowen-video-server-<target-triple>[.exe]。
 
 param(
     [switch]$Production = $false
@@ -12,10 +13,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 定位项目根目录（脚本父父目录）
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopRoot = Split-Path -Parent $ScriptRoot
 $ProjectRoot = Split-Path -Parent $DesktopRoot
+$TauriRoot = Join-Path $DesktopRoot "src-tauri"
+$BinDir = Join-Path $TauriRoot "bin"
 
 function Normalize-Version([string]$Raw) {
     if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
@@ -40,22 +42,8 @@ function Resolve-AppVersion {
 $AppVersion = Resolve-AppVersion
 $env:NOWEN_VERSION = $AppVersion
 
-Write-Host "=====================================" -ForegroundColor Cyan
-Write-Host " 构建 nowen-video Go sidecar"          -ForegroundColor Cyan
-Write-Host "=====================================" -ForegroundColor Cyan
-Write-Host "项目根: $ProjectRoot"
-Write-Host "产物目录: $DesktopRoot\bin"
-Write-Host "应用版本: $AppVersion"
-Write-Host ""
-
-# 确保 bin 目录存在
-$BinDir = Join-Path $DesktopRoot "bin"
-New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-
-# 探测 Go 架构/平台，用于命名（Tauri externalBin 要求 <name>-<target-triple>）
 $GoArch = (go env GOARCH).Trim()
-$GoOs   = (go env GOOS).Trim()
-
+$GoOs = (go env GOOS).Trim()
 $TripleMap = @{
     "windows/amd64" = "x86_64-pc-windows-msvc"
     "windows/arm64" = "aarch64-pc-windows-msvc"
@@ -65,53 +53,44 @@ $TripleMap = @{
     "linux/arm64"   = "aarch64-unknown-linux-gnu"
 }
 
-$Key = "$GoOs/$GoArch"
-$Triple = $TripleMap[$Key]
-if (-not $Triple) {
-    Write-Host "[ERROR] Unknown platform: $Key" -ForegroundColor Red
-    exit 1
-}
+$Triple = $TripleMap["$GoOs/$GoArch"]
+if (-not $Triple) { throw "不支持的平台: $GoOs/$GoArch" }
 
-$Ext = ""
-if ($GoOs -eq "windows") { $Ext = ".exe" }
-$OutName = "nowen-video-$Triple$Ext"
+$Ext = if ($GoOs -eq "windows") { ".exe" } else { "" }
+$OutName = "nowen-video-server-$Triple$Ext"
 $OutPath = Join-Path $BinDir $OutName
+$DevCopy = Join-Path $BinDir "nowen-video-server$Ext"
 
-# 构建参数
+New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+
 $VersionPackage = "github.com/nowen-video/nowen-video/internal/version.Version"
 $BuildArgs = @("build", "-ldflags", "-s -w -X $VersionPackage=$AppVersion", "-o", $OutPath)
-if ($Production) {
-    $BuildArgs += @("-trimpath")
-}
-$BuildArgs += "./cmd/server"
+if ($Production) { $BuildArgs += "-trimpath" }
+$BuildArgs += "./cmd/server-lite"
 
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host " Nowen Video Desktop 2.0 Media Core" -ForegroundColor Cyan
+Write-Host "=====================================" -ForegroundColor Cyan
+Write-Host "版本: $AppVersion"
+Write-Host "目标: $Triple"
+Write-Host "产物: $OutPath"
 Write-Host "go $($BuildArgs -join ' ')" -ForegroundColor Yellow
 
 Push-Location $ProjectRoot
 try {
     & go @BuildArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Go build failed (exit code $LASTEXITCODE)"
-    }
+    if ($LASTEXITCODE -ne 0) { throw "Go Media Core 编译失败，退出码 $LASTEXITCODE" }
 } finally {
     Pop-Location
 }
 
-# 同时复制一份不带 triple 后缀的版本（dev 模式方便使用）
-$DevCopy = Join-Path $BinDir "nowen-video$Ext"
 Copy-Item -Path $OutPath -Destination $DevCopy -Force
 
-# 复制 config.example.yaml 作为默认配置（若 bin 下不存在 config.yaml）
 $ConfigTarget = Join-Path $BinDir "config.yaml"
 $ConfigExample = Join-Path $ProjectRoot "config.example.yaml"
 if ((Test-Path $ConfigExample) -and -not (Test-Path $ConfigTarget)) {
     Copy-Item -Path $ConfigExample -Destination $ConfigTarget -Force
-    Write-Host "  Copied default config: $ConfigTarget" -ForegroundColor DarkGray
 }
 
-Write-Host ""
-Write-Host "[OK] Build complete" -ForegroundColor Green
-Write-Host "  $OutPath"
-Write-Host "  $DevCopy"
-$size = [math]::Round((Get-Item $OutPath).Length / 1MB, 2)
-Write-Host "  Size: $size MB"
+$Size = [math]::Round((Get-Item $OutPath).Length / 1MB, 2)
+Write-Host "[OK] Desktop Media Core 构建完成：$Size MB" -ForegroundColor Green

@@ -1,0 +1,146 @@
+name: Desktop 2.0 CI
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/server-lite-v1
+      - 'integration/desktop2-main-*'
+    paths:
+      - 'desktop/**'
+      - 'web/**'
+      - 'cmd/server-lite/**'
+      - 'internal/**'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop2-ci.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'web/**'
+      - 'cmd/server-lite/**'
+      - 'internal/**'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop2-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: desktop2-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web TypeScript / Vite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 安装 Web 依赖
+        working-directory: web
+        run: npm ci
+      - name: 构建 Web
+        working-directory: web
+        run: npm run build
+
+  sidecar:
+    name: Go Media Core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: 编译桌面端 Sidecar
+        run: go build ./cmd/server-lite
+
+  windows-desktop:
+    name: Windows x64 Desktop 真实构建门禁
+    needs: [web, sidecar]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: 检查 Desktop 2.0 架构契约
+        shell: pwsh
+        run: ./desktop/scripts/verify-desktop2-architecture.ps1
+
+      - name: 构建 Windows Web 产品界面
+        shell: pwsh
+        run: |
+          Push-Location web
+          try {
+            npm ci
+            if ($LASTEXITCODE -ne 0) { throw "npm ci 失败" }
+            npm run build
+            if ($LASTEXITCODE -ne 0) { throw "Web 构建失败" }
+          } finally {
+            Pop-Location
+          }
+
+      - name: 构建 Windows x64 Go Media Core Sidecar
+        shell: pwsh
+        run: ./desktop/scripts/build-sidecar.ps1 -Production
+
+      - name: 获取 Windows Desktop 运行时资源
+        shell: pwsh
+        run: ./scripts/fetch-assets.ps1 -Skip "shaders;fonts"
+
+      - name: 校验 Desktop 运行时与 Sidecar 构建输入
+        shell: pwsh
+        run: |
+          $mpv = "desktop/src-tauri/resources/mpv/libmpv-2.dll"
+          $ytDlp = "desktop/src-tauri/resources/yt-dlp.exe"
+          $sidecar = "desktop/src-tauri/bin/nowen-video-server-x86_64-pc-windows-msvc.exe"
+          if (-not (Test-Path $mpv)) { throw "缺少 Windows libmpv-2.dll" }
+          if ((Get-Item $mpv).Length -lt 10MB) { throw "libmpv-2.dll 尺寸异常" }
+          if (-not (Test-Path $ytDlp)) { throw "缺少 Windows yt-dlp.exe" }
+          if ((Get-Item $ytDlp).Length -lt 1MB) { throw "yt-dlp.exe 尺寸异常" }
+          if (-not (Test-Path $sidecar)) { throw "缺少 Windows x64 Go Sidecar" }
+          if ((Get-Item $sidecar).Length -lt 1MB) { throw "Go Sidecar 尺寸异常" }
+          Write-Host "[OK] Desktop 运行时资源与 Sidecar 构建输入有效" -ForegroundColor Green
+
+      - name: 检查 Rust / Render API 编译
+        working-directory: desktop/src-tauri
+        run: cargo check --all-targets
+
+      - name: 构建真实 Tauri Windows 可执行文件
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          npx --yes @tauri-apps/cli@^2 build --no-bundle
+          if ($LASTEXITCODE -ne 0) { throw "Tauri Windows 构建失败" }
+          $exe = "src-tauri/target/release/nowen-video-desktop.exe"
+          if (-not (Test-Path $exe)) { throw "Tauri 构建完成但未找到 nowen-video-desktop.exe" }
+          Write-Host "[OK] Windows Desktop 可执行文件构建完成" -ForegroundColor Green
+
+      - name: 上传 Windows Desktop 烟测产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-desktop2-windows-smoke
+          path: |
+            desktop/src-tauri/target/release/nowen-video-desktop.exe
+            desktop/src-tauri/target/release/libmpv-2.dll
+            desktop/src-tauri/bin/nowen-video-server-x86_64-pc-windows-msvc.exe
+          if-no-files-found: error
+          retention-days: 7

@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - refactor/server-lite-v1
+      - 'integration/desktop2-main-*'
     paths:
       - 'desktop/**'
       - 'web/src/desktop/**'
@@ -43,6 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -51,26 +58,48 @@ jobs:
         with:
           workspaces: desktop/src-tauri -> target
 
-      - name: Cache libmpv resource
+      - name: Cache desktop runtime resources
         uses: actions/cache@v4
-        id: mpv-cache
+        id: desktop-resource-cache
         with:
-          path: desktop/src-tauri/resources/mpv
-          key: desktop-ci-mpv-${{ hashFiles('scripts/fetch-assets.ps1') }}
+          path: |
+            desktop/src-tauri/resources/mpv
+            desktop/src-tauri/resources/yt-dlp.exe
+          key: desktop-ci-runtime-${{ hashFiles('scripts/fetch-assets.ps1') }}
 
-      - name: Fetch libmpv only
-        if: steps.mpv-cache.outputs.cache-hit != 'true'
+      - name: Fetch desktop runtime resources
+        if: steps.desktop-resource-cache.outputs.cache-hit != 'true'
         shell: pwsh
-        run: ./scripts/fetch-assets.ps1 -Skip 'yt-dlp;shaders;fonts'
+        run: ./scripts/fetch-assets.ps1 -Skip 'shaders;fonts'
 
-      - name: Verify libmpv resource
+      - name: Verify desktop runtime resources
         shell: pwsh
         run: |
           $dll = 'desktop/src-tauri/resources/mpv/libmpv-2.dll'
+          $ytDlp = 'desktop/src-tauri/resources/yt-dlp.exe'
           if (-not (Test-Path $dll)) {
             throw "Desktop CI 缺少 libmpv-2.dll: $dll"
           }
-          Get-Item $dll | Format-List FullName,Length,LastWriteTime
+          if (-not (Test-Path $ytDlp)) {
+            throw "Desktop CI 缺少 yt-dlp.exe: $ytDlp"
+          }
+          Get-Item $dll,$ytDlp | Format-List FullName,Length,LastWriteTime
+
+      - name: Build Windows x64 Go Media Core sidecar
+        shell: pwsh
+        run: ./desktop/scripts/build-sidecar.ps1 -Production
+
+      - name: Verify Go Media Core sidecar
+        shell: pwsh
+        run: |
+          $sidecar = 'desktop/src-tauri/bin/nowen-video-server-x86_64-pc-windows-msvc.exe'
+          if (-not (Test-Path $sidecar)) {
+            throw "Desktop CI 缺少 Go Media Core Sidecar: $sidecar"
+          }
+          if ((Get-Item $sidecar).Length -lt 1MB) {
+            throw "Desktop CI Go Media Core Sidecar 尺寸异常"
+          }
+          Get-Item $sidecar | Format-List FullName,Length,LastWriteTime
 
       - name: Compile desktop Rust contract
         shell: pwsh
