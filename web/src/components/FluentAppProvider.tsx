@@ -15,23 +15,23 @@ import {
   createLightTheme,
 } from '@fluentui/react-components'
 
-const nowenCyanBrand: BrandVariants = {
-  10: '#001014',
-  20: '#00242B',
-  30: '#003A44',
-  40: '#00525F',
-  50: '#006A7A',
-  60: '#008497',
-  70: '#009FB4',
-  80: '#00BAD2',
-  90: '#06B6D4',
-  100: '#22D3EE',
-  110: '#67E8F9',
-  120: '#A5F3FC',
-  130: '#CFFAFE',
-  140: '#DDFBFF',
-  150: '#E8FCFF',
-  160: '#F2FDFF',
+const nowenBrand: BrandVariants = {
+  10: '#120B35',
+  20: '#1E1254',
+  30: '#2A1972',
+  40: '#382291',
+  50: '#462EB0',
+  60: '#553AD0',
+  70: '#6248EA',
+  80: '#7057F5',
+  90: '#755CFF',
+  100: '#8A72FF',
+  110: '#A18CFF',
+  120: '#B8A7FF',
+  130: '#CEC4FF',
+  140: '#DED7FF',
+  150: '#ECE8FF',
+  160: '#F7F5FF',
 }
 
 const semanticFluentOverrides: Partial<Theme> = {
@@ -50,7 +50,7 @@ const semanticFluentOverrides: Partial<Theme> = {
   colorBrandBackgroundHover: 'var(--nv-action-primary-hover)',
   colorBrandBackgroundPressed: 'var(--nv-action-primary-active)',
   colorBrandForeground1: 'var(--nv-action-primary)',
-  colorBrandForeground2: 'var(--nv-action-primary)',
+  colorBrandForeground2: 'var(--nv-action-muted)',
   colorStrokeFocus2: 'var(--nv-focus-ring)',
   shadow8: 'var(--nv-shadow-card)',
   shadow16: 'var(--nv-shadow-card-hover)',
@@ -59,12 +59,12 @@ const semanticFluentOverrides: Partial<Theme> = {
 }
 
 const nowenDarkTheme: Theme = {
-  ...createDarkTheme(nowenCyanBrand),
+  ...createDarkTheme(nowenBrand),
   ...semanticFluentOverrides,
 }
 
 const nowenLightTheme: Theme = {
-  ...createLightTheme(nowenCyanBrand),
+  ...createLightTheme(nowenBrand),
   ...semanticFluentOverrides,
 }
 
