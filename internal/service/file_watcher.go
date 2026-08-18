@@ -28,11 +28,12 @@ type FileWatcherService struct {
 	scanPostProcess *ScanPostProcessService
 	wsHub           *WSHub
 
-	watcher  *fsnotify.Watcher
-	mu       sync.Mutex
-	watching map[string]string      // path -> libraryID 正在监听的目录
-	debounce map[string]*time.Timer // libraryID -> debounce timer
-	stopCh   chan struct{}
+	watcher     *fsnotify.Watcher
+	mu          sync.Mutex
+	watching    map[string]string              // root path -> libraryID 正在监听的媒体库根目录
+	watchedDirs map[string]map[string]struct{} // libraryID -> 已向 fsnotify 注册的目录，删除时直接复用，禁止再次遍历磁盘
+	debounce    map[string]*time.Timer         // libraryID -> debounce timer
+	stopCh      chan struct{}
 }
 
 // NewFileWatcherService 创建文件监听服务
@@ -46,16 +47,17 @@ func NewFileWatcherService(
 	metadata *MetadataService,
 ) *FileWatcherService {
 	return &FileWatcherService{
-		cfg:        cfg,
-		logger:     logger,
-		libRepo:    libRepo,
-		mediaRepo:  mediaRepo,
-		seriesRepo: seriesRepo,
-		scanner:    scanner,
-		metadata:   metadata,
-		watching:   make(map[string]string),
-		debounce:   make(map[string]*time.Timer),
-		stopCh:     make(chan struct{}),
+		cfg:         cfg,
+		logger:      logger,
+		libRepo:     libRepo,
+		mediaRepo:   mediaRepo,
+		seriesRepo:  seriesRepo,
+		scanner:     scanner,
+		metadata:    metadata,
+		watching:    make(map[string]string),
+		watchedDirs: make(map[string]map[string]struct{}),
+		debounce:    make(map[string]*time.Timer),
+		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -93,7 +95,7 @@ func (fw *FileWatcherService) Start() error {
 	// 启动事件处理协程
 	go fw.eventLoop()
 
-	fw.logger.Infof("文件监听服务已启动，监听 %d 个媒体库", len(fw.watching))
+	fw.logger.Infof("文件监听服务已启动，监听 %d 个媒体库", fw.GetWatchingCount())
 	return nil
 }
 
@@ -117,75 +119,92 @@ func (fw *FileWatcherService) WatchLibrary(lib *model.Library) {
 		return
 	}
 
-	fw.mu.Lock()
-	defer fw.mu.Unlock()
-
 	allPaths := lib.AllPaths()
 	if len(allPaths) == 0 {
 		return
 	}
 
 	for _, libPath := range allPaths {
-		// 检查是否已在监听
+		// 根目录先登记到内存，避免文件系统遍历期间长期持有全局锁。
+		fw.mu.Lock()
 		if _, exists := fw.watching[libPath]; exists {
+			fw.mu.Unlock()
 			continue
 		}
+		fw.watching[libPath] = lib.ID
+		if _, exists := fw.watchedDirs[lib.ID]; !exists {
+			fw.watchedDirs[lib.ID] = make(map[string]struct{})
+		}
+		fw.mu.Unlock()
 
-		// 递归添加目录及其子目录
+		// 仅注册阶段遍历目录；实际注册成功的目录会记录到 watchedDirs，
+		// 删除媒体库时直接使用该内存索引，不再对大容量 NAS/机械盘做第二次 Walk。
 		watchCount := 0
 		err := filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil // 跳过无法访问的目录
 			}
-			if info.IsDir() {
-				// 忽略隐藏目录
-				if strings.HasPrefix(filepath.Base(path), ".") && path != libPath {
-					return filepath.SkipDir
-				}
-				if watchErr := fw.watcher.Add(path); watchErr != nil {
-					fw.logger.Debugf("监听目录失败: %s - %v", path, watchErr)
-				} else {
-					watchCount++
-				}
+			if !info.IsDir() {
+				return nil
 			}
+			// 忽略隐藏目录
+			if strings.HasPrefix(filepath.Base(path), ".") && path != libPath {
+				return filepath.SkipDir
+			}
+			if watchErr := fw.watcher.Add(path); watchErr != nil {
+				fw.logger.Debugf("监听目录失败: %s - %v", path, watchErr)
+				return nil
+			}
+
+			fw.mu.Lock()
+			if dirs := fw.watchedDirs[lib.ID]; dirs != nil {
+				dirs[path] = struct{}{}
+			}
+			fw.mu.Unlock()
+			watchCount++
 			return nil
 		})
 
 		if err != nil {
 			fw.logger.Errorf("遍历媒体库目录失败: %s - %v", libPath, err)
+			fw.UnwatchLibrary(libPath)
 			continue
 		}
 
-		fw.watching[libPath] = lib.ID
 		fw.logger.Infof("已开始监听媒体库: %s (%s), 监听 %d 个目录", lib.Name, libPath, watchCount)
 	}
 }
 
-// UnwatchLibrary 取消指定媒体库的文件监听
+// UnwatchLibrary 取消指定媒体库的文件监听。
+// 注意：这里不能再 filepath.Walk(libPath)。对于数千目录的 NAS/机械盘，
+// 重新遍历目录树会让“删除媒体库”被文件系统 I/O 阻塞几十秒甚至数分钟。
 func (fw *FileWatcherService) UnwatchLibrary(libPath string) {
 	if fw.watcher == nil {
 		return
 	}
 
 	fw.mu.Lock()
-	defer fw.mu.Unlock()
-
 	libID, exists := fw.watching[libPath]
 	if !exists {
+		fw.mu.Unlock()
 		return
 	}
 
-	// 移除该媒体库路径下所有目录的监听
-	filepath.Walk(libPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
+	// 从注册阶段维护的内存索引中摘出属于当前根目录的 watcher。
+	// 先更新 bookkeeping 再释放锁，实际 fsnotify.Remove 在锁外执行，
+	// 避免大量 watcher 注销阻塞事件查找与其他媒体库操作。
+	dirsToRemove := make([]string, 0)
+	if dirs := fw.watchedDirs[libID]; dirs != nil {
+		for dir := range dirs {
+			if pathWithinRoot(dir, libPath) {
+				dirsToRemove = append(dirsToRemove, dir)
+				delete(dirs, dir)
+			}
 		}
-		if info.IsDir() {
-			fw.watcher.Remove(path)
+		if len(dirs) == 0 {
+			delete(fw.watchedDirs, libID)
 		}
-		return nil
-	})
-
+	}
 	delete(fw.watching, libPath)
 
 	// 取消可能还在等待的防抖定时器
@@ -193,8 +212,27 @@ func (fw *FileWatcherService) UnwatchLibrary(libPath string) {
 		timer.Stop()
 		delete(fw.debounce, libID)
 	}
+	fw.mu.Unlock()
 
-	fw.logger.Infof("已停止监听媒体库: %s", libPath)
+	for _, dir := range dirsToRemove {
+		if err := fw.watcher.Remove(dir); err != nil {
+			// 目录可能已经被用户移除，watcher 也可能已经自行失效；
+			// 注销失败不能阻塞媒体库删除。
+			fw.logger.Debugf("取消目录监听失败: %s - %v", dir, err)
+		}
+	}
+
+	fw.logger.Infof("已停止监听媒体库: %s, 注销 %d 个目录", libPath, len(dirsToRemove))
+}
+
+// pathWithinRoot 判断 path 是否位于 root 本身或其子目录中。
+// 使用 filepath.Rel 而不是字符串前缀，避免 X:\\movie 错误匹配 X:\\movie-backup。
+func pathWithinRoot(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 // eventLoop 事件处理循环
@@ -239,15 +277,26 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 		return
 	}
 
-	// 如果是新创建的目录，自动添加到监听列表
-	if isDir && event.Op&fsnotify.Create != 0 {
-		fw.watcher.Add(event.Name)
-	}
-
-	// 查找该文件属于哪个媒体库
+	// 先确定归属媒体库。根目录映射在 WatchLibrary 开始时就已登记，
+	// 因此新建子目录可以立即归档到正确的 watchedDirs 索引。
 	libraryID := fw.findLibraryID(event.Name)
 	if libraryID == "" {
 		return
+	}
+
+	// 如果是新创建的目录，自动添加到监听列表并同步维护内存索引，
+	// 确保后续删除媒体库时无需重新遍历磁盘即可完整注销。
+	if isDir && event.Op&fsnotify.Create != 0 {
+		if err := fw.watcher.Add(event.Name); err != nil {
+			fw.logger.Debugf("监听新目录失败: %s - %v", event.Name, err)
+		} else {
+			fw.mu.Lock()
+			if _, exists := fw.watchedDirs[libraryID]; !exists {
+				fw.watchedDirs[libraryID] = make(map[string]struct{})
+			}
+			fw.watchedDirs[libraryID][event.Name] = struct{}{}
+			fw.mu.Unlock()
+		}
 	}
 
 	fw.logger.Debugf("文件变更: %s [%s] -> 媒体库 %s",
@@ -286,7 +335,7 @@ func (fw *FileWatcherService) findLibraryID(filePath string) string {
 	defer fw.mu.Unlock()
 
 	for watchedPath, libID := range fw.watching {
-		if strings.HasPrefix(filePath, watchedPath) {
+		if pathWithinRoot(filePath, watchedPath) {
 			return libID
 		}
 	}
