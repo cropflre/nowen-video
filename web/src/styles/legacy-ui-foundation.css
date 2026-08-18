@@ -1,0 +1,9 @@
+/* Nowen Video · Legacy UI foundation compatibility
+ *
+ * Temporary compatibility entrypoint while Nowen UI 2.0 replaces the historical
+ * Neo Aurora foundation. Do not add new page styles here. New visual work belongs
+ * in ui-system.css or a shared component under web/src/ui.
+ */
+
+@import './neo-aurora.css';
+@import './neo-aurora-components.css';
