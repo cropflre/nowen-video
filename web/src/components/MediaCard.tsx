@@ -53,7 +53,7 @@ export default function MediaCard({
       ? !!media!.series?.poster_path || !!media!.poster_path
       : !!media!.poster_path
 
-  const artworkRatio: MediaArtworkRatio = variant === 'poster' ? 'poster' : 'landscape'
+  const artworkRatio: MediaArtworkRatio = variant === 'landscape' || variant === 'compact' ? 'landscape' : 'poster'
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return ''
