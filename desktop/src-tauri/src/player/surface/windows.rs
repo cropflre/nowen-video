@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use libmpv2_sys as mpv;
 use std::ffi::{c_char, c_void};
 use std::mem::size_of;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use std::sync::{
     mpsc::{self, Receiver, Sender},
     Arc, Condvar, Mutex, OnceLock,
@@ -27,10 +27,9 @@ use windows::Win32::Graphics::OpenGL::{
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetModuleHandleW, GetProcAddress};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindowRect, PeekMessageW,
-    RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, CS_OWNDC, HWND_BOTTOM, MSG,
-    PM_REMOVE, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW,
-    WINDOW_EX_STYLE, WNDCLASSW, WM_ERASEBKGND, WM_PAINT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_POPUP,
+    RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, CS_OWNDC, MSG, PM_REMOVE, SW_HIDE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, WINDOW_EX_STYLE,
+    WNDCLASSW, WM_ERASEBKGND, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 const CLASS_NAME: windows::core::PCWSTR = w!("NowenVideoRenderSurface");
@@ -66,17 +65,24 @@ impl WakeState {
         }
     }
 
-    fn wait(&self) {
-        if let Ok(mut pending) = self.pending.lock() {
+    fn wait_for_work(&self) {
+        if let Ok(pending) = self.pending.lock() {
             if !*pending {
-                let result = self.condvar.wait_timeout(pending, Duration::from_millis(16));
-                if let Ok((guard, _)) = result {
-                    pending = guard;
-                } else {
-                    return;
-                }
+                let _ = self
+                    .condvar
+                    .wait_timeout(pending, Duration::from_millis(16));
             }
-            *pending = false;
+        }
+    }
+
+    fn take_pending(&self) -> bool {
+        match self.pending.lock() {
+            Ok(mut pending) => {
+                let value = *pending;
+                *pending = false;
+                value
+            }
+            Err(_) => true,
         }
     }
 }
@@ -172,16 +178,16 @@ pub fn ensure(app: &AppHandle) -> Result<PlayerSurface> {
     let (ready_tx, ready_rx) = mpsc::sync_channel(1);
     let wake = Arc::new(WakeState::default());
     let thread_wake = Arc::clone(&wake);
-    let main_hwnd_addr = main_hwnd.0 as isize;
+    let main_hwnd_addr = main_hwnd.0;
 
     let thread = thread::Builder::new()
         .name("player-render-win32".into())
         .spawn(move || {
-            let result = RenderThread::new(HWND(main_hwnd_addr as *mut c_void));
-            match result {
+            let main_hwnd = HWND(main_hwnd_addr);
+            match RenderThread::new(main_hwnd, Arc::clone(&thread_wake)) {
                 Ok(mut renderer) => {
                     let _ = ready_tx.send(Ok(()));
-                    renderer.run(rx, thread_wake);
+                    renderer.run(rx);
                 }
                 Err(error) => {
                     let _ = ready_tx.send(Err(error.to_string()));
@@ -264,10 +270,11 @@ struct RenderThread {
     bounds: SurfaceBounds,
     render_context: *mut mpv::mpv_render_context,
     callback_ctx: *mut c_void,
+    wake: Arc<WakeState>,
 }
 
 impl RenderThread {
-    fn new(main_hwnd: HWND) -> Result<Self> {
+    fn new(main_hwnd: HWND, wake: Arc<WakeState>) -> Result<Self> {
         unsafe {
             let module = GetModuleHandleW(None).context("获取 Windows 模块句柄失败")?;
             let instance = HINSTANCE(module.0);
@@ -296,7 +303,7 @@ impl RenderThread {
             )
             .context("创建 Win32 Player Surface 窗口失败")?;
 
-            let hdc = GetDC(Some(hwnd));
+            let hdc = GetDC(hwnd);
             if hdc.0 == 0 {
                 let _ = DestroyWindow(hwnd);
                 return Err(anyhow!("获取 Player Surface HDC 失败"));
@@ -316,7 +323,7 @@ impl RenderThread {
             };
             let pixel_format = ChoosePixelFormat(hdc, &pfd);
             if pixel_format == 0 {
-                ReleaseDC(Some(hwnd), hdc);
+                ReleaseDC(hwnd, hdc);
                 let _ = DestroyWindow(hwnd);
                 return Err(anyhow!("选择 OpenGL PixelFormat 失败"));
             }
@@ -333,13 +340,16 @@ impl RenderThread {
                 bounds: SurfaceBounds::default(),
                 render_context: null_mut(),
                 callback_ctx: null_mut(),
+                wake,
             })
         }
     }
 
-    fn run(&mut self, rx: Receiver<SurfaceCommand>, wake: Arc<WakeState>) {
+    fn run(&mut self, rx: Receiver<SurfaceCommand>) {
         let mut running = true;
         while running {
+            self.wake.wait_for_work();
+
             while let Ok(command) = rx.try_recv() {
                 match command {
                     SurfaceCommand::SetBounds(bounds) => {
@@ -360,24 +370,19 @@ impl RenderThread {
             }
 
             self.pump_messages();
-            if running && self.render_context.is_null() == false && self.bounds.visible {
-                let should_render = wake.pending.lock().map(|pending| *pending).unwrap_or(true);
-                if should_render {
-                    if let Err(error) = self.render_frame() {
-                        log::error!("Windows Player Render API 绘制失败: {}", error);
-                    }
+            let should_render = self.wake.take_pending();
+            if running && should_render && !self.render_context.is_null() && self.bounds.visible {
+                if let Err(error) = self.render_frame() {
+                    log::error!("Windows Player Render API 绘制失败: {}", error);
                 }
-            }
-            if running {
-                wake.wait();
             }
         }
 
         self.detach_renderer();
         unsafe {
-            let _ = wglMakeCurrent(self.hdc, HGLRC::default());
+            let _ = wglMakeCurrent(self.hdc, HGLRC(0));
             let _ = wglDeleteContext(self.glrc);
-            ReleaseDC(Some(self.hwnd), self.hdc);
+            ReleaseDC(self.hwnd, self.hdc);
             let _ = DestroyWindow(self.hwnd);
         }
     }
@@ -395,6 +400,7 @@ impl RenderThread {
             }
             let x = rect.left + self.bounds.x;
             let y = rect.top + self.bounds.y;
+            // 把视频 Surface 放在主窗口之后，透明的 WebView/React 控件层始终位于视频上方。
             let _ = SetWindowPos(
                 self.hwnd,
                 Some(self.main_hwnd),
@@ -452,9 +458,7 @@ impl RenderThread {
                 return Err(anyhow!("创建 libmpv Render Context 失败，错误码 {}", result));
             }
 
-            let callback_wake = Arc::new(WakeState::default());
-            // Render callback 只负责把渲染线程唤醒，不调用任何 mpv/OpenGL API。
-            let callback_ctx = Box::into_raw(Box::new(callback_wake)) as *mut c_void;
+            let callback_ctx = Box::into_raw(Box::new(Arc::clone(&self.wake))) as *mut c_void;
             mpv::mpv_render_context_set_update_callback(
                 context,
                 Some(render_update_callback),
@@ -462,6 +466,7 @@ impl RenderThread {
             );
             self.render_context = context;
             self.callback_ctx = callback_ctx;
+            self.wake.wake();
         }
         Ok(())
     }
@@ -532,7 +537,6 @@ unsafe extern "system" fn surface_window_proc(
 ) -> LRESULT {
     match message {
         WM_ERASEBKGND => LRESULT(1),
-        WM_PAINT => LRESULT(0),
         _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
     }
 }
