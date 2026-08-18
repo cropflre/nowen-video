@@ -40,6 +40,25 @@ async function highlightCaptureFrame(
 export const desktop = {
   ...platformDesktop,
 
+  // Windows Render Surface 位于透明 Tauri WebView 下方。Mica/Acrylic 会继续占据
+  // 透明像素并遮住原生视频，因此原生播放生命周期内必须关闭窗口特效。
+  async playerStart(params: Parameters<typeof platformDesktop.playerStart>[0]) {
+    await platformDesktop.windowSetEffect(false)
+    const result = await platformDesktop.playerStart(params)
+    if (!result) {
+      await platformDesktop.windowSetEffect(true)
+    }
+    return result
+  },
+
+  async playerDestroy(): Promise<void> {
+    try {
+      await platformDesktop.playerDestroy()
+    } finally {
+      await platformDesktop.windowSetEffect(true)
+    }
+  },
+
   highlightCaptureFrame,
 
   // 仅兼容现有 Media Compute Agent 的能力探测命名。
