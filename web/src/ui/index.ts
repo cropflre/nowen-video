@@ -2,6 +2,7 @@ export { MediaArtwork, type MediaArtworkProps, type MediaArtworkRatio } from './
 export { MediaRail, type MediaRailProps } from './media/MediaRail'
 export { HeroContent, type HeroContentProps, type HeroHeadingLevel } from './media/HeroContent'
 export { MediaHeroContent, type MediaHeroContentProps } from './media/MediaHeroContent'
+export { PersonCard, type PersonCardProps } from './media/PersonCard'
 export { AppShell, type AppShellProps } from './layout/AppShell'
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader'
 export { MediaGrid, type MediaGridProps, type MediaGridVariant } from './layout/MediaGrid'
