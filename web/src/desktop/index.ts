@@ -13,6 +13,10 @@ export type {
   UpdateInfo,
   PlayerStartResult,
   PlayerVideoInfo,
+  PlayerTrack,
+  PlayerChapter,
+  PlayerMediaInfo,
+  PlayerStateEvent,
 } from './bridge'
 
 export { useDesktop } from './useDesktop'
