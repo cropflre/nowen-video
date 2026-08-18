@@ -10,6 +10,7 @@ import { desktop, PlatformInfo } from './bridge'
 export function useDesktop() {
   const [platform, setPlatform] = useState<PlatformInfo | null>(null)
   const [playerAvailable, setPlayerAvailable] = useState(false)
+  const [serverBaseUrl, setServerBaseUrl] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -20,14 +21,16 @@ export function useDesktop() {
 
     let canceled = false
     ;(async () => {
-      const [platformInfo, available] = await Promise.all([
+      const [platformInfo, available, baseUrl] = await Promise.all([
         desktop.platformInfo(),
         desktop.playerAvailable(),
+        desktop.serverBaseUrl(),
       ])
       if (canceled) return
 
       setPlatform(platformInfo)
       setPlayerAvailable(available)
+      setServerBaseUrl(baseUrl)
       setReady(true)
     })()
 
@@ -40,6 +43,7 @@ export function useDesktop() {
     isDesktop: desktop.isDesktop,
     platform,
     playerAvailable,
+    serverBaseUrl,
     ready,
   }
 }
