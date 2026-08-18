@@ -70,6 +70,7 @@ data class HighlightWorkerHeartbeat(
     val capabilities: List<String> = listOf(
         MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
         MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
+        MEDIA_COMPUTE_CAPABILITY_CHAPTER_DETECT_V1,
     ),
     val network: String,
     val charging: Boolean,
@@ -85,6 +86,7 @@ data class HighlightWorkerClaimRequest(
     val capabilities: List<String> = listOf(
         MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
         MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
+        MEDIA_COMPUTE_CAPABILITY_CHAPTER_DETECT_V1,
     ),
     val network: String,
     val charging: Boolean,
@@ -251,6 +253,7 @@ class HighlightComputeAgent @Inject constructor(
     private val api: HighlightComputeApi,
     private val sessionStore: ServerSessionStore,
     private val json: Json,
+    private val chapterCompute: ChapterComputeExecutor,
 ) {
     private val workerId: String by lazy {
         val preferences = context.getSharedPreferences("nowen_highlight_worker", Context.MODE_PRIVATE)
@@ -261,7 +264,7 @@ class HighlightComputeAgent @Inject constructor(
 
     /**
      * Android Media Compute Node V2 仅在 Activity 前台生命周期内运行。
-     * 当前声明 highlight_v1 + preview_thumbnail_v1；两个 job 都复用 MediaMetadataRetriever 硬件抽帧。
+     * 当前声明 highlight_v1 + preview_thumbnail_v1 + chapter_detect_v1；三个 job 复用同一节点 Claim/租约生命周期。
      */
     suspend fun runForegroundLoop() {
         while (currentCoroutineContext().isActive) {
@@ -359,6 +362,7 @@ class HighlightComputeAgent @Inject constructor(
         when (claim.jobType) {
             MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 -> processHighlightClaim(serverBaseUrl, token, claim)
             MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1 -> processPreviewThumbnailClaim(serverBaseUrl, token, claim)
+            MEDIA_COMPUTE_JOB_CHAPTER_DETECT_V1 -> chapterCompute.process(serverBaseUrl, token, claim)
             else -> error("Android 媒体计算节点尚未注册执行器：${claim.jobType}")
         }
     }

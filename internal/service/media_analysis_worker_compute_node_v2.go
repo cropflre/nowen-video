@@ -80,7 +80,7 @@ type MediaComputeTaskRegistration struct {
 type mediaComputeTaskDescriptor struct {
 	JobType            string
 	RequiredCapability string
-	Input              json.RawMessage
+	Input               json.RawMessage
 }
 
 type mediaComputeDescriptorState struct {
@@ -300,7 +300,7 @@ func hasPreferredDesktopForCapabilityLocked(state *mediaAnalysisWorkerState, now
 
 func mediaComputeJobUsesAnalysisMode(jobType string) bool {
 	switch jobType {
-	case MediaComputeJobHighlightV1, MediaComputeJobPreviewThumbnailV1:
+	case MediaComputeJobHighlightV1, MediaComputeJobPreviewThumbnailV1, MediaComputeJobChapterDetectV1:
 		return true
 	default:
 		return false
@@ -308,8 +308,7 @@ func mediaComputeJobUsesAnalysisMode(jobType string) bool {
 }
 
 // ClaimComputeTask 是 Media Compute Node V2 的 capability-aware 领取器。
-// 它不再全局假设任务一定是 highlight_v1。现有 highlight/preview 都遵循 execution_mode，
-// 后续业务可以按自己的 dispatcher/fallback 策略决定是否接入同一模式开关。
+// highlight / preview / chapter 都遵循 execution_mode；Desktop 优先仍然严格按 capability 生效。
 func (s *MediaAnalysisService) ClaimComputeTask(input MediaAnalysisWorkerClaimRequest) (*MediaComputeTaskClaim, error) {
 	node := s.HeartbeatComputeNode(input.MediaAnalysisWorkerHeartbeat)
 	if node.WorkerID == "" {
@@ -475,6 +474,8 @@ func (s *MediaAnalysisService) CompleteComputeTask(taskID string, input MediaCom
 		return err
 	case MediaComputeJobPreviewThumbnailV1:
 		return s.completePreviewThumbnailComputeTask(taskID, remote, descriptor, input.Result)
+	case MediaComputeJobChapterDetectV1:
+		return s.completeChapterDetectComputeTask(taskID, remote, descriptor, input.Result)
 	default:
 		return ErrMediaComputeUnsupportedJob
 	}

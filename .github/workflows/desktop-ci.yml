@@ -12,6 +12,7 @@ on:
       - 'web/src/App.tsx'
       - 'internal/service/media_analysis_worker*.go'
       - 'internal/service/media_analysis_preview_compute*.go'
+      - 'internal/service/media_analysis_chapter_compute*.go'
       - 'scripts/fetch-assets.ps1'
       - '.github/workflows/desktop-ci.yml'
       - '.github/workflows/release-desktop.yml'
@@ -23,6 +24,7 @@ on:
       - 'web/src/App.tsx'
       - 'internal/service/media_analysis_worker*.go'
       - 'internal/service/media_analysis_preview_compute*.go'
+      - 'internal/service/media_analysis_chapter_compute*.go'
       - 'scripts/fetch-assets.ps1'
       - '.github/workflows/desktop-ci.yml'
       - '.github/workflows/release-desktop.yml'
@@ -88,3 +90,9 @@ jobs:
           if ($agent -notmatch 'MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1') { throw 'Desktop 缺少 preview_thumbnail_v1 执行器' }
           if ($agent -notmatch 'processPreviewThumbnailClaim') { throw 'Desktop 缺少预览图任务处理函数' }
           if ($agent -notmatch 'capturePreviewFrame') { throw 'Desktop 预览图任务必须复用单帧捕获能力' }
+          if ($agent -notmatch 'MEDIA_COMPUTE_JOB_CHAPTER_DETECT_V1') { throw 'Desktop 缺少 chapter_detect_v1 分派' }
+
+          $chapter = Get-Content 'web/src/desktop/DesktopChapterCompute.ts' -Raw
+          if ($chapter -notmatch 'processDesktopChapterClaim') { throw 'Desktop 缺少章节检测执行器' }
+          if ($chapter -notmatch 'highlightCaptureFrame') { throw 'Desktop 章节检测必须复用 libmpv 单帧捕获能力' }
+          if ($chapter -notmatch 'signatureDifference') { throw 'Desktop 章节检测必须输出场景差异候选分数' }

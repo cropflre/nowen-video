@@ -5,6 +5,8 @@ export const MEDIA_COMPUTE_JOB_HIGHLIGHT_V1 = 'highlight_v1'
 export const MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1 = 'highlight_v1'
 export const MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1 = 'preview_thumbnail_v1'
 export const MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1 = 'preview_thumbnail_v1'
+export const MEDIA_COMPUTE_JOB_CHAPTER_DETECT_V1 = 'chapter_detect_v1'
+export const MEDIA_COMPUTE_CAPABILITY_CHAPTER_DETECT_V1 = 'chapter_detect_v1'
 
 export interface MediaHighlight {
   id: string
@@ -97,6 +99,29 @@ export interface MediaComputePreviewThumbnailResult {
   fingerprint: string
   highlight_id: string
   frames: MediaComputePreviewFrame[]
+}
+
+export interface MediaComputeChapterDetectInput {
+  media_id: string
+  fingerprint: string
+  duration: number
+  stream_url: string
+  sample_times: number[]
+  probe_gap_seconds: number
+  min_chapter_seconds: number
+  max_chapters: number
+  capture_width: number
+  engine_version: number
+}
+
+export interface MediaComputeChapterCandidate {
+  time: number
+  score: number
+}
+
+export interface MediaComputeChapterDetectResult {
+  fingerprint: string
+  candidates: MediaComputeChapterCandidate[]
 }
 
 export interface MediaComputeTaskClaim<TInput = unknown> {

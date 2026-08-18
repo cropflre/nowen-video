@@ -26,6 +26,7 @@ func registerCoreAPI(
 	api := r.Group("/api")
 	api.Use(jwtMiddleware)
 	service.AttachMediaAnalysisWorkerSettings(mediaAnalysisService, repos.SystemSetting)
+	service.AttachMediaChapterRepository(mediaAnalysisService, repos.VideoChapter)
 
 	guardLibraryDeleteWhileScanning := func(c *gin.Context) {
 		libraryID := c.Param("id")
@@ -45,6 +46,7 @@ func registerCoreAPI(
 		}
 		for _, item := range mediaRows {
 			mediaAnalysisService.CleanupMedia(item.ID)
+			mediaAnalysisService.CleanupChapters(item.ID)
 		}
 	}
 
@@ -80,6 +82,12 @@ func registerCoreAPI(
 	api.POST("/media/:id/highlights/analyze", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlightsDistributed)
 	api.DELETE("/media/:id/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.DeleteHighlights)
 	api.POST("/media/:id/ai/highlights", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalyzeHighlightsDistributed)
+
+	// 章节继续复用 Web V3 的历史 URL，但执行链已经接管为 Media Compute Node V2 chapter_detect_v1。
+	api.GET("/media/:id/chapters", guardByMediaID, mediaAnalysis.ListChapters)
+	api.POST("/media/:id/ai/chapters", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.GenerateChaptersDistributed)
+	api.GET("/media/:id/ai/tasks", guardByMediaID, middleware.AdminOnly(), mediaAnalysis.AnalysisTasks)
+	api.GET("/ai/tasks/:taskId", middleware.AdminOnly(), mediaAnalysis.AnalysisTask)
 
 	api.GET("/admin/media-analysis/config", middleware.AdminOnly(), mediaAnalysis.WorkerConfig)
 	api.PUT("/admin/media-analysis/config", middleware.AdminOnly(), mediaAnalysis.UpdateWorkerConfig)

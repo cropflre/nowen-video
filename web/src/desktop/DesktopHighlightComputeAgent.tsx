@@ -13,6 +13,11 @@ import {
   type MediaComputeTaskClaim,
 } from '@/api/mediaAnalysis'
 import { useAuthStore } from '@/stores/auth'
+import {
+  MEDIA_COMPUTE_CAPABILITY_CHAPTER_DETECT_V1,
+  MEDIA_COMPUTE_JOB_CHAPTER_DETECT_V1,
+  processDesktopChapterClaim,
+} from './DesktopChapterCompute'
 import { desktop, type HighlightCaptureFrameResult, type PlatformInfo } from './bridge'
 
 const WORKER_ID_KEY = 'nowen-desktop-highlight-worker-id'
@@ -65,7 +70,11 @@ function heartbeat(workerId: string, platform: PlatformInfo | null, available: b
     name: workerName(platform),
     version: workerVersion(),
     capabilities: available
-      ? [MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1, MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1]
+      ? [
+          MEDIA_COMPUTE_CAPABILITY_HIGHLIGHT_V1,
+          MEDIA_COMPUTE_CAPABILITY_PREVIEW_THUMBNAIL_V1,
+          MEDIA_COMPUTE_CAPABILITY_CHAPTER_DETECT_V1,
+        ]
       : [],
     network: 'desktop',
     charging: false,
@@ -366,6 +375,9 @@ async function processClaim(claim: MediaComputeTaskClaim, token: string) {
     case MEDIA_COMPUTE_JOB_PREVIEW_THUMBNAIL_V1:
       await processPreviewThumbnailClaim(claim, token)
       return
+    case MEDIA_COMPUTE_JOB_CHAPTER_DETECT_V1:
+      await processDesktopChapterClaim(claim, token)
+      return
     default:
       throw new Error(`桌面媒体计算节点尚未注册执行器：${jobType}`)
   }
@@ -379,9 +391,9 @@ function errorMessage(error: unknown) {
 
 /**
  * Desktop Media Compute Node V2：
- * - 声明 highlight_v1 + preview_thumbnail_v1 两项真实能力；
- * - 两个 job 都复用 Tauri 已有 libmpv 单帧随机 Seek，不引入第二套 FFmpeg；
- * - preview job 上传少量受限 WebP 帧，由 Server 做安全校验与轻量 Animated WebP 封装；
+ * - 声明 highlight_v1 + preview_thumbnail_v1 + chapter_detect_v1 三项真实能力；
+ * - 三个 job 都复用 Tauri 已有 libmpv 单帧随机 Seek，不引入第二套 FFmpeg；
+ * - chapter job 只回传时间点与场景差异分数，最终章节边界由 Server 汇总持久化；
  * - 播放页期间暂停领取，避免后台计算与观影争抢 libmpv 解码资源。
  */
 export default function DesktopHighlightComputeAgent() {

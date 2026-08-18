@@ -26,6 +26,19 @@ func (r *VideoChapterRepo) FindByID(id string) (*model.VideoChapter, error) {
 func (r *VideoChapterRepo) Update(chapter *model.VideoChapter) error { return r.db.Save(chapter).Error }
 func (r *VideoChapterRepo) Delete(id string) error { return r.db.Delete(&model.VideoChapter{}, "id = ?", id).Error }
 
+// ReplaceByMediaID 原子替换一个媒体的全部章节，避免重算期间出现“先删后写失败”的空窗。
+func (r *VideoChapterRepo) ReplaceByMediaID(mediaID string, chapters []model.VideoChapter) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("media_id = ?", mediaID).Delete(&model.VideoChapter{}).Error; err != nil {
+			return err
+		}
+		if len(chapters) == 0 {
+			return nil
+		}
+		return tx.Create(&chapters).Error
+	})
+}
+
 // ==================== V3: VideoHighlightRepo ====================
 
 type VideoHighlightRepo struct { db *gorm.DB }
