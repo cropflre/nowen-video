@@ -33,12 +33,63 @@ pub async fn highlight_capture_frame(
 }
 
 #[cfg(feature = "embed-mpv")]
+fn sanitize_headers(input: &HashMap<String, String>) -> Result<Vec<String>, String> {
+    let mut output = Vec::new();
+    for (name, value) in input {
+        if !name.eq_ignore_ascii_case("authorization") && !name.eq_ignore_ascii_case("user-agent") {
+            return Err(format!("桌面精彩片段不允许透传请求头: {name}"));
+        }
+        if name.contains('\r') || name.contains('\n') || value.contains('\r') || value.contains('\n') {
+            return Err("桌面精彩片段请求头包含非法换行".to_string());
+        }
+        output.push(format!("{}: {}", name.trim(), value.trim()));
+    }
+    Ok(output)
+}
+
+#[cfg(feature = "embed-mpv")]
+fn find_webp(directory: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
+    let entries = std::fs::read_dir(directory)
+        .map_err(|error| format!("读取桌面精彩片段临时目录失败: {error}"))?;
+    for entry in entries {
+        let path = entry
+            .map_err(|error| format!("读取桌面精彩片段临时文件失败: {error}"))?
+            .path();
+        if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("webp"))
+        {
+            let len = std::fs::metadata(&path).map(|value| value.len()).unwrap_or(0);
+            if len > 0 {
+                return Ok(Some(path));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(feature = "embed-mpv")]
+fn is_webp(data: &[u8]) -> bool {
+    data.len() >= 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP"
+}
+
+#[cfg(feature = "embed-mpv")]
+struct TempCaptureDir(std::path::PathBuf);
+
+#[cfg(feature = "embed-mpv")]
+impl Drop for TempCaptureDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(feature = "embed-mpv")]
 fn capture_frame_blocking(request: HighlightCaptureRequest) -> Result<HighlightCaptureResult, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
     use libmpv2::events::Event;
     use libmpv2::Mpv;
     use std::fs;
-    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     use url::Url;
@@ -153,48 +204,6 @@ fn capture_frame_blocking(request: HighlightCaptureRequest) -> Result<HighlightC
     }
 
     Err("桌面精彩片段抽帧超时".to_string())
-
-    fn sanitize_headers(input: &HashMap<String, String>) -> Result<Vec<String>, String> {
-        let mut output = Vec::new();
-        for (name, value) in input {
-            if !name.eq_ignore_ascii_case("authorization") && !name.eq_ignore_ascii_case("user-agent") {
-                return Err(format!("桌面精彩片段不允许透传请求头: {name}"));
-            }
-            if name.contains(['\r', '\n']) || value.contains(['\r', '\n']) {
-                return Err("桌面精彩片段请求头包含非法换行".to_string());
-            }
-            output.push(format!("{}: {}", name.trim(), value.trim()));
-        }
-        Ok(output)
-    }
-
-    fn find_webp(directory: &Path) -> Result<Option<PathBuf>, String> {
-        let entries = fs::read_dir(directory)
-            .map_err(|error| format!("读取桌面精彩片段临时目录失败: {error}"))?;
-        for entry in entries {
-            let path = entry
-                .map_err(|error| format!("读取桌面精彩片段临时文件失败: {error}"))?
-                .path();
-            if path.extension().and_then(|value| value.to_str()).is_some_and(|value| value.eq_ignore_ascii_case("webp")) {
-                let len = fs::metadata(&path).map(|value| value.len()).unwrap_or(0);
-                if len > 0 {
-                    return Ok(Some(path));
-                }
-            }
-        }
-        Ok(None)
-    }
-
-    fn is_webp(data: &[u8]) -> bool {
-        data.len() >= 12 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP"
-    }
-
-    struct TempCaptureDir(PathBuf);
-    impl Drop for TempCaptureDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
 }
 
 #[cfg(not(feature = "embed-mpv"))]
