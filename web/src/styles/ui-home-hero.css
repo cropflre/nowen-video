@@ -1,0 +1,85 @@
+/* Nowen UI 2.0 · Home hero
+ * Final homepage hero geometry and theme scrims. This replaces the historical
+ * hero-carousel correction layer and is loaded from the stable ui.css entrypoint.
+ */
+
+.nv-home-page .nv-hero-carousel,
+.nv-home-page .nv-hero-carousel > div.relative.z-10 {
+  min-height: clamp(400px, 46vh, 540px) !important;
+}
+
+.nv-home-page .nv-hero-carousel > div.relative.z-10 {
+  justify-content: center !important;
+  padding-top: clamp(48px, 5vh, 68px) !important;
+  padding-bottom: clamp(70px, 7vh, 90px) !important;
+}
+
+.nv-home-page .nv-hero-carousel h2 {
+  max-width: 18ch !important;
+  font-size: clamp(2.35rem, 3.35vw, 4.25rem) !important;
+  line-height: 1.01 !important;
+  letter-spacing: -.036em !important;
+}
+
+.nv-home-page .nv-hero-carousel::after {
+  content: none !important;
+  display: none !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel {
+  --nv-hero-scrim: linear-gradient(
+    90deg,
+    rgba(244,246,251,.94) 0%,
+    rgba(244,246,251,.82) 31%,
+    rgba(244,246,251,.47) 58%,
+    rgba(244,246,251,.12) 82%,
+    rgba(244,246,251,.03) 100%
+  );
+  --nv-hero-bottom-scrim: linear-gradient(
+    0deg,
+    rgba(244,246,251,.76) 0%,
+    rgba(244,246,251,.42) 30%,
+    rgba(244,246,251,.12) 60%,
+    transparent 82%
+  );
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel > div:first-of-type img,
+[data-theme="light"] .nv-home-page .nv-hero-carousel img.h-full.w-full {
+  filter: saturate(.98) contrast(1.03) brightness(.94) !important;
+}
+
+@media (max-width: 64rem) {
+  .nv-home-page .nv-hero-carousel,
+  .nv-home-page .nv-hero-carousel > div.relative.z-10 {
+    min-height: clamp(380px, 45vh, 480px) !important;
+  }
+
+  .nv-home-page .nv-hero-carousel > div.relative.z-10 {
+    padding-top: 44px !important;
+    padding-bottom: 76px !important;
+  }
+
+  .nv-home-page .nv-hero-carousel h2 {
+    font-size: clamp(2.2rem, 5vw, 3.6rem) !important;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-home-page .nv-hero-carousel,
+  .nv-home-page .nv-hero-carousel > div.relative.z-10 {
+    min-height: 360px !important;
+  }
+
+  .nv-home-page .nv-hero-carousel > div.relative.z-10 {
+    justify-content: flex-end !important;
+    padding-top: 54px !important;
+    padding-bottom: 64px !important;
+  }
+
+  .nv-home-page .nv-hero-carousel h2 {
+    max-width: 16ch !important;
+    font-size: clamp(2rem, 9vw, 2.75rem) !important;
+    line-height: 1.02 !important;
+  }
+}
