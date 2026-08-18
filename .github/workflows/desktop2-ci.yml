@@ -102,20 +102,23 @@ jobs:
         shell: pwsh
         run: ./desktop/scripts/build-sidecar.ps1 -Production
 
-      - name: 获取 Windows libmpv 构建资源
+      - name: 获取 Windows Desktop 运行时资源
         shell: pwsh
-        run: ./scripts/fetch-assets.ps1 -Skip "yt-dlp;shaders;fonts"
+        run: ./scripts/fetch-assets.ps1 -Skip "shaders;fonts"
 
-      - name: 校验 libmpv 与 Sidecar 构建输入
+      - name: 校验 Desktop 运行时与 Sidecar 构建输入
         shell: pwsh
         run: |
           $mpv = "desktop/src-tauri/resources/mpv/libmpv-2.dll"
+          $ytDlp = "desktop/src-tauri/resources/yt-dlp.exe"
           $sidecar = "desktop/src-tauri/bin/nowen-video-server-x86_64-pc-windows-msvc.exe"
           if (-not (Test-Path $mpv)) { throw "缺少 Windows libmpv-2.dll" }
           if ((Get-Item $mpv).Length -lt 10MB) { throw "libmpv-2.dll 尺寸异常" }
+          if (-not (Test-Path $ytDlp)) { throw "缺少 Windows yt-dlp.exe" }
+          if ((Get-Item $ytDlp).Length -lt 1MB) { throw "yt-dlp.exe 尺寸异常" }
           if (-not (Test-Path $sidecar)) { throw "缺少 Windows x64 Go Sidecar" }
           if ((Get-Item $sidecar).Length -lt 1MB) { throw "Go Sidecar 尺寸异常" }
-          Write-Host "[OK] libmpv 与 Sidecar 构建输入有效" -ForegroundColor Green
+          Write-Host "[OK] Desktop 运行时资源与 Sidecar 构建输入有效" -ForegroundColor Green
 
       - name: 检查 Rust / Render API 编译
         working-directory: desktop/src-tauri
