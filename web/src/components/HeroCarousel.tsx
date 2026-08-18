@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Info, Pause, Play, Star } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Info, Pause, Play } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
-import { Button, Tag, buttonClassName } from '@/components/design-system'
+import { Button, buttonClassName } from '@/components/design-system'
+import { MediaHeroContent } from '@/ui'
 
 const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
@@ -90,9 +91,6 @@ function getHeroArtwork(media: Media): HeroArtwork {
     }
   }
 
-  // Standalone movies now share the real local backdrop endpoint used by the
-  // detail hero. Probe it even for older DB rows so a newly-added
-  // `movie-backdrop.*` file becomes useful without requiring a rescan first.
   return {
     primary: streamApi.withTokenUrl(`/api/media/${media.id}/backdrop`),
     fallback: streamApi.getPosterUrl(media.id),
@@ -287,63 +285,32 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
             transition={{ duration: prefersReducedMotion ? 0.12 : 0.28 }}
           >
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {item.reason && <Tag tone="brand">{item.reason}</Tag>}
-              {item.media.resolution && <Tag tone="quality">{item.media.resolution}</Tag>}
-            </div>
-
-            <h2
-              className="max-w-[18ch] font-bold text-[var(--nv-text-primary)]"
-              style={{
-                fontSize: 'var(--nv-type-display)',
-                lineHeight: 'var(--nv-line-tight)',
-                letterSpacing: 'var(--nv-tracking-tight)',
-              }}
-            >
-              {item.media.title}
-            </h2>
-
-            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--nv-text-secondary)]">
-              {item.media.year > 0 && <span>{item.media.year}</span>}
-              {item.media.rating > 0 && (
-                <span className="inline-flex items-center gap-1 text-[var(--nv-status-rating)]">
-                  <Star size={13} fill="currentColor" aria-hidden="true" />
-                  <span className="font-semibold">{item.media.rating.toFixed(1)}</span>
-                </span>
+            <MediaHeroContent
+              media={item.media}
+              eyebrow={item.reason}
+              actions={(
+                <>
+                  <Link
+                    to={playLink}
+                    className={buttonClassName({ variant: 'primary', size: 'lg' })}
+                    data-variant="primary"
+                    data-size="lg"
+                  >
+                    <Play size={18} fill="currentColor" aria-hidden="true" />
+                    {t('home.playNow')}
+                  </Link>
+                  <Link
+                    to={detailLink}
+                    className={buttonClassName({ variant: 'secondary', size: 'lg' })}
+                    data-variant="secondary"
+                    data-size="lg"
+                  >
+                    <Info size={17} aria-hidden="true" />
+                    {t('home.viewDetail')}
+                  </Link>
+                </>
               )}
-              {item.media.genres && (
-                <span className="text-[var(--nv-text-tertiary)]">
-                  {item.media.genres.split(',').slice(0, 3).join(' · ')}
-                </span>
-              )}
-            </div>
-
-            {item.media.overview && (
-              <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-6 text-[var(--nv-text-secondary)] sm:text-[var(--nv-type-body)]">
-                {item.media.overview}
-              </p>
-            )}
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <Link
-                to={playLink}
-                className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                data-variant="primary"
-                data-size="lg"
-              >
-                <Play size={18} fill="currentColor" aria-hidden="true" />
-                {t('home.playNow')}
-              </Link>
-              <Link
-                to={detailLink}
-                className={buttonClassName({ variant: 'secondary', size: 'lg' })}
-                data-variant="secondary"
-                data-size="lg"
-              >
-                <Info size={17} aria-hidden="true" />
-                {t('home.viewDetail')}
-              </Link>
-            </div>
+            />
           </motion.div>
         </AnimatePresence>
       </div>
