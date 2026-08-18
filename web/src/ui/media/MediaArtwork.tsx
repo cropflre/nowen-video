@@ -1,4 +1,4 @@
-import { useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useState, type HTMLAttributes, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Film } from 'lucide-react'
 
@@ -27,6 +27,11 @@ export function MediaArtwork({
   ...props
 }: MediaArtworkProps) {
   const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
+
   const showImage = Boolean(src) && !failed
 
   return (
