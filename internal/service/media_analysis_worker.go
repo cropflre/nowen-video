@@ -29,6 +29,7 @@ const (
 	remoteWorkerGrace             = 12 * time.Second
 	remoteWorkerLease             = 4 * time.Minute
 	remoteWorkerTTL               = 90 * time.Second
+	remoteDesktopPreferenceTTL    = 6 * time.Second
 	remoteDispatchPoll            = 750 * time.Millisecond
 	maxRemoteThumbnailBytes       = 512 * 1024
 	maxRemotePayloadBytes         = 3 * 1024 * 1024
@@ -291,6 +292,24 @@ func workerEligible(input MediaAnalysisWorkerHeartbeat) bool {
 	return true
 }
 
+// hasPreferredDesktopWorkerLocked 判断当前是否存在刚刚在线、空闲且真正具备 highlight_v1
+// 能力的桌面节点。桌面节点只拥有一个很短的优先窗口，避免已经退出的桌面客户端
+// 阻塞 Android，更不会跨过 auto 模式 12 秒的服务端兜底窗口。
+func hasPreferredDesktopWorkerLocked(state *mediaAnalysisWorkerState, now time.Time, requestingWorkerID string) bool {
+	for workerID, worker := range state.workers {
+		if workerID == requestingWorkerID || normalizeWorkerKind(worker.Kind) != "desktop" {
+			continue
+		}
+		if worker.State != "idle" || now.Sub(worker.LastSeen) > remoteDesktopPreferenceTTL {
+			continue
+		}
+		if workerEligible(worker.MediaAnalysisWorkerHeartbeat) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *MediaAnalysisService) dispatchHighlightTask(taskID, mediaID string) {
 	mode := s.ExecutionMode()
 	if mode == MediaAnalysisModeOff {
@@ -405,6 +424,11 @@ func (s *MediaAnalysisService) ClaimWorkerTask(input MediaAnalysisWorkerClaimReq
 	state := mediaAnalysisState(s)
 	now := time.Now()
 	state.mu.Lock()
+	cleanupWorkersLocked(state, now)
+	if normalizeWorkerKind(worker.Kind) == "android" && hasPreferredDesktopWorkerLocked(state, now, worker.WorkerID) {
+		state.mu.Unlock()
+		return nil, ErrMediaAnalysisWorkerNoTask
+	}
 	var selected *mediaAnalysisRemoteTask
 	for _, task := range state.remoteTasks {
 		if task.ClaimedBy != "" && task.LeaseUntil.After(now) {
@@ -424,7 +448,7 @@ func (s *MediaAnalysisService) ClaimWorkerTask(input MediaAnalysisWorkerClaimReq
 	selected.LeaseUntil = now.Add(remoteWorkerLease)
 	claimSnapshot := *selected
 	if saved, ok := state.workers[worker.WorkerID]; ok {
-		saved.State, saved.TaskID = "busy", selected.TaskID
+		saved.State, saved.TaskID, saved.LastSeen = "busy", selected.TaskID, now
 		state.workers[worker.WorkerID] = saved
 	}
 	state.mu.Unlock()
@@ -607,7 +631,12 @@ func (s *MediaAnalysisService) extendRemoteLease(taskID, claimToken string) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if remote := state.remoteTasks[taskID]; remote != nil && remote.ClaimToken == claimToken {
-		remote.LeaseUntil = time.Now().Add(remoteWorkerLease)
+		now := time.Now()
+		remote.LeaseUntil = now.Add(remoteWorkerLease)
+		if worker, ok := state.workers[remote.ClaimedBy]; ok {
+			worker.State, worker.TaskID, worker.LastSeen = "busy", taskID, now
+			state.workers[remote.ClaimedBy] = worker
+		}
 	}
 }
 
