@@ -1,15 +1,14 @@
 //! Desktop Player Surface 边界。
 //!
-//! Windows 首发使用纯 Win32 + OpenGL Surface，由独立渲染线程承载 libmpv Render API；
-//! 不再创建第二个 Tauri WebView，也不再把 HWND/wid 暴露给 IPC/React。
-//!
-//! macOS/Linux 暂时保留原生窗口兼容承载，后续分别迁移到平台 Render API 后端。
+//! PlayerManager 只依赖 `PlayerSurface`，不再直接接触 HWND/NSWindow/WID。
+//! Windows 使用纯 Win32 + OpenGL Surface 承载 libmpv Render API；
+//! macOS/Linux 暂时保留兼容窗口后端，后续只替换平台 Surface 实现。
 
 #[cfg(target_os = "windows")]
 mod windows;
 
 #[cfg(target_os = "windows")]
-pub use windows::{destroy, ensure, resync, sync_bounds, PlayerSurface};
+pub use windows::{destroy, detach_renderer, ensure, resync, sync_bounds, PlayerSurface};
 
 #[cfg(not(target_os = "windows"))]
 mod fallback {
@@ -116,6 +115,8 @@ mod fallback {
         Ok(())
     }
 
+    pub fn detach_renderer() {}
+
     pub fn destroy(app: &AppHandle) -> Result<()> {
         if let Some(surface) = app.get_webview_window(PLAYER_SURFACE_LABEL) {
             surface.close().ok();
@@ -125,4 +126,4 @@ mod fallback {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub use fallback::{destroy, ensure, resync, sync_bounds, PlayerSurface};
+pub use fallback::{destroy, detach_renderer, ensure, resync, sync_bounds, PlayerSurface};
