@@ -3,7 +3,17 @@ name: Desktop 2.0 CI
 on:
   push:
     branches:
+      - main
       - refactor/server-lite-v1
+      - 'integration/desktop2-main-*'
+    paths:
+      - 'desktop/**'
+      - 'web/**'
+      - 'cmd/server-lite/**'
+      - 'internal/**'
+      - 'scripts/fetch-assets.ps1'
+      - '.github/workflows/desktop2-ci.yml'
+  pull_request:
     paths:
       - 'desktop/**'
       - 'web/**'
