@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - refactor/server-lite-v1
+      - 'integration/desktop2-main-*'
     paths:
       - 'desktop/**'
       - 'web/src/desktop/**'
@@ -43,6 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -71,6 +78,22 @@ jobs:
             throw "Desktop CI 缺少 libmpv-2.dll: $dll"
           }
           Get-Item $dll | Format-List FullName,Length,LastWriteTime
+
+      - name: Build Windows x64 Go Media Core sidecar
+        shell: pwsh
+        run: ./desktop/scripts/build-sidecar.ps1 -Production
+
+      - name: Verify Go Media Core sidecar
+        shell: pwsh
+        run: |
+          $sidecar = 'desktop/src-tauri/bin/nowen-video-server-x86_64-pc-windows-msvc.exe'
+          if (-not (Test-Path $sidecar)) {
+            throw "Desktop CI 缺少 Go Media Core Sidecar: $sidecar"
+          }
+          if ((Get-Item $sidecar).Length -lt 1MB) {
+            throw "Desktop CI Go Media Core Sidecar 尺寸异常"
+          }
+          Get-Item $sidecar | Format-List FullName,Length,LastWriteTime
 
       - name: Compile desktop Rust contract
         shell: pwsh
