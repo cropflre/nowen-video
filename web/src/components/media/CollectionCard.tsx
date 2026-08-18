@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { ChevronRight, Layers } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { streamApi } from '@/api'
 import type { MovieCollection } from '@/types'
 import { Button, Tag } from '@/components/design-system'
+import { MediaArtwork } from '@/ui'
 
 interface CollectionCardProps {
   collection: MovieCollection
@@ -17,30 +17,25 @@ export default function CollectionCard({ collection, variant = 'grid', className
   return <CollectionGridCard collection={collection} className={className} />
 }
 
-/** 网格卡片：复用 nv-media-card 契约，悬停物理与角标显露由 streaming-os 层统一决定 */
 function CollectionGridCard({ collection, className }: { collection: MovieCollection; className?: string }) {
   const navigate = useNavigate()
-  const [posterFailed, setPosterFailed] = useState(false)
   const detailTo = `/collections/${collection.id}`
-  const hasPoster = !!collection.poster_path && !posterFailed
 
   return (
     <article className={clsx('nv-media-card group', className)}>
-      <div className="nv-media-card-poster isolate">
-        {hasPoster ? (
-          <img
-            src={streamApi.getCollectionPosterUrl(collection.id)}
-            alt=""
-            loading="lazy"
-            onError={() => setPosterFailed(true)}
-          />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+      <MediaArtwork
+        src={collection.poster_path ? streamApi.getCollectionPosterUrl(collection.id) : null}
+        alt={collection.name}
+        ratio="poster"
+        className="nv-media-card-poster"
+        imageClassName="nv-media-card-image"
+        fallback={(
+          <div className="flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
             <Layers size={24} aria-hidden="true" />
             <span className="text-[10px]">暂无海报</span>
           </div>
         )}
-
+      >
         <Link
           to={detailTo}
           className="absolute inset-0 z-10 rounded-[inherit]"
@@ -69,7 +64,7 @@ function CollectionGridCard({ collection, className }: { collection: MovieCollec
         <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30">
           {collection.media_count} 部
         </Tag>
-      </div>
+      </MediaArtwork>
 
       <div className="pb-1 pt-2">
         <Link to={detailTo} className="nv-media-card-title" title={collection.name}>
@@ -91,31 +86,19 @@ function CollectionGridCard({ collection, className }: { collection: MovieCollec
   )
 }
 
-/** 列表行：复用 nv-browse-list-item 契约，与影视库列表视图保持同一密度 */
 function CollectionListCard({ collection }: { collection: MovieCollection }) {
-  const [posterFailed, setPosterFailed] = useState(false)
-  const hasPoster = !!collection.poster_path && !posterFailed
-
   return (
     <Link
       to={`/collections/${collection.id}`}
       className="nv-browse-list-item group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]"
     >
-      <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
-        {hasPoster ? (
-          <img
-            src={streamApi.getCollectionPosterUrl(collection.id)}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="lazy"
-            onError={() => setPosterFailed(true)}
-          />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 grid place-items-center text-[var(--nv-text-tertiary)]">
-            <Layers size={15} aria-hidden="true" />
-          </div>
-        )}
-      </div>
+      <MediaArtwork
+        src={collection.poster_path ? streamApi.getCollectionPosterUrl(collection.id) : null}
+        alt=""
+        ratio="poster"
+        className="h-16 w-11 shrink-0 rounded-[9px]"
+        fallback={<Layers size={15} aria-hidden="true" />}
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
