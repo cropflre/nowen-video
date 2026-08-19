@@ -371,6 +371,7 @@ fun MediaDetailScreen(
     mediaId: String,
     onBack: () -> Unit,
     onPlay: (String) -> Unit,
+    onHighlightPlay: (String, Double) -> Unit = { id, _ -> onPlay(id) },
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
     onMediaClick: (String) -> Unit = onPlay,
@@ -495,7 +496,7 @@ fun MediaDetailScreen(
                                     highlights = state.highlights,
                                     expanded = highlightsExpanded,
                                     baseUrl = baseUrl,
-                                    onPlay = { onPlay(media.id) },
+                                    onPlay = { highlight -> onHighlightPlay(media.id, highlight.startTime) },
                                 )
                             }
                         }
