@@ -4,7 +4,7 @@
  * Fluent remains the implementation layer for complex admin/form controls,
  * while Nowen semantic tokens remain the visual source of truth.
  */
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, startTransition, useEffect, useRef, useState } from 'react'
 import {
   FluentProvider,
   Theme,
@@ -79,16 +79,40 @@ function readTheme(): 'dark' | 'light' {
 
 export function FluentAppProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<'dark' | 'light'>(() => readTheme())
+  const modeRef = useRef(mode)
+  const syncFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setMode(readTheme())
-    })
+    const scheduleFluentThemeSync = () => {
+      const nextMode = readTheme()
+      if (nextMode === modeRef.current) return
+
+      if (syncFrameRef.current !== null) {
+        cancelAnimationFrame(syncFrameRef.current)
+      }
+
+      // CSS semantic variables repaint the visible app immediately. Fluent's
+      // context update is intentionally moved out of that critical paint so a
+      // provider-wide token refresh cannot make the click feel sticky.
+      syncFrameRef.current = requestAnimationFrame(() => {
+        syncFrameRef.current = requestAnimationFrame(() => {
+          syncFrameRef.current = null
+          modeRef.current = nextMode
+          startTransition(() => setMode(nextMode))
+        })
+      })
+    }
+
+    const observer = new MutationObserver(scheduleFluentThemeSync)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['data-theme'],
     })
-    return () => observer.disconnect()
+
+    return () => {
+      observer.disconnect()
+      if (syncFrameRef.current !== null) cancelAnimationFrame(syncFrameRef.current)
+    }
   }, [])
 
   return (
