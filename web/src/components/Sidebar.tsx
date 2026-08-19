@@ -1,15 +1,15 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useServerProfileStore } from '@/stores/serverProfile'
-import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { libraryApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Library } from '@/types'
 import { useTranslation } from '@/i18n'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
-import { BottomNavigation } from '@/ui'
+import { BottomNavigation, NavigationRailLink, NavigationRailSection } from '@/ui'
 import {
   Film,
   FolderOpen,
@@ -33,33 +33,6 @@ interface SidebarProps {
   onMobileClose?: () => void
   collapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
-}
-
-interface RailLinkProps {
-  to: string
-  icon: ReactNode
-  label: string
-  end?: boolean
-  meta?: ReactNode
-}
-
-function RailLink({ to, icon, label, end = false, meta }: RailLinkProps) {
-  return (
-    <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label} data-label={label}>
-      <span className="nv-rail-icon">{icon}</span>
-      <span className="nv-rail-label">{label}</span>
-      {meta !== undefined && <span className="nv-rail-meta">{meta}</span>}
-    </NavLink>
-  )
-}
-
-function RailSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="nv-rail-section">
-      <div className="nv-rail-section-title">{title}</div>
-      <div className="nv-rail-section-links">{children}</div>
-    </section>
-  )
 }
 
 export default function Sidebar({ collapsed = false, onCollapsedChange }: SidebarProps) {
@@ -140,18 +113,18 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
         </div>
 
         <nav className="nv-rail-scroll">
-          <RailSection title="浏览">
-            <RailLink to="/" end icon={<Home size={16} aria-hidden="true" />} label={t('nav.home')} />
-            <RailLink to="/browse" icon={<Film size={16} aria-hidden="true" />} label="影视库" />
-            <RailLink to="/collections" icon={<Layers size={16} aria-hidden="true" />} label="合集" />
-            <RailLink to="/search" icon={<Search size={16} aria-hidden="true" />} label={t('nav.search')} />
-            <RailLink to="/my" icon={<UserRound size={16} aria-hidden="true" />} label="我的" />
-          </RailSection>
+          <NavigationRailSection title="浏览">
+            <NavigationRailLink to="/" end icon={<Home size={16} aria-hidden="true" />} label={t('nav.home')} />
+            <NavigationRailLink to="/browse" icon={<Film size={16} aria-hidden="true" />} label="影视库" />
+            <NavigationRailLink to="/collections" icon={<Layers size={16} aria-hidden="true" />} label="合集" />
+            <NavigationRailLink to="/search" icon={<Search size={16} aria-hidden="true" />} label={t('nav.search')} />
+            <NavigationRailLink to="/my" icon={<UserRound size={16} aria-hidden="true" />} label="我的" />
+          </NavigationRailSection>
 
           {libraries.length > 0 && (
-            <RailSection title="媒体库">
+            <NavigationRailSection title="媒体库">
               {libraries.map((library) => (
-                <RailLink
+                <NavigationRailLink
                   key={library.id}
                   to={`/library/${library.id}`}
                   icon={iconForType(library.type)}
@@ -159,15 +132,15 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
                   meta={typeof library.media_count === 'number' ? library.media_count : undefined}
                 />
               ))}
-            </RailSection>
+            </NavigationRailSection>
           )}
 
           {user?.role === 'admin' && (
-            <RailSection title="管理">
-              <RailLink to="/admin" icon={<Settings size={16} aria-hidden="true" />} label="管理中心" />
-              {isFullProfile && <RailLink to="/files" icon={<FolderOpen size={16} aria-hidden="true" />} label="文件管理" />}
-              {preprocessAvailable && <RailLink to="/preprocess" icon={<Zap size={16} aria-hidden="true" />} label="任务中心" />}
-            </RailSection>
+            <NavigationRailSection title="管理">
+              <NavigationRailLink to="/admin" icon={<Settings size={16} aria-hidden="true" />} label="管理中心" />
+              {isFullProfile && <NavigationRailLink to="/files" icon={<FolderOpen size={16} aria-hidden="true" />} label="文件管理" />}
+              {preprocessAvailable && <NavigationRailLink to="/preprocess" icon={<Zap size={16} aria-hidden="true" />} label="任务中心" />}
+            </NavigationRailSection>
           )}
         </nav>
 
