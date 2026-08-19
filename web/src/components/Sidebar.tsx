@@ -4,6 +4,8 @@ import { useThemeStore } from '@/stores/theme'
 import { useTranslation } from '@/i18n'
 import { BottomNavigation, NavigationRailLink, NavigationRailSection } from '@/ui'
 import {
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Film,
   Home,
@@ -23,13 +25,14 @@ interface SidebarProps {
   onCollapsedChange?: (collapsed: boolean) => void
 }
 
-export default function Sidebar({ collapsed = false }: SidebarProps) {
+export default function Sidebar({ collapsed = false, onCollapsedChange }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const isDarkTheme = theme === 'dark'
   const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
+  const collapseActionLabel = collapsed ? '展开侧边栏' : '收起侧边栏'
 
   const displayName = user?.nickname?.trim() || user?.username || 'Admin'
   const initials = displayName.slice(0, 1).toUpperCase()
@@ -61,6 +64,22 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
           </div>
         </div>
 
+        {onCollapsedChange && (
+          <button
+            type="button"
+            className="nv-rail-collapse-toggle"
+            onClick={() => onCollapsedChange(!collapsed)}
+            aria-label={collapseActionLabel}
+            aria-controls="main-sidebar"
+            aria-expanded={!collapsed}
+            title={collapseActionLabel}
+          >
+            {collapsed
+              ? <ChevronRight size={16} aria-hidden="true" />
+              : <ChevronLeft size={16} aria-hidden="true" />}
+          </button>
+        )}
+
         <nav className="nv-rail-scroll">
           <NavigationRailSection>
             <NavigationRailLink to="/" end icon={<Home size={17} aria-hidden="true" />} label={t('nav.home')} />
@@ -87,6 +106,7 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
             className="nv-rail-profile"
             onClick={() => navigate('/profile')}
             aria-label="打开个人资料"
+            title={collapsed ? `${displayName} · ${user?.role === 'admin' ? 'admin' : 'user'}` : undefined}
           >
             <div className="nv-rail-avatar" aria-hidden="true">{initials}</div>
             <div className="nv-rail-profile-copy">
