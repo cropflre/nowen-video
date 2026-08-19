@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clapperboard, Clock3, Loader2, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronUp, Clapperboard, Clock3, Loader2, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { Button, EmptyState } from '@/components/design-system'
 import { useToast } from '@/components/Toast'
 import { streamApi } from '@/api'
@@ -68,6 +68,12 @@ function executionBadge(stage?: string) {
   return '智能调度'
 }
 
+function getCollapsedCount(width: number) {
+  if (width >= 860) return 4
+  if (width >= 620) return 3
+  return 2
+}
+
 export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighlightsPanelProps) {
   const navigate = useNavigate()
   const toast = useToast()
@@ -79,6 +85,9 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [collapsedCount, setCollapsedCount] = useState(4)
+  const sectionRef = useRef<HTMLDivElement | null>(null)
   const pollRef = useRef<number | null>(null)
   const hoverTimerRef = useRef<number | null>(null)
   const completionNotifiedRef = useRef(false)
@@ -114,8 +123,27 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
 
   useEffect(() => {
     setLoading(true)
+    setExpanded(false)
     void refresh().catch(() => setLoading(false))
   }, [refresh])
+
+  useEffect(() => {
+    const node = sectionRef.current
+    if (!node) return
+
+    const updateCount = (width: number) => {
+      const nextCount = getCollapsedCount(width)
+      setCollapsedCount((current) => current === nextCount ? current : nextCount)
+    }
+
+    updateCount(node.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (typeof width === 'number') updateCount(width)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const handleProgress = (data: MediaAnalysisProgressData) => {
@@ -158,8 +186,6 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
     }
     if (!running) return
 
-    // WebSocket is the primary progress path. HTTP stays as a low-frequency
-    // recovery path for proxies/browsers where the socket is unavailable.
     const interval = wsConnected ? 15000 : 5000
     pollRef.current = window.setInterval(() => {
       void loadStatus().then((next) => {
@@ -221,6 +247,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
       await mediaAnalysisApi.deleteHighlights(mediaId)
       setHighlights([])
       setStale(false)
+      setExpanded(false)
       toast.success('精彩片段已删除')
     } catch (error) {
       toast.error(formatErrMsg(error, '删除精彩片段失败'))
@@ -235,6 +262,8 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
     () => [...highlights].sort((a, b) => a.start_time - b.start_time),
     [highlights],
   )
+  const visibleHighlights = expanded ? orderedHighlights : orderedHighlights.slice(0, collapsedCount)
+  const hasMore = orderedHighlights.length > collapsedCount
 
   if (loading) {
     return (
@@ -298,27 +327,41 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">精彩片段</h2>
-            <span className="rounded-full bg-[var(--nv-surface-elevated)] px-2.5 py-1 text-xs text-[var(--nv-text-tertiary)]">{orderedHighlights.length} 个</span>
-          </div>
-          <p className="mt-1 text-sm text-[var(--nv-text-secondary)]">服务端统一调度和保存结果；客户端可承担采样、评分与缩略图生成，弱 NAS 仅在需要时兜底。</p>
+    <div ref={sectionRef} className="nv-highlights-panel space-y-4">
+      <div className="nv-highlights-header flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">精彩片段</h2>
+          <span className="text-xs text-[var(--nv-text-tertiary)]">{orderedHighlights.length} 个</span>
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={handleAnalyze} disabled={submitting}>
-              {submitting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              重新分析
+
+        <div className="nv-highlights-header-actions flex items-center gap-1.5">
+          {hasMore && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="nv-detail-inline-more"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded ? '收起' : '查看更多'}
+              {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}>
-              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              删除结果
-            </Button>
-          </div>
-        )}
+          )}
+
+          {isAdmin && (
+            <>
+              <Button type="button" variant="secondary" size="sm" onClick={handleAnalyze} disabled={submitting}>
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                重新分析
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}>
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                删除结果
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {stale && (
@@ -327,8 +370,11 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {orderedHighlights.map((item) => {
+      <div
+        className={`nv-highlight-grid ${expanded ? 'is-expanded' : 'is-collapsed'}`}
+        style={{ '--nv-highlight-preview-count': collapsedCount } as CSSProperties}
+      >
+        {visibleHighlights.map((item) => {
           const duration = Math.max(0, item.end_time - item.start_time)
           const usePreview = hoveredId === item.id && item.preview_url
           const poster = assetUrl(usePreview ? item.preview_url : item.thumbnail_url)
@@ -336,14 +382,14 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
             <button
               key={item.id}
               type="button"
-              className="group overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-surface-soft)] text-left shadow-[var(--nv-shadow-card)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-accent)]/40 hover:shadow-[var(--nv-shadow-elevated)]"
+              className="nv-highlight-card group overflow-hidden rounded-[var(--nv-radius-container)] border border-[var(--nv-border-subtle)] bg-[var(--nv-surface-soft)] text-left shadow-[var(--nv-shadow-card)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--nv-accent)]/40 hover:shadow-[var(--nv-shadow-elevated)]"
               onMouseEnter={() => beginHover(item.id)}
               onMouseLeave={() => endHover(item.id)}
               onFocus={() => setHoveredId(item.id)}
               onBlur={() => endHover(item.id)}
               onClick={() => navigate(`/play/${mediaId}?start=${item.start_time.toFixed(3)}&end=${item.end_time.toFixed(3)}&mode=highlight`)}
             >
-              <div className="relative aspect-video overflow-hidden bg-[var(--nv-surface-elevated)]">
+              <div className="nv-highlight-card-media relative aspect-video overflow-hidden bg-[var(--nv-surface-elevated)]">
                 {poster ? (
                   <img
                     src={poster}
@@ -363,12 +409,12 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
                 <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-md">{duration.toFixed(0)} 秒</span>
               </div>
 
-              <div className="p-4">
+              <div className="nv-highlight-card-copy p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 flex-1 truncate font-semibold text-[var(--nv-text-primary)]">{item.title}</h3>
+                  <h3 className="min-w-0 flex-1 truncate font-semibold text-[var(--nv-text-primary)]" title={item.title}>{item.title}</h3>
                   <span className="shrink-0 rounded-full bg-[var(--nv-accent-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--nv-accent)]">{item.score.toFixed(1)}</span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
+                <div className="nv-highlight-card-meta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
                   <span className="inline-flex items-center gap-1"><Clock3 size={12} />{formatTime(item.start_time)} → {formatTime(item.end_time)}</span>
                   <span>{analysisLabel(item.analysis_method)}</span>
                 </div>
