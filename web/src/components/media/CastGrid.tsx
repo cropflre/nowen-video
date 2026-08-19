@@ -61,7 +61,7 @@ export default function CastGrid({ persons, initialCount }: CastGridProps) {
 
   useEffect(() => {
     const node = sectionRef.current
-    if (!node || initialCount) return
+    if (!node || initialCount || dedupedPersons.length === 0) return
 
     const updateCount = (width: number) => {
       const nextCount = getCollapsedCount(width)
@@ -75,7 +75,7 @@ export default function CastGrid({ persons, initialCount }: CastGridProps) {
     })
     observer.observe(node)
     return () => observer.disconnect()
-  }, [initialCount])
+  }, [dedupedPersons.length, initialCount])
 
   useEffect(() => {
     setExpanded(false)
