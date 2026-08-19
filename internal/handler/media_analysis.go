@@ -44,11 +44,13 @@ func highlightView(mediaID string, h model.VideoHighlight) mediaHighlightView {
 		StartTime: h.StartTime, EndTime: h.EndTime, Score: h.Score,
 		Tags: h.Tags, Source: h.Source, AnalysisMethod: h.AnalysisMethod, Version: h.Version,
 	}
-	if h.Thumbnail != "" {
-		view.ThumbnailURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/thumbnail"
-	}
+	// 即使分析阶段因为宿主 FFmpeg 缺少 libwebp 没有成功写入 Thumbnail，
+	// 也始终暴露稳定 URL。首次图片请求会走 portable fallback 生成 JPEG 并持久化，
+	// 避免 macOS / 精简 FFmpeg 环境出现“有精彩片段记录但整排空白”的状态。
+	view.ThumbnailURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/thumbnail"
 	// preview_thumbnail_v1 已把客户端生成的精彩片段也接入同一 lazy preview URL。
-	// 首次请求时由 Media Compute Node V2 尝试 Desktop -> Android，auto 再回退 Server。
+	// 首次请求时由 Media Compute Node V2 尝试 Desktop -> Android；若服务器缺少
+	// libwebp，则 portable fallback 会直接生成浏览器可播放的 GIF，避免 hover 404。
 	view.PreviewURL = "/api/media/" + mediaID + "/highlights/" + h.ID + "/preview"
 	return view
 }
@@ -120,8 +122,11 @@ func (h *MediaAnalysisHandler) DeleteHighlights(c *gin.Context) {
 }
 
 func (h *MediaAnalysisHandler) Thumbnail(c *gin.Context) {
-	path, err := h.analysis.HighlightAsset(c.Param("id"), c.Param("highlightId"), "thumbnail")
+	mediaID := c.Param("id")
+	highlightID := c.Param("highlightId")
+	path, err := h.analysis.EnsureHighlightThumbnailPortable(mediaID, highlightID)
 	if err != nil {
+		h.logger.Debugf("highlight thumbnail unavailable media=%s highlight=%s: %v", mediaID, highlightID, err)
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -129,9 +134,11 @@ func (h *MediaAnalysisHandler) Thumbnail(c *gin.Context) {
 }
 
 func (h *MediaAnalysisHandler) Preview(c *gin.Context) {
-	path, err := h.analysis.EnsureHighlightPreviewDistributed(c.Param("id"), c.Param("highlightId"))
+	mediaID := c.Param("id")
+	highlightID := c.Param("highlightId")
+	path, err := h.analysis.EnsureHighlightPreviewPortable(mediaID, highlightID)
 	if err != nil {
-		h.logger.Debugf("distributed lazy highlight preview failed media=%s highlight=%s: %v", c.Param("id"), c.Param("highlightId"), err)
+		h.logger.Debugf("lazy highlight preview unavailable media=%s highlight=%s: %v", mediaID, highlightID, err)
 		c.Status(http.StatusNotFound)
 		return
 	}
