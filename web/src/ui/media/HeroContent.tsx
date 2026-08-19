@@ -10,6 +10,7 @@ export interface HeroContentProps {
   meta?: ReactNode
   badges?: ReactNode
   overview?: ReactNode
+  supplemental?: ReactNode
   actions?: ReactNode
   headingLevel?: HeroHeadingLevel
   className?: string
@@ -23,6 +24,7 @@ export function HeroContent({
   meta,
   badges,
   overview,
+  supplemental,
   actions,
   headingLevel = 'h1',
   className,
@@ -68,6 +70,8 @@ export function HeroContent({
           {overview}
         </div>
       )}
+
+      {supplemental && <div className="nv-media-hero-supplemental">{supplemental}</div>}
 
       {actions && (
         <div className="nv-media-hero-actions mt-5 flex flex-wrap items-center gap-2.5">
