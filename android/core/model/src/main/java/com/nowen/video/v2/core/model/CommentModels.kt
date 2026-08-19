@@ -4,6 +4,15 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class MediaCommentUser(
+    val id: String = "",
+    val username: String = "",
+    val role: String = "user",
+    val avatar: String = "",
+    val nickname: String = "",
+)
+
+@Serializable
 data class MediaComment(
     val id: String = "",
     @SerialName("user_id") val userId: String = "",
@@ -13,7 +22,15 @@ data class MediaComment(
     val username: String = "",
     val nickname: String = "",
     @SerialName("created_at") val createdAt: String = "",
-)
+    val user: MediaCommentUser? = null,
+) {
+    val displayName: String
+        get() = user?.nickname?.takeIf(String::isNotBlank)
+            ?: user?.username?.takeIf(String::isNotBlank)
+            ?: nickname.takeIf(String::isNotBlank)
+            ?: username.takeIf(String::isNotBlank)
+            ?: "用户"
+}
 
 @Serializable
 data class MediaCommentList(
