@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Info, Pause, Play } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Info, Play } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
@@ -98,10 +98,7 @@ function getHeroArtwork(media: Media): HeroArtwork {
   }
 }
 
-function handleArtworkError(
-  event: SyntheticEvent<HTMLImageElement>,
-  fallback?: string,
-) {
+function handleArtworkError(event: SyntheticEvent<HTMLImageElement>, fallback?: string) {
   const image = event.currentTarget
   if (fallback && image.dataset.fallbackApplied !== 'true') {
     image.dataset.fallbackApplied = 'true'
@@ -116,13 +113,18 @@ interface HeroCarouselProps {
   items: RecommendedMedia[]
   fallbackItems?: MixedItem[]
   maxItems?: number
+  progressByMediaId?: Record<string, number>
 }
 
-export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems = 5 }: HeroCarouselProps) {
+export default function HeroCarousel({
+  items: rawItems,
+  fallbackItems,
+  maxItems = 5,
+  progressByMediaId = {},
+}: HeroCarouselProps) {
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
   const containerRef = useRef<HTMLElement>(null)
-  const progressRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const items = useMemo(() => {
@@ -135,7 +137,6 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
   const [current, setCurrent] = useState(0)
   const [direction, setDirection] = useState(1)
-  const [isPaused, setIsPaused] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
 
   useEffect(() => {
@@ -161,23 +162,13 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
-    if (items.length <= 1 || isPaused || isHovering) return
+    if (items.length <= 1 || isHovering) return
 
     timerRef.current = setInterval(goNext, AUTO_PLAY_INTERVAL)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [goNext, isHovering, isPaused, items.length, current])
-
-  useEffect(() => {
-    if (!progressRef.current || isPaused || isHovering || items.length <= 1) return
-    const progress = progressRef.current
-    progress.style.transition = 'none'
-    progress.style.width = '0%'
-    void progress.offsetWidth
-    progress.style.transition = `width ${AUTO_PLAY_INTERVAL}ms linear`
-    progress.style.width = '100%'
-  }, [current, isPaused, isHovering, items.length])
+  }, [goNext, isHovering, items.length, current])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -216,11 +207,15 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
   const detailLink = item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/media/${item.media.id}`
+  const progress = Math.max(0, Math.min(100, progressByMediaId[item.media.id] || 0))
+  const eyebrow = item.media.orig_title && item.media.orig_title !== item.media.title
+    ? item.media.orig_title
+    : item.reason
 
   return (
     <section
       ref={containerRef}
-      className="nv-hero-carousel relative isolate min-h-[340px] overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)] sm:min-h-[400px] lg:min-h-[460px]"
+      className="nv-hero-carousel relative isolate overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)]"
       role="region"
       aria-roledescription="carousel"
       aria-label={t('home.recommended')}
@@ -269,25 +264,28 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-90"
-        style={{
-          background: 'radial-gradient(circle at 78% 16%, var(--nv-ambient-purple-soft), transparent 34rem)',
-        }}
-      />
 
-      <div className="relative z-10 flex min-h-[340px] max-w-[49rem] flex-col justify-end px-[var(--nv-page-gutter)] pb-12 pt-16 sm:min-h-[400px] sm:pb-14 lg:min-h-[460px] lg:pb-16">
+      <div className="nv-home-hero-content relative z-10 flex flex-col justify-center">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={`hero-content-${item.media.id}`}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            transition={{ duration: prefersReducedMotion ? 0.12 : 0.28 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+            transition={{ duration: prefersReducedMotion ? 0.12 : 0.25 }}
           >
             <MediaHeroContent
               media={item.media}
-              eyebrow={item.reason}
+              eyebrow={eyebrow}
+              subtitle={false}
+              supplemental={progress > 0 ? (
+                <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
+                  <div className="nv-home-hero-watch-progress-label">已观看 {progress}%</div>
+                  <div className="nv-home-hero-watch-progress-track">
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              ) : undefined}
               actions={(
                 <>
                   <Link
@@ -296,8 +294,8 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                     data-variant="primary"
                     data-size="lg"
                   >
-                    <Play size={18} fill="currentColor" aria-hidden="true" />
-                    {t('home.playNow')}
+                    <Play size={16} fill="currentColor" aria-hidden="true" />
+                    {progress > 0 ? '继续播放' : t('home.playNow')}
                   </Link>
                   <Link
                     to={detailLink}
@@ -305,7 +303,7 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
                     data-variant="secondary"
                     data-size="lg"
                   >
-                    <Info size={17} aria-hidden="true" />
+                    <Info size={16} aria-hidden="true" />
                     {t('home.viewDetail')}
                   </Link>
                 </>
@@ -317,78 +315,42 @@ export default function HeroCarousel({ items: rawItems, fallbackItems, maxItems 
 
       {items.length > 1 && (
         <>
-          <div
-            className="absolute left-3 top-1/2 z-20 -translate-y-1/2 opacity-0 transition-opacity sm:left-5"
-            style={{ opacity: isHovering ? 1 : undefined }}
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={goPrev}
+            className="nv-home-hero-arrow nv-home-hero-arrow--left"
+            aria-label="上一个"
           >
-            <Button
-              variant="secondary"
-              size="sm"
-              iconOnly
-              onClick={goPrev}
-              className="shadow-[var(--nv-shadow-card)]"
-              aria-label="上一个"
-            >
-              <ChevronLeft size={19} aria-hidden="true" />
-            </Button>
-          </div>
-          <div
-            className="absolute right-3 top-1/2 z-20 -translate-y-1/2 opacity-0 transition-opacity sm:right-5"
-            style={{ opacity: isHovering ? 1 : undefined }}
+            <ChevronLeft size={18} aria-hidden="true" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconOnly
+            onClick={goNext}
+            className="nv-home-hero-arrow nv-home-hero-arrow--right"
+            aria-label="下一个"
           >
-            <Button
-              variant="secondary"
-              size="sm"
-              iconOnly
-              onClick={goNext}
-              className="shadow-[var(--nv-shadow-card)]"
-              aria-label="下一个"
-            >
-              <ChevronRight size={19} aria-hidden="true" />
-            </Button>
-          </div>
+            <ChevronRight size={18} aria-hidden="true" />
+          </Button>
         </>
       )}
 
       {items.length > 1 && (
-        <div className="absolute inset-x-[var(--nv-page-gutter)] bottom-4 z-20 flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={() => setIsPaused((value) => !value)}
-            aria-label={isPaused ? '继续轮播' : '暂停轮播'}
-          >
-            {isPaused ? <Play size={12} fill="currentColor" aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
-          </Button>
-
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            {items.map((recommendation, index) => (
-              <button
-                key={recommendation.media.id}
-                onClick={() => goTo(index)}
-                className="relative h-6 flex-1 cursor-pointer"
-                aria-label={`第 ${index + 1} 张：${recommendation.media.title}`}
-                aria-current={index === current ? 'true' : undefined}
-              >
-                <span className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-black/15 dark:bg-white/10" />
-                {index < current && (
-                  <span className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[var(--nv-action-primary)] opacity-55" />
-                )}
-                {index === current && (
-                  <span
-                    ref={progressRef}
-                    className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[var(--nv-action-primary)]"
-                    style={{ width: '0%' }}
-                  />
-                )}
-              </button>
-            ))}
-          </div>
-
-          <span className="shrink-0 text-[10px] font-medium tabular-nums text-[var(--nv-text-tertiary)]">
-            {String(current + 1).padStart(2, '0')}/{String(items.length).padStart(2, '0')}
-          </span>
+        <div className="nv-home-hero-dots" role="tablist" aria-label="精选内容">
+          {items.map((recommendation, index) => (
+            <button
+              key={recommendation.media.id}
+              type="button"
+              onClick={() => goTo(index)}
+              className="nv-home-hero-dot"
+              aria-label={`第 ${index + 1} 张：${recommendation.media.title}`}
+              aria-selected={index === current}
+              role="tab"
+            />
+          ))}
         </div>
       )}
     </section>
