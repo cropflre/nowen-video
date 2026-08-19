@@ -32,3 +32,6 @@
 
 /* Final media-detail product flow: top decision area + full-width feed. */
 @import './ui-media-detail-flow.css';
+
+/* Reviews are secondary content: compact collapsed summary by default. */
+@import './ui-media-detail-comments.css';
