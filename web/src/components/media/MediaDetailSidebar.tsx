@@ -1,7 +1,6 @@
 import type { FileDetail, Media, MediaPlayInfo, PlaybackStatsInfo, TechSpecs } from '@/types'
-import { Button, Surface, Tag } from '@/components/design-system'
 import { formatSize } from '@/utils/format'
-import { Captions, Check, Database, Film } from 'lucide-react'
+import { Captions, Check, Database, Film, PlayCircle } from 'lucide-react'
 
 interface MediaDetailSidebarProps {
   media: Media
@@ -32,8 +31,8 @@ function parseExternalSubtitlePaths(value: string): string[] {
 function formatCodec(codec?: string): string {
   if (!codec) return '未知编码'
   const normalized = codec.toLowerCase()
-  if (normalized === 'hevc' || normalized === 'h265') return 'HEVC / H.265'
-  if (normalized === 'h264') return 'H.264 / AVC'
+  if (normalized === 'hevc' || normalized === 'h265') return 'H.265'
+  if (normalized === 'h264') return 'H.264'
   if (normalized === 'av1') return 'AV1'
   return codec.toUpperCase()
 }
@@ -71,63 +70,68 @@ export default function MediaDetailSidebar({
     media.bangumi_id > 0 ? { name: 'Bangumi', value: String(media.bangumi_id), href: `https://bgm.tv/subject/${media.bangumi_id}` } : null,
   ].filter((item): item is { name: string; value: string; href: string } => item !== null)
 
+  const playbackTitle = [
+    `${sourceResolution} · ${formatCodec(sourceCodec)}`,
+    sourceSize > 0 ? formatSize(sourceSize) : null,
+    playInfo?.can_direct_play ? '支持直接播放' : '自动兼容播放',
+  ].filter(Boolean).join(' · ')
+
+  const subtitleTitle = subtitleCount > 0
+    ? `${subtitleCount} 个字幕来源（${embeddedSubtitleCount} 内嵌 · ${externalSubtitleCount} 外挂）`
+    : '暂未检测到字幕轨道'
+
   return (
     <aside className="nv-detail-sidebar nv-detail-summary-strip" aria-label="媒体状态">
-      <Surface className="nv-detail-summary-surface">
-        <section className="nv-detail-summary-item" aria-label="播放信息">
-          <div className="nv-detail-summary-icon" aria-hidden="true"><Film size={15} /></div>
-          <div className="nv-detail-summary-copy">
-            <span className="nv-detail-summary-label">播放</span>
-            <div className="nv-detail-summary-primary">
-              <strong>{sourceResolution} · {formatCodec(sourceCodec)}</strong>
-              <Tag tone="brand">当前</Tag>
-            </div>
-            <span className="nv-detail-summary-secondary">
-              {sourceSize > 0 ? formatSize(sourceSize) : '文件大小未知'}
-              {' · '}
-              {playInfo?.can_direct_play ? '支持直接播放' : '自动兼容播放'}
+      <div className="nv-detail-summary-tags">
+        <div className="nv-detail-status-tag nv-detail-status-tag--playback" title={playbackTitle}>
+          <Film size={13} aria-hidden="true" />
+          <strong>{sourceResolution}</strong>
+          <span>{formatCodec(sourceCodec)}</span>
+          {playInfo?.can_direct_play && (
+            <span className="nv-detail-status-tag-accent">
+              <PlayCircle size={11} aria-hidden="true" />
+              直放
             </span>
-          </div>
-        </section>
-
-        <section className="nv-detail-summary-item" aria-label="字幕信息">
-          <div className="nv-detail-summary-icon" aria-hidden="true"><Captions size={15} /></div>
-          <div className="nv-detail-summary-copy">
-            <span className="nv-detail-summary-label">字幕</span>
-            <div className="nv-detail-summary-primary">
-              <strong>{subtitleCount > 0 ? `${subtitleCount} 个字幕来源` : '暂无字幕'}</strong>
-            </div>
-            <span className="nv-detail-summary-secondary">
-              {subtitleCount > 0
-                ? `${embeddedSubtitleCount} 内嵌 · ${externalSubtitleCount} 外挂`
-                : '播放时仍可使用播放器兼容字幕'}
-            </span>
-          </div>
-          {isAdmin && (
-            <Button type="button" variant="ghost" size="sm" className="nv-detail-summary-action" onClick={onManageSubtitles}>
-              管理
-            </Button>
           )}
-        </section>
+        </div>
 
-        <section className="nv-detail-summary-item" aria-label="元数据信息">
-          <div className="nv-detail-summary-icon" aria-hidden="true"><Database size={15} /></div>
-          <div className="nv-detail-summary-copy">
-            <span className="nv-detail-summary-label">元数据</span>
-            <div className="nv-detail-summary-sources">
-              {metadataSources.length > 0 ? metadataSources.map((source) => (
-                <a key={source.name} href={source.href} target="_blank" rel="noopener noreferrer" className="nv-detail-summary-source" title={`${source.name} ${source.value}`}>
-                  <Check size={10} aria-hidden="true" />
-                  <span>{source.name}</span>
-                </a>
-              )) : (
-                <strong className="nv-detail-summary-local">本地资料</strong>
-              )}
-            </div>
-            <span className="nv-detail-summary-secondary">{formatScrapeStatus(media.scrape_status)}</span>
+        {isAdmin ? (
+          <button
+            type="button"
+            className="nv-detail-status-tag nv-detail-status-tag--interactive"
+            title={`${subtitleTitle}，点击管理字幕`}
+            onClick={onManageSubtitles}
+          >
+            <Captions size={13} aria-hidden="true" />
+            <strong>{subtitleCount > 0 ? `${subtitleCount} 字幕` : '无字幕'}</strong>
+            <span className="nv-detail-status-tag-hint">管理</span>
+          </button>
+        ) : (
+          <div className="nv-detail-status-tag" title={subtitleTitle}>
+            <Captions size={13} aria-hidden="true" />
+            <strong>{subtitleCount > 0 ? `${subtitleCount} 字幕` : '无字幕'}</strong>
           </div>
-        </section>
-      </Surface>
+        )}
+
+        {metadataSources.length > 0 ? metadataSources.map((source) => (
+          <a
+            key={source.name}
+            href={source.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nv-detail-status-tag nv-detail-status-tag--interactive"
+            title={`${source.name} ${source.value} · ${formatScrapeStatus(media.scrape_status)}`}
+          >
+            <Check size={12} aria-hidden="true" />
+            <strong>{source.name}</strong>
+          </a>
+        )) : (
+          <div className="nv-detail-status-tag" title={`本地资料 · ${formatScrapeStatus(media.scrape_status)}`}>
+            <Database size={13} aria-hidden="true" />
+            <strong>本地资料</strong>
+          </div>
+        )}
+      </div>
     </aside>
   )
 }
