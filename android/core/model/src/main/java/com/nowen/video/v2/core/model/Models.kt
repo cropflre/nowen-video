@@ -87,10 +87,7 @@ data class LibrarySummary(
 
 /**
  * 首页、搜索、推荐和续播共用的轻量媒体模型。
- *
- * Android 正式端与 Web 移动端共用同一批接口，因此这里保留首页 Hero / 横向媒体栏
- * 真正需要的海报、背景图、评分、时长、类型、清晰度与续播位置。自定义序列化器同时
- * 兼容普通媒体、mixed item、recommend item 内部的 media，以及 watch history。
+ * Android 与 Web 移动端共用同一批接口，因此保留 Hero / 横向媒体栏实际需要的信息。
  */
 @Serializable(with = MediaCardSerializer::class)
 data class MediaCard(
@@ -98,6 +95,7 @@ data class MediaCard(
     val title: String = "",
     val name: String = "",
     val originalTitle: String = "",
+    val overview: String = "",
     val type: String = "",
     val year: Int? = null,
     val poster: String? = null,
@@ -158,6 +156,7 @@ private data class MediaCardPayload(
     val title: String = "",
     val name: String = "",
     @SerialName("orig_title") val originalTitle: String = "",
+    val overview: String = "",
     val type: String = "",
     @SerialName("media_type") val mediaType: String = "",
     val year: Int? = null,
@@ -209,6 +208,7 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             title = payload.title,
             name = payload.name,
             originalTitle = payload.originalTitle,
+            overview = payload.overview,
             type = inferredType,
             year = payload.year,
             poster = payload.poster,
@@ -241,6 +241,7 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             title = value.title,
             name = value.name,
             originalTitle = value.originalTitle,
+            overview = value.overview,
             type = value.type,
             year = value.year,
             poster = value.poster,
