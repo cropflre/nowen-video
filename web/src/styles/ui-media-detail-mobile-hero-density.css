@@ -1,0 +1,83 @@
+/* Nowen Video · mobile detail hero density
+ *
+ * The mobile hero keeps the real poster, but the poster must not make the whole
+ * hero taller than the information/action column. On medium-width phones this
+ * previously left a large empty backdrop band below the buttons.
+ *
+ * Product contract:
+ * - poster remains visible and visually important;
+ * - hero height follows the actual identity/actions content as closely as possible;
+ * - no duplicated overview is added just to fill space;
+ * - backdrop stays atmospheric and never creates a large empty visual tail.
+ */
+
+@media (max-width: 767px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: clamp(112px, 27vw, 148px) minmax(0, 1fr) !important;
+    gap: clamp(11px, 2.6vw, 16px) !important;
+    padding: 10px 8px 11px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner > div:first-child {
+    align-self: start !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    max-width: 148px !important;
+    margin: 0 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-hero-content {
+    align-self: start !important;
+    padding-top: 0 !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions {
+    margin-top: 10px !important;
+  }
+
+  /* Avoid visually extending the hero with an over-strong highlight frame once
+     the foreground content has ended. */
+  html body .nv-media-detail-page .nv-detail-hero-backdrop-shell {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 560px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: clamp(106px, 27vw, 126px) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 9px 7px 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    max-width: 126px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions {
+    margin-top: 8px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: 104px minmax(0, 1fr) !important;
+    gap: 9px !important;
+    padding: 8px 6px 9px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    max-width: 104px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: 98px minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    max-width: 98px !important;
+  }
+}
