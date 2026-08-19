@@ -1,0 +1,263 @@
+/* Nowen Video · media detail summary strip
+ *
+ * Playback/subtitle/metadata information is useful, but it should not consume a
+ * permanent desktop sidebar. This final refinement lets the hero own the full
+ * content width and compresses the existing MediaDetailSidebar into a quiet
+ * status strip. Mobile keeps the strip at the end of the content flow.
+ */
+
+/* Desktop/tablet: full-width hero, compact media status directly beneath it. */
+html body .nv-media-detail-page {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto auto auto !important;
+}
+
+html body .nv-media-detail-page .nv-detail-local-toolbar {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+}
+
+html body .nv-media-detail-page > .nv-detail-hero {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  width: 100% !important;
+}
+
+html body .nv-media-detail-page .nv-detail-hero-inner {
+  grid-template-columns: clamp(228px, 18vw, 272px) minmax(0, 1fr) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-main-column {
+  grid-column: 1 !important;
+  grid-row: 4 !important;
+  padding-top: 18px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-sidebar {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  position: static !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, .9fr) minmax(0, 1fr) !important;
+  grid-template-rows: auto !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  min-width: 0 !important;
+  align-items: stretch !important;
+}
+
+html body .nv-media-detail-page .nv-detail-sidebar > * {
+  min-width: 0 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card {
+  min-height: 68px !important;
+  height: 100% !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-default) 76%, transparent) !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 86%, transparent) !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  min-height: 18px !important;
+  margin-bottom: 6px !important;
+  color: var(--nv-text-tertiary) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card-header h2 {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+  color: var(--nv-text-secondary) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card-header > svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-eyebrow,
+html body .nv-media-detail-page .nv-detail-side-footnote,
+html body .nv-media-detail-page .nv-detail-side-card--quiet,
+html body .nv-media-detail-page .nv-detail-source-meta,
+html body .nv-media-detail-page .nv-detail-subtitle-more,
+html body .nv-media-detail-page .nv-detail-version-item code {
+  display: none !important;
+}
+
+/* Playback version: one compact line, no path or secondary playback variant. */
+html body .nv-media-detail-page .nv-detail-version-list {
+  display: block !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-list .nv-detail-version-item:not(.is-active) {
+  display: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-item {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  gap: 8px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-dot {
+  width: 7px !important;
+  height: 7px !important;
+  margin-top: 5px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-item strong {
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-item .nv-tag {
+  min-height: 18px !important;
+  padding-inline: 6px !important;
+  font-size: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-meta {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 4px 8px !important;
+  margin-top: 3px !important;
+  font-size: 10px !important;
+  color: var(--nv-text-tertiary) !important;
+}
+
+/* Subtitle summary: show at most the first detected track and a subtle action. */
+html body .nv-media-detail-page .nv-detail-subtitle-list {
+  display: block !important;
+}
+
+html body .nv-media-detail-page .nv-detail-subtitle-list .nv-detail-subtitle-item:not(:first-child) {
+  display: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-subtitle-item {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+html body .nv-media-detail-page .nv-detail-subtitle-item strong,
+html body .nv-media-detail-page .nv-detail-side-empty {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-subtitle-item span {
+  margin-top: 2px !important;
+  font-size: 10px !important;
+  color: var(--nv-text-tertiary) !important;
+}
+
+html body .nv-media-detail-page #detail-subtitles .nv-detail-side-card > .nv-button {
+  width: auto !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  margin-top: 5px !important;
+  padding-inline: 7px !important;
+  font-size: 10px !important;
+}
+
+/* Metadata is diagnostic information: show only compact source chips. */
+html body .nv-media-detail-page .nv-detail-source-list {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 5px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-source-item {
+  display: inline-flex !important;
+  width: auto !important;
+  min-height: 24px !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 7px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--nv-border-subtle) !important;
+  background: var(--nv-bg-control) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-source-item strong {
+  font-size: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-source-item code {
+  max-width: 86px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 9px !important;
+  color: var(--nv-text-tertiary) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-source-status {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+/* The strip should read as one quiet support layer, not three competing cards. */
+html body .nv-media-detail-page .nv-detail-sidebar::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Tablet: still one row, but slightly denser. */
+@media (max-width: 1199px) and (min-width: 768px) {
+  html body .nv-media-detail-page .nv-detail-sidebar {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    margin-top: 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card {
+    padding: 9px 10px !important;
+  }
+}
+
+/* Mobile: keep these diagnostics at the end of the page, as compact swipeable
+ * cards, so they never interrupt the primary viewing flow. */
+@media (max-width: 767px) {
+  html body .nv-media-detail-page .nv-detail-main-column {
+    grid-row: 3 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(180px, 76vw) !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar > * {
+    scroll-snap-align: start;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card {
+    min-height: 72px !important;
+    border-radius: 14px !important;
+  }
+}
