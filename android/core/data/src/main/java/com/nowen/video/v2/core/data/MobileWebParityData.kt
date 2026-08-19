@@ -170,7 +170,7 @@ class MobileWebParityRepository @Inject constructor(
     suspend fun createComment(mediaId: String, content: String, rating: Int?): Result<MediaComment> = runCatching {
         api.createComment(
             mediaId,
-            CreateMediaCommentRequest(content.trim(), rating?.coerceIn(1, 5)),
+            CreateMediaCommentRequest(content.trim(), rating?.coerceIn(1, 10)),
         ).data
     }.recoverCatching { error ->
         throw mapApiError(error)
