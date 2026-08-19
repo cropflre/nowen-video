@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -19,57 +20,73 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
+/**
+ * Android 与 Web 移动端共用的视觉基准。
+ *
+ * 这里不再采用 Material 默认蓝色体系，而是直接映射 Nowen Web 的浅色珍珠白、
+ * 深色 navy、紫色主操作与低对比边框，让 Compose 页面天然继承同一套品牌语言。
+ */
 object NowenColors {
-    val DeepSpace = Color(0xFF090C12)
-    val DeepSurface = Color(0xFF111621)
-    val DeepRaised = Color(0xFF171D2A)
-    val Lavender = Color(0xFF6578FF)
-    val Cyan = Color(0xFF2ED3D0)
-    val LightBackground = Color(0xFFF6F7FB)
-    val Ink = Color(0xFF171A24)
-    val Muted = Color(0xFF9BA3B4)
+    val DeepSpace = Color(0xFF070A12)
+    val DeepSurface = Color(0xFF101522)
+    val DeepRaised = Color(0xFF171D2B)
+    val Lavender = Color(0xFF7057FF)
+    val LavenderPressed = Color(0xFF6047F2)
+    val Cyan = Color(0xFF5CCED2)
+    val LightBackground = Color(0xFFF7F7FB)
+    val LightSurface = Color(0xFFFFFFFF)
+    val LightRaised = Color(0xFFF2F2F8)
+    val Ink = Color(0xFF171923)
+    val Muted = Color(0xFF737887)
+    val LightOutline = Color(0xFFE7E8EF)
 }
 
 private val DarkScheme = darkColorScheme(
     primary = NowenColors.Lavender,
     onPrimary = Color.White,
+    primaryContainer = Color(0xFF282044),
+    onPrimaryContainer = Color(0xFFEDE9FF),
     secondary = NowenColors.Cyan,
     background = NowenColors.DeepSpace,
-    onBackground = Color(0xFFF4F6FA),
+    onBackground = Color(0xFFF5F6FA),
     surface = NowenColors.DeepSurface,
-    onSurface = Color(0xFFF4F6FA),
+    onSurface = Color(0xFFF5F6FA),
     surfaceVariant = NowenColors.DeepRaised,
-    onSurfaceVariant = NowenColors.Muted,
-    outline = Color(0xFF303747),
+    onSurfaceVariant = Color(0xFFA9AFBE),
+    outline = Color(0xFF303746),
+    outlineVariant = Color(0xFF222937),
 )
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF5063E7),
+    primary = NowenColors.Lavender,
     onPrimary = Color.White,
-    secondary = Color(0xFF087F7B),
+    primaryContainer = Color(0xFFF0EDFF),
+    onPrimaryContainer = Color(0xFF4C38C9),
+    secondary = Color(0xFF4E6B79),
     background = NowenColors.LightBackground,
     onBackground = NowenColors.Ink,
-    surface = Color.White,
+    surface = NowenColors.LightSurface,
     onSurface = NowenColors.Ink,
-    surfaceVariant = Color(0xFFEEF0F8),
-    onSurfaceVariant = Color(0xFF646B7A),
-    outline = Color(0xFFD8DCE8),
+    surfaceVariant = NowenColors.LightRaised,
+    onSurfaceVariant = NowenColors.Muted,
+    outline = NowenColors.LightOutline,
+    outlineVariant = Color(0xFFF0F0F5),
 )
 
 private val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
     extraLarge = RoundedCornerShape(28.dp),
 )
 
 private val Type = Typography(
-    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold),
+    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
+    headlineMedium = TextStyle(fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.35).sp),
+    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
     titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 25.sp),
     bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
     labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
 )
@@ -90,7 +107,7 @@ fun NowenTheme(
 @Composable
 fun NowenPage(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -108,16 +125,16 @@ fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(if (compact) 36.dp else 48.dp)
-                .clip(RoundedCornerShape(if (compact) 12.dp else 16.dp))
-                .background(Brush.linearGradient(listOf(NowenColors.Cyan, NowenColors.Lavender))),
+                .size(if (compact) 36.dp else 46.dp)
+                .clip(RoundedCornerShape(if (compact) 11.dp else 14.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF8F7AFF), NowenColors.Lavender))),
             contentAlignment = Alignment.Center,
         ) {
             Text("N", color = Color.White, style = MaterialTheme.typography.titleLarge)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Column {
-            Text("NOWEN", style = MaterialTheme.typography.titleLarge)
+            Text("NOWEN VIDEO", style = MaterialTheme.typography.titleMedium)
             if (!compact) {
                 Text(
                     "你的私人媒体空间",
@@ -137,11 +154,15 @@ fun ElevatedPanel(
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.large,
-        tonalElevation = 2.dp,
+        tonalElevation = 0.dp,
         shadowElevation = 1.dp,
         color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f),
+        ),
     ) {
-        Column(Modifier.padding(20.dp), content = content)
+        Column(Modifier.padding(16.dp), content = content)
     }
 }
 
@@ -165,7 +186,7 @@ fun MediaPosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.width(142.dp).clickable(onClick = onClick)) {
+    Column(modifier = modifier.width(132.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -173,17 +194,22 @@ fun MediaPosterCard(
                 .clip(MaterialTheme.shapes.medium)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            AsyncImage(model = imageUrl, contentDescription = title, modifier = Modifier.fillMaxSize())
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
             if (progress > 0f) {
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp),
-                    color = MaterialTheme.colorScheme.secondary,
-                    trackColor = Color.Black.copy(alpha = 0.25f),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.Black.copy(alpha = 0.18f),
                 )
             }
         }
-        Spacer(Modifier.height(9.dp))
+        Spacer(Modifier.height(8.dp))
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
         if (!subtitle.isNullOrBlank()) {
             Text(
