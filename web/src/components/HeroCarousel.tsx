@@ -81,32 +81,51 @@ interface HeroWatchState {
   duration: number
 }
 
+function isSeriesProxy(media: Media) {
+  return Boolean(media.series_id && media.series_id === media.id)
+}
+
+function getHeroPoster(media: Media): string | null {
+  if (media.series_id && (media.series?.poster_path || isSeriesProxy(media))) {
+    return streamApi.getSeriesPosterUrl(media.series_id)
+  }
+  if (media.poster_path) return streamApi.getPosterUrl(media.id)
+  if (media.series_id) return streamApi.getSeriesPosterUrl(media.series_id)
+  return null
+}
+
 function getHeroArtwork(media: Media): HeroArtwork {
-  if (media.series_id) {
-    if (media.backdrop_path) {
-      return {
-        primary: streamApi.getSeriesBackdropUrl(media.series_id),
-        fallback: streamApi.getSeriesPosterUrl(media.series_id),
-        isBackdrop: true,
-      }
-    }
+  const fallback = getHeroPoster(media) || undefined
+
+  if (media.series_id && (media.series?.backdrop_path || (isSeriesProxy(media) && media.backdrop_path))) {
     return {
-      primary: streamApi.getSeriesPosterUrl(media.series_id),
-      isBackdrop: false,
+      primary: streamApi.getSeriesBackdropUrl(media.series_id),
+      fallback,
+      isBackdrop: true,
+    }
+  }
+
+  if (media.backdrop_path) {
+    return {
+      primary: streamApi.getBackdropUrl(media.id),
+      fallback,
+      isBackdrop: true,
+    }
+  }
+
+  if (media.series_id) {
+    return {
+      primary: streamApi.getSeriesBackdropUrl(media.series_id),
+      fallback,
+      isBackdrop: true,
     }
   }
 
   return {
-    primary: streamApi.withTokenUrl(`/api/media/${media.id}/backdrop`),
-    fallback: streamApi.getPosterUrl(media.id),
+    primary: streamApi.getBackdropUrl(media.id),
+    fallback,
     isBackdrop: true,
   }
-}
-
-function getHeroPoster(media: Media): string | null {
-  if (!media.poster_path && !media.series?.poster_path) return null
-  if (media.series_id) return streamApi.getSeriesPosterUrl(media.series_id)
-  return streamApi.getPosterUrl(media.id)
 }
 
 function handleArtworkError(event: SyntheticEvent<HTMLImageElement>, fallback?: string) {
