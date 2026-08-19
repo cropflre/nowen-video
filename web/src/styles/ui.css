@@ -56,3 +56,7 @@
 
 /* Subtitle manager escapes page stacking contexts and owns a stable dialog viewport. */
 @import './ui-subtitle-manager-modal.css';
+
+/* Must stay last: reference shell fixes the desktop rail width with !important,
+ * so the explicit collapsed state needs the final cascade position. */
+@import './ui-sidebar-collapse-final.css';
