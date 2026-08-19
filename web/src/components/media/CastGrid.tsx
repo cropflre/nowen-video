@@ -1,10 +1,10 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
-import { EmptyState, Tag } from '@/components/design-system'
+import { Button, EmptyState, Tag } from '@/components/design-system'
 import { PersonCard } from '@/ui'
-import { Users } from 'lucide-react'
+import { ChevronDown, ChevronUp, Users } from 'lucide-react'
 import { useTranslation } from '@/i18n'
 
 interface CastGridProps {
@@ -26,10 +26,11 @@ function useRoleLabel() {
 
 const rolePriority: Record<string, number> = { director: 0, writer: 1, actor: 2 }
 
-export default function CastGrid({ persons }: CastGridProps) {
+export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const getRoleLabel = useRoleLabel()
+  const [expanded, setExpanded] = useState(false)
 
   const dedupedPersons = useMemo(() => {
     const seen = new Set<string>()
@@ -48,6 +49,14 @@ export default function CastGrid({ persons }: CastGridProps) {
     return a.sort_order - b.sort_order
   }), [dedupedPersons])
 
+  const collapsedCount = Math.max(1, initialCount)
+  const hasMore = sortedPersons.length > collapsedCount
+  const visiblePersons = expanded ? sortedPersons : sortedPersons.slice(0, collapsedCount)
+
+  useEffect(() => {
+    setExpanded(false)
+  }, [persons, collapsedCount])
+
   const handleCardClick = useCallback((person: MediaPerson) => {
     if (person.person_id) navigate(`/person/${person.person_id}`)
   }, [navigate])
@@ -65,17 +74,19 @@ export default function CastGrid({ persons }: CastGridProps) {
 
   return (
     <section aria-labelledby="cast-grid-title">
-      <div className="mb-3 flex items-baseline gap-2">
-        <h2 id="cast-grid-title" className="nv-section-title">{t('castGrid.title')}</h2>
-        <span className="text-[11px] text-[var(--nv-text-tertiary)]">{dedupedPersons.length}</span>
+      <div className="nv-cast-grid-header mb-3 flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <h2 id="cast-grid-title" className="nv-section-title">{t('castGrid.title')}</h2>
+          <span className="text-[11px] text-[var(--nv-text-tertiary)]">{dedupedPersons.length}</span>
+        </div>
       </div>
 
       <div
-        className="flex flex-wrap items-start gap-x-3 gap-y-5 pb-2"
+        className="nv-cast-grid-list flex flex-wrap items-start gap-x-3 gap-y-5 pb-2"
         role="list"
         aria-label={t('castGrid.title')}
       >
-        {sortedPersons.map((mediaPerson) => {
+        {visiblePersons.map((mediaPerson) => {
           const person = mediaPerson.person
           const roleLabel = getRoleLabel(mediaPerson.role)
           const subtitle = mediaPerson.character
@@ -95,6 +106,22 @@ export default function CastGrid({ persons }: CastGridProps) {
           )
         })}
       </div>
+
+      {hasMore && (
+        <div className="nv-cast-grid-toggle-row mt-1 flex justify-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="nv-cast-grid-toggle"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+            {expanded ? '收起演职人员' : `查看全部 ${sortedPersons.length} 位`}
+          </Button>
+        </div>
+      )}
     </section>
   )
 }
