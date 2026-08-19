@@ -14,6 +14,12 @@ export {
   type PersonalWorkspaceHeaderProps,
   type PersonalWorkspacePanelProps,
 } from './layout/PersonalWorkspace'
+export {
+  FilterPanel,
+  FilterGroup,
+  type FilterPanelProps,
+  type FilterGroupProps,
+} from './layout/FilterPanel'
 export { FilterChip, type FilterChipProps } from './primitives/FilterChip'
 export {
   SegmentedControl,
