@@ -1,0 +1,193 @@
+/* Nowen Video · mobile media-detail poster identity
+ *
+ * Product contract:
+ * - the poster is always visible on phones; backdrop/highlight artwork is only ambience;
+ * - poster + title/meta form the primary two-column identity block, matching the
+ *   approved mobile reference instead of letting a highlight frame become the hero;
+ * - actions stay compact enough to remain usable beside the poster on narrow phones.
+ */
+
+@media (max-width: 767px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    display: grid !important;
+    grid-template-columns: clamp(118px, 31vw, 168px) minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: clamp(12px, 3vw, 18px) !important;
+    min-height: 0 !important;
+    padding: 14px 10px 18px !important;
+  }
+
+  /* HeroSection historically used `hidden sm:block` for this slot. The mobile
+     detail reference now requires the real poster, so the final cascade owns it. */
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner > div:first-child {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    align-self: start !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    aspect-ratio: 2 / 3 !important;
+    overflow: hidden !important;
+    border-radius: 16px !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+    box-shadow: 0 14px 34px rgba(20, 24, 44, .18) !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster .nv-media-artwork-image {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-hero-content {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-top: 3px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-title,
+  html body .nv-media-detail-page .nv-detail-hero h1.nv-detail-title-long,
+  html body .nv-media-detail-page .nv-detail-hero h1.nv-detail-title-very-long {
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: clamp(21px, 5.8vw, 29px) !important;
+    line-height: 1.08 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle {
+    margin-top: 5px !important;
+    font-size: clamp(11px, 2.8vw, 13px) !important;
+    line-height: 1.35 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-meta {
+    margin-top: 10px !important;
+    gap: 6px 9px !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-badges {
+    margin-top: 8px !important;
+    gap: 5px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-badges .nv-tag,
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-meta .nv-tag {
+    min-height: 25px !important;
+    padding-inline: 8px !important;
+    border-radius: 8px !important;
+    font-size: 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview {
+    display: none !important;
+  }
+
+  /* Backdrop/highlight frames remain atmospheric. They must never visually
+     replace the poster identity on the phone layout. */
+  html body .nv-media-detail-page .nv-detail-hero-backdrop-shell > .nv-detail-hero-local-backdrop.is-loaded {
+    opacity: .24 !important;
+  }
+
+  [data-theme="dark"] body .nv-media-detail-page .nv-detail-hero-backdrop-shell > .nv-detail-hero-local-backdrop.is-loaded {
+    opacity: .42 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero > .absolute.inset-0 {
+    opacity: .18 !important;
+    filter: blur(26px) saturate(108%) !important;
+  }
+
+  [data-theme="dark"] body .nv-media-detail-page .nv-detail-hero > .absolute.inset-0 {
+    opacity: .42 !important;
+  }
+}
+
+/* A phone-width content column becomes much narrower once the poster is back.
+ * Convert secondary actions to compact icon controls before allowing overflow. */
+@media (max-width: 560px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: clamp(112px, 30vw, 138px) minmax(0, 1fr) !important;
+    gap: 11px !important;
+    padding-inline: 8px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions {
+    gap: 4px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button[aria-pressed],
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button[aria-haspopup="menu"]:not(:last-of-type) {
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    padding-inline: 0 !important;
+    justify-content: center !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button[aria-pressed]::after,
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button[aria-haspopup="menu"]:not(:last-of-type)::after {
+    display: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: 108px minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 12px 6px 16px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
+    border-radius: 14px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero .nv-media-hero-title,
+  html body .nv-media-detail-page .nv-detail-hero h1.nv-detail-title-long,
+  html body .nv-media-detail-page .nv-detail-hero h1.nv-detail-title-very-long {
+    font-size: clamp(20px, 5.6vw, 24px) !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions > a[data-variant="primary"] {
+    flex-basis: 80px !important;
+    min-width: 80px !important;
+    max-width: 98px !important;
+    padding-inline: 6px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button,
+  html body .nv-media-detail-page .nv-detail-subtitle-action {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding-inline: 0 !important;
+    justify-content: center !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button::after,
+  html body .nv-media-detail-page .nv-detail-subtitle-action > span {
+    display: none !important;
+  }
+}
+
+@media (max-width: 360px) {
+  html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
+    grid-template-columns: 102px minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+}
