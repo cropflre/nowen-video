@@ -1,0 +1,188 @@
+/* Nowen Video · detail inline previews
+ *
+ * Product contract:
+ * - highlights and cast are compact one-row previews by default;
+ * - no half/clipped items at rest;
+ * - "查看更多" expands the same section in place;
+ * - the preview count follows the real section width, not the viewport.
+ */
+
+html body .nv-media-detail-page #detail-highlights,
+html body .nv-media-detail-page #detail-cast {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+html body .nv-media-detail-page .nv-detail-inline-more {
+  min-height: 30px !important;
+  height: 30px !important;
+  padding-inline: 8px !important;
+  gap: 3px !important;
+  border-radius: 999px !important;
+  color: var(--nv-action-muted-hover) !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  white-space: nowrap !important;
+}
+
+html body .nv-media-detail-page .nv-detail-inline-more:hover,
+html body .nv-media-detail-page .nv-detail-inline-more:focus-visible {
+  color: var(--nv-action-primary) !important;
+  background: color-mix(in srgb, var(--nv-action-primary) 8%, transparent) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Highlights: exactly one responsive row until the user asks for more         */
+/* -------------------------------------------------------------------------- */
+
+html body .nv-media-detail-page #detail-highlights .nv-highlights-panel,
+html body .nv-media-detail-page #detail-highlights .nv-highlight-grid {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlights-header {
+  min-height: 32px;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlights-header-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-grid {
+  display: grid !important;
+  grid-template-columns: repeat(var(--nv-highlight-preview-count, 4), minmax(0, 1fr)) !important;
+  grid-auto-flow: row !important;
+  grid-auto-columns: auto !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  scroll-snap-type: none !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-card-media {
+  width: 100% !important;
+  min-width: 0 !important;
+  border-radius: 11px 11px 0 0 !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-card-copy {
+  min-width: 0 !important;
+  padding: 9px 10px 10px !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-card-copy h3 {
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+}
+
+/* Keep the default preview visually close to the approved mock: thumbnail,
+ * title and score only. Detailed timing/method data is secondary. */
+html body .nv-media-detail-page #detail-highlights .nv-highlight-grid.is-collapsed .nv-highlight-card-meta {
+  display: none !important;
+}
+
+html body .nv-media-detail-page #detail-highlights .nv-highlight-grid.is-expanded .nv-highlight-card-meta {
+  margin-top: 6px !important;
+  font-size: 10px !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cast: one aligned avatar row, then in-place expansion                        */
+/* -------------------------------------------------------------------------- */
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-section,
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list {
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list {
+  display: grid !important;
+  grid-template-columns: repeat(var(--nv-cast-preview-count, 10), minmax(0, 1fr)) !important;
+  align-items: start !important;
+  justify-items: center !important;
+  gap: 16px 10px !important;
+  overflow: visible !important;
+  padding: 0 0 2px !important;
+  scrollbar-width: auto !important;
+}
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list::-webkit-scrollbar {
+  display: initial !important;
+}
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list > [role="listitem"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 92px !important;
+  flex: none !important;
+  justify-self: center !important;
+  text-align: center !important;
+}
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list > [role="listitem"] > div:first-child {
+  width: min(82px, 100%) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  margin-inline: auto !important;
+  border-radius: 999px !important;
+}
+
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list > [role="listitem"] p {
+  max-width: 100% !important;
+  text-align: center !important;
+}
+
+/* The same column count is used when expanded, so opening the section simply
+ * adds complete rows without causing a horizontal jump. */
+html body .nv-media-detail-page #detail-cast .nv-cast-grid-list.is-expanded,
+html body .nv-media-detail-page #detail-highlights .nv-highlight-grid.is-expanded {
+  overflow: visible !important;
+}
+
+@media (max-width: 767px) {
+  html body .nv-media-detail-page #detail-highlights .nv-highlights-header,
+  html body .nv-media-detail-page #detail-cast .nv-cast-grid-header {
+    align-items: center !important;
+  }
+
+  html body .nv-media-detail-page #detail-highlights .nv-highlights-header-actions .nv-button:not(.nv-detail-inline-more) {
+    display: none !important;
+  }
+
+  html body .nv-media-detail-page #detail-highlights .nv-highlight-grid {
+    gap: 10px !important;
+  }
+
+  html body .nv-media-detail-page #detail-highlights .nv-highlight-card-copy {
+    padding: 8px 8px 9px !important;
+  }
+
+  html body .nv-media-detail-page #detail-cast .nv-cast-grid-list {
+    gap: 14px 8px !important;
+  }
+
+  html body .nv-media-detail-page #detail-cast .nv-cast-grid-list > [role="listitem"] {
+    max-width: 76px !important;
+  }
+
+  html body .nv-media-detail-page #detail-cast .nv-cast-grid-list > [role="listitem"] > div:first-child {
+    width: min(68px, 100%) !important;
+  }
+}
