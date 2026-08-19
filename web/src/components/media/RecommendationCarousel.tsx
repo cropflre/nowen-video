@@ -33,7 +33,6 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
         ariaLabel="相似推荐"
         itemCount={recommendations.length}
         fullItemsOnly
-        minItemWidth={132}
         className="nv-detail-recommendation-rail"
         action={(
           <Link to="/browse" className="nv-detail-section-more">
