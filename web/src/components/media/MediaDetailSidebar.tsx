@@ -1,15 +1,7 @@
 import type { FileDetail, Media, MediaPlayInfo, PlaybackStatsInfo, TechSpecs } from '@/types'
 import { Button, Surface, Tag } from '@/components/design-system'
 import { formatSize } from '@/utils/format'
-import {
-  Captions,
-  Check,
-  Clock3,
-  Database,
-  Film,
-  HardDrive,
-  PlayCircle,
-} from 'lucide-react'
+import { Captions, Check, Database, Film } from 'lucide-react'
 
 interface MediaDetailSidebarProps {
   media: Media
@@ -19,12 +11,6 @@ interface MediaDetailSidebarProps {
   playbackStats: PlaybackStatsInfo | null
   isAdmin: boolean
   onManageSubtitles: () => void
-}
-
-interface SubtitleSummary {
-  label: string
-  detail: string
-  default?: boolean
 }
 
 function parseExternalSubtitlePaths(value: string): string[] {
@@ -41,13 +27,6 @@ function parseExternalSubtitlePaths(value: string): string[] {
   }
 
   return raw.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean)
-}
-
-function compactPath(path: string): string {
-  if (path.length <= 54) return path
-  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
-  if (parts.length < 3) return `…${path.slice(-50)}`
-  return `…/${parts.slice(-3).join('/')}`
 }
 
 function formatCodec(codec?: string): string {
@@ -75,185 +54,79 @@ export default function MediaDetailSidebar({
   playInfo,
   techSpecs,
   fileInfo,
-  playbackStats,
+  playbackStats: _playbackStats,
   isAdmin,
   onManageSubtitles,
 }: MediaDetailSidebarProps) {
-  const sourcePath = media.file_path || [fileInfo?.file_dir, fileInfo?.file_name].filter(Boolean).join('/')
   const sourceSize = fileInfo?.file_size || media.file_size || 0
   const sourceCodec = playInfo?.video_codec || media.video_codec
   const sourceResolution = media.resolution || '原始画质'
+  const embeddedSubtitleCount = (techSpecs?.streams || []).filter((stream) => stream.codec_type === 'subtitle').length
+  const externalSubtitleCount = parseExternalSubtitlePaths(media.subtitle_paths).length
+  const subtitleCount = embeddedSubtitleCount + externalSubtitleCount
 
-  const embeddedSubtitles = (techSpecs?.streams || [])
-    .filter((stream) => stream.codec_type === 'subtitle')
-    .slice(0, 4)
-    .map<SubtitleSummary>((stream, index) => ({
-      label: `内嵌字幕 ${index + 1}`,
-      detail: `${stream.codec_name?.toUpperCase() || 'SUB'} · Stream #${stream.index}`,
-      default: index === 0,
-    }))
-
-  const externalSubtitles = parseExternalSubtitlePaths(media.subtitle_paths)
-    .slice(0, Math.max(0, 4 - embeddedSubtitles.length))
-    .map<SubtitleSummary>((path) => ({
-      label: path.split(/[\\/]/).pop() || '外挂字幕',
-      detail: '外挂字幕',
-    }))
-
-  const subtitleItems = [...embeddedSubtitles, ...externalSubtitles]
   const metadataSources = [
     media.tmdb_id > 0 ? { name: 'TMDb', value: String(media.tmdb_id), href: `https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}` } : null,
     media.douban_id ? { name: '豆瓣', value: media.douban_id, href: `https://movie.douban.com/subject/${media.douban_id}/` } : null,
     media.bangumi_id > 0 ? { name: 'Bangumi', value: String(media.bangumi_id), href: `https://bgm.tv/subject/${media.bangumi_id}` } : null,
   ].filter((item): item is { name: string; value: string; href: string } => item !== null)
 
-  const stats = playbackStats as unknown as {
-    total_play_count?: number
-    unique_viewers?: number
-    last_played_at?: string
-  } | null
-
   return (
-    <aside className="nv-detail-sidebar" aria-label="媒体摘要">
-      <Surface className="nv-detail-side-card">
-        <div className="nv-detail-side-card-header">
-          <div>
-            <span className="nv-detail-side-eyebrow">Playback</span>
-            <h2>播放版本</h2>
+    <aside className="nv-detail-sidebar nv-detail-summary-strip" aria-label="媒体状态">
+      <Surface className="nv-detail-summary-surface">
+        <section className="nv-detail-summary-item" aria-label="播放信息">
+          <div className="nv-detail-summary-icon" aria-hidden="true"><Film size={15} /></div>
+          <div className="nv-detail-summary-copy">
+            <span className="nv-detail-summary-label">播放</span>
+            <div className="nv-detail-summary-primary">
+              <strong>{sourceResolution} · {formatCodec(sourceCodec)}</strong>
+              <Tag tone="brand">当前</Tag>
+            </div>
+            <span className="nv-detail-summary-secondary">
+              {sourceSize > 0 ? formatSize(sourceSize) : '文件大小未知'}
+              {' · '}
+              {playInfo?.can_direct_play ? '支持直接播放' : '自动兼容播放'}
+            </span>
           </div>
-          <Film size={16} aria-hidden="true" />
-        </div>
+        </section>
 
-        <div className="nv-detail-version-list">
-          <div className="nv-detail-version-item is-active">
-            <div className="nv-detail-version-dot" />
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <strong className="truncate">{sourceResolution} 原始文件</strong>
-                <Tag tone="brand">当前</Tag>
-              </div>
-              <div className="nv-detail-version-meta">
-                <span>{formatCodec(sourceCodec)}</span>
-                {fileInfo?.file_ext && <span>{fileInfo.file_ext.replace(/^\./, '').toUpperCase()}</span>}
-                {sourceSize > 0 && <span>{formatSize(sourceSize)}</span>}
-              </div>
-              {sourcePath && <code title={sourcePath}>{compactPath(sourcePath)}</code>}
+        <section className="nv-detail-summary-item" aria-label="字幕信息">
+          <div className="nv-detail-summary-icon" aria-hidden="true"><Captions size={15} /></div>
+          <div className="nv-detail-summary-copy">
+            <span className="nv-detail-summary-label">字幕</span>
+            <div className="nv-detail-summary-primary">
+              <strong>{subtitleCount > 0 ? `${subtitleCount} 个字幕来源` : '暂无字幕'}</strong>
             </div>
+            <span className="nv-detail-summary-secondary">
+              {subtitleCount > 0
+                ? `${embeddedSubtitleCount} 内嵌 · ${externalSubtitleCount} 外挂`
+                : '播放时仍可使用播放器兼容字幕'}
+            </span>
           </div>
-
-          {playInfo?.is_preprocessed && (
-            <div className="nv-detail-version-item">
-              <div className="nv-detail-version-dot" />
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <strong className="truncate">预处理 HLS</strong>
-                  <Tag tone="success">秒开</Tag>
-                </div>
-                <div className="nv-detail-version-meta">
-                  <span>自适应播放</span>
-                  <span>{playInfo.preprocess_status || 'ready'}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="nv-detail-side-footnote">
-          <PlayCircle size={13} aria-hidden="true" />
-          <span>{playInfo?.can_direct_play ? '当前源支持直接播放' : '播放器将自动选择兼容播放方式'}</span>
-        </div>
-      </Surface>
-
-      <div id="detail-subtitles" className="scroll-mt-24">
-        <Surface className="nv-detail-side-card">
-          <div className="nv-detail-side-card-header">
-            <div>
-              <span className="nv-detail-side-eyebrow">Subtitles</span>
-              <h2>字幕</h2>
-            </div>
-            <Captions size={16} aria-hidden="true" />
-          </div>
-
-          {subtitleItems.length > 0 ? (
-            <div className="nv-detail-subtitle-list">
-              {subtitleItems.map((item, index) => (
-                <div key={`${item.label}-${index}`} className="nv-detail-subtitle-item">
-                  <div className="min-w-0 flex-1">
-                    <strong className="truncate">{item.label}</strong>
-                    <span>{item.detail}</span>
-                  </div>
-                  {item.default && <Tag tone="brand">默认</Tag>}
-                </div>
-              ))}
-              {(embeddedSubtitles.length + externalSubtitles.length) >= 4 && (
-                <div className="nv-detail-subtitle-more">更多字幕可在字幕管理中查看</div>
-              )}
-            </div>
-          ) : (
-            <div className="nv-detail-side-empty">暂未检测到字幕轨道</div>
-          )}
-
           {isAdmin && (
-            <Button type="button" variant="ghost" size="sm" className="mt-3 w-full" onClick={onManageSubtitles}>
-              <Captions size={14} aria-hidden="true" />
-              管理字幕
+            <Button type="button" variant="ghost" size="sm" className="nv-detail-summary-action" onClick={onManageSubtitles}>
+              管理
             </Button>
           )}
-        </Surface>
-      </div>
+        </section>
 
-      <Surface className="nv-detail-side-card">
-        <div className="nv-detail-side-card-header">
-          <div>
-            <span className="nv-detail-side-eyebrow">Metadata</span>
-            <h2>元数据来源</h2>
-          </div>
-          <Database size={16} aria-hidden="true" />
-        </div>
-
-        <div className="nv-detail-source-list">
-          {metadataSources.length > 0 ? metadataSources.map((source) => (
-            <a key={source.name} href={source.href} target="_blank" rel="noopener noreferrer" className="nv-detail-source-item">
-              <span className="nv-detail-source-status"><Check size={11} aria-hidden="true" /></span>
-              <strong>{source.name}</strong>
-              <code>{source.value}</code>
-            </a>
-          )) : (
-            <div className="nv-detail-side-empty">暂无外部元数据匹配</div>
-          )}
-        </div>
-
-        <div className="nv-detail-source-meta">
-          <div>
-            <span>刮削状态</span>
-            <strong>{formatScrapeStatus(media.scrape_status)}</strong>
-          </div>
-          {media.last_scrape_at && (
-            <div>
-              <span>最近更新</span>
-              <strong>{new Date(media.last_scrape_at).toLocaleString()}</strong>
+        <section className="nv-detail-summary-item" aria-label="元数据信息">
+          <div className="nv-detail-summary-icon" aria-hidden="true"><Database size={15} /></div>
+          <div className="nv-detail-summary-copy">
+            <span className="nv-detail-summary-label">元数据</span>
+            <div className="nv-detail-summary-sources">
+              {metadataSources.length > 0 ? metadataSources.map((source) => (
+                <a key={source.name} href={source.href} target="_blank" rel="noopener noreferrer" className="nv-detail-summary-source" title={`${source.name} ${source.value}`}>
+                  <Check size={10} aria-hidden="true" />
+                  <span>{source.name}</span>
+                </a>
+              )) : (
+                <strong className="nv-detail-summary-local">本地资料</strong>
+              )}
             </div>
-          )}
-          {stats?.total_play_count !== undefined && (
-            <div>
-              <span>播放次数</span>
-              <strong>{stats.total_play_count}</strong>
-            </div>
-          )}
-        </div>
-      </Surface>
-
-      <Surface className="nv-detail-side-card nv-detail-side-card--quiet">
-        <div className="nv-detail-side-mini-row">
-          <HardDrive size={14} aria-hidden="true" />
-          <span>{sourceSize > 0 ? formatSize(sourceSize) : '文件大小未知'}</span>
-        </div>
-        {stats?.last_played_at && (
-          <div className="nv-detail-side-mini-row">
-            <Clock3 size={14} aria-hidden="true" />
-            <span>最近播放 {new Date(stats.last_played_at).toLocaleDateString()}</span>
+            <span className="nv-detail-summary-secondary">{formatScrapeStatus(media.scrape_status)}</span>
           </div>
-        )}
+        </section>
       </Surface>
     </aside>
   )
