@@ -1,9 +1,9 @@
-/* Nowen Video · media detail compact summary
+/* Nowen Video · media detail status tags
  *
- * Playback/subtitle/metadata are supporting diagnostics. They must never own a
- * permanent sidebar or compete with the artwork. Desktop renders one quiet
- * status strip below the hero; mobile moves the same strip to the end of the
- * editorial flow.
+ * Playback / subtitle / metadata are supporting information. Keep them as
+ * lightweight tags instead of a card/strip so they never interrupt the media
+ * detail editorial flow. Desktop places them immediately below the hero;
+ * mobile keeps the same compact tags at the end of the primary content flow.
  */
 
 html body .nv-media-detail-page {
@@ -31,163 +31,129 @@ html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
   grid-row: 3 !important;
   position: static !important;
   min-width: 0 !important;
-  margin-top: 10px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-summary-surface {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1fr) !important;
-  min-width: 0 !important;
-  overflow: hidden !important;
+  min-height: 0 !important;
+  margin: 8px 0 0 !important;
   padding: 0 !important;
-  border: 1px solid color-mix(in srgb, var(--nv-border-default) 72%, transparent) !important;
-  border-radius: 14px !important;
-  background: color-mix(in srgb, var(--nv-bg-surface) 84%, transparent) !important;
-  box-shadow: none !important;
-  backdrop-filter: blur(12px) saturate(108%);
-  -webkit-backdrop-filter: blur(12px) saturate(108%);
+  background: transparent !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-item {
-  position: relative;
+html body .nv-media-detail-page .nv-detail-summary-tags {
   display: flex !important;
+  flex-wrap: wrap !important;
   align-items: center !important;
-  gap: 9px !important;
+  gap: 6px !important;
   min-width: 0 !important;
-  min-height: 62px !important;
-  padding: 9px 12px !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-item + .nv-detail-summary-item::before {
-  content: '';
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 1px;
-  background: var(--nv-border-subtle);
+html body .nv-media-detail-page .nv-detail-status-tag {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 5px !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 9px !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-default) 78%, transparent) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 78%, transparent) !important;
+  color: var(--nv-text-secondary) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(8px) saturate(108%);
+  -webkit-backdrop-filter: blur(8px) saturate(108%);
+  white-space: nowrap !important;
+  text-decoration: none !important;
+  font: inherit !important;
+  line-height: 1 !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  color: var(--nv-action-muted);
-  background: color-mix(in srgb, var(--nv-action-primary) 9%, transparent);
+html body .nv-media-detail-page .nv-detail-status-tag > svg {
+  flex: 0 0 auto !important;
+  color: var(--nv-action-muted) !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-copy {
-  min-width: 0;
-  flex: 1 1 auto;
+html body .nv-media-detail-page .nv-detail-status-tag strong {
+  overflow: hidden !important;
+  max-width: 150px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 650 !important;
+  color: var(--nv-text-primary) !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-label {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 10px;
-  line-height: 1.2;
-  font-weight: 620;
-  color: var(--nv-text-tertiary);
-}
-
-html body .nv-media-detail-page .nv-detail-summary-primary {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-}
-
-html body .nv-media-detail-page .nv-detail-summary-primary strong,
-html body .nv-media-detail-page .nv-detail-summary-local {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  line-height: 1.25;
-  font-weight: 650;
-  color: var(--nv-text-primary);
-}
-
-html body .nv-media-detail-page .nv-detail-summary-primary .nv-tag {
-  flex: 0 0 auto;
-  min-height: 17px !important;
-  padding-inline: 5px !important;
-  font-size: 9px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-summary-secondary {
-  display: block;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 9.5px;
-  line-height: 1.2;
-  color: var(--nv-text-tertiary);
-}
-
-html body .nv-media-detail-page .nv-detail-summary-action {
-  flex: 0 0 auto;
-  min-height: 25px !important;
-  height: 25px !important;
-  padding-inline: 7px !important;
+html body .nv-media-detail-page .nv-detail-status-tag > span {
   font-size: 10px !important;
+  line-height: 1 !important;
+  color: var(--nv-text-tertiary) !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-sources {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  overflow: hidden;
+html body .nv-media-detail-page .nv-detail-status-tag-accent {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  margin-left: 1px !important;
+  padding-left: 6px !important;
+  border-left: 1px solid var(--nv-border-subtle) !important;
+  color: var(--nv-action-muted) !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-source {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 3px;
-  min-height: 22px;
-  padding: 3px 6px;
-  border: 1px solid var(--nv-border-subtle);
-  border-radius: 7px;
-  background: var(--nv-bg-control);
-  color: var(--nv-text-secondary);
-  font-size: 9.5px;
-  line-height: 1;
-  text-decoration: none;
-  transition: border-color var(--nv-motion-fast) var(--nv-ease-standard), background var(--nv-motion-fast) var(--nv-ease-standard), color var(--nv-motion-fast) var(--nv-ease-standard);
+html body .nv-media-detail-page .nv-detail-status-tag-hint {
+  color: var(--nv-action-muted) !important;
 }
 
-html body .nv-media-detail-page .nv-detail-summary-source:hover {
-  border-color: var(--nv-border-hover);
-  background: var(--nv-fill-hover);
-  color: var(--nv-action-muted-hover);
+html body .nv-media-detail-page button.nv-detail-status-tag {
+  appearance: none !important;
+  cursor: pointer !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive {
+  cursor: pointer !important;
+  transition:
+    border-color var(--nv-motion-fast) var(--nv-ease-standard),
+    background var(--nv-motion-fast) var(--nv-ease-standard),
+    color var(--nv-motion-fast) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:hover,
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:focus-visible {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 34%, var(--nv-border-default)) !important;
+  background: color-mix(in srgb, var(--nv-action-primary) 9%, var(--nv-bg-surface)) !important;
+  color: var(--nv-action-muted-hover) !important;
+  transform: translateY(-1px) !important;
+  outline: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:focus-visible {
+  box-shadow: 0 0 0 3px var(--nv-focus-ring) !important;
+}
+
+[data-theme="dark"] body .nv-media-detail-page .nv-detail-status-tag {
+  background: color-mix(in srgb, var(--nv-bg-elevated) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nv-border-default) 90%, transparent) !important;
 }
 
 html body .nv-media-detail-page .nv-detail-main-column {
   grid-column: 1 !important;
   grid-row: 4 !important;
-  padding-top: 18px !important;
+  padding-top: 14px !important;
 }
 
-/* Tablet keeps the same one-row summary but gives each cell equal weight. */
+/* Tablet: keep tags on one quiet line whenever space allows. */
 @media (max-width: 1199px) and (min-width: 768px) {
-  html body .nv-media-detail-page .nv-detail-summary-surface {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
+    margin-top: 7px !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-summary-item {
-    padding-inline: 10px !important;
+  html body .nv-media-detail-page .nv-detail-status-tag strong {
+    max-width: 120px !important;
   }
 }
 
-/* Mobile: supporting diagnostics come after the primary editorial flow and
- * remain compact. Horizontal snapping prevents them from creating a tall stack. */
+/* Mobile: supporting diagnostics stay after the primary content flow. Tags
+ * wrap naturally instead of becoming another horizontal card rail. */
 @media (max-width: 767px) {
   html body .nv-media-detail-page .nv-detail-main-column {
     grid-row: 3 !important;
@@ -197,47 +163,26 @@ html body .nv-media-detail-page .nv-detail-main-column {
     grid-column: 1 !important;
     grid-row: 4 !important;
     margin-top: 12px !important;
-    overflow: hidden !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-summary-surface {
-    display: grid !important;
-    grid-auto-flow: column !important;
-    grid-template-columns: none !important;
-    grid-auto-columns: minmax(190px, 76vw) !important;
-    gap: 8px !important;
-    overflow-x: auto !important;
-    padding: 0 var(--nv-page-gutter) 4px !important;
-    margin-inline: calc(var(--nv-page-gutter) * -1) !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
+  html body .nv-media-detail-page .nv-detail-summary-tags {
+    gap: 6px !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-summary-surface::-webkit-scrollbar {
-    display: none;
+  html body .nv-media-detail-page .nv-detail-status-tag {
+    min-height: 30px !important;
+    height: 30px !important;
+    padding-inline: 9px !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-summary-item {
-    min-height: 72px !important;
-    padding: 10px 11px !important;
-    border: 1px solid var(--nv-border-subtle) !important;
-    border-radius: 14px !important;
-    background: color-mix(in srgb, var(--nv-bg-surface) 92%, transparent) !important;
-    scroll-snap-align: start;
-  }
-
-  html body .nv-media-detail-page .nv-detail-summary-item + .nv-detail-summary-item::before {
-    display: none !important;
+  html body .nv-media-detail-page .nv-detail-status-tag strong {
+    max-width: 132px !important;
+    font-size: 11px !important;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html body .nv-media-detail-page .nv-detail-summary-source {
+  html body .nv-media-detail-page .nv-detail-status-tag--interactive {
     transition: none !important;
   }
 }
