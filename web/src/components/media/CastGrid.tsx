@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
@@ -124,7 +124,7 @@ export default function CastGrid({ persons, initialCount }: CastGridProps) {
 
       <div
         className={`nv-cast-grid-list ${expanded ? 'is-expanded' : 'is-collapsed'}`}
-        style={{ '--nv-cast-preview-count': collapsedCount } as React.CSSProperties}
+        style={{ '--nv-cast-preview-count': collapsedCount } as CSSProperties}
         role="list"
         aria-label={t('castGrid.title')}
       >
