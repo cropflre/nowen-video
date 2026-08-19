@@ -1,0 +1,69 @@
+/* Nowen Video · Homepage hero prominence
+ * Final responsive adjustment requested for the approved homepage layout.
+ * Only increases the featured slideshow and its foreground content; lower rails
+ * and mobile composition remain unchanged.
+ */
+
+/* Common desktop: make the hero visibly more cinematic without overwhelming
+ * the first content rail. */
+@media (min-width: 75rem) {
+  html body .nv-home-page .nv-hero-carousel {
+    height: clamp(340px, 20.6vw, 372px) !important;
+    min-height: clamp(340px, 20.6vw, 372px) !important;
+    max-height: clamp(340px, 20.6vw, 372px) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    gap: clamp(26px, 1.75vw, 32px) !important;
+    padding: clamp(20px, 1.35vw, 26px) clamp(34px, 2.25vw, 42px) clamp(26px, 1.75vw, 32px) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    width: clamp(180px, 10.8vw, 196px) !important;
+    min-width: clamp(180px, 10.8vw, 196px) !important;
+    max-width: clamp(180px, 10.8vw, 196px) !important;
+    flex-basis: clamp(180px, 10.8vw, 196px) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content {
+    width: clamp(540px, 33vw, 620px) !important;
+    max-width: clamp(540px, 33vw, 620px) !important;
+    flex-basis: clamp(540px, 33vw, 620px) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    font-size: clamp(28px, 1.9vw, 32px) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-subtitle,
+  html body .nv-home-page .nv-media-hero-meta,
+  html body .nv-home-page .nv-media-hero-overview {
+    font-size: clamp(11px, .73vw, 12px) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions .nv-button,
+  html body .nv-home-page .nv-media-hero-actions a {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding-inline: 15px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* Tablet also gets a modest increase, while retaining the existing two-column
+ * foreground arrangement. */
+@media (min-width: 48rem) and (max-width: 74.999rem) {
+  html body .nv-home-page .nv-hero-carousel {
+    height: 344px !important;
+    min-height: 344px !important;
+    max-height: 344px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    width: 160px !important;
+    min-width: 160px !important;
+    max-width: 160px !important;
+    flex-basis: 160px !important;
+  }
+}
