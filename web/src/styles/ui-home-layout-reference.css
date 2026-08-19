@@ -1,11 +1,10 @@
 /* Nowen UI 2.0 · Homepage layout lock
- * This file intentionally loads after the historical calibration layers.
- * It fixes the approved homepage composition: full-width hero/rails followed by
- * a three-column shelf matrix (最近添加 + 动画/喜剧/冒险/家庭...).
+ * Loaded last. This is the approved homepage composition contract rather than
+ * another theme: full-width cinematic hero + two large rails + compact shelf
+ * matrix matching the supplied light/dark references.
  */
 
-/* The older hero selector targets h2 with higher specificity. Lock the approved
-   title scale here so long Chinese titles never expand into the artwork. */
+/* Hero ------------------------------------------------------------------- */
 .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
   max-width: 25ch !important;
   margin: 0 !important;
@@ -46,18 +45,100 @@
   -webkit-line-clamp: 2 !important;
 }
 
-/* Approved lower homepage composition ------------------------------------ */
+/* The approved light homepage still uses a cinematic blue/dark hero. Theme
+   only changes the surrounding shell; it must not wash the artwork to white. */
+[data-theme="light"] .nv-home-page .nv-hero-carousel {
+  --nv-hero-scrim: linear-gradient(
+    90deg,
+    rgba(27, 43, 78, .92) 0%,
+    rgba(31, 48, 84, .82) 25%,
+    rgba(36, 55, 91, .57) 45%,
+    rgba(27, 44, 80, .18) 72%,
+    rgba(13, 30, 61, .03) 100%
+  ) !important;
+  --nv-hero-bottom-scrim: linear-gradient(
+    0deg,
+    rgba(18, 31, 58, .42) 0%,
+    rgba(18, 31, 58, .08) 34%,
+    transparent 70%
+  ) !important;
+  border-color: rgba(64, 79, 113, .10) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-title,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-subtitle,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-meta,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-overview,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-home-hero-watch-progress-label {
+  color: #fff !important;
+  text-shadow: 0 1px 12px rgba(4, 11, 28, .24);
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-subtitle,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-media-hero-overview,
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-home-hero-watch-progress-label {
+  color: rgba(255, 255, 255, .82) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-tag:not([data-tone="quality"]) {
+  border-color: rgba(255, 255, 255, .12) !important;
+  background: rgba(19, 33, 64, .20) !important;
+  color: rgba(255, 255, 255, .82) !important;
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-button--secondary,
+[data-theme="light"] .nv-home-page .nv-hero-carousel a[data-variant="secondary"] {
+  border-color: rgba(255, 255, 255, .18) !important;
+  background: rgba(18, 31, 59, .24) !important;
+  color: #fff !important;
+  backdrop-filter: blur(12px);
+}
+
+[data-theme="light"] .nv-home-page .nv-hero-carousel .nv-home-hero-watch-progress-track {
+  background: rgba(255, 255, 255, .22) !important;
+}
+
+/* Home rail arrows ------------------------------------------------------- */
+.nv-home-page .nv-media-rail {
+  min-width: 0;
+}
+
+.nv-home-page .nv-media-rail-arrow {
+  top: 43% !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  opacity: 1 !important;
+  border: 1px solid var(--nv-border-subtle) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 92%, transparent) !important;
+  color: var(--nv-text-secondary) !important;
+  box-shadow: 0 5px 16px rgba(18, 25, 48, .10) !important;
+  backdrop-filter: blur(14px);
+}
+
+.nv-home-page .nv-media-rail-arrow--left { left: 4px !important; }
+.nv-home-page .nv-media-rail-arrow--right { right: 0 !important; }
+
+[data-theme="dark"] .nv-home-page .nv-media-rail-arrow {
+  background: rgba(20, 31, 53, .90) !important;
+  box-shadow: 0 6px 18px rgba(0, 4, 18, .26) !important;
+}
+
+/* Approved lower homepage composition ----------------------------------- */
 .nv-home-shelf-grid {
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* The reference intentionally gives 最近添加 more horizontal room. */
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 26px 24px;
+  gap: 27px 24px;
 }
 
 .nv-home-compact-shelf {
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .nv-home-compact-shelf .nv-section-header {
@@ -77,12 +158,16 @@
 
 .nv-home-compact-shelf .nv-home-rail-action {
   gap: 1px;
+  color: var(--nv-action-muted);
   font-size: 9px !important;
+  font-weight: 620;
 }
 
 .nv-home-compact-shelf .nv-media-rail {
   min-width: 0;
-  overflow: hidden;
+  box-sizing: border-box;
+  overflow: visible;
+  padding-right: 32px;
 }
 
 .nv-home-compact-shelf .nv-media-rail-track {
@@ -91,12 +176,24 @@
   gap: 8px !important;
   padding: 2px 1px 5px !important;
   scroll-padding-inline: 1px;
+  scrollbar-width: none;
+}
+
+.nv-home-compact-shelf .nv-media-rail-track::-webkit-scrollbar {
+  display: none;
 }
 
 .nv-home-shelf-poster-slot {
-  width: 72px !important;
-  min-width: 72px !important;
-  max-width: 72px !important;
+  width: 78px !important;
+  min-width: 78px !important;
+  max-width: 78px !important;
+}
+
+/* Slightly larger cards in the wider 最近添加 column, as in the reference. */
+.nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+  width: 82px !important;
+  min-width: 82px !important;
+  max-width: 82px !important;
 }
 
 .nv-home-shelf-poster-slot .nv-media-card-poster {
@@ -141,12 +238,15 @@
 }
 
 .nv-home-compact-shelf .nv-media-rail-arrow {
-  top: 42% !important;
-  width: 24px !important;
-  height: 30px !important;
+  top: 40% !important;
+  right: 1px !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
 }
 
-/* Keep the two large rows faithful to the reference before the shelf matrix. */
+/* Keep the two full-width rails faithful to the reference. */
 .nv-home-page > .nv-section,
 .nv-home-page > .nv-media-rail {
   min-width: 0;
@@ -154,13 +254,20 @@
 
 @media (min-width: 100rem) {
   .nv-home-shelf-grid {
+    grid-template-columns: minmax(0, 1.42fr) repeat(2, minmax(0, 1fr));
     gap-inline: 28px;
   }
 
   .nv-home-shelf-poster-slot {
-    width: 76px !important;
-    min-width: 76px !important;
-    max-width: 76px !important;
+    width: 82px !important;
+    min-width: 82px !important;
+    max-width: 82px !important;
+  }
+
+  .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+    width: 86px !important;
+    min-width: 86px !important;
+    max-width: 86px !important;
   }
 }
 
@@ -170,7 +277,8 @@
     gap: 24px 20px;
   }
 
-  .nv-home-shelf-poster-slot {
+  .nv-home-shelf-poster-slot,
+  .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
     width: 78px !important;
     min-width: 78px !important;
     max-width: 78px !important;
@@ -197,7 +305,12 @@
     gap: 22px;
   }
 
-  .nv-home-shelf-poster-slot {
+  .nv-home-compact-shelf .nv-media-rail {
+    padding-right: 0;
+  }
+
+  .nv-home-shelf-poster-slot,
+  .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
     width: 31vw !important;
     min-width: 31vw !important;
     max-width: 124px !important;
