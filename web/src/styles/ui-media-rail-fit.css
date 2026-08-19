@@ -7,11 +7,13 @@
  * an integer visible count and the browser distributes the width.
  */
 
-.nv-media-rail[data-full-items='true'] {
+.nv-media-rail[data-full-items='true'],
+.nv-home-page .nv-media-rail {
   container-type: inline-size;
 }
 
-.nv-media-rail-track.nv-media-rail-track--full-items {
+.nv-media-rail-track.nv-media-rail-track--full-items,
+.nv-home-page .nv-media-rail-track {
   --nv-rail-gap: 12px;
   --nv-rail-visible-count: 5;
 
@@ -32,11 +34,13 @@
   box-sizing: border-box !important;
 }
 
-.nv-media-rail-track.nv-media-rail-track--full-items::-webkit-scrollbar {
+.nv-media-rail-track.nv-media-rail-track--full-items::-webkit-scrollbar,
+.nv-home-page .nv-media-rail-track::-webkit-scrollbar {
   display: none !important;
 }
 
-.nv-media-rail-track.nv-media-rail-track--full-items > * {
+.nv-media-rail-track.nv-media-rail-track--full-items > *,
+.nv-home-page .nv-media-rail-track > * {
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
@@ -47,66 +51,66 @@
 }
 
 /* Continue watching: large landscape cards. */
-.nv-media-rail-track--full-items:has(> .nv-continue-card) {
+.nv-media-rail-track:has(> .nv-continue-card) {
   --nv-rail-gap: 14px;
   --nv-rail-visible-count: 6;
 }
 
 /* Recommendations: denser landscape cards, matching the reference layout. */
-.nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+.nv-media-rail-track:has(> .nv-home-recommendation-slot) {
   --nv-rail-gap: 14px;
   --nv-rail-visible-count: 8;
 }
 
 /* Compact catalogue shelves. */
-.nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+.nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
   --nv-rail-gap: 12px;
   --nv-rail-visible-count: 6;
 }
 
 /* Full-width rails. */
 @container (max-width: 75rem) {
-  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  .nv-media-rail-track:has(> .nv-continue-card) {
     --nv-rail-visible-count: 5;
   }
 
-  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 7;
   }
 }
 
 @container (max-width: 62rem) {
-  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  .nv-media-rail-track:has(> .nv-continue-card) {
     --nv-rail-visible-count: 4;
   }
 
-  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 6;
   }
 }
 
 @container (max-width: 50rem) {
-  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  .nv-media-rail-track:has(> .nv-continue-card) {
     --nv-rail-visible-count: 3;
   }
 
-  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 5;
   }
 }
 
 @container (max-width: 39rem) {
-  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  .nv-media-rail-track:has(> .nv-continue-card) {
     --nv-rail-visible-count: 2;
   }
 
-  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 4;
   }
 }
 
 @container (max-width: 29rem) {
-  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 3;
   }
 }
@@ -114,32 +118,32 @@
 /* Compact shelves are often placed inside a 2/3-column homepage grid, so they
  * need their own container thresholds instead of viewport breakpoints. */
 @container (max-width: 43rem) {
-  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
     --nv-rail-visible-count: 5;
   }
 }
 
 @container (max-width: 35rem) {
-  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
     --nv-rail-visible-count: 4;
   }
 }
 
 @container (max-width: 27rem) {
-  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
     --nv-rail-visible-count: 3;
   }
 }
 
 @container (max-width: 20rem) {
-  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
     --nv-rail-visible-count: 2;
   }
 }
 
 /* The compact shelf controls have their own edge gutters; keep the track inside
  * that available content box and never let artwork grow underneath arrows. */
-html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-track--full-items {
+html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-track {
   width: 100% !important;
   min-width: 0 !important;
 }
@@ -147,7 +151,8 @@ html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-track--full-items 
 /* Touch devices keep whole-card snapping but do not animate programmatic scroll
  * for long distances; native momentum scrolling feels substantially smoother. */
 @media (max-width: 47.999rem), (pointer: coarse) {
-  .nv-media-rail-track.nv-media-rail-track--full-items {
+  .nv-media-rail-track.nv-media-rail-track--full-items,
+  .nv-home-page .nv-media-rail-track {
     scroll-behavior: auto;
     -webkit-overflow-scrolling: touch;
   }
