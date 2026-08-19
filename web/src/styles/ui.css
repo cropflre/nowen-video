@@ -38,3 +38,6 @@
 
 /* Playback/subtitle/metadata are supporting diagnostics, not a permanent sidebar. */
 @import './ui-media-detail-summary-strip.css';
+
+/* Final hero readability contract: crisp poster/copy + single-line ellipsis title. */
+@import './ui-media-detail-hero-clarity.css';
