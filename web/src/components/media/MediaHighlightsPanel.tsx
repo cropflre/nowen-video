@@ -129,7 +129,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
 
   useEffect(() => {
     const node = sectionRef.current
-    if (!node) return
+    if (!node || loading || highlights.length === 0) return
 
     const updateCount = (width: number) => {
       const nextCount = getCollapsedCount(width)
@@ -143,7 +143,7 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
     })
     observer.observe(node)
     return () => observer.disconnect()
-  }, [])
+  }, [highlights.length, loading])
 
   useEffect(() => {
     const handleProgress = (data: MediaAnalysisProgressData) => {
@@ -335,6 +335,19 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
         </div>
 
         <div className="nv-highlights-header-actions flex items-center gap-1.5">
+          {isAdmin && (
+            <>
+              <Button type="button" variant="secondary" size="sm" onClick={handleAnalyze} disabled={submitting}>
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                重新分析
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}>
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                删除结果
+              </Button>
+            </>
+          )}
+
           {hasMore && (
             <Button
               type="button"
@@ -347,19 +360,6 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
               {expanded ? '收起' : '查看更多'}
               {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
             </Button>
-          )}
-
-          {isAdmin && (
-            <>
-              <Button type="button" variant="secondary" size="sm" onClick={handleAnalyze} disabled={submitting}>
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                重新分析
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={handleDelete} disabled={deleting}>
-                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                删除结果
-              </Button>
-            </>
           )}
         </div>
       </div>
