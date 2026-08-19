@@ -1,0 +1,267 @@
+/* Nowen UI 2.0 · Browse and library workspace */
+
+.nv-section-stack:has(> .nv-browse-type-tabs) {
+  gap: 14px !important;
+}
+
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs,
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs {
+  min-height: 48px;
+  align-self: stretch;
+  gap: 4px !important;
+  margin: 0 !important;
+  padding: 8px 11px 7px !important;
+  border: 1px solid var(--nv-border-default) !important;
+  border-bottom: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 86%, transparent) !important;
+  box-shadow: var(--nv-shadow-card), inset 0 1px color-mix(in srgb, white 4%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(112%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(112%) !important;
+}
+
+.nv-browse-type-tabs .nv-button {
+  min-height: 32px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.nv-browse-type-tabs .nv-button:hover {
+  background: var(--nv-fill-hover) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+.nv-browse-type-tabs .nv-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--nv-action-muted) 24%, var(--nv-border-default)) !important;
+  background: color-mix(in srgb, var(--nv-action-muted) 10%, var(--nv-bg-surface)) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-muted) 5%, transparent) !important;
+}
+
+.nv-browse-type-tabs > .nv-tag:last-child {
+  margin-left: auto !important;
+  flex: 0 0 auto;
+}
+
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+  position: relative !important;
+  top: auto !important;
+  z-index: 2 !important;
+  min-height: 58px;
+  gap: 8px !important;
+  margin-top: -14px !important;
+  margin-bottom: 2px !important;
+  padding: 10px 11px !important;
+  border: 1px solid var(--nv-border-default) !important;
+  border-top-color: var(--nv-border-subtle) !important;
+  border-radius: 0 0 16px 16px !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 86%, transparent) !important;
+  box-shadow: var(--nv-shadow-card), inset 0 1px color-mix(in srgb, white 3%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(112%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(112%) !important;
+}
+
+.nv-browse-toolbar .nv-search {
+  min-width: 240px !important;
+  width: clamp(280px, 31vw, 520px) !important;
+  max-width: 520px !important;
+  flex: 0 1 520px !important;
+}
+
+.nv-browse-toolbar .nv-search,
+.nv-browse-toolbar .nv-input,
+.nv-browse-toolbar .nv-select {
+  min-height: 36px;
+}
+
+.nv-browse-toolbar > .nv-button {
+  flex: 0 0 auto;
+}
+
+.nv-browse-toolbar > .nv-button:first-of-type {
+  margin-left: auto;
+}
+
+.nv-browse-toolbar > .nv-segmented-control,
+.nv-browse-toolbar > [role="group"] {
+  flex: 0 0 auto;
+}
+
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-media-grid,
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-list,
+.nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-poster-grid {
+  margin-top: 2px !important;
+}
+
+.nv-filter-panel {
+  padding: 12px;
+}
+
+.nv-filter-group {
+  display: grid;
+  grid-template-columns: minmax(78px, 92px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.nv-filter-group + .nv-filter-group {
+  margin-top: 10px;
+}
+
+.nv-filter-group-label {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--nv-text-tertiary);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.nv-filter-group-icon {
+  display: inline-grid;
+  place-items: center;
+}
+
+.nv-filter-group-count {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 5px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-fill-active);
+  color: var(--nv-action-muted-hover);
+  font: 600 9px/1 var(--nv-font-mono);
+}
+
+.nv-filter-group-content {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nv-filter-group-content.is-scrollable {
+  max-height: 148px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: flex-start;
+  padding: 2px 7px 4px 2px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--nv-text-tertiary) 28%, transparent) transparent;
+}
+
+.nv-filter-group-content.is-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.nv-filter-group-content.is-scrollable::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nv-text-tertiary) 24%, transparent);
+}
+
+.nv-filter-group-content.is-scrollable > .nv-filter-chip {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs,
+[data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+  border-color: rgba(78, 67, 155, .10) !important;
+  background: rgba(255, 255, 255, .88) !important;
+  box-shadow: 0 12px 28px rgba(39, 35, 72, .055), inset 0 1px rgba(255, 255, 255, .92) !important;
+}
+
+[data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+  border-top-color: rgba(78, 67, 155, .075) !important;
+}
+
+@media (max-width: 63.999rem) {
+  .nv-browse-toolbar .nv-search {
+    width: min(100%, 440px) !important;
+    max-width: 440px !important;
+    flex: 1 1 320px !important;
+  }
+
+  .nv-browse-toolbar > .nv-button:first-of-type {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-section-stack:has(> .nv-browse-type-tabs) {
+    gap: 12px !important;
+  }
+
+  .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs {
+    min-height: 46px;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    padding: 6px 7px !important;
+    border-radius: 13px 13px 0 0 !important;
+  }
+
+  .nv-browse-type-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nv-browse-type-tabs > * {
+    flex-shrink: 0;
+  }
+
+  .nv-browse-type-tabs > .nv-tag:last-child {
+    margin-left: 2px !important;
+  }
+
+  .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
+    margin-top: -12px !important;
+    min-height: 0;
+    padding: 8px !important;
+    border-radius: 0 0 13px 13px !important;
+  }
+
+  .nv-browse-toolbar .nv-search {
+    flex-basis: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .nv-browse-toolbar > .nv-select {
+    min-width: 7rem;
+    flex: 1 1 7rem;
+  }
+
+  .nv-browse-toolbar > .nv-button:first-of-type {
+    margin-left: 0;
+  }
+
+  .nv-filter-group {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .nv-filter-group-content.is-scrollable {
+    max-height: 112px;
+    padding-right: 5px;
+  }
+
+  .nv-filter-group-content.is-scrollable > .nv-filter-chip {
+    max-width: 168px;
+  }
+}
