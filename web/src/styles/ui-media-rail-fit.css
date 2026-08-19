@@ -1,0 +1,104 @@
+/* Nowen UI 2.0 · Integer-card media rails
+ *
+ * Product rule: a resting media shelf must never expose half of a card. The
+ * MediaRail component measures the available viewport and publishes an exact
+ * fitted card width through --nv-media-rail-fit-item-width. This stylesheet is
+ * loaded last so historical fixed-width homepage rules cannot reintroduce
+ * clipped artwork.
+ */
+
+.nv-media-rail-track.nv-media-rail-track--full-items {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-snap-type: x mandatory !important;
+  scroll-behavior: smooth;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none !important;
+}
+
+.nv-media-rail-track.nv-media-rail-track--full-items::-webkit-scrollbar {
+  display: none !important;
+}
+
+.nv-media-rail-track.nv-media-rail-track--full-items > * {
+  width: var(--nv-media-rail-fit-item-width) !important;
+  min-width: var(--nv-media-rail-fit-item-width) !important;
+  max-width: var(--nv-media-rail-fit-item-width) !important;
+  flex: 0 0 var(--nv-media-rail-fit-item-width) !important;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  box-sizing: border-box;
+}
+
+/* Homepage rails use different readability floors before the JS fit pass. */
+html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  --nv-media-rail-min-item-width: 208px;
+}
+
+html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  --nv-media-rail-min-item-width: 152px;
+}
+
+html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  --nv-media-rail-min-item-width: 96px;
+}
+
+/* Keep the compact shelf arrows in their reserved edge gutters instead of
+ * allowing card geometry to grow underneath them. */
+html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-track--full-items {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 105rem) {
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-media-rail-min-item-width: 88px;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 74.999rem) {
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-media-rail-min-item-width: 200px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-media-rail-min-item-width: 148px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-media-rail-min-item-width: 94px;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  html body .nv-home-page .nv-media-rail-track--full-items {
+    scroll-snap-type: x mandatory !important;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-media-rail-min-item-width: 272px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-media-rail-min-item-width: 146px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-media-rail-min-item-width: 96px;
+  }
+}
+
+@media (max-width: 23.999rem) {
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-media-rail-min-item-width: 248px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-media-rail-min-item-width: 138px;
+  }
+
+  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-media-rail-min-item-width: 90px;
+  }
+}
