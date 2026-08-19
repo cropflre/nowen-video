@@ -50,3 +50,6 @@
 
 /* Mobile hero actions stay compact instead of expanding into a 2-column block. */
 @import './ui-media-detail-mobile-actions.css';
+
+/* Final wording cleanup: keep only the real media intro heading. */
+@import './ui-media-detail-copy-fix.css';
