@@ -6,9 +6,19 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -21,9 +31,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,10 +43,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -185,7 +196,14 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 HomeScreen(
                     onMediaClick = ::openDetail,
                     onPlay = ::openPlayer,
-                    onLibraryClick = { navController.navigate(MainTab.Library.route) },
+                    onLibraryClick = {
+                        navController.navigate(MainTab.Library.route) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onHistoryClick = { navController.navigate(HISTORY_ROUTE) },
+                    onFavoritesClick = { navController.navigate(FAVORITES_ROUTE) },
                 )
             }
             composable(MainTab.Library.route) {
@@ -286,10 +304,9 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
-                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { inPip ->
+                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { _ ->
                     PlayerScreen(
                         mediaId = mediaId,
-                        pictureInPictureMode = inPip,
                         onBack = { navController.popBackStack() },
                         onPlayNext = { nextId ->
                             navController.navigate("player/${Uri.encode(nextId)}") {
@@ -316,6 +333,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     }
 }
 
+/**
+ * Web 移动端同款悬浮底部导航：四个等宽入口，选中态是轻量紫色胶囊，
+ * 而不是 Material NavigationBar 默认的大面积指示器。
+ */
 @Composable
 private fun WebMobileBottomBar(
     selectedTab: MainTab?,
@@ -324,41 +345,69 @@ private fun WebMobileBottomBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 7.dp,
+            .navigationBarsPadding()
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        shadowElevation = 8.dp,
         tonalElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant,
-        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        NavigationBar(
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             MainTab.entries.forEach { item ->
                 val selected = selectedTab == item
-                NavigationBarItem(
+                WebMobileBottomBarItem(
+                    item = item,
                     selected = selected,
                     onClick = { onSelect(item) },
-                    icon = {
-                        Icon(
-                            if (selected) item.selectedIcon else item.icon,
-                            contentDescription = item.label,
-                        )
-                    },
-                    label = { Text(item.label) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
+                    modifier = Modifier.weight(1f),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun WebMobileBottomBarItem(
+    item: MainTab,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = modifier
+            .padding(horizontal = 3.dp)
+            .height(60.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.66f)
+                else Color.Transparent,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(
+                if (selected) item.selectedIcon else item.icon,
+                contentDescription = item.label,
+                tint = contentColor,
+                modifier = Modifier.size(23.dp),
+            )
+            Text(
+                item.label,
+                color = contentColor,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
         }
     }
 }
