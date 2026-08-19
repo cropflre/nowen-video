@@ -24,9 +24,7 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   const [failedKey, setFailedKey] = useState<string | null>(null)
 
   useLayoutEffect(() => {
-    const actions = shellRef.current?.querySelector<HTMLElement>('.nv-media-hero-actions') || null
-    setActionsHost(actions)
-    return () => setActionsHost(null)
+    setActionsHost(shellRef.current?.querySelector<HTMLElement>('.nv-media-hero-actions') || null)
   }, [media.id])
 
   // Standalone media always gets one cheap backdrop probe. This lets older
