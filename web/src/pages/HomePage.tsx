@@ -68,8 +68,8 @@ export default function HomePage() {
   const recentItems = data?.recentItems ?? []
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
-  const progressByMediaId = useMemo(() => Object.fromEntries(
-    continueList.map((item) => [item.media_id, formatProgress(item.position, item.duration)]),
+  const watchStateByMediaId = useMemo(() => Object.fromEntries(
+    continueList.map((item) => [item.media_id, { position: item.position, duration: item.duration }]),
   ), [continueList])
 
   const toastRef = useRef(toast)
@@ -113,7 +113,7 @@ export default function HomePage() {
           items={recommendations}
           fallbackItems={recentItems}
           maxItems={5}
-          progressByMediaId={progressByMediaId}
+          watchStateByMediaId={watchStateByMediaId}
         />
       )}
 
@@ -138,8 +138,8 @@ export default function HomePage() {
           action={<RailAction to="/browse" />}
         >
           {recommendations.map((item) => (
-            <div key={item.media.id} className="nv-home-poster-slot flex-shrink-0">
-              <MediaCard media={item.media} />
+            <div key={item.media.id} className="nv-home-recommendation-slot flex-shrink-0">
+              <MediaCard media={item.media} variant="landscape" showBadges={false} />
             </div>
           ))}
         </MediaRail>
