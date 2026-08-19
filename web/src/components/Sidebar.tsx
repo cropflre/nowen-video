@@ -10,14 +10,14 @@ import type { Library } from '@/types'
 import { useTranslation } from '@/i18n'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 import {
+  ChevronLeft,
+  ChevronRight,
   Film,
   FolderOpen,
   Home,
   Layers,
   LogOut,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   Search,
   Settings,
   Sun,
@@ -132,6 +132,22 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
           </div>
         </div>
 
+        {onCollapsedChange && (
+          <button
+            type="button"
+            className="nv-rail-collapse-toggle"
+            onClick={() => onCollapsedChange(!collapsed)}
+            aria-label={collapseActionLabel}
+            aria-controls="main-sidebar"
+            aria-expanded={!collapsed}
+            title={collapseActionLabel}
+          >
+            {collapsed
+              ? <ChevronRight size={16} aria-hidden="true" />
+              : <ChevronLeft size={16} aria-hidden="true" />}
+          </button>
+        )}
+
         <nav className="nv-rail-scroll">
           <RailSection title="浏览">
             <RailLink to="/" end icon={<Home size={16} aria-hidden="true" />} label={t('nav.home')} />
@@ -173,21 +189,6 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
             </div>
           </div>
           <div className="nv-rail-footer-actions">
-            {onCollapsedChange && (
-              <button
-                type="button"
-                className="nv-rail-action nv-rail-collapse-toggle"
-                onClick={() => onCollapsedChange(!collapsed)}
-                aria-label={collapseActionLabel}
-                aria-controls="main-sidebar"
-                aria-expanded={!collapsed}
-                title={collapseActionLabel}
-              >
-                {collapsed
-                  ? <PanelLeftOpen size={15} aria-hidden="true" />
-                  : <PanelLeftClose size={15} aria-hidden="true" />}
-              </button>
-            )}
             <LanguageSwitcher compact />
             <button
               type="button"
