@@ -42,5 +42,8 @@
 /* Final hero readability contract: crisp poster/copy + single-line ellipsis title. */
 @import './ui-media-detail-hero-clarity.css';
 
-/* Final detail content-fit contract: full highlight cards + wrapped cast at every width. */
+/* Detail content-fit safety net. */
 @import './ui-media-detail-content-fit.css';
+
+/* Final detail preview contract: one complete row + explicit in-place expansion. */
+@import './ui-media-detail-inline-previews.css';
