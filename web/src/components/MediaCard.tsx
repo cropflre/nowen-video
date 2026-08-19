@@ -31,6 +31,7 @@ export default function MediaCard({
 
   const isSeries = !!series || !!media?.series_id
   const seriesData = series || media?.series
+  const isLandscape = variant === 'landscape' || variant === 'compact'
   const detailTo = series
     ? `/series/${series.id}`
     : media!.series_id
@@ -54,8 +55,20 @@ export default function MediaCard({
     : media!.series_id
       ? !!media!.series?.poster_path || !!media!.poster_path
       : !!media!.poster_path
+  const backdropUrl = series
+    ? streamApi.getSeriesBackdropUrl(series.id)
+    : media!.series_id
+      ? streamApi.getSeriesBackdropUrl(media!.series_id)
+      : streamApi.getBackdropUrl(media!.id)
+  const hasBackdrop = series
+    ? !!series.backdrop_path
+    : media!.series_id
+      ? !!media!.series?.backdrop_path || !!media!.backdrop_path
+      : !!media!.backdrop_path
+  const artworkUrl = isLandscape && hasBackdrop ? backdropUrl : posterUrl
+  const hasArtwork = isLandscape && hasBackdrop ? true : hasPoster
 
-  const artworkRatio: MediaArtworkRatio = variant === 'landscape' || variant === 'compact' ? 'landscape' : 'poster'
+  const artworkRatio: MediaArtworkRatio = isLandscape ? 'landscape' : 'poster'
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return ''
@@ -67,7 +80,8 @@ export default function MediaCard({
   return (
     <article className={clsx('nv-media-card group', className)} data-variant={variant}>
       <MediaArtwork
-        src={hasPoster ? posterUrl : null}
+        src={hasArtwork ? artworkUrl : null}
+        fallbackSrc={isLandscape && hasBackdrop && hasPoster ? posterUrl : undefined}
         ratio={artworkRatio}
         className="nv-media-card-poster"
         imageClassName="nv-media-card-image"
