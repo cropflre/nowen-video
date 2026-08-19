@@ -7,7 +7,12 @@ import { usePagination } from '@/hooks/usePagination'
 import type { Favorite } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
-import { MediaGrid as SharedMediaGrid } from '@/ui'
+import {
+  MediaGrid as SharedMediaGrid,
+  PersonalWorkspace,
+  PersonalWorkspaceHeader,
+  PersonalWorkspacePanel,
+} from '@/ui'
 import { Heart } from 'lucide-react'
 
 interface FavoritesData {
@@ -40,33 +45,23 @@ export default function FavoritesPage() {
   const pages = totalPages(total)
 
   return (
-    <div className="nv-personal-workspace nv-favorites-page">
-      <header className="nv-personal-workspace-header">
-        <div className="nv-page-title-lockup">
-          <div className="nv-page-title-icon" aria-hidden="true">
-            <Heart size={20} />
-          </div>
-          <div className="min-w-0">
-            <span className="nv-personal-workspace-eyebrow">MY LIBRARY</span>
-            <h1 className="nv-page-title">{t('favorites.title')}</h1>
-            <p className="nv-page-subtitle">把喜欢的电影与剧集留在一个更容易再次找到的位置。</p>
-          </div>
-        </div>
-        <div className="nv-personal-workspace-stat" aria-label={`共 ${total} 个收藏`}>
-          <strong>{total}</strong>
-          <span>个收藏</span>
-        </div>
-      </header>
+    <PersonalWorkspace className="nv-favorites-page">
+      <PersonalWorkspaceHeader
+        icon={<Heart size={20} />}
+        eyebrow="MY LIBRARY"
+        title={t('favorites.title')}
+        description="把喜欢的电影与剧集留在一个更容易再次找到的位置。"
+        statValue={total}
+        statLabel="个收藏"
+        statAriaLabel={`共 ${total} 个收藏`}
+      />
 
-      <section className="nv-personal-workspace-panel" aria-labelledby="favorite-media-title">
-        <div className="nv-personal-workspace-toolbar">
-          <div>
-            <h2 id="favorite-media-title">收藏内容</h2>
-            <p>{total > 0 ? `当前共有 ${total} 个收藏，按最近收藏内容浏览。` : '收藏的内容会集中显示在这里。'}</p>
-          </div>
-          {total > 0 && <span className="nv-personal-workspace-count">{total} 项</span>}
-        </div>
-
+      <PersonalWorkspacePanel
+        titleId="favorite-media-title"
+        title="收藏内容"
+        description={total > 0 ? `当前共有 ${total} 个收藏，按最近收藏内容浏览。` : '收藏的内容会集中显示在这里。'}
+        count={total > 0 ? `${total} 项` : undefined}
+      >
         {loading && (
           <SharedMediaGrid aria-busy="true" aria-label="正在加载收藏内容">
             {Array.from({ length: 10 }).map((_, index) => (
@@ -107,7 +102,7 @@ export default function FavoritesPage() {
             />
           </div>
         )}
-      </section>
-    </div>
+      </PersonalWorkspacePanel>
+    </PersonalWorkspace>
   )
 }
