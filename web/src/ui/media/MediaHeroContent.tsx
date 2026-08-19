@@ -8,6 +8,7 @@ export interface MediaHeroContentProps {
   media: Media
   eyebrow?: ReactNode
   actions?: ReactNode
+  supplemental?: ReactNode
   className?: string
   title?: ReactNode
   subtitle?: ReactNode
@@ -21,6 +22,7 @@ export function MediaHeroContent({
   media,
   eyebrow,
   actions,
+  supplemental,
   className,
   title,
   subtitle,
@@ -65,6 +67,7 @@ export function MediaHeroContent({
         </>
       )}
       overview={media.overview || undefined}
+      supplemental={supplemental}
       actions={actions}
     />
   )
