@@ -1,19 +1,35 @@
 /* Nowen UI 2.0 · Integer-card media rails
  *
- * Product rule: a resting media shelf must never expose half of a card. The
- * MediaRail component measures the available viewport and publishes an exact
- * fitted card width through --nv-media-rail-fit-item-width. This stylesheet is
- * loaded last so historical fixed-width homepage rules cannot reintroduce
- * clipped artwork.
+ * Product rule: a resting shelf never exposes half of a card. The previous
+ * implementation measured every rail with getComputedStyle/clientWidth inside
+ * ResizeObserver callbacks, which could trigger repeated forced reflow on pages
+ * with many shelves. This version is layout-only: CSS container queries select
+ * an integer visible count and the browser distributes the width.
  */
 
+.nv-media-rail[data-full-items='true'] {
+  container-type: inline-size;
+}
+
 .nv-media-rail-track.nv-media-rail-track--full-items {
+  --nv-rail-gap: 12px;
+  --nv-rail-visible-count: 5;
+
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: calc(
+    (100% - (var(--nv-rail-visible-count) - 1) * var(--nv-rail-gap)) /
+      var(--nv-rail-visible-count)
+  ) !important;
+  column-gap: var(--nv-rail-gap) !important;
+  row-gap: 0 !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
   scroll-snap-type: x mandatory !important;
   scroll-behavior: smooth;
   overscroll-behavior-inline: contain;
   scrollbar-width: none !important;
+  box-sizing: border-box !important;
 }
 
 .nv-media-rail-track.nv-media-rail-track--full-items::-webkit-scrollbar {
@@ -21,84 +37,118 @@
 }
 
 .nv-media-rail-track.nv-media-rail-track--full-items > * {
-  width: var(--nv-media-rail-fit-item-width) !important;
-  min-width: var(--nv-media-rail-fit-item-width) !important;
-  max-width: var(--nv-media-rail-fit-item-width) !important;
-  flex: 0 0 var(--nv-media-rail-fit-item-width) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: none !important;
   scroll-snap-align: start;
   scroll-snap-stop: always;
   box-sizing: border-box;
 }
 
-/* Homepage rails use different readability floors before the JS fit pass. */
-html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
-  --nv-media-rail-min-item-width: 208px;
+/* Continue watching: large landscape cards. */
+.nv-media-rail-track--full-items:has(> .nv-continue-card) {
+  --nv-rail-gap: 14px;
+  --nv-rail-visible-count: 6;
 }
 
-html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
-  --nv-media-rail-min-item-width: 152px;
+/* Recommendations: denser landscape cards, matching the reference layout. */
+.nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+  --nv-rail-gap: 14px;
+  --nv-rail-visible-count: 8;
 }
 
-html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
-  --nv-media-rail-min-item-width: 96px;
+/* Compact catalogue shelves. */
+.nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+  --nv-rail-gap: 12px;
+  --nv-rail-visible-count: 6;
 }
 
-/* Keep the compact shelf arrows in their reserved edge gutters instead of
- * allowing card geometry to grow underneath them. */
+/* Full-width rails. */
+@container (max-width: 75rem) {
+  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-rail-visible-count: 5;
+  }
+
+  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 7;
+  }
+}
+
+@container (max-width: 62rem) {
+  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-rail-visible-count: 4;
+  }
+
+  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 6;
+  }
+}
+
+@container (max-width: 50rem) {
+  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-rail-visible-count: 3;
+  }
+
+  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 5;
+  }
+}
+
+@container (max-width: 39rem) {
+  .nv-media-rail-track--full-items:has(> .nv-continue-card) {
+    --nv-rail-visible-count: 2;
+  }
+
+  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 4;
+  }
+}
+
+@container (max-width: 29rem) {
+  .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 3;
+  }
+}
+
+/* Compact shelves are often placed inside a 2/3-column homepage grid, so they
+ * need their own container thresholds instead of viewport breakpoints. */
+@container (max-width: 43rem) {
+  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-visible-count: 5;
+  }
+}
+
+@container (max-width: 35rem) {
+  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-visible-count: 4;
+  }
+}
+
+@container (max-width: 27rem) {
+  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-visible-count: 3;
+  }
+}
+
+@container (max-width: 20rem) {
+  .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-visible-count: 2;
+  }
+}
+
+/* The compact shelf controls have their own edge gutters; keep the track inside
+ * that available content box and never let artwork grow underneath arrows. */
 html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-track--full-items {
   width: 100% !important;
   min-width: 0 !important;
-  box-sizing: border-box !important;
 }
 
-@media (min-width: 105rem) {
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
-    --nv-media-rail-min-item-width: 88px;
-  }
-}
-
-@media (min-width: 48rem) and (max-width: 74.999rem) {
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
-    --nv-media-rail-min-item-width: 200px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
-    --nv-media-rail-min-item-width: 148px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
-    --nv-media-rail-min-item-width: 94px;
-  }
-}
-
-@media (max-width: 47.999rem) {
-  html body .nv-home-page .nv-media-rail-track--full-items {
-    scroll-snap-type: x mandatory !important;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
-    --nv-media-rail-min-item-width: 272px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
-    --nv-media-rail-min-item-width: 146px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
-    --nv-media-rail-min-item-width: 96px;
-  }
-}
-
-@media (max-width: 23.999rem) {
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-continue-card) {
-    --nv-media-rail-min-item-width: 248px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-recommendation-slot) {
-    --nv-media-rail-min-item-width: 138px;
-  }
-
-  html body .nv-home-page .nv-media-rail-track--full-items:has(> .nv-home-shelf-poster-slot) {
-    --nv-media-rail-min-item-width: 90px;
+/* Touch devices keep whole-card snapping but do not animate programmatic scroll
+ * for long distances; native momentum scrolling feels substantially smoother. */
+@media (max-width: 47.999rem), (pointer: coarse) {
+  .nv-media-rail-track.nv-media-rail-track--full-items {
+    scroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
