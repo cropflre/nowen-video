@@ -9,7 +9,7 @@ data class MediaComment(
     @SerialName("user_id") val userId: String = "",
     @SerialName("media_id") val mediaId: String = "",
     val content: String = "",
-    val rating: Int = 0,
+    val rating: Double = 0.0,
     val username: String = "",
     val nickname: String = "",
     @SerialName("created_at") val createdAt: String = "",
