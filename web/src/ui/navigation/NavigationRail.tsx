@@ -33,14 +33,14 @@ export function NavigationRailLink({
 }
 
 export interface NavigationRailSectionProps {
-  title: string
+  title?: ReactNode
   children: ReactNode
 }
 
 export function NavigationRailSection({ title, children }: NavigationRailSectionProps) {
   return (
     <section className="nv-rail-section">
-      <div className="nv-rail-section-title">{title}</div>
+      {title && <div className="nv-rail-section-title">{title}</div>}
       <div className="nv-rail-section-links">{children}</div>
     </section>
   )
