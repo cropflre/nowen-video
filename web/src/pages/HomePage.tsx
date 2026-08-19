@@ -20,6 +20,13 @@ interface HomeData {
   allFailed: boolean
 }
 
+interface HomeShelf {
+  key: string
+  title: string
+  to: string
+  items: MixedItem[]
+}
+
 function getContinueArtwork(item: WatchHistory): string | null {
   const media = item.media
   if (media.media_type === 'episode' && media.series_id && media.series?.backdrop_path) {
@@ -28,6 +35,7 @@ function getContinueArtwork(item: WatchHistory): string | null {
   if (media.media_type === 'episode' && media.series_id && media.series?.poster_path) {
     return streamApi.getSeriesPosterUrl(media.series_id)
   }
+  if (media.backdrop_path) return streamApi.getBackdropUrl(item.media_id)
   if (media.poster_path) return streamApi.getPosterUrl(item.media_id)
   return null
 }
@@ -152,30 +160,9 @@ export default function HomePage() {
         </div>
       )}
 
-      {recentItems.length > 0 && (
-        <MediaRail
-          title={t('home.recentlyAdded')}
-          ariaLabel={t('home.recentlyAdded')}
-          itemCount={recentItems.length}
-          action={<RailAction to="/browse?sort=created_desc" />}
-        >
-          {recentItems.map((item) => {
-            const media = item.type === 'movie' ? item.media : item.series
-            if (!media) return null
-            return (
-              <div key={`${item.type}-${media.id}`} className="nv-home-poster-slot flex-shrink-0">
-                {item.type === 'series' && item.series
-                  ? <MediaCard series={item.series} />
-                  : item.media
-                    ? <MediaCard media={item.media} />
-                    : null}
-              </div>
-            )
-          })}
-        </MediaRail>
+      {!loading && recentItems.length > 0 && (
+        <HomeShelfGrid items={recentItems} recentTitle={t('home.recentlyAdded')} />
       )}
-
-      {!loading && recentItems.length > 0 && <GenreRows items={recentItems} />}
 
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <EmptyState
@@ -271,49 +258,62 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   )
 }
 
-function GenreRows({ items }: { items: MixedItem[] }) {
+function HomeShelfGrid({ items, recentTitle }: { items: MixedItem[]; recentTitle: string }) {
   const genreMap = new Map<string, MixedItem[]>()
   items.forEach((item) => {
     const media = item.type === 'movie' ? item.media : item.series
     if (!media) return
-    const genres = (media.genres || '').split(',').filter(Boolean)
-    genres.forEach((genre: string) => {
-      const value = genre.trim()
-      if (!value) return
-      if (!genreMap.has(value)) genreMap.set(value, [])
-      genreMap.get(value)!.push(item)
+    const genres = (media.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
+    genres.forEach((genre) => {
+      if (!genreMap.has(genre)) genreMap.set(genre, [])
+      genreMap.get(genre)!.push(item)
     })
   })
 
-  const genreEntries = Array.from(genreMap.entries())
+  const genreShelves: HomeShelf[] = Array.from(genreMap.entries())
     .filter(([, list]) => list.length >= 3)
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, 4)
+    .map(([genre, list]) => ({
+      key: `genre-${genre}`,
+      title: genre,
+      to: `/browse?genres=${encodeURIComponent(genre)}`,
+      items: list,
+    }))
 
-  if (genreEntries.length === 0) return null
+  const shelves: HomeShelf[] = [
+    {
+      key: 'recent',
+      title: recentTitle,
+      to: '/browse?sort=created_desc',
+      items,
+    },
+    ...genreShelves,
+  ]
 
   return (
-    <div className="nv-home-genre-stack nv-section-stack">
-      {genreEntries.map(([genre, list]) => (
-        <GenreRow key={genre} genre={genre} items={list.slice(0, 20)} />
+    <div className="nv-home-shelf-grid" aria-label="首页分类内容">
+      {shelves.map((shelf) => (
+        <HomePosterShelf key={shelf.key} shelf={shelf} />
       ))}
     </div>
   )
 }
 
-function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
+function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
   return (
     <MediaRail
-      title={genre}
-      ariaLabel={genre}
-      itemCount={items.length}
-      action={<RailAction to={`/browse?genres=${encodeURIComponent(genre)}`} />}
+      title={shelf.title}
+      ariaLabel={shelf.title}
+      itemCount={shelf.items.length}
+      action={<RailAction to={shelf.to} />}
+      className="nv-home-compact-shelf"
     >
-      {items.map((item) => {
+      {shelf.items.slice(0, 16).map((item) => {
         const media = item.type === 'movie' ? item.media : item.series
         if (!media) return null
         return (
-          <div key={`${item.type}-${media.id}`} className="nv-home-poster-slot nv-home-genre-slot flex-shrink-0">
+          <div key={`${shelf.key}-${item.type}-${media.id}`} className="nv-home-shelf-poster-slot flex-shrink-0">
             {item.type === 'series' && item.series
               ? <MediaCard series={item.series} />
               : item.media
