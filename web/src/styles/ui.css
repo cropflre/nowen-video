@@ -18,5 +18,6 @@
 @import './ui-reference-shell.css';
 @import './ui-reference-calibration.css';
 
-/* Homepage geometry has one and only one final source of truth. */
+/* Homepage desktop reference, then responsive/mobile extension. */
 @import './ui-home-reference-exact.css';
+@import './ui-home-responsive.css';
