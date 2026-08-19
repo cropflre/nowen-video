@@ -13,10 +13,15 @@ import { EmptyState, Section, Tag } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
 import { ChevronRight, Clock, Play, Sparkles } from 'lucide-react'
 
+const HOME_GENRES = ['动画', '喜剧', '冒险', '家庭'] as const
+
+type HomeGenre = typeof HOME_GENRES[number]
+
 interface HomeData {
   recentItems: MixedItem[]
   continueList: WatchHistory[]
   recommendations: RecommendedMedia[]
+  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
   allFailed: boolean
 }
 
@@ -49,6 +54,16 @@ function RailAction({ to }: { to: string }) {
   )
 }
 
+function itemMatchesGenre(item: MixedItem, genre: string) {
+  const media = item.type === 'movie' ? item.media : item.series
+  if (!media?.genres) return false
+  return media.genres
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .some((value) => value === genre || value.includes(genre))
+}
+
 export default function HomePage() {
   const { on, off } = useWebSocket()
   const toast = useToast()
@@ -56,17 +71,39 @@ export default function HomePage() {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data, loading, refetch, invalidate } = usePageCache<HomeData>(
-    'home:overview',
+    'home:overview:v2',
     async () => {
-      const [recentResult, continueResult, recommendResult] = await Promise.allSettled([
-        mediaApi.recentMixed(20),
+      const requests = [
+        mediaApi.recentMixed(24),
         mediaApi.continueWatching(10),
         recommendApi.getRecommendations(12),
-      ])
+        ...HOME_GENRES.map((genre) => mediaApi.listMixed({
+          page: 1,
+          size: 16,
+          genre,
+          sort: 'added',
+          order: 'desc',
+        })),
+      ] as const
+
+      const results = await Promise.allSettled(requests)
+      const [recentResult, continueResult, recommendResult, ...genreResults] = results
+      const recentItems = recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : []
+      const genreItems: Partial<Record<HomeGenre, MixedItem[]>> = {}
+
+      HOME_GENRES.forEach((genre, index) => {
+        const result = genreResults[index]
+        const serverItems = result?.status === 'fulfilled' ? (result.value.data.data || []) : []
+        genreItems[genre] = serverItems.length > 0
+          ? serverItems
+          : recentItems.filter((item) => itemMatchesGenre(item, genre))
+      })
+
       return {
-        recentItems: recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : [],
+        recentItems,
         continueList: continueResult.status === 'fulfilled' ? (continueResult.value.data.data || []) : [],
         recommendations: recommendResult.status === 'fulfilled' ? (recommendResult.value.data.data || []) : [],
+        genreItems,
         allFailed: [recentResult, continueResult, recommendResult].every((result) => result.status === 'rejected'),
       }
     },
@@ -76,6 +113,7 @@ export default function HomePage() {
   const recentItems = data?.recentItems ?? []
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
+  const genreItems = data?.genreItems ?? {}
   const watchStateByMediaId = useMemo(() => Object.fromEntries(
     continueList.map((item) => [item.media_id, { position: item.position, duration: item.duration }]),
   ), [continueList])
@@ -161,7 +199,11 @@ export default function HomePage() {
       )}
 
       {!loading && recentItems.length > 0 && (
-        <HomeShelfGrid items={recentItems} recentTitle={t('home.recentlyAdded')} />
+        <HomeShelfGrid
+          items={recentItems}
+          genreItems={genreItems}
+          recentTitle={t('home.recentlyAdded')}
+        />
       )}
 
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
@@ -258,29 +300,15 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   )
 }
 
-function HomeShelfGrid({ items, recentTitle }: { items: MixedItem[]; recentTitle: string }) {
-  const genreMap = new Map<string, MixedItem[]>()
-  items.forEach((item) => {
-    const media = item.type === 'movie' ? item.media : item.series
-    if (!media) return
-    const genres = (media.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
-    genres.forEach((genre) => {
-      if (!genreMap.has(genre)) genreMap.set(genre, [])
-      genreMap.get(genre)!.push(item)
-    })
-  })
-
-  const genreShelves: HomeShelf[] = Array.from(genreMap.entries())
-    .filter(([, list]) => list.length >= 3)
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 4)
-    .map(([genre, list]) => ({
-      key: `genre-${genre}`,
-      title: genre,
-      to: `/browse?genres=${encodeURIComponent(genre)}`,
-      items: list,
-    }))
-
+function HomeShelfGrid({
+  items,
+  genreItems,
+  recentTitle,
+}: {
+  items: MixedItem[]
+  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
+  recentTitle: string
+}) {
   const shelves: HomeShelf[] = [
     {
       key: 'recent',
@@ -288,7 +316,12 @@ function HomeShelfGrid({ items, recentTitle }: { items: MixedItem[]; recentTitle
       to: '/browse?sort=created_desc',
       items,
     },
-    ...genreShelves,
+    ...HOME_GENRES.map((genre) => ({
+      key: `genre-${genre}`,
+      title: genre,
+      to: `/browse?genres=${encodeURIComponent(genre)}`,
+      items: genreItems[genre] || [],
+    })).filter((shelf) => shelf.items.length > 0),
   ]
 
   return (
