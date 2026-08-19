@@ -7,22 +7,25 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -65,9 +69,8 @@ enum class MainTab(
     val selectedIcon: ImageVector,
 ) {
     Home("home", "首页", Icons.Outlined.Home, Icons.Filled.Home),
-    Library("library", "媒体库", Icons.Outlined.VideoLibrary, Icons.Filled.VideoLibrary),
+    Library("library", "影视库", Icons.Outlined.VideoLibrary, Icons.Filled.VideoLibrary),
     Search("search", "搜索", Icons.Outlined.Search, Icons.Filled.Search),
-    Downloads("downloads", "下载", Icons.Outlined.Download, Icons.Filled.Download),
     Profile("profile", "我的", Icons.Outlined.Person, Icons.Filled.Person),
 }
 
@@ -75,6 +78,7 @@ private const val DETAIL_ROUTE = "detail/{mediaId}"
 private const val SERIES_DETAIL_ROUTE = "series/{seriesId}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
 private const val OFFLINE_PLAYER_ROUTE = "offline/{mediaId}"
+private const val DOWNLOADS_ROUTE = "downloads"
 private const val FAVORITES_ROUTE = "favorites"
 private const val HISTORY_ROUTE = "history"
 private const val COLLECTIONS_ROUTE = "collections"
@@ -104,8 +108,14 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val currentTab = MainTab.entries.firstOrNull { it.route == currentRoute }
-    val showBottomBar = currentTab != null
+    val selectedTab = when (currentRoute) {
+        MainTab.Home.route -> MainTab.Home
+        MainTab.Search.route, PERSON_DETAIL_ROUTE -> MainTab.Search
+        MainTab.Profile.route, FAVORITES_ROUTE, HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE -> MainTab.Profile
+        MainTab.Library.route, DETAIL_ROUTE, SERIES_DETAIL_ROUTE, COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> MainTab.Library
+        else -> null
+    }
+    val showBottomBar = currentRoute != PLAYER_ROUTE && currentRoute != OFFLINE_PLAYER_ROUTE
     val playerPreferences by viewModel.playerPreferences.collectAsState()
     val context = LocalContext.current
     var askedDownloadNotificationPermission by rememberSaveable { mutableStateOf(false) }
@@ -113,9 +123,9 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         ActivityResultContracts.RequestPermission(),
     ) { }
 
-    LaunchedEffect(currentTab) {
+    LaunchedEffect(currentRoute) {
         if (
-            currentTab == MainTab.Downloads &&
+            currentRoute == DOWNLOADS_ROUTE &&
             !askedDownloadNotificationPermission &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -150,30 +160,19 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
-                    MainTab.entries.forEach { item ->
-                        val selected = currentTab == item
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(MainTab.Home.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    if (selected) item.selectedIcon else item.icon,
-                                    contentDescription = item.label,
-                                )
-                            },
-                            label = { Text(item.label) },
-                        )
-                    }
-                }
+                WebMobileBottomBar(
+                    selectedTab = selectedTab,
+                    onSelect = { item ->
+                        navController.navigate(item.route) {
+                            popUpTo(MainTab.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
             }
         },
     ) { padding ->
@@ -185,6 +184,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(MainTab.Home.route) {
                 HomeScreen(
                     onMediaClick = ::openDetail,
+                    onPlay = ::openPlayer,
                     onLibraryClick = { navController.navigate(MainTab.Library.route) },
                 )
             }
@@ -201,9 +201,6 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onCollectionClick = ::openCollection,
                 )
             }
-            composable(MainTab.Downloads.route) {
-                DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
-            }
             composable(MainTab.Profile.route) {
                 ProfileScreen(
                     sessionStore = viewModel.store,
@@ -213,6 +210,9 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onSettings = { navController.navigate(SETTINGS_ROUTE) },
                     onLogout = viewModel::logout,
                 )
+            }
+            composable(DOWNLOADS_ROUTE) {
+                DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
             }
             composable(SETTINGS_ROUTE) {
                 MobileSettingsScreen(onBack = { navController.popBackStack() })
@@ -311,6 +311,53 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                         onBack = { navController.popBackStack() },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebMobileBottomBar(
+    selectedTab: MainTab?,
+    onSelect: (MainTab) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 7.dp,
+        tonalElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+        ) {
+            MainTab.entries.forEach { item ->
+                val selected = selectedTab == item
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { onSelect(item) },
+                    icon = {
+                        Icon(
+                            if (selected) item.selectedIcon else item.icon,
+                            contentDescription = item.label,
+                        )
+                    },
+                    label = { Text(item.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
             }
         }
     }
