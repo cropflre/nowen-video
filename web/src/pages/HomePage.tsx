@@ -45,10 +45,10 @@ function getContinueArtwork(item: WatchHistory): string | null {
   return null
 }
 
-function RailAction({ to }: { to: string }) {
+function RailAction({ to, label = '查看全部' }: { to: string; label?: string }) {
   return (
     <Link to={to} className="nv-home-rail-action">
-      查看全部
+      {label}
       <ChevronRight size={14} aria-hidden="true" />
     </Link>
   )
@@ -339,7 +339,7 @@ function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
       title={shelf.title}
       ariaLabel={shelf.title}
       itemCount={shelf.items.length}
-      action={<RailAction to={shelf.to} />}
+      action={<RailAction to={shelf.to} label="更多" />}
       className="nv-home-compact-shelf"
     >
       {shelf.items.slice(0, 16).map((item) => {
