@@ -1,11 +1,11 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Bell, Clock3, Heart } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { PageContainer } from './design-system'
 import { AppShell, PageHeader } from '@/ui'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
-const SIDEBAR_COLLAPSED_KEY = 'nowen_sidebar_collapsed'
 const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
 
 const TITLE_BY_PREFIX: Array<[string, string]> = [
@@ -37,14 +37,6 @@ function resolveTitle(pathname: string) {
   return TITLE_BY_PREFIX.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Nowen Video'
 }
 
-function readInitialSidebarCollapsed() {
-  try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-
 function ApplicationTopBar() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -63,6 +55,20 @@ function ApplicationTopBar() {
     navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search')
   }
 
+  const actions = (
+    <>
+      <Link to="/history" className="nv-page-header-action" aria-label="观看历史" title="观看历史">
+        <Clock3 size={17} aria-hidden="true" />
+      </Link>
+      <Link to="/favorites" className="nv-page-header-action" aria-label="收藏" title="收藏">
+        <Heart size={17} aria-hidden="true" />
+      </Link>
+      <Link to="/my" className="nv-page-header-action" aria-label="我的消息" title="我的消息">
+        <Bell size={17} aria-hidden="true" />
+      </Link>
+    </>
+  )
+
   return (
     <PageHeader
       title={title}
@@ -70,6 +76,7 @@ function ApplicationTopBar() {
       onSearchValueChange={setKeyword}
       onSearchSubmit={submitSearch}
       showSearch={!isSearchRoute}
+      actions={actions}
       style={SAFE_INLINE_STYLE}
     />
   )
@@ -78,17 +85,8 @@ function ApplicationTopBar() {
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
   const isWidePage = WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
   const usesLocalDetailChrome = location.pathname.startsWith('/media/')
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0')
-    } catch {
-      // Storage may be unavailable in privacy-restricted browser contexts.
-    }
-  }, [sidebarCollapsed])
 
   useEffect(() => {
     const mainEl = mainRef.current
@@ -120,10 +118,7 @@ export default function Layout() {
   }, [location.pathname, location.search])
 
   return (
-    <AppShell
-      sidebar={<Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />}
-      sidebarCollapsed={sidebarCollapsed}
-    >
+    <AppShell sidebar={<Sidebar />} sidebarCollapsed={false}>
       <main
         ref={mainRef}
         id="main-scroll-container"
