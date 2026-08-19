@@ -31,6 +31,7 @@ export function HeroContent({
   compact = false,
 }: HeroContentProps) {
   const Heading = headingLevel
+  const titleText = typeof title === 'string' ? title : undefined
 
   return (
     <div className={clsx('nv-hero-content min-w-0', compact && 'nv-hero-content--compact', className)}>
@@ -38,6 +39,8 @@ export function HeroContent({
 
       <Heading
         className="nv-media-hero-title max-w-[28ch] text-balance font-bold text-[var(--nv-text-primary)]"
+        title={titleText}
+        aria-label={titleText}
         style={{
           fontSize: compact ? 'var(--nv-type-h1)' : 'var(--nv-type-display)',
           lineHeight: 'var(--nv-line-tight)',
