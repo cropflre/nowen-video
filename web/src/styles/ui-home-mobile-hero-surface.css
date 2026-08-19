@@ -1,0 +1,59 @@
+/* Nowen Video · mobile homepage hero surface
+ *
+ * The mobile homepage hero is intentionally cinematic even in light theme.
+ * Poster-only recommendations are enlarged and blurred as a backdrop; without a
+ * dedicated mobile surface treatment, bright poster edges can turn into a large
+ * white haze/band at the top of the carousel. Keep that fallback atmospheric
+ * and remove the light hairline around the hero card.
+ */
+
+@media (max-width: 47.999rem) {
+  html body .nv-home-page .nv-hero-carousel {
+    border-color: transparent !important;
+    background: #080b16 !important;
+
+    /* Own both ends of the image explicitly. The first layer suppresses bright
+       poster edges at the top; the second preserves the existing readable dark
+       decision area behind title/meta/actions at the bottom. */
+    --nv-hero-scrim:
+      linear-gradient(
+        180deg,
+        rgba(6, 8, 16, .38) 0%,
+        rgba(6, 8, 16, .18) 18%,
+        rgba(6, 8, 16, .04) 34%,
+        transparent 46%
+      ),
+      linear-gradient(
+        0deg,
+        rgba(7, 10, 22, .98) 0%,
+        rgba(7, 10, 22, .90) 30%,
+        rgba(7, 10, 22, .58) 54%,
+        rgba(7, 10, 22, .14) 78%,
+        rgba(7, 10, 22, .02) 100%
+      ) !important;
+    --nv-hero-bottom-scrim: linear-gradient(
+      0deg,
+      rgba(5, 8, 18, .58),
+      transparent 48%
+    ) !important;
+  }
+
+  /* The first absolutely positioned child is the animated artwork surface. A
+     dark base prevents a bright flash/edge while poster assets decode or swap. */
+  html body .nv-home-page .nv-hero-carousel > .absolute.inset-0:first-child {
+    background: #080b16 !important;
+  }
+
+  /* Poster-only items are deliberately used as a fallback when no backdrop is
+     available. Tone that blurred crop down so pale poster margins never become
+     a white strip across the top of the mobile hero. */
+  html body .nv-home-page .nv-hero-carousel img[data-artwork-kind="poster"] {
+    transform: scale(1.16) !important;
+    filter: blur(18px) saturate(.92) brightness(.62) contrast(1.05) !important;
+  }
+
+  /* Real backdrops need only a subtle top-edge correction. */
+  html body .nv-home-page .nv-hero-carousel img[data-artwork-kind="backdrop"] {
+    filter: saturate(1.02) brightness(.94) !important;
+  }
+}
