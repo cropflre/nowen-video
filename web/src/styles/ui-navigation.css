@@ -1,6 +1,7 @@
-/* Nowen UI 2.0 · Navigation rail
- * Collapsible desktop navigation belongs to the shared UI layer rather than
- * the historical page compatibility bundle.
+/* Nowen Video · collapsible desktop navigation rail
+ * The rail keeps its current information architecture while allowing users to
+ * trade navigation context for content width. The preference is persisted by
+ * Layout.tsx, so this layer only owns the desktop interaction and presentation.
  */
 
 .nv-rail-collapse-toggle {
@@ -13,9 +14,11 @@
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] {
-    --nv-rail-width: 78px;
+    --nv-rail-width: 76px;
   }
 
+  /* Historical visual layers also participate in rail sizing, therefore the
+     explicit shell state owns the final width. */
   .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail {
     width: 228px !important;
     min-width: 228px !important;
@@ -24,15 +27,17 @@
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] > .nv-rail {
-    width: 78px !important;
-    min-width: 78px !important;
-    max-width: 78px !important;
-    flex-basis: 78px !important;
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    flex-basis: 76px !important;
     padding: 14px 10px 12px !important;
     align-items: center !important;
   }
 
   .nv-rail {
+    position: relative !important;
+    overflow: visible !important;
     transition:
       width var(--nv-motion-normal) var(--nv-ease-standard),
       min-width var(--nv-motion-normal) var(--nv-ease-standard),
@@ -41,35 +46,52 @@
       padding var(--nv-motion-normal) var(--nv-ease-standard);
   }
 
+  /* Keep the rail control attached to the rail edge so collapse/restore stays
+     visible without competing with footer utilities. */
   .nv-rail-collapse-toggle {
-    position: static;
+    position: absolute;
+    z-index: 40;
+    top: 68px;
+    right: -15px;
     width: 30px;
     min-width: 30px;
     height: 30px;
     display: grid;
     place-items: center;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    background: transparent;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--nv-border-default) 82%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--nv-glass-elevated) 94%, transparent);
     color: var(--nv-text-tertiary);
-    box-shadow: none;
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, .10),
+      inset 0 1px rgba(255, 255, 255, .35);
+    backdrop-filter: blur(18px) saturate(118%);
+    -webkit-backdrop-filter: blur(18px) saturate(118%);
     cursor: pointer;
     transition:
       transform var(--nv-motion-fast) var(--nv-ease-standard),
       color var(--nv-motion-fast) var(--nv-ease-standard),
       border-color var(--nv-motion-fast) var(--nv-ease-standard),
-      background-color var(--nv-motion-fast) var(--nv-ease-standard);
+      background-color var(--nv-motion-fast) var(--nv-ease-standard),
+      box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
   }
 
-  .nv-rail-collapse-toggle:hover {
-    transform: translateY(-1px);
-    border-color: var(--nv-border-subtle);
-    background: var(--nv-fill-hover);
-    color: var(--nv-text-primary);
+  .nv-rail-collapse-toggle:hover,
+  .nv-rail-collapse-toggle:focus-visible {
+    transform: scale(1.06);
+    border-color: color-mix(in srgb, var(--nv-action-primary) 34%, var(--nv-border-default));
+    background: var(--nv-glass-elevated);
+    color: var(--nv-action-primary);
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, .14),
+      0 0 0 3px color-mix(in srgb, var(--nv-action-primary) 10%, transparent),
+      inset 0 1px rgba(255, 255, 255, .42);
+    outline: none;
   }
 
   .nv-rail-collapse-toggle:active {
-    transform: scale(.96);
+    transform: scale(.94);
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-row {
@@ -141,6 +163,7 @@
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    position: relative !important;
     width: 46px !important;
     min-width: 46px !important;
     max-width: 46px !important;
@@ -192,6 +215,42 @@
     width: 18px !important;
     height: 18px !important;
     opacity: 1 !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item::after {
+    content: attr(data-label);
+    position: absolute;
+    z-index: 80;
+    top: 50%;
+    left: calc(100% + 10px);
+    max-width: 190px;
+    transform: translate(4px, -50%);
+    padding: 7px 10px;
+    border: 1px solid var(--nv-border-default);
+    border-radius: 9px;
+    background: var(--nv-glass-elevated);
+    color: var(--nv-text-primary);
+    box-shadow: var(--nv-shadow-card);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    backdrop-filter: blur(18px) saturate(118%);
+    -webkit-backdrop-filter: blur(18px) saturate(118%);
+    transition:
+      opacity var(--nv-motion-fast) var(--nv-ease-standard),
+      transform var(--nv-motion-fast) var(--nv-ease-standard),
+      visibility var(--nv-motion-fast) var(--nv-ease-standard);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item:hover::after,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item:focus-visible::after {
+    transform: translate(0, -50%);
+    opacity: 1;
+    visibility: visible;
   }
 
   .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile {
@@ -270,7 +329,8 @@
 @media (prefers-reduced-motion: reduce) {
   .nv-rail,
   .nv-main-scroll,
-  .nv-rail-collapse-toggle {
+  .nv-rail-collapse-toggle,
+  .nv-rail-item::after {
     transition: none !important;
   }
 }
