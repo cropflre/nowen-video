@@ -18,3 +18,9 @@ export {
   type BottomNavigationItem,
 } from './navigation/BottomNavigation'
 export { DetailTabs, type DetailTabsProps, type DetailTabItem } from './navigation/DetailTabs'
+export {
+  NavigationRailLink,
+  NavigationRailSection,
+  type NavigationRailLinkProps,
+  type NavigationRailSectionProps,
+} from './navigation/NavigationRail'
