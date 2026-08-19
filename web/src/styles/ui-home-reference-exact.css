@@ -1,0 +1,173 @@
+/* Nowen UI 2.0 · Exact desktop homepage reference lock
+ *
+ * This file is intentionally loaded last. It neutralizes high-specificity
+ * legacy homepage rules that still leak from streaming-os-refinement.css and
+ * then reapplies the approved 1672x941 homepage geometry.
+ */
+
+@media (min-width: 48rem) {
+  /* Hero geometry ------------------------------------------------------- */
+  html body .nv-home-page .nv-hero-carousel {
+    height: 274px !important;
+    min-height: 274px !important;
+    max-height: 274px !important;
+    border-radius: 11px !important;
+    overflow: hidden !important;
+  }
+
+  /* streaming-os-refinement historically targeted `.relative.z-10` with
+     `min-height: inherit` + large padding. The new foreground owns geometry. */
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 26px !important;
+    padding: 14px 34px 18px !important;
+    overflow: hidden !important;
+  }
+
+  /* Retire the old full-width bottom fade from the legacy homepage hero. */
+  html body .nv-home-page .nv-hero-carousel::after {
+    content: none !important;
+    display: none !important;
+    height: 0 !important;
+    opacity: 0 !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    width: 156px !important;
+    min-width: 156px !important;
+    max-width: 156px !important;
+    height: auto !important;
+    flex: 0 0 156px !important;
+    border-radius: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content {
+    width: min(48%, 540px) !important;
+    max-width: 540px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    flex: 0 1 540px !important;
+    padding: 0 !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content .nv-hero-content {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    max-width: 25ch !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    font-size: clamp(1.35rem, 1.55vw, 1.62rem) !important;
+    font-weight: 700 !important;
+    line-height: 1.12 !important;
+    letter-spacing: -.025em !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-subtitle {
+    max-width: 40ch !important;
+    margin-top: 5px !important;
+    font-size: 10px !important;
+    line-height: 1.35 !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-meta {
+    margin-top: 8px !important;
+    gap: 5px 9px !important;
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-overview {
+    max-width: 52ch !important;
+    margin-top: 8px !important;
+    overflow: hidden !important;
+    font-size: 10px !important;
+    line-height: 1.55 !important;
+    text-overflow: ellipsis !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-supplemental {
+    margin-top: 8px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-watch-progress {
+    width: min(320px, 100%) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions {
+    margin-top: 10px !important;
+    gap: 7px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions .nv-button,
+  html body .nv-home-page .nv-media-hero-actions a {
+    min-height: 34px !important;
+    height: 34px !important;
+    padding-inline: 12px !important;
+    border-radius: 8px !important;
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-dots {
+    bottom: 12px !important;
+  }
+
+  /* Full-width rails ---------------------------------------------------- */
+  html body .nv-home-page > .nv-media-rail,
+  html body .nv-home-page > .nv-section {
+    min-width: 0 !important;
+  }
+
+  html body .nv-home-page > .nv-media-rail .nv-media-rail-track,
+  html body .nv-home-page > .nv-section .nv-media-rail-track {
+    gap: 12px !important;
+  }
+
+  html body .nv-home-page .nv-continue-card {
+    width: 222px !important;
+    min-width: 222px !important;
+    max-width: 222px !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot {
+    width: 165px !important;
+    min-width: 165px !important;
+    max-width: 165px !important;
+  }
+
+  /* Keep the approved compact vertical rhythm between hero / rails. */
+  html body .nv-home-page {
+    gap: 22px !important;
+  }
+
+  html body .nv-home-page .nv-section-header {
+    margin-bottom: 8px !important;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 90rem) {
+  html body .nv-home-page .nv-continue-card {
+    width: 210px !important;
+    min-width: 210px !important;
+    max-width: 210px !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot {
+    width: 158px !important;
+    min-width: 158px !important;
+    max-width: 158px !important;
+  }
+}
