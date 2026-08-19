@@ -35,3 +35,6 @@
 
 /* Reviews are secondary content: compact collapsed summary by default. */
 @import './ui-media-detail-comments.css';
+
+/* Playback/subtitle/metadata are supporting diagnostics, not a permanent sidebar. */
+@import './ui-media-detail-summary-strip.css';
