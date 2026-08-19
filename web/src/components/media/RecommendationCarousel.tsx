@@ -1,8 +1,9 @@
+import { Link } from 'react-router-dom'
 import type { RecommendedMedia } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import { EmptyState } from '@/components/design-system'
-import { MediaGrid } from '@/ui'
-import { Film } from 'lucide-react'
+import { MediaRail } from '@/ui'
+import { ChevronRight, Film } from 'lucide-react'
 
 interface RecommendationCarouselProps {
   recommendations: RecommendedMedia[]
@@ -21,26 +22,32 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
   }
 
   return (
-    <section className="nv-recommendation-section" aria-labelledby="recommendation-title">
-      <div className="nv-recommendation-header">
-        <div className="flex items-center gap-2">
-          <Film size={15} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
-          <h2 id="recommendation-title" className="nv-section-title">相关推荐</h2>
-          <span className="text-[10px] text-[var(--nv-text-tertiary)]">{recommendations.length}</span>
-        </div>
-      </div>
-
-      <MediaGrid
-        className="!grid-cols-[repeat(auto-fill,minmax(138px,166px))] !gap-x-[13px] !gap-y-6"
-        role="list"
-        aria-label="相关推荐媒体列表"
+    <section className="nv-recommendation-section nv-detail-recommendation-section" aria-labelledby="recommendation-title">
+      <MediaRail
+        title={(
+          <span className="inline-flex items-center gap-2">
+            <Film size={16} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+            <span id="recommendation-title">相似推荐</span>
+          </span>
+        )}
+        ariaLabel="相似推荐"
+        itemCount={recommendations.length}
+        fullItemsOnly
+        minItemWidth={132}
+        className="nv-detail-recommendation-rail"
+        action={(
+          <Link to="/browse" className="nv-detail-section-more">
+            查看更多
+            <ChevronRight size={14} aria-hidden="true" />
+          </Link>
+        )}
       >
         {recommendations.map((item) => (
-          <div key={item.media.id} className="min-w-0" role="listitem">
+          <div key={item.media.id} className="nv-detail-recommendation-slot min-w-0">
             <MediaCard media={item.media} eyebrow={item.reason} variant="recommendation" />
           </div>
         ))}
-      </MediaGrid>
+      </MediaRail>
     </section>
   )
 }
