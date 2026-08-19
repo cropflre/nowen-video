@@ -23,7 +23,7 @@ export function PageHeader({
   className,
   style,
   searchValue = '',
-  searchPlaceholder = '搜索影片、剧集、演员',
+  searchPlaceholder = '搜索影片、剧集、演员、导演...',
   searchAriaLabel = '全局搜索',
   showSearch = true,
   showSearchShortcut = true,
