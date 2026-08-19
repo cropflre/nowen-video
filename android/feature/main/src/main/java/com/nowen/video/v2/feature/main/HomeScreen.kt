@@ -2,6 +2,7 @@ package com.nowen.video.v2.feature.main
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -329,7 +330,10 @@ private fun HomeHeroCarousel(
     ) {
         AnimatedContent(
             targetState = media,
-            transitionSpec = { androidx.compose.animation.fadeIn(tween(220)) togetherWith androidx.compose.animation.fadeOut(tween(180)) },
+            transitionSpec = {
+                androidx.compose.animation.fadeIn(tween(220)) togetherWith
+                    androidx.compose.animation.fadeOut(tween(180))
+            },
             label = "homeHero",
         ) { item ->
             val backdrop = resolveImage(baseUrl, item.resolvedBackdrop)
@@ -477,7 +481,6 @@ private fun HomeHeroCarousel(
                     }
                 }
 
-                // 整个画面保持可打开详情，但按钮区域仍优先处理自己的点击。
                 Surface(
                     onClick = { onOpen(item.resolvedId) },
                     modifier = Modifier
@@ -513,12 +516,8 @@ private fun HeroMetadata(media: MediaCard) {
         }
         media.year?.takeIf { it > 0 }?.let { Text(it.toString(), color = Color.White.copy(alpha = 0.82f)) }
         if (media.runtime > 0) Text(formatRuntime(media.runtime), color = Color.White.copy(alpha = 0.82f))
-        media.resolution.takeIf(String::isNotBlank)?.let {
-            HeroChip(it)
-        }
-        media.genres.split(',').map(String::trim).firstOrNull(String::isNotBlank)?.let {
-            HeroChip(it)
-        }
+        media.resolution.takeIf(String::isNotBlank)?.let { HeroChip(it) }
+        media.genres.split(',').map(String::trim).firstOrNull(String::isNotBlank)?.let { HeroChip(it) }
     }
 }
 
@@ -739,8 +738,9 @@ private fun resolveHomeArtwork(baseUrl: String?, media: MediaCard, preferBackdro
 }
 
 private fun heroOverview(media: MediaCard): String = when {
+    media.overview.isNotBlank() -> media.overview
     media.episodeTitle.isNotBlank() -> media.episodeTitle
-    media.genres.isNotBlank() -> "${media.genres.replace(',', ' · ')} · 在 Nowen Video 中继续探索这部作品。"
+    media.genres.isNotBlank() -> "${media.genres.replace(",", " · ")} · 在 Nowen Video 中继续探索这部作品。"
     else -> "在 Nowen Video 中继续探索这部作品。"
 }
 
