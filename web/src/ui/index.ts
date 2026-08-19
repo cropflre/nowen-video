@@ -6,6 +6,14 @@ export { PersonCard, type PersonCardProps } from './media/PersonCard'
 export { AppShell, type AppShellProps } from './layout/AppShell'
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader'
 export { MediaGrid, type MediaGridProps, type MediaGridVariant } from './layout/MediaGrid'
+export {
+  PersonalWorkspace,
+  PersonalWorkspaceHeader,
+  PersonalWorkspacePanel,
+  type PersonalWorkspaceProps,
+  type PersonalWorkspaceHeaderProps,
+  type PersonalWorkspacePanelProps,
+} from './layout/PersonalWorkspace'
 export { FilterChip, type FilterChipProps } from './primitives/FilterChip'
 export {
   SegmentedControl,
