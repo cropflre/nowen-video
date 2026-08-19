@@ -18,6 +18,20 @@ export interface MediaHeroContentProps {
   compact?: boolean
 }
 
+function formatHeroDuration(media: Media) {
+  const seconds = media.duration > 0
+    ? media.duration
+    : media.runtime > 0
+      ? media.runtime * 60
+      : 0
+  if (!seconds) return ''
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  if (hours > 0 && minutes > 0) return `${hours}小时${minutes}分钟`
+  if (hours > 0) return `${hours}小时`
+  return `${minutes}分钟`
+}
+
 export function MediaHeroContent({
   media,
   eyebrow,
@@ -34,6 +48,7 @@ export function MediaHeroContent({
   const resolvedSubtitle = subtitle ?? (
     media.orig_title && media.orig_title !== media.title ? media.orig_title : undefined
   )
+  const durationLabel = formatHeroDuration(media)
 
   return (
     <HeroContent
@@ -52,6 +67,7 @@ export function MediaHeroContent({
             </span>
           )}
           {media.year > 0 && <span>{media.year}</span>}
+          {durationLabel && <span>{durationLabel}</span>}
           {media.genres && (
             <span className="text-[var(--nv-text-tertiary)]">
               {media.genres.split(',').slice(0, 3).map((genre) => genre.trim()).filter(Boolean).join(' · ')}
