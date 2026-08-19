@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaApi, recommendApi, streamApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -10,8 +10,8 @@ import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
 import { EmptyState, Section, Tag } from '@/components/design-system'
-import { MediaRail } from '@/ui'
-import { Play, Clock, Sparkles } from 'lucide-react'
+import { MediaArtwork, MediaRail } from '@/ui'
+import { ChevronRight, Clock, Play, Sparkles } from 'lucide-react'
 
 interface HomeData {
   recentItems: MixedItem[]
@@ -30,6 +30,15 @@ function getContinueArtwork(item: WatchHistory): string | null {
   }
   if (media.poster_path) return streamApi.getPosterUrl(item.media_id)
   return null
+}
+
+function RailAction({ to }: { to: string }) {
+  return (
+    <Link to={to} className="nv-home-rail-action">
+      查看全部
+      <ChevronRight size={14} aria-hidden="true" />
+    </Link>
+  )
 }
 
 export default function HomePage() {
@@ -59,6 +68,9 @@ export default function HomePage() {
   const recentItems = data?.recentItems ?? []
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
+  const progressByMediaId = useMemo(() => Object.fromEntries(
+    continueList.map((item) => [item.media_id, formatProgress(item.position, item.duration)]),
+  ), [continueList])
 
   const toastRef = useRef(toast)
   const tRef = useRef(t)
@@ -97,7 +109,12 @@ export default function HomePage() {
   return (
     <div className="nv-home-page nv-section-stack">
       {(recommendations.length > 0 || recentItems.length > 0) && (
-        <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} />
+        <HeroCarousel
+          items={recommendations}
+          fallbackItems={recentItems}
+          maxItems={5}
+          progressByMediaId={progressByMediaId}
+        />
       )}
 
       {continueList.length > 0 && (
@@ -112,16 +129,17 @@ export default function HomePage() {
         <MediaRail
           title={(
             <span className="inline-flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+              <Sparkles size={16} aria-hidden="true" />
               {t('home.recommended')}
             </span>
           )}
           ariaLabel={t('home.recommended')}
           itemCount={recommendations.length}
+          action={<RailAction to="/browse" />}
         >
           {recommendations.map((item) => (
             <div key={item.media.id} className="nv-home-poster-slot flex-shrink-0">
-              <MediaCard media={item.media} eyebrow={item.reason} />
+              <MediaCard media={item.media} />
             </div>
           ))}
         </MediaRail>
@@ -135,7 +153,12 @@ export default function HomePage() {
       )}
 
       {recentItems.length > 0 && (
-        <MediaRail title={t('home.recentlyAdded')} ariaLabel={t('home.recentlyAdded')} itemCount={recentItems.length}>
+        <MediaRail
+          title={t('home.recentlyAdded')}
+          ariaLabel={t('home.recentlyAdded')}
+          itemCount={recentItems.length}
+          action={<RailAction to="/browse?sort=created_desc" />}
+        >
           {recentItems.map((item) => {
             const media = item.type === 'movie' ? item.media : item.series
             if (!media) return null
@@ -178,12 +201,13 @@ function ContinueWatchingRow({
     <MediaRail
       title={(
         <span className="inline-flex items-center gap-2">
-          <Clock size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+          <Clock size={16} aria-hidden="true" />
           {title}
         </span>
       )}
       ariaLabel={title}
       itemCount={items.length}
+      action={<RailAction to="/history" />}
     >
       {items.map((item) => {
         const percent = formatProgress(item.position, item.duration)
@@ -195,37 +219,31 @@ function ContinueWatchingRow({
         return (
           <article key={item.id} className="nv-continue-card group flex-shrink-0">
             <Link to={`/play/${item.media_id}`} className="block" aria-label={`继续播放 ${displayTitle}`}>
-              <div className="nv-continue-artwork relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] transition-[transform,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-                {artworkUrl ? (
-                  <img
-                    src={artworkUrl}
-                    alt=""
-                    className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]"
-                    loading="lazy"
-                    onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none' }}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-                    <Play size={26} aria-hidden="true" />
-                  </div>
-                )}
-                <div className="nv-continue-overlay absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <MediaArtwork
+                src={artworkUrl}
+                alt=""
+                ratio="landscape"
+                className="nv-continue-artwork"
+                imageClassName="transition-[filter,transform] duration-200 group-hover:scale-[1.015] group-hover:brightness-[.82]"
+                fallback={<Play size={24} aria-hidden="true" />}
+              >
+                <div className="nv-continue-overlay absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
                     <Play size={14} fill="currentColor" aria-hidden="true" />
                   </span>
                 </div>
-                <Tag tone="quality" className="absolute right-2 top-2">{percent}%</Tag>
+                <Tag tone="quality" className="absolute right-2 top-2 z-20">{percent}%</Tag>
                 <div className="nv-media-card-progress">
                   <span style={{ width: `${percent}%` }} />
                 </div>
-              </div>
+              </MediaArtwork>
 
-              <div className="py-2">
+              <div className="nv-continue-copy">
                 <h3 className="nv-media-card-title">{displayTitle}</h3>
                 {item.media.media_type === 'episode' && item.media.episode_title && (
-                  <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{item.media.episode_title}</p>
+                  <p className="nv-continue-episode-title">{item.media.episode_title}</p>
                 )}
-                <p className="mt-1 text-[var(--nv-type-caption)] text-[var(--nv-text-tertiary)]">{watchedLabel(percent)}</p>
+                <p className="nv-continue-progress-label">{watchedLabel(percent)}</p>
               </div>
             </Link>
           </article>
@@ -239,7 +257,7 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   return (
     <Section title={title}>
       <div className="flex gap-[var(--nv-grid-gap-x)] overflow-hidden pb-3 pt-1">
-        {Array.from({ length: landscape ? 5 : 8 }).map((_, index) => (
+        {Array.from({ length: landscape ? 6 : 9 }).map((_, index) => (
           <div key={index} className={landscape ? 'nv-continue-card flex-shrink-0' : 'nv-home-poster-slot flex-shrink-0'}>
             <div className={`skeleton w-full rounded-[var(--nv-radius-card)] ${landscape ? 'aspect-video' : 'aspect-[2/3]'}`} />
             <div className="mt-2 space-y-2">
@@ -285,7 +303,12 @@ function GenreRows({ items }: { items: MixedItem[] }) {
 
 function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
   return (
-    <MediaRail title={genre} ariaLabel={genre} itemCount={items.length}>
+    <MediaRail
+      title={genre}
+      ariaLabel={genre}
+      itemCount={items.length}
+      action={<RailAction to={`/browse?genres=${encodeURIComponent(genre)}`} />}
+    >
       {items.map((item) => {
         const media = item.type === 'movie' ? item.media : item.series
         if (!media) return null
