@@ -36,3 +36,21 @@ data class RecommendedMediaCard(
     val score: Double = 0.0,
     val reason: String = "",
 )
+
+/**
+ * Android 首页直接复刻 Web 移动端信息架构：Hero、续播、推荐、最近添加与分类货架。
+ * 每个分区允许独立失败，避免某一个接口异常导致整个首页空白。
+ */
+data class MobileWebHomeContent(
+    val recommendations: List<MediaCard> = emptyList(),
+    val continueWatching: List<MediaCard> = emptyList(),
+    val recent: List<MediaCard> = emptyList(),
+    val genreShelves: Map<String, List<MediaCard>> = emptyMap(),
+    val unavailableSections: Set<String> = emptySet(),
+) {
+    val heroItems: List<MediaCard>
+        get() = (recommendations.ifEmpty { recent }).distinctBy(MediaCard::resolvedId).take(5)
+
+    val isEmpty: Boolean
+        get() = recommendations.isEmpty() && continueWatching.isEmpty() && recent.isEmpty()
+}
