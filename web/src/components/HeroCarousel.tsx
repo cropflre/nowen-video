@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Film, Info, Play } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, Heart, Play, RotateCcw } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
@@ -76,6 +76,11 @@ interface HeroArtwork {
   isBackdrop: boolean
 }
 
+interface HeroWatchState {
+  position: number
+  duration: number
+}
+
 function getHeroArtwork(media: Media): HeroArtwork {
   if (media.series_id) {
     if (media.backdrop_path) {
@@ -115,18 +120,28 @@ function handleArtworkError(event: SyntheticEvent<HTMLImageElement>, fallback?: 
   image.style.display = 'none'
 }
 
+function formatClock(seconds: number) {
+  const value = Math.max(0, Math.floor(seconds || 0))
+  const hours = Math.floor(value / 3600)
+  const minutes = Math.floor((value % 3600) / 60)
+  const secs = value % 60
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${minutes}:${String(secs).padStart(2, '0')}`
+}
+
 interface HeroCarouselProps {
   items: RecommendedMedia[]
   fallbackItems?: MixedItem[]
   maxItems?: number
-  progressByMediaId?: Record<string, number>
+  watchStateByMediaId?: Record<string, HeroWatchState>
 }
 
 export default function HeroCarousel({
   items: rawItems,
   fallbackItems,
   maxItems = 5,
-  progressByMediaId = {},
+  watchStateByMediaId = {},
 }: HeroCarouselProps) {
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
@@ -211,10 +226,10 @@ export default function HeroCarousel({
   const playLink = item.media.media_type === 'episode' && item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/play/${item.media.id}`
-  const detailLink = item.media.series_id
-    ? `/series/${item.media.series_id}`
-    : `/media/${item.media.id}`
-  const progress = Math.max(0, Math.min(100, progressByMediaId[item.media.id] || 0))
+  const watchState = watchStateByMediaId[item.media.id]
+  const progress = watchState?.duration > 0
+    ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
+    : 0
 
   return (
     <section
@@ -276,9 +291,11 @@ export default function HeroCarousel({
               <MediaHeroContent
                 media={item.media}
                 inlineBadges
-                supplemental={progress > 0 ? (
+                supplemental={watchState?.duration > 0 ? (
                   <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
-                    <div className="nv-home-hero-watch-progress-label">已观看 {progress}%</div>
+                    <div className="nv-home-hero-watch-progress-label">
+                      上次观看至 {formatClock(watchState.position)} / {formatClock(watchState.duration)}
+                    </div>
                     <div className="nv-home-hero-watch-progress-track">
                       <span style={{ width: `${progress}%` }} />
                     </div>
@@ -293,16 +310,25 @@ export default function HeroCarousel({
                       data-size="lg"
                     >
                       <Play size={16} fill="currentColor" aria-hidden="true" />
-                      {progress > 0 ? '继续播放' : t('home.playNow')}
+                      {watchState ? '继续播放' : t('home.playNow')}
                     </Link>
                     <Link
-                      to={detailLink}
+                      to={`${playLink}?restart=1`}
                       className={buttonClassName({ variant: 'secondary', size: 'lg' })}
                       data-variant="secondary"
                       data-size="lg"
                     >
-                      <Info size={16} aria-hidden="true" />
-                      {t('home.viewDetail')}
+                      <RotateCcw size={15} aria-hidden="true" />
+                      从头播放
+                    </Link>
+                    <Link
+                      to="/favorites"
+                      className={buttonClassName({ variant: 'secondary', size: 'lg' })}
+                      data-variant="secondary"
+                      data-size="lg"
+                    >
+                      <Heart size={15} aria-hidden="true" />
+                      收藏
                     </Link>
                   </>
                 )}
