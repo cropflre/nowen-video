@@ -24,19 +24,24 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -70,6 +76,8 @@ import com.nowen.video.v2.core.designsystem.ElevatedPanel
 import com.nowen.video.v2.core.designsystem.MessagePanel
 import com.nowen.video.v2.core.model.CollectionWithMedia
 import com.nowen.video.v2.core.model.MediaCard
+import com.nowen.video.v2.core.model.MediaComment
+import com.nowen.video.v2.core.model.MediaCommentList
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.MediaHighlight
 import com.nowen.video.v2.core.model.MediaPerson
@@ -94,6 +102,10 @@ data class MediaDetailUiState(
     val subtitles: SubtitleTracksResponse = SubtitleTracksResponse(),
     val highlights: List<MediaHighlight> = emptyList(),
     val recommendations: List<MediaCard> = emptyList(),
+    val comments: MediaCommentList = MediaCommentList(),
+    val commentsLoading: Boolean = false,
+    val commentActionRunning: Boolean = false,
+    val commentMessage: String? = null,
     val resumePositionSeconds: Double = 0.0,
     val favorite: Boolean = false,
     val favoriteActionRunning: Boolean = false,
@@ -150,6 +162,9 @@ class MediaDetailViewModel @Inject constructor(
                     val recommendations = async {
                         parityRepository.similar(id, 12).getOrDefault(emptyList())
                     }
+                    val comments = async {
+                        parityRepository.comments(id, page = 1, size = 10).getOrDefault(MediaCommentList())
+                    }
                     val resume = async {
                         val media = mediaDeferred.await()
                         val duration = media.duration.takeIf { it > 0.0 }
@@ -165,6 +180,7 @@ class MediaDetailViewModel @Inject constructor(
                         subtitles = subtitles.await(),
                         highlights = highlights.await(),
                         recommendations = recommendations.await(),
+                        comments = comments.await(),
                         resumePositionSeconds = resume.await(),
                     )
                 }
@@ -179,6 +195,7 @@ class MediaDetailViewModel @Inject constructor(
                         subtitles = result.subtitles,
                         highlights = result.highlights,
                         recommendations = result.recommendations,
+                        comments = result.comments,
                         resumePositionSeconds = result.resumePositionSeconds,
                         error = null,
                     )
@@ -186,6 +203,92 @@ class MediaDetailViewModel @Inject constructor(
             }.onFailure { error ->
                 _state.update { it.copy(loading = false, error = error.message ?: "详情加载失败") }
             }
+        }
+    }
+
+    fun refreshComments() {
+        val mediaId = loadedId ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(commentsLoading = true, commentMessage = null) }
+            parityRepository.comments(mediaId, page = 1, size = 10)
+                .onSuccess { comments ->
+                    _state.update { it.copy(comments = comments, commentsLoading = false) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            commentsLoading = false,
+                            commentMessage = error.message ?: "评价加载失败",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun createComment(content: String, rating: Int?) {
+        val mediaId = loadedId ?: return
+        if (content.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(commentActionRunning = true, commentMessage = null) }
+            parityRepository.createComment(mediaId, content, rating)
+                .onSuccess {
+                    parityRepository.comments(mediaId, page = 1, size = 10)
+                        .onSuccess { comments ->
+                            _state.update {
+                                it.copy(
+                                    comments = comments,
+                                    commentsLoading = false,
+                                    commentActionRunning = false,
+                                    commentMessage = "评价已发表",
+                                )
+                            }
+                        }
+                        .onFailure {
+                            _state.update {
+                                it.copy(commentActionRunning = false, commentMessage = "评价已发表，刷新后可查看")
+                            }
+                        }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            commentActionRunning = false,
+                            commentMessage = error.message ?: "发表评价失败",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun deleteComment(commentId: String) {
+        val mediaId = loadedId ?: return
+        if (commentId.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(commentActionRunning = true, commentMessage = null) }
+            parityRepository.deleteComment(commentId)
+                .onSuccess {
+                    parityRepository.comments(mediaId, page = 1, size = 10)
+                        .onSuccess { comments ->
+                            _state.update {
+                                it.copy(
+                                    comments = comments,
+                                    commentActionRunning = false,
+                                    commentMessage = "评价已删除",
+                                )
+                            }
+                        }
+                        .onFailure {
+                            _state.update { it.copy(commentActionRunning = false, commentMessage = "评价已删除") }
+                        }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            commentActionRunning = false,
+                            commentMessage = error.message ?: "删除评价失败",
+                        )
+                    }
+                }
         }
     }
 
@@ -258,6 +361,7 @@ private data class RelatedMediaDetail(
     val subtitles: SubtitleTracksResponse,
     val highlights: List<MediaHighlight>,
     val recommendations: List<MediaCard>,
+    val comments: MediaCommentList,
     val resumePositionSeconds: Double,
 )
 
@@ -277,6 +381,9 @@ fun MediaDetailScreen(
     var highlightsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var castExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var subtitlesExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var commentsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var commentText by rememberSaveable(mediaId) { mutableStateOf("") }
+    var commentRating by rememberSaveable(mediaId) { mutableIntStateOf(0) }
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -471,6 +578,35 @@ fun MediaDetailScreen(
                     }
 
                     item {
+                        CommentSummarySection(
+                            comments = state.comments,
+                            expanded = commentsExpanded,
+                            loading = state.commentsLoading,
+                            actionRunning = state.commentActionRunning,
+                            message = state.commentMessage,
+                            currentUserId = session.user?.id.orEmpty(),
+                            isAdmin = session.user?.role == "admin",
+                            text = commentText,
+                            rating = commentRating,
+                            onToggle = {
+                                commentsExpanded = !commentsExpanded
+                                if (commentsExpanded && state.comments.data.isEmpty() && state.comments.total == 0) {
+                                    viewModel.refreshComments()
+                                }
+                            },
+                            onTextChange = { commentText = it },
+                            onRatingChange = { commentRating = it },
+                            onSubmit = {
+                                viewModel.createComment(commentText, commentRating.takeIf { it > 0 })
+                                commentText = ""
+                                commentRating = 0
+                            },
+                            onDelete = viewModel::deleteComment,
+                            onRefresh = viewModel::refreshComments,
+                        )
+                    }
+
+                    item {
                         val messages = listOfNotNull(state.favoriteMessage, state.downloadMessage)
                         if (state.download != null || messages.isNotEmpty()) {
                             DetailFeedCard(title = "本机状态") {
@@ -512,6 +648,209 @@ fun MediaDetailScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentSummarySection(
+    comments: MediaCommentList,
+    expanded: Boolean,
+    loading: Boolean,
+    actionRunning: Boolean,
+    message: String?,
+    currentUserId: String,
+    isAdmin: Boolean,
+    text: String,
+    rating: Int,
+    onToggle: () -> Unit,
+    onTextChange: (String) -> Unit,
+    onRatingChange: (Int) -> Unit,
+    onSubmit: () -> Unit,
+    onDelete: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    ElevatedPanel(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(Icons.Default.Message, null, modifier = Modifier.padding(8.dp).size(18.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("评价", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                val summary = when {
+                    loading -> "正在加载评价…"
+                    comments.total > 0 && comments.ratingCount > 0 -> "${comments.total} 条评价 · ${"%.1f".format(comments.averageRating)} 分"
+                    comments.total > 0 -> "${comments.total} 条评价"
+                    else -> "暂无评价 · 可展开评分或留言"
+                }
+                Text(summary, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            }
+            if (comments.ratingCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Star, null, tint = Color(0xFFFFC53D), modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("%.1f".format(comments.averageRating), fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(if (expanded) "收起" else "查看评价", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ChevronRight,
+                null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        if (expanded) {
+            Spacer(Modifier.height(14.dp))
+            Text("给这部作品评分", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(7.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                items((1..10).toList(), key = { it }) { value ->
+                    IconButton(onClick = { onRatingChange(if (rating == value) 0 else value) }, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = "$value/10",
+                            tint = if (value <= rating) Color(0xFFFFC53D) else MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("分享你的观影感受…") },
+                    singleLine = true,
+                    enabled = !actionRunning,
+                )
+                FilledTonalButton(
+                    onClick = onSubmit,
+                    enabled = text.isNotBlank() && !actionRunning,
+                    modifier = Modifier.height(56.dp),
+                ) {
+                    if (actionRunning) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Send, contentDescription = "发表")
+                }
+            }
+
+            message?.let {
+                Spacer(Modifier.height(7.dp))
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("最近评价", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onRefresh, enabled = !loading) { Text("刷新") }
+            }
+
+            if (loading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            } else if (comments.data.isEmpty()) {
+                Text("还没有评价，成为第一个发表评论的人。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    comments.data.take(10).forEach { comment ->
+                        CommentCard(
+                            comment = comment,
+                            canDelete = isAdmin || (currentUserId.isNotBlank() && comment.userId == currentUserId),
+                            actionRunning = actionRunning,
+                            onDelete = { onDelete(comment.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommentCard(
+    comment: MediaComment,
+    canDelete: Boolean,
+    actionRunning: Boolean,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(11.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        (comment.nickname.ifBlank { comment.username.ifBlank { "U" } }).take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        comment.nickname.ifBlank { comment.username.ifBlank { "用户" } },
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                    )
+                    if (comment.rating > 0) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Default.Star, null, tint = Color(0xFFFFC53D), modifier = Modifier.size(12.dp))
+                        Text(comment.rating.toString(), color = Color(0xFFFFC53D), fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(comment.content, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (canDelete) {
+                IconButton(onClick = onDelete, enabled = !actionRunning, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "删除评价", modifier = Modifier.size(18.dp))
                 }
             }
         }
