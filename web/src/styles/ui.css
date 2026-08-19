@@ -27,6 +27,8 @@
 /* Final media-rail contract: never leave a clipped/half card at rest. */
 @import './ui-media-rail-fit.css';
 
-/* Approved desktop/mobile movie-detail reference. Keep last so legacy detail
- * geometry cannot override the final responsive composition. */
+/* Approved desktop/mobile movie-detail reference. */
 @import './ui-media-detail-reference.css';
+
+/* Final media-detail product flow: top decision area + full-width feed. */
+@import './ui-media-detail-flow.css';
