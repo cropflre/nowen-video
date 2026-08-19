@@ -38,26 +38,31 @@ export function PageHeader({
       aria-label="页面工具栏"
       style={style}
     >
-      <h1 className="nv-topbar-title max-w-[20vw] sm:max-w-none">{title}</h1>
-      <div className="nv-topbar-spacer" />
+      <div className="nv-page-header-title-slot">
+        <h1 className="nv-topbar-title">{title}</h1>
+      </div>
 
-      {showSearch && (
-        <form
-          onSubmit={handleSubmit}
-          role="search"
-          className="nv-page-header-search flex min-w-0 flex-1 items-center justify-end sm:flex-initial"
-        >
-          <SearchField
-            value={searchValue}
-            onChange={(event) => onSearchValueChange?.(event.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={searchAriaLabel}
-            wrapperClassName="max-w-full"
-          />
-        </form>
-      )}
+      <div className="nv-page-header-search-slot">
+        {showSearch && (
+          <form
+            onSubmit={handleSubmit}
+            role="search"
+            className="nv-page-header-search"
+          >
+            <SearchField
+              value={searchValue}
+              onChange={(event) => onSearchValueChange?.(event.target.value)}
+              placeholder={searchPlaceholder}
+              aria-label={searchAriaLabel}
+              wrapperClassName="max-w-full"
+            />
+          </form>
+        )}
+      </div>
 
-      {actions && <div className="nv-page-header-actions">{actions}</div>}
+      <div className="nv-page-header-actions-slot">
+        {actions && <div className="nv-page-header-actions">{actions}</div>}
+      </div>
     </header>
   )
 }
