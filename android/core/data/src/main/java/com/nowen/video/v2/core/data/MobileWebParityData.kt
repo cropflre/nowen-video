@@ -2,7 +2,10 @@ package com.nowen.video.v2.core.data
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.nowen.video.v2.core.model.ApiEnvelope
+import com.nowen.video.v2.core.model.CreateMediaCommentRequest
 import com.nowen.video.v2.core.model.MediaCard
+import com.nowen.video.v2.core.model.MediaComment
+import com.nowen.video.v2.core.model.MediaCommentList
 import com.nowen.video.v2.core.model.MediaHighlightList
 import com.nowen.video.v2.core.model.MobileWebHomeContent
 import com.nowen.video.v2.core.model.RecommendedMediaCard
@@ -17,17 +20,18 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import retrofit2.Response
 import retrofit2.Retrofit
+import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
 private val WEB_HOME_GENRES = listOf("动画", "喜剧", "冒险", "家庭")
 
-/**
- * Web 移动端已经使用的内容接口。
- * Android 复用同一服务端契约，避免为了视觉和交互对齐再造一套数据源。
- */
+/** Android 复用 Web 移动端已经存在的内容与社交接口。 */
 interface MobileWebParityApi {
     @GET("recommend")
     suspend fun recommendations(@Query("limit") limit: Int = 20): ApiEnvelope<List<RecommendedMediaCard>>
@@ -55,6 +59,22 @@ interface MobileWebParityApi {
 
     @GET("media/{mediaId}/highlights")
     suspend fun highlights(@Path("mediaId") mediaId: String): ApiEnvelope<MediaHighlightList>
+
+    @GET("media/{mediaId}/comments")
+    suspend fun comments(
+        @Path("mediaId") mediaId: String,
+        @Query("page") page: Int = 1,
+        @Query("size") size: Int = 10,
+    ): MediaCommentList
+
+    @POST("media/{mediaId}/comments")
+    suspend fun createComment(
+        @Path("mediaId") mediaId: String,
+        @Body request: CreateMediaCommentRequest,
+    ): ApiEnvelope<MediaComment>
+
+    @DELETE("comments/{commentId}")
+    suspend fun deleteComment(@Path("commentId") commentId: String): Response<Unit>
 }
 
 @Module
@@ -74,9 +94,7 @@ object MobileWebParityNetworkModule {
 class MobileWebParityRepository @Inject constructor(
     private val api: MobileWebParityApi,
 ) {
-    /**
-     * 与 Web HomePage 的 Promise.allSettled 语义保持一致：单个分区失败不拖垮整个首页。
-     */
+    /** 与 Web HomePage 的 Promise.allSettled 语义一致：单个分区失败不拖垮整个首页。 */
     suspend fun home(): Result<MobileWebHomeContent> = runCatching {
         supervisorScope {
             val recommendations = async { runCatching { api.recommendations(12).data } }
@@ -139,6 +157,28 @@ class MobileWebParityRepository @Inject constructor(
 
     suspend fun highlights(mediaId: String): Result<MediaHighlightList> = runCatching {
         api.highlights(mediaId).data
+    }.recoverCatching { error ->
+        throw mapApiError(error)
+    }
+
+    suspend fun comments(mediaId: String, page: Int = 1, size: Int = 10): Result<MediaCommentList> = runCatching {
+        api.comments(mediaId, page.coerceAtLeast(1), size.coerceIn(1, 30))
+    }.recoverCatching { error ->
+        throw mapApiError(error)
+    }
+
+    suspend fun createComment(mediaId: String, content: String, rating: Int?): Result<MediaComment> = runCatching {
+        api.createComment(
+            mediaId,
+            CreateMediaCommentRequest(content.trim(), rating?.coerceIn(1, 10)),
+        ).data
+    }.recoverCatching { error ->
+        throw mapApiError(error)
+    }
+
+    suspend fun deleteComment(commentId: String): Result<Unit> = runCatching {
+        val response = api.deleteComment(commentId)
+        if (!response.isSuccessful) error("删除评价失败（${response.code()}）")
     }.recoverCatching { error ->
         throw mapApiError(error)
     }
