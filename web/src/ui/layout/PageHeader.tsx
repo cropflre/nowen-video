@@ -1,4 +1,4 @@
-import type { CSSProperties, FormEvent, ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { SearchField } from '@/components/design-system'
 
@@ -31,6 +31,20 @@ export function PageHeader({
   onSearchValueChange,
   onSearchSubmit,
 }: PageHeaderProps) {
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!showSearch || !showSearchShortcut) return
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [showSearch, showSearchShortcut])
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     onSearchSubmit?.(searchValue.trim())
@@ -55,6 +69,7 @@ export function PageHeader({
             className="nv-page-header-search"
           >
             <SearchField
+              ref={searchRef}
               value={searchValue}
               onChange={(event) => onSearchValueChange?.(event.target.value)}
               placeholder={searchPlaceholder}
