@@ -1,12 +1,14 @@
 /* Nowen Video · mobile detail hero density
  *
- * The mobile hero keeps the real poster, but the poster must not make the whole
- * hero taller than the information/action column. On medium-width phones this
- * previously left a large empty backdrop band below the buttons.
+ * The mobile hero keeps the real poster, but the right identity column must use
+ * the poster height deliberately instead of ending early and exposing a large
+ * empty backdrop band below the action buttons.
  *
  * Product contract:
  * - poster remains visible and visually important;
- * - hero height follows the actual identity/actions content as closely as possible;
+ * - title/meta stay at the top of the right column;
+ * - primary actions are anchored to the poster bottom, turning the unavoidable
+ *   height difference into intentional breathing room rather than dead space;
  * - no duplicated overview is added just to fill space;
  * - backdrop stays atmospheric and never creates a large empty visual tail.
  */
@@ -14,8 +16,9 @@
 @media (max-width: 767px) {
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
     grid-template-columns: clamp(112px, 27vw, 148px) minmax(0, 1fr) !important;
+    align-items: stretch !important;
     gap: clamp(11px, 2.6vw, 16px) !important;
-    padding: 10px 8px 11px !important;
+    padding: 10px 8px 10px !important;
   }
 
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner > div:first-child {
@@ -27,13 +30,21 @@
     margin: 0 !important;
   }
 
+  /* The content column stretches to exactly the poster row height. The action
+     cluster then sits on the baseline of the poster rather than leaving a dead
+     strip underneath it. */
   html body .nv-media-detail-page .nv-detail-hero .nv-hero-content {
-    align-self: start !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-self: stretch !important;
+    min-height: 100% !important;
     padding-top: 0 !important;
   }
 
   html body .nv-media-detail-page .nv-media-hero-actions {
-    margin-top: 10px !important;
+    margin-top: auto !important;
+    padding-top: 10px !important;
+    flex-shrink: 0 !important;
   }
 
   /* Avoid visually extending the hero with an over-strong highlight frame once
@@ -47,7 +58,7 @@
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
     grid-template-columns: clamp(106px, 27vw, 126px) minmax(0, 1fr) !important;
     gap: 10px !important;
-    padding: 9px 7px 10px !important;
+    padding: 9px 7px 9px !important;
   }
 
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
@@ -55,7 +66,8 @@
   }
 
   html body .nv-media-detail-page .nv-media-hero-actions {
-    margin-top: 8px !important;
+    margin-top: auto !important;
+    padding-top: 8px !important;
   }
 }
 
@@ -63,11 +75,15 @@
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-hero-inner {
     grid-template-columns: 104px minmax(0, 1fr) !important;
     gap: 9px !important;
-    padding: 8px 6px 9px !important;
+    padding: 8px 6px !important;
   }
 
   html body .nv-media-detail-page .nv-detail-hero .nv-detail-poster {
     max-width: 104px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions {
+    padding-top: 7px !important;
   }
 }
 
