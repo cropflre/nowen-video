@@ -62,23 +62,22 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
             <strong>NOWEN VIDEO</strong>
             <span>MEDIA LIBRARY</span>
           </div>
+          {onCollapsedChange && (
+            <button
+              type="button"
+              className="nv-rail-collapse-toggle"
+              onClick={() => onCollapsedChange(!collapsed)}
+              aria-label={collapseActionLabel}
+              aria-controls="main-sidebar"
+              aria-expanded={!collapsed}
+              title={collapseActionLabel}
+            >
+              {collapsed
+                ? <ChevronRight size={15} aria-hidden="true" />
+                : <ChevronLeft size={15} aria-hidden="true" />}
+            </button>
+          )}
         </div>
-
-        {onCollapsedChange && (
-          <button
-            type="button"
-            className="nv-rail-collapse-toggle"
-            onClick={() => onCollapsedChange(!collapsed)}
-            aria-label={collapseActionLabel}
-            aria-controls="main-sidebar"
-            aria-expanded={!collapsed}
-            title={collapseActionLabel}
-          >
-            {collapsed
-              ? <ChevronRight size={16} aria-hidden="true" />
-              : <ChevronLeft size={16} aria-hidden="true" />}
-          </button>
-        )}
 
         <nav className="nv-rail-scroll">
           <NavigationRailSection>
