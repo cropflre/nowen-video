@@ -137,11 +137,6 @@ class HomeViewModel @Inject constructor(
     }
 }
 
-/**
- * Android 首页严格按照 Web 移动端的信息架构组织：
- * Hero -> 继续观看 -> 为你推荐 -> 最近添加 / 分类货架。
- * 横向内容全部采用手势滚动；Hero 支持自动轮播、圆点切换和左右滑动。
- */
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
@@ -338,8 +333,9 @@ private fun HomeHeroCarousel(
         ) { item ->
             val backdrop = resolveImage(baseUrl, item.resolvedBackdrop)
             val poster = resolveImage(baseUrl, item.resolvedPoster)
-            val artwork = backdrop ?: poster
-            val posterFallback = backdrop == null && poster != null
+            var backdropFailed by remember(item.resolvedId, backdrop) { mutableStateOf(false) }
+            val posterFallback = backdrop == null || backdropFailed
+            val artwork = if (posterFallback) poster else backdrop
 
             Box(Modifier.fillMaxSize()) {
                 if (artwork != null) {
@@ -347,6 +343,9 @@ private fun HomeHeroCarousel(
                         model = artwork,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
+                        onError = {
+                            if (!posterFallback && poster != null) backdropFailed = true
+                        },
                         modifier = Modifier
                             .fillMaxSize()
                             .then(
@@ -503,21 +502,25 @@ private fun HomeHeroCarousel(
 
 @Composable
 private fun HeroMetadata(media: MediaCard) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (media.rating > 0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Star, null, tint = Color(0xFFFFC53D), modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(3.dp))
-                Text("%.1f".format(media.rating), color = Color(0xFFFFC53D), fontWeight = FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (media.rating > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFC53D), modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("%.1f".format(media.rating), color = Color(0xFFFFC53D), fontWeight = FontWeight.SemiBold)
+                }
             }
+            media.year?.takeIf { it > 0 }?.let { Text(it.toString(), color = Color.White.copy(alpha = 0.82f)) }
+            if (media.runtime > 0) Text(formatRuntime(media.runtime), color = Color.White.copy(alpha = 0.82f))
         }
-        media.year?.takeIf { it > 0 }?.let { Text(it.toString(), color = Color.White.copy(alpha = 0.82f)) }
-        if (media.runtime > 0) Text(formatRuntime(media.runtime), color = Color.White.copy(alpha = 0.82f))
-        media.resolution.takeIf(String::isNotBlank)?.let { HeroChip(it) }
-        media.genres.split(',').map(String::trim).firstOrNull(String::isNotBlank)?.let { HeroChip(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            media.resolution.takeIf(String::isNotBlank)?.let { HeroChip(it) }
+            media.genres.split(',').map(String::trim).firstOrNull(String::isNotBlank)?.let { HeroChip(it) }
+        }
     }
 }
 
@@ -755,5 +758,6 @@ private fun formatRuntime(minutes: Int): String = if (minutes >= 60) {
 internal fun resolveImage(baseUrl: String?, path: String?): String? {
     if (path.isNullOrBlank()) return null
     if (path.startsWith("http://") || path.startsWith("https://")) return path
-    return baseUrl?.trimEnd('/') + "/" + path.trimStart('/')
+    val server = baseUrl?.trimEnd('/') ?: return null
+    return "$server/${path.trimStart('/')}"
 }
