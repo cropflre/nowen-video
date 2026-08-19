@@ -53,3 +53,6 @@
 
 /* Final wording cleanup: keep only the real media intro heading. */
 @import './ui-media-detail-copy-fix.css';
+
+/* Subtitle manager escapes page stacking contexts and owns a stable dialog viewport. */
+@import './ui-subtitle-manager-modal.css';
