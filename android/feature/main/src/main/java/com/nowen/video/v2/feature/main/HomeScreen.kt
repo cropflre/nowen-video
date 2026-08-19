@@ -142,6 +142,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onMediaClick: (String) -> Unit,
     onPlay: (String) -> Unit,
+    onRestart: (String) -> Unit = onPlay,
     onLibraryClick: () -> Unit,
     onHistoryClick: () -> Unit = {},
     onFavoritesClick: () -> Unit = {},
@@ -202,6 +203,7 @@ fun HomeScreen(
                     baseUrl = baseUrl,
                     onOpen = onMediaClick,
                     onPlay = onPlay,
+                    onRestart = onRestart,
                     onFavoritesClick = onFavoritesClick,
                 )
             }
@@ -287,6 +289,7 @@ private fun HomeHeroCarousel(
     baseUrl: String?,
     onOpen: (String) -> Unit,
     onPlay: (String) -> Unit,
+    onRestart: (String) -> Unit,
     onFavoritesClick: () -> Unit,
 ) {
     var index by remember(items.map(MediaCard::resolvedId)) { mutableIntStateOf(0) }
@@ -432,7 +435,7 @@ private fun HomeHeroCarousel(
                             Text(if (item.normalizedProgress > 0f) "继续播放" else "立即播放")
                         }
                         OutlinedButton(
-                            onClick = { onPlay(item.resolvedId) },
+                            onClick = { onRestart(item.resolvedId) },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
