@@ -12,9 +12,8 @@ export interface MediaRailProps {
   className?: string
   trackClassName?: string
   /**
-   * Keep every visible card fully inside the rail viewport. When enabled the
-   * rail measures its available width, chooses an integer visible count and
-   * distributes the remaining pixels between those cards.
+   * Keep every visible card fully inside the rail viewport. Homepage rails
+   * enable this automatically; other consumers may opt in explicitly.
    */
   fullItemsOnly?: boolean
   /** Minimum card width used when calculating the integer visible count. */
@@ -35,7 +34,7 @@ export function MediaRail({
   action,
   className,
   trackClassName,
-  fullItemsOnly = false,
+  fullItemsOnly,
   minItemWidth = 96,
 }: MediaRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -43,6 +42,16 @@ export function MediaRail({
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
   const [fitItemWidth, setFitItemWidth] = useState<number | null>(null)
+  const [isHomepageRail, setIsHomepageRail] = useState(false)
+  const shouldFitFullItems = fullItemsOnly ?? isHomepageRail
+
+  useEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+    // The homepage product contract explicitly forbids clipped/half cards. This
+    // keeps existing HomePage call sites clean while leaving other rails opt-in.
+    setIsHomepageRail(Boolean(element.closest('.nv-home-page')))
+  }, [])
 
   const updateScrollState = useCallback(() => {
     const element = scrollRef.current
@@ -53,7 +62,7 @@ export function MediaRail({
 
   const updateFitLayout = useCallback(() => {
     const element = scrollRef.current
-    if (!element || !fullItemsOnly) {
+    if (!element || !shouldFitFullItems) {
       setFitItemWidth(null)
       return
     }
@@ -70,7 +79,7 @@ export function MediaRail({
 
     if (contentWidth <= 0) return
 
-    // Integer-card contract: never trade a readable card for a clipped card.
+    // Integer-card contract: reduce the visible count before ever clipping a card.
     const visibleCount = Math.max(1, Math.floor((contentWidth + gap) / (resolvedMinItemWidth + gap)))
     const fittedWidth = Math.max(
       resolvedMinItemWidth,
@@ -79,7 +88,7 @@ export function MediaRail({
 
     fitLayoutRef.current = { visibleCount, itemWidth: fittedWidth, gap }
     setFitItemWidth((current) => current !== null && Math.abs(current - fittedWidth) < 0.25 ? current : fittedWidth)
-  }, [fullItemsOnly, minItemWidth])
+  }, [minItemWidth, shouldFitFullItems])
 
   useEffect(() => {
     const element = scrollRef.current
@@ -117,7 +126,7 @@ export function MediaRail({
     if (!element) return
 
     let amount = Math.max(320, element.clientWidth * 0.78)
-    if (fullItemsOnly) {
+    if (shouldFitFullItems) {
       const { visibleCount, itemWidth, gap } = fitLayoutRef.current
       amount = Math.max(itemWidth + gap, visibleCount * (itemWidth + gap))
     }
@@ -125,13 +134,13 @@ export function MediaRail({
     element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
-  const trackStyle = fullItemsOnly && fitItemWidth !== null
+  const trackStyle = shouldFitFullItems && fitItemWidth !== null
     ? ({ '--nv-media-rail-fit-item-width': `${fitItemWidth}px` } as CSSProperties)
     : undefined
 
   return (
     <Section title={title} action={action} className={className}>
-      <div className="nv-media-rail group/rail relative" data-full-items={fullItemsOnly ? 'true' : undefined}>
+      <div className="nv-media-rail group/rail relative" data-full-items={shouldFitFullItems ? 'true' : undefined}>
         {canScrollLeft && (
           <Button
             variant="secondary"
@@ -149,7 +158,7 @@ export function MediaRail({
           ref={scrollRef}
           className={clsx(
             'nv-media-rail-track scrollbar-hide',
-            fullItemsOnly && 'nv-media-rail-track--full-items',
+            shouldFitFullItems && 'nv-media-rail-track--full-items',
             trackClassName,
           )}
           style={trackStyle}
