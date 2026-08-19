@@ -56,10 +56,16 @@
   --nv-rail-visible-count: 6;
 }
 
-/* Recommendations: denser landscape cards, matching the reference layout. */
+/* Homepage recommendations: dense landscape cards. */
 .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
   --nv-rail-gap: 14px;
   --nv-rail-visible-count: 8;
+}
+
+/* Detail recommendations: poster cards, matching the approved detail mock. */
+.nv-detail-recommendation-rail .nv-media-rail-track {
+  --nv-rail-gap: 12px;
+  --nv-rail-visible-count: 7;
 }
 
 /* Compact catalogue shelves. */
@@ -77,6 +83,10 @@
   .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 7;
   }
+
+  .nv-detail-recommendation-rail .nv-media-rail-track {
+    --nv-rail-visible-count: 6;
+  }
 }
 
 @container (max-width: 62rem) {
@@ -86,6 +96,10 @@
 
   .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 6;
+  }
+
+  .nv-detail-recommendation-rail .nv-media-rail-track {
+    --nv-rail-visible-count: 5;
   }
 }
 
@@ -97,6 +111,10 @@
   .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 5;
   }
+
+  .nv-detail-recommendation-rail .nv-media-rail-track {
+    --nv-rail-visible-count: 4;
+  }
 }
 
 @container (max-width: 39rem) {
@@ -107,10 +125,18 @@
   .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
     --nv-rail-visible-count: 4;
   }
+
+  .nv-detail-recommendation-rail .nv-media-rail-track {
+    --nv-rail-visible-count: 4;
+  }
 }
 
 @container (max-width: 29rem) {
   .nv-media-rail-track:has(> .nv-home-recommendation-slot) {
+    --nv-rail-visible-count: 3;
+  }
+
+  .nv-detail-recommendation-rail .nv-media-rail-track {
     --nv-rail-visible-count: 3;
   }
 }
