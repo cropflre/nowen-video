@@ -64,3 +64,7 @@
 /* Final mobile identity contract: real poster stays visible beside title/meta.
  * Highlight/backdrop artwork is ambience only and must not replace the cover. */
 @import './ui-media-detail-mobile-poster.css';
+
+/* Mobile hero height follows its real content instead of leaving a large backdrop
+ * tail below the action row. Keep this after the poster contract. */
+@import './ui-media-detail-mobile-hero-density.css';
