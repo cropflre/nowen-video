@@ -35,7 +35,12 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
   const initials = displayName.slice(0, 1).toUpperCase()
   const mobileNavigationItems = [
     { to: '/', end: true, icon: <Home size={18} aria-hidden="true" />, label: t('nav.home') },
-    { to: '/browse', icon: <Film size={18} aria-hidden="true" />, label: '影视库' },
+    {
+      to: '/browse',
+      icon: <Film size={18} aria-hidden="true" />,
+      label: '影视库',
+      activeOn: ['/media/', '/series/', '/collections/'],
+    },
     { to: '/search', icon: <Search size={18} aria-hidden="true" />, label: t('nav.search') },
     { to: '/my', icon: <UserRound size={18} aria-hidden="true" />, label: '我的' },
   ]
