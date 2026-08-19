@@ -1,12 +1,11 @@
-/* Nowen Video · media detail summary strip
+/* Nowen Video · media detail compact summary
  *
- * Playback/subtitle/metadata information is useful, but it should not consume a
- * permanent desktop sidebar. This final refinement lets the hero own the full
- * content width and compresses the existing MediaDetailSidebar into a quiet
- * status strip. Mobile keeps the strip at the end of the content flow.
+ * Playback/subtitle/metadata are supporting diagnostics. They must never own a
+ * permanent sidebar or compete with the artwork. Desktop renders one quiet
+ * status strip below the hero; mobile moves the same strip to the end of the
+ * editorial flow.
  */
 
-/* Desktop/tablet: full-width hero, compact media status directly beneath it. */
 html body .nv-media-detail-page {
   grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: auto auto auto auto !important;
@@ -27,237 +26,218 @@ html body .nv-media-detail-page .nv-detail-hero-inner {
   grid-template-columns: clamp(228px, 18vw, 272px) minmax(0, 1fr) !important;
 }
 
+html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  position: static !important;
+  min-width: 0 !important;
+  margin-top: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-surface {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, 1fr) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-default) 72%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 84%, transparent) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(12px) saturate(108%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-item {
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-width: 0 !important;
+  min-height: 62px !important;
+  padding: 9px 12px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-item + .nv-detail-summary-item::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 1px;
+  background: var(--nv-border-subtle);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--nv-action-muted);
+  background: color-mix(in srgb, var(--nv-action-primary) 9%, transparent);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 620;
+  color: var(--nv-text-tertiary);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-primary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-primary strong,
+html body .nv-media-detail-page .nv-detail-summary-local {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 650;
+  color: var(--nv-text-primary);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-primary .nv-tag {
+  flex: 0 0 auto;
+  min-height: 17px !important;
+  padding-inline: 5px !important;
+  font-size: 9px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-secondary {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9.5px;
+  line-height: 1.2;
+  color: var(--nv-text-tertiary);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-action {
+  flex: 0 0 auto;
+  min-height: 25px !important;
+  height: 25px !important;
+  padding-inline: 7px !important;
+  font-size: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-sources {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-source {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  min-height: 22px;
+  padding: 3px 6px;
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: 7px;
+  background: var(--nv-bg-control);
+  color: var(--nv-text-secondary);
+  font-size: 9.5px;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color var(--nv-motion-fast) var(--nv-ease-standard), background var(--nv-motion-fast) var(--nv-ease-standard), color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+html body .nv-media-detail-page .nv-detail-summary-source:hover {
+  border-color: var(--nv-border-hover);
+  background: var(--nv-fill-hover);
+  color: var(--nv-action-muted-hover);
+}
+
 html body .nv-media-detail-page .nv-detail-main-column {
   grid-column: 1 !important;
   grid-row: 4 !important;
   padding-top: 18px !important;
 }
 
-html body .nv-media-detail-page .nv-detail-sidebar {
-  grid-column: 1 !important;
-  grid-row: 3 !important;
-  position: static !important;
-  display: grid !important;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, .9fr) minmax(0, 1fr) !important;
-  grid-template-rows: auto !important;
-  gap: 10px !important;
-  margin-top: 10px !important;
-  min-width: 0 !important;
-  align-items: stretch !important;
-}
-
-html body .nv-media-detail-page .nv-detail-sidebar > * {
-  min-width: 0 !important;
-}
-
-html body .nv-media-detail-page .nv-detail-side-card {
-  min-height: 68px !important;
-  height: 100% !important;
-  padding: 10px 12px !important;
-  border-radius: 14px !important;
-  border: 1px solid color-mix(in srgb, var(--nv-border-default) 76%, transparent) !important;
-  background: color-mix(in srgb, var(--nv-bg-surface) 86%, transparent) !important;
-  box-shadow: none !important;
-}
-
-html body .nv-media-detail-page .nv-detail-side-card-header {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  min-height: 18px !important;
-  margin-bottom: 6px !important;
-  color: var(--nv-text-tertiary) !important;
-}
-
-html body .nv-media-detail-page .nv-detail-side-card-header h2 {
-  font-size: 12px !important;
-  line-height: 1.2 !important;
-  font-weight: 650 !important;
-  color: var(--nv-text-secondary) !important;
-}
-
-html body .nv-media-detail-page .nv-detail-side-card-header > svg {
-  width: 14px !important;
-  height: 14px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-side-eyebrow,
-html body .nv-media-detail-page .nv-detail-side-footnote,
-html body .nv-media-detail-page .nv-detail-side-card--quiet,
-html body .nv-media-detail-page .nv-detail-source-meta,
-html body .nv-media-detail-page .nv-detail-subtitle-more,
-html body .nv-media-detail-page .nv-detail-version-item code {
-  display: none !important;
-}
-
-/* Playback version: one compact line, no path or secondary playback variant. */
-html body .nv-media-detail-page .nv-detail-version-list {
-  display: block !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-list .nv-detail-version-item:not(.is-active) {
-  display: none !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-item {
-  min-height: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  gap: 8px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-dot {
-  width: 7px !important;
-  height: 7px !important;
-  margin-top: 5px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-item strong {
-  font-size: 12px !important;
-  line-height: 1.25 !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-item .nv-tag {
-  min-height: 18px !important;
-  padding-inline: 6px !important;
-  font-size: 10px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-version-meta {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 4px 8px !important;
-  margin-top: 3px !important;
-  font-size: 10px !important;
-  color: var(--nv-text-tertiary) !important;
-}
-
-/* Subtitle summary: show at most the first detected track and a subtle action. */
-html body .nv-media-detail-page .nv-detail-subtitle-list {
-  display: block !important;
-}
-
-html body .nv-media-detail-page .nv-detail-subtitle-list .nv-detail-subtitle-item:not(:first-child) {
-  display: none !important;
-}
-
-html body .nv-media-detail-page .nv-detail-subtitle-item {
-  min-height: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-html body .nv-media-detail-page .nv-detail-subtitle-item strong,
-html body .nv-media-detail-page .nv-detail-side-empty {
-  font-size: 11px !important;
-  line-height: 1.25 !important;
-}
-
-html body .nv-media-detail-page .nv-detail-subtitle-item span {
-  margin-top: 2px !important;
-  font-size: 10px !important;
-  color: var(--nv-text-tertiary) !important;
-}
-
-html body .nv-media-detail-page #detail-subtitles .nv-detail-side-card > .nv-button {
-  width: auto !important;
-  min-height: 24px !important;
-  height: 24px !important;
-  margin-top: 5px !important;
-  padding-inline: 7px !important;
-  font-size: 10px !important;
-}
-
-/* Metadata is diagnostic information: show only compact source chips. */
-html body .nv-media-detail-page .nv-detail-source-list {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 5px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-source-item {
-  display: inline-flex !important;
-  width: auto !important;
-  min-height: 24px !important;
-  align-items: center !important;
-  gap: 5px !important;
-  padding: 4px 7px !important;
-  border-radius: 8px !important;
-  border: 1px solid var(--nv-border-subtle) !important;
-  background: var(--nv-bg-control) !important;
-}
-
-html body .nv-media-detail-page .nv-detail-source-item strong {
-  font-size: 10px !important;
-}
-
-html body .nv-media-detail-page .nv-detail-source-item code {
-  max-width: 86px !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  font-size: 9px !important;
-  color: var(--nv-text-tertiary) !important;
-}
-
-html body .nv-media-detail-page .nv-detail-source-status {
-  width: 15px !important;
-  height: 15px !important;
-}
-
-/* The strip should read as one quiet support layer, not three competing cards. */
-html body .nv-media-detail-page .nv-detail-sidebar::before {
-  content: '';
-  position: absolute;
-  pointer-events: none;
-}
-
-/* Tablet: still one row, but slightly denser. */
+/* Tablet keeps the same one-row summary but gives each cell equal weight. */
 @media (max-width: 1199px) and (min-width: 768px) {
-  html body .nv-media-detail-page .nv-detail-sidebar {
+  html body .nv-media-detail-page .nv-detail-summary-surface {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    margin-top: 10px !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-side-card {
-    padding: 9px 10px !important;
+  html body .nv-media-detail-page .nv-detail-summary-item {
+    padding-inline: 10px !important;
   }
 }
 
-/* Mobile: keep these diagnostics at the end of the page, as compact swipeable
- * cards, so they never interrupt the primary viewing flow. */
+/* Mobile: supporting diagnostics come after the primary editorial flow and
+ * remain compact. Horizontal snapping prevents them from creating a tall stack. */
 @media (max-width: 767px) {
   html body .nv-media-detail-page .nv-detail-main-column {
     grid-row: 3 !important;
   }
 
-  html body .nv-media-detail-page .nv-detail-sidebar {
+  html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
     grid-column: 1 !important;
     grid-row: 4 !important;
+    margin-top: 12px !important;
+    overflow: hidden !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-summary-surface {
     display: grid !important;
     grid-auto-flow: column !important;
     grid-template-columns: none !important;
-    grid-auto-columns: minmax(180px, 76vw) !important;
+    grid-auto-columns: minmax(190px, 76vw) !important;
     gap: 8px !important;
-    margin-top: 12px !important;
     overflow-x: auto !important;
+    padding: 0 var(--nv-page-gutter) 4px !important;
+    margin-inline: calc(var(--nv-page-gutter) * -1) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
   }
 
-  html body .nv-media-detail-page .nv-detail-sidebar::-webkit-scrollbar {
+  html body .nv-media-detail-page .nv-detail-summary-surface::-webkit-scrollbar {
     display: none;
   }
 
-  html body .nv-media-detail-page .nv-detail-sidebar > * {
+  html body .nv-media-detail-page .nv-detail-summary-item {
+    min-height: 72px !important;
+    padding: 10px 11px !important;
+    border: 1px solid var(--nv-border-subtle) !important;
+    border-radius: 14px !important;
+    background: color-mix(in srgb, var(--nv-bg-surface) 92%, transparent) !important;
     scroll-snap-align: start;
   }
 
-  html body .nv-media-detail-page .nv-detail-side-card {
-    min-height: 72px !important;
-    border-radius: 14px !important;
+  html body .nv-media-detail-page .nv-detail-summary-item + .nv-detail-summary-item::before {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .nv-media-detail-page .nv-detail-summary-source {
+    transition: none !important;
   }
 }
