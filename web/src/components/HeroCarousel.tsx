@@ -12,6 +12,27 @@ const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
 const SWIPE_VELOCITY = 300
 
+// A stale media record can still advertise a backdrop whose file has already
+// disappeared. Remember failed endpoints for this page lifetime so the carousel
+// does not issue the same 404 every time that slide becomes active again.
+const failedHeroArtworkUrls = new Set<string>()
+
+function artworkCacheKey(url: string) {
+  try {
+    return new URL(url, window.location.origin).pathname
+  } catch {
+    return url.split('?')[0]
+  }
+}
+
+function hasHeroArtworkFailed(url?: string | null) {
+  return Boolean(url && failedHeroArtworkUrls.has(artworkCacheKey(url)))
+}
+
+function markHeroArtworkFailed(url?: string | null) {
+  if (url) failedHeroArtworkUrls.add(artworkCacheKey(url))
+}
+
 function mixedItemToRecommended(item: MixedItem, fallbackReason: string): RecommendedMedia | null {
   if (item.type === 'movie' && item.media) {
     return { media: item.media, score: 0, reason: fallbackReason }
@@ -71,7 +92,7 @@ function mixedItemToRecommended(item: MixedItem, fallbackReason: string): Recomm
 }
 
 interface HeroArtwork {
-  primary: string
+  primary: string | null
   fallback?: string
   isBackdrop: boolean
 }
@@ -90,52 +111,48 @@ function getHeroPoster(media: Media): string | null {
     return streamApi.getSeriesPosterUrl(media.series_id)
   }
   if (media.poster_path) return streamApi.getPosterUrl(media.id)
-  if (media.series_id) return streamApi.getSeriesPosterUrl(media.series_id)
+  if (media.series_id && media.series?.poster_path) return streamApi.getSeriesPosterUrl(media.series_id)
   return null
 }
 
 function getHeroArtwork(media: Media): HeroArtwork {
-  const fallback = getHeroPoster(media) || undefined
+  const poster = getHeroPoster(media)
+  let backdrop: string | null = null
 
+  // Only hit backdrop endpoints when metadata says a backdrop exists. The old
+  // unconditional fallback path generated guaranteed 404s for poster-only media.
   if (media.series_id && (media.series?.backdrop_path || (isSeriesProxy(media) && media.backdrop_path))) {
-    return {
-      primary: streamApi.getSeriesBackdropUrl(media.series_id),
-      fallback,
-      isBackdrop: true,
-    }
+    backdrop = streamApi.getSeriesBackdropUrl(media.series_id)
+  } else if (media.backdrop_path) {
+    backdrop = streamApi.getBackdropUrl(media.id)
   }
 
-  if (media.backdrop_path) {
+  if (backdrop && !hasHeroArtworkFailed(backdrop)) {
     return {
-      primary: streamApi.getBackdropUrl(media.id),
-      fallback,
-      isBackdrop: true,
-    }
-  }
-
-  if (media.series_id) {
-    return {
-      primary: streamApi.getSeriesBackdropUrl(media.series_id),
-      fallback,
+      primary: backdrop,
+      fallback: poster && !hasHeroArtworkFailed(poster) ? poster : undefined,
       isBackdrop: true,
     }
   }
 
   return {
-    primary: streamApi.getBackdropUrl(media.id),
-    fallback,
-    isBackdrop: true,
+    primary: poster && !hasHeroArtworkFailed(poster) ? poster : null,
+    isBackdrop: false,
   }
 }
 
 function handleArtworkError(event: SyntheticEvent<HTMLImageElement>, fallback?: string) {
   const image = event.currentTarget
-  if (fallback && image.dataset.fallbackApplied !== 'true') {
+  markHeroArtworkFailed(image.currentSrc || image.src)
+
+  if (fallback && !hasHeroArtworkFailed(fallback) && image.dataset.fallbackApplied !== 'true') {
     image.dataset.fallbackApplied = 'true'
     image.src = fallback
+    image.dataset.artworkKind = 'poster'
     image.classList.add('scale-110', 'blur-2xl')
     return
   }
+
   image.style.display = 'none'
 }
 
@@ -178,6 +195,8 @@ export default function HeroCarousel({
   const [current, setCurrent] = useState(0)
   const [direction, setDirection] = useState(1)
   const [isHovering, setIsHovering] = useState(false)
+  const [isInViewport, setIsInViewport] = useState(true)
+  const [isPageVisible, setIsPageVisible] = useState(() => document.visibilityState !== 'hidden')
 
   useEffect(() => {
     if (current >= items.length && items.length > 0) setCurrent(0)
@@ -201,21 +220,36 @@ export default function HeroCarousel({
   }, [current])
 
   useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsInViewport(entry.isIntersecting),
+      { rootMargin: '120px 0px', threshold: 0.01 },
+    )
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsPageVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
+  useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current)
-    if (items.length <= 1 || isHovering) return
+    if (items.length <= 1 || isHovering || !isInViewport || !isPageVisible) return
 
     timerRef.current = setInterval(goNext, AUTO_PLAY_INTERVAL)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [goNext, isHovering, items.length, current])
+  }, [goNext, isHovering, isInViewport, isPageVisible, items.length])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const container = containerRef.current
-      if (!container) return
-      const rect = container.getBoundingClientRect()
-      if (rect.bottom < 0 || rect.top > window.innerHeight) return
+      if (!isInViewport || !isPageVisible) return
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -227,7 +261,7 @@ export default function HeroCarousel({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [goNext, goPrev])
+  }, [goNext, goPrev, isInViewport, isPageVisible])
 
   const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
     if (Math.abs(info.offset.x) > SWIPE_THRESHOLD || Math.abs(info.velocity.x) > SWIPE_VELOCITY) {
@@ -260,28 +294,31 @@ export default function HeroCarousel({
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      <AnimatePresence initial={false} custom={direction} mode="sync">
+      <AnimatePresence initial={false} mode="sync">
         <motion.div
           key={`hero-${item.media.id}`}
           className="absolute inset-0"
-          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.025, x: direction > 0 ? '2%' : '-2%' }}
-          animate={{ opacity: 1, scale: 1, x: 0 }}
-          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.01, x: direction > 0 ? '-1%' : '1%' }}
-          transition={{ duration: prefersReducedMotion ? 0.12 : 0.42, ease: [0.2, 0.8, 0.2, 1] }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: prefersReducedMotion ? 0.1 : 0.28, ease: 'easeOut' }}
           drag={items.length > 1 ? 'x' : false}
           dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.12}
+          dragElastic={0.08}
           onDragEnd={handleDragEnd}
         >
-          <img
-            src={artwork.primary}
-            alt=""
-            data-artwork-kind={artwork.isBackdrop ? 'backdrop' : 'poster'}
-            className={`h-full w-full select-none object-cover object-center${artwork.isBackdrop ? '' : ' scale-110 blur-2xl'}`}
-            loading="eager"
-            draggable={false}
-            onError={(event) => handleArtworkError(event, artwork.fallback)}
-          />
+          {artwork.primary && (
+            <img
+              src={artwork.primary}
+              alt=""
+              data-artwork-kind={artwork.isBackdrop ? 'backdrop' : 'poster'}
+              className={`h-full w-full select-none object-cover object-center${artwork.isBackdrop ? '' : ' scale-110 blur-2xl'}`}
+              loading="eager"
+              decoding="async"
+              draggable={false}
+              onError={(event) => handleArtworkError(event, artwork.fallback)}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -302,10 +339,10 @@ export default function HeroCarousel({
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`hero-content-${item.media.id}`}
-              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-              transition={{ duration: prefersReducedMotion ? 0.12 : 0.25 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: prefersReducedMotion ? 0.1 : 0.2 }}
             >
               <MediaHeroContent
                 media={item.media}
