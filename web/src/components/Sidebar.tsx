@@ -8,6 +8,7 @@ import {
   Film,
   Home,
   Layers,
+  LogOut,
   Moon,
   Search,
   Settings,
@@ -23,7 +24,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed = false }: SidebarProps) {
-  const { user } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useThemeStore()
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -31,13 +32,18 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
   const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
 
   const displayName = user?.nickname?.trim() || user?.username || 'Admin'
-  const initials = displayName.slice(0, 2).toUpperCase()
+  const initials = displayName.slice(0, 1).toUpperCase()
   const mobileNavigationItems = [
     { to: '/', end: true, icon: <Home size={18} aria-hidden="true" />, label: t('nav.home') },
     { to: '/browse', icon: <Film size={18} aria-hidden="true" />, label: '影视库' },
     { to: '/search', icon: <Search size={18} aria-hidden="true" />, label: t('nav.search') },
     { to: '/my', icon: <UserRound size={18} aria-hidden="true" />, label: '我的' },
   ]
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
 
   return (
     <>
@@ -87,6 +93,15 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
             <button
               type="button"
               className="nv-rail-action"
+              onClick={() => navigate(user?.role === 'admin' ? '/admin' : '/profile')}
+              aria-label={user?.role === 'admin' ? '管理中心' : '个人资料'}
+              title={user?.role === 'admin' ? '管理中心' : '个人资料'}
+            >
+              <Settings size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="nv-rail-action"
               onClick={toggleTheme}
               aria-label={themeActionLabel}
               aria-pressed={!isDarkTheme}
@@ -97,11 +112,11 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
             <button
               type="button"
               className="nv-rail-action"
-              onClick={() => navigate(user?.role === 'admin' ? '/admin' : '/profile')}
-              aria-label={user?.role === 'admin' ? '管理中心' : '个人资料'}
-              title={user?.role === 'admin' ? '管理中心' : '个人资料'}
+              onClick={handleLogout}
+              aria-label={t('nav.logout')}
+              title={t('nav.logout')}
             >
-              <Settings size={16} aria-hidden="true" />
+              <LogOut size={16} aria-hidden="true" />
             </button>
           </div>
         </div>
