@@ -1,0 +1,295 @@
+/* Nowen UI 2.0 · final desktop sidebar collapse contract
+ * This file is intentionally loaded LAST. ui-reference-shell.css defines the
+ * approved expanded rail with !important rules, so collapse state must win
+ * after that reference layer instead of being silently reset to 172px.
+ */
+
+.nv-rail-collapse-toggle {
+  display: none;
+}
+
+@media (min-width: 68.75rem) {
+  .nv-app-shell {
+    --nv-rail-width: 172px;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="false"] {
+    --nv-rail-width: 172px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] {
+    --nv-rail-width: 72px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail {
+    width: 172px !important;
+    min-width: 172px !important;
+    max-width: 172px !important;
+    flex-basis: 172px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] > .nv-rail {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    flex-basis: 72px !important;
+    padding: 16px 10px 14px !important;
+    align-items: center !important;
+  }
+
+  .nv-app-shell > .nv-rail {
+    position: relative !important;
+    z-index: 30 !important;
+    overflow: visible !important;
+    transition:
+      width 180ms var(--nv-ease-standard),
+      min-width 180ms var(--nv-ease-standard),
+      max-width 180ms var(--nv-ease-standard),
+      flex-basis 180ms var(--nv-ease-standard),
+      padding 180ms var(--nv-ease-standard) !important;
+  }
+
+  .nv-rail-collapse-toggle {
+    position: absolute !important;
+    z-index: 120 !important;
+    top: 64px !important;
+    right: -14px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 1px solid color-mix(in srgb, var(--nv-border-default) 88%, transparent) !important;
+    border-radius: 999px !important;
+    background: color-mix(in srgb, var(--nv-bg-elevated) 95%, transparent) !important;
+    color: var(--nv-text-secondary) !important;
+    box-shadow: 0 6px 18px rgba(20, 24, 40, .14), inset 0 1px rgba(255,255,255,.45) !important;
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    cursor: pointer;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .nv-rail-collapse-toggle:hover,
+  .nv-rail-collapse-toggle:focus-visible {
+    color: var(--nv-action-primary) !important;
+    border-color: color-mix(in srgb, var(--nv-action-primary) 34%, var(--nv-border-default)) !important;
+    background: var(--nv-bg-elevated) !important;
+    box-shadow: 0 8px 24px rgba(20,24,40,.16), 0 0 0 3px color-mix(in srgb, var(--nv-action-primary) 10%, transparent) !important;
+    transform: scale(1.06);
+    outline: none;
+  }
+
+  .nv-rail-collapse-toggle:active {
+    transform: scale(.94);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-row {
+    width: 100% !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    margin: 0 0 18px !important;
+    padding: 0 !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    flex: 0 0 36px !important;
+    margin: 0 !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-brand-copy,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section-title,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-label,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-meta,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile-copy {
+    display: none !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-scroll {
+    width: 100% !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 0 !important;
+    overflow-x: visible !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section {
+    position: relative !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section + .nv-rail-section {
+    margin-top: 7px !important;
+    padding-top: 12px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section + .nv-rail-section::before {
+    content: "" !important;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 28px;
+    height: 1px;
+    transform: translateX(-50%);
+    background: var(--nv-border-subtle);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-section-links {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    position: relative !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    flex: 0 0 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    overflow: visible !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"] {
+    background: color-mix(in srgb, var(--nv-fill-active) 90%, transparent) !important;
+    color: var(--nv-action-primary) !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-icon {
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+    display: grid !important;
+    place-items: center !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-icon > svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  /* Custom tooltip avoids making an icon-only rail cryptic. */
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item::after {
+    content: attr(data-label) !important;
+    position: absolute;
+    z-index: 180;
+    top: 50%;
+    left: calc(100% + 9px);
+    transform: translate(4px, -50%);
+    padding: 7px 10px;
+    border: 1px solid var(--nv-border-default);
+    border-radius: 9px;
+    background: var(--nv-bg-elevated);
+    color: var(--nv-text-primary);
+    box-shadow: var(--nv-shadow-card);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 120ms var(--nv-ease-standard), transform 120ms var(--nv-ease-standard), visibility 120ms var(--nv-ease-standard);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item:hover::after,
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(0, -50%);
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 7px !important;
+    padding: 10px 0 0 !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-profile {
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-footer-actions .nv-rail-action {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 68.749rem) {
+  /* Keep the approved tablet rail stable. Collapsing is a desktop affordance. */
+  .nv-rail-collapse-toggle {
+    display: none !important;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-rail-collapse-toggle {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-app-shell > .nv-rail,
+  .nv-rail-collapse-toggle,
+  .nv-rail-item::after {
+    transition: none !important;
+  }
+}
