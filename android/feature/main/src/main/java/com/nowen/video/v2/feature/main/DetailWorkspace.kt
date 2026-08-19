@@ -37,6 +37,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -51,12 +55,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.nowen.video.v2.core.designsystem.ElevatedPanel
 
-/**
- * Web 移动端同构详情 Hero。
- *
- * Poster 不再被 backdrop 替代；海报、标题、元信息和操作都在同一个首屏决策区内，
- * 不再先渲染一整块背景图再在下面重复信息，从根源上消除此前移动端 Hero 的大块空白。
- */
+/** Web 移动端同构详情 Hero：海报始终可见，Backdrop 仅作为氛围层。 */
 @Composable
 internal fun MobileDetailHero(
     title: String,
@@ -71,22 +70,28 @@ internal fun MobileDetailHero(
     modifier: Modifier = Modifier,
     secondaryActions: @Composable RowScope.() -> Unit = {},
 ) {
+    var backdropFailed by remember(title, backdropUrl) { mutableStateOf(false) }
+    val usePosterAsBackground = backdropUrl.isNullOrBlank() || backdropFailed
+    val backgroundArtwork = if (usePosterAsBackground) posterUrl else backdropUrl
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(330.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        val backgroundArtwork = backdropUrl ?: posterUrl
         if (backgroundArtwork != null) {
             AsyncImage(
                 model = backgroundArtwork,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = {
+                    if (!usePosterAsBackground && !posterUrl.isNullOrBlank()) backdropFailed = true
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (backdropUrl == null) {
+                        if (usePosterAsBackground) {
                             Modifier
                                 .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
                                 .blur(18.dp)
