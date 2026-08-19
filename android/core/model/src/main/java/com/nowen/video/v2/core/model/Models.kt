@@ -86,44 +86,65 @@ data class LibrarySummary(
 )
 
 /**
- * 首页、搜索和续播共用的轻量媒体模型。
+ * 首页、搜索、推荐和续播共用的轻量媒体模型。
  *
- * 服务端目前存在三种合法响应形态：
- * 1. 普通媒体对象；
- * 2. `{ type, media|series }` 混合列表项；
- * 3. `{ position, duration, media }` 续播记录。
- *
- * 自定义序列化器统一解包，避免每个页面重复兼容历史 API 契约。
+ * Android 正式端与 Web 移动端共用同一批接口，因此这里保留首页 Hero / 横向媒体栏
+ * 真正需要的海报、背景图、评分、时长、类型、清晰度与续播位置。自定义序列化器同时
+ * 兼容普通媒体、mixed item、recommend item 内部的 media，以及 watch history。
  */
 @Serializable(with = MediaCardSerializer::class)
 data class MediaCard(
     val id: String = "",
     val title: String = "",
     val name: String = "",
+    val originalTitle: String = "",
     val type: String = "",
     val year: Int? = null,
     val poster: String? = null,
     val posterUrl: String? = null,
     val posterPath: String? = null,
+    val backdropUrl: String? = null,
+    val backdropPath: String? = null,
+    val rating: Double = 0.0,
+    val runtime: Int = 0,
+    val duration: Double = 0.0,
+    val genres: String = "",
+    val resolution: String = "",
+    val videoCodec: String = "",
+    val episodeTitle: String = "",
+    val seasonNumber: Int = 0,
+    val episodeNumber: Int = 0,
     val progress: Double = 0.0,
     val progressPercent: Double = 0.0,
     val mediaId: String? = null,
+    val watchPosition: Double = 0.0,
+    val watchDuration: Double = 0.0,
 ) {
     val displayTitle: String get() = title.ifBlank { name.ifBlank { "未命名媒体" } }
     val resolvedId: String get() = mediaId?.takeIf { it.isNotBlank() } ?: id
+    val isSeries: Boolean get() = type.equals("series", ignoreCase = true)
+
     val resolvedPoster: String?
         get() {
             val targetId = resolvedId.takeIf(String::isNotBlank)
             if (targetId != null) {
-                return if (type.equals("series", ignoreCase = true)) {
-                    "/api/series/$targetId/poster"
-                } else {
-                    "/api/media/$targetId/poster"
-                }
+                return if (isSeries) "/api/series/$targetId/poster" else "/api/media/$targetId/poster"
             }
             return posterUrl ?: posterPath ?: poster
         }
+
+    val resolvedBackdrop: String?
+        get() {
+            if (backdropUrl.isNullOrBlank() && backdropPath.isNullOrBlank()) return null
+            val targetId = resolvedId.takeIf(String::isNotBlank)
+            if (targetId != null) {
+                return if (isSeries) "/api/series/$targetId/backdrop" else "/api/media/$targetId/backdrop"
+            }
+            return backdropUrl ?: backdropPath
+        }
+
     val normalizedProgress: Float get() = when {
+        watchDuration > 0 -> (watchPosition / watchDuration).toFloat()
         progressPercent > 1 -> (progressPercent / 100).toFloat()
         progress > 1 -> (progress / 100).toFloat()
         progressPercent > 0 -> progressPercent.toFloat()
@@ -136,12 +157,24 @@ private data class MediaCardPayload(
     val id: String = "",
     val title: String = "",
     val name: String = "",
+    @SerialName("orig_title") val originalTitle: String = "",
     val type: String = "",
     @SerialName("media_type") val mediaType: String = "",
     val year: Int? = null,
     val poster: String? = null,
     @SerialName("poster_url") val posterUrl: String? = null,
     @SerialName("poster_path") val posterPath: String? = null,
+    @SerialName("backdrop_url") val backdropUrl: String? = null,
+    @SerialName("backdrop_path") val backdropPath: String? = null,
+    val rating: Double = 0.0,
+    val runtime: Int = 0,
+    val duration: Double = 0.0,
+    val genres: String = "",
+    val resolution: String = "",
+    @SerialName("video_codec") val videoCodec: String = "",
+    @SerialName("episode_title") val episodeTitle: String = "",
+    @SerialName("season_num") val seasonNumber: Int = 0,
+    @SerialName("episode_num") val episodeNumber: Int = 0,
     val progress: Double = 0.0,
     @SerialName("progress_percent") val progressPercent: Double = 0.0,
     @SerialName("media_id") val mediaId: String? = null,
@@ -162,7 +195,6 @@ object MediaCardSerializer : KSerializer<MediaCard> {
 
         val outerPosition = root.doubleValue("position")
         val outerDuration = root.doubleValue("duration")
-        val historyProgress = if (outerDuration > 0) outerPosition / outerDuration else 0.0
         val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
         val outerMediaId = root["media_id"]?.jsonPrimitive?.content
         val inferredType = when {
@@ -176,14 +208,28 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             id = payload.id,
             title = payload.title,
             name = payload.name,
+            originalTitle = payload.originalTitle,
             type = inferredType,
             year = payload.year,
             poster = payload.poster,
             posterUrl = payload.posterUrl,
             posterPath = payload.posterPath,
-            progress = historyProgress.takeIf { it > 0 } ?: payload.progress,
+            backdropUrl = payload.backdropUrl,
+            backdropPath = payload.backdropPath,
+            rating = payload.rating,
+            runtime = payload.runtime,
+            duration = payload.duration,
+            genres = payload.genres,
+            resolution = payload.resolution,
+            videoCodec = payload.videoCodec,
+            episodeTitle = payload.episodeTitle,
+            seasonNumber = payload.seasonNumber,
+            episodeNumber = payload.episodeNumber,
+            progress = payload.progress,
             progressPercent = payload.progressPercent,
             mediaId = payload.mediaId ?: outerMediaId,
+            watchPosition = outerPosition,
+            watchDuration = outerDuration,
         )
     }
 
@@ -194,11 +240,23 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             id = value.id,
             title = value.title,
             name = value.name,
+            originalTitle = value.originalTitle,
             type = value.type,
             year = value.year,
             poster = value.poster,
             posterUrl = value.posterUrl,
             posterPath = value.posterPath,
+            backdropUrl = value.backdropUrl,
+            backdropPath = value.backdropPath,
+            rating = value.rating,
+            runtime = value.runtime,
+            duration = value.duration,
+            genres = value.genres,
+            resolution = value.resolution,
+            videoCodec = value.videoCodec,
+            episodeTitle = value.episodeTitle,
+            seasonNumber = value.seasonNumber,
+            episodeNumber = value.episodeNumber,
             progress = value.progress,
             progressPercent = value.progressPercent,
             mediaId = value.mediaId,
