@@ -16,6 +16,7 @@ export interface MediaHeroContentProps {
   extraBadges?: ReactNode
   headingLevel?: HeroHeadingLevel
   compact?: boolean
+  inlineBadges?: boolean
 }
 
 function formatHeroDuration(media: Media) {
@@ -44,11 +45,15 @@ export function MediaHeroContent({
   extraBadges,
   headingLevel = 'h2',
   compact = false,
+  inlineBadges = false,
 }: MediaHeroContentProps) {
   const resolvedSubtitle = subtitle ?? (
     media.orig_title && media.orig_title !== media.title ? media.orig_title : undefined
   )
   const durationLabel = formatHeroDuration(media)
+  const genres = media.genres
+    ? media.genres.split(',').slice(0, 3).map((genre) => genre.trim()).filter(Boolean)
+    : []
 
   return (
     <HeroContent
@@ -68,15 +73,19 @@ export function MediaHeroContent({
           )}
           {media.year > 0 && <span>{media.year}</span>}
           {durationLabel && <span>{durationLabel}</span>}
-          {media.genres && (
-            <span className="text-[var(--nv-text-tertiary)]">
-              {media.genres.split(',').slice(0, 3).map((genre) => genre.trim()).filter(Boolean).join(' · ')}
-            </span>
-          )}
+          {inlineBadges ? (
+            <>
+              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
+              {genres.map((genre) => <Tag key={genre}>{genre}</Tag>)}
+              {extraBadges}
+            </>
+          ) : genres.length > 0 ? (
+            <span className="text-[var(--nv-text-tertiary)]">{genres.join(' · ')}</span>
+          ) : null}
           {extraMeta}
         </>
       )}
-      badges={(
+      badges={inlineBadges ? undefined : (
         <>
           {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
           {extraBadges}
