@@ -47,3 +47,6 @@
 
 /* Final detail preview contract: one complete row + explicit in-place expansion. */
 @import './ui-media-detail-inline-previews.css';
+
+/* Mobile hero actions stay compact instead of expanding into a 2-column block. */
+@import './ui-media-detail-mobile-actions.css';
