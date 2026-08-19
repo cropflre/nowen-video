@@ -6,6 +6,7 @@ import { PageContainer } from './design-system'
 import { AppShell, PageHeader } from '@/ui'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
+const SIDEBAR_COLLAPSED_KEY = 'nowen_sidebar_collapsed'
 const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
 
 const TITLE_BY_PREFIX: Array<[string, string]> = [
@@ -35,6 +36,14 @@ const SAFE_INLINE_STYLE = {
 function resolveTitle(pathname: string) {
   if (pathname === '/') return '首页'
   return TITLE_BY_PREFIX.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Nowen Video'
+}
+
+function readInitialSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
 }
 
 function ApplicationTopBar() {
@@ -90,8 +99,17 @@ function ApplicationTopBar() {
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
   const isWidePage = WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
   const usesLocalDetailChrome = location.pathname.startsWith('/media/')
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0')
+    } catch {
+      // Storage may be unavailable in privacy-restricted browser contexts.
+    }
+  }, [sidebarCollapsed])
 
   useEffect(() => {
     const mainEl = mainRef.current
@@ -123,7 +141,15 @@ export default function Layout() {
   }, [location.pathname, location.search])
 
   return (
-    <AppShell sidebar={<Sidebar />} sidebarCollapsed={false}>
+    <AppShell
+      sidebar={(
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+        />
+      )}
+      sidebarCollapsed={sidebarCollapsed}
+    >
       <main
         ref={mainRef}
         id="main-scroll-container"
