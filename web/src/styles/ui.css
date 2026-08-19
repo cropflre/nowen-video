@@ -57,6 +57,10 @@
 /* Subtitle manager escapes page stacking contexts and owns a stable dialog viewport. */
 @import './ui-subtitle-manager-modal.css';
 
-/* Must stay last: reference shell fixes the desktop rail width with !important,
- * so the explicit collapsed state needs the final cascade position. */
+/* Must stay late: reference shell fixes the desktop rail width with !important,
+ * so the explicit collapsed state needs a later cascade position. */
 @import './ui-sidebar-collapse-final.css';
+
+/* Final mobile identity contract: real poster stays visible beside title/meta.
+ * Highlight/backdrop artwork is ambience only and must not replace the cover. */
+@import './ui-media-detail-mobile-poster.css';
