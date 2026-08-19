@@ -1,0 +1,205 @@
+/* Nowen UI 2.0 · Homepage layout lock
+ * This file intentionally loads after the historical calibration layers.
+ * It fixes the approved homepage composition: full-width hero/rails followed by
+ * a three-column shelf matrix (最近添加 + 动画/喜剧/冒险/家庭...).
+ */
+
+/* The older hero selector targets h2 with higher specificity. Lock the approved
+   title scale here so long Chinese titles never expand into the artwork. */
+.nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+  max-width: 25ch !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  font-size: clamp(1.34rem, 1.55vw, 1.62rem) !important;
+  font-weight: 700 !important;
+  line-height: 1.12 !important;
+  letter-spacing: -.025em !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.nv-home-page .nv-hero-carousel .nv-home-hero-foreground {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.nv-home-page .nv-hero-carousel .nv-home-hero-content {
+  min-width: 0 !important;
+  width: min(48%, 540px) !important;
+  flex: 0 1 540px !important;
+}
+
+.nv-home-page .nv-hero-carousel .nv-home-hero-content .nv-hero-content {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.nv-home-page .nv-hero-carousel .nv-media-hero-subtitle,
+.nv-home-page .nv-hero-carousel .nv-media-hero-overview {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.nv-home-page .nv-hero-carousel .nv-media-hero-overview {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+/* Approved lower homepage composition ------------------------------------ */
+.nv-home-shelf-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 26px 24px;
+}
+
+.nv-home-compact-shelf {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nv-home-compact-shelf .nv-section-header {
+  min-height: 22px !important;
+  margin-bottom: 7px !important;
+}
+
+.nv-home-compact-shelf .nv-section-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px !important;
+  font-weight: 680 !important;
+  line-height: 1.2 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-home-compact-shelf .nv-home-rail-action {
+  gap: 1px;
+  font-size: 9px !important;
+}
+
+.nv-home-compact-shelf .nv-media-rail {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nv-home-compact-shelf .nv-media-rail-track {
+  width: 100%;
+  min-width: 0;
+  gap: 8px !important;
+  padding: 2px 1px 5px !important;
+  scroll-padding-inline: 1px;
+}
+
+.nv-home-shelf-poster-slot {
+  width: 72px !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+}
+
+.nv-home-shelf-poster-slot .nv-media-card-poster {
+  border-radius: 8px !important;
+  box-shadow: 0 5px 13px rgba(2,5,18,.11) !important;
+}
+
+[data-theme="light"] .nv-home-shelf-poster-slot .nv-media-card-poster {
+  box-shadow: 0 4px 12px rgba(42,42,70,.075) !important;
+}
+
+.nv-home-shelf-poster-slot .nv-media-card > div:last-child {
+  padding-top: 5px !important;
+  padding-bottom: 0 !important;
+}
+
+.nv-home-shelf-poster-slot .nv-media-card-title {
+  display: block;
+  overflow: hidden;
+  font-size: 8.8px !important;
+  font-weight: 610 !important;
+  line-height: 1.22 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-home-shelf-poster-slot .nv-media-card-meta {
+  margin-top: 2px !important;
+  gap: 3px !important;
+  overflow: hidden;
+  font-size: 7.8px !important;
+  line-height: 1.15 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-home-shelf-poster-slot .nv-tag {
+  min-height: 15px !important;
+  padding: 1px 4px !important;
+  border-radius: 5px !important;
+  font-size: 7px !important;
+}
+
+.nv-home-compact-shelf .nv-media-rail-arrow {
+  top: 42% !important;
+  width: 24px !important;
+  height: 30px !important;
+}
+
+/* Keep the two large rows faithful to the reference before the shelf matrix. */
+.nv-home-page > .nv-section,
+.nv-home-page > .nv-media-rail {
+  min-width: 0;
+}
+
+@media (min-width: 100rem) {
+  .nv-home-shelf-grid {
+    gap-inline: 28px;
+  }
+
+  .nv-home-shelf-poster-slot {
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+  }
+}
+
+@media (max-width: 74rem) and (min-width: 48rem) {
+  .nv-home-shelf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 20px;
+  }
+
+  .nv-home-shelf-poster-slot {
+    width: 78px !important;
+    min-width: 78px !important;
+    max-width: 78px !important;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    max-width: 18ch !important;
+    font-size: clamp(1.55rem, 7.2vw, 2rem) !important;
+    white-space: normal !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  .nv-home-page .nv-hero-carousel .nv-home-hero-content {
+    width: 100% !important;
+    flex-basis: auto !important;
+  }
+
+  .nv-home-shelf-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .nv-home-shelf-poster-slot {
+    width: 31vw !important;
+    min-width: 31vw !important;
+    max-width: 124px !important;
+  }
+}
