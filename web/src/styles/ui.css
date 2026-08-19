@@ -24,6 +24,9 @@
 @import './ui-home-hero-prominence.css';
 @import './ui-home-adaptive-density.css';
 
+/* Mobile hero is cinematic in both themes; suppress bright poster-fallback edges. */
+@import './ui-home-mobile-hero-surface.css';
+
 /* Final media-rail contract: never leave a clipped/half card at rest. */
 @import './ui-media-rail-fit.css';
 
