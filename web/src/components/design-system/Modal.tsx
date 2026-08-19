@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -60,7 +61,7 @@ export function Modal({
     if (closeOnBackdrop && event.target === overlayRef.current) onClose()
   }
 
-  return (
+  const modal = (
     <div
       ref={overlayRef}
       className={clsx('nv-modal-backdrop', className)}
@@ -83,6 +84,11 @@ export function Modal({
       </div>
     </div>
   )
+
+  // Always mount dialogs under document.body so page-level stacking contexts
+  // (hero isolation, transformed rails, sticky panels, etc.) can never paint
+  // above an active modal.
+  return typeof document === 'undefined' ? modal : createPortal(modal, document.body)
 }
 
 interface ModalHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
