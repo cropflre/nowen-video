@@ -40,6 +40,7 @@ function resolveTitle(pathname: string) {
 function ApplicationTopBar() {
   const location = useLocation()
   const navigate = useNavigate()
+  const isHomeRoute = location.pathname === '/'
   const isSearchRoute = location.pathname === '/search'
   const routeKeyword = isSearchRoute
     ? new URLSearchParams(location.search).get('q') ?? ''
@@ -57,14 +58,17 @@ function ApplicationTopBar() {
 
   const actions = (
     <>
-      <Link to="/history" className="nv-page-header-action" aria-label="观看历史" title="观看历史">
-        <Clock3 size={17} aria-hidden="true" />
+      <Link to="/history" className="nv-page-header-action nv-page-header-action--label" aria-label="观看历史" title="观看历史">
+        <Clock3 size={15} aria-hidden="true" />
+        <span>观看历史</span>
       </Link>
-      <Link to="/favorites" className="nv-page-header-action" aria-label="收藏" title="收藏">
-        <Heart size={17} aria-hidden="true" />
+      <Link to="/favorites" className="nv-page-header-action nv-page-header-action--label" aria-label="我的收藏" title="我的收藏">
+        <Heart size={15} aria-hidden="true" />
+        <span>我的收藏</span>
       </Link>
-      <Link to="/my" className="nv-page-header-action" aria-label="我的消息" title="我的消息">
+      <Link to="/my" className="nv-page-header-action nv-page-header-action--notification" aria-label="我的消息" title="我的消息">
         <Bell size={17} aria-hidden="true" />
+        <span className="nv-page-header-notification-dot" aria-hidden="true" />
       </Link>
     </>
   )
@@ -72,6 +76,7 @@ function ApplicationTopBar() {
   return (
     <PageHeader
       title={title}
+      subtitle={isHomeRoute ? '精选推荐 · 精彩不断' : undefined}
       searchValue={keyword}
       onSearchValueChange={setKeyword}
       onSearchSubmit={submitSearch}
