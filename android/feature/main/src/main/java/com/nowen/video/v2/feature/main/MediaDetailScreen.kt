@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Captions
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
@@ -32,6 +31,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -261,11 +261,7 @@ private data class RelatedMediaDetail(
     val resumePositionSeconds: Double,
 )
 
-/**
- * 与 Web 移动端详情页保持同一阅读顺序：
- * Hero -> 简介 -> 精彩片段 -> 演职人员 -> 相似推荐 -> 技术规格 -> 次要状态。
- * 精彩片段和演职人员默认只展示一行，点击“查看更多”再原位展开。
- */
+/** 与 Web 移动端详情页保持相同的信息流与展开交互。 */
 @Composable
 fun MediaDetailScreen(
     mediaId: String,
@@ -273,6 +269,7 @@ fun MediaDetailScreen(
     onPlay: (String) -> Unit,
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
+    onMediaClick: (String) -> Unit = onPlay,
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -343,7 +340,7 @@ fun MediaDetailScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
                             ) {
-                                Icon(Icons.Default.Captions, contentDescription = null, modifier = Modifier.size(19.dp))
+                                Icon(Icons.Default.Subtitles, contentDescription = null, modifier = Modifier.size(19.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("字幕", fontSize = 12.sp)
                             }
@@ -417,17 +414,13 @@ fun MediaDetailScreen(
 
                     if (state.recommendations.isNotEmpty()) {
                         item {
-                            DetailFeedCard(
-                                title = "相似推荐",
-                                actionLabel = "查看更多",
-                                onAction = {},
-                            ) {
+                            DetailFeedCard(title = "相似推荐") {
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     items(state.recommendations, key = { "similar-${it.resolvedId}" }) { item ->
                                         SimilarPosterCard(
                                             media = item,
                                             imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                                            onClick = { onPlay(item.resolvedId) },
+                                            onClick = { onMediaClick(item.resolvedId) },
                                         )
                                     }
                                 }
