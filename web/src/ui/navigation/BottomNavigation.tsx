@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 
 export interface BottomNavigationItem {
@@ -7,6 +7,8 @@ export interface BottomNavigationItem {
   label: string
   icon: ReactNode
   end?: boolean
+  /** Extra route prefixes that should keep this navigation item selected. */
+  activeOn?: string[]
 }
 
 export interface BottomNavigationProps {
@@ -15,6 +17,8 @@ export interface BottomNavigationProps {
 }
 
 export function BottomNavigation({ items, className }: BottomNavigationProps) {
+  const location = useLocation()
+
   return (
     <nav
       className={clsx('nv-mobile-nav', className)}
@@ -24,19 +28,26 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
         right: 'max(8px, env(safe-area-inset-right, 0px))',
       }}
     >
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          className="nv-rail-item nv-mobile-nav-item"
-          aria-label={item.label}
-          title={item.label}
-        >
-          <span className="nv-rail-icon nv-mobile-nav-icon">{item.icon}</span>
-          <span className="nv-rail-label nv-mobile-nav-label">{item.label}</span>
-        </NavLink>
-      ))}
+      {items.map((item) => {
+        const forceActive = item.activeOn?.some((prefix) => location.pathname.startsWith(prefix)) ?? false
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) => clsx(
+              'nv-rail-item nv-mobile-nav-item',
+              (isActive || forceActive) && 'active',
+            )}
+            aria-label={item.label}
+            title={item.label}
+            aria-current={forceActive ? 'page' : undefined}
+          >
+            <span className="nv-rail-icon nv-mobile-nav-icon">{item.icon}</span>
+            <span className="nv-rail-label nv-mobile-nav-label">{item.label}</span>
+          </NavLink>
+        )
+      })}
     </nav>
   )
 }
