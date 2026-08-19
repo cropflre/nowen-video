@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -333,10 +335,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     }
 }
 
-/**
- * Web 移动端同款悬浮底部导航：四个等宽入口，选中态是轻量紫色胶囊，
- * 而不是 Material NavigationBar 默认的大面积指示器。
- */
+/** Web 移动端同款悬浮底部导航。 */
 @Composable
 private fun WebMobileBottomBar(
     selectedTab: MainTab?,
