@@ -15,6 +15,7 @@ interface MediaCardProps {
   eyebrow?: string
   className?: string
   variant?: MediaCardVariant
+  showBadges?: boolean
 }
 
 export default function MediaCard({
@@ -23,6 +24,7 @@ export default function MediaCard({
   eyebrow,
   className,
   variant = 'poster',
+  showBadges = true,
 }: MediaCardProps) {
   const navigate = useNavigate()
   const posterVersion = usePosterVersion()
@@ -98,7 +100,7 @@ export default function MediaCard({
           </Button>
         </div>
 
-        {eyebrow && (
+        {showBadges && eyebrow && (
           <Tag
             tone="quality"
             className="nv-media-card-badge absolute left-2 top-2 z-30 max-w-[calc(100%-4rem)] truncate"
@@ -108,7 +110,7 @@ export default function MediaCard({
           </Tag>
         )}
 
-        {!isSeries && media!.resolution && (
+        {showBadges && !isSeries && media!.resolution && (
           <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30">
             {media!.resolution}
           </Tag>
