@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -299,6 +298,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onPlay = ::openPlayer,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
+                    onMediaClick = ::openDetail,
                 )
             }
             composable(
@@ -335,7 +335,6 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     }
 }
 
-/** Web 移动端同款悬浮底部导航。 */
 @Composable
 private fun WebMobileBottomBar(
     selectedTab: MainTab?,
