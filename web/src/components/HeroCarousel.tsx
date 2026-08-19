@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Info, Play } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, Info, Play } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
 import { Button, buttonClassName } from '@/components/design-system'
-import { MediaHeroContent } from '@/ui'
+import { MediaArtwork, MediaHeroContent } from '@/ui'
 
 const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
@@ -96,6 +96,12 @@ function getHeroArtwork(media: Media): HeroArtwork {
     fallback: streamApi.getPosterUrl(media.id),
     isBackdrop: true,
   }
+}
+
+function getHeroPoster(media: Media): string | null {
+  if (!media.poster_path && !media.series?.poster_path) return null
+  if (media.series_id) return streamApi.getSeriesPosterUrl(media.series_id)
+  return streamApi.getPosterUrl(media.id)
 }
 
 function handleArtworkError(event: SyntheticEvent<HTMLImageElement>, fallback?: string) {
@@ -201,6 +207,7 @@ export default function HeroCarousel({
   if (!item) return null
 
   const artwork = getHeroArtwork(item.media)
+  const poster = getHeroPoster(item.media)
   const playLink = item.media.media_type === 'episode' && item.media.series_id
     ? `/series/${item.media.series_id}`
     : `/play/${item.media.id}`
@@ -208,9 +215,6 @@ export default function HeroCarousel({
     ? `/series/${item.media.series_id}`
     : `/media/${item.media.id}`
   const progress = Math.max(0, Math.min(100, progressByMediaId[item.media.id] || 0))
-  const eyebrow = item.media.orig_title && item.media.orig_title !== item.media.title
-    ? item.media.orig_title
-    : item.reason
 
   return (
     <section
@@ -247,70 +251,65 @@ export default function HeroCarousel({
         </motion.div>
       </AnimatePresence>
 
-      {items.map((recommendation, index) => {
-        if (index === current) return null
-        const preloadArtwork = getHeroArtwork(recommendation.media)
-        return (
-          <img
-            key={`hero-preload-${recommendation.media.id}`}
-            src={preloadArtwork.primary}
-            alt=""
-            className="hidden"
-            loading="lazy"
-            onError={(event) => handleArtworkError(event, preloadArtwork.fallback)}
-          />
-        )
-      })}
-
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
 
-      <div className="nv-home-hero-content relative z-10 flex flex-col justify-center">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={`hero-content-${item.media.id}`}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-            transition={{ duration: prefersReducedMotion ? 0.12 : 0.25 }}
-          >
-            <MediaHeroContent
-              media={item.media}
-              eyebrow={eyebrow}
-              subtitle={false}
-              supplemental={progress > 0 ? (
-                <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
-                  <div className="nv-home-hero-watch-progress-label">已观看 {progress}%</div>
-                  <div className="nv-home-hero-watch-progress-track">
-                    <span style={{ width: `${progress}%` }} />
+      <div className="nv-home-hero-foreground relative z-10">
+        <MediaArtwork
+          src={poster}
+          alt=""
+          ratio="poster"
+          className="nv-home-hero-poster"
+          imageClassName="nv-home-hero-poster-image"
+          fallback={<Film size={26} aria-hidden="true" />}
+        />
+
+        <div className="nv-home-hero-content flex min-w-0 flex-col justify-center">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`hero-content-${item.media.id}`}
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+              transition={{ duration: prefersReducedMotion ? 0.12 : 0.25 }}
+            >
+              <MediaHeroContent
+                media={item.media}
+                inlineBadges
+                supplemental={progress > 0 ? (
+                  <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
+                    <div className="nv-home-hero-watch-progress-label">已观看 {progress}%</div>
+                    <div className="nv-home-hero-watch-progress-track">
+                      <span style={{ width: `${progress}%` }} />
+                    </div>
                   </div>
-                </div>
-              ) : undefined}
-              actions={(
-                <>
-                  <Link
-                    to={playLink}
-                    className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                    data-variant="primary"
-                    data-size="lg"
-                  >
-                    <Play size={16} fill="currentColor" aria-hidden="true" />
-                    {progress > 0 ? '继续播放' : t('home.playNow')}
-                  </Link>
-                  <Link
-                    to={detailLink}
-                    className={buttonClassName({ variant: 'secondary', size: 'lg' })}
-                    data-variant="secondary"
-                    data-size="lg"
-                  >
-                    <Info size={16} aria-hidden="true" />
-                    {t('home.viewDetail')}
-                  </Link>
-                </>
-              )}
-            />
-          </motion.div>
-        </AnimatePresence>
+                ) : undefined}
+                actions={(
+                  <>
+                    <Link
+                      to={playLink}
+                      className={buttonClassName({ variant: 'primary', size: 'lg' })}
+                      data-variant="primary"
+                      data-size="lg"
+                    >
+                      <Play size={16} fill="currentColor" aria-hidden="true" />
+                      {progress > 0 ? '继续播放' : t('home.playNow')}
+                    </Link>
+                    <Link
+                      to={detailLink}
+                      className={buttonClassName({ variant: 'secondary', size: 'lg' })}
+                      data-variant="secondary"
+                      data-size="lg"
+                    >
+                      <Info size={16} aria-hidden="true" />
+                      {t('home.viewDetail')}
+                    </Link>
+                  </>
+                )}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
       {items.length > 1 && (
