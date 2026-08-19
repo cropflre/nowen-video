@@ -65,6 +65,7 @@ import androidx.navigation.navArgument
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.PlayerPreferences
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
+import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -101,6 +102,7 @@ private const val SETTINGS_ROUTE = "settings"
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
     private val repository: NowenRepository,
+    private val progressRepository: ProgressRepository,
     playerPreferencesStore: PlayerPreferencesStore,
     val store: ServerSessionStore,
 ) : ViewModel() {
@@ -109,6 +111,10 @@ class MainShellViewModel @Inject constructor(
         SharingStarted.Eagerly,
         PlayerPreferences(),
     )
+
+    fun preparePlaybackStart(mediaId: String, positionSeconds: Double) {
+        progressRepository.prepareNextPlaybackStart(mediaId, positionSeconds)
+    }
 
     fun logout() {
         viewModelScope.launch { repository.logout() }
@@ -159,6 +165,12 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         if (mediaId.isNotBlank()) navController.navigate("player/${Uri.encode(mediaId)}")
     }
 
+    fun openPlayerAt(mediaId: String, positionSeconds: Double) {
+        if (mediaId.isBlank()) return
+        viewModel.preparePlaybackStart(mediaId, positionSeconds)
+        openPlayer(mediaId)
+    }
+
     fun openOfflinePlayer(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("offline/${Uri.encode(mediaId)}")
     }
@@ -197,6 +209,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 HomeScreen(
                     onMediaClick = ::openDetail,
                     onPlay = ::openPlayer,
+                    onRestart = { mediaId -> openPlayerAt(mediaId, 0.0) },
                     onLibraryClick = {
                         navController.navigate(MainTab.Library.route) {
                             launchSingleTop = true
@@ -296,6 +309,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     mediaId = mediaId,
                     onBack = { navController.popBackStack() },
                     onPlay = ::openPlayer,
+                    onHighlightPlay = ::openPlayerAt,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
                     onMediaClick = ::openDetail,
