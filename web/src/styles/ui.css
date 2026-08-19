@@ -17,6 +17,6 @@
 @import './ui-home-hero.css';
 @import './ui-reference-shell.css';
 @import './ui-reference-calibration.css';
-@import './ui-home-layout-reference.css';
-@import './ui-home-shelf-controls.css';
+
+/* Homepage geometry has one and only one final source of truth. */
 @import './ui-home-reference-exact.css';
