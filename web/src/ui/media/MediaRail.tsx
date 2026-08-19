@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button, Section } from '@/components/design-system'
@@ -11,6 +11,20 @@ export interface MediaRailProps {
   action?: ReactNode
   className?: string
   trackClassName?: string
+  /**
+   * Keep every visible card fully inside the rail viewport. When enabled the
+   * rail measures its available width, chooses an integer visible count and
+   * distributes the remaining pixels between those cards.
+   */
+  fullItemsOnly?: boolean
+  /** Minimum card width used when calculating the integer visible count. */
+  minItemWidth?: number
+}
+
+interface FitLayout {
+  visibleCount: number
+  itemWidth: number
+  gap: number
 }
 
 export function MediaRail({
@@ -21,10 +35,14 @@ export function MediaRail({
   action,
   className,
   trackClassName,
+  fullItemsOnly = false,
+  minItemWidth = 96,
 }: MediaRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fitLayoutRef = useRef<FitLayout>({ visibleCount: 1, itemWidth: minItemWidth, gap: 0 })
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const [fitItemWidth, setFitItemWidth] = useState<number | null>(null)
 
   const updateScrollState = useCallback(() => {
     const element = scrollRef.current
@@ -33,35 +51,87 @@ export function MediaRail({
     setCanScrollRight(element.scrollLeft < element.scrollWidth - element.clientWidth - 10)
   }, [])
 
+  const updateFitLayout = useCallback(() => {
+    const element = scrollRef.current
+    if (!element || !fullItemsOnly) {
+      setFitItemWidth(null)
+      return
+    }
+
+    const styles = window.getComputedStyle(element)
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0
+    const paddingLeft = Number.parseFloat(styles.paddingLeft || '0') || 0
+    const paddingRight = Number.parseFloat(styles.paddingRight || '0') || 0
+    const contentWidth = Math.max(0, element.clientWidth - paddingLeft - paddingRight)
+    const cssMinItemWidth = Number.parseFloat(styles.getPropertyValue('--nv-media-rail-min-item-width'))
+    const resolvedMinItemWidth = Number.isFinite(cssMinItemWidth) && cssMinItemWidth > 0
+      ? cssMinItemWidth
+      : minItemWidth
+
+    if (contentWidth <= 0) return
+
+    // Integer-card contract: never trade a readable card for a clipped card.
+    const visibleCount = Math.max(1, Math.floor((contentWidth + gap) / (resolvedMinItemWidth + gap)))
+    const fittedWidth = Math.max(
+      resolvedMinItemWidth,
+      (contentWidth - gap * Math.max(0, visibleCount - 1)) / visibleCount,
+    )
+
+    fitLayoutRef.current = { visibleCount, itemWidth: fittedWidth, gap }
+    setFitItemWidth((current) => current !== null && Math.abs(current - fittedWidth) < 0.25 ? current : fittedWidth)
+  }, [fullItemsOnly, minItemWidth])
+
   useEffect(() => {
     const element = scrollRef.current
     if (!element) return
 
+    const sync = () => {
+      updateFitLayout()
+      updateScrollState()
+    }
+
     const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(updateScrollState)
+      ? new ResizeObserver(sync)
       : null
 
     element.addEventListener('scroll', updateScrollState, { passive: true })
     resizeObserver?.observe(element)
-    const frame = window.requestAnimationFrame(updateScrollState)
+    window.addEventListener('resize', sync, { passive: true })
+    const frame = window.requestAnimationFrame(sync)
 
     return () => {
       window.cancelAnimationFrame(frame)
       element.removeEventListener('scroll', updateScrollState)
+      window.removeEventListener('resize', sync)
       resizeObserver?.disconnect()
     }
-  }, [itemCount, updateScrollState])
+  }, [itemCount, updateFitLayout, updateScrollState])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(updateScrollState)
+    return () => window.cancelAnimationFrame(frame)
+  }, [fitItemWidth, updateScrollState])
 
   const scroll = (direction: 'left' | 'right') => {
     const element = scrollRef.current
     if (!element) return
-    const amount = Math.max(320, element.clientWidth * 0.78)
+
+    let amount = Math.max(320, element.clientWidth * 0.78)
+    if (fullItemsOnly) {
+      const { visibleCount, itemWidth, gap } = fitLayoutRef.current
+      amount = Math.max(itemWidth + gap, visibleCount * (itemWidth + gap))
+    }
+
     element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
   }
 
+  const trackStyle = fullItemsOnly && fitItemWidth !== null
+    ? ({ '--nv-media-rail-fit-item-width': `${fitItemWidth}px` } as CSSProperties)
+    : undefined
+
   return (
     <Section title={title} action={action} className={className}>
-      <div className="nv-media-rail group/rail relative">
+      <div className="nv-media-rail group/rail relative" data-full-items={fullItemsOnly ? 'true' : undefined}>
         {canScrollLeft && (
           <Button
             variant="secondary"
@@ -77,7 +147,12 @@ export function MediaRail({
 
         <div
           ref={scrollRef}
-          className={clsx('nv-media-rail-track scrollbar-hide', trackClassName)}
+          className={clsx(
+            'nv-media-rail-track scrollbar-hide',
+            fullItemsOnly && 'nv-media-rail-track--full-items',
+            trackClassName,
+          )}
+          style={trackStyle}
           aria-label={ariaLabel}
         >
           {children}
