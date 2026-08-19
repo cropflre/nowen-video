@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
 import { Button, EmptyState, Tag } from '@/components/design-system'
 import { PersonCard } from '@/ui'
-import { ChevronDown, ChevronUp, Users } from 'lucide-react'
+import { ChevronRight, ChevronUp, Users } from 'lucide-react'
 import { useTranslation } from '@/i18n'
 
 interface CastGridProps {
@@ -26,11 +26,21 @@ function useRoleLabel() {
 
 const rolePriority: Record<string, number> = { director: 0, writer: 1, actor: 2 }
 
-export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) {
+function getCollapsedCount(width: number) {
+  if (width >= 1120) return 10
+  if (width >= 920) return 8
+  if (width >= 720) return 7
+  if (width >= 540) return 5
+  return 4
+}
+
+export default function CastGrid({ persons, initialCount }: CastGridProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const getRoleLabel = useRoleLabel()
+  const sectionRef = useRef<HTMLElement | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [collapsedCount, setCollapsedCount] = useState(initialCount || 10)
 
   const dedupedPersons = useMemo(() => {
     const seen = new Set<string>()
@@ -49,13 +59,30 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
     return a.sort_order - b.sort_order
   }), [dedupedPersons])
 
-  const collapsedCount = Math.max(1, initialCount)
-  const hasMore = sortedPersons.length > collapsedCount
-  const visiblePersons = expanded ? sortedPersons : sortedPersons.slice(0, collapsedCount)
+  useEffect(() => {
+    const node = sectionRef.current
+    if (!node || initialCount) return
+
+    const updateCount = (width: number) => {
+      const nextCount = getCollapsedCount(width)
+      setCollapsedCount((current) => current === nextCount ? current : nextCount)
+    }
+
+    updateCount(node.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (typeof width === 'number') updateCount(width)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [initialCount])
 
   useEffect(() => {
     setExpanded(false)
-  }, [persons, collapsedCount])
+  }, [persons])
+
+  const visiblePersons = expanded ? sortedPersons : sortedPersons.slice(0, collapsedCount)
+  const hasMore = sortedPersons.length > collapsedCount
 
   const handleCardClick = useCallback((person: MediaPerson) => {
     if (person.person_id) navigate(`/person/${person.person_id}`)
@@ -73,16 +100,31 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
   }
 
   return (
-    <section aria-labelledby="cast-grid-title">
-      <div className="nv-cast-grid-header mb-3 flex items-baseline justify-between gap-3">
+    <section ref={sectionRef} className="nv-cast-grid-section" aria-labelledby="cast-grid-title">
+      <div className="nv-cast-grid-header mb-3 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
           <h2 id="cast-grid-title" className="nv-section-title">{t('castGrid.title')}</h2>
           <span className="text-[11px] text-[var(--nv-text-tertiary)]">{dedupedPersons.length}</span>
         </div>
+
+        {hasMore && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="nv-detail-inline-more"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? '收起' : '查看更多'}
+            {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+          </Button>
+        )}
       </div>
 
       <div
-        className="nv-cast-grid-list flex flex-wrap items-start gap-x-3 gap-y-5 pb-2"
+        className={`nv-cast-grid-list ${expanded ? 'is-expanded' : 'is-collapsed'}`}
+        style={{ '--nv-cast-preview-count': collapsedCount } as React.CSSProperties}
         role="list"
         aria-label={t('castGrid.title')}
       >
@@ -106,22 +148,6 @@ export default function CastGrid({ persons, initialCount = 12 }: CastGridProps) 
           )
         })}
       </div>
-
-      {hasMore && (
-        <div className="nv-cast-grid-toggle-row mt-1 flex justify-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="nv-cast-grid-toggle"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-            {expanded ? '收起演职人员' : `查看全部 ${sortedPersons.length} 位`}
-          </Button>
-        </div>
-      )}
     </section>
   )
 }
