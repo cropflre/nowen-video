@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 
 const FIRST_HISTORY_REPORT_SECONDS = 3
-const DESKTOP_PROGRESS_REPORT_INTERVAL_MS = 15_000
+const FALLBACK_PROGRESS_REPORT_INTERVAL_MS = 15_000
 const MIN_PROGRESS_SECONDS = 0.25
 
 function mediaIdFromPath(pathname: string): string | null {
@@ -40,6 +40,9 @@ async function reportAbsoluteProgress(mediaId: string, position: number, duratio
   if (!payload) return false
 
   try {
+    // The global player store already exposes absolute timeline positions for
+    // session playback, so this bridge intentionally bypasses userApi's
+    // toAbsolutePlaybackPosition conversion to avoid adding the session offset twice.
     await api.put(`/users/me/progress/${encodeURIComponent(mediaId)}`, payload)
     invalidatePlaybackCaches()
     window.dispatchEvent(new CustomEvent('nowen:watch-progress-updated', {
@@ -69,17 +72,17 @@ function reportAbsoluteProgressKeepalive(mediaId: string, position: number, dura
 }
 
 /**
- * PlaybackHistoryBridge is the route-level safety net for watch history.
+ * Route-level watch-history contract shared by every playback engine.
  *
  * Browser <video> playback already performs periodic reporting internally, but
- * short sessions could leave the route before the first 15-second report. The
- * Desktop 2.0 native player has no browser video element at all, so it also needs
- * a route-level reporter. Keeping this bridge above every playback engine gives
- * all modes the same product contract:
- *   - once playback has genuinely advanced, create history promptly;
- *   - Desktop keeps reporting while it plays;
+ * short sessions could leave the route before its first 15-second report.
+ * Desktop 2.0 and WebCodecs do not share that browser-video reporting lifecycle.
+ * This bridge therefore guarantees that:
+ *   - opening a player alone is not counted as a watch;
+ *   - once the timeline genuinely advances for a few seconds, history exists;
+ *   - native/canvas playback keeps a periodic fallback reporter;
  *   - navigation/page-hide flushes the latest absolute position;
- *   - highlights never pollute normal watch history.
+ *   - highlight previews never pollute normal watch history.
  */
 export default function PlaybackHistoryBridge() {
   const location = useLocation()
@@ -87,7 +90,6 @@ export default function PlaybackHistoryBridge() {
   const highlightMode = new URLSearchParams(location.search).get('mode') === 'highlight'
   const currentTime = usePlayerStore((state) => state.currentTime)
   const storeDuration = usePlayerStore((state) => state.duration)
-  const isPlaying = usePlayerStore((state) => state.isPlaying)
 
   const [knownDuration, setKnownDuration] = useState(0)
   const knownDurationRef = useRef(0)
@@ -145,32 +147,38 @@ export default function PlaybackHistoryBridge() {
     return success
   }, [highlightMode, mediaId])
 
-  // Product rule: opening the player alone is not a watch. Once playback has
-  // advanced for a few seconds, however, history should already exist before the
-  // user navigates back to Home/History.
+  // Product rule: entering /play/:id is not enough. Require the timeline to move
+  // after this route was entered, which also protects against a stale player-store
+  // snapshot from the previously played title.
   useEffect(() => {
     if (!mediaId || highlightMode || firstReportedRef.current) return
     const duration = knownDuration || storeDuration
     if (duration <= 0 || currentTime < FIRST_HISTORY_REPORT_SECONDS) return
 
     const advancedFromEntry = Math.abs(currentTime - initialPositionRef.current) >= 1
-    if (!isPlaying && !advancedFromEntry) return
+    if (!advancedFromEntry) return
 
     firstReportedRef.current = true
     void reportSnapshot(true).then((success) => {
       if (!success) firstReportedRef.current = false
     })
-  }, [currentTime, highlightMode, isPlaying, knownDuration, mediaId, reportSnapshot, storeDuration])
+  }, [currentTime, highlightMode, knownDuration, mediaId, reportSnapshot, storeDuration])
 
-  // Desktop 2.0 renders through libmpv and therefore bypasses VideoPlayer's
-  // existing browser interval. Keep its long-running progress current here.
+  // Native Desktop and canvas/WebCodecs playback bypass VideoPlayer's existing
+  // browser <video> reporter. Detect that absence instead of keying only on the
+  // platform so every non-video engine receives the same 15-second fallback.
   useEffect(() => {
-    if (!mediaId || highlightMode || !desktop.isDesktop) return
+    if (!mediaId || highlightMode) return
     const timer = window.setInterval(() => {
       const state = usePlayerStore.getState()
-      if (!state.isPlaying || state.currentTime <= MIN_PROGRESS_SECONDS) return
+      if (state.currentTime <= MIN_PROGRESS_SECONDS) return
+
+      const hasBrowserVideo = !desktop.isDesktop && Boolean(document.querySelector('video'))
+      if (hasBrowserVideo) return
+      if (Math.abs(state.currentTime - lastReportedPositionRef.current) < 1) return
+
       void reportSnapshot()
-    }, DESKTOP_PROGRESS_REPORT_INTERVAL_MS)
+    }, FALLBACK_PROGRESS_REPORT_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [highlightMode, mediaId, reportSnapshot])
 
