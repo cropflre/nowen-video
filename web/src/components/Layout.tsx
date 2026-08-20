@@ -101,7 +101,7 @@ export default function Layout() {
   const mainRef = useRef<HTMLElement>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
   const isWidePage = WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
-  const usesLocalDetailChrome = location.pathname.startsWith('/media/')
+  const usesLocalDetailChrome = location.pathname.startsWith('/media/') || location.pathname.startsWith('/series/')
 
   useEffect(() => {
     try {
