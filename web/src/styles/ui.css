@@ -92,3 +92,7 @@
 /* Persistent desktop chrome must not be resized by page-specific screenshot
  * calibration. This keeps Home/Browse/Detail route transitions visually still. */
 @import './ui-shell-route-stability.css';
+
+/* Final sidebar state contract: a real 172px labelled rail or 72px icon rail,
+ * with one stable edge toggle and no homepage-specific collapse regression. */
+@import './ui-sidebar-collapse-polish.css';
