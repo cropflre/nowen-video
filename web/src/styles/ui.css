@@ -129,3 +129,7 @@
 /* Desktop navigation is icon + label. Historical text-only reference CSS must not
  * hide the real lucide icons rendered by Sidebar.tsx. */
 @import './ui-sidebar-icon-visibility-final.css';
+
+/* Hero and shelf pagination are the same interaction. Keep one glass edge-control
+ * language so the homepage does not mix circular and pill navigation buttons. */
+@import './ui-home-carousel-arrow-unified.css';
