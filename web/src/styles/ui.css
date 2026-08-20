@@ -125,3 +125,7 @@
 
 /* Phone home uses immersive hero chrome: no detached empty toolbar above artwork. */
 @import './ui-home-mobile-immersive-chrome.css';
+
+/* Desktop navigation is icon + label. Historical text-only reference CSS must not
+ * hide the real lucide icons rendered by Sidebar.tsx. */
+@import './ui-sidebar-icon-visibility-final.css';
