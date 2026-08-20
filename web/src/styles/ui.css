@@ -96,3 +96,7 @@
 /* Final sidebar state contract: a real 172px labelled rail or 72px icon rail,
  * with one stable edge toggle and no homepage-specific collapse regression. */
 @import './ui-sidebar-collapse-polish.css';
+
+/* Bootstrap/Suspense is not application chrome. Keep the refresh/loading viewport
+ * borderless after every provider, legacy and shell compatibility layer. */
+@import './ui-boot-loading-stability.css';
