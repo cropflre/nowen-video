@@ -1,0 +1,97 @@
+/* Nowen Video · Subtitle manager modal
+ *
+ * The subtitle manager can be opened from the media-detail hero, which owns an
+ * isolated stacking context. Modal.tsx now portals to document.body; this layer
+ * additionally defines a stable dialog viewport so page rails can never bleed
+ * through the dialog and long subtitle lists scroll inside the sheet.
+ */
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: calc(var(--nv-z-modal) + 12) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  background: color-mix(in srgb, var(--nv-bg-overlay) 88%, rgba(10, 12, 24, .18)) !important;
+  backdrop-filter: blur(14px) saturate(92%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(92%) !important;
+  isolation: isolate;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] > .nv-modal-sheet {
+  width: min(900px, calc(100vw - 40px)) !important;
+  max-width: 900px !important;
+  max-height: min(82dvh, 820px) !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border: 1px solid var(--nv-border-default) !important;
+  border-radius: 20px !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 97%, transparent) !important;
+  box-shadow: 0 30px 80px rgba(9, 10, 20, .28), 0 4px 18px rgba(9, 10, 20, .12) !important;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-header,
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-footer {
+  flex: 0 0 auto !important;
+  position: relative;
+  z-index: 2;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 98%, transparent) !important;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-header {
+  padding: 18px 20px 16px !important;
+  border-bottom: 1px solid var(--nv-border-subtle) !important;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding: 18px 20px !important;
+  scrollbar-gutter: stable;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-footer {
+  padding: 14px 20px !important;
+  border-top: 1px solid var(--nv-border-subtle) !important;
+}
+
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-body > section,
+html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-body > .nv-surface {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 767px) {
+  html body .nv-modal-backdrop[aria-label="字幕管理"] {
+    align-items: flex-end !important;
+    padding: 10px !important;
+  }
+
+  html body .nv-modal-backdrop[aria-label="字幕管理"] > .nv-modal-sheet {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: min(90dvh, 760px) !important;
+    border-radius: 20px 20px 14px 14px !important;
+  }
+
+  html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-header {
+    padding: 15px 16px 13px !important;
+  }
+
+  html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-body {
+    padding: 15px 16px !important;
+  }
+
+  html body .nv-modal-backdrop[aria-label="字幕管理"] .nv-modal-footer {
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px)) !important;
+    gap: 10px !important;
+  }
+}

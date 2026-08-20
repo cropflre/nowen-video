@@ -2,25 +2,36 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Film, Play, Star, Tv } from 'lucide-react'
 import { streamApi } from '@/api'
 import type { Media, Series } from '@/types'
-import { useState } from 'react'
 import clsx from 'clsx'
 import { usePosterVersion } from '@/stores/mediaRefresh'
 import { Button, Tag } from '@/components/design-system'
+import { MediaArtwork, type MediaArtworkRatio } from '@/ui'
+
+export type MediaCardVariant = 'poster' | 'landscape' | 'compact' | 'recommendation'
 
 interface MediaCardProps {
   media?: Media
   series?: Series
   eyebrow?: string
   className?: string
+  variant?: MediaCardVariant
+  showBadges?: boolean
 }
 
-export default function MediaCard({ media, series, eyebrow, className }: MediaCardProps) {
+export default function MediaCard({
+  media,
+  series,
+  eyebrow,
+  className,
+  variant = 'poster',
+  showBadges = true,
+}: MediaCardProps) {
   const navigate = useNavigate()
   const posterVersion = usePosterVersion()
-  const [posterFailed, setPosterFailed] = useState(false)
 
   const isSeries = !!series || !!media?.series_id
   const seriesData = series || media?.series
+  const isLandscape = variant === 'landscape' || variant === 'compact'
   const detailTo = series
     ? `/series/${series.id}`
     : media!.series_id
@@ -44,6 +55,20 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
     : media!.series_id
       ? !!media!.series?.poster_path || !!media!.poster_path
       : !!media!.poster_path
+  const backdropUrl = series
+    ? streamApi.getSeriesBackdropUrl(series.id)
+    : media!.series_id
+      ? streamApi.getSeriesBackdropUrl(media!.series_id)
+      : streamApi.getBackdropUrl(media!.id)
+  const hasBackdrop = series
+    ? !!series.backdrop_path
+    : media!.series_id
+      ? !!media!.series?.backdrop_path || !!media!.backdrop_path
+      : !!media!.backdrop_path
+  const artworkUrl = isLandscape && hasBackdrop ? backdropUrl : posterUrl
+  const hasArtwork = isLandscape && hasBackdrop ? true : hasPoster
+
+  const artworkRatio: MediaArtworkRatio = isLandscape ? 'landscape' : 'poster'
 
   const formatDuration = (seconds: number) => {
     if (!seconds) return ''
@@ -53,23 +78,20 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
   }
 
   return (
-    <article className={clsx('nv-media-card group', className)}>
-      <div className="nv-media-card-poster isolate">
-        {hasPoster && !posterFailed ? (
-          <img
-            src={posterUrl}
-            alt=""
-            loading="lazy"
-            onLoad={() => setPosterFailed(false)}
-            onError={() => setPosterFailed(true)}
-          />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+    <article className={clsx('nv-media-card group', className)} data-variant={variant}>
+      <MediaArtwork
+        src={hasArtwork ? artworkUrl : null}
+        fallbackSrc={isLandscape && hasBackdrop && hasPoster ? posterUrl : undefined}
+        ratio={artworkRatio}
+        className="nv-media-card-poster"
+        imageClassName="nv-media-card-image"
+        fallback={(
+          <div className="flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
             {isSeries ? <Tv size={24} aria-hidden="true" /> : <Film size={24} aria-hidden="true" />}
             <span className="text-[10px]">暂无海报</span>
           </div>
         )}
-
+      >
         <Link
           to={detailTo}
           className="absolute inset-0 z-10 rounded-[inherit]"
@@ -92,7 +114,7 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
           </Button>
         </div>
 
-        {eyebrow && (
+        {showBadges && eyebrow && (
           <Tag
             tone="quality"
             className="nv-media-card-badge absolute left-2 top-2 z-30 max-w-[calc(100%-4rem)] truncate"
@@ -102,12 +124,12 @@ export default function MediaCard({ media, series, eyebrow, className }: MediaCa
           </Tag>
         )}
 
-        {!isSeries && media!.resolution && (
+        {showBadges && !isSeries && media!.resolution && (
           <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30">
             {media!.resolution}
           </Tag>
         )}
-      </div>
+      </MediaArtwork>
 
       <div className="pb-1 pt-2">
         <Link to={detailTo} className="nv-media-card-title" title={title}>

@@ -5,6 +5,7 @@ import { streamApi } from '@/api'
 import type { CollectionMediaItem } from '@/types'
 import { groupByMovie, versionLabel, type GroupedMovieItem } from '@/utils/collectionGroup'
 import { Button, Select, Tag } from '@/components/design-system'
+import { MediaArtwork, MediaGrid } from '@/ui'
 import Pagination from '@/components/Pagination'
 import { usePagination } from '@/hooks/usePagination'
 
@@ -94,11 +95,11 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
       </div>
 
       {viewMode === 'grid' ? (
-        <div className="nv-media-grid">
+        <MediaGrid>
           {pagedMedia.map((group, index) => (
             <MovieGridCard key={group.primary.id} group={group} index={(pagination.page - 1) * pagination.size + index + 1} />
           ))}
-        </div>
+        </MediaGrid>
       ) : (
         <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {pagedMedia.map((group, index) => (
@@ -161,27 +162,24 @@ function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: numbe
   const item = group.primary
   const navigate = useNavigate()
   const [versionsOpen, setVersionsOpen] = useState(false)
-  const [posterFailed, setPosterFailed] = useState(false)
   const versions = group.versions
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
   return (
     <article className="nv-media-card group relative">
-      <div className="nv-media-card-poster isolate">
-        {item.poster_path && !posterFailed ? (
-          <img
-            src={streamApi.getPosterUrl(item.id)}
-            alt=""
-            loading="lazy"
-            onError={() => setPosterFailed(true)}
-          />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--nv-bg-poster)] text-[var(--nv-text-tertiary)]">
+      <MediaArtwork
+        src={item.poster_path ? streamApi.getPosterUrl(item.id) : null}
+        alt={item.title}
+        ratio="poster"
+        className="nv-media-card-poster"
+        imageClassName="nv-media-card-image"
+        fallback={(
+          <div className="flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
             <Film size={24} aria-hidden="true" />
             <span className="text-[10px]">暂无海报</span>
           </div>
         )}
-
+      >
         <Link to={`/media/${item.id}`} className="absolute inset-0 z-10 rounded-[inherit]" aria-label={`查看 ${item.title} 详情`} />
 
         <div className="nv-media-card-overlay z-20 pointer-events-none">
@@ -211,7 +209,7 @@ function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: numbe
             <ChevronDown size={13} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
           </Button>
         )}
-      </div>
+      </MediaArtwork>
 
       <div className="pb-1 pt-2">
         <Link to={`/media/${item.id}`} className="nv-media-card-title" title={item.title}>{item.title}</Link>
@@ -236,7 +234,6 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
   const item = group.primary
   const navigate = useNavigate()
   const [versionsOpen, setVersionsOpen] = useState(false)
-  const [posterFailed, setPosterFailed] = useState(false)
   const versions = group.versions
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
@@ -244,12 +241,14 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
     <article className="nv-browse-list-item group transition-colors hover:bg-[var(--nv-fill-hover)]">
       <div className="flex items-center gap-3 px-1 py-2.5">
         <span className="w-6 shrink-0 text-center text-[10px] font-semibold tabular-nums text-[var(--nv-text-tertiary)]">{index}</span>
-        <Link to={`/media/${item.id}`} className="relative h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
-          {item.poster_path && !posterFailed ? (
-            <img src={streamApi.getPosterUrl(item.id)} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPosterFailed(true)} />
-          ) : (
-            <div className="nv-media-card-placeholder absolute inset-0 grid place-items-center text-[var(--nv-text-tertiary)]"><Film size={15} aria-hidden="true" /></div>
-          )}
+        <Link to={`/media/${item.id}`} className="block h-16 w-11 shrink-0">
+          <MediaArtwork
+            src={item.poster_path ? streamApi.getPosterUrl(item.id) : null}
+            alt=""
+            ratio="poster"
+            className="h-16 w-11 !rounded-[9px]"
+            fallback={<Film size={15} aria-hidden="true" />}
+          />
         </Link>
 
         <div className="min-w-0 flex-1">

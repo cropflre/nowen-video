@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
@@ -36,11 +37,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,12 +55,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.nowen.video.v2.core.designsystem.ElevatedPanel
 
-/**
- * Android 详情页统一 Hero。
- *
- * 保留 Web Detail OS 的信息层级，但按照手机单列布局重新组织：Backdrop 负责氛围，
- * Poster + 标题负责识别，主操作永远保持在首屏可触达区域。
- */
+/** Web 移动端同构详情 Hero：海报始终可见，Backdrop 仅作为氛围层。 */
 @Composable
 internal fun MobileDetailHero(
     title: String,
@@ -68,143 +70,150 @@ internal fun MobileDetailHero(
     modifier: Modifier = Modifier,
     secondaryActions: @Composable RowScope.() -> Unit = {},
 ) {
-    Column(
+    var backdropFailed by remember(title, backdropUrl) { mutableStateOf(false) }
+    val usePosterAsBackground = backdropUrl.isNullOrBlank() || backdropFailed
+    val backgroundArtwork = if (usePosterAsBackground) posterUrl else backdropUrl
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background),
+            .height(330.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(238.dp),
-        ) {
+        if (backgroundArtwork != null) {
             AsyncImage(
-                model = backdropUrl,
-                contentDescription = title,
+                model = backgroundArtwork,
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.08f),
-                            0.56f to Color.Black.copy(alpha = 0.22f),
-                            1f to MaterialTheme.colorScheme.background,
-                        ),
-                    ),
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            0f to Color.Black.copy(alpha = 0.48f),
-                            0.64f to Color.Transparent,
-                        ),
-                    ),
-            )
-            Surface(
+                onError = {
+                    if (!usePosterAsBackground && !posterUrl.isNullOrBlank()) backdropFailed = true
+                },
                 modifier = Modifier
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(start = 12.dp, top = 8.dp)
-                    .size(44.dp),
-                shape = CircleShape,
-                color = Color.Black.copy(alpha = 0.58f),
-                contentColor = Color.White,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                }
+                    .fillMaxSize()
+                    .then(
+                        if (usePosterAsBackground) {
+                            Modifier
+                                .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
+                                .blur(18.dp)
+                        } else Modifier,
+                    ),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                        0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.60f),
+                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.28f),
+                    ),
+                ),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.10f),
+                        0.72f to Color.Transparent,
+                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.28f),
+                    ),
+                ),
+        )
+
+        Surface(
+            modifier = Modifier
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(start = 12.dp, top = 8.dp)
+                .size(44.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shadowElevation = 2.dp,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
         }
 
         Row(
             modifier = Modifier
+                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(top = 2.dp),
-            verticalAlignment = Alignment.Top,
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.Bottom,
         ) {
             AsyncImage(
                 model = posterUrl,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(108.dp)
+                    .width(124.dp)
                     .aspectRatio(2f / 3f)
-                    .clip(MaterialTheme.shapes.large)
+                    .clip(RoundedCornerShape(15.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(top = 4.dp),
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Bottom,
             ) {
                 Text(
                     title,
                     style = MaterialTheme.typography.headlineMedium,
-                    maxLines = 2,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (originalTitle.isNotBlank() && originalTitle != title) {
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         originalTitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (metadata.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         metadata,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (overview.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
+
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onPrimaryAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(11.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        overview,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
+                        primaryActionLabel,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = secondaryActions,
+                )
             }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 14.dp),
-        ) {
-            Button(
-                onClick = onPrimaryAction,
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(vertical = 12.dp),
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(primaryActionLabel, fontWeight = FontWeight.SemiBold)
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = secondaryActions,
-            )
         }
     }
 }

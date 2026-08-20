@@ -1,0 +1,89 @@
+/* Nowen Video · final desktop sidebar icon + label visibility contract
+ *
+ * Legacy visual layers used several different sidebar concepts (text-only,
+ * icon-only, fixed label widths). The current navigation is icon + label, so
+ * this file owns the final desktop geometry for both pieces and prevents CJK
+ * glyphs from being clipped at normal browser zoom levels.
+ */
+
+@media (min-width: 48rem) {
+  html body .nv-app-shell .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon {
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    flex: 0 0 18px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: currentColor !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+
+  html body .nv-app-shell .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon > svg {
+    width: 16px !important;
+    min-width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+    color: currentColor !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  /* Expanded desktop rail: reserve explicit room for the icon, then let the
+   * label use its natural CJK width. A few historical layers left max-width /
+   * overflow rules on .nv-rail-label, which could cut the second glyph of
+   * two-character labels such as “搜索” even at 100% browser zoom. */
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    column-gap: 9px !important;
+    padding-inline: 10px 12px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-label {
+    width: auto !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    display: block !important;
+    padding: 1px 2px 1px 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    line-height: 1.35 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"] > .nv-rail-icon {
+    color: var(--nv-action-primary) !important;
+  }
+}
+
+/* Compact desktop rail keeps its slightly larger icon hit area while inheriting
+ * the same visibility guarantee. Labels remain hidden by the collapse contract. */
+@media (min-width: 68.75rem) {
+  html body .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon > svg {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+  }
+}

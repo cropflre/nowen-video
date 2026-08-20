@@ -1,0 +1,564 @@
+/* Nowen UI 2.0 · Responsive homepage contract
+ *
+ * This layer extends the approved desktop reference into tablet/mobile layouts
+ * and intentionally makes the featured hero one step larger on desktop.
+ * It is loaded after ui-home-reference-exact.css so responsive rules are not
+ * diluted by legacy page CSS.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Desktop: slightly larger featured slideshow                                */
+/* -------------------------------------------------------------------------- */
+@media (min-width: 75rem) {
+  html body .nv-home-page .nv-hero-carousel {
+    height: clamp(300px, 18.18vw, 324px) !important;
+    min-height: clamp(300px, 18.18vw, 324px) !important;
+    max-height: clamp(300px, 18.18vw, 324px) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    gap: clamp(22px, 1.55vw, 28px) !important;
+    padding: clamp(18px, 1.2vw, 22px) clamp(30px, 2.05vw, 38px) clamp(22px, 1.55vw, 28px) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    width: clamp(158px, 9.65vw, 172px) !important;
+    min-width: clamp(158px, 9.65vw, 172px) !important;
+    max-width: clamp(158px, 9.65vw, 172px) !important;
+    flex-basis: clamp(158px, 9.65vw, 172px) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content {
+    width: clamp(500px, 31vw, 560px) !important;
+    max-width: clamp(500px, 31vw, 560px) !important;
+    flex-basis: clamp(500px, 31vw, 560px) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    font-size: clamp(26px, 1.72vw, 30px) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-subtitle,
+  html body .nv-home-page .nv-media-hero-meta,
+  html body .nv-home-page .nv-media-hero-overview {
+    font-size: clamp(10px, .69vw, 12px) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions .nv-button,
+  html body .nv-home-page .nv-media-hero-actions a {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding-inline: 14px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tablet                                                                      */
+/* -------------------------------------------------------------------------- */
+@media (min-width: 48rem) and (max-width: 74.999rem) {
+  body:has(.nv-home-page) {
+    --nv-page-gutter: 22px !important;
+    --nv-topbar-height: 60px !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar {
+    min-height: 60px !important;
+    height: 60px !important;
+    grid-template-columns: minmax(130px, 1fr) minmax(280px, 38vw) minmax(110px, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar-title {
+    font-size: 15px !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar-subtitle {
+    font-size: 9px !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-search .nv-search {
+    width: 100% !important;
+    height: 34px !important;
+    min-height: 34px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel {
+    height: 320px !important;
+    min-height: 320px !important;
+    max-height: 320px !important;
+    border-radius: 14px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    gap: 22px !important;
+    padding: 18px 26px 24px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    width: 150px !important;
+    min-width: 150px !important;
+    max-width: 150px !important;
+    flex-basis: 150px !important;
+    border-radius: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content {
+    width: min(52%, 470px) !important;
+    max-width: 470px !important;
+    flex: 1 1 470px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    font-size: clamp(23px, 2.2vw, 27px) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-subtitle,
+  html body .nv-home-page .nv-media-hero-meta,
+  html body .nv-home-page .nv-media-hero-overview {
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 24px !important;
+    row-gap: 30px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot,
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+    width: 92px !important;
+    min-width: 92px !important;
+    max-width: 92px !important;
+  }
+
+  html body .nv-home-page .nv-continue-card {
+    width: 210px !important;
+    min-width: 210px !important;
+    max-width: 210px !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot {
+    width: 158px !important;
+    min-width: 158px !important;
+    max-width: 158px !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Phone                                                                       */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 47.999rem) {
+  body:has(.nv-home-page) {
+    --nv-page-gutter: 14px !important;
+    --nv-topbar-height: 56px !important;
+  }
+
+  body:has(.nv-home-page) .nv-app-shell > .nv-rail {
+    display: none !important;
+  }
+
+  body:has(.nv-home-page) .nv-main-scroll {
+    width: 100% !important;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: var(--nv-z-sticky) !important;
+    min-height: 56px !important;
+    height: 56px !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding-inline: 14px !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-title-slot {
+    min-width: 0 !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar-title {
+    font-size: 16px !important;
+  }
+
+  body:has(.nv-home-page) .nv-topbar-subtitle,
+  body:has(.nv-home-page) .nv-page-header-search-slot,
+  body:has(.nv-home-page) .nv-page-header-search-shortcut {
+    display: none !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-actions-slot {
+    justify-self: end !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-actions {
+    gap: 4px !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-action--label {
+    display: none !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-header-action--notification {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+  }
+
+  body:has(.nv-home-page) .nv-page-container:has(> .nv-home-page) {
+    padding-top: 8px !important;
+    padding-bottom: 24px !important;
+  }
+
+  html body .nv-home-page {
+    --nv-section-gap: 24px !important;
+    gap: 24px !important;
+  }
+
+  html body .nv-home-page .nv-section-header {
+    min-height: 26px !important;
+    margin-bottom: 10px !important;
+  }
+
+  html body .nv-home-page .nv-section-title {
+    font-size: 14px !important;
+  }
+
+  html body .nv-home-page .nv-section-title svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  html body .nv-home-page .nv-home-rail-action {
+    font-size: 11px !important;
+  }
+
+  /* Mobile hero becomes artwork-first and content-bottom, without the desktop poster. */
+  html body .nv-home-page .nv-hero-carousel {
+    height: clamp(440px, 66vh, 560px) !important;
+    min-height: clamp(440px, 66vh, 560px) !important;
+    max-height: clamp(440px, 66vh, 560px) !important;
+    border-radius: 16px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel img[data-artwork-kind="backdrop"] {
+    object-position: 62% center !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel {
+    --nv-hero-scrim: linear-gradient(0deg, rgba(7,10,22,.98) 0%, rgba(7,10,22,.90) 30%, rgba(7,10,22,.58) 54%, rgba(7,10,22,.14) 78%, rgba(7,10,22,.02) 100%) !important;
+    --nv-hero-bottom-scrim: linear-gradient(0deg, rgba(5,8,18,.58), transparent 48%) !important;
+  }
+
+  [data-theme="light"] html body .nv-home-page .nv-hero-carousel,
+  html[data-theme="light"] body .nv-home-page .nv-hero-carousel {
+    --nv-hero-scrim: linear-gradient(0deg, rgba(15,28,56,.96) 0%, rgba(19,35,66,.86) 30%, rgba(25,45,78,.52) 54%, rgba(20,39,72,.12) 78%, rgba(12,28,58,.02) 100%) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    gap: 0 !important;
+    padding: 150px 18px 46px !important;
+    overflow: hidden !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-poster {
+    display: none !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    padding: 0 !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    max-width: 18ch !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    color: #fff !important;
+    font-size: clamp(25px, 7.2vw, 31px) !important;
+    font-weight: 720 !important;
+    line-height: 1.08 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-subtitle {
+    max-width: 34ch !important;
+    margin-top: 6px !important;
+    color: rgba(255,255,255,.76) !important;
+    font-size: 11px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-meta {
+    margin-top: 9px !important;
+    gap: 5px 8px !important;
+    color: rgba(255,255,255,.84) !important;
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-meta .nv-tag,
+  html body .nv-home-page .nv-media-hero-badges .nv-tag {
+    min-height: 20px !important;
+    padding: 2px 6px !important;
+    border-color: rgba(255,255,255,.12) !important;
+    border-radius: 6px !important;
+    background: rgba(11,22,46,.28) !important;
+    color: rgba(255,255,255,.88) !important;
+    font-size: 9px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-overview {
+    max-width: 46ch !important;
+    margin-top: 9px !important;
+    color: rgba(255,255,255,.76) !important;
+    font-size: 11px !important;
+    line-height: 1.5 !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+    overflow: hidden !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-supplemental {
+    margin-top: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-watch-progress {
+    width: 100% !important;
+    max-width: 330px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-watch-progress-label {
+    color: rgba(255,255,255,.72) !important;
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-watch-progress-track {
+    height: 3px !important;
+    background: rgba(255,255,255,.20) !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions {
+    width: 100% !important;
+    margin-top: 12px !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions .nv-button,
+  html body .nv-home-page .nv-media-hero-actions a {
+    min-width: 0 !important;
+    min-height: 40px !important;
+    height: 40px !important;
+    justify-content: center !important;
+    padding-inline: 10px !important;
+    border-radius: 9px !important;
+    font-size: 11px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-actions > :nth-child(3) {
+    grid-column: 1 / -1 !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow {
+    display: none !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-dots {
+    bottom: 14px !important;
+    gap: 6px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-dot {
+    width: 6px !important;
+    height: 6px !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-dot[aria-selected="true"] {
+    width: 20px !important;
+  }
+
+  /* Horizontal content rails are swipe-first on phone. */
+  html body .nv-home-page .nv-media-rail-track {
+    gap: 12px !important;
+    padding: 2px 1px 6px !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x proximity !important;
+    scrollbar-width: none !important;
+  }
+
+  html body .nv-home-page .nv-media-rail-track::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  html body .nv-home-page .nv-media-rail-arrow {
+    display: none !important;
+  }
+
+  html body .nv-home-page .nv-continue-card {
+    width: min(78vw, 320px) !important;
+    min-width: min(78vw, 320px) !important;
+    max-width: 320px !important;
+    scroll-snap-align: start !important;
+  }
+
+  html body .nv-home-page .nv-continue-artwork {
+    aspect-ratio: 16 / 9 !important;
+    border-radius: 10px !important;
+  }
+
+  html body .nv-home-page .nv-continue-copy {
+    padding-top: 7px !important;
+  }
+
+  html body .nv-home-page .nv-continue-copy .nv-media-card-title {
+    font-size: 12px !important;
+  }
+
+  html body .nv-home-page .nv-continue-episode-title,
+  html body .nv-home-page .nv-continue-progress-label {
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot {
+    width: min(72vw, 280px) !important;
+    min-width: min(72vw, 280px) !important;
+    max-width: 280px !important;
+    scroll-snap-align: start !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot .nv-media-card-title {
+    font-size: 12px !important;
+  }
+
+  html body .nv-home-page .nv-home-recommendation-slot .nv-media-card-meta {
+    font-size: 10px !important;
+  }
+
+  /* Category shelves collapse to one row each and remain horizontally swipeable. */
+  html body .nv-home-page .nv-home-shelf-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 26px !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail {
+    width: 100% !important;
+    padding-inline: 0 !important;
+    overflow: visible !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot,
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+    width: min(31vw, 132px) !important;
+    min-width: min(31vw, 132px) !important;
+    max-width: 132px !important;
+    scroll-snap-align: start !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-title {
+    font-size: 11px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-meta {
+    font-size: 9px !important;
+  }
+
+  /* Dedicated mobile bottom navigation. */
+  body:has(.nv-home-page) .nv-mobile-nav {
+    position: fixed !important;
+    z-index: var(--nv-z-fixed, 60) !important;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+    min-height: 62px !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 2px !important;
+    padding: 6px !important;
+    border: 1px solid var(--nv-border-subtle) !important;
+    border-radius: 18px !important;
+    background: color-mix(in srgb, var(--nv-bg-elevated) 90%, transparent) !important;
+    box-shadow: 0 12px 34px rgba(0,0,0,.20) !important;
+    backdrop-filter: blur(22px) saturate(120%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(120%) !important;
+  }
+
+  body:has(.nv-home-page) .nv-mobile-nav-item {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 50px !important;
+    height: 50px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+    border-radius: 13px !important;
+  }
+
+  body:has(.nv-home-page) .nv-mobile-nav-item[aria-current="page"] {
+    background: color-mix(in srgb, var(--nv-action-primary) 12%, transparent) !important;
+    color: var(--nv-action-primary) !important;
+  }
+
+  body:has(.nv-home-page) .nv-mobile-nav-item[aria-current="page"]::before {
+    display: none !important;
+  }
+
+  body:has(.nv-home-page) .nv-mobile-nav-icon {
+    width: 22px !important;
+    height: 22px !important;
+    flex: 0 0 22px !important;
+    display: grid !important;
+    place-items: center !important;
+  }
+
+  body:has(.nv-home-page) .nv-mobile-nav-label {
+    display: block !important;
+    width: auto !important;
+    flex: 0 0 auto !important;
+    font-size: 10px !important;
+    line-height: 1 !important;
+    text-align: center !important;
+  }
+}
+
+/* Short landscape phones: reduce hero height but keep content legible. */
+@media (max-width: 47.999rem) and (orientation: landscape) {
+  html body .nv-home-page .nv-hero-carousel {
+    height: 340px !important;
+    min-height: 340px !important;
+    max-height: 340px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel > .nv-home-hero-foreground,
+  html body .nv-home-page .nv-hero-carousel > .relative.z-10.nv-home-hero-foreground {
+    padding: 72px 18px 38px !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel h2.nv-media-hero-title {
+    font-size: 24px !important;
+  }
+
+  html body .nv-home-page .nv-media-hero-overview {
+    -webkit-line-clamp: 1 !important;
+  }
+}

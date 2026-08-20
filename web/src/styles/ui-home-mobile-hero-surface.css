@@ -1,0 +1,98 @@
+/* Nowen Video · mobile homepage hero surface
+ *
+ * The mobile homepage hero is cinematic in both themes. Legacy Streaming OS
+ * styles used an additional pseudo-element veil while the current HeroCarousel
+ * already renders two explicit scrim layers. On light theme those layers could
+ * stack into a visible pale/white band across the artwork. This file is loaded
+ * late and is the final mobile contract: artwork stays continuous from the top,
+ * while only the copy/action area receives the stronger dark fade.
+ */
+
+@media (max-width: 47.999rem) {
+  html body .nv-home-page .nv-hero-carousel {
+    overflow: hidden !important;
+    border-color: transparent !important;
+    background: #080b16 !important;
+
+    /* Never use a light-theme veil on the mobile cinematic hero. Keep the top
+       of the image almost untouched and build contrast progressively toward the
+       title/actions at the bottom. */
+    --nv-hero-scrim: linear-gradient(
+      180deg,
+      rgba(5, 8, 18, .08) 0%,
+      rgba(5, 8, 18, .03) 28%,
+      rgba(7, 10, 22, .16) 50%,
+      rgba(7, 10, 22, .54) 72%,
+      rgba(7, 10, 22, .94) 100%
+    ) !important;
+    --nv-hero-bottom-scrim: linear-gradient(
+      0deg,
+      rgba(5, 8, 18, .58) 0%,
+      rgba(5, 8, 18, .20) 34%,
+      transparent 58%
+    ) !important;
+  }
+
+  /* HeroCarousel owns its two real scrim divs. Retire every historical pseudo
+     veil here so light mode cannot paint another rectangular/rounded white band
+     over the artwork. */
+  html body .nv-home-page .nv-hero-carousel::before,
+  html body .nv-home-page .nv-hero-carousel::after {
+    content: none !important;
+    display: none !important;
+    opacity: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* The animated artwork surface itself must remain transparent and continuous;
+     its dark base only prevents a flash while an image is decoding/swapping. */
+  html body .nv-home-page .nv-hero-carousel > .absolute.inset-0:first-child {
+    background: #080b16 !important;
+  }
+
+  /* Do not allow the foreground layout layer to introduce its own light glass
+     surface above the artwork on phone layouts. */
+  html body .nv-home-page .nv-home-hero-foreground {
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Poster-only recommendations are intentionally enlarged and blurred as a
+     backdrop. Scale beyond the clipping edge before blurring, and tone them down
+     enough that pale poster margins cannot turn into a bright strip. */
+  html body .nv-home-page .nv-hero-carousel img[data-artwork-kind="poster"] {
+    transform: scale(1.18) !important;
+    transform-origin: center center !important;
+    filter: blur(18px) saturate(.94) brightness(.64) contrast(1.06) !important;
+  }
+
+  /* A real backdrop should stay crisp and readable; no light wash is applied. */
+  html body .nv-home-page .nv-hero-carousel img[data-artwork-kind="backdrop"] {
+    transform: none !important;
+    filter: saturate(1.02) contrast(1.02) brightness(.92) !important;
+  }
+
+  /* Explicit light-theme lock. Some older page layers redefine the hero tokens
+     for light mode with near-white gradients; keep mobile cinematic regardless
+     of the application theme. */
+  html[data-theme="light"] body .nv-home-page .nv-hero-carousel,
+  [data-theme="light"] body .nv-home-page .nv-hero-carousel {
+    --nv-hero-scrim: linear-gradient(
+      180deg,
+      rgba(5, 8, 18, .08) 0%,
+      rgba(5, 8, 18, .03) 28%,
+      rgba(7, 10, 22, .16) 50%,
+      rgba(7, 10, 22, .54) 72%,
+      rgba(7, 10, 22, .94) 100%
+    ) !important;
+    --nv-hero-bottom-scrim: linear-gradient(
+      0deg,
+      rgba(5, 8, 18, .58) 0%,
+      rgba(5, 8, 18, .20) 34%,
+      transparent 58%
+    ) !important;
+  }
+}

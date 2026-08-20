@@ -1,0 +1,474 @@
+/* Nowen UI 2.0 · Pixel calibration for the approved homepage reference.
+ * Loaded last so the shared semantic system remains the source of truth while
+ * desktop geometry exactly follows the supplied 1672×941 dark/light mockups.
+ */
+
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --nv-page-gutter: 30px;
+  --nv-topbar-height: 64px;
+}
+
+.nv-page-container {
+  padding-top: 4px !important;
+}
+
+.nv-topbar {
+  min-height: 64px !important;
+  height: 64px !important;
+  grid-template-columns: minmax(160px, 1fr) minmax(420px, 500px) minmax(230px, 1fr) !important;
+  gap: 16px !important;
+}
+
+.nv-page-header-title-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+}
+
+.nv-topbar-title {
+  font-size: 16px !important;
+  line-height: 1.1 !important;
+}
+
+.nv-topbar-subtitle {
+  color: var(--nv-text-tertiary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.nv-page-header-search {
+  position: relative;
+}
+
+.nv-page-header-search .nv-search {
+  height: 36px !important;
+  padding-right: 50px !important;
+}
+
+.nv-page-header-search-shortcut {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  z-index: 2;
+  min-width: 32px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 72%, transparent);
+  color: var(--nv-text-tertiary);
+  font: 600 8px/1 var(--nv-font-sans);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--nv-text-primary) 4%, transparent);
+  pointer-events: none;
+}
+
+.nv-page-header-actions {
+  gap: 12px !important;
+}
+
+.nv-page-header-action {
+  position: relative;
+  width: 32px !important;
+  min-width: 32px;
+  height: 32px !important;
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.nv-page-header-action--label {
+  width: auto !important;
+  min-width: 0;
+  height: 32px !important;
+  display: inline-flex !important;
+  grid-auto-flow: unset;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  border-radius: 7px;
+  color: var(--nv-text-secondary);
+  font-size: 10px;
+  font-weight: 520;
+  white-space: nowrap;
+}
+
+.nv-page-header-action--label:hover {
+  background: transparent !important;
+  color: var(--nv-text-primary);
+}
+
+.nv-page-header-action--notification {
+  border-radius: 50%;
+}
+
+.nv-page-header-notification-dot {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--nv-bg-canvas);
+  border-radius: 50%;
+  background: #ff575f;
+}
+
+/* Fixed desktop rail: 198px + 30px gutter places main content at x=228. */
+@media (min-width: 48rem) {
+  .nv-app-shell,
+  .nv-app-shell[data-sidebar-collapsed="false"],
+  .nv-app-shell[data-sidebar-collapsed="true"] {
+    --nv-rail-width: 198px !important;
+  }
+
+  .nv-app-shell > .nv-rail,
+  .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail,
+  .nv-app-shell[data-sidebar-collapsed="true"] > .nv-rail {
+    width: 198px !important;
+    min-width: 198px !important;
+    max-width: 198px !important;
+    flex-basis: 198px !important;
+    padding: 16px 14px 14px !important;
+  }
+
+  .nv-rail-brand-row {
+    min-height: 42px !important;
+    margin-bottom: 14px !important;
+    padding-inline: 8px !important;
+  }
+
+  .nv-rail-brand {
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  .nv-rail-brand-copy strong {
+    font-size: 11px !important;
+  }
+
+  .nv-rail-scroll {
+    gap: 17px !important;
+  }
+
+  .nv-rail-section-title {
+    margin-bottom: 5px !important;
+    padding-inline: 10px !important;
+    font-size: 9px !important;
+  }
+
+  .nv-rail-section-links {
+    gap: 3px !important;
+  }
+
+  .nv-rail > .nv-rail-scroll .nv-rail-item {
+    min-height: 38px !important;
+    height: 38px !important;
+    flex-basis: 38px !important;
+    gap: 10px !important;
+    padding: 0 11px !important;
+    border-radius: 8px !important;
+  }
+
+  .nv-rail-label {
+    font-size: 11px !important;
+  }
+
+  .nv-rail-footer {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px 0 0 !important;
+  }
+
+  .nv-rail-profile {
+    height: 48px !important;
+    padding: 0 9px !important;
+    border: 1px solid var(--nv-border-subtle) !important;
+    border-radius: 10px !important;
+    background: color-mix(in srgb, var(--nv-bg-elevated) 56%, transparent) !important;
+  }
+
+  [data-theme="light"] .nv-rail-profile {
+    background: #f7f7fb !important;
+  }
+
+  .nv-rail-avatar {
+    width: 30px !important;
+    height: 30px !important;
+    flex-basis: 30px !important;
+  }
+
+  .nv-rail-profile-copy strong {
+    max-width: 86px !important;
+    font-size: 10px !important;
+  }
+
+  .nv-rail-footer-actions {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    padding-inline: 5px !important;
+  }
+
+  .nv-rail-footer-actions > *,
+  .nv-rail-footer-actions .nv-rail-action {
+    width: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    border-radius: 7px !important;
+  }
+}
+
+/* Homepage hero: x=228, y≈68, h≈274 in the supplied desktop target. */
+.nv-home-page {
+  gap: 22px !important;
+}
+
+.nv-home-page .nv-hero-carousel {
+  min-height: 274px !important;
+  height: 274px !important;
+  border-radius: 11px !important;
+}
+
+.nv-home-hero-foreground {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 14px 34px 18px;
+}
+
+.nv-home-hero-poster {
+  width: 156px !important;
+  min-width: 156px !important;
+  max-width: 156px !important;
+  border-radius: 10px !important;
+  border-color: rgba(255,255,255,.10) !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,.22) !important;
+}
+
+[data-theme="light"] .nv-home-hero-poster {
+  border-color: rgba(45,50,75,.08) !important;
+  box-shadow: 0 10px 24px rgba(42,44,74,.11) !important;
+}
+
+.nv-home-hero-content {
+  width: min(46%, 500px) !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+}
+
+.nv-home-page .nv-media-hero-title {
+  max-width: 25ch !important;
+  font-size: clamp(1.35rem, 1.55vw, 1.62rem) !important;
+  line-height: 1.12 !important;
+}
+
+.nv-home-page .nv-media-hero-subtitle {
+  max-width: 40ch;
+  margin-top: 5px !important;
+  font-size: 10px !important;
+  line-height: 1.35 !important;
+}
+
+.nv-home-page .nv-media-hero-meta {
+  margin-top: 8px !important;
+  gap: 5px 9px !important;
+  font-size: 10px !important;
+}
+
+.nv-home-page .nv-media-hero-meta .nv-tag {
+  min-height: 18px !important;
+  padding: 1px 6px !important;
+  border-radius: 6px !important;
+  font-size: 9px !important;
+}
+
+.nv-home-page .nv-media-hero-overview {
+  max-width: 52ch !important;
+  margin-top: 8px !important;
+  font-size: 10px !important;
+  line-height: 1.55 !important;
+  -webkit-line-clamp: 2 !important;
+}
+
+.nv-home-page .nv-media-hero-supplemental {
+  margin-top: 8px !important;
+}
+
+.nv-home-hero-watch-progress {
+  width: min(320px, 100%) !important;
+}
+
+.nv-home-hero-watch-progress-label {
+  margin-bottom: 5px !important;
+  font-size: 9px !important;
+}
+
+.nv-home-page .nv-media-hero-actions {
+  margin-top: 10px !important;
+  gap: 7px !important;
+}
+
+.nv-home-page .nv-media-hero-actions .nv-button,
+.nv-home-page .nv-media-hero-actions a {
+  min-height: 34px !important;
+  height: 34px !important;
+  padding-inline: 12px !important;
+  font-size: 10px !important;
+}
+
+.nv-home-hero-dots {
+  bottom: 12px !important;
+}
+
+/* Rows calibrated to the six-wide continue rail and eight-wide recommendation rail. */
+.nv-home-page .nv-section-header {
+  margin-bottom: 8px !important;
+}
+
+.nv-home-page .nv-media-rail-track {
+  gap: 12px !important;
+}
+
+.nv-continue-card {
+  width: 222px !important;
+  min-width: 222px !important;
+}
+
+.nv-home-recommendation-slot {
+  width: 165px;
+  min-width: 165px;
+}
+
+.nv-home-recommendation-slot .nv-media-card-poster {
+  border-radius: 8px !important;
+  box-shadow: 0 5px 14px rgba(2,5,18,.11);
+}
+
+.nv-home-recommendation-slot .nv-media-card > div:last-child {
+  padding-top: 6px !important;
+}
+
+.nv-home-recommendation-slot .nv-media-card-title {
+  display: block;
+  overflow: hidden;
+  font-size: 9.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-home-recommendation-slot .nv-media-card-meta {
+  margin-top: 2px !important;
+  font-size: 8.5px !important;
+}
+
+.nv-home-poster-slot {
+  width: 104px !important;
+  min-width: 104px !important;
+}
+
+@media (max-width: 90rem) and (min-width: 48rem) {
+  .nv-continue-card {
+    width: 210px !important;
+    min-width: 210px !important;
+  }
+
+  .nv-home-recommendation-slot {
+    width: 158px;
+    min-width: 158px;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  :root,
+  [data-theme="dark"],
+  [data-theme="light"] {
+    --nv-page-gutter: 16px;
+    --nv-topbar-height: 58px;
+  }
+
+  .nv-page-container {
+    padding-top: 8px !important;
+  }
+
+  .nv-topbar {
+    min-height: 58px !important;
+    height: 58px !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+
+  .nv-topbar-subtitle,
+  .nv-page-header-search-shortcut {
+    display: none;
+  }
+
+  .nv-page-header-action--label span {
+    display: none;
+  }
+
+  .nv-page-header-action--label {
+    width: 32px !important;
+    justify-content: center;
+  }
+
+  .nv-home-page .nv-hero-carousel {
+    height: 382px !important;
+    min-height: 382px !important;
+  }
+
+  .nv-home-hero-foreground {
+    display: block;
+    padding: 92px 18px 42px;
+  }
+
+  .nv-home-hero-poster {
+    display: none !important;
+  }
+
+  .nv-home-hero-content {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+  }
+
+  .nv-home-page .nv-media-hero-title {
+    font-size: 1.65rem !important;
+  }
+
+  .nv-continue-card {
+    width: 72vw !important;
+    min-width: 72vw !important;
+    max-width: 292px !important;
+  }
+
+  .nv-home-recommendation-slot {
+    width: 58vw;
+    min-width: 58vw;
+    max-width: 230px;
+  }
+
+  .nv-home-poster-slot {
+    width: 31vw !important;
+    min-width: 31vw !important;
+    max-width: 128px !important;
+  }
+}

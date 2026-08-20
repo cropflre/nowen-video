@@ -1,0 +1,188 @@
+/* Nowen Video · media detail status tags
+ *
+ * Playback / subtitle / metadata are supporting information. Keep them as
+ * lightweight tags instead of a card/strip so they never interrupt the media
+ * detail editorial flow. Desktop places them immediately below the hero;
+ * mobile keeps the same compact tags at the end of the primary content flow.
+ */
+
+html body .nv-media-detail-page {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto auto auto !important;
+}
+
+html body .nv-media-detail-page .nv-detail-local-toolbar {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+}
+
+html body .nv-media-detail-page > .nv-detail-hero {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  width: 100% !important;
+}
+
+html body .nv-media-detail-page .nv-detail-hero-inner {
+  grid-template-columns: clamp(228px, 18vw, 272px) minmax(0, 1fr) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  position: static !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 8px 0 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+html body .nv-media-detail-page .nv-detail-summary-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 5px !important;
+  min-width: 0 !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 9px !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-default) 78%, transparent) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 78%, transparent) !important;
+  color: var(--nv-text-secondary) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(8px) saturate(108%);
+  -webkit-backdrop-filter: blur(8px) saturate(108%);
+  white-space: nowrap !important;
+  text-decoration: none !important;
+  font: inherit !important;
+  line-height: 1 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag > svg {
+  flex: 0 0 auto !important;
+  color: var(--nv-action-muted) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag strong {
+  overflow: hidden !important;
+  max-width: 150px !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 650 !important;
+  color: var(--nv-text-primary) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag > span {
+  font-size: 10px !important;
+  line-height: 1 !important;
+  color: var(--nv-text-tertiary) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag-accent {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  margin-left: 1px !important;
+  padding-left: 6px !important;
+  border-left: 1px solid var(--nv-border-subtle) !important;
+  color: var(--nv-action-muted) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag-hint {
+  color: var(--nv-action-muted) !important;
+}
+
+html body .nv-media-detail-page button.nv-detail-status-tag {
+  appearance: none !important;
+  cursor: pointer !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive {
+  cursor: pointer !important;
+  transition:
+    border-color var(--nv-motion-fast) var(--nv-ease-standard),
+    background var(--nv-motion-fast) var(--nv-ease-standard),
+    color var(--nv-motion-fast) var(--nv-ease-standard),
+    transform var(--nv-motion-fast) var(--nv-ease-standard) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:hover,
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:focus-visible {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 34%, var(--nv-border-default)) !important;
+  background: color-mix(in srgb, var(--nv-action-primary) 9%, var(--nv-bg-surface)) !important;
+  color: var(--nv-action-muted-hover) !important;
+  transform: translateY(-1px) !important;
+  outline: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-status-tag--interactive:focus-visible {
+  box-shadow: 0 0 0 3px var(--nv-focus-ring) !important;
+}
+
+[data-theme="dark"] body .nv-media-detail-page .nv-detail-status-tag {
+  background: color-mix(in srgb, var(--nv-bg-elevated) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--nv-border-default) 90%, transparent) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-main-column {
+  grid-column: 1 !important;
+  grid-row: 4 !important;
+  padding-top: 14px !important;
+}
+
+/* Tablet: keep tags on one quiet line whenever space allows. */
+@media (max-width: 1199px) and (min-width: 768px) {
+  html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
+    margin-top: 7px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-status-tag strong {
+    max-width: 120px !important;
+  }
+}
+
+/* Mobile: supporting diagnostics stay after the primary content flow. Tags
+ * wrap naturally instead of becoming another horizontal card rail. */
+@media (max-width: 767px) {
+  html body .nv-media-detail-page .nv-detail-main-column {
+    grid-row: 3 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar.nv-detail-summary-strip {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    margin-top: 12px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-summary-tags {
+    gap: 6px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-status-tag {
+    min-height: 30px !important;
+    height: 30px !important;
+    padding-inline: 9px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-status-tag strong {
+    max-width: 132px !important;
+    font-size: 11px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .nv-media-detail-page .nv-detail-status-tag--interactive {
+    transition: none !important;
+  }
+}

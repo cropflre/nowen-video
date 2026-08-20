@@ -8,7 +8,8 @@ import { usePagination } from '@/hooks/usePagination'
 import Pagination from '@/components/Pagination'
 import MediaCard from '@/components/MediaCard'
 import PersonHero from '@/components/media/PersonHero'
-import { Button, EmptyState, PageContainer, Section, Surface, Tag } from '@/components/design-system'
+import { Button, EmptyState, PageContainer, Section, Tag } from '@/components/design-system'
+import { MediaGrid as SharedMediaGrid } from '@/ui'
 
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -134,9 +135,9 @@ export default function PersonDetailPage() {
                 }
                 action={<Tag>{mediaList.length}</Tag>}
               >
-                <div className="nv-media-grid">
+                <SharedMediaGrid>
                   {pagedMovies.map((media) => <MediaCard key={media.id} media={media} />)}
-                </div>
+                </SharedMediaGrid>
                 <Pagination
                   page={moviePagination.page}
                   totalPages={moviePagination.totalPages(mediaList.length)}
@@ -159,9 +160,9 @@ export default function PersonDetailPage() {
                 }
                 action={<Tag>{seriesList.length}</Tag>}
               >
-                <div className="nv-media-grid">
+                <SharedMediaGrid>
                   {pagedSeries.map((series) => <MediaCard key={series.id} series={series} />)}
-                </div>
+                </SharedMediaGrid>
                 <Pagination
                   page={seriesPagination.page}
                   totalPages={seriesPagination.totalPages(seriesList.length)}
@@ -184,7 +185,7 @@ function PersonDetailSkeleton() {
   return (
     <div className="-mx-4 -mt-6 animate-pulse sm:-mx-6 lg:-mx-8">
       <div className="border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-        <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 px-4 py-8 sm:flex-row sm:items-start sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[var(--nv-content-max)] flex-col items-center gap-6 px-[var(--nv-page-gutter)] py-8 sm:flex-row sm:items-start">
           <div className="h-40 w-40 shrink-0 rounded-[var(--nv-radius-hero)] bg-[var(--nv-bg-surface-soft)] sm:h-48 sm:w-48" />
           <div className="w-full max-w-xl space-y-3 sm:pt-4">
             <div className="h-5 w-20 rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]" />
@@ -209,17 +210,15 @@ function WorksSkeleton() {
             <div className="h-6 w-28 rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]" />
             <div className="h-6 w-9 rounded-full bg-[var(--nv-bg-surface-soft)]" />
           </div>
-          <div className="nv-media-grid">
+          <SharedMediaGrid>
             {Array.from({ length: count }).map((_, index) => (
-              <Surface key={index} className="overflow-hidden p-0">
-                <div className="aspect-[2/3] bg-[var(--nv-bg-surface-soft)]" />
-                <div className="space-y-2 p-3">
-                  <div className="h-4 w-3/4 rounded bg-[var(--nv-bg-hover)]" />
-                  <div className="h-3 w-1/2 rounded bg-[var(--nv-bg-hover)]" />
-                </div>
-              </Surface>
+              <div key={index}>
+                <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+                <div className="skeleton mt-2 h-3 w-3/4" />
+                <div className="skeleton mt-1.5 h-2.5 w-1/2" />
+              </div>
             ))}
-          </div>
+          </SharedMediaGrid>
         </section>
       ))}
     </div>

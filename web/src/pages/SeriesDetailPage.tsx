@@ -11,6 +11,7 @@ import SeriesDetailSidebar from '@/components/media/SeriesDetailSidebar'
 import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
 import { Button, EmptyState, Tag } from '@/components/design-system'
+import { DetailTabs } from '@/ui'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
@@ -525,11 +526,17 @@ export default function SeriesDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <nav className="nv-detail-section-tabs nv-series-detail-tabs" aria-label="剧集详情章节导航" role="tablist">
-              <a id="series-tab-episodes" href="#series-episodes" role="tab" aria-selected={activeTab === 'episodes'} aria-controls="series-episodes" onClick={(event) => { event.preventDefault(); setActiveTab('episodes') }}>剧集</a>
-              <a id="series-tab-overview" href="#series-overview" role="tab" aria-selected={activeTab === 'overview'} aria-controls="series-overview" onClick={(event) => { event.preventDefault(); setActiveTab('overview') }}>简介</a>
-              <a id="series-tab-cast" href="#series-cast" role="tab" aria-selected={activeTab === 'cast'} aria-controls="series-cast" onClick={(event) => { event.preventDefault(); setActiveTab('cast') }}>演职人员</a>
-            </nav>
+            <DetailTabs
+              value={activeTab}
+              onChange={setActiveTab}
+              ariaLabel="剧集详情章节导航"
+              className="nv-series-detail-tabs"
+              items={[
+                { value: 'episodes', label: '剧集', panelId: 'series-episodes', tabId: 'series-tab-episodes' },
+                { value: 'overview', label: '简介', panelId: 'series-overview', tabId: 'series-tab-overview' },
+                { value: 'cast', label: '演职人员', panelId: 'series-cast', tabId: 'series-tab-cast' },
+              ]}
+            />
 
             <section id="series-episodes" className="nv-detail-content-section nv-detail-tab-panel nv-series-episodes-panel" role="tabpanel" aria-labelledby="series-tab-episodes" hidden={activeTab !== 'episodes'}>
               <div className="nv-series-tab-heading">

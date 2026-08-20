@@ -1,9 +1,8 @@
-/* Nowen Video · Modern Cinema light-theme correction
+/* Nowen UI 2.0 · Light theme compatibility
  *
- * The reference calibration layer is intentionally dark-first and contains
- * a number of fixed dark surfaces. This final layer mirrors those calibrated
- * geometries with semantic light surfaces so switching theme never produces
- * mixed dark/light chrome. The player remains intentionally cinema-dark.
+ * Semantic light-theme corrections for historical page geometry that still
+ * carries dark-first selectors. New components should rely on --nv-* roles and
+ * should not require additions to this compatibility layer.
  */
 
 [data-theme="light"] {

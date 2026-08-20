@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.nowen.video.v2.core.model.ProgressUpdate
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -103,7 +104,26 @@ class ProgressRepository @Inject constructor(
 ) {
     private val syncMutex = Mutex()
 
+    /**
+     * Web 的 ?restart=1 与精彩片段 start_time 都属于“仅下一次打开播放器生效”的导航意图。
+     * Android 用内存中的一次性覆盖值表达同一语义，PlayerViewModel 无需引入第二套播放协议。
+     */
+    private val nextPlaybackStartOverrides = ConcurrentHashMap<String, Double>()
+
+    fun prepareNextPlaybackStart(mediaId: String, positionSeconds: Double) {
+        if (mediaId.isBlank() || !positionSeconds.isFinite()) return
+        nextPlaybackStartOverrides[mediaId] = positionSeconds.coerceAtLeast(0.0)
+    }
+
     suspend fun restorePosition(mediaId: String, mediaDurationSeconds: Double): Double = syncMutex.withLock {
+        nextPlaybackStartOverrides.remove(mediaId)?.let { requested ->
+            return@withLock if (mediaDurationSeconds.isFinite() && mediaDurationSeconds > 0.0) {
+                requested.coerceIn(0.0, mediaDurationSeconds)
+            } else {
+                requested.coerceAtLeast(0.0)
+            }
+        }
+
         val scope = activeScope() ?: return@withLock 0.0
         flushLocked(scope)
 

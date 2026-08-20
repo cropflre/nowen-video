@@ -33,6 +33,7 @@ import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
 import { Button, EmptyState } from '@/components/design-system'
+import { DetailTabs } from '@/ui'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
@@ -528,14 +529,19 @@ export default function MediaDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <nav className="nv-detail-section-tabs" aria-label="详情页章节导航" role="tablist">
-              <a id="detail-tab-overview" href="#detail-overview" role="tab" aria-selected={activeTab === 'overview'} aria-controls="detail-overview" onClick={(event) => { event.preventDefault(); setActiveTab('overview') }}>简介</a>
-              <a id="detail-tab-cast" href="#detail-cast" role="tab" aria-selected={activeTab === 'cast'} aria-controls="detail-cast" onClick={(event) => { event.preventDefault(); setActiveTab('cast') }}>演职人员</a>
-              <a id="detail-tab-highlights" href="#detail-highlights" role="tab" aria-selected={activeTab === 'highlights'} aria-controls="detail-highlights" onClick={(event) => { event.preventDefault(); setActiveTab('highlights') }}>片段</a>
-              <a id="detail-tab-tech" href="#detail-tech" role="tab" aria-selected={activeTab === 'tech'} aria-controls="detail-tech" onClick={(event) => { event.preventDefault(); setActiveTab('tech') }}>技术规格</a>
-              <a id="detail-tab-subtitles" href="#detail-subtitles" role="tab" aria-selected={activeTab === 'subtitles'} aria-controls="detail-subtitles" onClick={(event) => { event.preventDefault(); setActiveTab('subtitles') }}>字幕</a>
-              <a id="detail-tab-related" href="#detail-related" role="tab" aria-selected={activeTab === 'related'} aria-controls="detail-related" onClick={(event) => { event.preventDefault(); setActiveTab('related') }}>相关推荐</a>
-            </nav>
+            <DetailTabs
+              value={activeTab}
+              onChange={setActiveTab}
+              ariaLabel="详情页章节导航"
+              items={[
+                { value: 'overview', label: '简介', panelId: 'detail-overview', tabId: 'detail-tab-overview' },
+                { value: 'cast', label: '演职人员', panelId: 'detail-cast', tabId: 'detail-tab-cast' },
+                { value: 'highlights', label: '片段', panelId: 'detail-highlights', tabId: 'detail-tab-highlights' },
+                { value: 'tech', label: '技术规格', panelId: 'detail-tech', tabId: 'detail-tab-tech' },
+                { value: 'subtitles', label: '字幕', panelId: 'detail-subtitles', tabId: 'detail-tab-subtitles' },
+                { value: 'related', label: '相关推荐', panelId: 'detail-related', tabId: 'detail-tab-related' },
+              ]}
+            />
 
             <section id="detail-overview" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={activeTab !== 'overview'}>
               <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />

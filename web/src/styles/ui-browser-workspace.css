@@ -1,13 +1,4 @@
-/* Nowen Video · Browse control deck
- *
- * Browse uses two semantic rows (scope + tools), but they should read as one
- * intentional control surface. Keep this file last in the cascade so legacy
- * Streaming OS rules cannot turn the toolbar back into a floating strip.
- */
-
-/* -------------------------------------------------------------------------- */
-/* Unified desktop control deck                                                */
-/* -------------------------------------------------------------------------- */
+/* Nowen UI 2.0 · Browse and library workspace */
 
 .nv-section-stack:has(> .nv-browse-type-tabs) {
   gap: 14px !important;
@@ -20,7 +11,6 @@
   box-sizing: border-box;
 }
 
-/* Scope row: quiet navigation, not a second toolbar. */
 .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs {
   min-height: 48px;
   align-self: stretch;
@@ -31,7 +21,7 @@
   border-bottom: 0 !important;
   border-radius: 16px 16px 0 0 !important;
   background: color-mix(in srgb, var(--nv-bg-elevated) 86%, transparent) !important;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .10), inset 0 1px color-mix(in srgb, white 4%, transparent) !important;
+  box-shadow: var(--nv-shadow-card), inset 0 1px color-mix(in srgb, white 4%, transparent) !important;
   backdrop-filter: blur(18px) saturate(112%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(112%) !important;
 }
@@ -56,14 +46,11 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-muted) 5%, transparent) !important;
 }
 
-/* Metadata belongs on the opposite side of the scope navigation on wide screens. */
 .nv-browse-type-tabs > .nv-tag:last-child {
   margin-left: auto !important;
   flex: 0 0 auto;
 }
 
-/* Tool row: part two of the same surface. Pull it over the section gap so the
- * two rows share one outer silhouette and a single internal divider. */
 .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
   position: relative !important;
   top: auto !important;
@@ -77,13 +64,11 @@
   border-top-color: var(--nv-border-subtle) !important;
   border-radius: 0 0 16px 16px !important;
   background: color-mix(in srgb, var(--nv-bg-elevated) 86%, transparent) !important;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .10), inset 0 1px color-mix(in srgb, white 3%, transparent) !important;
+  box-shadow: var(--nv-shadow-card), inset 0 1px color-mix(in srgb, white 3%, transparent) !important;
   backdrop-filter: blur(18px) saturate(112%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(112%) !important;
 }
 
-/* Give search enough visual authority. The filter action then starts the
- * right-aligned tool cluster (filter → sort → view). */
 .nv-browse-toolbar .nv-search {
   min-width: 240px !important;
   width: clamp(280px, 31vw, 520px) !important;
@@ -105,33 +90,67 @@
   margin-left: auto;
 }
 
+.nv-browse-toolbar > .nv-segmented-control,
 .nv-browse-toolbar > [role="group"] {
   flex: 0 0 auto;
-  border-color: var(--nv-border-default) !important;
-  background: color-mix(in srgb, var(--nv-bg-control) 76%, transparent) !important;
 }
 
-/* Result content must begin clearly below the control deck. */
 .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-media-grid,
 .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-list,
 .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar ~ .nv-browse-poster-grid {
   margin-top: 2px !important;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Compact high-cardinality genre filters                                      */
-/* -------------------------------------------------------------------------- */
+.nv-filter-panel {
+  padding: 12px;
+}
 
-/*
- * Adult/private libraries can easily accumulate 1k–3k genre/tag values. Those
- * values are useful as filters, but they must never become the page layout.
- * Keep the complete set reachable while containing it inside a compact,
- * independently scrollable viewport. BrowsePage has an explicit panel class;
- * LibraryPage is identified by its content-tab contract so the rule does not
- * leak into unrelated surfaces.
- */
-.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1,
-.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 {
+.nv-filter-group {
+  display: grid;
+  grid-template-columns: minmax(78px, 92px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.nv-filter-group + .nv-filter-group {
+  margin-top: 10px;
+}
+
+.nv-filter-group-label {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--nv-text-tertiary);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.nv-filter-group-icon {
+  display: inline-grid;
+  place-items: center;
+}
+
+.nv-filter-group-count {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding-inline: 5px;
+  border-radius: var(--nv-radius-pill);
+  background: var(--nv-fill-active);
+  color: var(--nv-action-muted-hover);
+  font: 600 9px/1 var(--nv-font-mono);
+}
+
+.nv-filter-group-content {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nv-filter-group-content.is-scrollable {
   max-height: 148px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -142,31 +161,22 @@
   scrollbar-color: color-mix(in srgb, var(--nv-text-tertiary) 28%, transparent) transparent;
 }
 
-.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1::-webkit-scrollbar,
-.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1::-webkit-scrollbar {
+.nv-filter-group-content.is-scrollable::-webkit-scrollbar {
   width: 6px;
 }
 
-.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1::-webkit-scrollbar-thumb,
-.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1::-webkit-scrollbar-thumb {
+.nv-filter-group-content.is-scrollable::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in srgb, var(--nv-text-tertiary) 24%, transparent);
 }
 
-/* One scraper tag can itself be a full sentence. It should not consume an
- * entire row inside the compact filter viewport. */
-.nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1 > .nv-button,
-.nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 > .nv-button {
+.nv-filter-group-content.is-scrollable > .nv-filter-chip {
   min-width: 0;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Daylight treatment                                                          */
-/* -------------------------------------------------------------------------- */
 
 [data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-type-tabs,
 [data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
@@ -178,16 +188,6 @@
 [data-theme="light"] .nv-section-stack:has(> .nv-browse-type-tabs) > .nv-browse-toolbar {
   border-top-color: rgba(78, 67, 155, .075) !important;
 }
-
-[data-theme="light"] .nv-browse-type-tabs .nv-button[aria-pressed="true"] {
-  border-color: rgba(91, 72, 186, .12) !important;
-  background: rgba(98, 83, 234, .075) !important;
-  box-shadow: inset 0 0 0 1px rgba(91, 72, 186, .04) !important;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Responsive                                                                  */
-/* -------------------------------------------------------------------------- */
 
 @media (max-width: 63.999rem) {
   .nv-browse-toolbar .nv-search {
@@ -251,14 +251,17 @@
     margin-left: 0;
   }
 
-  .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1,
-  .nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 {
+  .nv-filter-group {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .nv-filter-group-content.is-scrollable {
     max-height: 112px;
     padding-right: 5px;
   }
 
-  .nv-browse-filter-panel > .grid:first-of-type > .flex.flex-wrap.gap-1 > .nv-button,
-  .nv-section-stack:has(> [role="group"][aria-label="媒体库内容类型"]) > .nv-surface > .grid:first-child > .flex.flex-wrap.gap-1 > .nv-button {
+  .nv-filter-group-content.is-scrollable > .nv-filter-chip {
     max-width: 168px;
   }
 }

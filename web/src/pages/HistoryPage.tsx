@@ -9,7 +9,13 @@ import { usePagination } from '@/hooks/usePagination'
 import { formatProgress, formatTime } from '@/utils/format'
 import type { WatchHistory } from '@/types'
 import Pagination from '@/components/Pagination'
-import { Clock, Play, Trash2, X } from 'lucide-react'
+import {
+  MediaArtwork,
+  PersonalWorkspace,
+  PersonalWorkspaceHeader,
+  PersonalWorkspacePanel,
+} from '@/ui'
+import { Clock, Film, Play, Trash2, X } from 'lucide-react'
 
 interface HistoryData {
   list: WatchHistory[]
@@ -119,42 +125,29 @@ export default function HistoryPage() {
   const historyGroups = groupHistory(histories)
 
   return (
-    <div className="nv-personal-workspace nv-history-page">
-      <header className="nv-personal-workspace-header nv-personal-workspace-header--actions">
-        <div className="nv-page-title-lockup">
-          <div className="nv-page-title-icon" aria-hidden="true">
-            <Clock size={20} />
-          </div>
-          <div className="min-w-0">
-            <span className="nv-personal-workspace-eyebrow">WATCH HISTORY</span>
-            <h1 className="nv-page-title">{t('history.title')}</h1>
-            <p className="nv-page-subtitle">回到最近播放过的内容，并从上次位置继续观看。</p>
-          </div>
-        </div>
+    <PersonalWorkspace className="nv-history-page">
+      <PersonalWorkspaceHeader
+        icon={<Clock size={20} />}
+        eyebrow="WATCH HISTORY"
+        title={t('history.title')}
+        description="回到最近播放过的内容，并从上次位置继续观看。"
+        statValue={total}
+        statLabel="条记录"
+        statAriaLabel={`共 ${total} 条观看记录`}
+        actions={histories.length > 0 ? (
+          <Button variant="danger" size="sm" onClick={handleClear}>
+            <Trash2 size={14} aria-hidden="true" />
+            {t('history.clearAll')}
+          </Button>
+        ) : undefined}
+      />
 
-        <div className="nv-personal-workspace-header-actions">
-          <div className="nv-personal-workspace-stat" aria-label={`共 ${total} 条观看记录`}>
-            <strong>{total}</strong>
-            <span>条记录</span>
-          </div>
-          {histories.length > 0 && (
-            <Button variant="danger" size="sm" onClick={handleClear}>
-              <Trash2 size={14} aria-hidden="true" />
-              {t('history.clearAll')}
-            </Button>
-          )}
-        </div>
-      </header>
-
-      <section className="nv-personal-workspace-panel" aria-labelledby="recent-history-title">
-        <div className="nv-personal-workspace-toolbar">
-          <div>
-            <h2 id="recent-history-title">最近观看</h2>
-            <p>{total > 0 ? '按最近播放时间整理，点击即可继续观看。' : '最近播放过的媒体会出现在这里。'}</p>
-          </div>
-          {total > 0 && <span className="nv-personal-workspace-count">{total} 项</span>}
-        </div>
-
+      <PersonalWorkspacePanel
+        titleId="recent-history-title"
+        title="最近观看"
+        description={total > 0 ? '按最近播放时间整理，点击即可继续观看。' : '最近播放过的媒体会出现在这里。'}
+        count={total > 0 ? `${total} 项` : undefined}
+      >
         {loading && (
           <div className="nv-history-grid" aria-busy="true" aria-label="正在加载观看历史">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -195,18 +188,14 @@ export default function HistoryPage() {
                       className="nv-history-thumb"
                       aria-label={`继续播放 ${displayTitle}`}
                     >
-                      <img
+                      <MediaArtwork
                         src={historyArtwork}
+                        fallbackSrc={fallbackPoster}
                         alt=""
-                        onError={(event) => {
-                          const image = event.currentTarget
-                          if (image.dataset.fallbackApplied !== 'true') {
-                            image.dataset.fallbackApplied = 'true'
-                            image.src = fallbackPoster
-                            return
-                          }
-                          image.style.display = 'none'
-                        }}
+                        ratio="landscape"
+                        className="absolute inset-0 !rounded-none !border-0 !shadow-none"
+                        imageClassName="transition-[filter,transform] duration-300 group-hover:scale-[1.02] group-hover:brightness-[.84]"
+                        fallback={<Film size={22} aria-hidden="true" />}
                       />
                       <div className="nv-history-play-overlay" aria-hidden="true">
                         <span className="nv-history-play-button">
@@ -288,7 +277,7 @@ export default function HistoryPage() {
             />
           </div>
         )}
-      </section>
-    </div>
+      </PersonalWorkspacePanel>
+    </PersonalWorkspace>
   )
 }

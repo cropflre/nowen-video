@@ -1,4 +1,4 @@
-/* Nowen Video · Personal Media Workspace
+/* Nowen UI 2.0 · Personal Media Workspace
  * Favorites = a compact private media library.
  * History = a continue-watching timeline with clear temporal hierarchy.
  */
@@ -146,8 +146,6 @@
   font: 600 .66rem/1 var(--nv-font-mono);
 }
 
-/* Favorites behaves like a deliberately compact private library instead of
- * inheriting the fixed eight-column browse calibration. */
 .nv-personal-media-grid {
   min-width: 0;
   display: grid;
@@ -174,7 +172,6 @@
   border-top: 1px solid var(--nv-border-subtle);
 }
 
-/* History is a time-grouped continue-watching workspace. */
 .nv-history-group + .nv-history-group {
   margin-top: 22px;
   padding-top: 18px;

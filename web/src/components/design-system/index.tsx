@@ -33,7 +33,7 @@ export function buttonClassName({
   )
 }
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
   iconOnly?: boolean
@@ -63,6 +63,29 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     >
       {children}
     </button>
+  )
+})
+
+export interface IconButtonProps extends Omit<ButtonProps, 'iconOnly'> {
+  label: string
+}
+
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
+  label,
+  title,
+  children,
+  ...props
+}, ref) {
+  return (
+    <Button
+      {...props}
+      ref={ref}
+      iconOnly
+      aria-label={label}
+      title={title ?? label}
+    >
+      {children}
+    </Button>
   )
 })
 
@@ -144,13 +167,26 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   )
 })
 
+export type SurfaceVariant = 'base' | 'raised' | 'glass' | 'overlay'
+
 interface SurfaceProps extends HTMLAttributes<HTMLDivElement> {
   as?: 'div' | 'section' | 'article'
+  variant?: SurfaceVariant
 }
 
-export function Surface({ as: Element = 'div', className, children, ...props }: SurfaceProps) {
+export function Surface({
+  as: Element = 'div',
+  variant = 'base',
+  className,
+  children,
+  ...props
+}: SurfaceProps) {
   return (
-    <Element {...props} className={clsx('nv-surface', className)}>
+    <Element
+      {...props}
+      className={clsx('nv-surface', className)}
+      data-variant={variant === 'base' ? undefined : variant}
+    >
       {children}
     </Element>
   )

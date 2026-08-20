@@ -1,0 +1,132 @@
+/* Nowen Video · Responsive topbar stability
+ *
+ * The persistent application header must compact in place on smaller desktop
+ * widths. Actions must never escape the header grid or get pushed to a viewport
+ * corner by legacy screenshot-calibration rules.
+ */
+
+/* Route titles belong to persistent application chrome. Home/My/Browse/Search
+ * must never inherit page-specific typography, otherwise route changes read as
+ * a visual jump even when the shell geometry is stable. */
+html body .nv-app-shell .nv-topbar-title {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -.018em !important;
+  white-space: nowrap !important;
+}
+
+html body .nv-app-shell .nv-page-header-title-slot {
+  min-width: 0 !important;
+}
+
+html body .nv-app-shell .nv-topbar-subtitle {
+  margin-top: 3px !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+}
+
+/* Search has a dedicated primary destination in the sidebar. Ordinary application
+ * pages therefore use a quieter two-column chrome: route identity on the left,
+ * high-value history/favorites actions on the right. The middle search slot stays
+ * out of layout entirely so removing the field does not leave a dead gap. */
+html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only .nv-page-header-search-slot {
+  display: none !important;
+}
+
+@media (min-width: 48rem) {
+  html body .nv-app-shell .nv-page-header-title-slot,
+  html body .nv-app-shell .nv-page-header-search-slot,
+  html body .nv-app-shell .nv-page-header-actions-slot {
+    position: relative !important;
+    inset: auto !important;
+    min-width: 0 !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    column-gap: clamp(16px, 2vw, 28px) !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions-slot {
+    width: max-content !important;
+    max-width: 100% !important;
+    justify-self: end !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions {
+    position: relative !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    width: max-content !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action {
+    position: relative !important;
+    inset: auto !important;
+    flex: 0 0 auto !important;
+  }
+}
+
+/* Ordinary laptop / reduced desktop widths: retain all capabilities, but switch
+ * secondary header actions to icon-only controls before the grid starts to
+ * squeeze or overflow. Labels remain available through aria-label/title. */
+@media (min-width: 48rem) and (max-width: 79.999rem) {
+  html body .nv-app-shell .nv-topbar:not(.nv-topbar--navigation-only) {
+    grid-template-columns: minmax(108px, .7fr) minmax(230px, 340px) max-content !important;
+    gap: clamp(10px, 1.5vw, 16px) !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    gap: clamp(10px, 1.5vw, 16px) !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action--label {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action--label > span {
+    display: none !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search-shortcut {
+    display: none !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search .nv-search {
+    padding-right: 12px !important;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  html body .nv-app-shell .nv-topbar:not(.nv-topbar--navigation-only) {
+    grid-template-columns: minmax(92px, .55fr) minmax(210px, 1fr) max-content !important;
+    padding-inline: 18px !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    padding-inline: 18px !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions {
+    gap: 4px !important;
+  }
+
+  html body .nv-app-shell .nv-topbar-subtitle {
+    display: none !important;
+  }
+}

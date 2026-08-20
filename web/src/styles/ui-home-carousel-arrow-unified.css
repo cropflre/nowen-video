@@ -1,0 +1,141 @@
+/* Nowen Video · homepage carousel edge-control unification
+ *
+ * Hero slide arrows and shelf paging arrows perform the same spatial action, so
+ * they should read as one control family. Historical hero calibration left the
+ * hero controls circular while media rails use a compact vertical glass pill.
+ * Keep one desktop contract here after every homepage reference layer.
+ */
+
+@media (min-width: 48rem) {
+  html body .nv-home-page {
+    --nv-home-edge-control-width: 28px;
+    --nv-home-edge-control-height: 36px;
+    --nv-home-hero-edge-inset: 12px;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow,
+  html body .nv-home-page .nv-media-rail-arrow {
+    width: var(--nv-home-edge-control-width) !important;
+    min-width: var(--nv-home-edge-control-width) !important;
+    max-width: var(--nv-home-edge-control-width) !important;
+    height: var(--nv-home-edge-control-height) !important;
+    min-height: var(--nv-home-edge-control-height) !important;
+    max-height: var(--nv-home-edge-control-height) !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    line-height: 1 !important;
+    border: 1px solid var(--nv-border-strong) !important;
+    border-radius: var(--nv-radius-pill) !important;
+    background: var(--nv-surface-glass-strong) !important;
+    color: var(--nv-text-primary) !important;
+    box-shadow:
+      0 10px 28px color-mix(in srgb, var(--nv-text-primary) 18%, transparent),
+      inset 0 1px rgba(255, 255, 255, .16) !important;
+    backdrop-filter: blur(16px) saturate(125%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(125%) !important;
+  }
+
+  /* Hero controls use one mirrored geometry contract. Set both physical sides
+   * explicitly so older left/right rules can never leave one control with a
+   * different inset. The controls are centered against the whole hero frame,
+   * independent of the poster/content composition inside it. */
+  html body .nv-home-page .nv-home-hero-arrow {
+    position: absolute !important;
+    top: 50% !important;
+    bottom: auto !important;
+    opacity: 0 !important;
+    transform: translateY(-50%) !important;
+    transition:
+      opacity var(--nv-motion-normal) var(--nv-ease-standard),
+      transform var(--nv-motion-normal) var(--nv-ease-standard),
+      background-color var(--nv-motion-fast) var(--nv-ease-standard),
+      border-color var(--nv-motion-fast) var(--nv-ease-standard),
+      color var(--nv-motion-fast) var(--nv-ease-standard) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow--left {
+    left: var(--nv-home-hero-edge-inset) !important;
+    right: auto !important;
+    inset-inline-start: var(--nv-home-hero-edge-inset) !important;
+    inset-inline-end: auto !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow--right {
+    left: auto !important;
+    right: var(--nv-home-hero-edge-inset) !important;
+    inset-inline-start: auto !important;
+    inset-inline-end: var(--nv-home-hero-edge-inset) !important;
+  }
+
+  html body .nv-home-page .nv-hero-carousel:hover .nv-home-hero-arrow,
+  html body .nv-home-page .nv-hero-carousel:focus-within .nv-home-hero-arrow {
+    opacity: .96 !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow:hover,
+  html body .nv-home-page .nv-home-hero-arrow:focus-visible {
+    opacity: 1 !important;
+    transform: translateY(-50%) scale(1.06) !important;
+    border-color: color-mix(in srgb, var(--nv-action-primary) 42%, var(--nv-border-strong)) !important;
+    background: var(--nv-bg-elevated) !important;
+    color: var(--nv-action-primary) !important;
+    box-shadow:
+      0 12px 32px color-mix(in srgb, var(--nv-text-primary) 22%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--nv-action-primary) 12%, transparent) !important;
+    outline: none !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow:active {
+    transform: translateY(-50%) scale(.96) !important;
+  }
+
+  html body .nv-home-page .nv-home-hero-arrow > svg,
+  html body .nv-home-page .nv-media-rail-arrow > svg {
+    display: block !important;
+    width: 17px !important;
+    min-width: 17px !important;
+    height: 17px !important;
+    min-height: 17px !important;
+    margin: 0 !important;
+    flex: none !important;
+    stroke-width: 1.9 !important;
+  }
+
+  [data-theme="dark"] body .nv-home-page .nv-home-hero-arrow {
+    background: rgba(15, 27, 48, .94) !important;
+    color: #f7f8ff !important;
+    border-color: rgba(194, 204, 255, .30) !important;
+  }
+
+  [data-theme="dark"] body .nv-home-page .nv-home-hero-arrow:hover,
+  [data-theme="dark"] body .nv-home-page .nv-home-hero-arrow:focus-visible {
+    background: rgba(23, 36, 60, .98) !important;
+    color: #b7a8ff !important;
+    border-color: rgba(174, 154, 255, .62) !important;
+  }
+
+  [data-theme="light"] body .nv-home-page .nv-home-hero-arrow {
+    background: rgba(255, 255, 255, .96) !important;
+    color: #202638 !important;
+    border-color: rgba(76, 83, 123, .22) !important;
+    box-shadow:
+      0 10px 28px rgba(35, 42, 70, .16),
+      inset 0 1px rgba(255, 255, 255, .9) !important;
+  }
+
+  [data-theme="light"] body .nv-home-page .nv-home-hero-arrow:hover,
+  [data-theme="light"] body .nv-home-page .nv-home-hero-arrow:focus-visible {
+    background: #fff !important;
+    color: var(--nv-brand-600) !important;
+    border-color: rgba(112, 87, 245, .42) !important;
+  }
+}
+
+@media (min-width: 48rem) and (prefers-reduced-motion: reduce) {
+  html body .nv-home-page .nv-home-hero-arrow {
+    transition: none !important;
+  }
+}

@@ -46,6 +46,27 @@
   opacity: 0 !important;
 }
 
+/* Subtitle management now belongs to the primary action cluster instead of a
+   separate status strip. Keep it immediately before the existing More action. */
+.nv-detail-hero-backdrop-shell .nv-media-hero-actions > button:last-of-type {
+  order: 30;
+}
+
+.nv-detail-subtitle-action-slot {
+  display: inline-flex;
+  order: 20;
+}
+
+.nv-detail-subtitle-action {
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .nv-detail-subtitle-action {
+    min-width: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nv-detail-hero-local-backdrop {
     transition: none;

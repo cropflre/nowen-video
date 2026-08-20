@@ -1,0 +1,254 @@
+/* Nowen Video · Low-priority review surface
+ *
+ * Reviews are useful secondary content, not a primary decision block. The
+ * detail page therefore keeps them collapsed by default and only expands the
+ * composer/list on explicit user intent. This layer is loaded after the main
+ * detail-flow CSS so it owns the final review geometry on desktop and mobile.
+ */
+
+html body .nv-media-detail-page #detail-overview > .nv-detail-tab-secondary-section {
+  order: 7 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-subtle) 92%, transparent) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 72%, transparent) !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page .nv-comment-section {
+  display: block !important;
+  width: 100%;
+  min-width: 0;
+}
+
+html body .nv-media-detail-page .nv-comment-summary {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+html body .nv-media-detail-page .nv-comment-summary:hover {
+  background: color-mix(in srgb, var(--nv-bg-hover) 72%, transparent);
+}
+
+html body .nv-media-detail-page .nv-comment-summary:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--nv-action-primary) 52%, transparent);
+}
+
+html body .nv-media-detail-page .nv-comment-summary-main,
+html body .nv-media-detail-page .nv-comment-summary-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-main {
+  gap: 10px;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-icon {
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--nv-action-primary) 9%, transparent);
+  color: var(--nv-action-primary);
+}
+
+html body .nv-media-detail-page .nv-comment-summary-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-title {
+  color: var(--nv-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-meta {
+  overflow: hidden;
+  color: var(--nv-text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-actions {
+  flex: 0 0 auto;
+  gap: 7px;
+  color: var(--nv-text-tertiary);
+  font-size: 11.5px;
+}
+
+html body .nv-media-detail-page .nv-comment-summary-toggle-label {
+  color: var(--nv-action-muted-hover);
+  font-weight: 600;
+}
+
+html body .nv-media-detail-page .nv-comment-expanded {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border-top: 1px solid var(--nv-border-subtle);
+  background: color-mix(in srgb, var(--nv-bg-surface) 92%, transparent);
+}
+
+html body .nv-media-detail-page .nv-comment-composer {
+  grid-column: 1;
+  align-self: stretch;
+  margin: 0 !important;
+  padding: 13px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page .nv-comment-list {
+  grid-column: 2;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch;
+  margin: 0 !important;
+}
+
+html body .nv-media-detail-page .nv-comment-list > article {
+  height: 100%;
+  min-width: 0;
+  padding: 12px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page .nv-comment-empty,
+html body .nv-media-detail-page .nv-comment-loading {
+  grid-column: 2;
+  min-height: 116px;
+}
+
+html body .nv-media-detail-page .nv-comment-empty {
+  padding-block: 18px !important;
+}
+
+html body .nv-media-detail-page .nv-comment-pagination {
+  grid-column: 1 / -1;
+}
+
+/* Expanded comments stay useful but deliberately less visually dominant than
+ * highlights, cast and recommendations. */
+html body .nv-media-detail-page .nv-comment-section[data-expanded='true'] .nv-comment-summary {
+  background: color-mix(in srgb, var(--nv-bg-surface-soft) 66%, transparent);
+}
+
+@media (max-width: 1199px) {
+  html body .nv-media-detail-page .nv-comment-expanded {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  }
+
+  html body .nv-media-detail-page .nv-comment-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html body .nv-media-detail-page #detail-overview > .nv-detail-tab-secondary-section {
+    border-radius: 13px !important;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary {
+    min-height: 54px;
+    gap: 10px;
+    padding: 9px 11px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-icon {
+    width: 29px;
+    min-width: 29px;
+    height: 29px;
+    border-radius: 8px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-title {
+    font-size: 13px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-meta {
+    max-width: 48vw;
+    font-size: 10.5px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-actions {
+    gap: 5px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-toggle-label {
+    display: none;
+  }
+
+  html body .nv-media-detail-page .nv-comment-expanded {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-composer,
+  html body .nv-media-detail-page .nv-comment-list,
+  html body .nv-media-detail-page .nv-comment-empty,
+  html body .nv-media-detail-page .nv-comment-loading,
+  html body .nv-media-detail-page .nv-comment-pagination {
+    grid-column: 1 !important;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(220px, 76vw) !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list > article {
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 420px) {
+  html body .nv-media-detail-page .nv-comment-summary-meta {
+    max-width: 42vw;
+  }
+
+  html body .nv-media-detail-page .nv-comment-summary-actions .nv-tag {
+    display: none;
+  }
+}

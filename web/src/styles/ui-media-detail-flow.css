@@ -1,0 +1,722 @@
+/* Nowen Video · Media detail product flow
+ *
+ * Final layout layer for the approved detail-page information architecture:
+ * 1) desktop: cinematic hero + compact decision sidebar;
+ * 2) below the hero: one full-width editorial content stream;
+ * 3) tablet/mobile: content-first single column, summary cards move to the end;
+ * 4) no page-long sticky sidebar and no tab-gated primary content.
+ *
+ * This stylesheet intentionally loads after ui-media-detail-reference.css and
+ * owns final geometry only. Existing components/API behavior remain intact.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Desktop: top decision area + full-width editorial feed                     */
+/* -------------------------------------------------------------------------- */
+
+html body .nv-media-detail-page {
+  width: 100% !important;
+  max-width: 1540px !important;
+  margin: 0 auto !important;
+  padding: 0 clamp(10px, 1vw, 18px) 44px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) clamp(292px, 20vw, 318px) !important;
+  grid-template-rows: auto auto auto !important;
+  column-gap: clamp(20px, 1.6vw, 26px) !important;
+  row-gap: 0 !important;
+  align-items: start !important;
+  background:
+    radial-gradient(circle at 34% -4%, color-mix(in srgb, var(--nv-action-primary) 7%, transparent), transparent 34rem),
+    radial-gradient(circle at 76% 3%, color-mix(in srgb, var(--nv-status-rating) 3%, transparent), transparent 30rem),
+    transparent !important;
+}
+
+html body .nv-media-detail-page .nv-detail-local-toolbar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  min-height: 58px !important;
+  padding: 8px 0 12px !important;
+}
+
+html body .nv-media-detail-page > .nv-detail-hero {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  min-height: 420px !important;
+  border: 1px solid color-mix(in srgb, var(--nv-border-default) 82%, transparent) !important;
+  border-radius: 22px !important;
+  overflow: hidden !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 76%, transparent) !important;
+  box-shadow: 0 18px 54px color-mix(in srgb, var(--nv-text-primary) 7%, transparent) !important;
+}
+
+html body .nv-media-detail-page > .nv-detail-hero > .absolute.inset-0 {
+  opacity: .44 !important;
+  filter: blur(18px) saturate(112%) !important;
+  transform: scale(1.045) !important;
+}
+
+[data-theme="dark"] body .nv-media-detail-page > .nv-detail-hero > .absolute.inset-0 {
+  opacity: .62 !important;
+  filter: blur(20px) saturate(122%) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-hero-inner {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 420px !important;
+  grid-template-columns: clamp(220px, 20vw, 258px) minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: clamp(30px, 3vw, 48px) !important;
+  padding: clamp(24px, 2.3vw, 36px) clamp(24px, 2.5vw, 40px) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-poster {
+  width: 100% !important;
+  max-width: 258px !important;
+  border-radius: 18px !important;
+  box-shadow: 0 20px 52px rgba(20, 24, 44, .18) !important;
+}
+
+[data-theme="dark"] body .nv-media-detail-page .nv-detail-poster {
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .42) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-hero-inner h1 {
+  max-width: 23ch !important;
+  font-size: clamp(32px, 2.6vw, 43px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -.035em !important;
+}
+
+html body .nv-media-detail-page .nv-media-hero-overview {
+  max-width: 64rem !important;
+  -webkit-line-clamp: 2 !important;
+  line-height: 1.72 !important;
+}
+
+html body .nv-media-detail-page .nv-media-hero-actions {
+  margin-top: 22px !important;
+  gap: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-media-hero-actions .nv-button,
+html body .nv-media-detail-page .nv-media-hero-actions a[data-size="lg"] {
+  min-height: 42px !important;
+  height: 42px !important;
+  border-radius: 11px !important;
+  padding-inline: 16px !important;
+}
+
+/* Flatten the old content-shell/body-grid wrappers so the summary sidebar can
+ * belong only to the top decision area and the main feed can span the page. */
+html body .nv-media-detail-page > .nv-detail-content-shell,
+html body .nv-media-detail-page .nv-detail-body-grid {
+  display: contents !important;
+}
+
+html body .nv-media-detail-page .nv-detail-sidebar {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  position: static !important;
+  top: auto !important;
+  align-self: stretch !important;
+  display: grid !important;
+  grid-template-rows: auto auto 1fr !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card {
+  padding: 15px !important;
+  border-radius: 16px !important;
+  border-color: color-mix(in srgb, var(--nv-border-default) 88%, transparent) !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 92%, transparent) !important;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--nv-text-primary) 5%, transparent) !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card-header {
+  margin-bottom: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card-header h2 {
+  font-size: 14px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-eyebrow {
+  display: none !important;
+}
+
+html body .nv-media-detail-page .nv-detail-version-item,
+html body .nv-media-detail-page .nv-detail-subtitle-item,
+html body .nv-media-detail-page .nv-detail-source-item {
+  border-radius: 10px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-side-card--quiet {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Primary content is a continuous full-width flow, not a tab-gated workspace */
+/* -------------------------------------------------------------------------- */
+
+html body .nv-media-detail-page .nv-detail-main-column {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px !important;
+  padding-top: 22px !important;
+}
+
+html body .nv-media-detail-page .nv-detail-section-tabs {
+  display: none !important;
+}
+
+/* Make every primary panel visible. The React state remains for compatibility
+ * with old deep links, while this final product view exposes the whole flow. */
+html body .nv-media-detail-page .nv-detail-tab-panel[hidden] {
+  display: block !important;
+}
+
+html body .nv-media-detail-page #detail-overview,
+html body .nv-media-detail-page #detail-related {
+  display: contents !important;
+}
+
+html body .nv-media-detail-page #detail-overview > .nv-media-info {
+  order: 1;
+}
+
+html body .nv-media-detail-page #detail-highlights {
+  order: 2;
+}
+
+html body .nv-media-detail-page #detail-cast {
+  order: 3;
+}
+
+html body .nv-media-detail-page #detail-related > .nv-recommendation-section {
+  order: 4;
+}
+
+html body .nv-media-detail-page #detail-overview > .nv-detail-tab-secondary-section {
+  order: 5;
+}
+
+html body .nv-media-detail-page #detail-tech {
+  order: 6;
+}
+
+html body .nv-media-detail-page #detail-subtitles {
+  display: none !important;
+}
+
+html body .nv-media-detail-page #detail-related > .nv-detail-tab-secondary-section-first {
+  display: none !important;
+}
+
+/* Editorial surfaces: fewer boxes than before, but each major section has a
+ * clear visual boundary and comfortable spacing. */
+html body .nv-media-detail-page #detail-overview > .nv-media-info,
+html body .nv-media-detail-page #detail-highlights,
+html body .nv-media-detail-page #detail-cast,
+html body .nv-media-detail-page #detail-related > .nv-recommendation-section,
+html body .nv-media-detail-page #detail-overview > .nv-detail-tab-secondary-section,
+html body .nv-media-detail-page #detail-tech {
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: clamp(16px, 1.5vw, 22px) !important;
+  border: 1px solid var(--nv-border-subtle) !important;
+  border-radius: 18px !important;
+  background: color-mix(in srgb, var(--nv-bg-surface) 94%, transparent) !important;
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--nv-text-primary) 4%, transparent) !important;
+}
+
+html body .nv-media-detail-page #detail-overview > .nv-media-info {
+  border-top: 1px solid var(--nv-border-subtle) !important;
+  border-bottom: 1px solid var(--nv-border-subtle) !important;
+  divide: none;
+}
+
+html body .nv-media-detail-page #detail-overview .nv-media-info-badges,
+html body .nv-media-detail-page #detail-overview .nv-media-info-classifications,
+html body .nv-media-detail-page #detail-overview .nv-media-info-metadata {
+  display: none !important;
+}
+
+html body .nv-media-detail-page #detail-overview .nv-media-info-intro {
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+html body .nv-media-detail-page #detail-overview .nv-media-info-intro > .mb-4 {
+  margin-bottom: 10px !important;
+}
+
+html body .nv-media-detail-page #detail-overview .nv-media-info-intro h2 {
+  font-size: 16px !important;
+  font-weight: 680 !important;
+}
+
+html body .nv-media-detail-page #detail-overview .nv-media-info-intro p,
+html body .nv-media-detail-page #detail-overview .nv-media-info-intro blockquote {
+  max-width: 86rem !important;
+  font-size: 13px !important;
+  line-height: 1.78 !important;
+}
+
+/* Highlights become a product shelf rather than a dashboard grid. */
+html body .nv-media-detail-page #detail-highlights > .space-y-5 > .grid,
+html body .nv-media-detail-page #detail-highlights > .grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+html body .nv-media-detail-page #detail-highlights button.group {
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+html body .nv-media-detail-page #detail-highlights button.group > div:last-child {
+  padding: 10px 11px !important;
+}
+
+/* Cast remains a horizontal, human-first avatar shelf. */
+html body .nv-media-detail-page #detail-cast [role="list"] {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  gap: 16px !important;
+  scrollbar-width: none;
+}
+
+html body .nv-media-detail-page #detail-cast [role="list"]::-webkit-scrollbar {
+  display: none;
+}
+
+html body .nv-media-detail-page #detail-cast [role="listitem"] {
+  width: 96px !important;
+  flex: 0 0 96px !important;
+}
+
+html body .nv-media-detail-page #detail-cast [role="listitem"] > div:first-child {
+  width: 86px !important;
+  height: 86px !important;
+  border-radius: 999px !important;
+}
+
+/* Similar recommendations use the shared full-item rail and never show a
+ * clipped poster at rest. */
+html body .nv-media-detail-page .nv-detail-recommendation-section .nv-media-rail-track {
+  --nv-rail-gap: 15px;
+  --nv-rail-visible-count: 6;
+}
+
+html body .nv-media-detail-page .nv-detail-recommendation-slot {
+  min-width: 0 !important;
+}
+
+html body .nv-media-detail-page .nv-detail-section-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--nv-action-muted-hover);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Comments: composer on the left, recent reactions on the right. */
+html body .nv-media-detail-page .nv-comment-section {
+  display: grid !important;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+html body .nv-media-detail-page .nv-comment-header {
+  grid-column: 1 / -1;
+}
+
+html body .nv-media-detail-page .nv-comment-composer {
+  grid-column: 1;
+  align-self: stretch;
+  margin: 0 !important;
+  padding: 14px !important;
+}
+
+html body .nv-media-detail-page .nv-comment-list {
+  grid-column: 2;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch;
+}
+
+html body .nv-media-detail-page .nv-comment-list > article {
+  height: 100%;
+  padding: 13px !important;
+}
+
+html body .nv-media-detail-page .nv-comment-section > .nv-empty-state,
+html body .nv-media-detail-page .nv-comment-section > [class*="skeleton"] {
+  grid-column: 2;
+  min-height: 150px;
+}
+
+html body .nv-media-detail-page .nv-comment-section > nav {
+  grid-column: 1 / -1;
+}
+
+/* Advanced information is deliberately last and visually quiet. */
+html body .nv-media-detail-page #detail-tech {
+  background: color-mix(in srgb, var(--nv-bg-surface) 78%, transparent) !important;
+}
+
+html body .nv-media-detail-page #detail-tech .nv-detail-tech-grid {
+  margin-top: 8px;
+}
+
+html body .nv-media-detail-page #detail-tech .nv-detail-tech-details {
+  margin-top: 14px !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tablet: top area stacks; summary becomes a three-card strip after content  */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 1199px) {
+  html body .nv-media-detail-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto auto auto !important;
+    max-width: 100% !important;
+    padding-inline: clamp(12px, 2.4vw, 24px) !important;
+  }
+
+  html body .nv-media-detail-page > .nv-detail-hero {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-main-column {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-rows: auto !important;
+    gap: 12px !important;
+    margin-top: 18px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar > * {
+    min-width: 0;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card {
+    height: 100%;
+  }
+
+  html body .nv-media-detail-page #detail-highlights > .space-y-5 > .grid,
+  html body .nv-media-detail-page #detail-highlights > .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-recommendation-section .nv-media-rail-track {
+    --nv-rail-visible-count: 5;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile: same information hierarchy, phone-native composition                */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  html body .nv-page-container--detail {
+    padding-inline: 0 !important;
+  }
+
+  html body .nv-media-detail-page {
+    width: 100% !important;
+    padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(98px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)) !important;
+    background:
+      radial-gradient(circle at 50% -2%, color-mix(in srgb, var(--nv-action-primary) 11%, transparent), transparent 24rem),
+      transparent !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-local-toolbar {
+    min-height: 58px !important;
+    gap: 8px !important;
+    padding: 8px 0 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-back-button {
+    width: 38px;
+    min-width: 38px !important;
+    padding: 0 !important;
+    overflow: hidden;
+    font-size: 0 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-breadcrumb {
+    flex: 1;
+    max-width: none !important;
+    min-width: 0;
+    padding-inline: 12px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-admin-actions {
+    display: none !important;
+  }
+
+  html body .nv-media-detail-page > .nv-detail-hero {
+    min-height: 0 !important;
+    border-radius: 20px !important;
+    box-shadow: 0 14px 36px color-mix(in srgb, var(--nv-text-primary) 6%, transparent) !important;
+  }
+
+  html body .nv-media-detail-page > .nv-detail-hero > .absolute.inset-0 {
+    opacity: .30 !important;
+    filter: blur(24px) saturate(112%) !important;
+  }
+
+  [data-theme="dark"] body .nv-media-detail-page > .nv-detail-hero > .absolute.inset-0 {
+    opacity: .56 !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero-inner {
+    min-height: 0 !important;
+    grid-template-columns: clamp(112px, 31vw, 142px) minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: clamp(14px, 4vw, 20px) !important;
+    padding: 16px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero-inner > div:first-child {
+    display: block !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-poster {
+    max-width: 142px !important;
+    border-radius: 15px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero-inner h1 {
+    max-width: none !important;
+    font-size: clamp(21px, 6.2vw, 29px) !important;
+    line-height: 1.12 !important;
+    text-wrap: pretty;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-subtitle {
+    margin-top: 5px !important;
+    font-size: 12px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-meta {
+    margin-top: 10px !important;
+    gap: 6px 9px !important;
+    font-size: 11px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-badges {
+    margin-top: 8px !important;
+    gap: 6px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-overview {
+    margin-top: 10px !important;
+    -webkit-line-clamp: 2 !important;
+    font-size: 11px !important;
+    line-height: 1.55 !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-actions .nv-button,
+  html body .nv-media-detail-page .nv-media-hero-actions a[data-size="lg"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    height: 40px !important;
+    justify-content: center !important;
+    padding-inline: 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-main-column {
+    gap: 12px !important;
+    padding-top: 14px !important;
+  }
+
+  html body .nv-media-detail-page #detail-overview > .nv-media-info,
+  html body .nv-media-detail-page #detail-highlights,
+  html body .nv-media-detail-page #detail-cast,
+  html body .nv-media-detail-page #detail-related > .nv-recommendation-section,
+  html body .nv-media-detail-page #detail-overview > .nv-detail-tab-secondary-section,
+  html body .nv-media-detail-page #detail-tech {
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  html body .nv-media-detail-page #detail-highlights > .space-y-5 > .grid,
+  html body .nv-media-detail-page #detail-highlights > .grid {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(156px, 44vw) !important;
+    gap: 10px !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  html body .nv-media-detail-page #detail-highlights > .space-y-5 > .grid::-webkit-scrollbar,
+  html body .nv-media-detail-page #detail-highlights > .grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  html body .nv-media-detail-page #detail-highlights button.group {
+    scroll-snap-align: start;
+  }
+
+  html body .nv-media-detail-page #detail-cast [role="listitem"] {
+    width: 82px !important;
+    flex-basis: 82px !important;
+  }
+
+  html body .nv-media-detail-page #detail-cast [role="listitem"] > div:first-child {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-recommendation-section .nv-media-rail-track {
+    --nv-rail-visible-count: 3;
+    --nv-rail-gap: 10px;
+  }
+
+  html body .nv-media-detail-page .nv-comment-section {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  html body .nv-media-detail-page .nv-comment-header,
+  html body .nv-media-detail-page .nv-comment-composer,
+  html body .nv-media-detail-page .nv-comment-list,
+  html body .nv-media-detail-page .nv-comment-section > .nv-empty-state,
+  html body .nv-media-detail-page .nv-comment-section > nav {
+    grid-column: 1 !important;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(220px, 72vw) !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  html body .nv-media-detail-page .nv-comment-list > article {
+    scroll-snap-align: start;
+  }
+
+  html body .nv-media-detail-page #detail-tech .nv-detail-tech-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Summary cards become the final media-info strip, mirroring the mobile mock. */
+  html body .nv-media-detail-page .nv-detail-sidebar {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+    padding-bottom: 2px;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card {
+    min-width: 0;
+    padding: 11px !important;
+    border-radius: 14px !important;
+    box-shadow: none !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card-header {
+    margin-bottom: 8px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-side-card-header h2 {
+    font-size: 12px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-version-item {
+    padding: 7px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-version-item code,
+  html body .nv-media-detail-page .nv-detail-side-footnote,
+  html body .nv-media-detail-page .nv-detail-source-meta,
+  html body .nv-media-detail-page .nv-detail-subtitle-more {
+    display: none !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-version-item strong,
+  html body .nv-media-detail-page .nv-detail-subtitle-item strong,
+  html body .nv-media-detail-page .nv-detail-source-item strong,
+  html body .nv-media-detail-page .nv-detail-side-empty {
+    font-size: 10px !important;
+  }
+}
+
+@media (max-width: 470px) {
+  html body .nv-media-detail-page .nv-detail-hero-inner {
+    grid-template-columns: 108px minmax(0, 1fr) !important;
+    gap: 13px !important;
+    padding: 13px !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-hero-inner h1 {
+    font-size: 20px !important;
+  }
+
+  html body .nv-media-detail-page .nv-media-hero-overview {
+    display: none !important;
+  }
+
+  html body .nv-media-detail-page .nv-detail-recommendation-section .nv-media-rail-track {
+    --nv-rail-visible-count: 2;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar {
+    grid-template-columns: repeat(3, minmax(190px, 1fr)) !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  html body .nv-media-detail-page .nv-detail-sidebar > * {
+    scroll-snap-align: start;
+  }
+}

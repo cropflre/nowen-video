@@ -23,6 +23,19 @@ func TestHighlightViewExposesDistributedPreviewForClientResult(t *testing.T) {
 	}
 }
 
+func TestHighlightViewExposesPortableThumbnailURLWhenGenerationMissed(t *testing.T) {
+	highlight := model.VideoHighlight{
+		ID:      "highlight-without-thumbnail",
+		MediaID: "media-1",
+		Source:  "ffmpeg",
+	}
+
+	view := highlightView("media-1", highlight)
+	if view.ThumbnailURL == "" {
+		t.Fatal("分析阶段缩略图生成失败时仍应暴露 lazy thumbnail URL，由 portable fallback 首次请求时补生成")
+	}
+}
+
 func TestHighlightViewKeepsLazyPreviewForServerResult(t *testing.T) {
 	highlight := model.VideoHighlight{
 		ID:        "highlight-server",

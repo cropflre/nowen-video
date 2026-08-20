@@ -1,23 +1,48 @@
-/* Nowen Video · Media detail tabs
- * Real tab switching for the detail workspace. This file is loaded after the
- * legacy detail styling so the active indicator follows aria-selected instead
- * of being permanently pinned to the first item.
+/* Nowen UI 2.0 · Detail tabs
+ * Shared tab contract owned by the unified navigation system.
  */
 
-.nv-detail-section-tabs a:first-child {
+.nv-detail-section-tabs button {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 45px;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--nv-text-tertiary);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: color .16s ease, background-color .16s ease;
+}
+
+.nv-detail-section-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.nv-detail-section-tabs :is(a, button):first-child {
   color: var(--nv-text-tertiary);
 }
 
-.nv-detail-section-tabs a:first-child::after {
+.nv-detail-section-tabs :is(a, button):first-child::after {
   content: none;
 }
 
-.nv-detail-section-tabs a[aria-selected="true"] {
+.nv-detail-section-tabs :is(a, button):hover:not(:disabled) {
+  color: var(--nv-text-primary);
+  background: var(--nv-fill-hover);
+}
+
+.nv-detail-section-tabs :is(a, button)[aria-selected="true"] {
   color: var(--nv-text-primary);
   background: color-mix(in srgb, var(--nv-action-muted) 7%, transparent);
 }
 
-.nv-detail-section-tabs a[aria-selected="true"]::after {
+.nv-detail-section-tabs :is(a, button)[aria-selected="true"]::after {
   content: "";
   position: absolute;
   left: 10px;
@@ -28,7 +53,7 @@
   background: var(--nv-action-primary);
 }
 
-.nv-detail-section-tabs a:focus-visible {
+.nv-detail-section-tabs :is(a, button):focus-visible {
   outline: none;
   border-radius: 8px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-primary) 45%, transparent);
@@ -43,7 +68,6 @@
   animation: nv-detail-tab-in 160ms var(--nv-ease-standard);
 }
 
-/* Empty tabs should communicate state instead of collapsing into a blank canvas. */
 .nv-detail-tab-empty-state {
   min-height: clamp(220px, 25vw, 310px) !important;
   margin-block: 6px;

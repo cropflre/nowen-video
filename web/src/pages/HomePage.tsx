@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { mediaApi, recommendApi, streamApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
@@ -9,14 +9,27 @@ import { formatProgress } from '@/utils/format'
 import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
-import { Button, EmptyState, Section, Tag } from '@/components/design-system'
-import { Play, Clock, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react'
+import { EmptyState, Section, Tag } from '@/components/design-system'
+import { MediaArtwork, MediaRail } from '@/ui'
+import { ChevronRight, Clock, Play, Sparkles } from 'lucide-react'
+
+const HOME_GENRES = ['动画', '喜剧', '冒险', '家庭'] as const
+
+type HomeGenre = typeof HOME_GENRES[number]
 
 interface HomeData {
   recentItems: MixedItem[]
   continueList: WatchHistory[]
   recommendations: RecommendedMedia[]
+  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
   allFailed: boolean
+}
+
+interface HomeShelf {
+  key: string
+  title: string
+  to: string
+  items: MixedItem[]
 }
 
 function getContinueArtwork(item: WatchHistory): string | null {
@@ -27,8 +40,28 @@ function getContinueArtwork(item: WatchHistory): string | null {
   if (media.media_type === 'episode' && media.series_id && media.series?.poster_path) {
     return streamApi.getSeriesPosterUrl(media.series_id)
   }
+  if (media.backdrop_path) return streamApi.getBackdropUrl(item.media_id)
   if (media.poster_path) return streamApi.getPosterUrl(item.media_id)
   return null
+}
+
+function RailAction({ to, label = '查看全部' }: { to: string; label?: string }) {
+  return (
+    <Link to={to} className="nv-home-rail-action">
+      {label}
+      <ChevronRight size={14} aria-hidden="true" />
+    </Link>
+  )
+}
+
+function itemMatchesGenre(item: MixedItem, genre: string) {
+  const media = item.type === 'movie' ? item.media : item.series
+  if (!media?.genres) return false
+  return media.genres
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .some((value) => value === genre || value.includes(genre))
 }
 
 export default function HomePage() {
@@ -38,17 +71,39 @@ export default function HomePage() {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data, loading, refetch, invalidate } = usePageCache<HomeData>(
-    'home:overview',
+    'home:overview:v2',
     async () => {
-      const [recentResult, continueResult, recommendResult] = await Promise.allSettled([
-        mediaApi.recentMixed(20),
+      const requests = [
+        mediaApi.recentMixed(24),
         mediaApi.continueWatching(10),
         recommendApi.getRecommendations(12),
-      ])
+        ...HOME_GENRES.map((genre) => mediaApi.listMixed({
+          page: 1,
+          size: 16,
+          genre,
+          sort: 'added',
+          order: 'desc',
+        })),
+      ] as const
+
+      const results = await Promise.allSettled(requests)
+      const [recentResult, continueResult, recommendResult, ...genreResults] = results
+      const recentItems = recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : []
+      const genreItems: Partial<Record<HomeGenre, MixedItem[]>> = {}
+
+      HOME_GENRES.forEach((genre, index) => {
+        const result = genreResults[index]
+        const serverItems = result?.status === 'fulfilled' ? (result.value.data.data || []) : []
+        genreItems[genre] = serverItems.length > 0
+          ? serverItems
+          : recentItems.filter((item) => itemMatchesGenre(item, genre))
+      })
+
       return {
-        recentItems: recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : [],
+        recentItems,
         continueList: continueResult.status === 'fulfilled' ? (continueResult.value.data.data || []) : [],
         recommendations: recommendResult.status === 'fulfilled' ? (recommendResult.value.data.data || []) : [],
+        genreItems,
         allFailed: [recentResult, continueResult, recommendResult].every((result) => result.status === 'rejected'),
       }
     },
@@ -58,6 +113,10 @@ export default function HomePage() {
   const recentItems = data?.recentItems ?? []
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
+  const genreItems = data?.genreItems ?? {}
+  const watchStateByMediaId = useMemo(() => Object.fromEntries(
+    continueList.map((item) => [item.media_id, { position: item.position, duration: item.duration }]),
+  ), [continueList])
 
   const toastRef = useRef(toast)
   const tRef = useRef(t)
@@ -96,7 +155,12 @@ export default function HomePage() {
   return (
     <div className="nv-home-page nv-section-stack">
       {(recommendations.length > 0 || recentItems.length > 0) && (
-        <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} />
+        <HeroCarousel
+          items={recommendations}
+          fallbackItems={recentItems}
+          maxItems={5}
+          watchStateByMediaId={watchStateByMediaId}
+        />
       )}
 
       {continueList.length > 0 && (
@@ -111,16 +175,17 @@ export default function HomePage() {
         <MediaRail
           title={(
             <span className="inline-flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+              <Sparkles size={16} aria-hidden="true" />
               {t('home.recommended')}
             </span>
           )}
           ariaLabel={t('home.recommended')}
           itemCount={recommendations.length}
+          action={<RailAction to="/browse" />}
         >
           {recommendations.map((item) => (
-            <div key={item.media.id} className="nv-home-poster-slot flex-shrink-0">
-              <MediaCard media={item.media} eyebrow={item.reason} />
+            <div key={item.media.id} className="nv-home-recommendation-slot flex-shrink-0">
+              <MediaCard media={item.media} variant="landscape" showBadges={false} />
             </div>
           ))}
         </MediaRail>
@@ -133,25 +198,13 @@ export default function HomePage() {
         </div>
       )}
 
-      {recentItems.length > 0 && (
-        <MediaRail title={t('home.recentlyAdded')} ariaLabel={t('home.recentlyAdded')} itemCount={recentItems.length}>
-          {recentItems.map((item) => {
-            const media = item.type === 'movie' ? item.media : item.series
-            if (!media) return null
-            return (
-              <div key={`${item.type}-${media.id}`} className="nv-home-poster-slot flex-shrink-0">
-                {item.type === 'series' && item.series
-                  ? <MediaCard series={item.series} />
-                  : item.media
-                    ? <MediaCard media={item.media} />
-                    : null}
-              </div>
-            )
-          })}
-        </MediaRail>
+      {!loading && recentItems.length > 0 && (
+        <HomeShelfGrid
+          items={recentItems}
+          genreItems={genreItems}
+          recentTitle={t('home.recentlyAdded')}
+        />
       )}
-
-      {!loading && recentItems.length > 0 && <GenreRows items={recentItems} />}
 
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <EmptyState
@@ -161,89 +214,6 @@ export default function HomePage() {
         />
       )}
     </div>
-  )
-}
-
-function MediaRail({
-  title,
-  ariaLabel,
-  itemCount,
-  children,
-}: {
-  title: ReactNode
-  ariaLabel: string
-  itemCount: number
-  children: ReactNode
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [canScrollLeft, setCanScrollLeft] = useState(false)
-  const [canScrollRight, setCanScrollRight] = useState(false)
-
-  const updateScrollState = useCallback(() => {
-    const element = scrollRef.current
-    if (!element) return
-    setCanScrollLeft(element.scrollLeft > 10)
-    setCanScrollRight(element.scrollLeft < element.scrollWidth - element.clientWidth - 10)
-  }, [])
-
-  useEffect(() => {
-    const element = scrollRef.current
-    if (!element) return
-    element.addEventListener('scroll', updateScrollState, { passive: true })
-    window.addEventListener('resize', updateScrollState)
-    const frame = window.requestAnimationFrame(updateScrollState)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      element.removeEventListener('scroll', updateScrollState)
-      window.removeEventListener('resize', updateScrollState)
-    }
-  }, [itemCount, updateScrollState])
-
-  const scroll = (direction: 'left' | 'right') => {
-    const element = scrollRef.current
-    if (!element) return
-    const amount = element.clientWidth * .78
-    element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
-  }
-
-  return (
-    <Section title={title}>
-      <div className="nv-home-rail relative">
-        {canScrollLeft && (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={() => scroll('left')}
-            className="nv-home-rail-arrow nv-home-rail-arrow-left absolute left-1 top-[42%] z-30 -translate-y-1/2 opacity-0"
-            aria-label={`${ariaLabel} 向左滚动`}
-          >
-            <ChevronLeft size={17} aria-hidden="true" />
-          </Button>
-        )}
-
-        <div
-          ref={scrollRef}
-          className="nv-home-media-rail scrollbar-hide flex gap-[var(--nv-grid-gap-x)] overflow-x-auto scroll-smooth pb-3 pt-1"
-          aria-label={ariaLabel}
-        >
-          {children}
-        </div>
-
-        {canScrollRight && (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={() => scroll('right')}
-            className="nv-home-rail-arrow nv-home-rail-arrow-right absolute right-1 top-[42%] z-30 -translate-y-1/2 opacity-0"
-            aria-label={`${ariaLabel} 向右滚动`}
-          >
-            <ChevronRight size={17} aria-hidden="true" />
-          </Button>
-        )}
-      </div>
-    </Section>
   )
 }
 
@@ -260,12 +230,13 @@ function ContinueWatchingRow({
     <MediaRail
       title={(
         <span className="inline-flex items-center gap-2">
-          <Clock size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+          <Clock size={16} aria-hidden="true" />
           {title}
         </span>
       )}
       ariaLabel={title}
       itemCount={items.length}
+      action={<RailAction to="/history" />}
     >
       {items.map((item) => {
         const percent = formatProgress(item.position, item.duration)
@@ -277,37 +248,31 @@ function ContinueWatchingRow({
         return (
           <article key={item.id} className="nv-continue-card group flex-shrink-0">
             <Link to={`/play/${item.media_id}`} className="block" aria-label={`继续播放 ${displayTitle}`}>
-              <div className="nv-continue-artwork relative aspect-video overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] transition-[transform,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-                {artworkUrl ? (
-                  <img
-                    src={artworkUrl}
-                    alt=""
-                    className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]"
-                    loading="lazy"
-                    onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = 'none' }}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-                    <Play size={26} aria-hidden="true" />
-                  </div>
-                )}
-                <div className="nv-continue-overlay absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <MediaArtwork
+                src={artworkUrl}
+                alt=""
+                ratio="landscape"
+                className="nv-continue-artwork"
+                imageClassName="transition-[filter,transform] duration-200 group-hover:scale-[1.015] group-hover:brightness-[.82]"
+                fallback={<Play size={24} aria-hidden="true" />}
+              >
+                <div className="nv-continue-overlay absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
                     <Play size={14} fill="currentColor" aria-hidden="true" />
                   </span>
                 </div>
-                <Tag tone="quality" className="absolute right-2 top-2">{percent}%</Tag>
+                <Tag tone="quality" className="absolute right-2 top-2 z-20">{percent}%</Tag>
                 <div className="nv-media-card-progress">
                   <span style={{ width: `${percent}%` }} />
                 </div>
-              </div>
+              </MediaArtwork>
 
-              <div className="py-2">
+              <div className="nv-continue-copy">
                 <h3 className="nv-media-card-title">{displayTitle}</h3>
                 {item.media.media_type === 'episode' && item.media.episode_title && (
-                  <p className="mt-0.5 truncate text-xs text-[var(--nv-text-secondary)]">{item.media.episode_title}</p>
+                  <p className="nv-continue-episode-title">{item.media.episode_title}</p>
                 )}
-                <p className="mt-1 text-[var(--nv-type-caption)] text-[var(--nv-text-tertiary)]">{watchedLabel(percent)}</p>
+                <p className="nv-continue-progress-label">{watchedLabel(percent)}</p>
               </div>
             </Link>
           </article>
@@ -321,7 +286,7 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   return (
     <Section title={title}>
       <div className="flex gap-[var(--nv-grid-gap-x)] overflow-hidden pb-3 pt-1">
-        {Array.from({ length: landscape ? 5 : 8 }).map((_, index) => (
+        {Array.from({ length: landscape ? 6 : 9 }).map((_, index) => (
           <div key={index} className={landscape ? 'nv-continue-card flex-shrink-0' : 'nv-home-poster-slot flex-shrink-0'}>
             <div className={`skeleton w-full rounded-[var(--nv-radius-card)] ${landscape ? 'aspect-video' : 'aspect-[2/3]'}`} />
             <div className="mt-2 space-y-2">
@@ -335,44 +300,53 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   )
 }
 
-function GenreRows({ items }: { items: MixedItem[] }) {
-  const genreMap = new Map<string, MixedItem[]>()
-  items.forEach((item) => {
-    const media = item.type === 'movie' ? item.media : item.series
-    if (!media) return
-    const genres = (media.genres || '').split(',').filter(Boolean)
-    genres.forEach((genre: string) => {
-      const value = genre.trim()
-      if (!value) return
-      if (!genreMap.has(value)) genreMap.set(value, [])
-      genreMap.get(value)!.push(item)
-    })
-  })
-
-  const genreEntries = Array.from(genreMap.entries())
-    .filter(([, list]) => list.length >= 3)
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 4)
-
-  if (genreEntries.length === 0) return null
+function HomeShelfGrid({
+  items,
+  genreItems,
+  recentTitle,
+}: {
+  items: MixedItem[]
+  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
+  recentTitle: string
+}) {
+  const shelves: HomeShelf[] = [
+    {
+      key: 'recent',
+      title: recentTitle,
+      to: '/browse?sort=created_desc',
+      items,
+    },
+    ...HOME_GENRES.map((genre) => ({
+      key: `genre-${genre}`,
+      title: genre,
+      to: `/browse?genres=${encodeURIComponent(genre)}`,
+      items: genreItems[genre] || [],
+    })).filter((shelf) => shelf.items.length > 0),
+  ]
 
   return (
-    <div className="nv-home-genre-stack nv-section-stack">
-      {genreEntries.map(([genre, list]) => (
-        <GenreRow key={genre} genre={genre} items={list.slice(0, 20)} />
+    <div className="nv-home-shelf-grid" aria-label="首页分类内容">
+      {shelves.map((shelf) => (
+        <HomePosterShelf key={shelf.key} shelf={shelf} />
       ))}
     </div>
   )
 }
 
-function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
+function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
   return (
-    <MediaRail title={genre} ariaLabel={genre} itemCount={items.length}>
-      {items.map((item) => {
+    <MediaRail
+      title={shelf.title}
+      ariaLabel={shelf.title}
+      itemCount={shelf.items.length}
+      action={<RailAction to={shelf.to} label="更多" />}
+      className="nv-home-compact-shelf"
+    >
+      {shelf.items.slice(0, 16).map((item) => {
         const media = item.type === 'movie' ? item.media : item.series
         if (!media) return null
         return (
-          <div key={`${item.type}-${media.id}`} className="nv-home-poster-slot nv-home-genre-slot flex-shrink-0">
+          <div key={`${shelf.key}-${item.type}-${media.id}`} className="nv-home-shelf-poster-slot flex-shrink-0">
             {item.type === 'series' && item.series
               ? <MediaCard series={item.series} />
               : item.media

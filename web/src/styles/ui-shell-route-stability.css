@@ -1,0 +1,187 @@
+/* Nowen UI 2.0 · route-stable desktop application shell
+ *
+ * The sidebar/topbar are persistent application chrome. Page-specific reference
+ * layers (especially the homepage screenshot calibration) must never resize that
+ * chrome, otherwise navigating Home <-> Browse makes the whole app visibly jump.
+ *
+ * Keep this file late in ui.css. It intentionally owns only persistent shell
+ * geometry; page content remains free to use its own responsive composition.
+ */
+
+@media (min-width: 48rem) {
+  /* One desktop shell width/gutter/toolbar contract on every route. */
+  html body .nv-app-shell {
+    --nv-rail-width: 172px !important;
+    --nv-page-gutter: 24px !important;
+    --nv-topbar-height: 72px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] {
+    --nv-rail-width: 172px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] > .nv-rail {
+    width: 172px !important;
+    min-width: 172px !important;
+    max-width: 172px !important;
+    flex-basis: 172px !important;
+    padding: 16px 12px 14px !important;
+  }
+
+  /* Homepage reference CSS used viewport-relative sizes for the rail children.
+     Restore the shared reference-shell metrics so selected rows, logo and text
+     remain pixel-identical while routes change. */
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-brand {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-brand-copy strong {
+    font-size: 11px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-brand-copy span {
+    font-size: 7px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-scroll {
+    gap: 15px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-section-title {
+    margin-bottom: 6px !important;
+    padding-inline: 10px !important;
+    font-size: 9px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-section-links {
+    gap: 3px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+    gap: 9px !important;
+    padding: 0 10px !important;
+    border-radius: 8px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-icon {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 18px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-icon > svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-label {
+    font-size: 11px !important;
+    line-height: 1 !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-meta {
+    font-size: 8px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-profile {
+    height: 40px !important;
+    min-height: 40px !important;
+    gap: 8px !important;
+    padding-inline: 6px !important;
+    border-radius: 8px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-avatar {
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 26px !important;
+    flex: 0 0 26px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-profile-copy strong {
+    font-size: 10px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-profile-copy span {
+    font-size: 8px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-footer-actions > *,
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-footer-actions .nv-rail-action {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+  }
+
+  /* The top bar is persistent chrome too. Do not let the homepage switch it to
+     viewport-relative height/search typography while the Browse page is fixed. */
+  html body .nv-app-shell .nv-topbar {
+    min-height: 72px !important;
+    height: 72px !important;
+    grid-template-columns: minmax(150px, 1fr) minmax(300px, 360px) minmax(150px, 1fr) !important;
+    gap: 20px !important;
+    padding-inline: 24px !important;
+  }
+
+  html body .nv-app-shell .nv-topbar-title {
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+  }
+
+  html body .nv-app-shell .nv-topbar-subtitle {
+    font-size: 10px !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search .nv-search {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search .nv-search input {
+    font-size: 11px !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions {
+    gap: 8px !important;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  html body .nv-app-shell .nv-topbar {
+    grid-template-columns: minmax(110px, .7fr) minmax(260px, 340px) auto !important;
+  }
+}
+
+/* Preserve the explicit collapsed desktop rail contract. The route-stability
+ * rules above only normalize the expanded state. */
+@media (min-width: 68.75rem) {
+  html body .nv-app-shell[data-sidebar-collapsed="true"] {
+    --nv-rail-width: 72px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="true"] > .nv-rail {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    flex-basis: 72px !important;
+    padding: 16px 10px 14px !important;
+  }
+}

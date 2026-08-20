@@ -9,6 +9,7 @@ import type { Series, MixedItem, Library } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import Pagination from '@/components/Pagination'
 import { Button, EmptyState, SearchField, Select, Surface, Tag as SemanticTag } from '@/components/design-system'
+import { MediaArtwork, MediaGrid } from '@/ui'
 import {
   X,
   Grid3X3,
@@ -419,7 +420,7 @@ export default function BrowsePage() {
   const hasSearchOrFilters = mediaType !== '' || !!searchQuery || activeFilterCount > 0
 
   return (
-    <div className="nv-section-stack">
+    <div className={clsx('nv-section-stack')}>
       <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="媒体类型">
         {[
           { key: '' as const, label: '全部', icon: Layers, value: stats.total },
@@ -485,7 +486,7 @@ export default function BrowsePage() {
       </div>
 
       {showFilters && (
-        <Surface className="nv-browse-filter-panel space-y-2.5 p-3 sm:p-4">
+        <Surface variant="glass" className="nv-browse-filter-panel space-y-2.5 p-3 sm:p-4">
           {serverPaginated ? (
             <div className="flex items-start gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -559,19 +560,19 @@ export default function BrowsePage() {
           action={hasSearchOrFilters ? <Button type="button" variant="secondary" size="sm" onClick={clearAllFilters}>清除所有筛选</Button> : undefined}
         />
       ) : viewMode === 'grid' ? (
-        <div className="nv-media-grid">
+        <MediaGrid>
           {pagedItems.map((item) => item.type === 'series' && item.series
             ? <MediaCard key={`s-${item.series.id}`} series={item.series} />
             : item.media ? <MediaCard key={`m-${item.media.id}`} media={item.media} /> : null)}
-        </div>
+        </MediaGrid>
       ) : viewMode === 'list' ? (
         <div className="nv-browse-list divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {pagedItems.map((item) => <BrowseListItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}
         </div>
       ) : (
-        <div className="nv-browse-poster-grid grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+        <MediaGrid variant="poster">
           {pagedItems.map((item) => <PosterWallItem key={item.type === 'series' ? `s-${item.series?.id}` : `m-${item.media?.id}`} item={item} />)}
-        </div>
+        </MediaGrid>
       )}
 
       <Pagination page={page} totalPages={totalPages} total={serverPaginated ? totalCount : filteredItems.length} pageSize={size} pageSizeOptions={[20, 30, 50, 100]} onPageSizeChange={setPageSize} onPageChange={setPage} />
@@ -581,23 +582,30 @@ export default function BrowsePage() {
 
 function BrowseSkeleton({ viewMode }: { viewMode: ViewMode }) {
   const list = viewMode === 'list'
+  if (list) {
+    return (
+      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 py-2.5">
+            <div className="skeleton h-16 w-11 shrink-0 rounded-[var(--nv-radius-control)]" />
+            <div className="flex-1 space-y-2"><div className="skeleton h-3 w-3/4" /><div className="skeleton h-2.5 w-1/2" /></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className={clsx(viewMode === 'poster' ? 'grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8' : list ? 'divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]' : 'nv-media-grid')}>
-      {Array.from({ length: list ? 8 : 12 }).map((_, index) => list ? (
-        <div key={index} className="flex items-center gap-3 py-2.5">
-          <div className="skeleton h-16 w-11 shrink-0 rounded-[var(--nv-radius-control)]" />
-          <div className="flex-1 space-y-2"><div className="skeleton h-3 w-3/4" /><div className="skeleton h-2.5 w-1/2" /></div>
-        </div>
-      ) : (
+    <MediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'}>
+      {Array.from({ length: 12 }).map((_, index) => (
         <div key={index}><div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" /><div className="skeleton mt-2 h-3 w-3/4" /><div className="skeleton mt-1.5 h-2.5 w-1/2" /></div>
       ))}
-    </div>
+    </MediaGrid>
   )
 }
 
 function BrowseListItem({ item }: { item: MixedItem }) {
   const [tagsExpanded, setTagsExpanded] = useState(false)
-  const [posterFailed, setPosterFailed] = useState(false)
   const posterVersion = usePosterVersion()
   const isSeries = item.type === 'series'
   const media = isSeries ? undefined : item.media
@@ -616,19 +624,15 @@ function BrowseListItem({ item }: { item: MixedItem }) {
   const hasPoster = hasItemPoster(item)
   const durationLabel = duration ? `${Math.floor(duration / 3600) ? `${Math.floor(duration / 3600)}h ` : ''}${Math.floor((duration % 3600) / 60)}m` : ''
 
-  useEffect(() => { setPosterFailed(false) }, [posterUrl])
-
   return (
     <Link to={linkTo} className="nv-browse-list-item group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
-      <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded-[9px] bg-[var(--nv-bg-poster)]">
-        {hasPoster && !posterFailed ? (
-          <img src={posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setPosterFailed(true)} />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 grid place-items-center text-[var(--nv-text-tertiary)]">
-            {isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
-          </div>
-        )}
-      </div>
+      <MediaArtwork
+        src={hasPoster ? posterUrl : null}
+        alt=""
+        ratio="poster"
+        className="h-16 w-11 shrink-0 !rounded-[9px]"
+        fallback={isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2"><h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{title}</h3>{isSeries && <SemanticTag>剧集</SemanticTag>}</div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">
@@ -648,7 +652,6 @@ function BrowseListItem({ item }: { item: MixedItem }) {
 }
 
 function PosterWallItem({ item }: { item: MixedItem }) {
-  const [posterFailed, setPosterFailed] = useState(false)
   const posterVersion = usePosterVersion()
   const isSeries = item.type === 'series'
   const media = isSeries ? undefined : item.media
@@ -659,25 +662,27 @@ function PosterWallItem({ item }: { item: MixedItem }) {
   const posterUrl = getItemPosterUrl(item, posterVersion)
   const hasPoster = hasItemPoster(item)
 
-  useEffect(() => { setPosterFailed(false) }, [posterUrl])
-
   return (
     <Link to={linkTo} className="nv-browse-poster-card group block min-w-0" aria-label={title}>
-      <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-        {hasPoster && !posterFailed ? (
-          <img src={posterUrl} alt="" className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.82]" loading="lazy" onError={() => setPosterFailed(true)} />
-        ) : (
-          <div className="nv-media-card-placeholder absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
+      <MediaArtwork
+        src={hasPoster ? posterUrl : null}
+        alt=""
+        ratio="poster"
+        className="shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]"
+        imageClassName="transition-[filter] duration-200 group-hover:brightness-[.82]"
+        fallback={(
+          <div className="flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
             {isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
             <span className="text-[9px]">暂无海报</span>
           </div>
         )}
-        <div className="absolute inset-0 grid place-items-center bg-[var(--nv-bg-overlay)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      >
+        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--nv-bg-overlay)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span>
         </div>
-        {rating > 0 && <SemanticTag tone="quality" className="absolute left-1.5 top-1.5"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</SemanticTag>}
-        {isSeries && <SemanticTag tone="quality" className="absolute bottom-1.5 right-1.5">剧集</SemanticTag>}
-      </div>
+        {rating > 0 && <SemanticTag tone="quality" className="absolute left-1.5 top-1.5 z-20"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</SemanticTag>}
+        {isSeries && <SemanticTag tone="quality" className="absolute bottom-1.5 right-1.5 z-20">剧集</SemanticTag>}
+      </MediaArtwork>
       <p className="mt-1.5 truncate text-[11px] font-medium text-[var(--nv-text-primary)]">{title}</p>
     </Link>
   )

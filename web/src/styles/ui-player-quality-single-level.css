@@ -1,0 +1,36 @@
+/* Nowen Video · single-rendition HLS quality menu
+ *
+ * hls.js exposes a direct media playlist as one synthetic level. Such a level
+ * frequently has no RESOLUTION metadata, so its height is reported as 0 and the
+ * legacy player renders an impossible "0p" choice beside "自动".
+ *
+ * A stream with only one rendition has no meaningful manual quality choice:
+ * auto and that sole level are the same source. Keep the quality popover for
+ * realtime bitrate/bandwidth diagnostics, but collapse the duplicate rendition
+ * row and present Auto as the effective selection. Multi-rendition ABR menus are
+ * untouched because they have three or more direct quality buttons.
+ */
+
+html body div:has(> button[title='画质'])
+  > [role='menu']:has(> button:nth-of-type(2):last-of-type)
+  > button:nth-of-type(2) {
+  display: none !important;
+}
+
+html body div:has(> button[title='画质'])
+  > [role='menu']:has(> button:nth-of-type(2):last-of-type)
+  > button:first-of-type {
+  border-color: var(--nv-player-accent-border) !important;
+  background: var(--nv-player-accent-soft) !important;
+  color: var(--nv-player-accent) !important;
+}
+
+/* The single-source menu is diagnostic rather than a selector. Keep its Auto
+ * row steady on hover so it reads as the current playback policy. */
+html body div:has(> button[title='画质'])
+  > [role='menu']:has(> button:nth-of-type(2):last-of-type)
+  > button:first-of-type:hover {
+  border-color: var(--nv-player-accent-border) !important;
+  background: var(--nv-player-accent-soft-hover) !important;
+  color: var(--nv-player-accent) !important;
+}

@@ -1,0 +1,113 @@
+/* Nowen Video · Homepage portrait shelf density
+ *
+ * The lower homepage shelves are full-width content cards. They should not
+ * distribute six portrait titles across the whole desktop width because that
+ * gives each poster an oversized allocation and leaves large dead gaps between
+ * titles. Desktop uses a compact fixed/clamped poster rhythm instead; mobile
+ * keeps the existing three-complete-card product contract.
+ *
+ * Product hierarchy:
+ * - Recently added is a high-frequency scanning shelf, so it is intentionally
+ *   denser and exposes more titles before horizontal navigation is needed.
+ * - Genre shelves keep slightly larger covers for recognition/browsing.
+ */
+
+@media (min-width: 48rem) {
+  /* Portrait catalogue shelves use media-sized columns, not page-sized columns. */
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-gap: clamp(11px, .72vw, 14px) !important;
+    grid-auto-columns: clamp(104px, 6.2vw, 118px) !important;
+    column-gap: var(--nv-rail-gap) !important;
+    justify-content: start !important;
+    scroll-padding-inline: 2px !important;
+  }
+
+  /* Recently added is always the first shelf in HomeShelfGrid. Treat it as a
+     compact discovery strip: more titles per viewport, less dead whitespace. */
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-gap: clamp(10px, .62vw, 12px) !important;
+    grid-auto-columns: clamp(92px, 5.35vw, 104px) !important;
+  }
+
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) > .nv-home-shelf-poster-slot {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-poster {
+    width: 100% !important;
+    max-width: none !important;
+    aspect-ratio: 2 / 3 !important;
+  }
+
+  /* Keep information proportional to the denser artwork rather than leaving a
+     wide text hit-area beneath a compact poster. */
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card > div:last-child {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-top: 6px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-title {
+    width: 100% !important;
+    overflow: hidden !important;
+    font-size: 10.5px !important;
+    line-height: 1.3 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-meta {
+    width: 100% !important;
+    margin-top: 3px !important;
+    gap: 4px !important;
+    overflow: hidden !important;
+    font-size: 8.5px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+  }
+
+  /* Recent cards are narrower, so keep their copy slightly tighter as well. */
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-media-card-title {
+    font-size: 10px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-media-card-meta {
+    font-size: 8px !important;
+  }
+
+  /* Full-width shelves already have card padding; extra rail-side gutters made
+     the first/last cover look detached from the section title. */
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail {
+    padding-inline: 0 !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-arrow--left {
+    left: 4px !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-arrow--right {
+    right: 4px !important;
+  }
+}
+
+/* Tablet/small desktop keeps usable touch/read targets. Recently added remains
+ * denser than genre shelves, but never drops below a recognisable 88px poster. */
+@media (min-width: 48rem) and (max-width: 74.999rem) {
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    grid-auto-columns: clamp(98px, 10vw, 108px) !important;
+    --nv-rail-gap: 11px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-grid > .nv-home-compact-shelf:first-child .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    grid-auto-columns: clamp(88px, 9vw, 98px) !important;
+    --nv-rail-gap: 10px !important;
+  }
+}

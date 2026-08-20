@@ -1,0 +1,40 @@
+/* Nowen UI 2.0 · Shared action treatment */
+
+.nv-button[data-variant="primary"],
+.nv-button--primary {
+  border-color: color-mix(in srgb, var(--nv-action-primary) 72%, transparent) !important;
+  background: var(--nv-action-primary) !important;
+  color: var(--nv-text-on-brand) !important;
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--nv-action-primary) 22%, transparent) !important;
+}
+
+.nv-button[data-variant="primary"]:hover:not(:disabled),
+.nv-button--primary:hover:not(:disabled) {
+  background: var(--nv-action-primary-hover) !important;
+  box-shadow: 0 7px 19px color-mix(in srgb, var(--nv-action-primary) 28%, transparent) !important;
+}
+
+.nv-button[data-variant="secondary"],
+.nv-button--secondary {
+  border-color: var(--nv-border-default) !important;
+  background: color-mix(in srgb, var(--nv-bg-elevated) 62%, transparent) !important;
+  color: var(--nv-text-primary) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.nv-button[data-variant="secondary"]:hover:not(:disabled),
+.nv-button--secondary:hover:not(:disabled),
+.nv-button[data-variant="ghost"]:hover:not(:disabled),
+.nv-button--ghost:hover:not(:disabled) {
+  border-color: var(--nv-border-hover) !important;
+  background: var(--nv-fill-hover) !important;
+  color: var(--nv-text-primary) !important;
+}
+
+[data-theme="light"] .nv-button[data-variant="secondary"],
+[data-theme="light"] .nv-button--secondary {
+  background: rgba(255,255,255,.76) !important;
+  box-shadow: 0 2px 8px rgba(42,45,68,.035) !important;
+}

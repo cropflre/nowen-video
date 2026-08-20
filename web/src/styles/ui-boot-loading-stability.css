@@ -1,0 +1,81 @@
+/* Nowen UI 2.0 · boot/loading viewport stability
+ *
+ * The application bootstrap already renders inside FluentProvider before the
+ * lazy route tree is ready. That root wrapper must remain a borderless viewport
+ * surface; persistent AppShell/sidebar styles belong only to Layout's inner
+ * shell. Keep this file last so hard-refresh/Suspense frames cannot expose a
+ * browser/provider outline around the whole window.
+ */
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+body > #root > .fui-FluentProvider {
+  width: 100%;
+  min-width: 100%;
+  min-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: var(--nv-bg-canvas) !important;
+}
+
+/* App.tsx owns this outer bootstrap shell. Layout later mounts the real
+ * .nv-app-shell inside .nv-app-body, so only the direct FluentProvider child is
+ * neutralised here. This avoids weakening real sidebar/shell borders. */
+body > #root > .fui-FluentProvider > .nv-app-shell {
+  width: 100%;
+  min-width: 0;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: var(--nv-bg-canvas) !important;
+}
+
+body > #root > .fui-FluentProvider > .nv-app-shell > .nv-app-body {
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: var(--nv-bg-canvas) !important;
+}
+
+/* Suspense/PageLoader is intentionally a quiet, borderless loading state. */
+body > #root > .fui-FluentProvider > .nv-app-shell > .nv-app-body > [role="status"][aria-label="页面加载中"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+@supports not (height: 100dvh) {
+  body > #root > .fui-FluentProvider,
+  body > #root > .fui-FluentProvider > .nv-app-shell {
+    min-height: 100vh !important;
+  }
+
+  body > #root > .fui-FluentProvider > .nv-app-shell {
+    height: 100vh;
+  }
+}

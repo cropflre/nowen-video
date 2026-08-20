@@ -42,6 +42,8 @@ const THEME_CHROME_COLOR = {
   light: '#f4f6fb',
 } as const
 
+let transitionCleanupFrame: number | null = null
+
 function resolveMode(themeId: string): 'dark' | 'light' {
   return LIGHT_THEME_IDS.has(themeId) ? 'light' : 'dark'
 }
@@ -59,6 +61,29 @@ function syncBrowserThemeChrome(mode: 'dark' | 'light') {
   const appleStatusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
   appleStatusBar?.setAttribute('content', mode === 'light' ? 'default' : 'black-translucent')
   document.documentElement.style.colorScheme = mode
+}
+
+/**
+ * Theme token swaps can touch hundreds of painted elements on media-heavy pages.
+ * Temporarily suppress per-component transitions so the browser performs one
+ * visual theme repaint instead of animating every background/border/shadow.
+ * The class is removed after the new theme has painted twice.
+ */
+function runWithoutThemeTransitions(update: () => void) {
+  const root = document.documentElement
+  root.classList.add('no-theme-transition')
+  update()
+
+  if (transitionCleanupFrame !== null) {
+    cancelAnimationFrame(transitionCleanupFrame)
+  }
+
+  transitionCleanupFrame = requestAnimationFrame(() => {
+    transitionCleanupFrame = requestAnimationFrame(() => {
+      root.classList.remove('no-theme-transition')
+      transitionCleanupFrame = null
+    })
+  })
 }
 
 interface ThemeStore {
@@ -142,8 +167,17 @@ export const useThemeStore = create<ThemeStore>()(
 export function applyTheme(themeId: string) {
   if (typeof document === 'undefined') return
   const mode = resolveMode(themeId)
-  document.documentElement.setAttribute('data-theme', mode)
-  syncBrowserThemeChrome(mode)
+  const root = document.documentElement
+
+  if (root.getAttribute('data-theme') === mode) {
+    syncBrowserThemeChrome(mode)
+    return
+  }
+
+  runWithoutThemeTransitions(() => {
+    root.setAttribute('data-theme', mode)
+    syncBrowserThemeChrome(mode)
+  })
 }
 
 /** Initialize the formal mode before React renders to avoid a theme flash. */
@@ -156,5 +190,10 @@ export function initTheme() {
     useThemeStore.setState({ currentThemeId: canonicalId, theme: mode })
   }
 
-  applyTheme(canonicalId)
+  // Startup runs before the app is painted, so there is no need to allocate
+  // two animation frames just to suppress transitions that cannot be visible.
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', mode)
+    syncBrowserThemeChrome(mode)
+  }
 }

@@ -1,0 +1,135 @@
+/* Nowen UI 2.0 · Stable application UI entrypoint
+ *
+ * New shared UI styles must be reachable from this file. Historical page CSS is
+ * intentionally kept outside this entrypoint in legacy-ui-*.css so it can be
+ * retired without touching the application bootstrap again.
+ */
+
+@import './ui-primitives.css';
+@import './ui-system.css';
+@import './ui-actions.css';
+@import './ui-controls.css';
+@import './ui-navigation.css';
+@import './ui-personal-workspace.css';
+@import './ui-browser-workspace.css';
+@import './ui-light-theme.css';
+@import './ui-detail-tabs.css';
+@import './ui-home-hero.css';
+@import './ui-reference-shell.css';
+@import './ui-reference-calibration.css';
+
+/* Homepage desktop reference, then responsive/mobile extension. */
+@import './ui-home-reference-exact.css';
+@import './ui-home-responsive.css';
+@import './ui-home-hero-prominence.css';
+@import './ui-home-adaptive-density.css';
+
+/* Mobile hero is cinematic in both themes; suppress bright poster-fallback edges. */
+@import './ui-home-mobile-hero-surface.css';
+
+/* Final media-rail contract: never leave a clipped/half card at rest. */
+@import './ui-media-rail-fit.css';
+
+/* Phone homepage owns its final rail density and body-overflow contract. Keep it
+ * after the shared integer-card rail rules so desktop counts cannot squeeze
+ * mobile artwork or leak horizontal overflow to the page. */
+@import './ui-home-mobile-final.css';
+
+/* Approved desktop/mobile movie-detail reference. */
+@import './ui-media-detail-reference.css';
+
+/* Final media-detail product flow: top decision area + full-width feed. */
+@import './ui-media-detail-flow.css';
+
+/* Reviews are secondary content: compact collapsed summary by default. */
+@import './ui-media-detail-comments.css';
+
+/* Playback/subtitle/metadata are supporting diagnostics, not a permanent sidebar. */
+@import './ui-media-detail-summary-strip.css';
+
+/* Final hero readability contract: crisp poster/copy + single-line ellipsis title. */
+@import './ui-media-detail-hero-clarity.css';
+
+/* Detail content-fit safety net. */
+@import './ui-media-detail-content-fit.css';
+
+/* Final detail preview contract: one complete row + explicit in-place expansion. */
+@import './ui-media-detail-inline-previews.css';
+
+/* Mobile hero actions stay compact instead of expanding into a 2-column block. */
+@import './ui-media-detail-mobile-actions.css';
+
+/* Final wording cleanup: keep only the real media intro heading. */
+@import './ui-media-detail-copy-fix.css';
+
+/* Subtitle manager escapes page stacking contexts and owns a stable dialog viewport. */
+@import './ui-subtitle-manager-modal.css';
+
+/* Must stay late: reference shell fixes the desktop rail width with !important,
+ * so the explicit collapsed state needs a later cascade position. */
+@import './ui-sidebar-collapse-final.css';
+
+/* Final mobile identity contract: real poster stays visible beside title/meta.
+ * Highlight/backdrop artwork is ambience only and must not replace the cover. */
+@import './ui-media-detail-mobile-poster.css';
+
+/* Mobile hero height follows its real content instead of leaving a large backdrop
+ * tail below the action row. Keep this after the poster contract. */
+@import './ui-media-detail-mobile-hero-density.css';
+
+/* Homepage sections inherit the approved detail-page card language. Keep this
+ * late so it can intentionally override older screenshot-calibration layers. */
+@import './ui-home-detail-fusion.css';
+
+/* Cinematic mobile hero actions are theme-independent and must stay visible on
+ * hover/focus after every shared light/dark button layer has been applied. */
+@import './ui-home-mobile-hero-actions.css';
+
+/* Hero headings are plain editorial text over the artwork scrim, never cards. */
+@import './ui-home-hero-title-clean.css';
+
+/* Bottom navigation is structurally independent from the desktop rail and must
+ * be the final navigation contract so hover can never alter its geometry. */
+@import './ui-mobile-bottom-nav.css';
+
+/* Persistent desktop chrome must not be resized by page-specific screenshot
+ * calibration. This keeps Home/Browse/Detail route transitions visually still. */
+@import './ui-shell-route-stability.css';
+
+/* Final sidebar state contract: a real 172px labelled rail or 72px icon rail,
+ * with one stable edge toggle and no homepage-specific collapse regression. */
+@import './ui-sidebar-collapse-polish.css';
+
+/* Bootstrap/Suspense is not application chrome. Keep the refresh/loading viewport
+ * borderless after every provider, legacy and shell compatibility layer. */
+@import './ui-boot-loading-stability.css';
+
+/* Desktop portrait shelves use compact media-sized columns rather than spreading
+ * six oversized allocations across an entire homepage section. */
+@import './ui-home-poster-density-final.css';
+
+/* Series actions are transient popovers: clip the artwork, never the menu. */
+@import './ui-series-hero-menu-overlay.css';
+
+/* Series detail is episode-first, not the movie page's flattened continuous feed.
+ * Keep this last so movie-detail layout rules cannot unhide tabs or detach cards. */
+@import './ui-series-detail-layout-final.css';
+
+/* Persistent topbar compacts in place on reduced desktop widths; action controls
+ * remain inside their slot instead of escaping toward a viewport corner. */
+@import './ui-topbar-responsive-stability.css';
+
+/* A direct/single-rendition HLS playlist has no manual quality choice. Keep the
+ * diagnostics popover but never expose hls.js's synthetic zero-height "0p" row. */
+@import './ui-player-quality-single-level.css';
+
+/* Phone home uses immersive hero chrome: no detached empty toolbar above artwork. */
+@import './ui-home-mobile-immersive-chrome.css';
+
+/* Desktop navigation is icon + label. Historical text-only reference CSS must not
+ * hide the real lucide icons rendered by Sidebar.tsx. */
+@import './ui-sidebar-icon-visibility-final.css';
+
+/* Hero and shelf pagination are the same interaction. Keep one glass edge-control
+ * language so the homepage does not mix circular and pill navigation buttons. */
+@import './ui-home-carousel-arrow-unified.css';

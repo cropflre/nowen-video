@@ -1,0 +1,10 @@
+/* Nowen Video · Player style entrypoint
+ * Keep player-specific geometry and overlays isolated from the application UI.
+ * The player can migrate independently without leaking rules into page chrome.
+ */
+
+@import './player-cinema.css';
+@import './player-overlay-panels.css';
+@import './player-design-system.css';
+@import './player-subtitles.css';
+@import './player-navi.css';
