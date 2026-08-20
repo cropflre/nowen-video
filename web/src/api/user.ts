@@ -7,6 +7,21 @@ import type {
   LoginLog,
 } from '@/types'
 import { toAbsolutePlaybackPosition } from '@/playback/sessionRuntime'
+import { invalidatePageCachePrefix } from '@/hooks/usePageCache'
+
+function publishFavoriteChanged(mediaId: string, favorited: boolean) {
+  // 收藏列表使用 usePageCache。收藏状态变化后必须立即让所有分页缓存失效，
+  // 否则从详情页返回/进入“我的收藏”时会继续命中 15 秒旧缓存，看起来像必须刷新页面才生效。
+  invalidatePageCachePrefix('favorites:')
+
+  // 同步通知当前窗口内可能仍挂载的收藏相关视图。现在主要用于 FavoritesPage，
+  // 后续其它组件接入收藏数量/快捷收藏时也可以直接复用，不需要各自猜测缓存键。
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('nowen:favorites-updated', {
+      detail: { mediaId, favorited },
+    }))
+  }
+}
 
 // ==================== 用户 ====================
 export const userApi = {
@@ -28,11 +43,17 @@ export const userApi = {
   favorites: (page = 1, size = 20) =>
     api.get<PaginatedResponse<Favorite>>('/users/me/favorites', { params: { page, size } }),
 
-  addFavorite: (mediaId: string) =>
-    api.post(`/users/me/favorites/${mediaId}`),
+  addFavorite: async (mediaId: string) => {
+    const response = await api.post(`/users/me/favorites/${mediaId}`)
+    publishFavoriteChanged(mediaId, true)
+    return response
+  },
 
-  removeFavorite: (mediaId: string) =>
-    api.delete(`/users/me/favorites/${mediaId}`),
+  removeFavorite: async (mediaId: string) => {
+    const response = await api.delete(`/users/me/favorites/${mediaId}`)
+    publishFavoriteChanged(mediaId, false)
+    return response
+  },
 
   checkFavorite: (mediaId: string) =>
     api.get<{ data: boolean }>(`/users/me/favorites/${mediaId}/check`),
