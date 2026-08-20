@@ -1,0 +1,143 @@
+/* Nowen UI 2.0 · Stable mobile bottom navigation
+ *
+ * Bottom navigation is a standalone mobile control. It must not inherit desktop
+ * navigation-rail hover/active geometry: those historical rules include pseudo
+ * markers and state styling that can make the fixed bar visibly jump when a
+ * mouse hovers a narrow responsive viewport.
+ */
+
+@media (max-width: 47.999rem) {
+  .nv-mobile-nav {
+    isolation: isolate;
+  }
+
+  .nv-mobile-nav-item {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    gap: 2px;
+    box-sizing: border-box;
+    padding: 3px 2px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--nv-text-tertiary);
+    text-decoration: none;
+    cursor: pointer;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    transition:
+      background-color var(--nv-motion-fast) var(--nv-ease-standard),
+      border-color var(--nv-motion-fast) var(--nv-ease-standard),
+      color var(--nv-motion-fast) var(--nv-ease-standard),
+      box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
+  }
+
+  /* The desktop rail uses active-edge pseudo elements. Mobile navigation owns
+     its selection surface instead, so pseudo content can never affect geometry. */
+  .nv-mobile-nav-item::before,
+  .nv-mobile-nav-item::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  .nv-mobile-nav-icon {
+    width: 30px;
+    height: 26px;
+    flex: 0 0 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: currentColor;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    transition:
+      background-color var(--nv-motion-fast) var(--nv-ease-standard),
+      color var(--nv-motion-fast) var(--nv-ease-standard),
+      box-shadow var(--nv-motion-fast) var(--nv-ease-standard);
+  }
+
+  .nv-mobile-nav-icon > svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    transform: none !important;
+  }
+
+  .nv-mobile-nav-label {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    color: currentColor;
+    font-size: 9px;
+    font-weight: 540;
+    line-height: 1.1;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nv-mobile-nav-item.active,
+  .nv-mobile-nav-item[aria-current="page"] {
+    border-color: color-mix(in srgb, var(--nv-action-primary) 12%, transparent);
+    background: color-mix(in srgb, var(--nv-action-primary) 8%, transparent);
+    color: var(--nv-action-primary);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nv-action-primary) 3%, transparent);
+  }
+
+  .nv-mobile-nav-item.active .nv-mobile-nav-icon,
+  .nv-mobile-nav-item[aria-current="page"] .nv-mobile-nav-icon {
+    background: color-mix(in srgb, var(--nv-action-primary) 7%, transparent);
+    color: var(--nv-action-primary);
+  }
+
+  /* Pointer hover is visual feedback only. Never translate/scale a fixed bottom
+     navigation item: even a one-pixel motion is perceived as whole-bar jitter. */
+  @media (hover: hover) and (pointer: fine) {
+    .nv-mobile-nav-item:hover {
+      border-color: transparent;
+      background: var(--nv-fill-hover);
+      color: var(--nv-text-primary);
+      transform: none !important;
+      translate: none !important;
+      scale: none !important;
+    }
+
+    .nv-mobile-nav-item.active:hover,
+    .nv-mobile-nav-item[aria-current="page"]:hover {
+      border-color: color-mix(in srgb, var(--nv-action-primary) 12%, transparent);
+      background: color-mix(in srgb, var(--nv-action-primary) 10%, transparent);
+      color: var(--nv-action-primary);
+    }
+
+    .nv-mobile-nav-item:hover .nv-mobile-nav-icon,
+    .nv-mobile-nav-item:hover .nv-mobile-nav-icon > svg {
+      transform: none !important;
+      translate: none !important;
+      scale: none !important;
+    }
+  }
+
+  .nv-mobile-nav-item:active,
+  .nv-mobile-nav-item:focus-visible {
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-mobile-nav-item,
+  .nv-mobile-nav-icon {
+    transition: none !important;
+  }
+}
