@@ -36,15 +36,15 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
             to={item.to}
             end={item.end}
             className={({ isActive }) => clsx(
-              'nv-rail-item nv-mobile-nav-item',
+              'nv-mobile-nav-item',
               (isActive || forceActive) && 'active',
             )}
             aria-label={item.label}
             title={item.label}
             aria-current={forceActive ? 'page' : undefined}
           >
-            <span className="nv-rail-icon nv-mobile-nav-icon">{item.icon}</span>
-            <span className="nv-rail-label nv-mobile-nav-label">{item.label}</span>
+            <span className="nv-mobile-nav-icon">{item.icon}</span>
+            <span className="nv-mobile-nav-label">{item.label}</span>
           </NavLink>
         )
       })}
