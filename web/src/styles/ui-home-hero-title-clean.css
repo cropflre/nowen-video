@@ -1,0 +1,38 @@
+/* Nowen Video · Homepage hero title surface cleanup
+ *
+ * The hero title is content, not a chip/card. It must sit directly on the hero
+ * scrim and never inherit a translucent surface, border or blur from historical
+ * presentation layers.
+ */
+
+html body .nv-home-page .nv-hero-carousel .nv-media-hero-title {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  isolation: auto !important;
+}
+
+html body .nv-home-page .nv-hero-carousel .nv-media-hero-title::before,
+html body .nv-home-page .nv-hero-carousel .nv-media-hero-title::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Preserve readability over artwork with typography only. A subtle text shadow
+ * avoids reintroducing the rectangular background the user reported. */
+[data-theme="dark"] body .nv-home-page .nv-hero-carousel .nv-media-hero-title {
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .34) !important;
+}
+
+[data-theme="light"] body .nv-home-page .nv-hero-carousel .nv-media-hero-title {
+  text-shadow: 0 1px 10px rgba(255, 255, 255, .42) !important;
+}
