@@ -31,6 +31,15 @@ function getContinueArtwork(item: WatchHistory): string | null {
   return null
 }
 
+function HomeSectionAction({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link to={to} className="nv-home-section-action">
+      <span>{children}</span>
+      <ChevronRight size={14} aria-hidden="true" />
+    </Link>
+  )
+}
+
 export default function HomePage() {
   const { on, off } = useWebSocket()
   const toast = useToast()
@@ -94,9 +103,11 @@ export default function HomePage() {
   }, [on, off, invalidate, silentRefresh])
 
   return (
-    <div className="nv-home-page nv-section-stack">
+    <div className="nv-home-page nv-home-detail-language nv-section-stack">
       {(recommendations.length > 0 || recentItems.length > 0) && (
-        <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} />
+        <div className="nv-home-hero-shell">
+          <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} />
+        </div>
       )}
 
       {continueList.length > 0 && (
@@ -111,12 +122,14 @@ export default function HomePage() {
         <MediaRail
           title={(
             <span className="inline-flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+              <Sparkles size={16} className="text-[var(--nv-action-muted)]" aria-hidden="true" />
               {t('home.recommended')}
             </span>
           )}
           ariaLabel={t('home.recommended')}
           itemCount={recommendations.length}
+          action={<HomeSectionAction to="/browse">查看全部</HomeSectionAction>}
+          className="nv-home-section-card--featured"
         >
           {recommendations.map((item) => (
             <div key={item.media.id} className="nv-home-poster-slot flex-shrink-0">
@@ -127,14 +140,19 @@ export default function HomePage() {
       )}
 
       {loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0 && (
-        <div className="nv-section-stack">
+        <div className="nv-section-stack nv-home-loading-stack">
           <HomeRailSkeleton title={t('home.continueWatching')} landscape />
           <HomeRailSkeleton title={t('home.recentlyAdded')} />
         </div>
       )}
 
       {recentItems.length > 0 && (
-        <MediaRail title={t('home.recentlyAdded')} ariaLabel={t('home.recentlyAdded')} itemCount={recentItems.length}>
+        <MediaRail
+          title={t('home.recentlyAdded')}
+          ariaLabel={t('home.recentlyAdded')}
+          itemCount={recentItems.length}
+          action={<HomeSectionAction to="/browse?sort=created_desc">更多</HomeSectionAction>}
+        >
           {recentItems.map((item) => {
             const media = item.type === 'movie' ? item.media : item.series
             if (!media) return null
@@ -155,6 +173,7 @@ export default function HomePage() {
 
       {!loading && recentItems.length === 0 && continueList.length === 0 && (
         <EmptyState
+          className="nv-home-empty-card"
           icon={<Play size={22} aria-hidden="true" />}
           title={t('home.noContent')}
           description={t('home.noContentHint')}
@@ -168,11 +187,15 @@ function MediaRail({
   title,
   ariaLabel,
   itemCount,
+  action,
+  className,
   children,
 }: {
   title: ReactNode
   ariaLabel: string
   itemCount: number
+  action?: ReactNode
+  className?: string
   children: ReactNode
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -207,7 +230,11 @@ function MediaRail({
   }
 
   return (
-    <Section title={title}>
+    <Section
+      title={title}
+      action={action}
+      className={`nv-home-section-card${className ? ` ${className}` : ''}`}
+    >
       <div className="nv-home-rail relative">
         {canScrollLeft && (
           <Button
@@ -260,12 +287,14 @@ function ContinueWatchingRow({
     <MediaRail
       title={(
         <span className="inline-flex items-center gap-2">
-          <Clock size={16} className="text-[var(--nv-text-tertiary)]" aria-hidden="true" />
+          <Clock size={16} className="text-[var(--nv-action-muted)]" aria-hidden="true" />
           {title}
         </span>
       )}
       ariaLabel={title}
       itemCount={items.length}
+      action={<HomeSectionAction to="/history">查看全部</HomeSectionAction>}
+      className="nv-home-section-card--continue"
     >
       {items.map((item) => {
         const percent = formatProgress(item.position, item.duration)
@@ -319,7 +348,7 @@ function ContinueWatchingRow({
 
 function HomeRailSkeleton({ title, landscape = false }: { title: string; landscape?: boolean }) {
   return (
-    <Section title={title}>
+    <Section title={title} className="nv-home-section-card nv-home-section-card--skeleton">
       <div className="flex gap-[var(--nv-grid-gap-x)] overflow-hidden pb-3 pt-1">
         {Array.from({ length: landscape ? 5 : 8 }).map((_, index) => (
           <div key={index} className={landscape ? 'nv-continue-card flex-shrink-0' : 'nv-home-poster-slot flex-shrink-0'}>
@@ -367,7 +396,13 @@ function GenreRows({ items }: { items: MixedItem[] }) {
 
 function GenreRow({ genre, items }: { genre: string; items: MixedItem[] }) {
   return (
-    <MediaRail title={genre} ariaLabel={genre} itemCount={items.length}>
+    <MediaRail
+      title={genre}
+      ariaLabel={genre}
+      itemCount={items.length}
+      action={<HomeSectionAction to={`/browse?genres=${encodeURIComponent(genre)}`}>更多</HomeSectionAction>}
+      className="nv-home-section-card--genre"
+    >
       {items.map((item) => {
         const media = item.type === 'movie' ? item.media : item.series
         if (!media) return null
