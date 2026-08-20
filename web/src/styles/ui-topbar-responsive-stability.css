@@ -29,6 +29,14 @@ html body .nv-app-shell .nv-topbar-subtitle {
   line-height: 1.2 !important;
 }
 
+/* Search has a dedicated primary destination in the sidebar. Ordinary application
+ * pages therefore use a quieter two-column chrome: route identity on the left,
+ * high-value history/favorites actions on the right. The middle search slot stays
+ * out of layout entirely so removing the field does not leave a dead gap. */
+html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only .nv-page-header-search-slot {
+  display: none !important;
+}
+
 @media (min-width: 48rem) {
   html body .nv-app-shell .nv-page-header-title-slot,
   html body .nv-app-shell .nv-page-header-search-slot,
@@ -36,6 +44,11 @@ html body .nv-app-shell .nv-topbar-subtitle {
     position: relative !important;
     inset: auto !important;
     min-width: 0 !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    column-gap: clamp(16px, 2vw, 28px) !important;
   }
 
   html body .nv-app-shell .nv-page-header-actions-slot {
@@ -67,8 +80,13 @@ html body .nv-app-shell .nv-topbar-subtitle {
  * secondary header actions to icon-only controls before the grid starts to
  * squeeze or overflow. Labels remain available through aria-label/title. */
 @media (min-width: 48rem) and (max-width: 79.999rem) {
-  html body .nv-app-shell .nv-topbar {
+  html body .nv-app-shell .nv-topbar:not(.nv-topbar--navigation-only) {
     grid-template-columns: minmax(108px, .7fr) minmax(230px, 340px) max-content !important;
+    gap: clamp(10px, 1.5vw, 16px) !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
     gap: clamp(10px, 1.5vw, 16px) !important;
   }
 
@@ -94,8 +112,13 @@ html body .nv-app-shell .nv-topbar-subtitle {
 }
 
 @media (min-width: 48rem) and (max-width: 63.999rem) {
-  html body .nv-app-shell .nv-topbar {
+  html body .nv-app-shell .nv-topbar:not(.nv-topbar--navigation-only) {
     grid-template-columns: minmax(92px, .55fr) minmax(210px, 1fr) max-content !important;
+    padding-inline: 18px !important;
+  }
+
+  html body .nv-app-shell .nv-topbar.nv-topbar--navigation-only {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
     padding-inline: 18px !important;
   }
 
