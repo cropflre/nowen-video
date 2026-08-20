@@ -1,0 +1,87 @@
+/* Nowen Video · Homepage portrait shelf density
+ *
+ * The lower homepage shelves are full-width content cards. They should not
+ * distribute six portrait titles across the whole desktop width because that
+ * gives each poster an oversized allocation and leaves large dead gaps between
+ * titles. Desktop uses a compact fixed/clamped poster rhythm instead; mobile
+ * keeps the existing three-complete-card product contract.
+ */
+
+@media (min-width: 48rem) {
+  /* Portrait catalogue shelves use media-sized columns, not page-sized columns. */
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    --nv-rail-gap: clamp(12px, .85vw, 16px) !important;
+    grid-auto-columns: clamp(112px, 7vw, 132px) !important;
+    column-gap: var(--nv-rail-gap) !important;
+    justify-content: start !important;
+    scroll-padding-inline: 2px !important;
+  }
+
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) > .nv-home-shelf-poster-slot {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-poster {
+    width: 100% !important;
+    max-width: none !important;
+    aspect-ratio: 2 / 3 !important;
+  }
+
+  /* Keep information proportional to the denser artwork rather than leaving a
+     wide text hit-area beneath a compact poster. */
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card > div:last-child {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-top: 7px !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-title {
+    width: 100% !important;
+    overflow: hidden !important;
+    font-size: 11px !important;
+    line-height: 1.32 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html body .nv-home-page .nv-home-shelf-poster-slot .nv-media-card-meta {
+    width: 100% !important;
+    margin-top: 3px !important;
+    gap: 5px !important;
+    overflow: hidden !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+  }
+
+  /* Full-width shelves already have card padding; extra rail-side gutters made
+     the first/last cover look detached from the section title. */
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail {
+    padding-inline: 0 !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-arrow--left {
+    left: 4px !important;
+  }
+
+  html body .nv-home-page .nv-home-compact-shelf .nv-media-rail-arrow--right {
+    right: 4px !important;
+  }
+}
+
+/* A slightly larger card is easier to recognise on compact desktop/tablet while
+ * still showing substantially more titles than the previous six-column layout. */
+@media (min-width: 48rem) and (max-width: 74.999rem) {
+  html body .nv-home-page .nv-media-rail-track:has(> .nv-home-shelf-poster-slot) {
+    grid-auto-columns: clamp(104px, 11vw, 118px) !important;
+    --nv-rail-gap: 12px !important;
+  }
+}
