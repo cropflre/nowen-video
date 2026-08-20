@@ -30,6 +30,11 @@
 /* Final media-rail contract: never leave a clipped/half card at rest. */
 @import './ui-media-rail-fit.css';
 
+/* Phone homepage owns its final rail density and body-overflow contract. Keep it
+ * after the shared integer-card rail rules so desktop counts cannot squeeze
+ * mobile artwork or leak horizontal overflow to the page. */
+@import './ui-home-mobile-final.css';
+
 /* Approved desktop/mobile movie-detail reference. */
 @import './ui-media-detail-reference.css';
 
