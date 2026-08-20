@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Clock3, Heart } from 'lucide-react'
+import { Clock3, Heart } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { PageContainer } from './design-system'
 import { AppShell, PageHeader } from '@/ui'
@@ -74,10 +74,6 @@ function ApplicationTopBar() {
       <Link to="/favorites" className="nv-page-header-action nv-page-header-action--label" aria-label="我的收藏" title="我的收藏">
         <Heart size={15} aria-hidden="true" />
         <span>我的收藏</span>
-      </Link>
-      <Link to="/my" className="nv-page-header-action nv-page-header-action--notification" aria-label="我的消息" title="我的消息">
-        <Bell size={17} aria-hidden="true" />
-        <span className="nv-page-header-notification-dot" aria-hidden="true" />
       </Link>
     </>
   )
