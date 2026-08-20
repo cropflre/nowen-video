@@ -206,7 +206,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             modifier = Modifier.padding(if (showBottomBar) padding else PaddingValues()),
         ) {
             composable(MainTab.Home.route) {
-                HomeScreen(
+                WebMobileHomeScreen(
                     onMediaClick = ::openDetail,
                     onPlay = ::openPlayer,
                     onRestart = { mediaId -> openPlayerAt(mediaId, 0.0) },
@@ -358,17 +358,17 @@ private fun WebMobileBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp),
-        shape = RoundedCornerShape(28.dp),
+            .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-        shadowElevation = 8.dp,
+        shadowElevation = 10.dp,
         tonalElevation = 0.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(64.dp)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
@@ -396,29 +396,44 @@ private fun WebMobileBottomBarItem(
     val contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
-            .padding(horizontal = 3.dp)
-            .height(60.dp)
-            .clip(RoundedCornerShape(15.dp))
+            .padding(horizontal = 2.dp)
+            .height(52.dp)
+            .clip(RoundedCornerShape(11.dp))
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.66f)
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                 else Color.Transparent,
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(
-                if (selected) item.selectedIcon else item.icon,
-                contentDescription = item.label,
-                tint = contentColor,
-                modifier = Modifier.size(23.dp),
-            )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 30.dp, height = 25.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)
+                        else Color.Transparent,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (selected) item.selectedIcon else item.icon,
+                    contentDescription = item.label,
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Text(
                 item.label,
                 color = contentColor,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = 10.sp,
+                lineHeight = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
             )
         }
     }
