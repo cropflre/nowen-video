@@ -66,6 +66,7 @@ func TestFileWatcherUnwatchKeepsOtherLibraryRoots(t *testing.T) {
 				rootB:   {},
 				nestedB: {},
 			},
+		},
 		debounce: make(map[string]*time.Timer),
 		stopCh:   make(chan struct{}),
 	}
