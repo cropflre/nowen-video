@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,7 +37,6 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -77,16 +77,7 @@ private const val WEB_MOBILE_HERO_INTERVAL_MS = 7_000L
 private const val WEB_MOBILE_HERO_SWIPE_THRESHOLD = 54f
 private val WEB_MOBILE_HOME_GENRES = listOf("动画", "喜剧", "冒险", "家庭")
 
-/**
- * Android 首页的 Web-mobile parity 实现。
- *
- * 视觉规则直接跟随当前 Web 移动端：
- * - 首页首屏不再重复显示标题工具栏，直接进入沉浸式 Hero；
- * - Hero 在浅色/深色主题下都保持电影化深色蒙层；
- * - 内容区使用独立白/深色 Surface 卡片；
- * - 横向推荐一屏完整展示 2 张，海报 Shelf 一屏完整展示 3 张；
- * - 所有横向浏览依赖手势，不增加桌面式左右箭头。
- */
+/** Android 首页与当前 Web 移动端共享同一视觉层级。 */
 @Composable
 fun WebMobileHomeScreen(
     modifier: Modifier = Modifier,
@@ -103,9 +94,7 @@ fun WebMobileHomeScreen(
     val baseUrl = session.activeServer?.baseUrl
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -453,7 +442,7 @@ private fun WebMobileHeroChip(label: String) {
 }
 
 @Composable
-private fun WebMobileSectionSurface(content: @Composable Column.() -> Unit) {
+private fun WebMobileSectionSurface(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
