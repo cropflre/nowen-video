@@ -110,3 +110,7 @@
 
 /* Series actions are transient popovers: clip the artwork, never the menu. */
 @import './ui-series-hero-menu-overlay.css';
+
+/* Series detail is episode-first, not the movie page's flattened continuous feed.
+ * Keep this last so movie-detail layout rules cannot unhide tabs or detach cards. */
+@import './ui-series-detail-layout-final.css';
