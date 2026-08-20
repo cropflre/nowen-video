@@ -193,7 +193,6 @@ export default function HeroCarousel({
   }, [rawItems, fallbackItems, maxItems, t])
 
   const [current, setCurrent] = useState(0)
-  const [direction, setDirection] = useState(1)
   const [isHovering, setIsHovering] = useState(false)
   const [isInViewport, setIsInViewport] = useState(true)
   const [isPageVisible, setIsPageVisible] = useState(() => document.visibilityState !== 'hidden')
@@ -204,20 +203,17 @@ export default function HeroCarousel({
 
   const goPrev = useCallback(() => {
     if (!items.length) return
-    setDirection(-1)
     setCurrent((value) => (value - 1 + items.length) % items.length)
   }, [items.length])
 
   const goNext = useCallback(() => {
     if (!items.length) return
-    setDirection(1)
     setCurrent((value) => (value + 1) % items.length)
   }, [items.length])
 
   const goTo = useCallback((index: number) => {
-    setDirection(index >= current ? 1 : -1)
     setCurrent(index)
-  }, [current])
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
