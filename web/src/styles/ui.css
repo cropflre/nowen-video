@@ -78,5 +78,9 @@
 @import './ui-media-detail-mobile-hero-density.css';
 
 /* Homepage sections inherit the approved detail-page card language. Keep this
- * last so it can intentionally override older screenshot-calibration layers. */
+ * late so it can intentionally override older screenshot-calibration layers. */
 @import './ui-home-detail-fusion.css';
+
+/* Bottom navigation is structurally independent from the desktop rail and must
+ * be the final navigation contract so hover can never alter its geometry. */
+@import './ui-mobile-bottom-nav.css';
