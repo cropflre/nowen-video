@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useServerProfileStore } from '@/stores/serverProfile'
@@ -42,6 +42,13 @@ interface RailLinkProps {
   meta?: ReactNode
 }
 
+interface MobileNavLinkProps {
+  to: string
+  icon: ReactNode
+  label: string
+  active: boolean
+}
+
 function RailLink({ to, icon, label, end = false, meta }: RailLinkProps) {
   return (
     <NavLink to={to} end={end} className="nv-rail-item" aria-label={label} title={label} data-label={label}>
@@ -49,6 +56,21 @@ function RailLink({ to, icon, label, end = false, meta }: RailLinkProps) {
       <span className="nv-rail-label">{label}</span>
       {meta !== undefined && <span className="nv-rail-meta">{meta}</span>}
     </NavLink>
+  )
+}
+
+function MobileNavLink({ to, icon, label, active }: MobileNavLinkProps) {
+  return (
+    <Link
+      to={to}
+      className="nv-mobile-nav-item"
+      data-active={active ? 'true' : 'false'}
+      aria-current={active ? 'page' : undefined}
+      aria-label={label}
+    >
+      <span className="nv-mobile-nav-icon" aria-hidden="true">{icon}</span>
+      <span className="nv-mobile-nav-label">{label}</span>
+    </Link>
   )
 }
 
@@ -69,12 +91,30 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
   const preprocessAvailable = manifest?.capabilities.preprocess?.available === true
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const [libraries, setLibraries] = useState<Library[]>([])
   const { on, off } = useWebSocket()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDarkTheme = theme === 'dark'
   const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
   const collapseActionLabel = collapsed ? '展开侧边栏' : '收起侧边栏'
+  const pathname = location.pathname
+  const browseActive = pathname === '/browse'
+    || pathname.startsWith('/library/')
+    || pathname.startsWith('/media/')
+    || pathname.startsWith('/series/')
+    || pathname.startsWith('/person/')
+    || pathname === '/collections'
+    || pathname.startsWith('/collections/')
+  const myActive = pathname === '/my'
+    || pathname.startsWith('/favorites')
+    || pathname.startsWith('/history')
+    || pathname.startsWith('/playlists')
+    || pathname.startsWith('/profile')
+    || pathname.startsWith('/stats')
+    || pathname.startsWith('/admin')
+    || pathname.startsWith('/files')
+    || pathname.startsWith('/preprocess')
 
   const fetchLibraries = useCallback(() => {
     libraryApi.list().then((res) => setLibraries(res.data.data)).catch(() => {})
@@ -212,18 +252,31 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
         </div>
       </aside>
 
-      <nav
-        className="nv-mobile-nav"
-        aria-label="移动端主导航"
-        style={{
-          left: 'max(8px, env(safe-area-inset-left, 0px))',
-          right: 'max(8px, env(safe-area-inset-right, 0px))',
-        }}
-      >
-        <RailLink to="/" end icon={<Home size={18} aria-hidden="true" />} label={t('nav.home')} />
-        <RailLink to="/browse" icon={<Film size={18} aria-hidden="true" />} label="影视库" />
-        <RailLink to="/search" icon={<Search size={18} aria-hidden="true" />} label={t('nav.search')} />
-        <RailLink to="/my" icon={<UserRound size={18} aria-hidden="true" />} label="我的" />
+      <nav className="nv-mobile-nav" aria-label="移动端主导航">
+        <MobileNavLink
+          to="/"
+          icon={<Home size={20} />}
+          label={t('nav.home')}
+          active={pathname === '/'}
+        />
+        <MobileNavLink
+          to="/browse"
+          icon={<Film size={20} />}
+          label="影视库"
+          active={browseActive}
+        />
+        <MobileNavLink
+          to="/search"
+          icon={<Search size={20} />}
+          label={t('nav.search')}
+          active={pathname === '/search'}
+        />
+        <MobileNavLink
+          to="/my"
+          icon={<UserRound size={20} />}
+          label="我的"
+          active={myActive}
+        />
       </nav>
     </>
   )
