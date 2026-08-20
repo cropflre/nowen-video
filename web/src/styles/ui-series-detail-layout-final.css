@@ -196,6 +196,61 @@
   }
 }
 
+/* Wide desktop: the episode workspace and the summary rail are sibling decision
+   surfaces. Give the active episode panel the same outer surface treatment as
+   the sidebar so their top edges, radii and visual weight line up exactly. */
+@media (min-width: 72rem) {
+  html body .nv-series-detail-page #series-episodes:not([hidden]) {
+    padding: 18px !important;
+    border: 1px solid var(--nv-border-subtle) !important;
+    border-radius: 18px !important;
+    background: color-mix(in srgb, var(--nv-bg-surface) 94%, transparent) !important;
+    box-shadow: 0 8px 26px color-mix(in srgb, var(--nv-text-primary) 4%, transparent) !important;
+  }
+
+  html body .nv-series-detail-page #series-episodes .nv-series-tab-heading {
+    min-height: 58px !important;
+    margin: 0 0 16px !important;
+    padding: 0 2px 14px !important;
+    align-items: flex-start !important;
+    border-bottom: 1px solid var(--nv-border-subtle);
+  }
+
+  html body .nv-series-detail-page #series-episodes .nv-series-tab-heading > div {
+    min-width: 0;
+  }
+
+  html body .nv-series-detail-page #series-episodes .nv-series-tab-heading h2 {
+    margin-top: 3px !important;
+  }
+
+  html body .nv-series-detail-page #series-episodes .nv-series-tab-heading p {
+    margin-top: 4px !important;
+  }
+
+  /* Avoid a card-inside-card effect. The episode toolbar is a control strip
+     inside the main workspace surface, not another competing container. */
+  html body .nv-series-detail-page #series-episodes .nv-series-episode-toolbar {
+    padding: 0 0 14px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--nv-border-subtle) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html body .nv-series-detail-page #series-episodes .nv-series-episode-browser {
+    gap: 16px !important;
+  }
+
+  /* The right rail uses the same surface geometry, so users can scan both
+     columns from one clean horizontal starting line. */
+  html body .nv-series-detail-page .nv-series-detail-sidebar > .nv-series-sidebar-card:first-child {
+    border-radius: 18px !important;
+    box-shadow: 0 8px 26px color-mix(in srgb, var(--nv-text-primary) 4%, transparent) !important;
+  }
+}
+
 /* Compact desktop/tablet: episode content comes first; summary cards become a
    compact strip below it instead of squeezing the episode browser. */
 @media (min-width: 48rem) and (max-width: 71.999rem) {
