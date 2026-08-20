@@ -1,0 +1,86 @@
+/* Nowen Video · Responsive topbar stability
+ *
+ * The persistent application header must compact in place on smaller desktop
+ * widths. Actions must never escape the header grid or get pushed to a viewport
+ * corner by legacy screenshot-calibration rules.
+ */
+
+@media (min-width: 48rem) {
+  html body .nv-app-shell .nv-page-header-title-slot,
+  html body .nv-app-shell .nv-page-header-search-slot,
+  html body .nv-app-shell .nv-page-header-actions-slot {
+    position: relative !important;
+    inset: auto !important;
+    min-width: 0 !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions-slot {
+    width: max-content !important;
+    max-width: 100% !important;
+    justify-self: end !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions {
+    position: relative !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    width: max-content !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action,
+  html body .nv-app-shell .nv-page-header-action--notification {
+    position: relative !important;
+    inset: auto !important;
+    flex: 0 0 auto !important;
+  }
+}
+
+/* Ordinary laptop / reduced desktop widths: retain all capabilities, but switch
+ * secondary header actions to icon-only controls before the grid starts to
+ * squeeze or overflow. Labels remain available through aria-label/title. */
+@media (min-width: 48rem) and (max-width: 79.999rem) {
+  html body .nv-app-shell .nv-topbar {
+    grid-template-columns: minmax(108px, .7fr) minmax(230px, 340px) max-content !important;
+    gap: clamp(10px, 1.5vw, 16px) !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action--label {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-action--label > span {
+    display: none !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search-shortcut {
+    display: none !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-search .nv-search {
+    padding-right: 12px !important;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  html body .nv-app-shell .nv-topbar {
+    grid-template-columns: minmax(92px, .55fr) minmax(210px, 1fr) max-content !important;
+    padding-inline: 18px !important;
+  }
+
+  html body .nv-app-shell .nv-page-header-actions {
+    gap: 4px !important;
+  }
+
+  html body .nv-app-shell .nv-topbar-subtitle {
+    display: none !important;
+  }
+}
