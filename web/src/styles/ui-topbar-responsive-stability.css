@@ -5,6 +5,30 @@
  * corner by legacy screenshot-calibration rules.
  */
 
+/* Route titles belong to persistent application chrome. Home/My/Browse/Search
+ * must never inherit page-specific typography, otherwise route changes read as
+ * a visual jump even when the shell geometry is stable. */
+html body .nv-app-shell .nv-topbar-title {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -.018em !important;
+  white-space: nowrap !important;
+}
+
+html body .nv-app-shell .nv-page-header-title-slot {
+  min-width: 0 !important;
+}
+
+html body .nv-app-shell .nv-topbar-subtitle {
+  margin-top: 3px !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+}
+
 @media (min-width: 48rem) {
   html body .nv-app-shell .nv-page-header-title-slot,
   html body .nv-app-shell .nv-page-header-search-slot,
@@ -32,8 +56,7 @@
     min-width: 0 !important;
   }
 
-  html body .nv-app-shell .nv-page-header-action,
-  html body .nv-app-shell .nv-page-header-action--notification {
+  html body .nv-app-shell .nv-page-header-action {
     position: relative !important;
     inset: auto !important;
     flex: 0 0 auto !important;
