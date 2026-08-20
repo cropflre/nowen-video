@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Clock3, Heart } from 'lucide-react'
 import Sidebar from './Sidebar'
@@ -48,22 +48,8 @@ function readInitialSidebarCollapsed() {
 
 function ApplicationTopBar() {
   const location = useLocation()
-  const navigate = useNavigate()
   const isHomeRoute = location.pathname === '/'
-  const isSearchRoute = location.pathname === '/search'
-  const routeKeyword = isSearchRoute
-    ? new URLSearchParams(location.search).get('q') ?? ''
-    : ''
-  const [keyword, setKeyword] = useState(routeKeyword)
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname])
-
-  useEffect(() => {
-    setKeyword(routeKeyword)
-  }, [location.pathname, routeKeyword])
-
-  const submitSearch = (value: string) => {
-    navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search')
-  }
 
   const actions = (
     <>
@@ -82,11 +68,10 @@ function ApplicationTopBar() {
     <PageHeader
       title={title}
       subtitle={isHomeRoute ? '精选推荐 · 精彩不断' : undefined}
-      searchValue={keyword}
-      onSearchValueChange={setKeyword}
-      onSearchSubmit={submitSearch}
-      showSearch={!isSearchRoute}
+      showSearch={false}
+      showSearchShortcut={false}
       actions={actions}
+      className="nv-topbar--navigation-only"
       style={SAFE_INLINE_STYLE}
     />
   )
