@@ -81,6 +81,10 @@
  * late so it can intentionally override older screenshot-calibration layers. */
 @import './ui-home-detail-fusion.css';
 
+/* Cinematic mobile hero actions are theme-independent and must stay visible on
+ * hover/focus after every shared light/dark button layer has been applied. */
+@import './ui-home-mobile-hero-actions.css';
+
 /* Bottom navigation is structurally independent from the desktop rail and must
  * be the final navigation contract so hover can never alter its geometry. */
 @import './ui-mobile-bottom-nav.css';
