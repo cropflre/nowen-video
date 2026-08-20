@@ -85,6 +85,9 @@
  * hover/focus after every shared light/dark button layer has been applied. */
 @import './ui-home-mobile-hero-actions.css';
 
+/* Hero headings are plain editorial text over the artwork scrim, never cards. */
+@import './ui-home-hero-title-clean.css';
+
 /* Bottom navigation is structurally independent from the desktop rail and must
  * be the final navigation contract so hover can never alter its geometry. */
 @import './ui-mobile-bottom-nav.css';
