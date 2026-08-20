@@ -122,3 +122,6 @@
 /* A direct/single-rendition HLS playlist has no manual quality choice. Keep the
  * diagnostics popover but never expose hls.js's synthetic zero-height "0p" row. */
 @import './ui-player-quality-single-level.css';
+
+/* Phone home uses immersive hero chrome: no detached empty toolbar above artwork. */
+@import './ui-home-mobile-immersive-chrome.css';
