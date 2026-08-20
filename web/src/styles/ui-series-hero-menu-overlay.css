@@ -1,0 +1,37 @@
+/* Nowen Video · Series hero menu overlay contract
+ *
+ * The shared media-detail flow clips generic heroes to preserve their cinematic
+ * rounded artwork. SeriesHero owns an action menu that intentionally extends
+ * below the hero, so clipping the entire hero cuts the menu at the next card.
+ * Keep only the artwork layer clipped and allow transient controls to escape.
+ */
+
+html body .nv-series-detail-page > .nv-series-hero {
+  overflow: visible !important;
+}
+
+/* Preserve the approved rounded hero artwork even though the outer hero now
+ * allows menus/popovers to paint outside its content box. */
+html body .nv-series-detail-page > .nv-series-hero > .nv-series-backdrop {
+  overflow: hidden !important;
+  border-radius: inherit !important;
+}
+
+/* A transient menu belongs above the following progress/info cards. The hero
+ * already forms an isolated stacking context, so raise that context only while
+ * the More trigger is open instead of permanently lifting the whole hero. */
+html body .nv-series-detail-page > .nv-series-hero:has(button[aria-label='更多操作'][aria-expanded='true']) {
+  z-index: calc(var(--nv-z-dropdown) + 1) !important;
+}
+
+html body .nv-series-detail-page > .nv-series-hero .nv-menu {
+  z-index: calc(var(--nv-z-dropdown) + 2) !important;
+  max-height: min(360px, calc(100dvh - 24px)) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+/* The transparent dismiss layer stays directly below the menu. */
+html body .nv-series-detail-page > .nv-series-hero:has(button[aria-label='更多操作'][aria-expanded='true']) > button.fixed.inset-0 {
+  z-index: var(--nv-z-dropdown) !important;
+}
