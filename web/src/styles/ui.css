@@ -103,3 +103,7 @@
 /* Bootstrap/Suspense is not application chrome. Keep the refresh/loading viewport
  * borderless after every provider, legacy and shell compatibility layer. */
 @import './ui-boot-loading-stability.css';
+
+/* Desktop portrait shelves use compact media-sized columns rather than spreading
+ * six oversized allocations across an entire homepage section. */
+@import './ui-home-poster-density-final.css';
