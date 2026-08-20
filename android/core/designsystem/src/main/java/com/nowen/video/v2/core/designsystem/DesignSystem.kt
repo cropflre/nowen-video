@@ -23,8 +23,8 @@ import coil.compose.AsyncImage
 /**
  * Android 与 Web 移动端共用的视觉基准。
  *
- * 这里不再采用 Material 默认蓝色体系，而是直接映射 Nowen Web 的浅色珍珠白、
- * 深色 navy、紫色主操作与低对比边框，让 Compose 页面天然继承同一套品牌语言。
+ * 色彩、圆角、排版和内容密度直接映射 Web UI 2.0 的移动端规范，避免 Compose
+ * 页面继续落回 Material 默认蓝色、大字号和过度圆角的视觉语言。
  */
 object NowenColors {
     val DeepSpace = Color(0xFF070A12)
@@ -39,6 +39,18 @@ object NowenColors {
     val Ink = Color(0xFF171923)
     val Muted = Color(0xFF737887)
     val LightOutline = Color(0xFFE7E8EF)
+}
+
+/** Web 移动端与 Android 共用的几何密度。 */
+object NowenMobileMetrics {
+    val PageHorizontal = 10.dp
+    val SectionPadding = 14.dp
+    val SectionRadius = 18.dp
+    val CardRadius = 10.dp
+    val CompactCardRadius = 9.dp
+    val RailGap = 10.dp
+    val SectionGap = 18.dp
+    val ControlRadius = 11.dp
 }
 
 private val DarkScheme = darkColorScheme(
@@ -74,21 +86,21 @@ private val LightScheme = lightColorScheme(
 )
 
 private val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(9.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(22.dp),
 )
 
 private val Type = Typography(
-    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
-    headlineMedium = TextStyle(fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.35).sp),
-    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 25.sp),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
-    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+    headlineLarge = TextStyle(fontSize = 28.sp, lineHeight = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.45).sp),
+    headlineMedium = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
+    titleLarge = TextStyle(fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 20.sp),
+    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold),
 )
 
 @Composable
@@ -107,7 +119,7 @@ fun NowenTheme(
 @Composable
 fun NowenPage(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = NowenMobileMetrics.PageHorizontal),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -153,16 +165,16 @@ fun ElevatedPanel(
 ) {
     Surface(
         modifier = modifier,
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(NowenMobileMetrics.SectionRadius),
         tonalElevation = 0.dp,
-        shadowElevation = 1.dp,
+        shadowElevation = 0.dp,
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f),
         ),
     ) {
-        Column(Modifier.padding(16.dp), content = content)
+        Column(Modifier.padding(NowenMobileMetrics.SectionPadding), content = content)
     }
 }
 
@@ -186,12 +198,12 @@ fun MediaPosterCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.width(132.dp).clickable(onClick = onClick)) {
+    Column(modifier = modifier.width(112.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .clip(MaterialTheme.shapes.medium)
+                .clip(RoundedCornerShape(NowenMobileMetrics.CompactCardRadius))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             AsyncImage(
@@ -209,7 +221,7 @@ fun MediaPosterCard(
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
         if (!subtitle.isNullOrBlank()) {
             Text(
@@ -236,8 +248,10 @@ fun MessagePanel(
         Spacer(Modifier.height(8.dp))
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (actionLabel != null && onAction != null) {
-            Spacer(Modifier.height(16.dp))
-            FilledTonalButton(onClick = onAction) { Text(actionLabel) }
+            Spacer(Modifier.height(14.dp))
+            FilledTonalButton(onClick = onAction, shape = RoundedCornerShape(NowenMobileMetrics.ControlRadius)) {
+                Text(actionLabel)
+            }
         }
     }
 }
