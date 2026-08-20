@@ -114,3 +114,7 @@
 /* Series detail is episode-first, not the movie page's flattened continuous feed.
  * Keep this last so movie-detail layout rules cannot unhide tabs or detach cards. */
 @import './ui-series-detail-layout-final.css';
+
+/* Persistent topbar compacts in place on reduced desktop widths; action controls
+ * remain inside their slot instead of escaping toward a viewport corner. */
+@import './ui-topbar-responsive-stability.css';
