@@ -88,3 +88,7 @@
 /* Bottom navigation is structurally independent from the desktop rail and must
  * be the final navigation contract so hover can never alter its geometry. */
 @import './ui-mobile-bottom-nav.css';
+
+/* Persistent desktop chrome must not be resized by page-specific screenshot
+ * calibration. This keeps Home/Browse/Detail route transitions visually still. */
+@import './ui-shell-route-stability.css';
