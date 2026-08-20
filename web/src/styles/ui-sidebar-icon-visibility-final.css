@@ -1,0 +1,68 @@
+/* Nowen Video · final desktop sidebar icon visibility contract
+ *
+ * Legacy Modern Cinema calibration intentionally hid desktop rail icons to create
+ * a text-first reference sidebar. The current Nowen UI 2.0 navigation is icon +
+ * label, and Sidebar.tsx still renders those icons. Reassert the product contract
+ * after every historical layer so items remain easy to scan and labels never look
+ * visually incomplete.
+ */
+
+@media (min-width: 48rem) {
+  html body .nv-app-shell .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon {
+    width: 18px !important;
+    min-width: 18px !important;
+    max-width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    flex: 0 0 18px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: currentColor !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+
+  html body .nv-app-shell .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon > svg {
+    width: 16px !important;
+    min-width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+    color: currentColor !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item {
+    column-gap: 9px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-label {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail > .nv-rail-scroll .nv-rail-item[aria-current="page"] > .nv-rail-icon {
+    color: var(--nv-action-primary) !important;
+  }
+}
+
+/* Compact desktop rail keeps its slightly larger icon hit area while inheriting
+ * the same visibility guarantee. */
+@media (min-width: 68.75rem) {
+  html body .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  html body .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail > .nv-rail-scroll .nv-rail-item > .nv-rail-icon > svg {
+    width: 18px !important;
+    min-width: 18px !important;
+    height: 18px !important;
+  }
+}
