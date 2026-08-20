@@ -118,3 +118,7 @@
 /* Persistent topbar compacts in place on reduced desktop widths; action controls
  * remain inside their slot instead of escaping toward a viewport corner. */
 @import './ui-topbar-responsive-stability.css';
+
+/* A direct/single-rendition HLS playlist has no manual quality choice. Keep the
+ * diagnostics popover but never expose hls.js's synthetic zero-height "0p" row. */
+@import './ui-player-quality-single-level.css';
