@@ -76,3 +76,7 @@
 /* Mobile hero height follows its real content instead of leaving a large backdrop
  * tail below the action row. Keep this after the poster contract. */
 @import './ui-media-detail-mobile-hero-density.css';
+
+/* Homepage sections inherit the approved detail-page card language. Keep this
+ * last so it can intentionally override older screenshot-calibration layers. */
+@import './ui-home-detail-fusion.css';
