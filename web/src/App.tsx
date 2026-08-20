@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
+import PlaybackHistoryBridge from '@/components/PlaybackHistoryBridge'
 import LoginPage from '@/pages/LoginPage'
 import ForceChangePasswordPage from '@/pages/ForceChangePasswordPage'
 import { DesktopEventBinder, DesktopHighlightComputeAgent, DesktopServerPicker, UpdateBanner } from '@/desktop'
@@ -122,6 +123,7 @@ export default function App() {
           <DesktopServerPicker />
           <DesktopEventBinder />
           <DesktopHighlightComputeAgent />
+          <PlaybackHistoryBridge />
           <UpdateBanner />
           <div className="nv-app-shell flex h-dvh min-h-0 flex-col overflow-hidden">
             <TitleBar />
