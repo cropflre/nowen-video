@@ -206,12 +206,12 @@ pub fn ensure(app: &AppHandle) -> Result<PlayerSurface> {
     let (ready_tx, ready_rx) = mpsc::sync_channel(1);
     let wake = Arc::new(WakeState::default());
     let thread_wake = Arc::clone(&wake);
-    let main_hwnd_addr = main_hwnd.0;
+    let main_hwnd_addr = main_hwnd.0 as usize;
 
     let thread = thread::Builder::new()
         .name("player-render-win32".into())
         .spawn(move || {
-            let main_hwnd = HWND(main_hwnd_addr);
+            let main_hwnd = HWND(main_hwnd_addr as *mut c_void);
             match RenderThread::new(main_hwnd, Arc::clone(&thread_wake)) {
                 Ok(mut renderer) => {
                     let _ = ready_tx.send(Ok(()));
@@ -344,7 +344,6 @@ impl RenderThread {
             };
             let _ = RegisterClassW(&class);
 
-            // windows-rs 0.56 的 CreateWindowExW 直接返回 HWND；0 表示失败。
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
                 CLASS_NAME,
@@ -356,15 +355,13 @@ impl RenderThread {
                 16,
                 None,
                 None,
-                instance,
+                Some(instance),
                 None,
-            );
-            if hwnd.0 == 0 {
-                return Err(anyhow!("创建 Win32 Player Surface 窗口失败"));
-            }
+            )
+            .context("创建 Win32 Player Surface 窗口失败")?;
 
-            let hdc = GetDC(hwnd);
-            if hdc.0 == 0 {
+            let hdc = GetDC(Some(hwnd));
+            if hdc.0.is_null() {
                 let _ = DestroyWindow(hwnd);
                 return Err(anyhow!("获取 Player Surface HDC 失败"));
             }
@@ -383,7 +380,7 @@ impl RenderThread {
             };
             let pixel_format = ChoosePixelFormat(hdc, &pfd);
             if pixel_format == 0 {
-                ReleaseDC(hwnd, hdc);
+                ReleaseDC(Some(hwnd), hdc);
                 let _ = DestroyWindow(hwnd);
                 return Err(anyhow!("选择 OpenGL PixelFormat 失败"));
             }
@@ -444,9 +441,9 @@ impl RenderThread {
 
         self.detach_renderer();
         unsafe {
-            let _ = wglMakeCurrent(self.hdc, HGLRC(0));
+            let _ = wglMakeCurrent(self.hdc, HGLRC(null_mut()));
             let _ = wglDeleteContext(self.glrc);
-            ReleaseDC(self.hwnd, self.hdc);
+            ReleaseDC(Some(self.hwnd), self.hdc);
             let _ = DestroyWindow(self.hwnd);
         }
     }
@@ -454,7 +451,7 @@ impl RenderThread {
     fn apply_bounds(&self) {
         unsafe {
             if !self.bounds.visible {
-                ShowWindow(self.hwnd, SW_HIDE);
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
                 return;
             }
 
@@ -469,7 +466,7 @@ impl RenderThread {
                 self.bounds.height.max(1) as i32,
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
             );
-            ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+            let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
         }
     }
 
@@ -477,7 +474,7 @@ impl RenderThread {
         unsafe {
             let mut message = MSG::default();
             while PeekMessageW(&mut message, Some(self.hwnd), 0, 0, PM_REMOVE).as_bool() {
-                TranslateMessage(&message);
+                let _ = TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
         }
