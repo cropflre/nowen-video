@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>🎬 Nowen Video</h1>
+<h1>🎬 Nowen Video（弄文影视）</h1>
 
 <p><b>A private home media platform built for NAS and self-hosted environments.</b></p>
 
@@ -29,11 +29,11 @@
 
 ---
 
-Nowen Video is a home media platform built with **Go + React + SQLite + FFmpeg** for NAS devices, home servers, and self-hosted environments.
+Nowen Video（弄文影视） is a home media platform built with **Go + React + SQLite + FFmpeg** for NAS devices, home servers, and self-hosted environments.
 
 It covers the complete workflow from **media scanning, metadata scraping, library management, detail browsing, search, favorites and history to direct play, remux, on-demand HLS transcoding, subtitles, and multi-client access**. The project is optimized for long-running servers, low maintenance overhead, and consistent cross-client behavior.
 
-> **Product identity:** Nowen Video now has one public production server edition. The historical Lite / Full product split is no longer part of the official product surface. The legacy compatibility runtime is retained only for migration, rollback, and historical validation. See [docs/SERVER.md](./docs/SERVER.md).
+> **Product identity:** Nowen Video（弄文影视） now has one public production server edition. The historical Lite / Full product split is no longer part of the official product surface. The legacy compatibility runtime is retained only for migration, rollback, and historical validation. See [docs/SERVER.md](./docs/SERVER.md).
 
 ## 📸 Screenshots
 
@@ -244,7 +244,7 @@ make build
 ./bin/nowen-video
 ```
 
-`make build`, `make dev`, and the default `Dockerfile` all target the same official Nowen Video production server.
+`make build`, `make dev`, and the default `Dockerfile` all target the same official Nowen Video（弄文影视） production server.
 
 ## 📱 Clients & Platforms
 
@@ -283,7 +283,7 @@ See [android/README.md](./android/README.md).
 
 ### 🐮 fnOS
 
-Nowen Video has an official fnOS `.fpk` build and release flow covering package resources, Docker Project integration, desktop entry, install / upgrade / uninstall lifecycle hooks, permissions, and fnpack validation.
+Nowen Video（弄文影视） has an official fnOS `.fpk` build and release flow covering package resources, Docker Project integration, desktop entry, install / upgrade / uninstall lifecycle hooks, permissions, and fnpack validation.
 
 Official releases provide the corresponding `.fpk` asset through GitHub Release.
 

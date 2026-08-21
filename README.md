@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>🎬 Nowen Video</h1>
+<h1>🎬 Nowen Video（弄文影视）</h1>
 
 <p><b>为 NAS 与自托管场景打造的私人家庭影音平台。</b></p>
 
@@ -29,11 +29,11 @@
 
 ---
 
-Nowen Video 是基于 **Go + React + SQLite + FFmpeg** 构建的家庭媒体平台，面向 NAS、家庭服务器和自托管用户。
+Nowen Video（弄文影视）是基于 **Go + React + SQLite + FFmpeg** 构建的家庭媒体平台，面向 NAS、家庭服务器和自托管用户。
 
 它提供从 **媒体扫描、元数据刮削、影视库管理、详情浏览、搜索、收藏与历史，到直接播放、Remux、按需 HLS 转码、字幕和多端访问** 的完整链路，并持续围绕长期稳定运行、低维护成本和跨端体验进行优化。
 
-> **产品说明**：Nowen Video 当前只有一个对外正式服务端。历史上的 Lite / Full 产品区分已经退出正式产品体系；旧兼容运行时只保留用于迁移、回滚和历史验证。详见 [服务端架构说明](./docs/SERVER.md)。
+> **产品说明**：Nowen Video（弄文影视）当前只有一个对外正式服务端。历史上的 Lite / Full 产品区分已经退出正式产品体系；旧兼容运行时只保留用于迁移、回滚和历史验证。详见 [服务端架构说明](./docs/SERVER.md)。
 
 ## 📸 功能截图
 
@@ -244,13 +244,13 @@ make build
 ./bin/nowen-video
 ```
 
-`make build`、`make dev` 与默认 `Dockerfile` 都对应同一个 Nowen Video 正式服务端。
+`make build`、`make dev` 与默认 `Dockerfile` 都对应同一个 Nowen Video（弄文影视）正式服务端。
 
 ## 📱 客户端与平台
 
 ### Web
 
-Web 是 Nowen Video 的主要管理与观影入口，提供媒体库、搜索、详情页、播放、收藏、历史、继续观看、任务状态与管理功能。
+Web 是 Nowen Video（弄文影视）的主要管理与观影入口，提供媒体库、搜索、详情页、播放、收藏、历史、继续观看、任务状态与管理功能。
 
 ### 🖥️ Desktop
 
@@ -283,7 +283,7 @@ Web 是 Nowen Video 的主要管理与观影入口，提供媒体库、搜索、
 
 ### 🐮 飞牛 fnOS
 
-Nowen Video 已具备正式 fnOS `.fpk` 构建与发布链路，包括应用资源、Docker Project、桌面入口、安装 / 升级 / 卸载生命周期、权限声明与 fnpack 校验。
+Nowen Video（弄文影视）已具备正式 fnOS `.fpk` 构建与发布链路，包括应用资源、Docker Project、桌面入口、安装 / 升级 / 卸载生命周期、权限声明与 fnpack 校验。
 
 正式发布版本可从 GitHub Release 获取对应 `.fpk` 安装包。
 
