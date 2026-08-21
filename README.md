@@ -37,8 +37,58 @@ Nowen Video 是基于 **Go + React + SQLite + FFmpeg** 构建的家庭媒体平�
 
 ## 📸 功能截图
 
-![Nowen Video Screenshot 1](1.png)
-![Nowen Video Screenshot 2](2.png)
+当前界面覆盖桌面端与移动端，并提供日间与夜间模式。首页聚合 Hero 推荐、继续观看、为你推荐、最近添加和类型分区；影视库支持分类切换、筛选、排序、网格 / 列表视图与分页；详情页提供播放、收藏、加入片单、字幕、精彩片段、演职员、相似推荐、技术规格和评分等完整信息。
+
+<table>
+  <tr>
+    <td width="50%"><img src="./docs/assets/screenshots/desktop-light-home.png" alt="桌面端日间模式首页"></td>
+    <td width="50%"><img src="./docs/assets/screenshots/desktop-dark-home.png" alt="桌面端夜间模式首页"></td>
+  </tr>
+  <tr>
+    <td align="center">桌面端 · 日间模式 · 首页</td>
+    <td align="center">桌面端 · 夜间模式 · 首页</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/desktop-light-library.png" alt="桌面端日间模式影视库列表页"></td>
+    <td><img src="./docs/assets/screenshots/desktop-dark-library.png" alt="桌面端夜间模式影视库列表页"></td>
+  </tr>
+  <tr>
+    <td align="center">桌面端 · 日间模式 · 影视库</td>
+    <td align="center">桌面端 · 夜间模式 · 影视库</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/desktop-light-details.png" alt="桌面端日间模式媒体详情页"></td>
+    <td><img src="./docs/assets/screenshots/desktop-dark-details.png" alt="桌面端夜间模式媒体详情页"></td>
+  </tr>
+  <tr>
+    <td align="center">桌面端 · 日间模式 · 详情页</td>
+    <td align="center">桌面端 · 夜间模式 · 详情页</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-home.png" alt="移动端日间模式首页"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-home.png" alt="移动端夜间模式首页"></td>
+  </tr>
+  <tr>
+    <td align="center">移动端 · 日间模式 · 首页</td>
+    <td align="center">移动端 · 夜间模式 · 首页</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-library.png" alt="移动端日间模式影视库列表页"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-library.png" alt="移动端夜间模式影视库列表页"></td>
+  </tr>
+  <tr>
+    <td align="center">移动端 · 日间模式 · 影视库</td>
+    <td align="center">移动端 · 夜间模式 · 影视库</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-details.png" alt="移动端日间模式媒体详情页"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-details.png" alt="移动端夜间模式媒体详情页"></td>
+  </tr>
+  <tr>
+    <td align="center">移动端 · 日间模式 · 详情页</td>
+    <td align="center">移动端 · 夜间模式 · 详情页</td>
+  </tr>
+</table>
 
 ## ✨ 核心特性
 
@@ -73,7 +123,11 @@ Nowen Video 是基于 **Go + React + SQLite + FFmpeg** 构建的家庭媒体平�
 ### 🎨 Aurora / Neo Glass 影视界面
 
 - 首页、影视库、搜索、收藏、播放历史、详情页与播放器逐步统一到 Aurora 视觉体系
+- 桌面端提供可折叠侧边栏，移动端提供底部主导航，并适配日间 / 夜间主题
+- 首页提供 Hero 推荐轮播、继续观看、为你推荐、最近添加和按类型浏览等内容分区
+- 影视库支持分类切换、筛选、排序、网格 / 列表视图与分页浏览
 - 媒体详情页支持独立背景图、Hero 轮播、状态侧栏与真实 Tab 导航
+- 详情页整合精彩片段、演职员、相似推荐、技术规格和评分区域
 - 收藏、历史和继续观看使用统一媒体工作区
 - 侧边栏支持折叠，播放器控制层采用统一玻璃拟态视觉
 - 针对长标题、空状态、窄屏和高密度媒体库持续优化布局
@@ -318,6 +372,14 @@ Nowen Video 已具备正式 fnOS `.fpk` 构建与发布链路，包括应用资�
   <img src="./weixin.jpg" alt="微信赞赏码" width="260">
   <br>
   <i>Drug 的赞赏码 — “支持作者买键盘 / 修 Bug”</i>
+</p>
+
+也欢迎关注微信公众号「Nowen 开源实验室」，获取项目动态与开源实践分享。
+
+<p align="center">
+  <img src="./docs/assets/branding/nowen-open-lab-wechat.jpg" alt="微信公众号 · Nowen 开源实验室" width="260">
+  <br>
+  <i>微信公众号 · Nowen 开源实验室</i>
 </p>
 
 ## 📜 开源协议

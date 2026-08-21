@@ -37,8 +37,58 @@ It covers the complete workflow from **media scanning, metadata scraping, librar
 
 ## 📸 Screenshots
 
-![Nowen Video Screenshot 1](1.png)
-![Nowen Video Screenshot 2](2.png)
+The current interface covers desktop and mobile clients with both light and dark themes. The home page combines a Hero carousel with continue watching, recommendations, recently added items, and genre sections. The library supports category tabs, filtering, sorting, grid / list views, and pagination. Media details bring together playback, favorites, playlists, subtitles, highlights, cast, similar recommendations, technical specifications, and ratings.
+
+<table>
+  <tr>
+    <td width="50%"><img src="./docs/assets/screenshots/desktop-light-home.png" alt="Desktop light-theme home page"></td>
+    <td width="50%"><img src="./docs/assets/screenshots/desktop-dark-home.png" alt="Desktop dark-theme home page"></td>
+  </tr>
+  <tr>
+    <td align="center">Desktop · Light theme · Home</td>
+    <td align="center">Desktop · Dark theme · Home</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/desktop-light-library.png" alt="Desktop light-theme media library"></td>
+    <td><img src="./docs/assets/screenshots/desktop-dark-library.png" alt="Desktop dark-theme media library"></td>
+  </tr>
+  <tr>
+    <td align="center">Desktop · Light theme · Media library</td>
+    <td align="center">Desktop · Dark theme · Media library</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/desktop-light-details.png" alt="Desktop light-theme media details"></td>
+    <td><img src="./docs/assets/screenshots/desktop-dark-details.png" alt="Desktop dark-theme media details"></td>
+  </tr>
+  <tr>
+    <td align="center">Desktop · Light theme · Details</td>
+    <td align="center">Desktop · Dark theme · Details</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-home.png" alt="Mobile light-theme home page"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-home.png" alt="Mobile dark-theme home page"></td>
+  </tr>
+  <tr>
+    <td align="center">Mobile · Light theme · Home</td>
+    <td align="center">Mobile · Dark theme · Home</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-library.png" alt="Mobile light-theme media library"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-library.png" alt="Mobile dark-theme media library"></td>
+  </tr>
+  <tr>
+    <td align="center">Mobile · Light theme · Media library</td>
+    <td align="center">Mobile · Dark theme · Media library</td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/screenshots/mobile-light-details.png" alt="Mobile light-theme media details"></td>
+    <td><img src="./docs/assets/screenshots/mobile-dark-details.png" alt="Mobile dark-theme media details"></td>
+  </tr>
+  <tr>
+    <td align="center">Mobile · Light theme · Details</td>
+    <td align="center">Mobile · Dark theme · Details</td>
+  </tr>
+</table>
 
 ## ✨ Core Features
 
@@ -73,7 +123,11 @@ It covers the complete workflow from **media scanning, metadata scraping, librar
 ### 🎨 Aurora / Neo Glass Experience
 
 - Home, library, search, favorites, history, detail, and player experiences are being unified under the Aurora visual system
+- The desktop client provides a collapsible sidebar, while mobile uses bottom navigation with light and dark theme support
+- The home page combines a Hero recommendation carousel with continue watching, recommendations, recently added items, and genre sections
+- The library supports category tabs, filtering, sorting, grid / list views, and pagination
 - Media detail pages support standalone backdrops, Hero slideshows, status sidebars, and real tab navigation
+- Detail pages bring together highlights, cast, similar recommendations, technical specifications, and ratings
 - Favorites, history, and continue-watching use a consistent media workspace
 - The sidebar supports collapse behavior and the player chrome follows the same glass-based visual language
 - Layouts are continuously refined for long titles, empty states, narrow screens, and dense media libraries
@@ -318,6 +372,14 @@ If this project helps you, consider buying the author a coffee / keyboard / bug 
   <img src="./weixin.jpg" alt="WeChat Sponsor QR" width="260">
   <br>
   <i>Drug's WeChat sponsor QR — “Buy the author a keyboard / fix a bug”</i>
+</p>
+
+You can also follow the WeChat Official Account “Nowen Open Source Lab” for project updates and open-source notes.
+
+<p align="center">
+  <img src="./docs/assets/branding/nowen-open-lab-wechat.jpg" alt="WeChat Official Account · Nowen Open Source Lab" width="260">
+  <br>
+  <i>WeChat Official Account · Nowen Open Source Lab</i>
 </p>
 
 ## 📜 License
