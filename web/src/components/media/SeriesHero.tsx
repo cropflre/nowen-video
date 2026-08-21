@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Heart, Link2, MoreHorizontal, Play, Share2, Trash2, Tv, Unlink } from 'lucide-react'
 import type { Media, Series } from '@/types'
@@ -35,11 +35,28 @@ export default function SeriesHero({
 }: SeriesHeroProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
 
   useEffect(() => {
     setImageLoaded(false)
   }, [posterVersion, series.backdrop_path, series.id])
+
+  useEffect(() => {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   const closeAndRun = (action: () => void) => {
     setMenuOpen(false)
@@ -59,8 +76,8 @@ export default function SeriesHero({
         <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
       </Button>
 
-      <div className="relative">
-        <Button type="button" variant="secondary" size="lg" iconOnly onClick={() => setMenuOpen((open) => !open)} aria-label="更多操作" aria-expanded={menuOpen}>
+      <div ref={menuRef} className="relative">
+        <Button type="button" variant="secondary" size="lg" iconOnly onClick={() => setMenuOpen((open) => !open)} aria-label="更多操作" aria-haspopup="menu" aria-expanded={menuOpen}>
           <MoreHorizontal size={19} aria-hidden="true" />
         </Button>
 
@@ -139,8 +156,6 @@ export default function SeriesHero({
           actions={actions}
         />
       </div>
-
-      {menuOpen && <button type="button" className="fixed inset-0 z-[59] cursor-default" aria-label="关闭菜单" onClick={() => setMenuOpen(false)} />}
     </section>
   )
 }

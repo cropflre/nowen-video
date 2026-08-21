@@ -117,6 +117,7 @@ export function usePageCache<T>(
   const cachedEntry = key ? (globalCache.get(key) as CacheEntry<T> | undefined) : undefined
 
   const [data, setData] = useState<T | undefined>(() => cachedEntry?.data)
+  const [stateKey, setStateKey] = useState<string | null | undefined>(key)
   const [loading, setLoading] = useState<boolean>(() => enabled && !!key && !cachedEntry)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -128,6 +129,9 @@ export function usePageCache<T>(
   // 幂等守护 + 跟踪当前 key
   const mountedRef = useRef(false)
   const currentKeyRef = useRef<string | null | undefined>(key)
+  // render 一旦观察到新 key，就立刻阻止旧 key 的飞行请求回写状态；
+  // 主 effect 随后会把 stateKey/data/loading 原子切换到新 key。
+  currentKeyRef.current = key
   // 记录组件是否仍挂载（卸载后禁止 setState）
   const aliveRef = useRef(true)
   useEffect(() => {
@@ -160,12 +164,14 @@ export function usePageCache<T>(
     try {
       const result = await inFlight.promise
       if (aliveRef.current && currentKeyRef.current === k) {
+        setStateKey(k)
         setData(result)
         setError(null)
       }
       return result
     } catch (err) {
       if (aliveRef.current && currentKeyRef.current === k) {
+        setStateKey(k)
         setError(err)
         if (!keepStaleOnError) setData(undefined)
       }
@@ -181,8 +187,13 @@ export function usePageCache<T>(
   // 主加载逻辑（key 变化时重新评估）
   useEffect(() => {
     currentKeyRef.current = key
+    setStateKey(key)
+    setError(null)
+
     if (!enabled || !key) {
+      setData(undefined)
       setLoading(false)
+      setRefreshing(false)
       return
     }
 
@@ -191,11 +202,16 @@ export function usePageCache<T>(
       // 有缓存 → 立即渲染
       setData(entry.data)
       setLoading(false)
+      setRefreshing(false)
       // 过期 → 后台静默刷新
       if (Date.now() - entry.loadedAt > ttl) {
         doFetch(key, true)
       }
     } else {
+      // 新 key 不能继续暴露上一个 key 的数据，否则调用方会在 effect 启动请求前
+      // 短暂观察到 “无当前数据 + loading=false”，进而误判为加载失败。
+      setData(undefined)
+      setRefreshing(false)
       // 无缓存 → 首次加载（StrictMode 双挂载由 inFlight Map 去重）
       doFetch(key, false)
     }
@@ -207,7 +223,8 @@ export function usePageCache<T>(
     if (!key) return
     return subscribe(key, () => {
       const entry = globalCache.get(key) as CacheEntry<T> | undefined
-      if (aliveRef.current) {
+      if (aliveRef.current && currentKeyRef.current === key) {
+        setStateKey(key)
         setData(entry?.data)
       }
     })
@@ -240,5 +257,22 @@ export function usePageCache<T>(
     [key],
   )
 
-  return { data, loading, refreshing, error, refetch, invalidate, mutate }
+  // key 变化发生在 effect 之前。返回值必须在 render 阶段就绑定当前 key，
+  // 否则调用方会看到上一个 key 的 data/loading/error，并制造假失败或旧数据闪现。
+  const stateMatchesKey = stateKey === key
+  const currentEntry = key ? (globalCache.get(key) as CacheEntry<T> | undefined) : undefined
+  const visibleData = stateMatchesKey ? data : currentEntry?.data
+  const visibleLoading = enabled && !!key && !currentEntry && (!stateMatchesKey || loading)
+  const visibleRefreshing = stateMatchesKey ? refreshing : false
+  const visibleError = stateMatchesKey ? error : null
+
+  return {
+    data: visibleData,
+    loading: visibleLoading,
+    refreshing: visibleRefreshing,
+    error: visibleError,
+    refetch,
+    invalidate,
+    mutate,
+  }
 }
