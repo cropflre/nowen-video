@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -205,6 +206,7 @@ internal fun NowenPlayerControls(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = 18.dp, vertical = 18.dp),
             ) {
                 Slider(
