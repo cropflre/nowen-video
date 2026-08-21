@@ -30,8 +30,3 @@ html body .nv-series-detail-page > .nv-series-hero .nv-menu {
   overflow-y: auto !important;
   overscroll-behavior: contain;
 }
-
-/* The transparent dismiss layer stays directly below the menu. */
-html body .nv-series-detail-page > .nv-series-hero:has(button[aria-label='更多操作'][aria-expanded='true']) > button.fixed.inset-0 {
-  z-index: var(--nv-z-dropdown) !important;
-}
