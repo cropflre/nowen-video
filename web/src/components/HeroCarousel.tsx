@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { streamApi } from '@/api'
@@ -9,6 +10,7 @@ import { MediaHeroContent } from '@/ui'
 const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
 const SWIPE_VELOCITY = 300
+const CLICK_DRAG_GUARD_THRESHOLD = 6
 
 // A stale media record can still advertise a backdrop whose file has already
 // disappeared. Remember failed endpoints for this page lifetime so the carousel
@@ -104,6 +106,10 @@ function isSeriesProxy(media: Media) {
   return Boolean(media.series_id && media.series_id === media.id)
 }
 
+function getHeroDetailPath(media: Media) {
+  return isSeriesProxy(media) ? `/series/${media.id}` : `/media/${media.id}`
+}
+
 function getHeroPoster(media: Media): string | null {
   if (media.series_id && (media.series?.poster_path || isSeriesProxy(media))) {
     return streamApi.getSeriesPosterUrl(media.series_id)
@@ -178,9 +184,11 @@ export default function HeroCarousel({
   watchStateByMediaId = {},
 }: HeroCarouselProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const prefersReducedMotion = useReducedMotion()
   const containerRef = useRef<HTMLElement>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const suppressNavigationRef = useRef(false)
 
   const items = useMemo(() => {
     if (rawItems.length > 0) return rawItems.slice(0, maxItems)
@@ -254,6 +262,13 @@ export default function HeroCarousel({
   }, [goNext, goPrev, isInViewport, isPageVisible])
 
   const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
+    if (Math.abs(info.offset.x) > CLICK_DRAG_GUARD_THRESHOLD) {
+      suppressNavigationRef.current = true
+      window.setTimeout(() => {
+        suppressNavigationRef.current = false
+      }, 0)
+    }
+
     if (Math.abs(info.offset.x) > SWIPE_THRESHOLD || Math.abs(info.velocity.x) > SWIPE_VELOCITY) {
       if (info.offset.x > 0) goPrev()
       else goNext()
@@ -270,13 +285,20 @@ export default function HeroCarousel({
     ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
     : 0
 
+  const openCurrentDetail = () => {
+    if (suppressNavigationRef.current) return
+    navigate(getHeroDetailPath(item.media))
+  }
+
   return (
     <section
       ref={containerRef}
-      className="nv-hero-carousel relative isolate overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)]"
+      className="nv-hero-carousel relative isolate cursor-pointer overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)]"
       role="region"
       aria-roledescription="carousel"
-      aria-label={t('home.recommended')}
+      aria-label={`${t('home.recommended')}：${item.media.title}，点击查看详情`}
+      title="点击查看详情"
+      onClick={openCurrentDetail}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
@@ -345,7 +367,10 @@ export default function HeroCarousel({
           <button
             type="button"
             className="absolute left-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
-            onClick={goPrev}
+            onClick={(event) => {
+              event.stopPropagation()
+              goPrev()
+            }}
             aria-label="上一张"
             title="上一张"
           >
@@ -354,7 +379,10 @@ export default function HeroCarousel({
           <button
             type="button"
             className="absolute right-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
-            onClick={goNext}
+            onClick={(event) => {
+              event.stopPropagation()
+              goNext()
+            }}
             aria-label="下一张"
             title="下一张"
           >
