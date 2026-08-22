@@ -1,17 +1,17 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { mediaApi, recommendApi, streamApi } from '@/api'
+import { libraryApi, mediaApi, recommendApi, streamApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { usePageCache } from '@/hooks/usePageCache'
 import { formatProgress } from '@/utils/format'
-import type { WatchHistory, RecommendedMedia, MixedItem } from '@/types'
+import type { Library, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
-import { EmptyState, Section, Tag } from '@/components/design-system'
+import { EmptyState, Section } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
-import { ChevronRight, Clock, Play, Sparkles } from 'lucide-react'
+import { ChevronRight, Clock, Film, FolderOpen, Play, Tv } from 'lucide-react'
 
 const HOME_GENRES = ['动画', '喜剧', '冒险', '家庭'] as const
 
@@ -21,6 +21,7 @@ interface HomeData {
   recentItems: MixedItem[]
   continueList: WatchHistory[]
   recommendations: RecommendedMedia[]
+  libraries: Library[]
   genreItems: Partial<Record<HomeGenre, MixedItem[]>>
   allFailed: boolean
 }
@@ -45,11 +46,11 @@ function getContinueArtwork(item: WatchHistory): string | null {
   return null
 }
 
-function RailAction({ to, label = '查看全部' }: { to: string; label?: string }) {
+function RailAction({ to, label = '更多' }: { to: string; label?: string }) {
   return (
     <Link to={to} className="nv-home-rail-action">
       {label}
-      <ChevronRight size={14} aria-hidden="true" />
+      <ChevronRight size={13} aria-hidden="true" />
     </Link>
   )
 }
@@ -71,12 +72,13 @@ export default function HomePage() {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { data, loading, refetch, invalidate } = usePageCache<HomeData>(
-    'home:overview:v2',
+    'home:overview:minimal-v1',
     async () => {
       const requests = [
         mediaApi.recentMixed(24),
         mediaApi.continueWatching(10),
         recommendApi.getRecommendations(12),
+        libraryApi.list(),
         ...HOME_GENRES.map((genre) => mediaApi.listMixed({
           page: 1,
           size: 16,
@@ -87,7 +89,7 @@ export default function HomePage() {
       ] as const
 
       const results = await Promise.allSettled(requests)
-      const [recentResult, continueResult, recommendResult, ...genreResults] = results
+      const [recentResult, continueResult, recommendResult, libraryResult, ...genreResults] = results
       const recentItems = recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : []
       const genreItems: Partial<Record<HomeGenre, MixedItem[]>> = {}
 
@@ -103,6 +105,7 @@ export default function HomePage() {
         recentItems,
         continueList: continueResult.status === 'fulfilled' ? (continueResult.value.data.data || []) : [],
         recommendations: recommendResult.status === 'fulfilled' ? (recommendResult.value.data.data || []) : [],
+        libraries: libraryResult.status === 'fulfilled' ? (libraryResult.value.data.data || []) : [],
         genreItems,
         allFailed: [recentResult, continueResult, recommendResult].every((result) => result.status === 'rejected'),
       }
@@ -113,6 +116,7 @@ export default function HomePage() {
   const recentItems = data?.recentItems ?? []
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
+  const libraries = data?.libraries ?? []
   const genreItems = data?.genreItems ?? {}
   const watchStateByMediaId = useMemo(() => Object.fromEntries(
     continueList.map((item) => [item.media_id, { position: item.position, duration: item.duration }]),
@@ -152,8 +156,10 @@ export default function HomePage() {
     }
   }, [on, off, invalidate, silentRefresh])
 
+  const showEmpty = !loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0
+
   return (
-    <div className="nv-home-page nv-section-stack">
+    <div className="nv-home-page">
       {(recommendations.length > 0 || recentItems.length > 0) && (
         <HeroCarousel
           items={recommendations}
@@ -163,57 +169,66 @@ export default function HomePage() {
         />
       )}
 
-      {continueList.length > 0 && (
-        <ContinueWatchingRow
-          items={continueList}
-          title={t('home.continueWatching')}
-          watchedLabel={(percent) => t('home.watched', { percent: String(percent) })}
-        />
-      )}
+      <div className="nv-home-content-flow">
+        {continueList.length > 0 && (
+          <ContinueWatchingRow
+            items={continueList}
+            title={t('home.continueWatching')}
+            watchedLabel={(percent) => t('home.watched', { percent: String(percent) })}
+          />
+        )}
 
-      {recommendations.length > 0 && (
-        <MediaRail
-          title={(
-            <span className="inline-flex items-center gap-2">
-              <Sparkles size={16} aria-hidden="true" />
-              {t('home.recommended')}
-            </span>
-          )}
-          ariaLabel={t('home.recommended')}
-          itemCount={recommendations.length}
-          action={<RailAction to="/browse" />}
-        >
-          {recommendations.map((item) => (
-            <div key={item.media.id} className="nv-home-recommendation-slot flex-shrink-0">
-              <MediaCard media={item.media} variant="landscape" showBadges={false} />
-            </div>
-          ))}
-        </MediaRail>
-      )}
+        {libraries.length > 0 && <LibraryRail libraries={libraries} />}
 
-      {loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0 && (
-        <div className="nv-section-stack">
-          <HomeRailSkeleton title={t('home.continueWatching')} landscape />
-          <HomeRailSkeleton title={t('home.recentlyAdded')} />
-        </div>
-      )}
+        {loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0 && (
+          <div className="nv-section-stack">
+            <HomeRailSkeleton title={t('home.continueWatching')} landscape />
+            <HomeRailSkeleton title={t('home.recentlyAdded')} />
+          </div>
+        )}
 
-      {!loading && recentItems.length > 0 && (
-        <HomeShelfGrid
-          items={recentItems}
-          genreItems={genreItems}
-          recentTitle={t('home.recentlyAdded')}
-        />
-      )}
+        {!loading && recentItems.length > 0 && (
+          <HomeShelfGrid
+            items={recentItems}
+            genreItems={genreItems}
+            recentTitle={t('home.recentlyAdded')}
+          />
+        )}
 
-      {!loading && recentItems.length === 0 && continueList.length === 0 && (
-        <EmptyState
-          icon={<Play size={22} aria-hidden="true" />}
-          title={t('home.noContent')}
-          description={t('home.noContentHint')}
-        />
-      )}
+        {showEmpty && (
+          <EmptyState
+            icon={<Play size={22} aria-hidden="true" />}
+            title={t('home.noContent')}
+            description={t('home.noContentHint')}
+          />
+        )}
+      </div>
     </div>
+  )
+}
+
+function LibraryRail({ libraries }: { libraries: Library[] }) {
+  return (
+    <section className="nv-home-library-section" aria-labelledby="home-library-title">
+      <div className="nv-home-section-heading">
+        <h2 id="home-library-title">媒体库</h2>
+      </div>
+      <div className="nv-home-library-grid">
+        {libraries.map((library) => {
+          const Icon = library.type === 'tvshow' ? Tv : library.type === 'movie' ? Film : FolderOpen
+          return (
+            <Link key={library.id} to={`/library/${library.id}`} className="nv-home-library-tile">
+              <span className="nv-home-library-icon"><Icon size={17} aria-hidden="true" /></span>
+              <span className="nv-home-library-copy">
+                <strong>{library.name}</strong>
+                <span>{library.media_count !== undefined ? `${library.media_count} 项` : library.type === 'tvshow' ? '剧集' : library.type === 'movie' ? '电影' : '媒体'}</span>
+              </span>
+              <ChevronRight size={14} aria-hidden="true" />
+            </Link>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -229,14 +244,15 @@ function ContinueWatchingRow({
   return (
     <MediaRail
       title={(
-        <span className="inline-flex items-center gap-2">
-          <Clock size={16} aria-hidden="true" />
+        <span className="inline-flex items-center gap-1.5">
+          <Clock size={14} aria-hidden="true" />
           {title}
         </span>
       )}
       ariaLabel={title}
       itemCount={items.length}
       action={<RailAction to="/history" />}
+      className="nv-home-continue-rail"
     >
       {items.map((item) => {
         const percent = formatProgress(item.position, item.duration)
@@ -253,25 +269,14 @@ function ContinueWatchingRow({
                 alt=""
                 ratio="landscape"
                 className="nv-continue-artwork"
-                imageClassName="transition-[filter,transform] duration-200 group-hover:scale-[1.015] group-hover:brightness-[.82]"
-                fallback={<Play size={24} aria-hidden="true" />}
+                imageClassName="transition-[filter,transform] duration-200 group-hover:scale-[1.01] group-hover:brightness-[.9]"
+                fallback={<Play size={22} aria-hidden="true" />}
               >
-                <div className="nv-continue-overlay absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]">
-                    <Play size={14} fill="currentColor" aria-hidden="true" />
-                  </span>
-                </div>
-                <Tag tone="quality" className="absolute right-2 top-2 z-20">{percent}%</Tag>
-                <div className="nv-media-card-progress">
-                  <span style={{ width: `${percent}%` }} />
-                </div>
+                <div className="nv-media-card-progress"><span style={{ width: `${percent}%` }} /></div>
               </MediaArtwork>
 
               <div className="nv-continue-copy">
                 <h3 className="nv-media-card-title">{displayTitle}</h3>
-                {item.media.media_type === 'episode' && item.media.episode_title && (
-                  <p className="nv-continue-episode-title">{item.media.episode_title}</p>
-                )}
                 <p className="nv-continue-progress-label">{watchedLabel(percent)}</p>
               </div>
             </Link>
@@ -326,9 +331,7 @@ function HomeShelfGrid({
 
   return (
     <div className="nv-home-shelf-grid" aria-label="首页分类内容">
-      {shelves.map((shelf) => (
-        <HomePosterShelf key={shelf.key} shelf={shelf} />
-      ))}
+      {shelves.map((shelf) => <HomePosterShelf key={shelf.key} shelf={shelf} />)}
     </div>
   )
 }
@@ -339,7 +342,7 @@ function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
       title={shelf.title}
       ariaLabel={shelf.title}
       itemCount={shelf.items.length}
-      action={<RailAction to={shelf.to} label="更多" />}
+      action={<RailAction to={shelf.to} />}
       className="nv-home-compact-shelf"
     >
       {shelf.items.slice(0, 16).map((item) => {
@@ -348,9 +351,9 @@ function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
         return (
           <div key={`${shelf.key}-${item.type}-${media.id}`} className="nv-home-shelf-poster-slot flex-shrink-0">
             {item.type === 'series' && item.series
-              ? <MediaCard series={item.series} />
+              ? <MediaCard series={item.series} showBadges={false} />
               : item.media
-                ? <MediaCard media={item.media} />
+                ? <MediaCard media={item.media} showBadges={false} />
                 : null}
           </div>
         )

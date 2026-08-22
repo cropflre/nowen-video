@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Film, Tv, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Film, User } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { personApi } from '@/api'
 import type { Media, Person, Series } from '@/types'
 import { useTranslation } from '@/i18n'
-import { usePagination } from '@/hooks/usePagination'
-import Pagination from '@/components/Pagination'
 import MediaCard from '@/components/MediaCard'
 import PersonHero from '@/components/media/PersonHero'
-import { Button, EmptyState, PageContainer, Section, Tag } from '@/components/design-system'
-import { MediaGrid as SharedMediaGrid } from '@/ui'
+import { Button, EmptyState, PageContainer } from '@/components/design-system'
+import { MediaRail } from '@/ui'
 
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -21,26 +19,6 @@ export default function PersonDetailPage() {
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [loading, setLoading] = useState(true)
   const [worksLoading, setWorksLoading] = useState(true)
-
-  const moviePagination = usePagination({ initialSize: 18, syncToUrl: true, pageKey: 'mp', sizeKey: 'mps' })
-  const seriesPagination = usePagination({ initialSize: 18, syncToUrl: true, pageKey: 'sp', sizeKey: 'sps' })
-
-  useEffect(() => {
-    moviePagination.setPage(1)
-    seriesPagination.setPage(1)
-    // Pagination setters are stable for this route lifecycle; reset only when the person changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  const pagedMovies = useMemo(() => {
-    const start = (moviePagination.page - 1) * moviePagination.size
-    return mediaList.slice(start, start + moviePagination.size)
-  }, [mediaList, moviePagination.page, moviePagination.size])
-
-  const pagedSeries = useMemo(() => {
-    const start = (seriesPagination.page - 1) * seriesPagination.size
-    return seriesList.slice(start, start + seriesPagination.size)
-  }, [seriesList, seriesPagination.page, seriesPagination.size])
 
   useEffect(() => {
     if (!id) {
@@ -104,7 +82,7 @@ export default function PersonDetailPage() {
   const totalWorks = mediaList.length + seriesList.length
 
   return (
-    <div className="-mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+    <div className="nv-person-detail-page">
       <PersonHero
         person={person}
         personId={id}
@@ -114,7 +92,7 @@ export default function PersonDetailPage() {
         onBack={() => navigate(-1)}
       />
 
-      <PageContainer width="wide" className="py-8">
+      <div className="nv-person-detail-content">
         {worksLoading ? (
           <WorksSkeleton />
         ) : totalWorks === 0 ? (
@@ -124,79 +102,55 @@ export default function PersonDetailPage() {
             description={person.orig_name && person.orig_name !== person.name ? person.orig_name : undefined}
           />
         ) : (
-          <div className="space-y-10">
+          <div className="nv-person-work-sections">
             {mediaList.length > 0 && (
-              <Section
-                title={
-                  <span className="inline-flex items-center gap-2">
-                    <Film size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
-                    {t('personDetail.movies')}
-                  </span>
-                }
-                action={<Tag>{mediaList.length}</Tag>}
-              >
-                <SharedMediaGrid>
-                  {pagedMovies.map((media) => <MediaCard key={media.id} media={media} />)}
-                </SharedMediaGrid>
-                <Pagination
-                  page={moviePagination.page}
-                  totalPages={moviePagination.totalPages(mediaList.length)}
-                  total={mediaList.length}
-                  pageSize={moviePagination.size}
-                  pageSizeOptions={[12, 18, 24, 48]}
-                  onPageChange={moviePagination.setPage}
-                  onPageSizeChange={moviePagination.setSize}
-                />
-              </Section>
+              <MediaRail title={t('personDetail.movies')} ariaLabel={t('personDetail.movies')} itemCount={mediaList.length}>
+                {mediaList.map((media) => (
+                  <div key={media.id} className="nv-person-work-card flex-shrink-0">
+                    <MediaCard media={media} showBadges={false} />
+                  </div>
+                ))}
+              </MediaRail>
             )}
 
             {seriesList.length > 0 && (
-              <Section
-                title={
-                  <span className="inline-flex items-center gap-2">
-                    <Tv size={18} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
-                    {t('personDetail.tvShows')}
-                  </span>
-                }
-                action={<Tag>{seriesList.length}</Tag>}
-              >
-                <SharedMediaGrid>
-                  {pagedSeries.map((series) => <MediaCard key={series.id} series={series} />)}
-                </SharedMediaGrid>
-                <Pagination
-                  page={seriesPagination.page}
-                  totalPages={seriesPagination.totalPages(seriesList.length)}
-                  total={seriesList.length}
-                  pageSize={seriesPagination.size}
-                  pageSizeOptions={[12, 18, 24, 48]}
-                  onPageChange={seriesPagination.setPage}
-                  onPageSizeChange={seriesPagination.setSize}
-                />
-              </Section>
+              <MediaRail title={t('personDetail.tvShows')} ariaLabel={t('personDetail.tvShows')} itemCount={seriesList.length}>
+                {seriesList.map((series) => (
+                  <div key={series.id} className="nv-person-work-card flex-shrink-0">
+                    <MediaCard series={series} showBadges={false} />
+                  </div>
+                ))}
+              </MediaRail>
             )}
           </div>
         )}
-      </PageContainer>
+
+        {person.tmdb_id > 0 && (
+          <section className="nv-person-external-links" aria-labelledby="person-external-title">
+            <h2 id="person-external-title">外部链接</h2>
+            <a href={`https://www.themoviedb.org/person/${person.tmdb_id}`} target="_blank" rel="noopener noreferrer">TMDb</a>
+          </section>
+        )}
+      </div>
     </div>
   )
 }
 
 function PersonDetailSkeleton() {
   return (
-    <div className="-mx-4 -mt-6 animate-pulse sm:-mx-6 lg:-mx-8">
-      <div className="border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-canvas)]">
-        <div className="mx-auto flex max-w-[var(--nv-content-max)] flex-col items-center gap-6 px-[var(--nv-page-gutter)] py-8 sm:flex-row sm:items-start">
-          <div className="h-40 w-40 shrink-0 rounded-[var(--nv-radius-hero)] bg-[var(--nv-bg-surface-soft)] sm:h-48 sm:w-48" />
-          <div className="w-full max-w-xl space-y-3 sm:pt-4">
-            <div className="h-5 w-20 rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]" />
-            <div className="h-9 w-2/3 rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]" />
-            <div className="h-5 w-1/3 rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]" />
+    <div className="nv-person-detail-page animate-pulse">
+      <div className="nv-person-profile-hero">
+        <div className="h-8 w-16 rounded bg-[var(--nv-bg-surface-soft)]" />
+        <div className="nv-person-profile-layout">
+          <div className="skeleton aspect-square w-[120px] rounded-[var(--nv-radius-card)]" />
+          <div className="w-full max-w-lg space-y-3">
+            <div className="skeleton h-8 w-40" />
+            <div className="skeleton h-4 w-28" />
+            <div className="skeleton h-4 w-64" />
           </div>
         </div>
       </div>
-      <PageContainer width="wide" className="py-8">
-        <WorksSkeleton />
-      </PageContainer>
+      <div className="nv-person-detail-content"><WorksSkeleton /></div>
     </div>
   )
 }
@@ -204,21 +158,17 @@ function PersonDetailSkeleton() {
 function WorksSkeleton() {
   return (
     <div className="space-y-8 animate-pulse">
-      {[6, 3].map((count, sectionIndex) => (
-        <section key={sectionIndex} className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="h-6 w-28 rounded-[var(--nv-radius-sm)] bg-[var(--nv-bg-surface-soft)]" />
-            <div className="h-6 w-9 rounded-full bg-[var(--nv-bg-surface-soft)]" />
-          </div>
-          <SharedMediaGrid>
+      {[7, 5].map((count, sectionIndex) => (
+        <section key={sectionIndex} className="space-y-3">
+          <div className="skeleton h-5 w-24" />
+          <div className="flex gap-3 overflow-hidden">
             {Array.from({ length: count }).map((_, index) => (
-              <div key={index}>
+              <div key={index} className="w-[106px] flex-shrink-0">
                 <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
                 <div className="skeleton mt-2 h-3 w-3/4" />
-                <div className="skeleton mt-1.5 h-2.5 w-1/2" />
               </div>
             ))}
-          </SharedMediaGrid>
+          </div>
         </section>
       ))}
     </div>

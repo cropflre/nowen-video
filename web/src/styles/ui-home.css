@@ -1,0 +1,360 @@
+/* Nowen Video · home page */
+
+.nv-home-page {
+  margin-top: -8px;
+}
+
+.nv-home-page .nv-hero-carousel {
+  width: calc(100% + (var(--nv-page-gutter) * 2));
+  height: clamp(420px, 55vh, 660px);
+  margin-inline: calc(var(--nv-page-gutter) * -1);
+  border: 0;
+  border-radius: 0;
+  background: var(--nv-bg-canvas);
+  box-shadow: none;
+}
+
+.nv-home-page .nv-hero-carousel > .absolute.inset-0 img {
+  object-position: center 32%;
+}
+
+.nv-home-page .nv-home-hero-foreground {
+  position: absolute;
+  inset: auto var(--nv-page-gutter) clamp(36px, 6vh, 64px);
+  display: block;
+  max-width: min(620px, 52vw);
+}
+
+.nv-home-page .nv-home-hero-poster {
+  display: none;
+}
+
+.nv-home-page .nv-home-hero-content {
+  width: 100%;
+  max-width: none;
+}
+
+.nv-home-page .nv-hero-content {
+  color: #fff;
+}
+
+.nv-home-page .nv-media-hero-title {
+  max-width: 22ch;
+  color: #fff;
+  font-size: clamp(1.7rem, 2.2vw, 2.7rem) !important;
+  font-weight: 750;
+  line-height: 1.04;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, .28);
+}
+
+.nv-home-page .nv-media-hero-subtitle,
+.nv-home-page .nv-media-hero-meta,
+.nv-home-page .nv-media-hero-overview,
+.nv-home-page .nv-home-hero-watch-progress-label {
+  color: rgba(255, 255, 255, .82);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, .24);
+}
+
+.nv-home-page .nv-media-hero-subtitle {
+  font-size: 12px;
+}
+
+.nv-home-page .nv-media-hero-meta {
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+
+.nv-home-page .nv-media-hero-meta .nv-tag {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(0, 0, 0, .18);
+  color: rgba(255, 255, 255, .86);
+}
+
+.nv-home-page .nv-media-hero-overview {
+  max-width: 62ch;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  -webkit-line-clamp: 3;
+}
+
+.nv-home-page .nv-media-hero-actions {
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.nv-home-page .nv-media-hero-actions .nv-button {
+  min-height: 30px;
+  height: 30px;
+  padding-inline: 10px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.nv-home-page .nv-media-hero-actions .nv-button--secondary {
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(18, 18, 18, .36);
+  color: #fff;
+}
+
+.nv-home-page .nv-home-hero-watch-progress {
+  width: min(320px, 70%);
+  margin-top: 10px;
+}
+
+.nv-home-page .nv-home-hero-watch-progress-track {
+  height: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .22);
+}
+
+.nv-home-page .nv-home-hero-watch-progress-track > span {
+  display: block;
+  height: 100%;
+  background: var(--nv-action-primary);
+}
+
+.nv-home-page .nv-home-hero-arrow {
+  top: 50%;
+  width: 28px;
+  min-width: 28px;
+  height: 36px;
+  min-height: 36px;
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(0, 0, 0, .24);
+  color: #fff;
+  box-shadow: none;
+}
+
+.nv-home-page .nv-home-hero-arrow--left { left: 8px; }
+.nv-home-page .nv-home-hero-arrow--right { right: 8px; }
+
+.nv-home-page .nv-home-hero-dots {
+  bottom: 22px;
+  gap: 5px;
+}
+
+.nv-home-page .nv-home-hero-dots button {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .40);
+}
+
+.nv-home-page .nv-home-hero-dots button[aria-selected="true"] {
+  width: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .90);
+}
+
+.nv-home-content-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nv-section-gap);
+  padding-top: 4px;
+}
+
+.nv-home-rail-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--nv-text-tertiary);
+  font-size: 10.5px;
+  font-weight: 550;
+}
+
+.nv-home-rail-action:hover { color: var(--nv-text-primary); }
+
+.nv-continue-card {
+  width: clamp(170px, 13.5vw, 220px);
+}
+
+.nv-continue-artwork {
+  border-radius: 5px;
+}
+
+.nv-continue-copy {
+  padding-top: 6px;
+}
+
+.nv-continue-progress-label {
+  margin-top: 2px;
+  color: var(--nv-text-tertiary);
+  font-size: 9.5px;
+}
+
+.nv-media-card-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: rgba(0, 0, 0, .20);
+}
+
+.nv-media-card-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--nv-action-primary);
+}
+
+.nv-home-library-section {
+  min-width: 0;
+}
+
+.nv-home-section-heading {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.nv-home-section-heading h2 {
+  color: var(--nv-text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.nv-home-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.nv-home-library-tile {
+  min-width: 0;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--nv-border-subtle);
+  border-radius: 6px;
+  background: var(--nv-bg-surface);
+  color: var(--nv-text-secondary);
+  transition: background-color var(--nv-motion-fast) var(--nv-ease-standard), border-color var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-home-library-tile:hover {
+  border-color: var(--nv-border-hover);
+  background: var(--nv-fill-hover);
+}
+
+.nv-home-library-icon {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--nv-fill-active);
+  color: var(--nv-action-primary);
+}
+
+.nv-home-library-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.nv-home-library-copy strong {
+  overflow: hidden;
+  color: var(--nv-text-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-home-library-copy span {
+  margin-top: 2px;
+  color: var(--nv-text-tertiary);
+  font-size: 9.5px;
+}
+
+.nv-home-shelf-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nv-section-gap);
+}
+
+.nv-home-shelf-poster-slot {
+  width: var(--nv-poster-width-sm);
+  min-width: var(--nv-poster-width-sm);
+}
+
+.nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+  width: clamp(88px, 5.5vw, 100px);
+  min-width: clamp(88px, 5.5vw, 100px);
+}
+
+@media (min-width: 120rem) {
+  .nv-home-shelf-poster-slot {
+    width: 112px;
+    min-width: 112px;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-home-page {
+    margin-top: -6px;
+  }
+
+  .nv-home-page .nv-hero-carousel {
+    height: min(64dvh, 520px);
+  }
+
+  .nv-home-page .nv-home-hero-foreground {
+    inset: auto 12px 34px;
+    max-width: none;
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 12px;
+    align-items: end;
+  }
+
+  .nv-home-page .nv-home-hero-poster {
+    display: block;
+    width: 82px;
+  }
+
+  .nv-home-page .nv-media-hero-title {
+    font-size: 1.35rem !important;
+  }
+
+  .nv-home-page .nv-media-hero-subtitle,
+  .nv-home-page .nv-media-hero-overview {
+    display: none;
+  }
+
+  .nv-home-page .nv-media-hero-actions .nv-button:nth-child(n+3) {
+    display: none;
+  }
+
+  .nv-home-page .nv-home-hero-arrow {
+    display: none;
+  }
+
+  .nv-home-library-grid {
+    display: flex;
+    overflow-x: auto;
+    gap: 7px;
+    padding-bottom: 4px;
+  }
+
+  .nv-home-library-tile {
+    width: 152px;
+    min-width: 152px;
+  }
+
+  .nv-continue-card {
+    width: 168px;
+  }
+
+  .nv-home-shelf-poster-slot,
+  .nv-home-compact-shelf:first-child .nv-home-shelf-poster-slot {
+    width: 96px;
+    min-width: 96px;
+  }
+}

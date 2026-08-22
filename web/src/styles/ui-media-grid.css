@@ -1,0 +1,65 @@
+/* Nowen Video · browse/library density */
+
+.nv-browse-toolbar,
+.nv-library-toolbar {
+  gap: 8px;
+}
+
+.nv-section-stack:has(> [aria-label="媒体类型"]),
+.nv-section-stack:has(> [aria-label="媒体库内容类型"]) {
+  gap: 12px;
+}
+
+.nv-section-stack:has(> [aria-label="媒体类型"]) .nv-surface,
+.nv-section-stack:has(> [aria-label="媒体库内容类型"]) .nv-surface {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.nv-section-stack:has(> [aria-label="媒体类型"]) .nv-button,
+.nv-section-stack:has(> [aria-label="媒体库内容类型"]) .nv-button {
+  min-height: 28px;
+  border-radius: 5px;
+  font-size: 10.5px;
+}
+
+.nv-section-stack:has(> [aria-label="媒体类型"]) .nv-search,
+.nv-section-stack:has(> [aria-label="媒体库内容类型"]) .nv-search {
+  height: 30px;
+  border-radius: 5px;
+}
+
+.nv-section-stack:has(> [aria-label="媒体类型"]) .nv-select,
+.nv-section-stack:has(> [aria-label="媒体库内容类型"]) .nv-select {
+  min-height: 30px;
+  height: 30px;
+  border-radius: 5px;
+  font-size: 10.5px;
+}
+
+.nv-media-grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--nv-poster-width-md), 1fr));
+  gap: var(--nv-grid-gap-y) var(--nv-grid-gap-x);
+}
+
+.nv-media-grid > * {
+  min-width: 0;
+  max-width: 150px;
+}
+
+@media (min-width: 120rem) {
+  .nv-media-grid {
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  }
+
+  .nv-media-grid > * { max-width: 148px; }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+
+  .nv-media-grid > * { max-width: none; }
+}

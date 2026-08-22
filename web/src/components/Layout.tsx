@@ -1,13 +1,14 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Clock3, Heart } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Search } from 'lucide-react'
 import Sidebar from './Sidebar'
 import { PageContainer } from './design-system'
-import { AppShell, PageHeader } from '@/ui'
+import { AppShell } from '@/ui'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
 const SIDEBAR_COLLAPSED_KEY = 'nowen_sidebar_collapsed'
-const WIDE_PAGE_PREFIXES = ['/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
+const WIDE_PAGE_PREFIXES = ['/browse', '/library/', '/files', '/preprocess', '/admin', '/collections', '/media/', '/series/', '/person/']
+const DETAIL_PAGE_PREFIXES = ['/media/', '/series/', '/person/']
 
 const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/browse', '影视库'],
@@ -25,7 +26,7 @@ const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/library/', '媒体库'],
   ['/series/', '剧集详情'],
   ['/media/', '媒体详情'],
-  ['/person/', '演员详情'],
+  ['/person/', '人物详情'],
 ]
 
 const SAFE_INLINE_STYLE = {
@@ -46,34 +47,42 @@ function readInitialSidebarCollapsed() {
   }
 }
 
-function ApplicationTopBar() {
+function MinimalToolbar() {
   const location = useLocation()
-  const isHomeRoute = location.pathname === '/'
+  const navigate = useNavigate()
   const title = useMemo(() => resolveTitle(location.pathname), [location.pathname])
+  const isDetailRoute = DETAIL_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
+  const searchFromUrl = location.pathname === '/search' ? new URLSearchParams(location.search).get('q') || '' : ''
+  const [query, setQuery] = useState(searchFromUrl)
 
-  const actions = (
-    <>
-      <Link to="/history" className="nv-page-header-action nv-page-header-action--label" aria-label="观看历史" title="观看历史">
-        <Clock3 size={15} aria-hidden="true" />
-        <span>观看历史</span>
-      </Link>
-      <Link to="/favorites" className="nv-page-header-action nv-page-header-action--label" aria-label="我的收藏" title="我的收藏">
-        <Heart size={15} aria-hidden="true" />
-        <span>我的收藏</span>
-      </Link>
-    </>
-  )
+  useEffect(() => {
+    if (location.pathname === '/search') setQuery(searchFromUrl)
+  }, [location.pathname, searchFromUrl])
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const next = query.trim()
+    navigate(next ? `/search?q=${encodeURIComponent(next)}` : '/search')
+  }
 
   return (
-    <PageHeader
-      title={title}
-      subtitle={isHomeRoute ? '精选推荐 · 精彩不断' : undefined}
-      showSearch={false}
-      showSearchShortcut={false}
-      actions={actions}
-      className="nv-topbar--navigation-only"
-      style={SAFE_INLINE_STYLE}
-    />
+    <header className="nv-minimal-toolbar" style={SAFE_INLINE_STYLE}>
+      <div className="nv-minimal-toolbar-side">
+        {!isDetailRoute && <span className="nv-toolbar-route-title">{title}</span>}
+      </div>
+
+      <form className="nv-toolbar-search" role="search" onSubmit={handleSearch}>
+        <Search size={14} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索"
+          aria-label="搜索媒体"
+        />
+      </form>
+
+      <div className="nv-minimal-toolbar-side nv-minimal-toolbar-side--end" aria-hidden="true" />
+    </header>
   )
 }
 
@@ -81,7 +90,7 @@ export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
-  const isWidePage = WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
+  const isWidePage = location.pathname === '/' || WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
   const usesLocalDetailChrome = location.pathname.startsWith('/media/') || location.pathname.startsWith('/series/')
 
   useEffect(() => {
@@ -136,10 +145,10 @@ export default function Layout() {
         id="main-scroll-container"
         className="nv-main-scroll relative min-w-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        {!usesLocalDetailChrome && <ApplicationTopBar />}
+        <MinimalToolbar />
         <PageContainer
           width={isWidePage ? 'wide' : 'content'}
-          className={usesLocalDetailChrome ? 'nv-page-container--detail' : undefined}
+          className={usesLocalDetailChrome ? 'nv-page-container--detail' : 'nv-page-container--minimal'}
           style={SAFE_INLINE_STYLE}
         >
           <Outlet />

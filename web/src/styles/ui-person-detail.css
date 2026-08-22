@@ -1,0 +1,156 @@
+/* Nowen Video · person detail */
+
+.nv-person-detail-page {
+  width: 100%;
+}
+
+.nv-person-profile-hero {
+  padding: 10px 0 22px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-person-back-button {
+  margin-bottom: 14px;
+}
+
+.nv-person-profile-layout {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.nv-person-profile-artwork {
+  width: 124px;
+  border-radius: 6px;
+}
+
+.nv-person-profile-copy {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.nv-person-profile-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.nv-person-profile-title-row h1 {
+  color: var(--nv-text-primary);
+  font-size: clamp(1.45rem, 2vw, 2rem);
+  font-weight: 720;
+  line-height: 1.12;
+  letter-spacing: -.02em;
+}
+
+.nv-person-original-name {
+  margin-top: 5px;
+  color: var(--nv-text-tertiary);
+  font-size: 11.5px;
+}
+
+.nv-person-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: 5px;
+  color: var(--nv-text-secondary);
+  font-size: 10.5px;
+}
+
+.nv-person-inline-link:hover {
+  border-color: var(--nv-border-hover);
+  color: var(--nv-text-primary);
+}
+
+.nv-person-work-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--nv-text-secondary);
+  font-size: 11px;
+}
+
+.nv-person-work-summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nv-person-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 22px;
+}
+
+.nv-person-work-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.nv-person-work-card {
+  width: var(--nv-poster-width-sm);
+  min-width: var(--nv-poster-width-sm);
+}
+
+.nv-person-external-links {
+  padding-top: 4px;
+}
+
+.nv-person-external-links h2 {
+  margin-bottom: 8px;
+  color: var(--nv-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.nv-person-external-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: 4px;
+  color: var(--nv-text-secondary);
+  font-size: 10.5px;
+}
+
+.nv-person-external-links a:hover {
+  border-color: var(--nv-border-hover);
+  color: var(--nv-text-primary);
+}
+
+@media (max-width: 47.999rem) {
+  .nv-person-profile-hero {
+    padding-top: 6px;
+  }
+
+  .nv-person-profile-layout {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .nv-person-profile-artwork {
+    width: 92px;
+  }
+
+  .nv-person-profile-title-row {
+    gap: 8px;
+  }
+
+  .nv-person-profile-title-row h1 {
+    font-size: 1.35rem;
+  }
+
+  .nv-person-work-card {
+    width: 96px;
+    min-width: 96px;
+  }
+}
