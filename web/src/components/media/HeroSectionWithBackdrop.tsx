@@ -66,11 +66,11 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   )
 
   const carouselFrames = useMemo(() => {
-    // Generated highlight thumbnails are real single frames, so prefer them over
-    // a local backdrop that may itself be a storyboard/contact sheet. The normal
-    // backdrop remains the last fallback when no highlight frame is available.
-    const candidates = uniqueUrls([...highlightFrames, backdropUrl])
-    return candidates.filter((url) => !failedFrames.includes(url))
+    // Highlight thumbnails are true single video frames. When they exist, use
+    // only those frames for the detail slideshow so a legacy local backdrop
+    // that is itself a storyboard/contact sheet can never re-enter the cycle.
+    const source = highlightFrames.length > 0 ? highlightFrames : [backdropUrl]
+    return uniqueUrls(source).filter((url) => !failedFrames.includes(url))
   }, [backdropUrl, failedFrames, highlightFrames])
 
   useEffect(() => {
