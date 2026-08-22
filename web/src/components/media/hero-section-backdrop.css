@@ -8,31 +8,23 @@
 
 .nv-detail-hero-local-backdrop {
   position: absolute;
-  inset: 0;
+  inset: -1px;
   z-index: 0;
-  width: 100%;
-  height: 100%;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
   object-fit: cover;
   object-position: center 32%;
   pointer-events: none;
   opacity: 0;
-  transform: scale(1.008);
 }
 
-.nv-detail-hero-local-backdrop.is-loaded {
-  opacity: 0.92;
-  transform: scale(1);
-  animation: nv-detail-backdrop-fade 420ms ease both;
+.nv-detail-hero-local-backdrop.is-ready {
+  opacity: 1;
 }
 
-@keyframes nv-detail-backdrop-fade {
-  from { opacity: 0; transform: scale(1.012); }
-  to { opacity: 0.92; transform: scale(1); }
-}
-
-/* The wrapper owns exactly one visible backdrop at a time. HeroSection keeps
-   its fallback artwork implementation for compatibility, but it is visually
-   suppressed whenever the carousel has an active single-frame candidate. */
+/* Keep HeroSection's fallback artwork visible until the carousel frame has
+   actually decoded. This prevents the page canvas from flashing around the
+   Hero edges during first paint or when a new frame is still loading. */
 .nv-detail-hero-backdrop-shell .nv-detail-hero {
   border-bottom: 0 !important;
 }
@@ -96,12 +88,5 @@
 @media (max-width: 767px) {
   .nv-detail-subtitle-action {
     min-width: 44px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nv-detail-hero-local-backdrop.is-loaded {
-    animation: none;
-    transform: none;
   }
 }
