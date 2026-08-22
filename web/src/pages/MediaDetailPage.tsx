@@ -41,7 +41,7 @@ import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { AnimatePresence, motion } from 'framer-motion'
 import { durations, easeSmooth } from '@/lib/motion'
-import { Captions, ChevronLeft, Pencil, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Captions, Pencil, RefreshCw } from 'lucide-react'
 
 type DetailTab = 'overview' | 'cast' | 'highlights' | 'tech' | 'subtitles' | 'related'
 
@@ -473,15 +473,16 @@ export default function MediaDetailPage() {
           type="button"
           variant="ghost"
           size="sm"
+          iconOnly
           className="nv-detail-back-button"
           onClick={() => {
             if (window.history.length > 1) navigate(-1)
             else navigate('/')
           }}
+          title="返回"
           aria-label="返回"
         >
-          <ChevronLeft size={15} aria-hidden="true" />
-          返回
+          <ArrowLeft size={17} aria-hidden="true" />
         </Button>
 
         <div className="nv-detail-breadcrumb" title={`影视库 / ${breadcrumbLabel}`}>
