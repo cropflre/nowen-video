@@ -10,7 +10,7 @@
   display: flex;
   flex: 0 0 var(--nv-rail-width);
   flex-direction: column;
-  padding: 8px 6px;
+  padding: 8px 4px;
   overflow: visible;
   border-right: 1px solid var(--nv-border-subtle);
   background: var(--nv-bg-sidebar);
@@ -39,7 +39,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 5px;
+  padding: 4px 4px;
   border: 0;
   background: transparent;
   color: var(--nv-text-primary);
@@ -89,10 +89,12 @@
 }
 
 .nv-rail-scroll {
+  width: 100%;
   min-height: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -100,11 +102,13 @@
 }
 
 .nv-rail-section {
+  width: 100%;
   min-width: 0;
+  align-self: stretch;
 }
 
 .nv-rail-section-title {
-  margin: 10px 7px 4px;
+  margin: 10px 5px 4px;
   color: var(--nv-text-tertiary);
   font-size: 10px;
   font-weight: 600;
@@ -112,21 +116,26 @@
 }
 
 .nv-rail-section-links {
+  width: 100%;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 2px;
 }
 
 .nv-rail-item {
   position: relative;
+  width: 100%;
   min-width: 0;
   height: 32px;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
-  padding: 0 7px;
+  align-self: stretch;
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 0 5px;
   border: 1px solid transparent;
   border-radius: 5px;
   color: var(--nv-text-secondary);
@@ -161,9 +170,9 @@
 }
 
 .nv-rail-icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   display: grid;
   place-items: center;
   color: currentColor;
@@ -179,6 +188,7 @@
 
 .nv-rail-meta {
   flex: 0 0 auto;
+  margin-left: auto;
   color: var(--nv-text-tertiary);
   font-size: 9.5px;
 }
@@ -393,6 +403,16 @@
 .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-profile {
   flex-direction: row;
   justify-content: flex-start;
+}
+
+.nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-item {
+  width: 100%;
+  gap: 6px;
+  padding-inline: 5px;
+}
+
+.nv-app-shell[data-sidebar-collapsed="false"] .nv-rail-label {
+  display: block;
 }
 
 .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail {
