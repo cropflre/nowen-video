@@ -6,9 +6,7 @@
 .nv-comment-summary-main,
 .nv-comment-summary-actions { min-width: 0; display: flex; align-items: center; }
 .nv-comment-summary-main { gap: 9px; }
-.nv-comment-summary-icon { width: 28px; min-width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--nv-border-subtle); border-radius: var(--nv-radius-control); background: var(--nv-bg-control); color: var(--nv-text-tertiary); }
 .nv-comment-summary-copy { min-width: 0; display: flex; align-items: baseline; gap: 9px; }
-.nv-comment-summary-title { color: var(--nv-text-primary); font-size: 12.5px; font-weight: 650; }
 .nv-comment-summary-meta { overflow: hidden; color: var(--nv-text-tertiary); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .nv-comment-summary-actions { flex: 0 0 auto; gap: 6px; color: var(--nv-text-tertiary); font-size: 10.5px; }
 .nv-comment-summary-toggle-label { color: var(--nv-text-secondary); font-weight: 550; }

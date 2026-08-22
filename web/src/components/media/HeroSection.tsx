@@ -7,7 +7,7 @@ import { useToast } from '@/components/Toast'
 import { Button, Tag, buttonClassName } from '@/components/design-system'
 import { HeroContent, MediaArtwork } from '@/ui'
 import { useTranslation } from '@/i18n'
-import { formatDuration, formatDurationShort } from '@/utils/format'
+import { formatDuration, formatDurationShort, formatTime } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
 import {
   Check,
@@ -209,6 +209,10 @@ export default function HeroSection({
     : media.title
 
   const isResume = !!watchProgress && !watchProgress.completed && watchProgress.position > 0
+  const watchDuration = watchProgress?.duration || media.duration || 0
+  const watchPercent = watchProgress && watchDuration > 0
+    ? Math.min(100, Math.max(0, Math.round((watchProgress.position / watchDuration) * 100)))
+    : 0
   const playLabel = isResume
     ? t('hero.continuePlayAt', { time: formatDurationShort(watchProgress.position) })
     : t('media.play')
@@ -416,7 +420,6 @@ export default function HeroSection({
         </div>
 
         <HeroContent
-          compact
           className="pb-1"
           eyebrow={episodeEyebrow}
           title={title}
@@ -431,22 +434,32 @@ export default function HeroSection({
               )}
               {media.year > 0 && <span>{media.year}</span>}
               {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
-              {media.country && <span>{media.country}</span>}
+              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
               {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
-                <Link key={genre} to={`/search?q=${encodeURIComponent(genre.trim())}`} className="transition-colors hover:text-[var(--nv-action-muted-hover)]">
-                  {genre.trim()}
+                <Link
+                  key={genre}
+                  to={`/search?q=${encodeURIComponent(genre.trim())}`}
+                  className="transition-opacity hover:opacity-80"
+                >
+                  <Tag>{genre.trim()}</Tag>
                 </Link>
               ))}
-            </>
-          )}
-          badges={(
-            <>
-              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
               {media.video_codec && <Tag>{media.video_codec}</Tag>}
               {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
+              {media.country && <span>{media.country}</span>}
             </>
           )}
           overview={media.overview || undefined}
+          supplemental={watchProgress && watchDuration > 0 ? (
+            <div className="nv-detail-hero-watch-progress" aria-label={`已观看 ${watchPercent}%`}>
+              <div className="nv-detail-hero-watch-progress-label">
+                上次观看至 {formatTime(watchProgress.position)} / {formatTime(watchDuration)}
+              </div>
+              <div className="nv-detail-hero-watch-progress-track">
+                <span style={{ width: `${watchPercent}%` }} />
+              </div>
+            </div>
+          ) : undefined}
           actions={heroActions}
         />
       </div>

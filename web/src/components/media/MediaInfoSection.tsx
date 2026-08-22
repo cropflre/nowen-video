@@ -2,9 +2,10 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
 import { Button, EmptyState, Tag } from '@/components/design-system'
-import { ChevronDown, ChevronUp, ExternalLink, FileText } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, FileText, Info, Shapes, Tags } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface MediaInfoSectionProps {
   media: Media
@@ -103,7 +104,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
       {hasIntro ? (
         <section className="nv-media-info-intro py-5 sm:py-6">
           <div className="mb-4">
-            <h2 className="text-sm font-semibold text-[var(--nv-text-primary)]">影片简介</h2>
+            <DetailSectionTitle icon={<FileText size={17} />}>影片简介</DetailSectionTitle>
             {media.orig_title && media.orig_title !== media.title && (
               <p className="mt-1 text-xs italic text-[var(--nv-text-tertiary)]">{media.orig_title}</p>
             )}
@@ -167,7 +168,9 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
         <section className="nv-media-info-classifications grid gap-5 py-5 sm:grid-cols-2 sm:py-6">
           {genreList.length > 0 && (
             <div>
-              <SectionLabel>{t('mediaInfo.genres').replace(/[:：]\s*$/, '')}</SectionLabel>
+              <DetailSectionTitle as="h3" icon={<Shapes size={17} />} className="mb-2">
+                {t('mediaInfo.genres').replace(/[:：]\s*$/, '')}
+              </DetailSectionTitle>
               <div className="flex flex-wrap gap-1.5">
                 {genreList.map((genre) => (
                   <MetadataLink key={`g-${genre}`} to={`/search?q=${encodeURIComponent(genre)}`}>{genre}</MetadataLink>
@@ -178,7 +181,9 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
 
           {tagList.length > 0 && tagList.join(',') !== genreList.join(',') && (
             <div>
-              <SectionLabel>{t('mediaInfo.tags').replace(/[:：]\s*$/, '')}</SectionLabel>
+              <DetailSectionTitle as="h3" icon={<Tags size={17} />} className="mb-2">
+                {t('mediaInfo.tags').replace(/[:：]\s*$/, '')}
+              </DetailSectionTitle>
               <div className="flex flex-wrap gap-1.5">
                 {tagList.map((tag) => (
                   <MetadataLink key={`t-${tag}`} to={`/search?q=${encodeURIComponent(tag)}`}>#{tag}</MetadataLink>
@@ -192,7 +197,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
       {hasMetaTable && (
         <section className="nv-media-info-metadata py-5 sm:py-6">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-[var(--nv-text-primary)]">影片详情</h2>
+            <DetailSectionTitle icon={<Info size={17} />}>影片详情</DetailSectionTitle>
             <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--nv-text-tertiary)]">Metadata</span>
           </div>
 

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import type { FileDetail, Media, TechSpecs } from '@/types'
 import { formatSize } from '@/utils/format'
-import { AudioLines, Gauge, HardDrive, Monitor, Palette, PanelsTopLeft, ScanLine, Video } from 'lucide-react'
+import { AudioLines, Cpu, Gauge, HardDrive, Monitor, Palette, PanelsTopLeft, ScanLine, Video } from 'lucide-react'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface MediaDetailTechOverviewProps {
   media: Media
@@ -126,7 +127,9 @@ export default function MediaDetailTechOverview({ media, techSpecs, fileInfo }: 
       <div className="nv-detail-section-heading">
         <div>
           <span className="nv-detail-section-eyebrow">Technical</span>
-          <h2 id="detail-tech-overview-title">技术规格</h2>
+          <DetailSectionTitle id="detail-tech-overview-title" icon={<Cpu size={17} />}>
+            技术规格
+          </DetailSectionTitle>
         </div>
         <span className="nv-detail-section-hint">主播放文件</span>
       </div>

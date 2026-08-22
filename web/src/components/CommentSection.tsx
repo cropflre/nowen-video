@@ -7,6 +7,7 @@ import { useTranslation } from '@/i18n'
 import type { Comment } from '@/types'
 import { ChevronDown, ChevronUp, MessageSquare, Send, Star, Trash2 } from 'lucide-react'
 import { Button, EmptyState, Input, Surface, Tag } from '@/components/design-system'
+import DetailSectionTitle from '@/components/media/DetailSectionTitle'
 
 interface CommentSectionProps {
   mediaId: string
@@ -111,11 +112,10 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className="nv-comment-summary-main">
-          <span className="nv-comment-summary-icon" aria-hidden="true">
-            <MessageSquare size={17} />
-          </span>
           <span className="nv-comment-summary-copy">
-            <span id="comment-section-title" className="nv-comment-summary-title">评价</span>
+            <DetailSectionTitle as="span" id="comment-section-title" icon={<MessageSquare size={17} />}>
+              评价
+            </DetailSectionTitle>
             <span className="nv-comment-summary-meta">{summaryText}</span>
           </span>
         </span>

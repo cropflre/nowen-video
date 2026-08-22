@@ -16,6 +16,7 @@ import { collectionApi, streamApi } from '@/api'
 import { Button, Surface, Tag } from '@/components/design-system'
 import type { CollectionMediaItem, CollectionWithMedia } from '@/types'
 import { groupByMovie, versionLabel, type GroupedMovieItem } from '@/utils/collectionGroup'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface CollectionCarouselProps {
   mediaId: string
@@ -71,10 +72,9 @@ export default function CollectionCarousel({ mediaId }: CollectionCarouselProps)
     <section className="mt-6" aria-labelledby="collection-carousel-title">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 id="collection-carousel-title" className="inline-flex items-center gap-2 text-base font-semibold text-[var(--nv-text-primary)]">
-            <Layers size={17} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          <DetailSectionTitle as="h3" id="collection-carousel-title" icon={<Layers size={17} />}>
             系列合集
-          </h3>
+          </DetailSectionTitle>
 
           <Link
             to={`/collections/${collection.id}`}

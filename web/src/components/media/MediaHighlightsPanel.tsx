@@ -8,6 +8,7 @@ import { mediaAnalysisApi, type MediaAnalysisTask, type MediaHighlight } from '@
 import { useWebSocket, WS_EVENTS, type MediaAnalysisProgressData } from '@/hooks/useWebSocket'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { formatErrMsg } from '@/utils/error'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface MediaHighlightsPanelProps {
   mediaId: string
@@ -329,8 +330,8 @@ export default function MediaHighlightsPanel({ mediaId, isAdmin }: MediaHighligh
   return (
     <div ref={sectionRef} className="nv-highlights-panel space-y-4">
       <div className="nv-highlights-header flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold text-[var(--nv-text-primary)]">精彩片段</h2>
+        <div className="flex items-center gap-2">
+          <DetailSectionTitle icon={<Clapperboard size={17} />}>精彩片段</DetailSectionTitle>
           <span className="text-xs text-[var(--nv-text-tertiary)]">{orderedHighlights.length} 个</span>
         </div>
 

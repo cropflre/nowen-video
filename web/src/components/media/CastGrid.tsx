@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/design-system'
 import { PersonCard } from '@/ui'
 import { Users } from 'lucide-react'
 import { useTranslation } from '@/i18n'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface CastGridProps {
   persons: MediaPerson[]
@@ -66,10 +67,9 @@ export default function CastGrid({ persons }: CastGridProps) {
   return (
     <section className="nv-cast-grid-section" aria-labelledby="cast-grid-title">
       <div className="nv-cast-grid-header">
-        <h2 id="cast-grid-title" className="nv-section-title inline-flex items-center gap-2">
-          <Users size={17} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+        <DetailSectionTitle id="cast-grid-title" icon={<Users size={17} />}>
           {t('castGrid.title')}
-        </h2>
+        </DetailSectionTitle>
         <span>{sortedPersons.length}</span>
       </div>
 

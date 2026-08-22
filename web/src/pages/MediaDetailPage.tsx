@@ -18,6 +18,7 @@ import type {
 import {
   CastGrid,
   CollectionCarousel,
+  DetailSectionTitle,
   HeroSection,
   MediaDetailSidebar,
   MediaDetailTechOverview,
@@ -574,7 +575,7 @@ export default function MediaDetailPage() {
                 <div className="nv-detail-subtitle-tab">
                   <div className="nv-detail-subtitle-tab-copy">
                     <span className="nv-detail-subtitle-tab-eyebrow">SUBTITLES</span>
-                    <h2>字幕</h2>
+                    <DetailSectionTitle icon={<Captions size={17} />}>字幕</DetailSectionTitle>
                     <p>已检测到 {embeddedSubtitleCount + externalSubtitleCount} 个字幕来源，可查看内嵌与外挂字幕并管理文本字幕提取。</p>
                   </div>
                   <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>

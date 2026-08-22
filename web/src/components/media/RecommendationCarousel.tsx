@@ -4,6 +4,7 @@ import MediaCard from '@/components/MediaCard'
 import { EmptyState } from '@/components/design-system'
 import { MediaRail } from '@/ui'
 import { ChevronRight, Film } from 'lucide-react'
+import DetailSectionTitle from './DetailSectionTitle'
 
 interface RecommendationCarouselProps {
   recommendations: RecommendedMedia[]
@@ -25,10 +26,9 @@ export default function RecommendationCarousel({ recommendations }: Recommendati
     <section className="nv-recommendation-section nv-detail-recommendation-section" aria-labelledby="recommendation-title">
       <MediaRail
         title={(
-          <span className="inline-flex items-center gap-2">
-            <Film size={16} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
-            <span id="recommendation-title">相似推荐</span>
-          </span>
+          <DetailSectionTitle as="span" id="recommendation-title" icon={<Film size={17} />}>
+            相似推荐
+          </DetailSectionTitle>
         )}
         ariaLabel="相似推荐"
         itemCount={recommendations.length}
