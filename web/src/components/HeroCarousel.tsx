@@ -338,6 +338,22 @@ export default function HeroCarousel({
           </AnimatePresence>
         </div>
       </div>
+
+      {items.length > 1 && (
+        <div
+          className="pointer-events-none absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5"
+          aria-hidden="true"
+        >
+          {items.map((recommendation, index) => (
+            <span
+              key={recommendation.media.id}
+              className={`block h-1.5 w-1.5 rounded-full border border-black/15 bg-white shadow-sm transition-opacity duration-200 ${
+                index === current ? 'opacity-95' : 'opacity-35'
+              }`}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
