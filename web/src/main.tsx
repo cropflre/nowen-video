@@ -6,7 +6,6 @@ import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
 import { initI18n } from './i18n'
 import { installSubtitleTrackActivationGuard } from './utils/subtitleTrackActivation'
-import { installMediaDetailHeroEnhancer } from './utils/mediaDetailHeroEnhancer'
 import './styles/global.css'
 import './styles/fluent.css'
 import './styles/design-system.css'
@@ -82,7 +81,6 @@ if ('serviceWorker' in navigator) {
 }
 
 installSubtitleTrackActivationGuard()
-installMediaDetailHeroEnhancer()
 
 initTheme()
 initI18n()
