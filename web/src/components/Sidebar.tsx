@@ -86,17 +86,29 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
     <>
       <aside id="main-sidebar" className="nv-rail" aria-label="主导航" data-collapsed={collapsed ? 'true' : 'false'}>
         <div className="nv-rail-brand-row">
-          <button type="button" className="nv-rail-wordmark" onClick={() => navigate('/')} aria-label="返回首页">
-            <span className="nv-rail-brand" aria-hidden="true">N</span>
-            <span className="nv-rail-brand-copy">
-              <strong>NOWEN</strong>
-              <span>Video</span>
-            </span>
-          </button>
+          {!collapsed && (
+            <button type="button" className="nv-rail-wordmark" onClick={() => navigate('/')} aria-label="返回首页">
+              <span className="nv-rail-brand-copy">
+                <strong>NOWEN</strong>
+                <span>Video</span>
+              </span>
+            </button>
+          )}
+
           {onCollapsedChange && (
             <button
               type="button"
               className="nv-rail-collapse-toggle"
+              style={{
+                position: 'static',
+                marginInlineStart: collapsed ? 0 : 'auto',
+                width: 28,
+                minWidth: 28,
+                height: 28,
+                border: 0,
+                background: 'transparent',
+                boxShadow: 'none',
+              }}
               onClick={() => onCollapsedChange(!collapsed)}
               aria-label={collapseActionLabel}
               aria-controls="main-sidebar"
@@ -104,8 +116,8 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
               title={collapseActionLabel}
             >
               {collapsed
-                ? <ChevronRight size={14} aria-hidden="true" />
-                : <ChevronLeft size={14} aria-hidden="true" />}
+                ? <ChevronRight size={16} aria-hidden="true" />
+                : <ChevronLeft size={16} aria-hidden="true" />}
             </button>
           )}
         </div>
