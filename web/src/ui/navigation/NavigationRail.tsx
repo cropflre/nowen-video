@@ -21,10 +21,15 @@ export function NavigationRailLink({
       to={to}
       end={end}
       className="nv-rail-item"
-      style={({ isActive }) => isActive ? {
-        background: 'var(--nv-fill-hover)',
-        borderColor: 'transparent',
-      } : undefined}
+      style={({ isActive }) => ({
+        width: '100%',
+        alignSelf: 'stretch',
+        boxSizing: 'border-box',
+        ...(isActive ? {
+          background: 'var(--nv-fill-hover)',
+          borderColor: 'transparent',
+        } : {}),
+      })}
       aria-label={label}
       title={label}
       data-label={label}
@@ -43,9 +48,11 @@ export interface NavigationRailSectionProps {
 
 export function NavigationRailSection({ title, children }: NavigationRailSectionProps) {
   return (
-    <section className="nv-rail-section">
+    <section className="nv-rail-section" style={{ width: '100%', alignSelf: 'stretch' }}>
       {title && <div className="nv-rail-section-title">{title}</div>}
-      <div className="nv-rail-section-links">{children}</div>
+      <div className="nv-rail-section-links" style={{ width: '100%', alignItems: 'stretch' }}>
+        {children}
+      </div>
     </section>
   )
 }
