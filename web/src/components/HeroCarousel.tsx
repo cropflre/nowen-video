@@ -1,12 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Film, Heart, Play, RotateCcw } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
-import { Button, buttonClassName } from '@/components/design-system'
-import { MediaArtwork, MediaHeroContent } from '@/ui'
+import { MediaHeroContent } from '@/ui'
 
 const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
@@ -211,10 +208,6 @@ export default function HeroCarousel({
     setCurrent((value) => (value + 1) % items.length)
   }, [items.length])
 
-  const goTo = useCallback((index: number) => {
-    setCurrent(index)
-  }, [])
-
   useEffect(() => {
     const container = containerRef.current
     if (!container || typeof IntersectionObserver === 'undefined') return
@@ -271,10 +264,6 @@ export default function HeroCarousel({
   if (!item) return null
 
   const artwork = getHeroArtwork(item.media)
-  const poster = getHeroPoster(item.media)
-  const playLink = item.media.media_type === 'episode' && item.media.series_id
-    ? `/series/${item.media.series_id}`
-    : `/play/${item.media.id}`
   const watchState = watchStateByMediaId[item.media.id]
   const progress = watchState?.duration > 0
     ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
@@ -322,15 +311,6 @@ export default function HeroCarousel({
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
 
       <div className="nv-home-hero-foreground relative z-10">
-        <MediaArtwork
-          src={poster}
-          alt=""
-          ratio="poster"
-          className="nv-home-hero-poster"
-          imageClassName="nv-home-hero-poster-image"
-          fallback={<Film size={26} aria-hidden="true" />}
-        />
-
         <div className="nv-home-hero-content flex min-w-0 flex-col justify-center">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -353,83 +333,11 @@ export default function HeroCarousel({
                     </div>
                   </div>
                 ) : undefined}
-                actions={(
-                  <>
-                    <Link
-                      to={playLink}
-                      className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                      data-variant="primary"
-                      data-size="lg"
-                    >
-                      <Play size={16} fill="currentColor" aria-hidden="true" />
-                      {watchState ? '继续播放' : t('home.playNow')}
-                    </Link>
-                    <Link
-                      to={`${playLink}?restart=1`}
-                      className={buttonClassName({ variant: 'secondary', size: 'lg' })}
-                      data-variant="secondary"
-                      data-size="lg"
-                    >
-                      <RotateCcw size={15} aria-hidden="true" />
-                      从头播放
-                    </Link>
-                    <Link
-                      to="/favorites"
-                      className={buttonClassName({ variant: 'secondary', size: 'lg' })}
-                      data-variant="secondary"
-                      data-size="lg"
-                    >
-                      <Heart size={15} aria-hidden="true" />
-                      收藏
-                    </Link>
-                  </>
-                )}
               />
             </motion.div>
           </AnimatePresence>
         </div>
       </div>
-
-      {items.length > 1 && (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={goPrev}
-            className="nv-home-hero-arrow nv-home-hero-arrow--left"
-            aria-label="上一个"
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            iconOnly
-            onClick={goNext}
-            className="nv-home-hero-arrow nv-home-hero-arrow--right"
-            aria-label="下一个"
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </Button>
-        </>
-      )}
-
-      {items.length > 1 && (
-        <div className="nv-home-hero-dots" role="tablist" aria-label="精选内容">
-          {items.map((recommendation, index) => (
-            <button
-              key={recommendation.media.id}
-              type="button"
-              onClick={() => goTo(index)}
-              className="nv-home-hero-dot"
-              aria-label={`第 ${index + 1} 张：${recommendation.media.title}`}
-              aria-selected={index === current}
-              role="tab"
-            />
-          ))}
-        </div>
-      )}
     </section>
   )
 }
