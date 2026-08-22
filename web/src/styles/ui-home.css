@@ -110,7 +110,7 @@
   padding-top: 0;
 }
 
-/* Hills Lite style section chrome: left title, right lightweight action. */
+/* Hills Lite style section chrome: the title itself is the lightweight navigation target. */
 .nv-home-content-flow .nv-section-header,
 .nv-home-section-heading {
   width: 100%;
@@ -118,7 +118,7 @@
   min-height: 28px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin-bottom: 10px;
 }
@@ -126,11 +126,6 @@
 .nv-home-content-flow .nv-section-header > .min-w-0 {
   min-width: 0;
   flex: 1 1 auto;
-}
-
-.nv-home-content-flow .nv-section-header > .shrink-0 {
-  flex: 0 0 auto;
-  margin-inline-start: auto;
 }
 
 .nv-home-content-flow .nv-section-title,
@@ -141,28 +136,33 @@
   line-height: 1.35;
 }
 
-.nv-home-rail-action {
+.nv-home-rail-title-link {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  min-height: 28px;
-  padding: 0 1px 0 8px;
-  border: 0;
-  background: transparent;
-  color: var(--nv-text-tertiary);
-  box-shadow: none;
-  font-size: 11.5px;
-  font-weight: 520;
-  line-height: 1;
+  gap: 2px;
+  color: var(--nv-text-primary);
+  font: inherit;
+  line-height: inherit;
   text-decoration: none;
   white-space: nowrap;
   transition: color var(--nv-motion-fast) var(--nv-ease-standard);
 }
 
-.nv-home-rail-action:hover,
-.nv-home-rail-action:focus-visible {
+.nv-home-rail-title-link svg {
+  flex: 0 0 auto;
+  color: var(--nv-text-secondary);
+  transition: color var(--nv-motion-fast) var(--nv-ease-standard), transform var(--nv-motion-fast) var(--nv-ease-standard);
+}
+
+.nv-home-rail-title-link:hover,
+.nv-home-rail-title-link:focus-visible {
   color: var(--nv-text-primary);
+}
+
+.nv-home-rail-title-link:hover svg,
+.nv-home-rail-title-link:focus-visible svg {
+  color: var(--nv-text-primary);
+  transform: translateX(1px);
 }
 
 /* Rail paging stays available, but behaves like Hills Lite: quiet until the row is engaged. */
@@ -397,11 +397,6 @@
   .nv-home-content-flow .nv-section-title,
   .nv-home-section-heading h2 {
     font-size: 14px;
-  }
-
-  .nv-home-rail-action {
-    min-height: 26px;
-    font-size: 11px;
   }
 
   .nv-home-library-grid {
