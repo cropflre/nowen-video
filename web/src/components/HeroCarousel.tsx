@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
@@ -338,6 +339,29 @@ export default function HeroCarousel({
           </AnimatePresence>
         </div>
       </div>
+
+      {items.length > 1 && isHovering && (
+        <>
+          <button
+            type="button"
+            className="absolute left-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
+            onClick={goPrev}
+            aria-label="上一张"
+            title="上一张"
+          >
+            <ChevronLeft size={20} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="absolute right-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
+            onClick={goNext}
+            aria-label="下一张"
+            title="下一张"
+          >
+            <ChevronRight size={20} aria-hidden="true" />
+          </button>
+        </>
+      )}
 
       {items.length > 1 && (
         <div
