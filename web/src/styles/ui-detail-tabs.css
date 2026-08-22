@@ -1,76 +1,16 @@
 /* Nowen Video · compact detail tabs
- * Desktop media detail hides this navigation and renders one continuous flow.
- * Compact/mobile layouts keep it as an accessible section switcher.
+ * Desktop detail pages may opt into a continuous document; mobile keeps an
+ * accessible section switcher.
  */
 
-.nv-detail-section-tabs {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--nv-border-subtle);
-  scrollbar-width: none;
-}
-
+.nv-detail-section-tabs { min-width: 0; display: flex; align-items: center; gap: 1px; overflow-x: auto; border-bottom: 1px solid var(--nv-border-subtle); scrollbar-width: none; }
 .nv-detail-section-tabs::-webkit-scrollbar { display: none; }
-
-.nv-detail-section-tabs :is(a, button) {
-  position: relative;
-  flex: 0 0 auto;
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  padding-inline: 9px;
-  border: 0;
-  border-radius: 4px 4px 0 0;
-  background: transparent;
-  color: var(--nv-text-tertiary);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 550;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.nv-detail-section-tabs :is(a, button):hover:not(:disabled) {
-  background: var(--nv-fill-hover);
-  color: var(--nv-text-primary);
-}
-
-.nv-detail-section-tabs :is(a, button)[aria-selected="true"] {
-  color: var(--nv-text-primary);
-}
-
-.nv-detail-section-tabs :is(a, button)[aria-selected="true"]::after {
-  content: '';
-  position: absolute;
-  inset: auto 8px -1px;
-  height: 2px;
-  background: var(--nv-action-primary);
-}
-
-.nv-detail-tab-panel[hidden] { display: none !important; }
+.nv-detail-section-tabs :is(a, button) { position: relative; flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; padding-inline: 9px; border: 0; border-radius: 4px 4px 0 0; background: transparent; color: var(--nv-text-tertiary); font: inherit; font-size: 11px; font-weight: 550; text-decoration: none; cursor: pointer; }
+.nv-detail-section-tabs :is(a, button):hover:not(:disabled) { background: var(--nv-fill-hover); color: var(--nv-text-primary); }
+.nv-detail-section-tabs :is(a, button)[aria-selected="true"] { color: var(--nv-text-primary); }
+.nv-detail-section-tabs :is(a, button)[aria-selected="true"]::after { content: ''; position: absolute; inset: auto 8px -1px; height: 2px; background: var(--nv-action-primary); }
+.nv-detail-tab-panel[hidden] { display: none; }
 .nv-detail-tab-panel { min-height: 0; }
-
-.nv-detail-tab-empty-state {
-  min-height: 180px;
-  margin-block: 4px;
-  border: 1px dashed var(--nv-border-default);
-  border-radius: var(--nv-radius-card);
-  background: transparent;
-}
-
-.nv-detail-tab-secondary-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--nv-border-subtle);
-}
-
-.nv-detail-tab-secondary-section-first {
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 20px;
-  border-top: 0;
-  border-bottom: 1px solid var(--nv-border-subtle);
-}
+.nv-detail-tab-empty-state { min-height: 180px; margin-block: 4px; border: 1px dashed var(--nv-border-default); border-radius: var(--nv-radius-card); background: transparent; }
+.nv-detail-tab-secondary-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--nv-border-subtle); }
+.nv-detail-tab-secondary-section-first { margin-top: 0; padding-top: 0; padding-bottom: 20px; border-top: 0; border-bottom: 1px solid var(--nv-border-subtle); }

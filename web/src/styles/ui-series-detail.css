@@ -1,0 +1,110 @@
+/* Nowen Video · series detail
+ * Same minimal media language as movie detail, with episode-first information flow.
+ */
+
+.nv-series-detail-page { width: 100%; min-height: 100%; margin: 0; background: var(--nv-bg-canvas); }
+.nv-series-detail-page .nv-series-hero { isolation: isolate; z-index: 21; min-height: clamp(390px, 50vh, 560px); overflow: visible; }
+.nv-series-detail-page .nv-series-backdrop { z-index: 0; overflow: hidden; pointer-events: none; }
+.nv-series-detail-page .nv-series-backdrop > img { filter: saturate(.92) contrast(1.02); }
+.nv-series-detail-page .nv-series-hero-reading-scrim { background: var(--nv-hero-scrim); }
+.nv-series-detail-page .nv-series-hero-edge-scrim { background: var(--nv-hero-bottom-scrim); }
+.nv-series-detail-page .nv-series-hero-inner { z-index: 2; min-height: clamp(390px, 50vh, 560px); grid-template-columns: minmax(128px, 156px) minmax(0, 1fr); align-items: end; gap: clamp(18px, 2vw, 28px); padding: 90px var(--nv-page-gutter) 30px; }
+.nv-series-detail-page .nv-series-poster { width: 100%; max-width: 156px; border-radius: var(--nv-radius-card); box-shadow: var(--nv-shadow-card); }
+.nv-series-detail-page .nv-series-hero-content { max-width: min(760px, 68vw); }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-title { color: #fff; font-size: clamp(1.75rem, 2.15vw, 2.65rem) !important; font-weight: 740; text-shadow: 0 1px 12px rgba(0, 0, 0, .24); }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-subtitle,
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-meta,
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-overview { color: rgba(255, 255, 255, .80); }
+.nv-series-detail-page .nv-series-hero-content .nv-tag { border-color: rgba(255, 255, 255, .18); background: rgba(0, 0, 0, .18); color: rgba(255, 255, 255, .88); }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-overview { max-width: 68ch; font-size: 11.5px; line-height: 1.65; }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-actions { gap: 6px; margin-top: 13px; }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-actions .nv-button,
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-actions a { min-height: 30px; height: 30px; padding-inline: 10px; font-size: 11px; }
+.nv-series-detail-page .nv-series-hero-content .nv-media-hero-actions .nv-button[data-variant="secondary"] { border-color: rgba(255, 255, 255, .20); background: rgba(18, 18, 18, .36); color: #fff; }
+.nv-series-detail-page .nv-series-hero:has(button[aria-label="更多操作"][aria-expanded="true"]) { z-index: calc(var(--nv-z-dropdown) + 1); }
+.nv-series-detail-page .nv-series-hero .nv-menu { z-index: calc(var(--nv-z-dropdown) + 2); max-height: min(360px, calc(100dvh - 24px)); overflow-y: auto; overscroll-behavior: contain; }
+
+.nv-series-detail-page .nv-detail-content-shell { max-width: none; padding-top: 16px; padding-bottom: 36px; }
+.nv-series-detail-page .nv-detail-body-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 250px); align-items: start; gap: 22px; }
+.nv-series-detail-page .nv-detail-main-column { min-width: 0; }
+.nv-series-detail-page .nv-detail-content-section { min-width: 0; padding: 0; border: 0; background: transparent; }
+.nv-series-detail-page .nv-detail-content-section + .nv-detail-content-section { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--nv-border-subtle); }
+.nv-series-tab-heading { margin-bottom: 14px; }
+.nv-series-tab-eyebrow,
+.nv-series-sidebar-eyebrow { display: inline-flex; align-items: center; gap: 5px; color: var(--nv-text-tertiary); font: 600 9px/1 var(--nv-font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.nv-series-tab-heading h2,
+.nv-series-overview-copy h2 { margin-top: 4px; color: var(--nv-text-primary); font-size: 14px; font-weight: 650; }
+.nv-series-tab-heading p { margin-top: 3px; color: var(--nv-text-tertiary); font-size: 10.5px; }
+.nv-series-overview-copy { max-width: 78rem; }
+.nv-series-overview-copy > p:not(.nv-series-overview-original) { margin-top: 10px; color: var(--nv-text-secondary); font-size: 12px; line-height: 1.75; }
+.nv-series-overview-original { margin-top: 4px; color: var(--nv-text-tertiary); font-size: 10.5px; font-style: italic; }
+.nv-series-overview-toggle { margin-top: 6px; }
+.nv-series-overview-genres { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; align-items: start; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--nv-border-subtle); }
+.nv-series-overview-genres > span { padding-top: 3px; color: var(--nv-text-tertiary); font-size: 10px; font-weight: 600; }
+.nv-series-overview-genres > div { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.nv-series-detail-page .nv-series-episode-browser { gap: 14px; }
+.nv-series-detail-page .nv-series-episode-toolbar { padding: 0 0 10px; border-bottom: 1px solid var(--nv-border-subtle); }
+.nv-series-detail-page .nv-season-chip { min-height: 30px; padding: 5px 9px; border-radius: var(--nv-radius-control); font-size: 10.5px; }
+.nv-series-detail-page .nv-season-chip[aria-pressed="true"] { border-color: color-mix(in srgb, var(--nv-action-primary) 28%, var(--nv-border-default)); background: var(--nv-fill-active); color: var(--nv-text-primary); }
+.nv-series-detail-page .nv-episode-list-card,
+.nv-series-detail-page .nv-episode-slide-card { border-color: var(--nv-border-subtle); background: var(--nv-bg-surface); box-shadow: none; }
+.nv-series-detail-page .nv-episode-list-card:hover,
+.nv-series-detail-page .nv-episode-slide-card:hover { border-color: var(--nv-border-hover); background: var(--nv-bg-elevated); }
+.nv-series-detail-page .nv-episode-thumb { background: var(--nv-bg-poster); }
+.nv-series-detail-page .nv-episode-progress > div { background: var(--nv-action-primary); }
+
+.nv-series-detail-sidebar { position: sticky; top: calc(var(--nv-toolbar-height) + 10px); display: flex; flex-direction: column; gap: 0; min-width: 0; border-top: 1px solid var(--nv-border-subtle); }
+.nv-series-sidebar-card { overflow: hidden; padding: 13px 2px; border: 0; border-bottom: 1px solid var(--nv-border-subtle); border-radius: 0; background: transparent; box-shadow: none; }
+.nv-series-sidebar-card h2 { margin-top: 4px; color: var(--nv-text-primary); font-size: 12px; font-weight: 650; }
+.nv-series-sidebar-card > p,
+.nv-series-sidebar-heading-row p { margin-top: 2px; color: var(--nv-text-tertiary); font-size: 10px; }
+.nv-series-sidebar-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.nv-series-progress-value { padding-top: 2px; color: var(--nv-action-primary); font-size: 16px; font-weight: 700; }
+.nv-series-progress-track { height: 4px; overflow: hidden; margin-top: 10px; border-radius: 999px; background: var(--nv-fill-hover); }
+.nv-series-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--nv-action-primary); }
+.nv-series-progress-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; color: var(--nv-text-tertiary); font-size: 9.5px; }
+.nv-series-sidebar-play { width: 100%; margin-top: 10px; justify-content: center; }
+.nv-series-sidebar-play span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nv-series-sidebar-facts { display: grid; margin-top: 8px; }
+.nv-series-sidebar-facts > div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; padding-block: 6px; border-bottom: 1px solid var(--nv-border-subtle); font-size: 10px; }
+.nv-series-sidebar-facts > div:last-child { border-bottom: 0; }
+.nv-series-sidebar-facts dt { color: var(--nv-text-tertiary); }
+.nv-series-sidebar-facts dd { overflow: hidden; margin: 0; color: var(--nv-text-secondary); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.nv-series-sidebar-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.nv-series-source-list { display: grid; margin-top: 8px; }
+.nv-series-source-list a { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; padding: 5px 0; border-bottom: 1px solid var(--nv-border-subtle); color: var(--nv-text-secondary); font-size: 10px; text-decoration: none; }
+.nv-series-source-list a:last-child { border-bottom: 0; }
+.nv-series-source-list a:hover { color: var(--nv-text-primary); }
+.nv-series-source-list strong { overflow: hidden; color: var(--nv-action-primary); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nv-series-source-empty { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--nv-text-tertiary); font-size: 10px; }
+
+@media (min-width: 48rem) {
+  .nv-series-detail-page .nv-series-detail-tabs { display: none; }
+  .nv-series-detail-page .nv-detail-tab-panel[hidden] { display: block; }
+  .nv-series-detail-page [class*="group/series-slider"] > div.flex { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; overflow: visible; padding-bottom: 0; scroll-snap-type: none; }
+  .nv-series-detail-page [class*="group/series-slider"] > button { display: none; }
+  .nv-series-detail-page .nv-episode-slide-card { width: auto; min-width: 0; border-radius: var(--nv-radius-card); box-shadow: none; }
+  .nv-series-detail-page .nv-episode-slide-card:hover { transform: translateY(-1px); box-shadow: none; }
+}
+@media (max-width: 64rem) and (min-width: 48rem) {
+  .nv-series-detail-page .nv-detail-body-grid { grid-template-columns: 1fr; }
+  .nv-series-detail-sidebar { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; border-top: 0; }
+  .nv-series-sidebar-card { padding: 12px; border: 1px solid var(--nv-border-subtle); border-radius: var(--nv-radius-card); }
+}
+@media (max-width: 47.999rem) {
+  .nv-series-detail-page .nv-series-hero { min-height: 410px; }
+  .nv-series-detail-page .nv-series-hero-inner { min-height: 410px; display: block; padding: 104px 12px 24px; }
+  .nv-series-detail-page .nv-series-hero-inner > .hidden.sm\:block { display: none; }
+  .nv-series-detail-page .nv-series-hero-content { max-width: none; }
+  .nv-series-detail-page .nv-series-hero-content .nv-media-hero-title { font-size: 1.45rem !important; }
+  .nv-series-detail-page .nv-series-hero-content .nv-media-hero-overview { -webkit-line-clamp: 2; }
+  .nv-series-detail-page .nv-detail-body-grid { display: block; }
+  .nv-series-detail-page .nv-series-detail-tabs { display: flex; }
+  .nv-series-detail-page .nv-detail-tab-panel[hidden] { display: none; }
+  .nv-series-detail-page [class*="group/series-slider"] > div.flex { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; }
+  .nv-series-detail-page [class*="group/series-slider"] > button { display: none; }
+  .nv-series-detail-page .nv-episode-slide-card { width: min(78vw, 240px); flex: 0 0 min(78vw, 240px); scroll-snap-align: start; }
+  .nv-series-detail-sidebar { position: static; display: grid; grid-template-columns: 1fr; margin-top: 16px; }
+  .nv-series-overview-genres { grid-template-columns: 1fr; gap: 6px; }
+}

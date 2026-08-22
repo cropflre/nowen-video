@@ -1,8 +1,0 @@
-/* Final media-detail copy cleanup.
- * Keep the real heading text from MediaInfoSection and suppress the legacy
- * generated suffix that previously produced `影片简介 简介` on mobile/desktop.
- */
-html body .nv-media-detail-page #detail-overview .nv-media-info-intro h2::after {
-  content: none !important;
-  display: none !important;
-}

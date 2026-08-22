@@ -1,0 +1,46 @@
+/* Nowen Video · search workspace
+ * Search is a compact desktop tool surface, not a promotional page.
+ */
+
+.nv-search-page { gap: 14px; padding-top: 0; }
+.nv-search-workspace-header { position: sticky; top: var(--nv-topbar-height); z-index: 18; padding: 8px 0 10px; border-bottom: 1px solid var(--nv-border-subtle); background: var(--nv-bg-canvas); }
+.nv-search-workspace-form { display: flex; align-items: center; gap: 6px; }
+.nv-search-workspace-field-wrap { position: relative; min-width: 0; flex: 1 1 auto; }
+.nv-search-workspace-field { width: 100%; max-width: none; min-width: 0; height: 38px; padding-right: 38px; border-radius: var(--nv-radius-control); background: var(--nv-bg-surface); box-shadow: none; }
+.nv-search-workspace-field:focus-within { border-color: color-mix(in srgb, var(--nv-action-primary) 52%, var(--nv-border-default)); background: var(--nv-bg-elevated); box-shadow: 0 0 0 2px color-mix(in srgb, var(--nv-action-primary) 10%, transparent); }
+.nv-search-workspace-field input { font-size: 12px; }
+.nv-search-shortcut { position: absolute; top: 50%; right: 10px; min-width: 20px; height: 20px; display: grid; place-items: center; transform: translateY(-50%); pointer-events: none; border: 1px solid var(--nv-border-subtle); border-radius: 4px; background: var(--nv-bg-control); color: var(--nv-text-tertiary); font: 600 9px/1 var(--nv-font-mono); }
+.nv-search-workspace-form > .nv-button { flex: 0 0 auto; min-height: 38px; }
+.nv-search-workspace-summary { min-height: 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 2px 0; color: var(--nv-text-tertiary); font-size: 10.5px; }
+.nv-search-result-context { flex: 0 0 auto; color: var(--nv-text-tertiary); font-family: var(--nv-font-mono); }
+.nv-search-filter-dot { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: var(--nv-action-primary); }
+.nv-search-filter-panel { border-color: var(--nv-border-subtle); border-radius: var(--nv-radius-card); background: var(--nv-bg-surface); box-shadow: none; }
+.nv-search-filter-row { min-height: 30px; }
+.nv-search-filter-chip { min-height: 28px; height: 28px; padding-inline: 9px; border-radius: var(--nv-radius-control); font-size: 10.5px; }
+.nv-search-filter-chip[aria-pressed="true"] { border-color: color-mix(in srgb, var(--nv-action-primary) 28%, var(--nv-border-default)); background: var(--nv-fill-active); color: var(--nv-text-primary); }
+.nv-search-ai-row { min-height: 24px; }
+.nv-search-empty-state { min-height: min(40vh, 360px); border-color: var(--nv-border-subtle); background: transparent; }
+.nv-search-person-section { padding-block: 4px 2px; }
+.nv-search-person-section [role="listitem"] { width: 84px; }
+.nv-search-person-section [role="listitem"] > div:first-child { border-radius: var(--nv-radius-card); box-shadow: none; }
+.nv-search-person-section [role="listitem"]:hover > div:first-child,
+.nv-search-person-section [role="listitem"]:focus-visible > div:first-child { transform: translateY(-1px); border-color: var(--nv-border-hover); box-shadow: var(--nv-shadow-card-hover); }
+
+@media (min-width: 48rem) { .nv-search-page { padding-inline: 2px; } }
+@media (max-width: 47.999rem) {
+  .nv-search-workspace-header { top: var(--nv-topbar-height); padding-top: 6px; }
+  .nv-search-workspace-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+  .nv-search-workspace-field-wrap { grid-column: 1 / -1; }
+  .nv-search-workspace-field { height: 44px; }
+  .nv-search-workspace-form > .nv-button { min-height: 38px; }
+  .nv-search-workspace-form > .nv-button[data-variant="primary"] { grid-column: 1 / 3; }
+  .nv-search-workspace-summary { align-items: flex-start; }
+  .nv-search-empty-state { min-height: 32vh; }
+  .nv-search-person-section [role="listitem"] { width: 80px; }
+}
+@media (max-width: 30rem) {
+  .nv-search-workspace-form { grid-template-columns: minmax(0, 1fr) auto; }
+  .nv-search-workspace-form > .nv-button[data-icon-only="true"] { grid-column: 2; grid-row: 2; }
+  .nv-search-workspace-form > .nv-button[data-variant="primary"] { grid-column: 1; grid-row: 2; }
+  .nv-search-workspace-form > .nv-button:last-child { grid-column: 1 / -1; }
+}

@@ -17,31 +17,28 @@ const retiredDistPatterns = [
   { name: 'Pulse 客户端路由', regex: /["']\/pulse(?:\/|["'])/g },
 ]
 
-// The retirement gate validates visual dependencies, not implementation hooks.
-// Stable DOM hooks such as player-controls/progress-bar may remain while the
-// player business component is kept intact; their appearance must come only
-// from the current --nv-player-* semantic boundary.
 const retiredSourcePatterns = [
-  { name: '旧 Neon/Glass utility', regex: /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g },
-  { name: '旧 Neon Tailwind utility', regex: /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g },
-  { name: '旧 Neon gradient utility', regex: /\bbg-neon-gradient(?:-[hv])?\b/g },
-  { name: '旧 Neon animation utility', regex: /\banimate-(?:neon-breathe|glow-pulse|energy-flow)\b/g },
-  { name: '旧 Glass/shadow utility', regex: /\bshadow-(?:glass|inner-glow|neon-glow)\b/g },
-  { name: '旧 Theme Tailwind utility', regex: /\b(?:text|bg|border)-theme-[A-Za-z0-9-]+\b/g },
-  { name: '旧 Surface Tailwind utility', regex: /\b(?:text|bg|border)-surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
-  { name: '旧 Cyan Tailwind chrome', regex: /\b(?:text|bg|border|ring|shadow)-(?:cyan|sky)-(?:300|400|500|600)(?:\/[0-9]+)?\b/g },
-  { name: '旧全局导航/开关 class', regex: /(?<![A-Za-z0-9_-])(?:nav-item|theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g },
-  { name: '旧全局弹层/管理 class', regex: /(?<![A-Za-z0-9_-])(?:modal-overlay|modal-panel|btn-close-ghost|admin-tab|tab-content-enter)(?![A-Za-z0-9_-])/g },
-  { name: '旧 Neon CSS token', regex: /var\(--neon-[A-Za-z0-9-]+\)/g },
-  { name: '旧 Glass CSS token', regex: /var\(--glass-[A-Za-z0-9-]+\)/g },
-  { name: '旧背景 CSS token', regex: /var\(--bg-[A-Za-z0-9-]+\)/g },
-  { name: '旧文字 CSS token', regex: /var\(--text-[A-Za-z0-9-]+\)/g },
-  { name: '旧边框 CSS token', regex: /var\(--border-[A-Za-z0-9-]+\)/g },
-  { name: '旧阴影 CSS token', regex: /var\(--shadow-[A-Za-z0-9-]+\)/g },
-  { name: '旧 Surface CSS token', regex: /var\(--surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g },
-  { name: '旧播放器 Cyan token', regex: /--nv-player-(?:accent|focus)\s*:\s*#(?:00e5ff|00f0ff|22d3ee|06b6d4)\b/gi },
-  { name: '旧播放器 Glow token', regex: /--nv-player-[A-Za-z0-9-]*glow\s*:/g },
-]
+  ['旧视觉层 CSS 入口', /(?:legacy-ui-(?:foundation|pages)|neo-aurora(?:-components|-responsive|-light)?|modern-cinema(?:-reference)?|media-detail-cinema|search-cinema|streaming-os(?:-refinement)?|media-detail-hero-enhancements|series-detail-cinema|ui-series-detail-layout-final|ui-series-hero-menu-overlay|ui-media-detail-(?:content-fit|copy-fix|flow|hero-clarity|inline-previews|mobile-actions|mobile-hero-density|mobile-poster|reference|summary-strip))\.css/g],
+  ['旧 Neon/Glass utility', /\b(?:text-neon(?:-blue)?|glass-panel(?:-strong)?|btn-ghost|badge-neon)\b/g],
+  ['旧 Neon Tailwind utility', /\b(?:text|bg|border|ring|shadow)-neon-[A-Za-z0-9-]+\b/g],
+  ['旧 Neon gradient utility', /\bbg-neon-gradient(?:-[hv])?\b/g],
+  ['旧 Neon animation utility', /\banimate-(?:neon-breathe|glow-pulse|energy-flow)\b/g],
+  ['旧 Glass/shadow utility', /\bshadow-(?:glass|inner-glow|neon-glow)\b/g],
+  ['旧 Theme Tailwind utility', /\b(?:text|bg|border)-theme-[A-Za-z0-9-]+\b/g],
+  ['旧 Surface Tailwind utility', /\b(?:text|bg|border)-surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g],
+  ['旧 Cyan Tailwind chrome', /\b(?:text|bg|border|ring|shadow)-(?:cyan|sky)-(?:300|400|500|600)(?:\/[0-9]+)?\b/g],
+  ['旧全局导航/开关 class', /(?<![A-Za-z0-9_-])(?:nav-item|theme-toggle-btn|toggle-switch(?:-thumb|-lg|-sm)?|storage-input)(?![A-Za-z0-9_-])/g],
+  ['旧全局弹层/管理 class', /(?<![A-Za-z0-9_-])(?:modal-overlay|modal-panel|btn-close-ghost|admin-tab|tab-content-enter)(?![A-Za-z0-9_-])/g],
+  ['旧 Neon CSS token', /var\(--neon-[A-Za-z0-9-]+\)/g],
+  ['旧 Glass CSS token', /var\(--glass-[A-Za-z0-9-]+\)/g],
+  ['旧背景 CSS token', /var\(--bg-[A-Za-z0-9-]+\)/g],
+  ['旧文字 CSS token', /var\(--text-[A-Za-z0-9-]+\)/g],
+  ['旧边框 CSS token', /var\(--border-[A-Za-z0-9-]+\)/g],
+  ['旧阴影 CSS token', /var\(--shadow-[A-Za-z0-9-]+\)/g],
+  ['旧 Surface CSS token', /var\(--surface-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g],
+  ['旧播放器 Cyan token', /--nv-player-(?:accent|focus)\s*:\s*#(?:00e5ff|00f0ff|22d3ee|06b6d4)\b/gi],
+  ['旧播放器 Glow token', /--nv-player-[A-Za-z0-9-]*glow\s*:/g],
+].map(([name, regex]) => ({ name, regex }))
 
 async function collectFiles(directory, extensions) {
   const entries = await readdir(directory, { withFileTypes: true })

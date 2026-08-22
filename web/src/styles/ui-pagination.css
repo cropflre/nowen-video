@@ -1,0 +1,41 @@
+/* Nowen Video · compact pagination */
+
+.nv-pagination {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--nv-border-subtle);
+}
+
+.nv-pagination-summary {
+  flex: 0 0 auto;
+  color: var(--nv-text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.nv-pagination-pages,
+.nv-pagination-options,
+.nv-pagination-size,
+.nv-pagination-jumper {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nv-pagination-pages { flex-wrap: wrap; }
+.nv-pagination-options { margin-left: auto; color: var(--nv-text-tertiary); font-size: 10.5px; }
+.nv-pagination-page { min-width: 30px; padding-inline: 8px; }
+.nv-pagination-ellipsis { min-width: 20px; color: var(--nv-text-tertiary); font-size: 11px; text-align: center; }
+.nv-pagination .nv-input,
+.nv-pagination .nv-select { height: 30px; min-height: 30px; font-size: 11px; }
+
+@media (max-width: 47.999rem) {
+  .nv-pagination { gap: 10px 8px; padding-top: 12px; }
+  .nv-pagination-summary { width: 100%; }
+  .nv-pagination-options { width: 100%; margin-left: 0; justify-content: space-between; }
+}

@@ -7,20 +7,18 @@
 @import './ui-theme.css';
 @import './ui-actions.css';
 @import './ui-controls.css';
+@import './ui-pagination.css';
 @import './ui-detail-tabs.css';
 @import './ui-navigation.css';
 @import './ui-personal-workspace.css';
 @import './ui-browser-workspace.css';
 @import './ui-media-grid.css';
 @import './ui-home.css';
+@import './ui-search.css';
 @import './ui-media-detail.css';
+@import './ui-media-detail-comments.css';
+@import './ui-series-detail.css';
 @import './ui-person-detail.css';
 @import './ui-subtitle-manager-modal.css';
 @import './ui-mobile-bottom-nav.css';
 @import './ui-player-quality-single-level.css';
-
-/* Series detail still has route-specific episode interaction rules. Keep only
- * these two focused layers until SeriesDetailPage is migrated to the same
- * continuous information architecture. */
-@import './ui-series-hero-menu-overlay.css';
-@import './ui-series-detail-layout-final.css';
