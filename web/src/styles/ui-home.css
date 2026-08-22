@@ -340,7 +340,7 @@
 
   .nv-home-page .nv-home-hero-foreground {
     max-width: min(640px, 68vw);
-    inset-bottom: 58px;
+    inset: auto var(--nv-page-gutter) 58px;
   }
 
   .nv-home-page .nv-media-hero-title {
