@@ -11,7 +11,7 @@ import MediaCard from '@/components/MediaCard'
 import HeroCarousel from '@/components/HeroCarousel'
 import { EmptyState, Section } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
-import { ChevronRight, Clock, Film, FolderOpen, Play, Tv } from 'lucide-react'
+import { ChevronRight, Film, FolderOpen, Play, Tv } from 'lucide-react'
 
 const HOME_GENRES = ['动画', '喜剧', '冒险', '家庭'] as const
 
@@ -46,11 +46,11 @@ function getContinueArtwork(item: WatchHistory): string | null {
   return null
 }
 
-function RailAction({ to, label = '更多' }: { to: string; label?: string }) {
+function RailTitleLink({ to, label }: { to: string; label: string }) {
   return (
-    <Link to={to} className="nv-home-rail-action">
-      {label}
-      <ChevronRight size={13} aria-hidden="true" />
+    <Link to={to} className="nv-home-rail-title-link">
+      <span>{label}</span>
+      <ChevronRight size={15} strokeWidth={1.7} aria-hidden="true" />
     </Link>
   )
 }
@@ -243,15 +243,9 @@ function ContinueWatchingRow({
 }) {
   return (
     <MediaRail
-      title={(
-        <span className="inline-flex items-center gap-1.5">
-          <Clock size={14} aria-hidden="true" />
-          {title}
-        </span>
-      )}
+      title={<RailTitleLink to="/history" label={title} />}
       ariaLabel={title}
       itemCount={items.length}
-      action={<RailAction to="/history" />}
       className="nv-home-continue-rail"
     >
       {items.map((item) => {
@@ -339,10 +333,9 @@ function HomeShelfGrid({
 function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
   return (
     <MediaRail
-      title={shelf.title}
+      title={<RailTitleLink to={shelf.to} label={shelf.title} />}
       ariaLabel={shelf.title}
       itemCount={shelf.items.length}
-      action={<RailAction to={shelf.to} />}
       className="nv-home-compact-shelf"
     >
       {shelf.items.slice(0, 16).map((item) => {
