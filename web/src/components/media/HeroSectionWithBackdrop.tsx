@@ -30,6 +30,7 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   const [highlightFrames, setHighlightFrames] = useState<string[]>([])
   const [failedFrames, setFailedFrames] = useState<string[]>([])
   const [currentFrame, setCurrentFrame] = useState(0)
+  const [readyBackdrop, setReadyBackdrop] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     setActionsHost(shellRef.current?.querySelector<HTMLElement>('.nv-media-hero-actions') || null)
@@ -40,6 +41,7 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
     setHighlightFrames([])
     setFailedFrames([])
     setCurrentFrame(0)
+    setReadyBackdrop(null)
 
     mediaAnalysisApi.getHighlights(media.id)
       .then((response) => {
@@ -90,27 +92,28 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   }, [carouselFrames.length])
 
   const currentBackdrop = carouselFrames[currentFrame] || ''
-  const hasCarouselBackdrop = Boolean(currentBackdrop)
+  const backdropReady = Boolean(currentBackdrop && readyBackdrop === currentBackdrop)
 
   const handleBackdropError = () => {
     if (!currentBackdrop) return
     setFailedFrames((current) => current.includes(currentBackdrop) ? current : [...current, currentBackdrop])
+    setReadyBackdrop((current) => current === currentBackdrop ? null : current)
   }
 
   return (
     <div
       ref={shellRef}
       className="nv-detail-hero-backdrop-shell"
-      data-has-backdrop={hasCarouselBackdrop ? 'true' : 'false'}
+      data-has-backdrop={backdropReady ? 'true' : 'false'}
       data-carousel-count={carouselFrames.length}
     >
       {currentBackdrop && (
         <img
-          key={currentBackdrop}
           src={currentBackdrop}
           alt=""
           aria-hidden="true"
-          className="nv-detail-hero-local-backdrop is-loaded"
+          className={`nv-detail-hero-local-backdrop${backdropReady ? ' is-ready' : ''}`}
+          onLoad={() => setReadyBackdrop(currentBackdrop)}
           onError={handleBackdropError}
         />
       )}
