@@ -64,6 +64,20 @@
   }
 }
 
+/* Favorite is the only stateful icon action in this cluster. Keep the button
+   neutral and express the state through the familiar red heart: outline when
+   inactive, solid when aria-pressed=true (HeroSection already controls fill). */
+.nv-detail-hero-backdrop-shell .nv-media-hero-actions button[aria-pressed] > svg {
+  color: #ef4444;
+  stroke: #ef4444;
+  transition: color 160ms ease, stroke 160ms ease;
+}
+
+.nv-detail-hero-backdrop-shell .nv-media-hero-actions button[aria-pressed]:hover > svg {
+  color: #dc2626;
+  stroke: #dc2626;
+}
+
 /* Subtitle management belongs to the primary action cluster instead of a
    separate status strip. Keep it immediately before the existing More action. */
 .nv-detail-hero-backdrop-shell .nv-media-hero-actions > button:last-of-type {
