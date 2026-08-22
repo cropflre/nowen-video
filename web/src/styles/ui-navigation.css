@@ -476,7 +476,19 @@
     display: none;
   }
 
-  .nv-rail-item,
+  .nv-rail-section-links {
+    align-items: center;
+  }
+
+  .nv-rail-item {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+  }
+
   .nv-rail-profile {
     justify-content: center;
   }
