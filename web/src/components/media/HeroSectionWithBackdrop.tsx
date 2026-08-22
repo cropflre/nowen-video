@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { createPortal } from 'react-dom'
 import { Captions } from 'lucide-react'
+import { mediaAnalysisApi } from '@/api/mediaAnalysis'
 import { withToken } from '@/api/stream'
 import { Button } from '@/components/design-system'
 import SubtitleManager from '@/components/SubtitleManager'
@@ -9,9 +10,16 @@ import './hero-section-backdrop.css'
 
 type HeroSectionWithBackdropProps = ComponentProps<typeof HeroSection>
 
+const BACKDROP_ROTATE_INTERVAL = 6500
+const MAX_HERO_FRAMES = 6
+
 function getMediaBackdropUrl(mediaId: string, version?: number) {
   const query = version ? `?v=${version}` : ''
   return withToken(`/api/media/${mediaId}/backdrop${query}`)
+}
+
+function uniqueUrls(urls: string[]) {
+  return urls.filter((url, index) => url && urls.indexOf(url) === index)
 }
 
 export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropProps) {
@@ -19,36 +27,91 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
   const shellRef = useRef<HTMLDivElement>(null)
   const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
-  const backdropKey = `${media.id}:${media.backdrop_path || ''}:${posterVersion || 0}`
-  const [loadedKey, setLoadedKey] = useState<string | null>(null)
-  const [failedKey, setFailedKey] = useState<string | null>(null)
+  const [highlightFrames, setHighlightFrames] = useState<string[]>([])
+  const [failedFrames, setFailedFrames] = useState<string[]>([])
+  const [currentFrame, setCurrentFrame] = useState(0)
 
   useLayoutEffect(() => {
     setActionsHost(shellRef.current?.querySelector<HTMLElement>('.nv-media-hero-actions') || null)
   }, [media.id])
 
-  // Standalone media always gets one cheap backdrop probe. This lets older
-  // database rows benefit from a newly-added `-backdrop.*` file without forcing
-  // a rescan first. Episodes keep the existing Series artwork path.
-  const shouldProbeStandaloneBackdrop = media.media_type !== 'episode'
-  const shouldRequestBackdrop = shouldProbeStandaloneBackdrop && failedKey !== backdropKey
-  const isBackdropReady = shouldRequestBackdrop && loadedKey === backdropKey
+  useEffect(() => {
+    let cancelled = false
+    setHighlightFrames([])
+    setFailedFrames([])
+    setCurrentFrame(0)
+
+    mediaAnalysisApi.getHighlights(media.id)
+      .then((response) => {
+        if (cancelled) return
+        const frames = (response.data.data?.highlights || [])
+          .filter((highlight) => Boolean(highlight.thumbnail_url))
+          .sort((a, b) => a.start_time - b.start_time)
+          .slice(0, MAX_HERO_FRAMES)
+          .map((highlight) => withToken(highlight.thumbnail_url!))
+        setHighlightFrames(uniqueUrls(frames))
+      })
+      .catch(() => {
+        if (!cancelled) setHighlightFrames([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [media.id])
+
+  const backdropUrl = useMemo(
+    () => getMediaBackdropUrl(media.id, posterVersion),
+    [media.id, posterVersion],
+  )
+
+  const carouselFrames = useMemo(() => {
+    // Generated highlight thumbnails are real single frames, so prefer them over
+    // a local backdrop that may itself be a storyboard/contact sheet. The normal
+    // backdrop remains the last fallback when no highlight frame is available.
+    const candidates = uniqueUrls([...highlightFrames, backdropUrl])
+    return candidates.filter((url) => !failedFrames.includes(url))
+  }, [backdropUrl, failedFrames, highlightFrames])
+
+  useEffect(() => {
+    if (currentFrame < carouselFrames.length) return
+    setCurrentFrame(0)
+  }, [carouselFrames.length, currentFrame])
+
+  useEffect(() => {
+    if (carouselFrames.length <= 1) return
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
+    const timer = window.setInterval(() => {
+      setCurrentFrame((index) => (index + 1) % carouselFrames.length)
+    }, BACKDROP_ROTATE_INTERVAL)
+
+    return () => window.clearInterval(timer)
+  }, [carouselFrames.length])
+
+  const currentBackdrop = carouselFrames[currentFrame] || ''
+  const hasCarouselBackdrop = Boolean(currentBackdrop)
+
+  const handleBackdropError = () => {
+    if (!currentBackdrop) return
+    setFailedFrames((current) => current.includes(currentBackdrop) ? current : [...current, currentBackdrop])
+  }
 
   return (
     <div
       ref={shellRef}
       className="nv-detail-hero-backdrop-shell"
-      data-has-backdrop={isBackdropReady ? 'true' : 'false'}
+      data-has-backdrop={hasCarouselBackdrop ? 'true' : 'false'}
+      data-carousel-count={carouselFrames.length}
     >
-      {shouldRequestBackdrop && (
+      {currentBackdrop && (
         <img
-          key={backdropKey}
-          src={getMediaBackdropUrl(media.id, posterVersion)}
+          key={currentBackdrop}
+          src={currentBackdrop}
           alt=""
           aria-hidden="true"
-          className={`nv-detail-hero-local-backdrop${isBackdropReady ? ' is-loaded' : ''}`}
-          onLoad={() => setLoadedKey(backdropKey)}
-          onError={() => setFailedKey(backdropKey)}
+          className="nv-detail-hero-local-backdrop is-loaded"
+          onError={handleBackdropError}
         />
       )}
 
