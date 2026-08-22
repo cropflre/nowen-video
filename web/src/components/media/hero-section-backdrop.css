@@ -1,9 +1,6 @@
 .nv-detail-hero-backdrop-shell {
   position: relative;
   isolation: isolate;
-  /* Hills Lite keeps the artwork visually dominant for roughly 60% of the
-     desktop viewport without consuming the entire first screen. */
-  --nv-detail-hero-carousel-height: clamp(480px, 62vh, 740px);
 }
 
 .nv-detail-hero-local-backdrop {
@@ -45,13 +42,21 @@
 }
 
 @media (min-width: 768px) {
+  /* Let the detail artwork scale with the available page width instead of
+     pinning it to a fixed viewport-height clamp. The aspect ratio keeps the
+     Hills Lite cinematic composition while remaining fluid on desktop. */
+  .nv-media-detail-page .nv-detail-hero-backdrop-shell {
+    aspect-ratio: 16 / 6.4;
+  }
+
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero,
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
-    min-height: var(--nv-detail-hero-carousel-height);
+    height: 100%;
+    min-height: 0;
   }
 
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
-    padding-top: clamp(160px, 22vh, 250px);
+    padding-top: 72px;
     padding-bottom: 30px;
   }
 }
