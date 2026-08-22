@@ -23,7 +23,9 @@
    actually decoded. This prevents the page canvas from flashing around the
    Hero edges during first paint or when a new frame is still loading. */
 .nv-detail-hero-backdrop-shell .nv-detail-hero {
-  border-bottom: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
 }
 
 .nv-detail-hero-backdrop-shell[data-has-backdrop='true'] .nv-detail-hero {
@@ -43,10 +45,12 @@
 
 @media (min-width: 768px) {
   /* Let the detail artwork scale with the available page width instead of
-     pinning it to a fixed viewport-height clamp. The aspect ratio keeps the
-     Hills Lite cinematic composition while remaining fluid on desktop. */
+     pinning it to a fixed viewport-height clamp. */
   .nv-media-detail-page .nv-detail-hero-backdrop-shell {
     aspect-ratio: 16 / 6.4;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
   }
 
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero,
@@ -58,6 +62,36 @@
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
     padding-top: 72px;
     padding-bottom: 30px;
+  }
+
+  /* Desktop detail is a continuous document. Remove every residual divider at
+     the Hero/content seam and give the first real section enough breathing room. */
+  .nv-media-detail-page:not(.nv-series-detail-page) .nv-detail-section-tabs {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .nv-media-detail-page .nv-detail-content-shell,
+  .nv-media-detail-page .nv-detail-body-grid,
+  .nv-media-detail-page .nv-detail-main-column,
+  .nv-media-detail-page #detail-cast {
+    border-top: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .nv-media-detail-page .nv-detail-content-shell {
+    padding-top: 32px !important;
+  }
+
+  .nv-media-detail-page #detail-cast {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
   }
 }
 
