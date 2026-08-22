@@ -22,15 +22,15 @@
 }
 
 .nv-app-shell[data-sidebar-collapsed="false"] {
-  --nv-rail-width: var(--nv-sidebar-expanded);
+  --nv-rail-width: clamp(208px, 11vw, 228px);
 }
 
 .nv-rail-brand-row {
   position: relative;
   display: flex;
-  min-height: 40px;
+  min-height: 44px;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .nv-rail-wordmark {
@@ -38,8 +38,8 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: 9px;
+  padding: 4px 7px;
   border: 0;
   background: transparent;
   color: var(--nv-text-primary);
@@ -48,9 +48,9 @@
 }
 
 .nv-rail-brand {
-  width: 27px;
-  height: 27px;
-  flex: 0 0 27px;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
   display: grid;
   place-items: center;
   border-radius: 6px;
@@ -69,24 +69,24 @@
 }
 
 .nv-rail-brand-copy strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: .02em;
 }
 
 .nv-rail-brand-copy span {
   color: var(--nv-text-tertiary);
-  font-size: 10px;
+  font-size: 10.5px;
 }
 
 .nv-rail-collapse-toggle {
   position: absolute;
-  top: 9px;
+  top: 10px;
   right: -12px;
   z-index: 45;
-  width: 23px;
-  min-width: 23px;
-  height: 23px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -109,7 +109,7 @@
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
   overflow-x: hidden;
   overflow-y: auto;
   padding: 2px 0 8px;
@@ -120,9 +120,9 @@
 }
 
 .nv-rail-section-title {
-  margin: 8px 7px 4px;
+  margin: 9px 8px 5px;
   color: var(--nv-text-tertiary);
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: .02em;
 }
@@ -130,21 +130,21 @@
 .nv-rail-section-links {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .nv-rail-item {
   position: relative;
   min-width: 0;
-  height: 33px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px;
+  gap: 9px;
+  padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--nv-text-secondary);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
@@ -174,9 +174,9 @@
 }
 
 .nv-rail-icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   display: grid;
   place-items: center;
   color: currentColor;
@@ -193,12 +193,12 @@
 .nv-rail-meta {
   flex: 0 0 auto;
   color: var(--nv-text-tertiary);
-  font-size: 9.5px;
+  font-size: 10px;
 }
 
 .nv-rail-footer {
   flex: 0 0 auto;
-  padding-top: 6px;
+  padding-top: 7px;
   border-top: 1px solid var(--nv-border-subtle);
 }
 
@@ -207,10 +207,10 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px;
+  gap: 9px;
+  padding: 7px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--nv-text-primary);
   text-align: left;
@@ -220,9 +220,9 @@
 .nv-rail-profile:hover { background: var(--nv-fill-hover); }
 
 .nv-rail-avatar {
-  width: 25px;
-  height: 25px;
-  flex: 0 0 25px;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -241,7 +241,7 @@
 
 .nv-rail-profile-copy strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -254,14 +254,14 @@
 
 .nv-rail-footer-actions {
   display: flex;
-  gap: 2px;
-  margin-top: 3px;
+  gap: 3px;
+  margin-top: 4px;
 }
 
 .nv-rail-action {
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -284,7 +284,7 @@
   z-index: var(--nv-z-sticky);
   height: var(--nv-toolbar-height);
   display: grid;
-  grid-template-columns: minmax(90px, 1fr) minmax(220px, 360px) minmax(90px, 1fr);
+  grid-template-columns: minmax(90px, 1fr) minmax(240px, 380px) minmax(90px, 1fr);
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid var(--nv-border-subtle);
@@ -354,6 +354,54 @@
 
 .nv-toolbar-search input::placeholder { color: var(--nv-text-tertiary); }
 
+/* Home owns an immersive hero. Keep search reachable but float the toolbar over
+ * artwork instead of consuming a separate horizontal strip above the hero. */
+@media (min-width: 48rem) {
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: calc(var(--nv-z-sticky) + 2);
+    height: 50px;
+    grid-template-columns: minmax(80px, 1fr) minmax(280px, 420px) minmax(80px, 1fr);
+    border-bottom: 0;
+    background: transparent;
+    pointer-events: none;
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-minimal-toolbar-side,
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search {
+    pointer-events: auto;
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-route-title {
+    opacity: 0;
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search {
+    height: 34px;
+    border-color: rgba(255, 255, 255, .14);
+    background: rgba(12, 12, 14, .36);
+    color: rgba(255, 255, 255, .72);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search:focus-within {
+    border-color: rgba(255, 255, 255, .28);
+    background: rgba(12, 12, 14, .52);
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search input {
+    color: #fff;
+    font-size: 12px;
+  }
+
+  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search input::placeholder {
+    color: rgba(255, 255, 255, .66);
+  }
+}
+
 .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail {
   padding-inline: 6px;
 }
@@ -380,9 +428,9 @@
 }
 
 .nv-app-shell[data-sidebar-collapsed="true"] .nv-rail-item {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
   justify-content: center;
   padding: 0;
 }
