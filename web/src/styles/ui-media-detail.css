@@ -312,6 +312,30 @@
 .nv-cast-rail .nv-person-card-artwork { border-radius: 5px; }
 .nv-cast-rail .nv-person-card:hover .nv-person-card-artwork { transform: translateY(-1px); box-shadow: none; }
 
+/* Highlight previews swap from a thumbnail to an animated asset on hover.
+ * Keep every card bound to the responsive grid so the replacement asset's
+ * intrinsic dimensions can never resize the card or reflow the section. */
+.nv-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--nv-highlight-preview-count, 4), minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+.nv-highlight-card {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+.nv-highlight-card-media {
+  width: 100%;
+  min-width: 0;
+}
+.nv-highlight-card-media > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .nv-detail-section-heading {
   display: flex;
   align-items: flex-end;

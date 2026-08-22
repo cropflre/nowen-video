@@ -66,7 +66,10 @@ export default function CastGrid({ persons }: CastGridProps) {
   return (
     <section className="nv-cast-grid-section" aria-labelledby="cast-grid-title">
       <div className="nv-cast-grid-header">
-        <h2 id="cast-grid-title" className="nv-section-title">{t('castGrid.title')}</h2>
+        <h2 id="cast-grid-title" className="nv-section-title inline-flex items-center gap-2">
+          <Users size={17} className="text-[var(--nv-action-primary)]" aria-hidden="true" />
+          {t('castGrid.title')}
+        </h2>
         <span>{sortedPersons.length}</span>
       </div>
 
