@@ -31,6 +31,7 @@ import CastPanel from './CastPanel'
 import SubtitleSearchPanel from './SubtitleSearchPanel'
 import SubtitleContentSearch from './SubtitleContentSearch'
 import { Tag } from '@/components/design-system'
+import { parseWebVtt, type ParsedSubtitleCue } from '@/utils/webVtt'
 
 interface VideoPlayerProps {
   src: string
@@ -105,6 +106,8 @@ export default function VideoPlayer({
   const [embeddedSubs, setEmbeddedSubs] = useState<SubtitleTrack[]>([])
   const [externalSubs, setExternalSubs] = useState<ExternalSubtitle[]>([])
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null)
+  const [subtitleCues, setSubtitleCues] = useState<ParsedSubtitleCue[]>([])
+  const subtitleLoadControllerRef = useRef<AbortController | null>(null)
   const userDisabledSubtitleRef = useRef(false)
   const [showCastPanel, setShowCastPanel] = useState(false)
 
@@ -134,6 +137,9 @@ export default function VideoPlayer({
   const nextCountdownTimerRef = useRef<number>(0)
   const activeDanmaku = danmakuEnabled
     ? danmakuItems.filter((item) => currentTime >= item.position && currentTime < item.position + 8).slice(0, 10)
+    : []
+  const activeSubtitleCues = activeSubtitle
+    ? subtitleCues.filter(cue => currentTime >= cue.startTime && currentTime < cue.endTime)
     : []
 
   const [seekHint, setSeekHint] = useState<{ text: string; visible: boolean }>({ text: '', visible: false })
@@ -283,8 +289,11 @@ export default function VideoPlayer({
   const loadSubtitle = useCallback((type: string, id: string) => {
     const video = videoRef.current
     if (!video) return
+    subtitleLoadControllerRef.current?.abort()
+    subtitleLoadControllerRef.current = null
     video.querySelectorAll('track').forEach(track => track.remove())
     for (let i = 0; i < video.textTracks.length; i++) video.textTracks[i].mode = 'disabled'
+    setSubtitleCues([])
 
     if (type === 'off') {
       userDisabledSubtitleRef.current = true
@@ -324,45 +333,42 @@ export default function VideoPlayer({
     }
 
     if (!subtitleUrl) return
-    const token = useAuthStore.getState().token
-    const headers: Record<string, string> = {}
-    if (token) headers.Authorization = `Bearer ${token}`
-    let createdBlobUrl: string | null = null
-    let createdTrackEl: HTMLTrackElement | null = null
+    const trackEl = document.createElement('track')
+    trackEl.kind = 'subtitles'
+    trackEl.label = label
+    trackEl.srclang = 'und'
+    trackEl.src = subtitleUrl
+    video.appendChild(trackEl)
+    // Keep a hidden native track for subtitle-content search and accessibility,
+    // while the visible overlay follows the player's absolute timeline. This
+    // matters for remux seeks, where video.currentTime restarts at the new
+    // fragment but the displayed playback position retains a seek offset.
+    trackEl.track.mode = 'hidden'
 
-    fetch(subtitleUrl, { headers })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.text()
+    const controller = new AbortController()
+    subtitleLoadControllerRef.current = controller
+    fetch(subtitleUrl, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.text()
       })
-      .then((vttText) => {
-        const blobUrl = URL.createObjectURL(new Blob([vttText], { type: 'text/vtt' }))
-        createdBlobUrl = blobUrl
-        const trackEl = document.createElement('track')
-        createdTrackEl = trackEl
-        trackEl.kind = 'subtitles'
-        trackEl.label = label
-        trackEl.srclang = 'und'
-        trackEl.src = blobUrl
-        const onTrackLoad = () => {
-          for (let i = 0; i < video.textTracks.length; i++) {
-            const track = video.textTracks[i]
-            track.mode = track.label === label ? 'showing' : 'hidden'
-          }
-          URL.revokeObjectURL(blobUrl)
-          trackEl.removeEventListener('load', onTrackLoad)
-        }
-        trackEl.addEventListener('load', onTrackLoad)
-        video.appendChild(trackEl)
+      .then(vttText => {
+        if (controller.signal.aborted) return
+        const cues = parseWebVtt(vttText)
+        if (cues.length === 0) throw new Error('字幕中没有可显示的时间轴内容')
+        setSubtitleCues(cues)
         setActiveSubtitle(`${type}:${id}`)
       })
-      .catch((error) => {
-        console.error('字幕加载失败:', error)
-        if (createdTrackEl?.parentNode) createdTrackEl.parentNode.removeChild(createdTrackEl)
-        if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl)
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        if (trackEl.parentNode) trackEl.parentNode.removeChild(trackEl)
+        setSubtitleCues([])
         setActiveSubtitle(null)
+        console.error('字幕加载失败:', error)
       })
   }, [mediaId, embeddedSubs, externalSubs])
+
+  useEffect(() => () => subtitleLoadControllerRef.current?.abort(), [])
 
   const autoSelectSubtitle = useCallback(() => {
     if (externalSubs.length > 0) {
@@ -588,9 +594,10 @@ export default function VideoPlayer({
     const baseUrl = src.replace(/[&?]start=[^&]*/g, '')
     const separator = baseUrl.includes('?') ? '&' : '?'
     remuxOffsetRef.current = targetTime
+    setCurrentTime(targetTime)
     video.src = `${baseUrl}${separator}start=${Math.floor(targetTime)}`
     video.play().catch(() => {})
-  }, [src, mode, mediaId])
+  }, [src, mode, setCurrentTime])
 
   const seek = (seconds: number) => {
     const video = videoRef.current
@@ -907,6 +914,23 @@ export default function VideoPlayer({
         playsInline
         crossOrigin="anonymous"
       />
+
+      {activeSubtitleCues.length > 0 && (
+        <div
+          className={clsx(
+            'player-subtitle-overlay pointer-events-none absolute inset-x-4 z-20 flex flex-col items-center gap-1 text-center transition-[bottom] duration-200',
+            showControls ? 'bottom-[clamp(88px,14vh,140px)]' : 'bottom-[clamp(32px,7vh,76px)]',
+          )}
+          aria-live="off"
+          data-testid="player-subtitle-overlay"
+        >
+          {activeSubtitleCues.map(cue => (
+            <span key={`${cue.startTime}-${cue.endTime}`} className="max-w-[min(92%,1200px)] whitespace-pre-line">
+              {cue.text}
+            </span>
+          ))}
+        </div>
+      )}
 
       {activeDanmaku.length > 0 && (
         <div className="pointer-events-none absolute left-0 right-0 top-12 z-10 h-[42%] overflow-hidden">
@@ -1276,7 +1300,18 @@ export default function VideoPlayer({
               >
                 <Search size={18} aria-hidden="true" />
               </button>
-              {showContentSearch && <SubtitleContentSearch videoRef={videoRef} onClose={() => setShowContentSearch(false)} hasActiveSubtitle={!!activeSubtitle} />}
+              {showContentSearch && (
+                <SubtitleContentSearch
+                  videoRef={videoRef}
+                  cues={subtitleCues}
+                  onSeek={(time) => {
+                    if (mode === 'remux' || mode === 'smart_remux') remuxSeek(time)
+                    else if (videoRef.current) videoRef.current.currentTime = time
+                  }}
+                  onClose={() => setShowContentSearch(false)}
+                  hasActiveSubtitle={!!activeSubtitle}
+                />
+              )}
             </div>
           )}
 
@@ -1357,11 +1392,12 @@ export default function VideoPlayer({
           mediaId={mediaId}
           title={title}
           onClose={() => setShowSubtitleSearch(false)}
-          onDownloaded={() => {
-            subtitleApi.getTracks(mediaId).then((res) => {
+          onDownloaded={async (downloaded) => {
+            await subtitleApi.getTracks(mediaId).then((res) => {
               const info = res.data.data
               if (info) setExternalSubs(info.external || [])
             }).catch(() => {})
+            if (downloaded?.file_path) loadSubtitle('external', downloaded.file_path)
           }}
         />
       )}

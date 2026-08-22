@@ -10,7 +10,7 @@ interface SubtitleSearchPanelProps {
   year?: number
   type?: string
   onClose: () => void
-  onDownloaded?: (subtitle?: SubtitleDownloadResult) => void
+  onDownloaded?: (subtitle?: SubtitleDownloadResult) => void | Promise<void>
 }
 
 type OnlineSubtitleResult = SubtitleSearchResult & {
@@ -171,8 +171,8 @@ export default function SubtitleSearchPanel({
     try {
       const res = await subtitleSearchApi.download(mediaId, sub.id)
       const downloaded = res.data.data
-      onDownloaded?.(downloaded)
-      await activateDownloadedSubtitle(downloaded)
+      if (onDownloaded) await onDownloaded(downloaded)
+      else await activateDownloadedSubtitle(downloaded)
       setMessage({ type: 'success', text: `${sub.language_name || sub.language} 字幕已保存并加载` })
       window.setTimeout(onClose, 650)
     } catch (err: any) {

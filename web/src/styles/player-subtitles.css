@@ -49,6 +49,26 @@
   text-shadow: var(--nv-subtitle-shadow);
 }
 
+/* Remux seeks restart the media element timeline at each fragment. Render the
+   visible cues against the player's absolute timeline so subtitles continue
+   to follow progress-bar seeks in every Chromium viewport mode. */
+.player-subtitle-overlay {
+  color: var(--nv-subtitle-color);
+  font-family:
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "PingFang SC",
+    "Microsoft YaHei",
+    "Hiragino Sans GB",
+    "Noto Sans",
+    system-ui,
+    sans-serif;
+  font-size: var(--nv-subtitle-size);
+  font-weight: var(--nv-subtitle-weight);
+  line-height: var(--nv-subtitle-line-height);
+  text-shadow: var(--nv-subtitle-shadow);
+}
+
 /* Compact windows and phones need a slightly denser subtitle scale. */
 @media (max-width: 900px), (max-height: 620px) {
   .group\/player {

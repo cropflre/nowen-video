@@ -10,6 +10,8 @@ interface SubtitleCue {
 
 interface SubtitleContentSearchProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
+  cues?: SubtitleCue[]
+  onSeek?: (time: number) => void
   onClose: () => void
   hasActiveSubtitle: boolean
 }
@@ -53,7 +55,7 @@ function saveSearchHistory(history: string[]) {
   } catch {}
 }
 
-export default function SubtitleContentSearch({ videoRef, onClose, hasActiveSubtitle }: SubtitleContentSearchProps) {
+export default function SubtitleContentSearch({ videoRef, cues: suppliedCues, onSeek, onClose, hasActiveSubtitle }: SubtitleContentSearchProps) {
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<SubtitleCue[]>([])
   const [searched, setSearched] = useState(false)
@@ -69,6 +71,7 @@ export default function SubtitleContentSearch({ videoRef, onClose, hasActiveSubt
   }, [])
 
   const getCues = useCallback((): SubtitleCue[] => {
+    if (suppliedCues?.length) return suppliedCues
     const video = videoRef.current
     if (!video) return []
     const cues: SubtitleCue[] = []
@@ -82,7 +85,7 @@ export default function SubtitleContentSearch({ videoRef, onClose, hasActiveSubt
       }
     }
     return cues
-  }, [videoRef])
+  }, [suppliedCues, videoRef])
 
   const doSearch = useCallback((searchKeyword: string) => {
     const trimmed = searchKeyword.trim()
@@ -102,11 +105,15 @@ export default function SubtitleContentSearch({ videoRef, onClose, hasActiveSubt
   }, [getCues, history])
 
   const jumpTo = useCallback((cue: SubtitleCue) => {
+    if (onSeek) {
+      onSeek(cue.startTime)
+      return
+    }
     const video = videoRef.current
     if (!video) return
     video.currentTime = cue.startTime
     if (video.paused) video.play().catch(() => {})
-  }, [videoRef])
+  }, [onSeek, videoRef])
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
