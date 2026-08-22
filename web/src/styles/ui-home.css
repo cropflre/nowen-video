@@ -100,6 +100,46 @@
   background: var(--nv-action-primary);
 }
 
+.nv-home-page .nv-home-hero-indicator {
+  border: 1px solid rgba(0, 0, 0, .15);
+  background: #fff;
+}
+
+/* The light hero scrim is intentionally pale, so its copy must follow the
+   light theme instead of inheriting the dark-theme white-on-dark treatment. */
+[data-theme="light"] .nv-home-page .nv-hero-content,
+[data-theme="light"] .nv-home-page .nv-media-hero-title {
+  color: #211c23;
+}
+
+[data-theme="light"] .nv-home-page .nv-media-hero-title {
+  text-shadow: 0 1px 14px rgba(255, 255, 255, .82), 0 1px 2px rgba(255, 255, 255, .94);
+}
+
+[data-theme="light"] .nv-home-page .nv-media-hero-subtitle,
+[data-theme="light"] .nv-home-page .nv-media-hero-meta,
+[data-theme="light"] .nv-home-page .nv-media-hero-overview,
+[data-theme="light"] .nv-home-page .nv-home-hero-watch-progress-label {
+  color: rgba(33, 28, 35, .82);
+  text-shadow: 0 1px 10px rgba(255, 255, 255, .78);
+}
+
+[data-theme="light"] .nv-home-page .nv-media-hero-meta .nv-tag {
+  border-color: rgba(33, 28, 35, .12);
+  background: rgba(248, 246, 248, .72);
+  color: rgba(33, 28, 35, .86);
+  box-shadow: 0 1px 4px rgba(33, 28, 35, .06);
+}
+
+[data-theme="light"] .nv-home-page .nv-home-hero-watch-progress-track {
+  background: rgba(33, 28, 35, .18);
+}
+
+[data-theme="light"] .nv-home-page .nv-home-hero-indicator {
+  border-color: rgba(255, 255, 255, .62);
+  background: rgba(33, 28, 35, .82);
+}
+
 .nv-home-content-flow {
   position: relative;
   z-index: 5;
