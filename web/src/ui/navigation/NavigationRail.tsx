@@ -21,6 +21,10 @@ export function NavigationRailLink({
       to={to}
       end={end}
       className="nv-rail-item"
+      style={({ isActive }) => isActive ? {
+        background: 'var(--nv-fill-hover)',
+        borderColor: 'transparent',
+      } : undefined}
       aria-label={label}
       title={label}
       data-label={label}
