@@ -1,6 +1,7 @@
 .nv-detail-hero-backdrop-shell {
   position: relative;
   isolation: isolate;
+  --nv-detail-hero-carousel-height: clamp(360px, 46vh, 520px);
 }
 
 .nv-detail-hero-local-backdrop {
@@ -10,23 +11,26 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center 28%;
   pointer-events: none;
   opacity: 0;
-  transform: scale(1.015);
-  transition:
-    opacity 420ms ease,
-    transform 520ms ease;
+  transform: scale(1.008);
 }
 
 .nv-detail-hero-local-backdrop.is-loaded {
-  opacity: 0.7;
+  opacity: 0.92;
   transform: scale(1);
+  animation: nv-detail-backdrop-fade 420ms ease both;
 }
 
-/* The tab workspace below already owns the section separation. Once a real
-   backdrop is rendered, HeroSection's legacy 1px bottom border becomes a
-   visually prominent double divider, so keep the artwork transition clean. */
+@keyframes nv-detail-backdrop-fade {
+  from { opacity: 0; transform: scale(1.012); }
+  to { opacity: 0.92; transform: scale(1); }
+}
+
+/* The wrapper owns exactly one visible backdrop at a time. HeroSection keeps
+   its fallback artwork implementation for compatibility, but it is visually
+   suppressed whenever the carousel has an active single-frame candidate. */
 .nv-detail-hero-backdrop-shell .nv-detail-hero {
   border-bottom: 0 !important;
 }
@@ -46,7 +50,19 @@
   opacity: 0 !important;
 }
 
-/* Subtitle management now belongs to the primary action cluster instead of a
+@media (min-width: 768px) {
+  .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero,
+  .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
+    min-height: var(--nv-detail-hero-carousel-height);
+  }
+
+  .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
+    padding-top: clamp(108px, 14vh, 150px);
+    padding-bottom: 24px;
+  }
+}
+
+/* Subtitle management belongs to the primary action cluster instead of a
    separate status strip. Keep it immediately before the existing More action. */
 .nv-detail-hero-backdrop-shell .nv-media-hero-actions > button:last-of-type {
   order: 30;
@@ -68,8 +84,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nv-detail-hero-local-backdrop {
-    transition: none;
+  .nv-detail-hero-local-backdrop.is-loaded {
+    animation: none;
     transform: none;
   }
 }
