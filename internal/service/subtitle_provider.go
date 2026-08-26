@@ -14,9 +14,9 @@ import (
 // Queries 已由 Nowen 的文件名解析器生成，Provider 不需要理解媒体库模型。
 type SubtitleProviderSearchRequest struct {
 	Queries   []string
-	FileName string
-	Title    string
-	Year     int
+	FileName  string
+	Title     string
+	Year      int
 	MediaType string
 	Languages []string
 }

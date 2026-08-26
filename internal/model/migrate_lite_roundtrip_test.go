@@ -373,16 +373,16 @@ func TestFreshLiteMigrationCreatesLocalAnalysisButNotFullOnlyTables(t *testing.T
 	}
 
 	for name, table := range map[string]any{
-		"users":                 &User{},
-		"libraries":             &Library{},
-		"media":                 &Media{},
-		"video chapters":        &VideoChapter{},
-		"video highlights":      &VideoHighlight{},
-		"analysis tasks":        &AIAnalysisTask{},
-		"cover candidates":      &CoverCandidate{},
-		"transcode jobs":        &TranscodeJobRecord{},
-		"storage reservations":  &TranscodeStorageReservationRecord{},
-		"storage incidents":     &TranscodeStorageIncidentRecord{},
+		"users":                &User{},
+		"libraries":            &Library{},
+		"media":                &Media{},
+		"video chapters":       &VideoChapter{},
+		"video highlights":     &VideoHighlight{},
+		"analysis tasks":       &AIAnalysisTask{},
+		"cover candidates":     &CoverCandidate{},
+		"transcode jobs":       &TranscodeJobRecord{},
+		"storage reservations": &TranscodeStorageReservationRecord{},
+		"storage incidents":    &TranscodeStorageIncidentRecord{},
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("fresh Lite did not create core table: %s", name)

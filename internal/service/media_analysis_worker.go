@@ -109,14 +109,14 @@ type MediaAnalysisWorkerFailure struct {
 }
 
 type mediaAnalysisRemoteTask struct {
-	TaskID       string
-	MediaID      string
-	Fingerprint  string
-	CreatedAt    time.Time
-	ClaimedBy    string
-	ClaimToken   string
-	WorkerKind   string
-	LeaseUntil   time.Time
+	TaskID      string
+	MediaID     string
+	Fingerprint string
+	CreatedAt   time.Time
+	ClaimedBy   string
+	ClaimToken  string
+	WorkerKind  string
+	LeaseUntil  time.Time
 }
 
 type mediaAnalysisWorkerState struct {

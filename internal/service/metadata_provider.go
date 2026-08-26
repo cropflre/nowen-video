@@ -280,6 +280,10 @@ func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, y
 			if !primaryDone {
 				primaryErr = err
 			}
+			// 基础资料已经完整时，Fanart 下载失败不应再触发 AI 兜底。
+			if provider.Name() == "Fanart.tv" && c.isSeriesMetadataComplete(series) {
+				break
+			}
 			continue
 		}
 
@@ -290,7 +294,10 @@ func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, y
 
 		c.logger.Debugf("数据源 [%s] 剧集刮削成功: %s", provider.Name(), searchTitle)
 
-		if c.isSeriesMetadataComplete(series) {
+		// Fanart.tv 是标题图等艺术资源的唯一来源。即使基础资料完整，也要
+		// 继续执行到它；一旦它已完成尝试，则恢复原有的完整资料退出条件。
+		if c.isSeriesMetadataComplete(series) &&
+			(!c.hasEnabledFanartProvider() || provider.Name() == "Fanart.tv") {
 			break
 		}
 	}
@@ -381,6 +388,15 @@ func (c *ProviderChain) isSeriesMetadataComplete(series *model.Series) bool {
 		score += 10
 	}
 	return score >= 80
+}
+
+func (c *ProviderChain) hasEnabledFanartProvider() bool {
+	for _, provider := range c.providers {
+		if provider.Name() == "Fanart.tv" && provider.IsEnabled() {
+			return true
+		}
+	}
+	return false
 }
 
 // GetProviders 获取所有已注册的数据源（用于状态展示）

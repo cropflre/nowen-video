@@ -45,7 +45,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
 import com.nowen.video.v2.core.data.ProgressRepository
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
@@ -224,14 +224,12 @@ fun OfflinePlayerScreen(
                 modifier = Modifier.align(Alignment.Center),
                 color = MaterialTheme.colorScheme.primary,
             )
-            state.error != null -> MessagePanel(
+            state.error != null -> HillsState(
                 title = "无法离线播放",
                 message = state.error!!,
                 actionLabel = "返回",
                 onAction = onBack,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(20.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
             else -> AndroidView(
                 factory = { viewContext ->

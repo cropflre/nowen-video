@@ -113,11 +113,11 @@ var srtTimestampPattern = regexp.MustCompile(`(?m)\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s
 
 func NewSubtitleSearchService(apiKey string, cacheDir string, logger *zap.SugaredLogger) *SubtitleSearchService {
 	return &SubtitleSearchService{
-		logger: logger,
-		client: &http.Client{Timeout: 30 * time.Second},
-		apiKey: apiKey,
-		apiBase: "https://api.opensubtitles.com/api/v1",
-		cacheDir: filepath.Join(cacheDir, "subtitles"),
+		logger:      logger,
+		client:      &http.Client{Timeout: 30 * time.Second},
+		apiKey:      apiKey,
+		apiBase:     "https://api.opensubtitles.com/api/v1",
+		cacheDir:    filepath.Join(cacheDir, "subtitles"),
 		subtitleCat: NewSubtitleCatProvider(logger),
 	}
 }
@@ -152,10 +152,10 @@ func (s *SubtitleSearchService) SearchByTitle(title string, year int, language s
 	}
 
 	catResults, catErr := s.subtitleCat.Search(ctx, SubtitleProviderSearchRequest{
-		Queries: queries,
-		FileName: title,
-		Title: title,
-		Year: year,
+		Queries:   queries,
+		FileName:  title,
+		Title:     title,
+		Year:      year,
 		MediaType: mediaType,
 		Languages: languages,
 	})
@@ -201,10 +201,10 @@ func (s *SubtitleSearchService) SearchByHash(filePath string, language string) (
 	}
 	queries := BuildSubtitleSearchQueries(filePath, title, year, mediaType)
 	catResults, catErr := s.subtitleCat.Search(ctx, SubtitleProviderSearchRequest{
-		Queries: queries,
-		FileName: fileName,
-		Title: title,
-		Year: year,
+		Queries:   queries,
+		FileName:  fileName,
+		Title:     title,
+		Year:      year,
 		MediaType: mediaType,
 		Languages: parseSubtitleLanguages(language),
 	})
@@ -390,8 +390,8 @@ func (s *SubtitleSearchService) downloadOpenSubtitles(fileID string, mediaFilePa
 		FilePath: subFilePath,
 		FileName: subFileName,
 		Language: "",
-		Format: strings.TrimPrefix(subExt, "."),
-		Source: "opensubtitles",
+		Format:   strings.TrimPrefix(subExt, "."),
+		Source:   "opensubtitles",
 	}, nil
 }
 
@@ -445,8 +445,8 @@ func (s *SubtitleSearchService) saveSubtitleCatSidecar(mediaFilePath, sourceName
 		FilePath: subFilePath,
 		FileName: subFileName,
 		Language: normalizeSubtitleLanguageCode(language),
-		Format: "srt",
-		Source: subtitleCatProviderName,
+		Format:   "srt",
+		Source:   subtitleCatProviderName,
 	}, nil
 }
 
@@ -618,18 +618,18 @@ func (s *SubtitleSearchService) convertResults(data []osSearchResult) []Subtitle
 			matchScore = 100
 		}
 		results = append(results, SubtitleSearchResult{
-			ID: fileID,
-			Title: attrs.FeatureDetails.Title,
-			FileName: fileName,
-			Language: normalizeSubtitleLanguageCode(attrs.Language),
-			LanguageName: getLanguageName(attrs.Language),
-			Format: getSubtitleFormat(fileName),
-			Rating: attrs.Ratings,
-			DownloadCount: attrs.DownloadCount,
-			Source: "opensubtitles",
-			DownloadURL: "",
-			MatchType: matchType,
-			MatchScore: matchScore,
+			ID:                 fileID,
+			Title:              attrs.FeatureDetails.Title,
+			FileName:           fileName,
+			Language:           normalizeSubtitleLanguageCode(attrs.Language),
+			LanguageName:       getLanguageName(attrs.Language),
+			Format:             getSubtitleFormat(fileName),
+			Rating:             attrs.Ratings,
+			DownloadCount:      attrs.DownloadCount,
+			Source:             "opensubtitles",
+			DownloadURL:        "",
+			MatchType:          matchType,
+			MatchScore:         matchScore,
 			AvailableLanguages: []string{normalizeSubtitleLanguageCode(attrs.Language)},
 		})
 	}

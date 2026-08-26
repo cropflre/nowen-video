@@ -149,6 +149,45 @@ func (h *SeriesHandler) Poster(c *gin.Context) {
 	c.File(posterPath)
 }
 
+// Logo 获取剧集透明标题图。缺失时返回 404，让客户端回退为文字标题。
+func (h *SeriesHandler) Logo(c *gin.Context) {
+	id := c.Param("id")
+	logoPath, err := h.seriesService.GetSeriesLogoPath(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	if logoPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "剧集标题图不存在"})
+		return
+	}
+	fileInfo, statErr := os.Stat(logoPath)
+	if statErr != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "剧集标题图不可用"})
+		return
+	}
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(logoPath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		c.Header("Content-Type", "image/jpeg")
+	case ".png":
+		c.Header("Content-Type", "image/png")
+	case ".webp":
+		c.Header("Content-Type", "image/webp")
+	default:
+		c.Header("Content-Type", "application/octet-stream")
+	}
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+	c.File(logoPath)
+}
+
 // Backdrop 获取剧集合集背景图片
 func (h *SeriesHandler) Backdrop(c *gin.Context) {
 	id := c.Param("id")

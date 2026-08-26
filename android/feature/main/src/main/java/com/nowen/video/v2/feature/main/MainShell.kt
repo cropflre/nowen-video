@@ -6,6 +6,11 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -24,14 +30,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -67,6 +70,10 @@ import com.nowen.video.v2.core.data.PlayerPreferences
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
+import com.nowen.video.v2.core.model.LibrarySummary
+import com.nowen.video.v2.core.model.MediaCard
+import com.nowen.video.v2.core.designsystem.HillsBottomDock
+import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,11 +89,11 @@ enum class MainTab(
     val selectedIcon: ImageVector,
 ) {
     Home("home", "首页", Icons.Outlined.Home, Icons.Filled.Home),
-    Library("library", "影视库", Icons.Outlined.VideoLibrary, Icons.Filled.VideoLibrary),
     Search("search", "搜索", Icons.Outlined.Search, Icons.Filled.Search),
     Profile("profile", "我的", Icons.Outlined.Person, Icons.Filled.Person),
 }
 
+private const val LIBRARY_BROWSE_ROUTE = "library/{libraryId}/{libraryName}"
 private const val DETAIL_ROUTE = "detail/{mediaId}"
 private const val SERIES_DETAIL_ROUTE = "series/{seriesId}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
@@ -98,6 +105,11 @@ private const val COLLECTIONS_ROUTE = "collections"
 private const val COLLECTION_DETAIL_ROUTE = "collection/{collectionId}"
 private const val PERSON_DETAIL_ROUTE = "person/{personId}"
 private const val SETTINGS_ROUTE = "settings"
+
+private val detailEnterTransition = fadeIn(tween(180)) + slideInHorizontally(tween(180)) { it / 12 }
+private val detailExitTransition = fadeOut(tween(140)) + slideOutHorizontally(tween(140)) { -it / 20 }
+private val detailPopEnterTransition = fadeIn(tween(160)) + slideInHorizontally(tween(160)) { -it / 20 }
+private val detailPopExitTransition = fadeOut(tween(120)) + slideOutHorizontally(tween(120)) { it / 12 }
 
 @HiltViewModel
 class MainShellViewModel @Inject constructor(
@@ -129,11 +141,16 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     val selectedTab = when (currentRoute) {
         MainTab.Home.route -> MainTab.Home
         MainTab.Search.route, PERSON_DETAIL_ROUTE -> MainTab.Search
-        MainTab.Profile.route, FAVORITES_ROUTE, HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE -> MainTab.Profile
-        MainTab.Library.route, DETAIL_ROUTE, SERIES_DETAIL_ROUTE, COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> MainTab.Library
+        MainTab.Profile.route, FAVORITES_ROUTE, HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE,
+        COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> MainTab.Profile
+        LIBRARY_BROWSE_ROUTE, DETAIL_ROUTE, SERIES_DETAIL_ROUTE -> MainTab.Home
         else -> null
     }
-    val showBottomBar = currentRoute != PLAYER_ROUTE && currentRoute != OFFLINE_PLAYER_ROUTE
+    val showBottomBar = currentRoute != PLAYER_ROUTE &&
+        currentRoute != OFFLINE_PLAYER_ROUTE &&
+        currentRoute != LIBRARY_BROWSE_ROUTE &&
+        currentRoute != DETAIL_ROUTE &&
+        currentRoute != SERIES_DETAIL_ROUTE
     val playerPreferences by viewModel.playerPreferences.collectAsState()
     val context = LocalContext.current
     var askedDownloadNotificationPermission by rememberSaveable { mutableStateOf(false) }
@@ -153,12 +170,23 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         }
     }
 
+    fun openLibraryBrowse(library: LibrarySummary) {
+        if (library.id.isBlank()) return
+        navController.navigate("library/${Uri.encode(library.id)}/${Uri.encode(library.name)}")
+    }
+
     fun openDetail(mediaId: String) {
         if (mediaId.isNotBlank()) navController.navigate("detail/${Uri.encode(mediaId)}")
     }
 
     fun openSeries(seriesId: String) {
         if (seriesId.isNotBlank()) navController.navigate("series/${Uri.encode(seriesId)}")
+    }
+
+    fun openCatalogDetail(card: MediaCard) {
+        val id = card.resolvedId
+        if (id.isBlank()) return
+        if (card.isSeries) openSeries(id) else openDetail(id)
     }
 
     fun openPlayer(mediaId: String) {
@@ -183,65 +211,46 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         if (personId.isNotBlank()) navController.navigate("person/${Uri.encode(personId)}")
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            if (showBottomBar) {
-                WebMobileBottomBar(
-                    selectedTab = selectedTab,
-                    onSelect = { item ->
-                        navController.navigate(item.route) {
-                            popUpTo(MainTab.Home.route) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                )
-            }
-        },
-    ) { padding ->
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         NavHost(
             navController = navController,
             startDestination = MainTab.Home.route,
-            modifier = Modifier.padding(if (showBottomBar) padding else PaddingValues()),
+            modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) 84.dp else 0.dp),
         ) {
             composable(MainTab.Home.route) {
-                WebMobileHomeScreen(
-                    onMediaClick = ::openDetail,
+                LibraryScreen(
+                    onMediaClick = ::openCatalogDetail,
                     onPlay = ::openPlayer,
-                    onRestart = { mediaId -> openPlayerAt(mediaId, 0.0) },
-                    onLibraryClick = {
-                        navController.navigate(MainTab.Library.route) {
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onHistoryClick = { navController.navigate(HISTORY_ROUTE) },
-                    onFavoritesClick = { navController.navigate(FAVORITES_ROUTE) },
+                    onBrowseLibrary = ::openLibraryBrowse,
                 )
             }
-            composable(MainTab.Library.route) {
-                LibraryScreen(
-                    onMediaClick = ::openDetail,
-                    onPlay = ::openPlayer,
+            composable(
+                route = LIBRARY_BROWSE_ROUTE,
+                arguments = listOf(
+                    navArgument("libraryId") { type = NavType.StringType },
+                    navArgument("libraryName") { type = NavType.StringType },
+                ),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
+            ) { entry ->
+                LibraryBrowseScreen(
+                    libraryId = entry.arguments?.getString("libraryId").orEmpty(),
+                    libraryName = entry.arguments?.getString("libraryName").orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onMediaClick = ::openCatalogDetail,
                 )
             }
             composable(MainTab.Search.route) {
                 SearchScreen(
-                    onMediaClick = ::openDetail,
+                    onMediaClick = ::openCatalogDetail,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
                 )
             }
             composable(MainTab.Profile.route) {
-                ProfileScreen(
-                    sessionStore = viewModel.store,
-                    onFavorites = { navController.navigate(FAVORITES_ROUTE) },
-                    onHistory = { navController.navigate(HISTORY_ROUTE) },
-                    onCollections = { navController.navigate(COLLECTIONS_ROUTE) },
-                    onSettings = { navController.navigate(SETTINGS_ROUTE) },
-                    onLogout = viewModel::logout,
-                )
+                MobileSettingsScreen()
             }
             composable(DOWNLOADS_ROUTE) {
                 DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
@@ -271,6 +280,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(
                 route = COLLECTION_DETAIL_ROUTE,
                 arguments = listOf(navArgument("collectionId") { type = NavType.StringType }),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
             ) { entry ->
                 CollectionDetailScreen(
                     collectionId = entry.arguments?.getString("collectionId").orEmpty(),
@@ -281,16 +294,25 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(
                 route = PERSON_DETAIL_ROUTE,
                 arguments = listOf(navArgument("personId") { type = NavType.StringType }),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
             ) { entry ->
                 PersonDetailScreen(
                     personId = entry.arguments?.getString("personId").orEmpty(),
                     onBack = { navController.popBackStack() },
                     onMediaClick = ::openDetail,
+                    onSeriesClick = ::openSeries,
                 )
             }
             composable(
                 route = SERIES_DETAIL_ROUTE,
                 arguments = listOf(navArgument("seriesId") { type = NavType.StringType }),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
             ) { entry ->
                 SeriesDetailScreen(
                     seriesId = entry.arguments?.getString("seriesId").orEmpty(),
@@ -303,6 +325,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(
                 route = DETAIL_ROUTE,
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
                 MediaDetailScreen(
@@ -313,6 +339,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
                     onMediaClick = ::openDetail,
+                    onSeriesClick = ::openSeries,
                 )
             }
             composable(
@@ -346,6 +373,27 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 }
             }
         }
+        if (showBottomBar) {
+            Box(Modifier.align(Alignment.BottomCenter)) {
+            HillsBottomDock {
+                MainTab.entries.forEach { item ->
+                    val selected = selectedTab == item
+                    WebMobileBottomBarItem(
+                        item = item,
+                        selected = selected,
+                        onClick = {
+                            navController.navigate(item.route) {
+                                popUpTo(MainTab.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            }
+        }
     }
 }
 
@@ -358,18 +406,18 @@ private fun WebMobileBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-        shadowElevation = 10.dp,
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         tonalElevation = 0.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f)),
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .height(NowenMobileMetrics.BottomBarHeight)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -396,45 +444,35 @@ private fun WebMobileBottomBarItem(
     val contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
-            .padding(horizontal = 2.dp)
-            .height(52.dp)
-            .clip(RoundedCornerShape(11.dp))
+            .padding(horizontal = 3.dp)
+            .height(NowenMobileMetrics.TouchTarget)
+            .clip(RoundedCornerShape(NowenMobileMetrics.ControlRadius))
             .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                else Color.Transparent,
+                if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 30.dp, height = 25.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)
-                        else Color.Transparent,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (selected) item.selectedIcon else item.icon,
-                    contentDescription = item.label,
-                    tint = contentColor,
-                    modifier = Modifier.size(18.dp),
+            Icon(
+                if (selected) item.selectedIcon else item.icon,
+                contentDescription = item.label,
+                tint = contentColor,
+                modifier = Modifier.size(20.dp),
+            )
+            if (selected) {
+                Text(
+                    item.label,
+                    color = contentColor,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
                 )
             }
-            Text(
-                item.label,
-                color = contentColor,
-                fontSize = 10.sp,
-                lineHeight = 11.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-            )
         }
     }
 }

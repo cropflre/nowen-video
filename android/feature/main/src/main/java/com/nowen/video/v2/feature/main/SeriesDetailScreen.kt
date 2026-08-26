@@ -52,8 +52,8 @@ import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SeriesRepository
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsChoiceRail
+import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.SeasonInfo
 import com.nowen.video.v2.core.model.SeriesBundle
@@ -191,7 +191,6 @@ class SeriesDetailViewModel @Inject constructor(
 private enum class SeriesDetailTab(val label: String) {
     Episodes("剧集"),
     Overview("简介"),
-    Cast("演职人员"),
 }
 
 @Composable
@@ -215,14 +214,12 @@ fun SeriesDetailScreen(
     ) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            state.error != null -> MessagePanel(
+            state.error != null -> HillsState(
                 title = "无法打开剧集",
                 message = state.error!!,
                 actionLabel = "重试",
                 onAction = { viewModel.load(seriesId) },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(20.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
             state.bundle != null -> {
                 val bundle = state.bundle!!
@@ -246,18 +243,29 @@ fun SeriesDetailScreen(
                                 state.continueEpisode?.let { onPlayEpisode(it.id) }
                             },
                             onBack = onBack,
+                            logoUrl = seriesLogoUrl(session.activeServer?.baseUrl, series.id),
                         )
+                    }
+
+                    if (bundle.persons.isNotEmpty()) {
+                        item {
+                            DetailCastShelf(
+                                persons = bundle.persons,
+                                baseUrl = session.activeServer?.baseUrl,
+                                onPersonClick = onPersonClick,
+                            )
+                        }
                     }
 
                     item {
                         DetailTabStrip(
                             labels = tabs.map(SeriesDetailTab::label),
-                            selectedIndex = selectedTab,
+                            selectedIndex = selectedTab.coerceIn(0, tabs.lastIndex),
                             onSelected = { selectedTab = it },
                         )
                     }
 
-                    when (tabs[selectedTab]) {
+                    when (tabs[selectedTab.coerceIn(0, tabs.lastIndex)]) {
                         SeriesDetailTab.Episodes -> {
                             item {
                                 DetailSection(
@@ -276,24 +284,22 @@ fun SeriesDetailScreen(
                             item {
                                 DetailSection("选择季") {
                                     if (bundle.seasons.isEmpty()) {
-                                        MessagePanel("暂无单集", "服务器中还没有可播放的单集。")
+                                        HillsState("暂无单集", "服务器中还没有可播放的单集。")
                                     } else {
-                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            items(bundle.seasons, key = SeasonInfo::seasonNumber) { season ->
-                                                FilterChip(
-                                                    selected = season.seasonNumber == selectedSeason?.seasonNumber,
-                                                    onClick = { viewModel.selectSeason(season.seasonNumber) },
-                                                    label = { Text("${season.label} · ${season.episodes.size}") },
-                                                )
-                                            }
-                                        }
+                                        HillsChoiceRail(
+                                            options = bundle.seasons.map { season ->
+                                                season.seasonNumber.toString() to "${season.label} · ${season.episodes.size}"
+                                            },
+                                            selected = selectedSeason?.seasonNumber?.toString().orEmpty(),
+                                            onSelect = { value -> viewModel.selectSeason(value.toInt()) },
+                                        )
                                     }
                                 }
                             }
 
                             if (selectedSeason != null && selectedSeason.episodes.isEmpty()) {
                                 item {
-                                    MessagePanel(
+                                    HillsState(
                                         title = "本季暂无单集",
                                         message = "扫描或整理完成后，单集会显示在这里。",
                                         modifier = Modifier.padding(horizontal = 20.dp),
@@ -343,31 +349,6 @@ fun SeriesDetailScreen(
                                 )
                             }
                         }
-
-                        SeriesDetailTab.Cast -> item {
-                            DetailSection(
-                                title = "演职人员",
-                                subtitle = if (bundle.persons.isEmpty()) "当前剧集暂无演职人员信息" else "点击人物查看相关作品",
-                            ) {
-                                if (bundle.persons.isEmpty()) {
-                                    MessagePanel("暂无演职人员", "服务器暂未返回该剧集的演职人员信息。")
-                                } else {
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                        items(bundle.persons.take(24), key = { it.id }) { credit ->
-                                            DetailCreditCard(
-                                                name = credit.person.name,
-                                                role = credit.roleLabel,
-                                                imageUrl = personProfileUrl(
-                                                    session.activeServer?.baseUrl,
-                                                    credit.person.id,
-                                                ),
-                                                onClick = { onPersonClick(credit.person.id) },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -385,12 +366,13 @@ private fun EpisodeWorkspaceCard(
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedPanel(
-        modifier
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .clickable(onClick = onOpen)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = imageUrl,
                 contentDescription = episode.seriesEpisodeLabel,
@@ -460,7 +442,6 @@ private fun EpisodeWorkspaceCard(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
     }
 }
 
@@ -473,6 +454,9 @@ internal fun seriesPosterUrl(baseUrl: String?, seriesId: String): String? =
 
 internal fun seriesBackdropUrl(baseUrl: String?, seriesId: String): String? =
     baseUrl?.trimEnd('/')?.let { "$it/api/series/$seriesId/backdrop" }
+
+internal fun seriesLogoUrl(baseUrl: String?, seriesId: String): String? =
+    baseUrl?.trimEnd('/')?.let { "$it/api/series/$seriesId/logo" }
 
 internal fun mediaPosterUrl(baseUrl: String?, mediaId: String): String? =
     baseUrl?.trimEnd('/')?.let { "$it/api/media/$mediaId/poster" }

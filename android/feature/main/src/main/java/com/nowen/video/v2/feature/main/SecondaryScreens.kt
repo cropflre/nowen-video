@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
@@ -32,10 +35,12 @@ import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MediaPosterCard
-import com.nowen.video.v2.core.designsystem.MessagePanel
-import com.nowen.video.v2.core.designsystem.NowenPage
+import com.nowen.video.v2.core.designsystem.HillsPoster
+import com.nowen.video.v2.core.designsystem.HillsScreen
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.HillsTextField
+import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MovieCollection
 import com.nowen.video.v2.core.model.Person
@@ -134,7 +139,7 @@ class SearchViewModel @Inject constructor(
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
@@ -142,84 +147,76 @@ fun SearchScreen(
     val state by viewModel.state.collectAsState()
     val session by viewModel.store.snapshot.collectAsState()
 
-    NowenPage(modifier, PaddingValues(horizontal = 20.dp, vertical = 20.dp)) {
-        Text("搜索", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = viewModel::query,
-            modifier = Modifier.fillMaxWidth(),
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            placeholder = { Text("电影、剧集、演员或合集") },
-            singleLine = true,
-        )
-        Spacer(Modifier.height(18.dp))
-        when {
-            state.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.error != null -> MessagePanel("搜索失败", state.error!!)
-            state.query.isBlank() -> MessagePanel("开始探索", "输入关键词即可搜索当前服务器。")
-            !state.hasResults -> MessagePanel("没有找到结果", "换一个关键词试试。")
-            else -> {
-                state.unavailableMessage?.let { warning ->
-                    Text(
-                        warning,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp),
-                ) {
-                    if (state.mediaResults.isNotEmpty()) {
-                        item { SearchSectionHeader("影视", state.mediaResults.size) }
-                        item {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                items(state.mediaResults, key = { "media-${it.resolvedId}" }) { media ->
-                                    MediaPosterCard(
-                                        title = media.displayTitle,
-                                        subtitle = media.year?.toString(),
-                                        imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                                        progress = media.normalizedProgress,
-                                        onClick = { onMediaClick(media.resolvedId) },
-                                    )
+    HillsScreen(modifier, top = { HillsTopBar(title = "搜索") }) { topPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(topPadding)
+                .padding(horizontal = 20.dp),
+        ) {
+            HillsTextField(
+                value = state.query,
+                onValueChange = viewModel::query,
+                placeholder = "搜索电影、剧集、演员或合集",
+            )
+            Spacer(Modifier.height(18.dp))
+            when {
+                state.loading -> HillsState("正在搜索", "正在从媒体库检索内容")
+                state.error != null -> HillsState("搜索失败", state.error!!)
+                state.query.isBlank() -> HillsState("开始探索", "输入关键词即可搜索当前服务器。")
+                !state.hasResults -> HillsState("没有找到结果", "换一个关键词试试。")
+                else -> {
+                    state.unavailableMessage?.let { warning ->
+                        Text(warning, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(22.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
+                    ) {
+                        if (state.mediaResults.isNotEmpty()) {
+                            item { SearchSectionHeader("影视", state.mediaResults.size) }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(state.mediaResults, key = { "media-${it.resolvedId}" }) { media ->
+                                        HillsPoster(
+                                            title = media.displayTitle,
+                                            subtitle = media.year?.toString(),
+                                            imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                                            progress = media.normalizedProgress,
+                                            onClick = { onMediaClick(media) },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-
-                    if (state.peopleResults.isNotEmpty()) {
-                        item { SearchSectionHeader("人物", state.peopleResults.size) }
-                        item {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(state.peopleResults, key = { "person-${it.id}" }) { person ->
-                                    SearchPersonCard(
-                                        person = person,
-                                        imageUrl = personProfileUrl(session.activeServer?.baseUrl, person.id),
-                                        onClick = { onPersonClick(person.id) },
-                                    )
+                        if (state.peopleResults.isNotEmpty()) {
+                            item { SearchSectionHeader("人物", state.peopleResults.size) }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    items(state.peopleResults, key = { "person-${it.id}" }) { person ->
+                                        SearchPersonCard(
+                                            person = person,
+                                            imageUrl = personProfileUrl(session.activeServer?.baseUrl, person.id),
+                                            onClick = { onPersonClick(person.id) },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-
-                    if (state.collectionResults.isNotEmpty()) {
-                        item { SearchSectionHeader("电影合集", state.collectionResults.size) }
-                        item {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                items(state.collectionResults, key = { "collection-${it.id}" }) { collection ->
-                                    MediaPosterCard(
-                                        title = collection.name,
-                                        subtitle = listOfNotNull(
-                                            collection.yearRange.takeIf(String::isNotBlank),
-                                            collection.mediaCount.takeIf { it > 0 }?.let { "$it 部" },
-                                        ).joinToString(" · ").ifBlank { "电影合集" },
-                                        imageUrl = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
-                                        progress = 0f,
-                                        onClick = { onCollectionClick(collection.id) },
-                                    )
+                        if (state.collectionResults.isNotEmpty()) {
+                            item { SearchSectionHeader("电影合集", state.collectionResults.size) }
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(state.collectionResults, key = { "collection-${it.id}" }) { collection ->
+                                        HillsPoster(
+                                            title = collection.name,
+                                            subtitle = listOfNotNull(collection.yearRange.takeIf(String::isNotBlank), collection.mediaCount.takeIf { it > 0 }?.let { "$it 部" }).joinToString(" · ").ifBlank { "电影合集" },
+                                            imageUrl = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
+                                            onClick = { onCollectionClick(collection.id) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -248,39 +245,24 @@ private fun SearchPersonCard(
     imageUrl: String?,
     onClick: () -> Unit,
 ) {
-    ElevatedPanel(
-        Modifier
-            .width(220.dp)
+    Column(
+        modifier = Modifier
+            .width(92.dp)
             .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = person.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(MaterialTheme.shapes.large)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    person.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    person.originalName.ifBlank { "演职人员" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        }
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = person.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(76.dp)
+                .clip(RoundedCornerShape(38.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(person.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(person.originalName.ifBlank { "演职人员" }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -290,77 +272,76 @@ fun ProfileScreen(
     sessionStore: ServerSessionStore,
     onFavorites: () -> Unit,
     onHistory: () -> Unit,
+    onDownloads: () -> Unit,
     onCollections: () -> Unit,
     onSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     val session by sessionStore.snapshot.collectAsState()
 
-    NowenPage(modifier, PaddingValues(horizontal = 20.dp, vertical = 20.dp)) {
-        Text("我的", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(20.dp))
-        ElevatedPanel(Modifier.fillMaxWidth()) {
-            Text(
-                session.user?.nickname?.ifBlank { session.user?.username } ?: "用户",
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${session.user?.role ?: "user"} · ${session.activeServer?.name ?: "Nowen Video"}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(14.dp))
-        ElevatedPanel(Modifier.fillMaxWidth()) {
-            Row {
-                Icon(Icons.Default.Dns, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("当前服务器", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        session.activeServer?.baseUrl ?: "未连接",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+    HillsScreen(modifier, top = { HillsTopBar(title = "我的") }) { topPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(topPadding)
+                .padding(horizontal = 20.dp),
+        ) {
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Person, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    session.user?.nickname?.ifBlank { session.user?.username } ?: "用户",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    session.activeServer?.name ?: "未连接服务器",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-        Spacer(Modifier.height(22.dp))
-        Text("我的内容", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(28.dp))
+        Text("媒体", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         ProfileDestinationRow(
             icon = Icons.Default.Favorite,
             title = "我的收藏",
-            subtitle = "集中查看喜欢的电影和单集",
+            subtitle = "喜欢的电影和剧集",
             onClick = onFavorites,
         )
-        Spacer(Modifier.height(10.dp))
         ProfileDestinationRow(
             icon = Icons.Default.History,
             title = "观看历史",
-            subtitle = "继续播放或管理已看记录",
+            subtitle = "继续播放或管理记录",
             onClick = onHistory,
         )
-        Spacer(Modifier.height(10.dp))
+        ProfileDestinationRow(
+            icon = Icons.Default.CloudDownload,
+            title = "下载",
+            subtitle = "管理离线媒体与空间",
+            onClick = onDownloads,
+        )
         ProfileDestinationRow(
             icon = Icons.Default.Collections,
             title = "系列合集",
-            subtitle = "按电影系列浏览馆藏内容",
+            subtitle = "按电影系列浏览内容",
             onClick = onCollections,
         )
-        Spacer(Modifier.height(22.dp))
-        Text("客户端", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(24.dp))
+        Text("客户端", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
         ProfileDestinationRow(
             icon = Icons.Default.Settings,
-            title = "客户端设置",
-            subtitle = "播放、画中画、下载、通知与服务器切换",
+            title = "设置",
+            subtitle = "服务器、播放、下载与通知",
             onClick = onSettings,
         )
-        Spacer(Modifier.height(22.dp))
-        OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.Logout, null)
-            Spacer(Modifier.width(8.dp))
-            Text("退出当前服务器账号")
+        Spacer(Modifier.height(18.dp))
+        HillsSecondaryAction(
+            label = "退出当前服务器账号",
+            icon = Icons.Default.Logout,
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth(),
+        )
         }
     }
 }
@@ -372,19 +353,20 @@ private fun ProfileDestinationRow(
     subtitle: String,
     onClick: () -> Unit,
 ) {
-    ElevatedPanel(
-        Modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(3.dp))
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

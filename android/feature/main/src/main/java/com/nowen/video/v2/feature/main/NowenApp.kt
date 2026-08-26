@@ -64,7 +64,10 @@ fun NowenApp(viewModel: AppViewModel = hiltViewModel()) {
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
                 RootDestination.Server -> ServerSetupScreen()
-                RootDestination.Login -> LoginScreen()
+                RootDestination.Login -> Box(Modifier.fillMaxSize()) {
+                    ServerSetupScreen()
+                    LoginScreen()
+                }
                 RootDestination.Password -> ForcePasswordScreen()
                 RootDestination.Main -> MainShell()
             }

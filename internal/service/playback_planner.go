@@ -26,16 +26,16 @@ type PlaybackClientCapabilities struct {
 	MaxBitrate         int    `json:"max_bitrate,omitempty"         form:"max_bitrate"`
 
 	// 扩展精确能力参数（来自前端 media-capabilities 模块）
-	HEVCHardware        bool   `json:"hevc_hardware,omitempty"          form:"hevc_hardware"`
-	AudioSupportsAC3    bool   `json:"audio_supports_ac3,omitempty"     form:"audio_supports_ac3"`
-	AudioSupportsEAC3   bool   `json:"audio_supports_eac3,omitempty"    form:"audio_supports_eac3"`
-	AudioSupportsFLAC   bool   `json:"audio_supports_flac,omitempty"    form:"audio_supports_flac"`
-	AudioSupportsOpus   bool   `json:"audio_supports_opus,omitempty"    form:"audio_supports_opus"`
-	ContainerSupportsMP4 bool  `json:"container_supports_mp4,omitempty" form:"container_supports_mp4"`
-	ContainerSupportsWebM bool `json:"container_supports_webm,omitempty" form:"container_supports_webm"`
-	MSEH264             bool   `json:"mse_h264,omitempty"               form:"mse_h264"`
-	MSEHEVC             bool   `json:"mse_hevc,omitempty"               form:"mse_hevc"`
-	Platform            string `json:"platform,omitempty"               form:"platform"`
+	HEVCHardware          bool   `json:"hevc_hardware,omitempty"          form:"hevc_hardware"`
+	AudioSupportsAC3      bool   `json:"audio_supports_ac3,omitempty"     form:"audio_supports_ac3"`
+	AudioSupportsEAC3     bool   `json:"audio_supports_eac3,omitempty"    form:"audio_supports_eac3"`
+	AudioSupportsFLAC     bool   `json:"audio_supports_flac,omitempty"    form:"audio_supports_flac"`
+	AudioSupportsOpus     bool   `json:"audio_supports_opus,omitempty"    form:"audio_supports_opus"`
+	ContainerSupportsMP4  bool   `json:"container_supports_mp4,omitempty" form:"container_supports_mp4"`
+	ContainerSupportsWebM bool   `json:"container_supports_webm,omitempty" form:"container_supports_webm"`
+	MSEH264               bool   `json:"mse_h264,omitempty"               form:"mse_h264"`
+	MSEHEVC               bool   `json:"mse_hevc,omitempty"               form:"mse_hevc"`
+	Platform              string `json:"platform,omitempty"               form:"platform"`
 }
 
 type PlaybackSourceTechnical struct {

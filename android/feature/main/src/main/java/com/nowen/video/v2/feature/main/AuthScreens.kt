@@ -4,12 +4,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -17,8 +25,11 @@ import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.BrandMark
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.NowenPage
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsScreen
+import com.nowen.video.v2.core.designsystem.HillsTextField
+import com.nowen.video.v2.core.designsystem.HillsTopBar
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +51,7 @@ class LoginViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
-    val serverName: String get() = store.snapshot.value.activeServer?.name ?: "Nowen Video"
+    val serverName: String get() = store.snapshot.value.activeServer?.name ?: "Nowen 服务器"
 
     fun username(value: String) = _state.update { it.copy(username = value, error = null) }
     fun password(value: String) = _state.update { it.copy(password = value, error = null) }
@@ -67,49 +78,56 @@ class LoginViewModel @Inject constructor(
 @Composable
 fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    NowenPage {
-        Spacer(Modifier.height(30.dp))
-        BrandMark()
-        Spacer(Modifier.height(42.dp))
-        Text("欢迎回来", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(6.dp))
-        Text("登录 ${viewModel.serverName}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(24.dp))
-        ElevatedPanel(Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = state.username,
-                onValueChange = viewModel::username,
-                label = { Text("用户名") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::password,
-                label = { Text("密码") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-            )
-            state.error?.let {
-                Spacer(Modifier.height(10.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(18.dp))
-            Button(
-                onClick = viewModel::login,
-                enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (state.loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text("进入媒体空间")
-            }
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = viewModel::changeServer, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.ArrowBack, null)
-                Spacer(Modifier.width(6.dp))
-                Text("更换服务器")
+    Dialog(
+        onDismissRequest = viewModel::changeServer,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(22.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Text("登录服务器", style = MaterialTheme.typography.headlineMedium)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    viewModel.serverName,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(Modifier.height(22.dp))
+                HillsTextField(
+                    value = state.username,
+                    onValueChange = viewModel::username,
+                    placeholder = "用户名",
+                )
+                Spacer(Modifier.height(12.dp))
+                HillsTextField(
+                    value = state.password,
+                    onValueChange = viewModel::password,
+                    placeholder = "密码",
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                state.error?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(20.dp))
+                HillsPrimaryAction(
+                    label = if (state.loading) "正在登录" else "登录",
+                    onClick = viewModel::login,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                HillsSecondaryAction(
+                    label = "更换服务器",
+                    icon = Icons.Default.ArrowBack,
+                    onClick = viewModel::changeServer,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -159,20 +177,20 @@ class PasswordViewModel @Inject constructor(
 @Composable
 fun ForcePasswordScreen(viewModel: PasswordViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    NowenPage {
-        Spacer(Modifier.height(36.dp))
-        BrandMark(compact = true)
-        Spacer(Modifier.height(36.dp))
-        Icon(Icons.Default.Key, null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(12.dp))
-        Text("保护你的账号", style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "首次登录需要修改初始密码，完成后会自动更新当前会话。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(24.dp))
-        ElevatedPanel(Modifier.fillMaxWidth()) {
+    HillsScreen(top = { HillsTopBar(title = "保护账号") }) { topPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(topPadding)
+                .padding(horizontal = 20.dp),
+        ) {
+            Spacer(Modifier.height(28.dp))
+            BrandMark(compact = true)
+            Spacer(Modifier.height(28.dp))
+            Text("修改初始密码", style = MaterialTheme.typography.headlineLarge)
+            Spacer(Modifier.height(8.dp))
+            Text("首次登录需要修改初始密码，完成后会自动更新当前会话。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(24.dp))
             PasswordField("当前密码", state.current, viewModel::current)
             Spacer(Modifier.height(12.dp))
             PasswordField("新密码", state.next, viewModel::next)
@@ -182,27 +200,22 @@ fun ForcePasswordScreen(viewModel: PasswordViewModel = hiltViewModel()) {
                 Spacer(Modifier.height(10.dp))
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
-            Spacer(Modifier.height(18.dp))
-            Button(
+            Spacer(Modifier.height(20.dp))
+            HillsPrimaryAction(
+                label = if (state.loading) "正在修改" else "修改密码并继续",
                 onClick = viewModel::submit,
-                enabled = !state.loading,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (state.loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text("修改密码并继续")
-            }
+            )
         }
     }
 }
 
 @Composable
 private fun PasswordField(label: String, value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(
+    HillsTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
+        placeholder = label,
         visualTransformation = PasswordVisualTransformation(),
     )
 }

@@ -1,5 +1,11 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -134,7 +140,11 @@ internal fun NowenPlayerControls(
     val inPictureInPictureMode = rememberPictureInPictureMode()
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (visible && !inPictureInPictureMode) {
+        AnimatedVisibility(
+            visible = visible && !inPictureInPictureMode,
+            enter = fadeIn(tween(150)) + slideInVertically(tween(150)) { it / 16 },
+            exit = fadeOut(tween(120)) + slideOutVertically(tween(120)) { it / 16 },
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

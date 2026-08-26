@@ -385,13 +385,18 @@ class NowenRepository @Inject constructor(
         throw error.asConnectionFailure()
     }
 
-    suspend fun login(username: String, password: String): Result<TokenResponse> = apiCall {
+    suspend fun login(username: String, password: String): Result<TokenResponse> = runCatching {
         val response = api.login(LoginRequest(username.trim(), password))
         val user = response.user.copy(
             mustChangePassword = response.user.mustChangePassword || response.mustChangePassword,
         )
         sessionStore.saveAuthenticatedSession(response.token, user, response.expiresAt)
         response.copy(user = user)
+    }.recoverCatching {
+        if (it is HttpException && it.code() == 401) {
+            throw IllegalStateException("用户名或密码错误，或服务器拒绝了本次登录")
+        }
+        throw it
     }
 
     suspend fun changePassword(oldPassword: String, newPassword: String): Result<TokenResponse> = apiCall {

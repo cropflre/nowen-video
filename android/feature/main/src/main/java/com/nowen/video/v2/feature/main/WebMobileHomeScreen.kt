@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -35,12 +37,9 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,7 +67,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsPressable
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.model.MediaCard
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -81,7 +84,7 @@ private val WEB_MOBILE_HOME_GENRES = listOf("动画", "喜剧", "冒险", "家�
 @Composable
 fun WebMobileHomeScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
     onPlay: (String) -> Unit,
     onRestart: (String) -> Unit = onPlay,
     onLibraryClick: () -> Unit,
@@ -95,8 +98,8 @@ fun WebMobileHomeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 0.dp, bottom = 104.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         if (state.loading) {
             item {
@@ -116,7 +119,7 @@ fun WebMobileHomeScreen(
         }
 
         state.error?.let { message ->
-            item { MessagePanel("暂时无法加载", message, "重试", viewModel::refresh) }
+            item { HillsState("暂时无法加载", message, "重试", viewModel::refresh) }
         }
 
         if (state.content.heroItems.isNotEmpty()) {
@@ -172,7 +175,7 @@ fun WebMobileHomeScreen(
                                     media = media,
                                     imageUrl = webMobileArtwork(baseUrl, media, preferBackdrop = true),
                                     width = cardWidth,
-                                    onClick = { onMediaClick(media.resolvedId) },
+                                    onClick = { onMediaClick(media) },
                                 )
                             }
                         }
@@ -209,7 +212,7 @@ fun WebMobileHomeScreen(
         }
 
         if (!state.loading && state.error == null && state.content.isEmpty) {
-            item { MessagePanel("暂无内容", "添加媒体后，这里会自动生成与你的 Web 移动端一致的首页。") }
+            item { HillsState("暂无内容", "添加媒体后，这里会自动生成你的媒体首页。") }
         }
     }
 }
@@ -223,14 +226,21 @@ private fun WebMobileHero(
     onFavoritesClick: () -> Unit,
 ) {
     var index by remember(items.map(MediaCard::resolvedId)) { mutableIntStateOf(0) }
+    var previousIndex by remember { mutableIntStateOf(0) }
     var dragDistance by remember { mutableStateOf(0f) }
     val safeIndex = index.coerceIn(0, items.lastIndex)
     val media = items[safeIndex]
+    val forward = safeIndex >= previousIndex || (previousIndex == items.lastIndex && safeIndex == 0)
+
+    fun selectIndex(next: Int) {
+        previousIndex = safeIndex
+        index = next
+    }
 
     LaunchedEffect(items.map(MediaCard::resolvedId), safeIndex) {
         if (items.size <= 1) return@LaunchedEffect
         delay(WEB_MOBILE_HERO_INTERVAL_MS)
-        index = (safeIndex + 1) % items.size
+        selectIndex((safeIndex + 1) % items.size)
     }
 
     Surface(
@@ -243,22 +253,28 @@ private fun WebMobileHero(
                     onHorizontalDrag = { _, amount -> dragDistance += amount },
                     onDragEnd = {
                         if (items.size > 1 && dragDistance > WEB_MOBILE_HERO_SWIPE_THRESHOLD) {
-                            index = (safeIndex - 1 + items.size) % items.size
+                            selectIndex((safeIndex - 1 + items.size) % items.size)
                         } else if (items.size > 1 && dragDistance < -WEB_MOBILE_HERO_SWIPE_THRESHOLD) {
-                            index = (safeIndex + 1) % items.size
+                            selectIndex((safeIndex + 1) % items.size)
                         }
                         dragDistance = 0f
                     },
                 )
             },
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(0.dp),
         color = Color(0xFF080B16),
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
     ) {
         AnimatedContent(
             targetState = media,
-            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) },
+            transitionSpec = {
+                val direction = if (forward) 1 else -1
+                (fadeIn(tween(NowenMotion.HeroEnterMs)) +
+                    slideInHorizontally(tween(NowenMotion.HeroEnterMs)) { it * direction / 12 }) togetherWith
+                    (fadeOut(tween(NowenMotion.HeroExitMs)) +
+                        slideOutHorizontally(tween(NowenMotion.HeroExitMs)) { -it * direction / 20 })
+            },
             label = "webMobileHero",
         ) { item ->
             val backdrop = resolveImage(baseUrl, item.resolvedBackdrop)
@@ -342,47 +358,26 @@ private fun WebMobileHero(
 
                     Spacer(Modifier.height(14.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        HillsPrimaryAction(
+                            label = if (item.normalizedProgress > 0f) "继续播放" else "立即播放",
+                            icon = Icons.Default.PlayArrow,
                             onClick = { onPlay(item.resolvedId) },
-                            modifier = Modifier.weight(1f).height(46.dp),
-                            shape = RoundedCornerShape(11.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                        ) {
-                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (item.normalizedProgress > 0f) "继续播放" else "立即播放", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                        )
+                        HillsSecondaryAction(
+                            label = "从头播放",
+                            icon = Icons.Default.Replay,
                             onClick = { onRestart(item.resolvedId) },
-                            modifier = Modifier.weight(1f).height(46.dp),
-                            shape = RoundedCornerShape(11.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White.copy(alpha = 0.94f),
-                                contentColor = Color(0xFF343842),
-                            ),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.70f)),
-                        ) {
-                            Icon(Icons.Default.Replay, null, modifier = Modifier.size(19.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("从头播放", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
+                    HillsSecondaryAction(
+                        label = "收藏",
+                        icon = Icons.Default.FavoriteBorder,
                         onClick = onFavoritesClick,
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(11.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Color.White.copy(alpha = 0.94f),
-                            contentColor = Color(0xFF4A4E58),
-                        ),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.68f)),
-                    ) {
-                        Icon(Icons.Default.FavoriteBorder, null, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("收藏", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 if (items.size > 1) {
@@ -443,16 +438,12 @@ private fun WebMobileHeroChip(label: String) {
 
 @Composable
 private fun WebMobileSectionSurface(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)),
-    ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 15.dp), content = content)
-    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        content = content,
+    )
 }
 
 @Composable
@@ -553,7 +544,7 @@ private fun WebMobilePosterShelf(
     items: List<MediaCard>,
     baseUrl: String?,
     onMore: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
 ) {
     WebMobileSectionSurface {
         WebMobileSectionHeader(title = title, action = "更多", onAction = onMore)
@@ -566,7 +557,7 @@ private fun WebMobilePosterShelf(
                         media = media,
                         imageUrl = webMobileArtwork(baseUrl, media, preferBackdrop = false),
                         width = cardWidth,
-                        onClick = { onMediaClick(media.resolvedId) },
+                        onClick = { onMediaClick(media) },
                     )
                 }
             }
@@ -631,8 +622,8 @@ private fun webMobileArtwork(baseUrl: String?, media: MediaCard, preferBackdrop:
 private fun webMobileHeroOverview(media: MediaCard): String = when {
     media.overview.isNotBlank() -> media.overview
     media.episodeTitle.isNotBlank() -> media.episodeTitle
-    media.genres.isNotBlank() -> "${media.genres.replace(",", " · ")} · 在 Nowen Video 中继续探索这部作品。"
-    else -> "在 Nowen Video 中继续探索这部作品。"
+    media.genres.isNotBlank() -> "${media.genres.replace(",", " · ")} · 继续探索这部作品。"
+    else -> "在你的媒体库中继续探索这部作品。"
 }
 
 private fun webMobileRuntime(minutes: Int): String = if (minutes >= 60) {

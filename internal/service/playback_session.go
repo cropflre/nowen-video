@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	defaultPlaybackHeartbeatInterval  = 15 * time.Second
-	defaultPlaybackStartupWait        = 3 * time.Second
+	defaultPlaybackHeartbeatInterval   = 15 * time.Second
+	defaultPlaybackStartupWait         = 3 * time.Second
 	defaultPlaybackHardwareStartBudget = 10 * time.Second
 	defaultPlaybackFirstSegmentTimeout = 24 * time.Second
 )
@@ -361,9 +361,8 @@ func (s *PlaybackSessionService) result(snapshot playbacksession.SessionSnapshot
 	generation := snapshot.Generation
 	generationIsCurrent := generation != nil && generation.ID == snapshot.CurrentGenerationID
 	generationHasSegment := generationIsCurrent && generation.FirstSegmentAt != nil
-	generationIsReadable := generationHasSegment && (
-		generation.State == playbacksession.GenerationStateRunning ||
-			generation.State == playbacksession.GenerationStateCompleted)
+	generationIsReadable := generationHasSegment && (generation.State == playbacksession.GenerationStateRunning ||
+		generation.State == playbacksession.GenerationStateCompleted)
 	if generationIsReadable && (snapshot.State == playbacksession.SessionStateReady || snapshot.State == playbacksession.SessionStateActive) {
 		result.FirstSegmentReady = true
 		result.PlaylistURL = generationPlaylistURL(snapshot.ID, snapshot.CurrentGenerationID)

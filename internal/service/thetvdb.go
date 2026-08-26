@@ -499,6 +499,15 @@ func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDB
 		series.Studio = result.Network
 	}
 
+	// 持久化 TheTVDB ID，供 Fanart.tv 的剧集图片接口使用。
+	tvdbID := result.ID
+	if tvdbID == 0 && result.TVDbID != "" {
+		tvdbID, _ = strconv.Atoi(result.TVDbID)
+	}
+	if tvdbID > 0 {
+		series.TVDbID = tvdbID
+	}
+
 	// 补充海报
 	imageURL := result.Image
 	if imageURL == "" {

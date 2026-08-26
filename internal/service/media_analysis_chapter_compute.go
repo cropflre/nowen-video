@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	MediaComputeJobChapterDetectV1         = "chapter_detect_v1"
+	MediaComputeJobChapterDetectV1        = "chapter_detect_v1"
 	MediaComputeCapabilityChapterDetectV1 = "chapter_detect_v1"
 
 	mediaChapterTaskType        = "chapter_gen"
@@ -264,9 +264,9 @@ func (s *MediaAnalysisService) dispatchChapterDetectTask(taskID, mediaID string)
 	createdAt := time.Now()
 	if err := s.RegisterComputeTask(MediaComputeTaskRegistration{
 		TaskID: taskID, MediaID: mediaID, Fingerprint: fingerprint,
-		JobType: MediaComputeJobChapterDetectV1,
+		JobType:            MediaComputeJobChapterDetectV1,
 		RequiredCapability: MediaComputeCapabilityChapterDetectV1,
-		Input: inputJSON, CreatedAt: createdAt,
+		Input:              inputJSON, CreatedAt: createdAt,
 	}); err != nil {
 		if task, taskErr := s.taskRepo.FindByID(taskID); taskErr == nil {
 			s.failTask(task, "dispatch", err)
@@ -495,7 +495,7 @@ func buildVideoChapters(mediaID string, duration float64, points []MediaComputeC
 		}
 		chapters = append(chapters, model.VideoChapter{
 			ID: uuid.NewString(), MediaID: mediaID,
-			Title: fmt.Sprintf("第 %d 章", i+1),
+			Title:     fmt.Sprintf("第 %d 章", i+1),
 			StartTime: start, EndTime: end,
 			SceneType: sceneType, Confidence: confidence, Source: "analysis",
 		})

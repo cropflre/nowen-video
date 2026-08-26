@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	ErrMediaAnalysisInProgress = errors.New("media analysis already in progress")
+	ErrMediaAnalysisInProgress  = errors.New("media analysis already in progress")
 	ErrMediaAnalysisUnsupported = errors.New("media source does not support local analysis")
 )
 
@@ -250,7 +250,7 @@ func (s *MediaAnalysisService) runHighlightTask(taskID, mediaID string) {
 	task.Progress = 100
 	task.CompletedAt = &completed
 	resultJSON, _ := json.Marshal(map[string]any{
-		"highlight_count":  len(highlights),
+		"highlight_count": len(highlights),
 		"analysis_method": "sparse_audio_scene_v2",
 		"fingerprint":     fingerprint,
 		"engine_version":  2,
@@ -890,11 +890,11 @@ func (s *MediaAnalysisService) broadcastTask(task *model.AIAnalysisTask) {
 		event = "media_analysis_complete"
 	}
 	s.wsHub.BroadcastEvent(event, map[string]any{
-		"task_id": task.ID,
+		"task_id":  task.ID,
 		"media_id": task.MediaID,
-		"status": task.Status,
-		"stage": task.Stage,
+		"status":   task.Status,
+		"stage":    task.Stage,
 		"progress": task.Progress,
-		"error": task.Error,
+		"error":    task.Error,
 	})
 }

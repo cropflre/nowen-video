@@ -15,17 +15,16 @@ class AppLaunchSmokeTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun freshInstallShowsServerSetupWithoutMigrationNotice() {
+    fun freshInstallShowsServerHubWithoutMigrationNotice() {
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule
-                .onAllNodesWithText("连接你的媒体空间")
+                .onAllNodesWithText("还没有服务器")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
 
-        composeRule.onNodeWithText("连接你的媒体空间").assertIsDisplayed()
-        composeRule.onNodeWithText("扫描二维码").assertIsDisplayed()
-        composeRule.onNodeWithText("手动添加").assertIsDisplayed()
+        composeRule.onNodeWithText("服务器").assertIsDisplayed()
+        composeRule.onNodeWithText("还没有服务器").assertIsDisplayed()
 
         check(
             composeRule

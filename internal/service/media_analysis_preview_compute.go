@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MediaComputeJobPreviewThumbnailV1         = "preview_thumbnail_v1"
+	MediaComputeJobPreviewThumbnailV1        = "preview_thumbnail_v1"
 	MediaComputeCapabilityPreviewThumbnailV1 = "preview_thumbnail_v1"
 
 	previewComputeFrameCount      = 5
@@ -214,9 +214,9 @@ func (s *MediaAnalysisService) EnsureHighlightPreviewDistributed(mediaID, highli
 	}()
 	if err := s.RegisterComputeTask(MediaComputeTaskRegistration{
 		TaskID: taskID, MediaID: media.ID, Fingerprint: fingerprint,
-		JobType: MediaComputeJobPreviewThumbnailV1,
+		JobType:            MediaComputeJobPreviewThumbnailV1,
 		RequiredCapability: MediaComputeCapabilityPreviewThumbnailV1,
-		Input: inputJSON,
+		Input:              inputJSON,
 	}); err != nil {
 		return "", err
 	}

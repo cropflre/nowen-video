@@ -142,6 +142,21 @@ func (s *SeriesService) GetSeriesPosterPath(id string) (string, error) {
 	return "", nil
 }
 
+// GetSeriesLogoPath returns the persisted ClearLogo path for a series.
+func (s *SeriesService) GetSeriesLogoPath(id string) (string, error) {
+	series, err := s.seriesRepo.FindByIDOnly(id)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	if series.LogoPath == "" {
+		return "", nil
+	}
+	if _, err := os.Stat(series.LogoPath); err != nil {
+		return "", nil
+	}
+	return series.LogoPath, nil
+}
+
 // SeasonInfo 季信息
 type SeasonInfo struct {
 	SeasonNum    int           `json:"season_num"`

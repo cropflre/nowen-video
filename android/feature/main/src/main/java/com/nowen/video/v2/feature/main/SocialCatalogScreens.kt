@@ -36,8 +36,9 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsScreen
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.model.CollectionWithMedia
 import com.nowen.video.v2.core.model.FavoriteRecord
 import com.nowen.video.v2.core.model.MediaCard
@@ -116,8 +117,8 @@ fun FavoritesScreen(
     ) {
         when {
             state.loading -> item { LoadingPanel("正在同步收藏") }
-            state.error != null -> item { MessagePanel("收藏加载失败", state.error!!, "重试", viewModel::load) }
-            state.items.isEmpty() -> item { MessagePanel("还没有收藏", "在媒体详情页点击收藏，喜欢的内容会出现在这里。") }
+            state.error != null -> item { HillsState("收藏加载失败", state.error!!, "重试", viewModel::load) }
+            state.items.isEmpty() -> item { HillsState("还没有收藏", "在媒体详情页点击收藏，喜欢的内容会出现在这里。") }
             else -> items(state.items, key = { it.id.ifBlank { it.mediaId } }) { favorite ->
                 val media = favorite.media
                 MediaActionRow(
@@ -220,8 +221,8 @@ fun HistoryScreen(
     ) {
         when {
             state.loading -> item { LoadingPanel("正在同步观看历史") }
-            state.error != null -> item { MessagePanel("历史加载失败", state.error!!, "重试", viewModel::load) }
-            state.items.isEmpty() -> item { MessagePanel("暂无观看历史", "开始播放后，观看进度会自动记录在这里。") }
+            state.error != null -> item { HillsState("历史加载失败", state.error!!, "重试", viewModel::load) }
+            state.items.isEmpty() -> item { HillsState("暂无观看历史", "开始播放后，观看进度会自动记录在这里。") }
             else -> items(state.items, key = { it.id.ifBlank { it.mediaId } }) { history ->
                 val media = history.media
                 MediaActionRow(
@@ -300,15 +301,16 @@ fun CollectionsScreen(
     ) {
         when {
             state.loading -> item { LoadingPanel("正在整理系列合集") }
-            state.error != null -> item { MessagePanel("合集加载失败", state.error!!, "重试", viewModel::load) }
-            state.items.isEmpty() -> item { MessagePanel("暂无系列合集", "服务器完成合集匹配后会显示在这里。") }
+            state.error != null -> item { HillsState("合集加载失败", state.error!!, "重试", viewModel::load) }
+            state.items.isEmpty() -> item { HillsState("暂无系列合集", "服务器完成合集匹配后会显示在这里。") }
             else -> items(state.items, key = MovieCollection::id) { collection ->
-                ElevatedPanel(
-                    Modifier
+                Row(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onCollectionClick(collection.id) },
+                        .clickable { onCollectionClick(collection.id) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(
                             model = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
                             contentDescription = collection.name,
@@ -341,7 +343,6 @@ fun CollectionsScreen(
                             }
                         }
                     }
-                }
                 Spacer(Modifier.height(12.dp))
             }
         }
@@ -395,12 +396,14 @@ fun CollectionDetailScreen(
     ) {
         when {
             state.loading -> item { LoadingPanel("正在加载合集详情") }
-            state.error != null -> item { MessagePanel("无法打开合集", state.error!!, "重试", { viewModel.load(collectionId) }) }
+            state.error != null -> item { HillsState("无法打开合集", state.error!!, "重试", { viewModel.load(collectionId) }) }
             state.detail != null -> {
                 val detail = state.detail!!
                 item {
-                    ElevatedPanel(Modifier.fillMaxWidth()) {
-                        Row(verticalAlignment = Alignment.Top) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
                             AsyncImage(
                                 model = collectionPosterUrl(session.activeServer?.baseUrl, detail.collection.id),
                                 contentDescription = detail.collection.name,
@@ -429,7 +432,6 @@ fun CollectionDetailScreen(
                                 )
                             }
                         }
-                    }
                     Spacer(Modifier.height(22.dp))
                     Text("合集作品", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(12.dp))
@@ -498,6 +500,7 @@ fun PersonDetailScreen(
     personId: String,
     onBack: () -> Unit,
     onMediaClick: (String) -> Unit,
+    onSeriesClick: (String) -> Unit,
     viewModel: PersonDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -511,12 +514,14 @@ fun PersonDetailScreen(
     ) {
         when {
             state.loading -> item { LoadingPanel("正在加载人物资料") }
-            state.error != null -> item { MessagePanel("无法打开人物详情", state.error!!, "重试", { viewModel.load(personId) }) }
+            state.error != null -> item { HillsState("无法打开人物详情", state.error!!, "重试", { viewModel.load(personId) }) }
             state.person != null -> {
                 val person = state.person!!
                 item {
-                    ElevatedPanel(Modifier.fillMaxWidth()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                             AsyncImage(
                                 model = personProfileUrl(session.activeServer?.baseUrl, person.id),
                                 contentDescription = person.name,
@@ -541,7 +546,6 @@ fun PersonDetailScreen(
                             }
                         }
                     }
-                }
                 if (state.works.media.isNotEmpty()) {
                     item {
                         Spacer(Modifier.height(22.dp))
@@ -573,12 +577,12 @@ fun PersonDetailScreen(
                             media = series,
                             imageUrl = resolveImage(session.activeServer?.baseUrl, series.resolvedPoster),
                             subtitle = listOfNotNull(series.year?.toString(), "剧集").joinToString(" · "),
-                            onClick = null,
+                            onClick = { onSeriesClick(series.resolvedId) },
                         )
                     }
                 }
                 if (state.works.media.isEmpty() && state.works.series.isEmpty()) {
-                    item { MessagePanel("暂无馆藏作品", "当前服务器中还没有这个人物关联的影视内容。") }
+                    item { HillsState("暂无馆藏作品", "当前服务器中还没有这个人物关联的影视内容。") }
                 }
             }
         }
@@ -593,30 +597,21 @@ private fun CatalogListScaffold(
     topAction: (@Composable () -> Unit)? = null,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        icon()
-                        Spacer(Modifier.width(10.dp))
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
+    HillsScreen(
+        top = {
+            HillsTopBar(
+                title = title,
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigate = onBack,
                 actions = { topAction?.invoke() },
             )
         },
-    ) { padding ->
+    ) { topPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(padding),
+                .padding(topPadding),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content,
@@ -626,11 +621,7 @@ private fun CatalogListScaffold(
 
 @Composable
 private fun LoadingPanel(label: String) {
-    ElevatedPanel(Modifier.fillMaxWidth()) {
-        LinearProgressIndicator(Modifier.fillMaxWidth())
-        Spacer(Modifier.height(12.dp))
-        Text(label)
-    }
+    HillsState(title = "正在加载", message = label)
 }
 
 @Composable
@@ -642,12 +633,13 @@ private fun MediaActionRow(
     progress: Float = 0f,
     action: (@Composable () -> Unit)? = null,
 ) {
-    ElevatedPanel(
-        Modifier
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = imageUrl,
                 contentDescription = media.displayTitle,
@@ -674,7 +666,6 @@ private fun MediaActionRow(
                 Spacer(Modifier.width(8.dp))
                 it()
             } ?: Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        }
     }
 }
 

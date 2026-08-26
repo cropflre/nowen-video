@@ -12,16 +12,11 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,9 +28,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MessagePanel
-import com.nowen.video.v2.core.designsystem.NowenPage
+import com.nowen.video.v2.core.designsystem.HillsChoiceRail
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsToggle
+import com.nowen.video.v2.core.designsystem.HillsScreen
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.model.OfflineDownloadPolicy
 import com.nowen.video.v2.core.model.OfflineDownloadRecord
 import com.nowen.video.v2.core.model.OfflineDownloadStatus
@@ -132,58 +131,45 @@ fun DownloadsScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    NowenPage(modifier, PaddingValues(horizontal = 20.dp, vertical = 20.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+    HillsScreen(modifier, top = { HillsTopBar(title = "下载", subtitle = "离线媒体与空间管理") }) { topPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(topPadding)
+                .padding(horizontal = 20.dp),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("下载", style = MaterialTheme.typography.headlineLarge)
-                Text(
-                    "WorkManager 断点续传 · Media3 离线播放",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        }
-        Spacer(Modifier.height(18.dp))
-
-        DownloadStoragePanel(
-            state = state,
-            onWifiOnlyChange = viewModel::setWifiOnly,
-            onQuotaChange = viewModel::setQuotaGiB,
-            onClearCompleted = viewModel::clearCompleted,
-        )
-
-        state.message?.let { currentMessage ->
-            Spacer(Modifier.height(10.dp))
-            TextButton(onClick = viewModel::dismissMessage) {
-                Text(currentMessage)
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        if (state.records.isEmpty()) {
-            MessagePanel(
-                title = "还没有离线内容",
-                message = "在影片详情页点击“下载到本机”，任务会在满足网络和存储条件后自动开始。",
+            DownloadStoragePanel(
+                state = state,
+                onWifiOnlyChange = viewModel::setWifiOnly,
+                onQuotaChange = viewModel::setQuotaGiB,
+                onClearCompleted = viewModel::clearCompleted,
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 20.dp),
-            ) {
-                items(state.records, key = OfflineDownloadRecord::id) { record ->
-                    DownloadTaskCard(
-                        record = record,
-                        onPause = { viewModel.pause(record.id) },
-                        onResume = { viewModel.resume(record.id) },
-                        onRetry = { viewModel.retry(record.id) },
-                        onPlay = { onPlayOffline(record.mediaId) },
-                        onDelete = { viewModel.delete(record.id) },
-                    )
+            state.message?.let { currentMessage ->
+                Spacer(Modifier.height(10.dp))
+                Text(currentMessage, color = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.height(18.dp))
+            if (state.records.isEmpty()) {
+                HillsState(
+                    title = "还没有离线内容",
+                    message = "在影片详情页下载媒体，任务会在满足网络和存储条件后自动开始。",
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp),
+                ) {
+                    items(state.records, key = OfflineDownloadRecord::id) { record ->
+                        DownloadTaskCard(
+                            record = record,
+                            onPause = { viewModel.pause(record.id) },
+                            onResume = { viewModel.resume(record.id) },
+                            onRetry = { viewModel.retry(record.id) },
+                            onPlay = { onPlayOffline(record.mediaId) },
+                            onDelete = { viewModel.delete(record.id) },
+                        )
+                    }
                 }
             }
         }
@@ -197,7 +183,7 @@ private fun DownloadStoragePanel(
     onQuotaChange: (Int) -> Unit,
     onClearCompleted: () -> Unit,
 ) {
-    ElevatedPanel(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
@@ -208,12 +194,12 @@ private fun DownloadStoragePanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(
+            HillsSecondaryAction(
+                label = "清理已完成",
                 onClick = onClearCompleted,
                 enabled = state.records.any { it.status == OfflineDownloadStatus.Completed },
-            ) {
-                Text("清理已完成")
-            }
+                modifier = Modifier.width(118.dp),
+            )
         }
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(
@@ -239,24 +225,14 @@ private fun DownloadStoragePanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = state.policy.wifiOnly, onCheckedChange = onWifiOnlyChange)
+            HillsToggle(checked = state.policy.wifiOnly, onCheckedChange = onWifiOnlyChange)
         }
         Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DOWNLOAD_QUOTA_OPTIONS_GIB.forEach { gib ->
-                val bytes = gib.toLong() * 1024L * 1024L * 1024L
-                FilterChip(
-                    selected = state.policy.maxBytes == bytes,
-                    onClick = { onQuotaChange(gib) },
-                    label = { Text("$gib GB") },
-                )
-            }
-        }
+        HillsChoiceRail(
+            options = DOWNLOAD_QUOTA_OPTIONS_GIB.map { it.toString() to "$it GB" },
+            selected = (state.policy.maxBytes / (1024L * 1024L * 1024L)).toString(),
+            onSelect = { value -> onQuotaChange(value.toInt()) },
+        )
     }
 }
 
@@ -269,7 +245,7 @@ private fun DownloadTaskCard(
     onPlay: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ElevatedPanel(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
@@ -322,30 +298,13 @@ private fun DownloadTaskCard(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            when (record.status) {
-                OfflineDownloadStatus.Downloading,
-                OfflineDownloadStatus.Queued,
-                -> FilledTonalButton(onClick = onPause) {
-                    Icon(Icons.Default.Pause, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("暂停")
-                }
-                OfflineDownloadStatus.Paused -> FilledTonalButton(onClick = onResume) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("继续")
-                }
-                OfflineDownloadStatus.Failed -> FilledTonalButton(onClick = onRetry) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("重试")
-                }
-                OfflineDownloadStatus.Completed -> Button(onClick = onPlay) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("离线播放")
-                }
+            val (label, icon, action) = when (record.status) {
+                OfflineDownloadStatus.Downloading, OfflineDownloadStatus.Queued -> Triple("暂停", Icons.Default.Pause, onPause)
+                OfflineDownloadStatus.Paused -> Triple("继续", Icons.Default.PlayArrow, onResume)
+                OfflineDownloadStatus.Failed -> Triple("重试", Icons.Default.Refresh, onRetry)
+                OfflineDownloadStatus.Completed -> Triple("离线播放", Icons.Default.PlayArrow, onPlay)
             }
+            HillsPrimaryAction(label = label, icon = icon, onClick = action, modifier = Modifier.width(126.dp))
         }
     }
 }

@@ -13,6 +13,8 @@ data class SeriesInfo(
     val overview: String = "",
     @SerialName("poster_path") val posterPath: String = "",
     @SerialName("backdrop_path") val backdropPath: String = "",
+    @SerialName("logo_path") val logoPath: String = "",
+    @SerialName("tvdb_id") val tvdbId: Int = 0,
     val rating: Double = 0.0,
     val genres: String = "",
     @SerialName("season_count") val seasonCount: Int = 0,

@@ -15,12 +15,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,7 +56,9 @@ import com.nowen.video.v2.core.data.CatalogRepository
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.model.CreatePlaybackSessionRequest
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.PlaybackPlan
@@ -912,12 +912,12 @@ fun PlayerScreen(
                 modifier = Modifier.align(Alignment.Center),
                 color = MaterialTheme.colorScheme.primary,
             )
-            state.error != null -> MessagePanel(
+            state.error != null -> HillsState(
                 title = "无法播放",
                 message = state.error!!,
                 actionLabel = "返回",
                 onAction = { leavePlayback("playback_error_back", onBack) },
-                modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
             else -> {
                 AndroidView(
@@ -1049,14 +1049,20 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { showNextEpisodePanel = false }) { Text("取消") }
+                        HillsSecondaryAction(
+                            label = "取消",
+                            onClick = { showNextEpisodePanel = false },
+                            modifier = Modifier.width(92.dp),
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Button(
+                        HillsPrimaryAction(
+                            label = "立即播放",
                             onClick = {
                                 showNextEpisodePanel = false
                                 leavePlayback("next_media", action = { onPlayNext(next.id) })
                             },
-                        ) { Text("立即播放") }
+                            modifier = Modifier.width(116.dp),
+                        )
                     }
                 }
             }

@@ -189,12 +189,18 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             ?: return MediaCard()
         val nestedMedia = root["media"] as? JsonObject
         val nestedSeries = root["series"] as? JsonObject
-        val payloadObject = nestedMedia ?: nestedSeries ?: root
+        val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
+        val payloadObject = when {
+            outerType.equals("series", ignoreCase = true) -> nestedSeries ?: root
+            outerType.equals("movie", ignoreCase = true) -> nestedMedia ?: root
+            nestedSeries != null -> nestedSeries
+            nestedMedia != null -> nestedMedia
+            else -> root
+        }
         val payload = jsonDecoder.json.decodeFromJsonElement(MediaCardPayload.serializer(), payloadObject)
 
         val outerPosition = root.doubleValue("position")
         val outerDuration = root.doubleValue("duration")
-        val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
         val outerMediaId = root["media_id"]?.jsonPrimitive?.content
         val inferredType = when {
             outerType.isNotBlank() -> outerType
