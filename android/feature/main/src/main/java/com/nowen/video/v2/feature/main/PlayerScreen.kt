@@ -1,5 +1,6 @@
 package com.nowen.video.v2.feature.main
 
+import android.media.AudioManager
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -55,6 +56,7 @@ import androidx.media3.ui.PlayerView
 import com.nowen.video.v2.core.data.CatalogRepository
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ProgressRepository
+import com.nowen.video.v2.core.data.supportedPlaybackSpeeds
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
 import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
@@ -104,6 +106,7 @@ data class PlayerUiState(
     val playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
     val fallbackNotice: String? = null,
     val playbackSpeed: Float = 1f,
+    val longPressBoostSpeed: Float = 2f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
     val progressQueued: Boolean = false,
@@ -139,6 +142,7 @@ class PlayerViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         playbackSpeed = preferences.playbackSpeed,
+                        longPressBoostSpeed = preferences.longPressBoostSpeed,
                         resizeMode = preferences.resizeMode,
                         autoPlayNext = preferences.autoPlayNext,
                     )
@@ -327,6 +331,11 @@ class PlayerViewModel @Inject constructor(
     fun setPlaybackSpeed(speed: Float) {
         _state.update { it.copy(playbackSpeed = speed) }
         viewModelScope.launch { preferencesStore.setPlaybackSpeed(speed) }
+    }
+
+    fun setLongPressBoostSpeed(speed: Float) {
+        _state.update { it.copy(longPressBoostSpeed = speed) }
+        viewModelScope.launch { preferencesStore.setLongPressBoostSpeed(speed) }
     }
 
     fun setResizeMode(mode: Int) {
@@ -641,6 +650,8 @@ fun PlayerScreen(
     val state by viewModel.state.collectAsState()
     val session by viewModel.sessionStore.snapshot.collectAsState()
     val context = LocalContext.current
+    val pictureInPictureHost = remember(context) { context.findPlaybackPictureInPictureHost() }
+    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val token = session.token.orEmpty()
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -654,12 +665,28 @@ fun PlayerScreen(
     var displayPositionMs by remember(mediaId) { mutableStateOf(0L) }
     var playerDurationMs by remember(mediaId) { mutableStateOf(0L) }
     var seekPreviewMs by remember(mediaId) { mutableStateOf<Long?>(null) }
-    var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(true) }
+    var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(false) }
     var controlsEpoch by remember(mediaId) { mutableIntStateOf(0) }
     var isPlaying by remember(mediaId) { mutableStateOf(false) }
     var boostingSpeed by remember(mediaId) { mutableStateOf<Float?>(null) }
+    var brightnessValue by remember(mediaId) { mutableStateOf(0.5f) }
+    var volumeValue by remember(mediaId) { mutableStateOf(0f) }
+    var gestureNotice by remember(mediaId) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
+
+    DisposableEffect(pictureInPictureHost) {
+        brightnessValue = pictureInPictureHost?.currentPlaybackScreenBrightness() ?: 0.5f
+        volumeValue = audioManager?.let { manager ->
+            val maximum = manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (maximum > 0) manager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maximum else 0f
+        } ?: 0f
+        pictureInPictureHost?.setPlaybackLandscape(true)
+        onDispose {
+            pictureInPictureHost?.restorePlaybackScreenBrightness()
+            pictureInPictureHost?.setPlaybackLandscape(false)
+        }
+    }
 
     val player = remember(token) {
         val httpFactory = DefaultHttpDataSource.Factory().apply {
@@ -742,7 +769,6 @@ fun PlayerScreen(
             else player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
-            revealControls()
         }
     }
 
@@ -750,6 +776,13 @@ fun PlayerScreen(
         if (state.fallbackNotice != null) {
             delay(FALLBACK_NOTICE_DURATION_MS)
             viewModel.clearFallbackNotice()
+        }
+    }
+
+    LaunchedEffect(gestureNotice) {
+        if (gestureNotice != null) {
+            delay(FALLBACK_NOTICE_DURATION_MS)
+            gestureNotice = null
         }
     }
 
@@ -941,12 +974,34 @@ fun PlayerScreen(
 
                 PlayerGestureLayer(
                     currentSpeed = state.playbackSpeed,
+                    longPressBoostSpeed = state.longPressBoostSpeed,
                     enabled = !showSettings && !state.sessionRestarting,
                     onTap = {
                         controlsVisible = !controlsVisible
                         controlsEpoch += 1
                     },
                     onSeekBy = ::seekBy,
+                    onSeekDelta = { delta ->
+                        if (delta != 0L) seekBy(delta)
+                    },
+                    onBrightnessChange = { delta ->
+                        brightnessValue = (brightnessValue - delta).coerceIn(0f, 1f)
+                        pictureInPictureHost?.setPlaybackScreenBrightness(brightnessValue)
+                        gestureNotice = "亮度 ${(brightnessValue * 100).toInt()}%"
+                    },
+                    onVolumeChange = { delta ->
+                        val manager = audioManager
+                        val maximum = manager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
+                        if (manager != null && maximum > 0) {
+                            volumeValue = (volumeValue - delta).coerceIn(0f, 1f)
+                            manager.setStreamVolume(
+                                AudioManager.STREAM_MUSIC,
+                                (volumeValue * maximum).toInt().coerceIn(0, maximum),
+                                0,
+                            )
+                            gestureNotice = "音量 ${(volumeValue * 100).toInt()}%"
+                        }
+                    },
                     onBoostStart = { speed ->
                         boostingSpeed = speed
                         player.setPlaybackSpeed(speed)
@@ -973,6 +1028,28 @@ fun PlayerScreen(
                         showSettings = true
                         controlsVisible = false
                     },
+                    onAspectClick = { controlsVisible = true },
+                    resizeMode = state.resizeMode,
+                    onResizeModeChange = viewModel::setResizeMode,
+                    onPictureInPicture = {
+                        pictureInPictureHost?.enterPlaybackPictureInPicture()
+                    },
+                    hasNextEpisode = state.nextEpisode != null,
+                    onNextEpisode = {
+                        state.nextEpisode?.let { next ->
+                            leavePlayback("next_media", action = { onPlayNext(next.id) })
+                        }
+                    },
+                    hasAudioTracks = audioTracks.isNotEmpty(),
+                    onAudioClick = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
+                    hasSubtitleTracks = subtitleTracks.isNotEmpty(),
+                    onSubtitleClick = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
                     onPlayPause = {
                         if (player.isPlaying) player.pause() else player.play()
                         revealControls()
@@ -992,6 +1069,16 @@ fun PlayerScreen(
                         showSettings = true
                         controlsVisible = false
                     },
+                    onSpeedDecrease = {
+                        viewModel.setPlaybackSpeed(neighborPlaybackSpeed(state.playbackSpeed, -1))
+                        revealControls()
+                    },
+                    onSpeedIncrease = {
+                        viewModel.setPlaybackSpeed(neighborPlaybackSpeed(state.playbackSpeed, 1))
+                        revealControls()
+                    },
+                    episodeLabel = playerEpisodeLabel(state.title),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -1002,6 +1089,21 @@ fun PlayerScreen(
                 state.progressQueued -> "当前离线，观看进度将在恢复连接后自动同步"
                 else -> null
             }
+        if (gestureNotice != null && !showSettings) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = Color.Black.copy(alpha = 0.72f),
+            ) {
+                Text(
+                    text = gestureNotice.orEmpty(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                )
+            }
+        }
+
         if (statusNotice != null && !showNextEpisodePanel && !showSettings) {
             Surface(
                 modifier = Modifier
@@ -1078,6 +1180,8 @@ fun PlayerScreen(
             playbackDiagnostics = state.playbackDiagnostics,
             playbackSpeed = state.playbackSpeed,
             onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
+            longPressBoostSpeed = state.longPressBoostSpeed,
+            onLongPressBoostSpeedChange = viewModel::setLongPressBoostSpeed,
             resizeMode = state.resizeMode,
             onResizeModeChange = viewModel::setResizeMode,
             autoPlayNext = state.autoPlayNext,
@@ -1114,6 +1218,21 @@ internal fun resolveServerResource(baseUrl: String?, path: String?): String? {
     if (path.isNullOrBlank()) return null
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     return baseUrl?.trimEnd('/') + "/" + path.trimStart('/')
+}
+
+internal fun neighborPlaybackSpeed(current: Float, direction: Int): Float {
+    val nearest = supportedPlaybackSpeeds.minByOrNull { kotlin.math.abs(it - current) } ?: 1f
+    val index = supportedPlaybackSpeeds.indexOf(nearest)
+    return supportedPlaybackSpeeds[(index + direction).coerceIn(0, supportedPlaybackSpeeds.lastIndex)]
+}
+
+internal fun playerEpisodeLabel(title: String): String {
+    val marker = Regex("\\bS(\\d{1,2})E(\\d{1,2})\\b", RegexOption.IGNORE_CASE).find(title)
+        ?: return title
+    val season = marker.groupValues[1].padStart(2, '0')
+    val episode = marker.groupValues[2].padStart(2, '0')
+    val remainder = title.removeRange(marker.range).trim().trimStart('-', '·', ':', ' ')
+    return "S$season:E$episode" + remainder.takeIf(String::isNotBlank)?.let { " - $it" }.orEmpty()
 }
 
 internal fun formatPlaybackTime(positionMs: Long): String {

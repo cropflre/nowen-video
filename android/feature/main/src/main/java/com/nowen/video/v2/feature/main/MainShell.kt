@@ -27,11 +27,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -89,8 +94,8 @@ enum class MainTab(
     val selectedIcon: ImageVector,
 ) {
     Home("home", "首页", Icons.Outlined.Home, Icons.Filled.Home),
+    Favorites("favorites", "收藏", Icons.Outlined.FavoriteBorder, Icons.Filled.Favorite),
     Search("search", "搜索", Icons.Outlined.Search, Icons.Filled.Search),
-    Profile("profile", "我的", Icons.Outlined.Person, Icons.Filled.Person),
 }
 
 private const val LIBRARY_BROWSE_ROUTE = "library/{libraryId}/{libraryName}"
@@ -139,11 +144,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val selectedTab = when (currentRoute) {
-        MainTab.Home.route -> MainTab.Home
+        MainTab.Home.route, LIBRARY_BROWSE_ROUTE, DETAIL_ROUTE, SERIES_DETAIL_ROUTE -> MainTab.Home
+        MainTab.Favorites.route -> MainTab.Favorites
         MainTab.Search.route, PERSON_DETAIL_ROUTE -> MainTab.Search
-        MainTab.Profile.route, FAVORITES_ROUTE, HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE,
-        COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> MainTab.Profile
-        LIBRARY_BROWSE_ROUTE, DETAIL_ROUTE, SERIES_DETAIL_ROUTE -> MainTab.Home
+        HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE, COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> null
         else -> null
     }
     val showBottomBar = currentRoute != PLAYER_ROUTE &&
@@ -211,6 +215,8 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         if (personId.isNotBlank()) navController.navigate("person/${Uri.encode(personId)}")
     }
 
+    var showWorkspace by rememberSaveable { mutableStateOf(false) }
+
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         NavHost(
             navController = navController,
@@ -222,6 +228,8 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onMediaClick = ::openCatalogDetail,
                     onPlay = ::openPlayer,
                     onBrowseLibrary = ::openLibraryBrowse,
+                    onOpenSettings = { navController.navigate(SETTINGS_ROUTE) },
+                    onOpenWorkspace = { showWorkspace = true },
                 )
             }
             composable(
@@ -249,25 +257,25 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onCollectionClick = ::openCollection,
                 )
             }
-            composable(MainTab.Profile.route) {
-                MobileSettingsScreen()
-            }
             composable(DOWNLOADS_ROUTE) {
-                DownloadsScreen(onPlayOffline = ::openOfflinePlayer)
+                DownloadsScreen(
+                    onBack = { navController.popBackStack() },
+                    onPlayOffline = ::openOfflinePlayer,
+                )
             }
             composable(SETTINGS_ROUTE) {
                 MobileSettingsScreen(onBack = { navController.popBackStack() })
             }
-            composable(FAVORITES_ROUTE) {
+            composable(MainTab.Favorites.route) {
                 PagedFavoritesScreen(
-                    onBack = { navController.popBackStack() },
-                    onMediaClick = ::openDetail,
+                    primaryDestination = true,
+                    onMediaClick = ::openCatalogDetail,
                 )
             }
             composable(HISTORY_ROUTE) {
                 PagedHistoryScreen(
                     onBack = { navController.popBackStack() },
-                    onMediaClick = ::openDetail,
+                    onMediaClick = ::openCatalogDetail,
                     onPlay = ::openPlayer,
                 )
             }
@@ -373,6 +381,27 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 }
             }
         }
+        if (showWorkspace) {
+            WorkspaceMenu(
+                onDismiss = { showWorkspace = false },
+                onHistory = {
+                    showWorkspace = false
+                    navController.navigate(HISTORY_ROUTE)
+                },
+                onDownloads = {
+                    showWorkspace = false
+                    navController.navigate(DOWNLOADS_ROUTE)
+                },
+                onCollections = {
+                    showWorkspace = false
+                    navController.navigate(COLLECTIONS_ROUTE)
+                },
+                onSettings = {
+                    showWorkspace = false
+                    navController.navigate(SETTINGS_ROUTE)
+                },
+            )
+        }
         if (showBottomBar) {
             Box(Modifier.align(Alignment.BottomCenter)) {
             HillsBottomDock {
@@ -393,6 +422,52 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 }
             }
             }
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceMenu(
+    onDismiss: () -> Unit,
+    onHistory: () -> Unit,
+    onDownloads: () -> Unit,
+    onCollections: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("工作区") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                WorkspaceMenuRow(Icons.Default.History, "观看历史", "继续播放或管理记录", onHistory)
+                WorkspaceMenuRow(Icons.Default.CloudDownload, "离线下载", "管理本机媒体与空间", onDownloads)
+                WorkspaceMenuRow(Icons.Default.Collections, "系列合集", "按合集浏览影片", onCollections)
+                WorkspaceMenuRow(Icons.Default.Settings, "设置", "播放、下载和账号", onSettings)
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
+}
+
+@Composable
+private fun WorkspaceMenuRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -489,7 +564,9 @@ private fun PlaybackPictureInPictureBinding(
 
     DisposableEffect(host, enabled) {
         host?.setPlaybackPictureInPictureActive(enabled)
-        onDispose { host?.setPlaybackPictureInPictureActive(false) }
+        onDispose {
+            host?.setPlaybackPictureInPictureActive(false)
+        }
     }
 
     content(inPictureInPictureMode)

@@ -48,6 +48,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import com.nowen.video.v2.core.designsystem.HillsChoiceRail
 import com.nowen.video.v2.core.designsystem.HillsToggle
 import com.nowen.video.v2.core.model.SubtitleTrack
+import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
 
 private val PlayerSpeedOptions = listOf(
     0.5f,
@@ -171,6 +172,8 @@ internal fun PlayerSettingsSheet(
     playbackDiagnostics: PlaybackDiagnostics,
     playbackSpeed: Float,
     onPlaybackSpeedChange: (Float) -> Unit,
+    longPressBoostSpeed: Float,
+    onLongPressBoostSpeedChange: (Float) -> Unit,
     resizeMode: Int,
     onResizeModeChange: (Int) -> Unit,
     autoPlayNext: Boolean,
@@ -191,6 +194,8 @@ internal fun PlayerSettingsSheet(
             playbackDiagnostics = playbackDiagnostics,
             playbackSpeed = playbackSpeed,
             onPlaybackSpeedChange = onPlaybackSpeedChange,
+            longPressBoostSpeed = longPressBoostSpeed,
+            onLongPressBoostSpeedChange = onLongPressBoostSpeedChange,
             resizeMode = resizeMode,
             onResizeModeChange = onResizeModeChange,
             autoPlayNext = autoPlayNext,
@@ -247,6 +252,8 @@ private fun PlayerSettingsContent(
     playbackDiagnostics: PlaybackDiagnostics,
     playbackSpeed: Float,
     onPlaybackSpeedChange: (Float) -> Unit,
+    longPressBoostSpeed: Float,
+    onLongPressBoostSpeedChange: (Float) -> Unit,
     resizeMode: Int,
     onResizeModeChange: (Int) -> Unit,
     autoPlayNext: Boolean,
@@ -259,6 +266,7 @@ private fun PlayerSettingsContent(
     onSubtitleTrackSelected: (PlayerTrackChoice?) -> Unit,
 ) {
     var showSpeedOptions by rememberSaveable { mutableStateOf(false) }
+    var showLongPressBoostOptions by rememberSaveable { mutableStateOf(false) }
     var showPlaybackDetails by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -291,6 +299,20 @@ private fun PlayerSettingsContent(
             SpeedOptions(
                 selected = playbackSpeed,
                 onSelected = onPlaybackSpeedChange,
+            )
+        }
+
+        PlayerSettingsRow(
+            title = "长按倍速",
+            subtitle = "按住画面时临时使用此速度，松开后恢复",
+            value = speedLabel(longPressBoostSpeed),
+            onClick = { showLongPressBoostOptions = !showLongPressBoostOptions },
+        )
+        if (showLongPressBoostOptions) {
+            SpeedOptions(
+                selected = longPressBoostSpeed,
+                speeds = supportedLongPressBoostSpeeds,
+                onSelected = onLongPressBoostSpeedChange,
             )
         }
 
@@ -391,6 +413,7 @@ private fun PlayerSettingsRow(
 @Composable
 private fun SpeedOptions(
     selected: Float,
+    speeds: List<Float> = PlayerSpeedOptions,
     onSelected: (Float) -> Unit,
 ) {
     Column(
@@ -398,7 +421,7 @@ private fun SpeedOptions(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         HillsChoiceRail(
-            options = PlayerSpeedOptions.map { speed -> speed.toString() to speedLabel(speed) },
+            options = speeds.map { speed -> speed.toString() to speedLabel(speed) },
             selected = selected.toString(),
             onSelect = { value -> onSelected(value.toFloat()) },
         )

@@ -312,7 +312,15 @@ data class SearchResponse(
     val media: List<MediaCard> = emptyList(),
     val series: List<MediaCard> = emptyList(),
 ) {
-    fun all(): List<MediaCard> = (data + media + series).distinctBy { it.resolvedId }
+    fun all(): List<MediaCard> {
+        val normalizedMedia = media.map { item ->
+            if (item.type.isBlank()) item.copy(type = "movie") else item
+        }
+        val normalizedSeries = series.map { item ->
+            if (item.type.equals("series", ignoreCase = true)) item else item.copy(type = "series")
+        }
+        return (normalizedSeries + data + normalizedMedia).distinctBy { it.resolvedId }
+    }
 }
 
 @Module

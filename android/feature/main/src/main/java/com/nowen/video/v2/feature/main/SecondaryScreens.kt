@@ -2,7 +2,9 @@ package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -22,10 +24,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,6 +59,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private enum class SearchMediaKind(val label: String) {
+    Movie("电影"),
+    Series("剧集"),
+    Episode("单集"),
+}
 
 data class SearchUiState(
     val query: String = "",
@@ -146,83 +158,130 @@ fun SearchScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val session by viewModel.store.snapshot.collectAsState()
+    var selectedKinds by rememberSaveable { mutableStateOf(SearchMediaKind.entries.toSet()) }
 
-    HillsScreen(modifier, top = { HillsTopBar(title = "搜索") }) { topPadding ->
+    HillsScreen(modifier) { topPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(topPadding)
-                .padding(horizontal = 20.dp),
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             HillsTextField(
                 value = state.query,
                 onValueChange = viewModel::query,
-                placeholder = "搜索电影、剧集、演员或合集",
+                placeholder = "输入搜索内容",
             )
-            Spacer(Modifier.height(18.dp))
-            when {
-                state.loading -> HillsState("正在搜索", "正在从媒体库检索内容")
-                state.error != null -> HillsState("搜索失败", state.error!!)
-                state.query.isBlank() -> HillsState("开始探索", "输入关键词即可搜索当前服务器。")
-                !state.hasResults -> HillsState("没有找到结果", "换一个关键词试试。")
-                else -> {
-                    state.unavailableMessage?.let { warning ->
-                        Text(warning, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(12.dp))
+            if (state.query.isNotBlank()) {
+                val availableKinds = state.mediaResults.mapNotNull { media ->
+                    when (media.type.lowercase()) {
+                        "movie" -> SearchMediaKind.Movie
+                        "series" -> SearchMediaKind.Series
+                        "episode" -> SearchMediaKind.Episode
+                        else -> null
                     }
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(22.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp),
-                    ) {
-                        if (state.mediaResults.isNotEmpty()) {
-                            item { SearchSectionHeader("影视", state.mediaResults.size) }
-                            item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(state.mediaResults, key = { "media-${it.resolvedId}" }) { media ->
-                                        HillsPoster(
-                                            title = media.displayTitle,
-                                            subtitle = media.year?.toString(),
-                                            imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                                            progress = media.normalizedProgress,
-                                            onClick = { onMediaClick(media) },
-                                        )
-                                    }
+                }.toSet()
+                if (!state.loading && availableKinds.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    SearchMediaKindRail(
+                        availableKinds = availableKinds,
+                        selectedKinds = selectedKinds,
+                        onToggle = { kind ->
+                            selectedKinds = selectedKinds.toMutableSet().apply {
+                                if (!add(kind)) remove(kind)
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(16.dp))
+                } else {
+                    Spacer(Modifier.height(16.dp))
+                }
+                val effectiveKinds = selectedKinds.intersect(availableKinds)
+                val filteredMedia = state.mediaResults.filter { media ->
+                    when (media.type.lowercase()) {
+                        "movie" -> SearchMediaKind.Movie in effectiveKinds
+                        "series" -> SearchMediaKind.Series in effectiveKinds
+                        "episode" -> SearchMediaKind.Episode in effectiveKinds
+                        else -> false
+                    }
+                }
+                when {
+                    state.loading -> HillsState("正在搜索", "正在从当前服务器检索内容")
+                    state.error != null -> HillsState("搜索失败", state.error!!)
+                    filteredMedia.isEmpty() && state.peopleResults.isEmpty() && state.collectionResults.isEmpty() ->
+                        HillsState("没有找到结果", "换一个关键词试试。")
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp),
+                        ) {
+                            state.unavailableMessage?.let { warning ->
+                                item { Text(warning, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                            if (filteredMedia.isNotEmpty()) {
+                                item { SearchSectionHeader("影视", filteredMedia.size) }
+                                items(filteredMedia, key = { "media-${it.resolvedId}" }) { media ->
+                                    SearchMediaRow(
+                                        media = media,
+                                        imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
+                                        onClick = { onMediaClick(media) },
+                                    )
                                 }
                             }
-                        }
-                        if (state.peopleResults.isNotEmpty()) {
-                            item { SearchSectionHeader("人物", state.peopleResults.size) }
-                            item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    items(state.peopleResults, key = { "person-${it.id}" }) { person ->
-                                        SearchPersonCard(
-                                            person = person,
-                                            imageUrl = personProfileUrl(session.activeServer?.baseUrl, person.id),
-                                            onClick = { onPersonClick(person.id) },
-                                        )
-                                    }
+                            if (state.peopleResults.isNotEmpty()) {
+                                item { SearchSectionHeader("人物", state.peopleResults.size) }
+                                items(state.peopleResults, key = { "person-${it.id}" }) { person ->
+                                    SearchPersonRow(
+                                        person = person,
+                                        imageUrl = personProfileUrl(session.activeServer?.baseUrl, person.id),
+                                        onClick = { onPersonClick(person.id) },
+                                    )
                                 }
                             }
-                        }
-                        if (state.collectionResults.isNotEmpty()) {
-                            item { SearchSectionHeader("电影合集", state.collectionResults.size) }
-                            item {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(state.collectionResults, key = { "collection-${it.id}" }) { collection ->
-                                        HillsPoster(
-                                            title = collection.name,
-                                            subtitle = listOfNotNull(collection.yearRange.takeIf(String::isNotBlank), collection.mediaCount.takeIf { it > 0 }?.let { "$it 部" }).joinToString(" · ").ifBlank { "电影合集" },
-                                            imageUrl = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
-                                            onClick = { onCollectionClick(collection.id) },
-                                        )
-                                    }
+                            if (state.collectionResults.isNotEmpty()) {
+                                item { SearchSectionHeader("电影合集", state.collectionResults.size) }
+                                items(state.collectionResults, key = { "collection-${it.id}" }) { collection ->
+                                    SearchCollectionRow(
+                                        collection = collection,
+                                        imageUrl = collectionPosterUrl(session.activeServer?.baseUrl, collection.id),
+                                        onClick = { onCollectionClick(collection.id) },
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchMediaKindRail(
+    availableKinds: Set<SearchMediaKind>,
+    selectedKinds: Set<SearchMediaKind>,
+    onToggle: (SearchMediaKind) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        SearchMediaKind.entries.filter { it in availableKinds }.forEach { kind ->
+            val selected = kind in selectedKinds
+            Text(
+                kind.label,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onToggle(kind) }
+                    .padding(horizontal = 2.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -236,6 +295,121 @@ private fun SearchSectionHeader(title: String, count: Int) {
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)
         Text("$count 项", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SearchMediaRow(
+    media: MediaCard,
+    imageUrl: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = media.displayTitle,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(118.dp)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(media.displayTitle, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val subtitle = listOfNotNull(
+                media.year?.toString(),
+                media.episodeTitle.takeIf { it.isNotBlank() },
+                media.type.takeIf { it.isNotBlank() }?.let { if (it.equals("series", true)) "剧集" else null },
+            ).joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SearchPersonRow(
+    person: Person,
+    imageUrl: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = person.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(person.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            person.originalName.takeIf { it.isNotBlank() }?.let { originalName ->
+                Text(originalName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SearchCollectionRow(
+    collection: MovieCollection,
+    imageUrl: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = collection.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(72.dp)
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(collection.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val subtitle = listOfNotNull(
+                collection.yearRange.takeIf { it.isNotBlank() },
+                collection.mediaCount.takeIf { it > 0 }?.let { "$it 部" },
+            ).joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

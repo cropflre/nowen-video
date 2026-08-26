@@ -148,8 +148,9 @@ data class PagedSocialAction(
 
 @Composable
 fun PagedFavoritesScreen(
-    onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    primaryDestination: Boolean = false,
+    onBack: (() -> Unit)? = null,
+    onMediaClick: (MediaCard) -> Unit,
     viewModel: PagedFavoritesViewModel = hiltViewModel(),
 ) {
     val favorites = viewModel.favorites.collectAsLazyPagingItems()
@@ -159,8 +160,8 @@ fun PagedFavoritesScreen(
     HillsScreen(
         top = {
             HillsTopBar(
-                title = "我的收藏",
-                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                title = "收藏",
+                navigationIcon = if (primaryDestination) null else Icons.AutoMirrored.Filled.ArrowBack,
                 onNavigate = onBack,
             )
         },
@@ -175,14 +176,16 @@ fun PagedFavoritesScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                PersonalWorkspaceHeader(
-                    icon = { Icon(Icons.Default.Favorite, contentDescription = null) },
-                    eyebrow = "MY LIBRARY",
-                    title = "收藏内容",
-                    subtitle = "把喜欢的电影与单集留在一个更容易再次找到的位置。",
-                    count = favorites.itemCount,
-                )
+            if (!primaryDestination) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    PersonalWorkspaceHeader(
+                        icon = { Icon(Icons.Default.Favorite, contentDescription = null) },
+                        eyebrow = "MY LIBRARY",
+                        title = "收藏内容",
+                        subtitle = "把喜欢的电影与单集留在一个更容易再次找到的位置。",
+                        count = favorites.itemCount,
+                    )
+                }
             }
 
             action.error?.let { message ->
@@ -211,7 +214,7 @@ fun PagedFavoritesScreen(
                     media = media,
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     removing = action.runningId == mediaId,
-                    onClick = { onMediaClick(mediaId) },
+                    onClick = { onMediaClick(media) },
                     onRemove = { viewModel.remove(mediaId, favorites::refresh) },
                 )
             }
@@ -232,7 +235,7 @@ fun PagedFavoritesScreen(
 @Composable
 fun PagedHistoryScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
     onPlay: (String) -> Unit,
     viewModel: PagedHistoryViewModel = hiltViewModel(),
 ) {
@@ -295,7 +298,7 @@ fun PagedHistoryScreen(
                     imageUrl = mediaBackdropUrl(session.activeServer?.baseUrl, mediaId),
                     deleting = action.runningId == mediaId,
                     onPlay = { onPlay(mediaId) },
-                    onDetail = { onMediaClick(mediaId) },
+                    onDetail = { onMediaClick(media) },
                     onDelete = { viewModel.delete(mediaId, historyItems::refresh) },
                 )
             }

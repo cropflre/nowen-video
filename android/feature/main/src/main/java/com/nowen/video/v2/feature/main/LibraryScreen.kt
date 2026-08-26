@@ -38,6 +38,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -90,6 +92,7 @@ import com.nowen.video.v2.core.data.CatalogRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.HillsChoiceRail
 import com.nowen.video.v2.core.designsystem.HillsPoster
+import com.nowen.video.v2.core.designsystem.ProductIdentity
 import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
 import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
 import com.nowen.video.v2.core.designsystem.HillsState
@@ -243,6 +246,8 @@ fun LibraryScreen(
     onMediaClick: (MediaCard) -> Unit,
     onPlay: (String) -> Unit,
     onBrowseLibrary: (LibrarySummary) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenWorkspace: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -254,6 +259,7 @@ fun LibraryScreen(
         media = media,
         state = state,
         baseUrl = session.activeServer?.baseUrl,
+        serverName = session.activeServer?.name,
         onFilterClick = { showFilters = true },
         onRefresh = {
             viewModel.refreshLibraries()
@@ -263,6 +269,8 @@ fun LibraryScreen(
         onMediaClick = onMediaClick,
         onPlay = onPlay,
         onBrowseLibrary = onBrowseLibrary,
+        onOpenSettings = onOpenSettings,
+        onOpenWorkspace = onOpenWorkspace,
         modifier = modifier.fillMaxSize(),
     )
 
@@ -348,12 +356,15 @@ private fun LibraryLandingScreen(
     media: LazyPagingItems<MediaCard>,
     state: LibraryUiState,
     baseUrl: String?,
+    serverName: String?,
     onFilterClick: () -> Unit,
     onRefresh: () -> Unit,
     onFilterChange: (LibraryFilter) -> Unit,
     onMediaClick: (MediaCard) -> Unit,
     onPlay: (String) -> Unit,
     onBrowseLibrary: (LibrarySummary) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenWorkspace: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val loadedItems = media.itemSnapshotList.items.filter { it.resolvedId.isNotBlank() }
@@ -404,22 +415,11 @@ private fun LibraryLandingScreen(
                     LibraryLandingHero(
                         items = heroItems,
                         baseUrl = baseUrl,
+                        serverName = serverName,
                         onOpen = onMediaClick,
-                        onFilterClick = onFilterClick,
-                        onRefresh = onRefresh,
+                        onOpenSettings = onOpenSettings,
+                        onOpenWorkspace = onOpenWorkspace,
                     )
-                }
-
-                // 媒体库分类是首页的一级入口，必须紧随 Hero 展示。
-                if (state.libraries.isNotEmpty()) {
-                    item {
-                        LibraryLandingLibraryShelf(
-                            libraries = state.libraries,
-                            previews = state.libraryPreviews,
-                            baseUrl = baseUrl,
-                            onClick = onBrowseLibrary,
-                        )
-                    }
                 }
 
                 if (continueWatching.isNotEmpty()) {
@@ -428,7 +428,9 @@ private fun LibraryLandingScreen(
                             title = "继续观看",
                             items = continueWatching,
                             baseUrl = baseUrl,
-                            onClick = onPlay,
+                            onClick = { id ->
+                                loadedItems.firstOrNull { it.resolvedId == id }?.let(onMediaClick)
+                            },
                         )
                     }
                 }
@@ -443,6 +445,29 @@ private fun LibraryLandingScreen(
                         },
                     )
                 }
+
+                // 保持真实媒体库入口，但放在 Hills 式主内容轨道之后。
+                if (state.libraries.isNotEmpty()) {
+                    item {
+                        LibraryLandingLibraryShelf(
+                            libraries = state.libraries,
+                            previews = state.libraryPreviews,
+                            baseUrl = baseUrl,
+                            onClick = onBrowseLibrary,
+                        )
+                    }
+                }
+
+                landingGenreShelves(loadedItems).forEach { shelf ->
+                    item {
+                        LibraryLandingGenreShelf(
+                            genre = shelf.genre,
+                            items = shelf.items,
+                            baseUrl = baseUrl,
+                            onClick = onMediaClick,
+                        )
+                    }
+                }
             }
         }
     }
@@ -452,9 +477,10 @@ private fun LibraryLandingScreen(
 private fun LibraryLandingHero(
     items: List<MediaCard>,
     baseUrl: String?,
+    serverName: String?,
     onOpen: (MediaCard) -> Unit,
-    onFilterClick: () -> Unit,
-    onRefresh: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenWorkspace: () -> Unit,
 ) {
     var selectedIndex by rememberSaveable(items.map(MediaCard::resolvedId)) { mutableStateOf(0) }
     var dragDistance by remember { mutableStateOf(0f) }
@@ -518,33 +544,40 @@ private fun LibraryLandingHero(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                modifier = Modifier
+                    .width(38.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    ProductIdentity.wordmark.take(1),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
-                "媒体库",
+                serverName?.takeIf(String::isNotBlank) ?: ProductIdentity.displayName,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(
-                onClick = onFilterClick,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color.Black.copy(alpha = 0.34f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp)),
-            ) {
-                Icon(Icons.Default.FilterList, contentDescription = "筛选媒体库", tint = Color.White)
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "设置", tint = Color.White)
             }
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color.Black.copy(alpha = 0.34f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp)),
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = "刷新媒体库", tint = Color.White)
+            IconButton(onClick = onOpenWorkspace) {
+                Icon(Icons.Default.Person, contentDescription = "工作区", tint = Color.White)
             }
         }
         Column(
@@ -565,7 +598,7 @@ private fun LibraryLandingHero(
                 media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
                 media.year?.toString(),
                 media.genres.takeIf { it.isNotBlank() },
-            ).joinToString("  ")
+            ).joinToString("  ·  ")
             if (metadata.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -577,16 +610,16 @@ private fun LibraryLandingHero(
                 )
             }
             media.overview.takeIf { it.isNotBlank() }?.let { overview ->
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     overview,
                     color = Color.White.copy(alpha = 0.82f),
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -594,11 +627,11 @@ private fun LibraryLandingHero(
                 items.indices.forEach { index ->
                     Box(
                         modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .width(if (index == safeIndex) 12.dp else 6.dp)
-                            .height(6.dp)
+                            .padding(horizontal = 6.dp)
+                            .width(8.dp)
+                            .height(8.dp)
                             .clip(RoundedCornerShape(999.dp))
-                            .background(if (index == safeIndex) Color.White else Color.White.copy(alpha = 0.35f)),
+                            .background(if (index == safeIndex) Color.White else Color.White.copy(alpha = 0.30f)),
                     )
                 }
             }
@@ -785,6 +818,64 @@ private fun LibraryLandingLibraryTile(
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
     }
+}
+
+@Composable
+private fun LibraryLandingGenreShelf(
+    genre: String,
+    items: List<MediaCard>,
+    baseUrl: String?,
+    onClick: (MediaCard) -> Unit,
+) {
+    if (items.isEmpty()) return
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "$genre >",
+            color = Color.White,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        Spacer(Modifier.height(11.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            lazyItems(items.take(12), key = MediaCard::resolvedId) { media ->
+                HillsPoster(
+                    title = media.displayTitle,
+                    subtitle = listOfNotNull(media.year?.toString(), media.episodeTitle.takeIf { it.isNotBlank() })
+                        .joinToString(" · ")
+                        .ifBlank { null },
+                    imageUrl = resolveImage(baseUrl, media.resolvedPoster),
+                    onClick = { onClick(media) },
+                )
+            }
+        }
+    }
+}
+
+internal data class LandingGenreShelf(
+    val genre: String,
+    val items: List<MediaCard>,
+)
+
+internal fun landingGenreShelves(media: List<MediaCard>): List<LandingGenreShelf> {
+    val grouped = linkedMapOf<String, LinkedHashMap<String, MediaCard>>()
+    media.forEach { card ->
+        card.genres
+            .split(',', '，', '/', '|')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+            .forEach { genre ->
+                val id = card.resolvedId
+                if (id.isNotBlank()) {
+                    grouped.getOrPut(genre) { linkedMapOf() }.putIfAbsent(id, card)
+                }
+            }
+    }
+    return grouped.map { (genre, items) -> LandingGenreShelf(genre, items.values.toList()) }
 }
 
 private fun libraryTypeLabel(type: String, preview: MediaCard?): String = when {

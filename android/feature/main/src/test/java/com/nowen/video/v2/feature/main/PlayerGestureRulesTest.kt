@@ -16,11 +16,38 @@ class PlayerGestureRulesTest {
     }
 
     @Test
-    fun `long press boost never reduces existing permanent speed`() {
+    fun `long press boost uses configured speed without reducing permanent speed`() {
         assertEquals(2f, temporaryBoostSpeed(1f))
-        assertEquals(2f, temporaryBoostSpeed(1.75f))
-        assertEquals(3f, temporaryBoostSpeed(3f))
-        assertEquals(8f, temporaryBoostSpeed(8f))
+        assertEquals(3f, temporaryBoostSpeed(1f, 3f))
+        assertEquals(5f, temporaryBoostSpeed(1f, 5f))
+        assertEquals(8f, temporaryBoostSpeed(1f, 8f))
+        assertEquals(3f, temporaryBoostSpeed(3f, 2f))
+        assertEquals(8f, temporaryBoostSpeed(8f, 5f))
+    }
+
+    @Test
+    fun `horizontal seek maps drag direction and distance`() {
+        assertEquals(-30_000L, horizontalSeekDeltaMs(-500f, 1000f))
+        assertEquals(30_000L, horizontalSeekDeltaMs(500f, 1000f))
+        assertEquals(0L, horizontalSeekDeltaMs(100f, 0f))
+    }
+
+    @Test
+    fun `vertical controls clamp brightness and volume`() {
+        assertEquals(1f, verticalControlDelta(0.5f, -1000f, 100f))
+        assertEquals(0f, verticalControlDelta(0.5f, 1000f, 100f))
+        assertEquals(10, verticalVolumeDelta(5, -100f, 100f, 10))
+        assertEquals(0, verticalVolumeDelta(5, 100f, 100f, 10))
+    }
+
+    @Test
+    fun `speed step follows supported discrete values`() {
+        assertEquals(1.5f, neighborPlaybackSpeed(1.25f, 1))
+        assertEquals(1f, neighborPlaybackSpeed(1.25f, -1))
+        assertEquals(3f, neighborPlaybackSpeed(2.25f, 1))
+        assertEquals(2f, neighborPlaybackSpeed(2.25f, -1))
+        assertEquals(8f, neighborPlaybackSpeed(8f, 1))
+        assertEquals(0.5f, neighborPlaybackSpeed(0.5f, -1))
     }
 
     @Test

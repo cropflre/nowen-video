@@ -412,6 +412,7 @@ fun MediaDetailScreen(
     val session by viewModel.sessionStore.snapshot.collectAsState()
     var highlightsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var castExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var episodeMoreExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var subtitlesExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var commentsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var commentText by rememberSaveable(mediaId) { mutableStateOf("") }
@@ -476,23 +477,11 @@ fun MediaDetailScreen(
                                 onBack = onBack,
                                 logoUrl = episodeSeries?.let { seriesLogoUrl(baseUrl, it.id) },
                             ) {
-                                HillsPrimaryAction(
-                                    label = if (state.favorite) "已收藏" else "收藏",
-                                    onClick = viewModel::toggleFavorite,
-                                    modifier = Modifier.weight(1f),
-                                    icon = if (state.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                )
-                                HillsPrimaryAction(
-                                    label = "字幕",
-                                    onClick = { subtitlesExpanded = !subtitlesExpanded },
-                                    modifier = Modifier.weight(1f),
-                                    icon = Icons.Default.Subtitles,
-                                )
-                                HillsPrimaryAction(
-                                    label = downloadCompactLabel(state.download?.status),
-                                    onClick = viewModel::toggleDownload,
-                                    modifier = Modifier.weight(1f),
-                                    icon = Icons.Default.CloudDownload,
+                                HillsSecondaryAction(
+                                    label = if (episodeMoreExpanded) "收起" else "更多",
+                                    onClick = { episodeMoreExpanded = !episodeMoreExpanded },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    icon = Icons.Default.ChevronRight,
                                 )
                             }
                         } else {
@@ -509,12 +498,23 @@ fun MediaDetailScreen(
                         }
                     }
 
-                    if (isEpisode && episodeSeries != null) {
+                    if (isEpisode) {
                         item {
-                            EpisodeSeriesContext(
-                                series = episodeSeries,
+                            EpisodePlaybackSpecPanel(
                                 media = media,
-                                onOpenSeries = { onSeriesClick(episodeSeries.id) },
+                                subtitles = state.subtitles,
+                            )
+                        }
+                    }
+
+                    if (isEpisode && episodeMoreExpanded) {
+                        item {
+                            EpisodeMoreActions(
+                                favorite = state.favorite,
+                                downloadLabel = downloadCompactLabel(state.download?.status),
+                                onFavorite = viewModel::toggleFavorite,
+                                onSubtitles = { subtitlesExpanded = !subtitlesExpanded },
+                                onDownload = viewModel::toggleDownload,
                             )
                         }
                     }
@@ -669,19 +669,6 @@ fun MediaDetailScreen(
                                         }
                                         Icon(Icons.Default.ChevronRight, null)
                                     }
-                                }
-                            }
-                        }
-                    }
-
-                    if (isEpisode) {
-                        item {
-                            DetailFeedCard(title = "技术规格") {
-                                val rows = mediaTechnicalRows(media)
-                                if (rows.isEmpty()) {
-                                    Text("暂无技术信息", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                } else {
-                                    DetailInfoPanel(rows)
                                 }
                             }
                         }
@@ -1058,24 +1045,61 @@ private fun MovieRecommendationCard(
 }
 
 @Composable
-private fun EpisodeSeriesContext(
-    series: SeriesInfo,
-    media: MediaDetail,
-    onOpenSeries: () -> Unit,
+private fun EpisodeMoreActions(
+    favorite: Boolean,
+    downloadLabel: String,
+    onFavorite: () -> Unit,
+    onSubtitles: () -> Unit,
+    onDownload: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 6.dp),
+            .padding(horizontal = 20.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("节目", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
         HillsSecondaryAction(
-            label = "${series.displayTitle} · ${episodeCode(media)}",
-            onClick = onOpenSeries,
-            modifier = Modifier.fillMaxWidth(),
+            label = if (favorite) "已收藏" else "收藏",
+            onClick = onFavorite,
+            modifier = Modifier.weight(1f),
+            icon = if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+        )
+        HillsSecondaryAction(
+            label = "字幕",
+            onClick = onSubtitles,
+            modifier = Modifier.weight(1f),
+            icon = Icons.Default.Subtitles,
+        )
+        HillsSecondaryAction(
+            label = downloadLabel,
+            onClick = onDownload,
+            modifier = Modifier.weight(1f),
+            icon = Icons.Default.CloudDownload,
         )
     }
+}
+
+@Composable
+private fun EpisodePlaybackSpecPanel(
+    media: MediaDetail,
+    subtitles: SubtitleTracksResponse,
+) {
+    val rows = listOfNotNull(
+        listOfNotNull(
+            media.resolution.takeIf(String::isNotBlank),
+            media.videoCodec.takeIf(String::isNotBlank)?.uppercase(),
+            media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+        ).joinToString(" · ").takeIf(String::isNotBlank)?.let { "视频" to it },
+        media.audioCodec.takeIf(String::isNotBlank)?.uppercase()?.let { "音频" to it },
+        (subtitles.embedded + subtitles.external)
+            .takeIf { it.isNotEmpty() }
+            ?.let { "字幕" to "${it.size} 条可用字幕" },
+    )
+    if (rows.isEmpty()) return
+    DetailInfoPanel(
+        rows = rows,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -1622,14 +1646,6 @@ private fun mediaMetadataLabel(media: MediaDetail): String = listOfNotNull(
     media.resolution.takeIf(String::isNotBlank),
     splitGenres(media.genres).take(2).joinToString(" · ").takeIf(String::isNotBlank),
 ).joinToString(" · ")
-
-private fun mediaTechnicalRows(media: MediaDetail): List<Pair<String, String>> = listOfNotNull(
-    media.resolution.takeIf(String::isNotBlank)?.let { "分辨率" to it },
-    media.videoCodec.takeIf(String::isNotBlank)?.let { "视频编码" to it },
-    media.audioCodec.takeIf(String::isNotBlank)?.let { "音频编码" to it },
-    media.runtime.takeIf { it > 0 }?.let { "片长" to "$it 分钟" },
-    media.duration.takeIf { it > 0.0 }?.let { "媒体时长" to formatResumeTime(it) },
-)
 
 private fun splitGenres(genres: String): List<String> = genres
     .split(',', '，', '/', '|')

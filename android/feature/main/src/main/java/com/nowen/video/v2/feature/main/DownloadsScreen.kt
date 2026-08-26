@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
@@ -126,12 +127,23 @@ class DownloadsViewModel @Inject constructor(
 @Composable
 fun DownloadsScreen(
     modifier: Modifier = Modifier,
+    onBack: () -> Unit,
     onPlayOffline: (String) -> Unit,
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
 
-    HillsScreen(modifier, top = { HillsTopBar(title = "下载", subtitle = "离线媒体与空间管理") }) { topPadding ->
+    HillsScreen(
+        modifier,
+        top = {
+            HillsTopBar(
+                title = "下载",
+                subtitle = "离线媒体与空间管理",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigate = onBack,
+            )
+        },
+    ) { topPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()

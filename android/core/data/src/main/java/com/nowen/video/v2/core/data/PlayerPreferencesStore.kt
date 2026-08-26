@@ -16,11 +16,12 @@ import kotlinx.coroutines.flow.map
 
 private val Context.playerPreferencesDataStore by preferencesDataStore(name = "nowen_v2_player_preferences")
 private val KEY_PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
+private val KEY_LONG_PRESS_BOOST_SPEED = floatPreferencesKey("long_press_boost_speed")
 private val KEY_RESIZE_MODE = intPreferencesKey("resize_mode")
 private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
 private val KEY_PICTURE_IN_PICTURE = booleanPreferencesKey("picture_in_picture")
 
-internal val supportedPlaybackSpeeds = listOf(
+val supportedPlaybackSpeeds = listOf(
     0.5f,
     0.75f,
     1f,
@@ -34,10 +35,13 @@ internal val supportedPlaybackSpeeds = listOf(
     8f,
 )
 private val supportedPlaybackSpeedSet = supportedPlaybackSpeeds.toSet()
+val supportedLongPressBoostSpeeds = listOf(2f, 3f, 4f, 5f, 6f, 7f, 8f)
+private val supportedLongPressBoostSpeedSet = supportedLongPressBoostSpeeds.toSet()
 private val supportedResizeModes = setOf(0, 1, 2)
 
 data class PlayerPreferences(
     val playbackSpeed: Float = 1f,
+    val longPressBoostSpeed: Float = 2f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,
@@ -57,6 +61,9 @@ class PlayerPreferencesStore @Inject constructor(
                 playbackSpeed = values[KEY_PLAYBACK_SPEED]
                     ?.takeIf(supportedPlaybackSpeedSet::contains)
                     ?: 1f,
+                longPressBoostSpeed = values[KEY_LONG_PRESS_BOOST_SPEED]
+                    ?.takeIf(supportedLongPressBoostSpeedSet::contains)
+                    ?: 2f,
                 resizeMode = values[KEY_RESIZE_MODE]
                     ?.takeIf(supportedResizeModes::contains)
                     ?: 0,
@@ -68,6 +75,12 @@ class PlayerPreferencesStore @Inject constructor(
     suspend fun setPlaybackSpeed(speed: Float) {
         context.playerPreferencesDataStore.edit { values ->
             values[KEY_PLAYBACK_SPEED] = speed.takeIf(supportedPlaybackSpeedSet::contains) ?: 1f
+        }
+    }
+
+    suspend fun setLongPressBoostSpeed(speed: Float) {
+        context.playerPreferencesDataStore.edit { values ->
+            values[KEY_LONG_PRESS_BOOST_SPEED] = speed.takeIf(supportedLongPressBoostSpeedSet::contains) ?: 2f
         }
     }
 

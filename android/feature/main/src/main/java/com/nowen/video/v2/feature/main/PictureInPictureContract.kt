@@ -8,6 +8,11 @@ import kotlinx.coroutines.flow.StateFlow
 interface PlaybackPictureInPictureHost {
     val pictureInPictureMode: StateFlow<Boolean>
     fun setPlaybackPictureInPictureActive(active: Boolean)
+    fun enterPlaybackPictureInPicture()
+    fun setPlaybackLandscape(active: Boolean)
+    fun currentPlaybackScreenBrightness(): Float
+    fun setPlaybackScreenBrightness(brightness: Float)
+    fun restorePlaybackScreenBrightness()
 }
 
 internal fun Context.findPlaybackPictureInPictureHost(): PlaybackPictureInPictureHost? {

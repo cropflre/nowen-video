@@ -79,6 +79,7 @@ import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
 import com.nowen.video.v2.core.data.PlayerPreferences
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
+import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.HillsPressable
 import com.nowen.video.v2.core.designsystem.HillsToggle
@@ -105,6 +106,10 @@ class MobileSettingsViewModel @Inject constructor(
 
     fun setPlaybackSpeed(speed: Float) = viewModelScope.launch {
         playerPreferencesStore.setPlaybackSpeed(speed)
+    }
+
+    fun setLongPressBoostSpeed(speed: Float) = viewModelScope.launch {
+        playerPreferencesStore.setLongPressBoostSpeed(speed)
     }
 
     fun setResizeMode(mode: Int) = viewModelScope.launch {
@@ -186,9 +191,16 @@ fun MobileSettingsScreen(
             player = player,
             onBack = returnToDirectory,
             onSpeedClick = { picker = SettingsPicker.Speed },
+            onLongPressBoostSpeedClick = { picker = SettingsPicker.LongPressBoostSpeed },
             onResizeModeClick = { picker = SettingsPicker.ResizeMode },
             onAutoPlayNextChange = viewModel::setAutoPlayNext,
             onPictureInPictureChange = viewModel::setPictureInPictureEnabled,
+        )
+
+        SettingsDestination.Interaction -> SettingsInteractionPanel(
+            player = player,
+            onBack = returnToDirectory,
+            onLongPressBoostSpeedClick = { picker = SettingsPicker.LongPressBoostSpeed },
         )
 
         SettingsDestination.Library -> SettingsLibraryPanel(
@@ -245,6 +257,17 @@ fun MobileSettingsScreen(
             },
         )
 
+        SettingsPicker.LongPressBoostSpeed -> SettingsValuePickerDialog(
+            title = "长按倍速",
+            options = supportedLongPressBoostSpeeds.map { speed -> speed.toString() to speedDisplayLabel(speed) },
+            selected = player.longPressBoostSpeed.toString(),
+            onDismiss = { picker = null },
+            onSelect = { speed ->
+                viewModel.setLongPressBoostSpeed(speed.toFloat())
+                picker = null
+            },
+        )
+
         SettingsPicker.ResizeMode -> SettingsValuePickerDialog(
             title = "画面模式",
             options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
@@ -282,7 +305,7 @@ private enum class SettingsDestination(
     Library("媒体库", Icons.Default.FolderOpen, true),
     Backup("备份与还原", Icons.Default.Backup, false),
     Sync("同步", Icons.Default.CloudSync, false),
-    Interaction("交互", Icons.Default.Interests, false),
+    Interaction("交互", Icons.Default.Interests, true),
     Player("播放器", Icons.Default.PlayCircle, true),
     Danmaku("弹幕", Icons.Default.Subtitles, false),
     Experimental("实验性", Icons.Default.Science, false),
@@ -292,6 +315,7 @@ private enum class SettingsDestination(
 private enum class SettingsPicker {
     Server,
     Speed,
+    LongPressBoostSpeed,
     ResizeMode,
     Quota,
 }
@@ -364,6 +388,7 @@ private fun SettingsPlayerPanel(
     player: PlayerPreferences,
     onBack: () -> Unit,
     onSpeedClick: () -> Unit,
+    onLongPressBoostSpeedClick: () -> Unit,
     onResizeModeClick: () -> Unit,
     onAutoPlayNextChange: (Boolean) -> Unit,
     onPictureInPictureChange: (Boolean) -> Unit,
@@ -375,6 +400,13 @@ private fun SettingsPlayerPanel(
                 title = "默认倍速",
                 value = speedDisplayLabel(player.playbackSpeed),
                 onClick = onSpeedClick,
+            )
+            SettingsListRow(
+                icon = Icons.Default.PlayCircle,
+                title = "长按倍速",
+                subtitle = "播放时长按画面临时加速",
+                value = speedDisplayLabel(player.longPressBoostSpeed),
+                onClick = onLongPressBoostSpeedClick,
             )
             SettingsListRow(
                 icon = Icons.Default.PlayCircle,
@@ -394,6 +426,45 @@ private fun SettingsPlayerPanel(
                 checked = player.pictureInPictureEnabled,
                 enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O,
                 onCheckedChange = onPictureInPictureChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsInteractionPanel(
+    player: PlayerPreferences,
+    onBack: () -> Unit,
+    onLongPressBoostSpeedClick: () -> Unit,
+) {
+    SettingsScaffold(title = "交互", onBack = onBack) {
+        item {
+            SettingsSectionHeader("播放手势")
+            Spacer(Modifier.height(8.dp))
+            SettingsListRow(
+                icon = Icons.Default.Explore,
+                title = "亮度",
+                subtitle = "播放时在画面左侧上下滑动调整亮度",
+            )
+            SettingsListRow(
+                icon = Icons.Default.Explore,
+                title = "音量",
+                subtitle = "播放时在画面右侧上下滑动调整媒体音量",
+            )
+            SettingsListRow(
+                icon = Icons.Default.Explore,
+                title = "快进与快退",
+                subtitle = "在画面任意位置左右滑动调整播放进度",
+            )
+            Spacer(Modifier.height(20.dp))
+            SettingsSectionHeader("长按播放")
+            Spacer(Modifier.height(8.dp))
+            SettingsListRow(
+                icon = Icons.Default.PlayCircle,
+                title = "长按倍速",
+                subtitle = "播放时按住画面临时加速，松开后恢复原倍速",
+                value = speedDisplayLabel(player.longPressBoostSpeed),
+                onClick = onLongPressBoostSpeedClick,
             )
         }
     }
