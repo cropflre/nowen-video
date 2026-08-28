@@ -93,6 +93,8 @@ import com.nowen.video.v2.core.model.OfflineDownloadStatus
 import com.nowen.video.v2.core.model.SeasonInfo
 import com.nowen.video.v2.core.model.SeriesInfo
 import com.nowen.video.v2.core.model.SubtitleTracksResponse
+import com.nowen.video.v2.core.model.episodeDisplayName
+import com.nowen.video.v2.core.model.userEpisodeTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -477,10 +479,18 @@ fun MediaDetailScreen(
                                 onBack = onBack,
                                 logoUrl = episodeSeries?.let { seriesLogoUrl(baseUrl, it.id) },
                             ) {
+                                if (episodeSeries?.id?.isNotBlank() == true) {
+                                    HillsSecondaryAction(
+                                        label = "剧集详情",
+                                        onClick = { onSeriesClick(episodeSeries.id) },
+                                        modifier = Modifier.weight(1f),
+                                        icon = Icons.Default.Collections,
+                                    )
+                                }
                                 HillsSecondaryAction(
                                     label = if (episodeMoreExpanded) "收起" else "更多",
                                     onClick = { episodeMoreExpanded = !episodeMoreExpanded },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.weight(1f),
                                     icon = Icons.Default.ChevronRight,
                                 )
                             }
@@ -1123,6 +1133,12 @@ private fun EpisodeSeasonShelf(
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(season.episodes, key = MediaDetail::id) { episode ->
+                var imageFailed by rememberSaveable(episode.id) { mutableStateOf(false) }
+                val episodeArtwork = if (imageFailed) {
+                    mediaPosterUrl(baseUrl, episode.id)
+                } else {
+                    mediaBackdropUrl(baseUrl, episode.id)
+                }
                 Column(
                     modifier = Modifier
                         .width(220.dp)
@@ -1136,9 +1152,10 @@ private fun EpisodeSeasonShelf(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     ) {
                         AsyncImage(
-                            model = mediaBackdropUrl(baseUrl, episode.id),
+                            model = episodeArtwork,
                             contentDescription = episode.episodeTitle.ifBlank { episodeCode(episode) },
                             contentScale = ContentScale.Crop,
+                            onError = { imageFailed = true },
                             modifier = Modifier.fillMaxSize(),
                         )
                         if (episode.id == currentMediaId) {
@@ -1154,7 +1171,7 @@ private fun EpisodeSeasonShelf(
                     }
                     Spacer(Modifier.height(7.dp))
                     Text(
-                        "${episodeCode(episode)} · ${episode.episodeTitle.ifBlank { episode.displayTitle }}",
+                        "${episodeCode(episode)} · ${episode.userEpisodeTitle}",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
@@ -1173,8 +1190,7 @@ private fun EpisodeSeasonShelf(
 }
 
 private fun episodeCode(media: MediaDetail): String = when {
-    media.seasonNumber == 0 && media.episodeNumber > 0 -> "特别篇 ${media.episodeNumber}"
-    media.episodeNumber > 0 -> "S${media.seasonNumber.toString().padStart(2, '0')}E${media.episodeNumber.toString().padStart(2, '0')}"
+    media.episodeNumber > 0 -> episodeDisplayName(media.seasonNumber, media.episodeNumber)
     else -> "单集"
 }
 

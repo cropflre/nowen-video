@@ -1,6 +1,7 @@
 package com.nowen.video.v2
 
 import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -33,7 +34,11 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
     private val _pictureInPictureMode = MutableStateFlow(false)
     override val pictureInPictureMode: StateFlow<Boolean> = _pictureInPictureMode
     private var playbackPictureInPictureActive = false
-    private var playbackOriginalBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+    private var playbackOriginalBrightness: Float? = null
+
+    override val playbackPictureInPictureSupported: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
     private var highlightComputeScope: CoroutineScope? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,13 +66,13 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
     }
 
     override fun setPlaybackPictureInPictureActive(active: Boolean) {
-        playbackPictureInPictureActive = active
+        playbackPictureInPictureActive = active && playbackPictureInPictureSupported
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        setPictureInPictureParams(buildPictureInPictureParams(active))
+        setPictureInPictureParams(buildPictureInPictureParams(playbackPictureInPictureActive))
     }
 
     override fun enterPlaybackPictureInPicture() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+        if (playbackPictureInPictureActive && playbackPictureInPictureSupported && !isInPictureInPictureMode) {
             enterPictureInPictureMode(buildPictureInPictureParams(true))
         }
     }
@@ -84,13 +89,15 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
     }
 
     override fun restorePlaybackScreenBrightness() {
+        val original = playbackOriginalBrightness ?: return
         window.attributes = window.attributes.apply {
-            screenBrightness = playbackOriginalBrightness
+            screenBrightness = original
         }
+        playbackOriginalBrightness = null
     }
 
     override fun setPlaybackLandscape(active: Boolean) {
-        if (active && playbackOriginalBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+        if (active && playbackOriginalBrightness == null) {
             playbackOriginalBrightness = window.attributes.screenBrightness
         }
         if (!active) restorePlaybackScreenBrightness()
@@ -143,6 +150,7 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
         if (
             Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
             playbackPictureInPictureActive &&
+            playbackPictureInPictureSupported &&
             !isInPictureInPictureMode
         ) {
             enterPictureInPictureMode(buildPictureInPictureParams(true))

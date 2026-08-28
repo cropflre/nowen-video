@@ -25,9 +25,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,6 +48,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.nowen.video.v2.core.designsystem.HillsChoiceRail
+import com.nowen.video.v2.core.designsystem.HillsDiscreteDragRail
 import com.nowen.video.v2.core.designsystem.HillsToggle
 import com.nowen.video.v2.core.model.SubtitleTrack
 import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
@@ -184,6 +187,17 @@ internal fun PlayerSettingsSheet(
     subtitleTracks: List<PlayerTrackChoice>,
     subtitlesDisabled: Boolean,
     onSubtitleTrackSelected: (PlayerTrackChoice?) -> Unit,
+    danmakuAvailable: Boolean = true,
+    danmakuOffline: Boolean = false,
+    danmakuEnabled: Boolean = false,
+    danmakuAutoMatch: Boolean = true,
+    danmakuLoading: Boolean = false,
+    danmakuCueCount: Int = 0,
+    danmakuError: String? = null,
+    onDanmakuEnabledChange: (Boolean) -> Unit = {},
+    onDanmakuAutoMatchChange: (Boolean) -> Unit = {},
+    onDanmakuSearch: () -> Unit = {},
+    onDanmakuRematch: () -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -206,6 +220,17 @@ internal fun PlayerSettingsSheet(
             subtitleTracks = subtitleTracks,
             subtitlesDisabled = subtitlesDisabled,
             onSubtitleTrackSelected = onSubtitleTrackSelected,
+            danmakuAvailable = danmakuAvailable,
+            danmakuOffline = danmakuOffline,
+            danmakuEnabled = danmakuEnabled,
+            danmakuAutoMatch = danmakuAutoMatch,
+            danmakuLoading = danmakuLoading,
+            danmakuCueCount = danmakuCueCount,
+            danmakuError = danmakuError,
+            onDanmakuEnabledChange = onDanmakuEnabledChange,
+            onDanmakuAutoMatchChange = onDanmakuAutoMatchChange,
+            onDanmakuSearch = onDanmakuSearch,
+            onDanmakuRematch = onDanmakuRematch,
         )
     }
 
@@ -264,9 +289,18 @@ private fun PlayerSettingsContent(
     subtitleTracks: List<PlayerTrackChoice>,
     subtitlesDisabled: Boolean,
     onSubtitleTrackSelected: (PlayerTrackChoice?) -> Unit,
+    danmakuAvailable: Boolean,
+    danmakuOffline: Boolean,
+    danmakuEnabled: Boolean,
+    danmakuAutoMatch: Boolean,
+    danmakuLoading: Boolean,
+    danmakuCueCount: Int,
+    danmakuError: String?,
+    onDanmakuEnabledChange: (Boolean) -> Unit,
+    onDanmakuAutoMatchChange: (Boolean) -> Unit,
+    onDanmakuSearch: () -> Unit,
+    onDanmakuRematch: () -> Unit,
 ) {
-    var showSpeedOptions by rememberSaveable { mutableStateOf(false) }
-    var showLongPressBoostOptions by rememberSaveable { mutableStateOf(false) }
     var showPlaybackDetails by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -289,38 +323,30 @@ private fun PlayerSettingsContent(
             },
         )
 
-        PlayerSettingsRow(
+        PlayerPreferenceAxis(
             title = "播放速度",
             subtitle = "最高支持 8×，长按画面可临时快速播放",
             value = speedLabel(playbackSpeed),
-            onClick = { showSpeedOptions = !showSpeedOptions },
+            options = PlayerSpeedOptions.map { speed -> speed.toString() to speedLabel(speed) },
+            selected = playbackSpeed.toString(),
+            onCommit = { onPlaybackSpeedChange(it.toFloat()) },
         )
-        if (showSpeedOptions) {
-            SpeedOptions(
-                selected = playbackSpeed,
-                onSelected = onPlaybackSpeedChange,
-            )
-        }
 
-        PlayerSettingsRow(
+        PlayerPreferenceAxis(
             title = "长按倍速",
             subtitle = "按住画面时临时使用此速度，松开后恢复",
             value = speedLabel(longPressBoostSpeed),
-            onClick = { showLongPressBoostOptions = !showLongPressBoostOptions },
+            options = supportedLongPressBoostSpeeds.map { speed -> speed.toString() to speedLabel(speed) },
+            selected = longPressBoostSpeed.toString(),
+            onCommit = { onLongPressBoostSpeedChange(it.toFloat()) },
         )
-        if (showLongPressBoostOptions) {
-            SpeedOptions(
-                selected = longPressBoostSpeed,
-                speeds = supportedLongPressBoostSpeeds,
-                onSelected = onLongPressBoostSpeedChange,
-            )
-        }
 
         SettingsSectionTitle("画面比例")
-        HillsChoiceRail(
+        HillsDiscreteDragRail(
             options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
             selected = resizeMode.toString(),
-            onSelect = { value -> onResizeModeChange(value.toInt()) },
+            onPreview = {},
+            onCommit = { value -> onResizeModeChange(value.toInt()) },
             modifier = Modifier.padding(horizontal = 20.dp),
         )
 
@@ -361,6 +387,66 @@ private fun PlayerSettingsContent(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
+        }
+
+        SettingsSectionTitle("弹幕")
+        if (danmakuOffline) {
+            Text(
+                text = "离线播放暂不支持弹幕",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        } else if (!danmakuAvailable) {
+            Text(
+                text = "请先在设置中配置外部弹幕 API",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        } else {
+            PlayerSettingsRow(
+                title = "显示弹幕",
+                subtitle = when {
+                    danmakuLoading -> "正在匹配弹幕…"
+                    danmakuError != null -> "弹幕加载失败"
+                    danmakuCueCount > 0 -> "已加载 $danmakuCueCount 条弹幕"
+                    else -> "来自已配置的外部弹幕服务"
+                },
+                trailing = {
+                    HillsToggle(
+                        checked = danmakuEnabled,
+                        onCheckedChange = onDanmakuEnabledChange,
+                    )
+                },
+            )
+            PlayerSettingsRow(
+                title = "自动匹配",
+                subtitle = "打开媒体时按标题、季和集自动查找",
+                trailing = {
+                    HillsToggle(
+                        checked = danmakuAutoMatch,
+                        onCheckedChange = onDanmakuAutoMatchChange,
+                    )
+                },
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDanmakuSearch) { Text("手动搜索") }
+                TextButton(onClick = onDanmakuRematch, enabled = !danmakuLoading) { Text("重新匹配") }
+            }
+            danmakuError?.let { message ->
+                Text(
+                    text = message.take(120),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
         }
 
         PlayerSettingsRow(
@@ -411,21 +497,27 @@ private fun PlayerSettingsRow(
 }
 
 @Composable
-private fun SpeedOptions(
-    selected: Float,
-    speeds: List<Float> = PlayerSpeedOptions,
-    onSelected: (Float) -> Unit,
+private fun PlayerPreferenceAxis(
+    title: String,
+    subtitle: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onCommit: (String) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        HillsChoiceRail(
-            options = speeds.map { speed -> speed.toString() to speedLabel(speed) },
-            selected = selected.toString(),
-            onSelect = { value -> onSelected(value.toFloat()) },
-        )
-    }
+    var draftSelected by remember(selected) { mutableStateOf(selected) }
+    PlayerSettingsRow(
+        title = title,
+        subtitle = subtitle,
+        value = options.firstOrNull { it.first == draftSelected }?.second ?: value,
+    )
+    HillsDiscreteDragRail(
+        options = options,
+        selected = selected,
+        onPreview = { draftSelected = it },
+        onCommit = onCommit,
+        modifier = Modifier.padding(horizontal = 20.dp),
+    )
 }
 
 private fun trackKey(track: PlayerTrackChoice): String = "${track.trackIndex}:${track.label}"

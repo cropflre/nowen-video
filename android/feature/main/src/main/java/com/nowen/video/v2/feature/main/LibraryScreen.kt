@@ -1051,6 +1051,20 @@ private fun LibraryGridPoster(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (media.isSeries && media.episodeCount > 0) {
+                Text(
+                    media.episodeCount.toString(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color(0xCC5D6F9A))
+                        .padding(horizontal = 7.dp, vertical = 5.dp),
+                )
+            }
             media.rating.takeIf { it > 0 }?.let { rating ->
                 Text(
                     "%.1f".format(rating),

@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -163,6 +164,7 @@ class OfflinePlayerViewModel @Inject constructor(
 @Composable
 fun OfflinePlayerScreen(
     mediaId: String,
+    pictureInPictureAvailable: Boolean = false,
     onBack: () -> Unit,
     viewModel: OfflinePlayerViewModel = hiltViewModel(),
 ) {
@@ -172,7 +174,7 @@ fun OfflinePlayerScreen(
     val pictureInPictureHost = remember(context) { context.findPlaybackPictureInPictureHost() }
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember(mediaId) { ExoPlayer.Builder(context).build() }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(false) }
     var controlsEpoch by remember(mediaId) { mutableStateOf(0) }
@@ -257,12 +259,14 @@ fun OfflinePlayerScreen(
         }
     }
 
-    DisposableEffect(player, mediaId, lifecycleOwner, state.durationMs) {
+    val latestState by rememberUpdatedState(state)
+    val latestReportProgress by rememberUpdatedState(::reportCurrentProgress)
+    DisposableEffect(player, mediaId, lifecycleOwner) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 if (!playing && player.playbackState == Player.STATE_READY) {
-                    reportCurrentProgress(force = true)
+                    latestReportProgress(true)
                     revealControls()
                 }
             }
@@ -271,18 +275,18 @@ fun OfflinePlayerScreen(
                 val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
                 if (duration != null) playerDurationMs = duration
                 if (playbackState == Player.STATE_ENDED) {
-                    val end = duration ?: state.durationMs
+                    val end = duration ?: latestState.durationMs
                     viewModel.reportProgress(mediaId, end, end, force = true)
                 }
             }
         }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) reportCurrentProgress(force = true)
+            if (event == Lifecycle.Event.ON_STOP) latestReportProgress(true)
         }
         player.addListener(listener)
         lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
-            reportCurrentProgress(force = true)
+            latestReportProgress(true)
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
             player.removeListener(listener)
             player.release()
@@ -409,8 +413,9 @@ fun OfflinePlayerScreen(
                     resizeMode = playerPreferences.resizeMode,
                     onResizeModeChange = viewModel::setResizeMode,
                     onPictureInPicture = {
-                        pictureInPictureHost?.enterPlaybackPictureInPicture()
+                        if (pictureInPictureAvailable) pictureInPictureHost?.enterPlaybackPictureInPicture()
                     },
+                    pictureInPictureAvailable = pictureInPictureAvailable,
                     onPlayPause = {
                         if (player.isPlaying) player.pause() else player.play()
                         revealControls()
@@ -493,6 +498,8 @@ fun OfflinePlayerScreen(
             subtitleTracks = emptyList(),
             subtitlesDisabled = true,
             onSubtitleTrackSelected = {},
+            danmakuAvailable = false,
+            danmakuOffline = true,
         )
     }
 }

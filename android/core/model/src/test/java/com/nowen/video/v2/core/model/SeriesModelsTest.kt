@@ -38,14 +38,15 @@ class SeriesModelsTest {
         ).normalized()
 
         assertEquals("三体", series.displayTitle)
-        assertEquals("2023 · 2 季 · 30 集", series.metadataLabel)
+        assertEquals("2023 · 共 2 季 · 30 集", series.metadataLabel)
         assertEquals(listOf("科幻", "剧情"), series.genreList)
         assertEquals(listOf("ep-1", "ep-2"), season.episodes.map(MediaDetail::id))
     }
 
     @Test
     fun `labels regular seasons specials and episodes`() {
-        assertEquals("第 2 季", SeasonInfo(seasonNumber = 2).label)
+        assertEquals("第一季", SeasonInfo(seasonNumber = 1).label)
+        assertEquals("第二季", SeasonInfo(seasonNumber = 2).label)
         assertEquals("特别篇", SeasonInfo(seasonNumber = 0).label)
         assertEquals(
             "第 8 集",
@@ -54,6 +55,16 @@ class SeriesModelsTest {
         assertEquals(
             "特别篇 3",
             MediaDetail(id = "sp", mediaType = "episode", seasonNumber = 0, episodeNumber = 3).seriesEpisodeLabel,
+        )
+        assertEquals(
+            "回响",
+            MediaDetail(
+                id = "ep-title",
+                mediaType = "episode",
+                seasonNumber = 1,
+                episodeNumber = 1,
+                episodeTitle = "S01E01 - 回响",
+            ).userEpisodeTitle,
         )
     }
 

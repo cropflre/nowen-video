@@ -24,7 +24,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
@@ -45,12 +47,14 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -76,12 +80,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
+import com.nowen.video.v2.core.data.DanmakuPreferences
+import com.nowen.video.v2.core.data.DanmakuPreferencesStore
+import com.nowen.video.v2.core.data.DanmakuRepository
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
 import com.nowen.video.v2.core.data.PlayerPreferences
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
+import com.nowen.video.v2.core.data.supportedPlaybackSpeeds
 import com.nowen.video.v2.core.data.ServerSessionStore
+import com.nowen.video.v2.core.designsystem.HillsDiscreteDragRail
 import com.nowen.video.v2.core.designsystem.HillsPressable
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
 import com.nowen.video.v2.core.designsystem.HillsToggle
 import com.nowen.video.v2.core.designsystem.ProductIdentity
 import com.nowen.video.v2.core.model.DEFAULT_OFFLINE_QUOTA_BYTES
@@ -89,20 +99,44 @@ import com.nowen.video.v2.core.model.OfflineDownloadPolicy
 import com.nowen.video.v2.core.model.OfflineStorageStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-private val SETTINGS_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f, 6f, 8f)
 private val SETTINGS_QUOTAS_GIB = listOf(5, 10, 20, 50, 100)
 
 @HiltViewModel
 class MobileSettingsViewModel @Inject constructor(
     private val playerPreferencesStore: PlayerPreferencesStore,
+    private val danmakuPreferencesStore: DanmakuPreferencesStore,
+    private val danmakuRepository: DanmakuRepository,
     private val offlineDownloads: OfflineDownloadRepository,
     val sessionStore: ServerSessionStore,
 ) : ViewModel() {
     val playerPreferences = playerPreferencesStore.preferences
+    val danmakuPreferences = danmakuPreferencesStore.preferences
     val downloadPolicy = offlineDownloads.policy
     val storageStats = offlineDownloads.storageStats
+    private val _danmakuTestState = MutableStateFlow<String?>(null)
+    val danmakuTestState: StateFlow<String?> = _danmakuTestState
+
+    fun setDanmakuApiBaseUrl(value: String) = viewModelScope.launch { danmakuPreferencesStore.setApiBaseUrl(value) }
+    fun setDanmakuApiToken(value: String) = viewModelScope.launch { danmakuPreferencesStore.setApiToken(value) }
+    fun setDanmakuEnabled(value: Boolean) = viewModelScope.launch { danmakuPreferencesStore.setEnabled(value) }
+    fun setDanmakuAutoMatch(value: Boolean) = viewModelScope.launch { danmakuPreferencesStore.setAutoMatch(value) }
+    fun setDanmakuMode(value: String) = viewModelScope.launch { danmakuPreferencesStore.setMode(value) }
+    fun setDanmakuFontSize(value: Float) = viewModelScope.launch { danmakuPreferencesStore.setFontSize(value) }
+    fun setDanmakuSpeed(value: Float) = viewModelScope.launch { danmakuPreferencesStore.setSpeed(value) }
+    fun setDanmakuOpacity(value: Float) = viewModelScope.launch { danmakuPreferencesStore.setOpacity(value) }
+    fun setDanmakuMaxVisible(value: Int) = viewModelScope.launch { danmakuPreferencesStore.setMaxVisible(value) }
+    fun setDanmakuOffsetMs(value: Int) = viewModelScope.launch { danmakuPreferencesStore.setOffsetMs(value) }
+
+    fun testDanmakuConnection() = viewModelScope.launch {
+        _danmakuTestState.value = "正在测试连接…"
+        danmakuRepository.searchAnime("test")
+            .onSuccess { _danmakuTestState.value = "连接成功" }
+            .onFailure { _danmakuTestState.value = it.message?.take(80) ?: "连接失败" }
+    }
 
     fun setPlaybackSpeed(speed: Float) = viewModelScope.launch {
         playerPreferencesStore.setPlaybackSpeed(speed)
@@ -145,6 +179,8 @@ fun MobileSettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val player by viewModel.playerPreferences.collectAsState(initial = PlayerPreferences())
+    val danmaku by viewModel.danmakuPreferences.collectAsState(initial = DanmakuPreferences())
+    val danmakuTestState by viewModel.danmakuTestState.collectAsState()
     val policy by viewModel.downloadPolicy.collectAsState(initial = OfflineDownloadPolicy())
     val storage by viewModel.storageStats.collectAsState(
         initial = OfflineStorageStats(quotaBytes = DEFAULT_OFFLINE_QUOTA_BYTES),
@@ -190,17 +226,32 @@ fun MobileSettingsScreen(
         SettingsDestination.Player -> SettingsPlayerPanel(
             player = player,
             onBack = returnToDirectory,
-            onSpeedClick = { picker = SettingsPicker.Speed },
-            onLongPressBoostSpeedClick = { picker = SettingsPicker.LongPressBoostSpeed },
-            onResizeModeClick = { picker = SettingsPicker.ResizeMode },
+            onSpeedChange = viewModel::setPlaybackSpeed,
+            onLongPressBoostSpeedChange = viewModel::setLongPressBoostSpeed,
+            onResizeModeChange = viewModel::setResizeMode,
             onAutoPlayNextChange = viewModel::setAutoPlayNext,
             onPictureInPictureChange = viewModel::setPictureInPictureEnabled,
         )
 
         SettingsDestination.Interaction -> SettingsInteractionPanel(
-            player = player,
             onBack = returnToDirectory,
-            onLongPressBoostSpeedClick = { picker = SettingsPicker.LongPressBoostSpeed },
+        )
+
+        SettingsDestination.Danmaku -> SettingsDanmakuPanel(
+            preferences = danmaku,
+            testState = danmakuTestState,
+            onBack = returnToDirectory,
+            onApiBaseUrlChange = viewModel::setDanmakuApiBaseUrl,
+            onApiTokenChange = viewModel::setDanmakuApiToken,
+            onEnabledChange = viewModel::setDanmakuEnabled,
+            onAutoMatchChange = viewModel::setDanmakuAutoMatch,
+            onModeChange = viewModel::setDanmakuMode,
+            onFontSizeChange = viewModel::setDanmakuFontSize,
+            onSpeedChange = viewModel::setDanmakuSpeed,
+            onOpacityChange = viewModel::setDanmakuOpacity,
+            onMaxVisibleChange = viewModel::setDanmakuMaxVisible,
+            onOffsetChange = viewModel::setDanmakuOffsetMs,
+            onTestConnection = viewModel::testDanmakuConnection,
         )
 
         SettingsDestination.Library -> SettingsLibraryPanel(
@@ -246,39 +297,6 @@ fun MobileSettingsScreen(
             },
         )
 
-        SettingsPicker.Speed -> SettingsValuePickerDialog(
-            title = "默认倍速",
-            options = SETTINGS_SPEEDS.map { speed -> speed.toString() to speedDisplayLabel(speed) },
-            selected = player.playbackSpeed.toString(),
-            onDismiss = { picker = null },
-            onSelect = { speed ->
-                viewModel.setPlaybackSpeed(speed.toFloat())
-                picker = null
-            },
-        )
-
-        SettingsPicker.LongPressBoostSpeed -> SettingsValuePickerDialog(
-            title = "长按倍速",
-            options = supportedLongPressBoostSpeeds.map { speed -> speed.toString() to speedDisplayLabel(speed) },
-            selected = player.longPressBoostSpeed.toString(),
-            onDismiss = { picker = null },
-            onSelect = { speed ->
-                viewModel.setLongPressBoostSpeed(speed.toFloat())
-                picker = null
-            },
-        )
-
-        SettingsPicker.ResizeMode -> SettingsValuePickerDialog(
-            title = "画面模式",
-            options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
-            selected = player.resizeMode.toString(),
-            onDismiss = { picker = null },
-            onSelect = { mode ->
-                viewModel.setResizeMode(mode.toInt())
-                picker = null
-            },
-        )
-
         SettingsPicker.Quota -> SettingsValuePickerDialog(
             title = "离线空间上限",
             options = SETTINGS_QUOTAS_GIB.map { gib -> gib.toString() to "${gib} GB" },
@@ -307,16 +325,13 @@ private enum class SettingsDestination(
     Sync("同步", Icons.Default.CloudSync, false),
     Interaction("交互", Icons.Default.Interests, true),
     Player("播放器", Icons.Default.PlayCircle, true),
-    Danmaku("弹幕", Icons.Default.Subtitles, false),
+    Danmaku("弹幕", Icons.Default.Subtitles, true),
     Experimental("实验性", Icons.Default.Science, false),
     About("关于", Icons.Default.Info, true),
 }
 
 private enum class SettingsPicker {
     Server,
-    Speed,
-    LongPressBoostSpeed,
-    ResizeMode,
     Quota,
 }
 
@@ -387,32 +402,38 @@ private fun SettingsAccountPanel(
 private fun SettingsPlayerPanel(
     player: PlayerPreferences,
     onBack: () -> Unit,
-    onSpeedClick: () -> Unit,
-    onLongPressBoostSpeedClick: () -> Unit,
-    onResizeModeClick: () -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    onLongPressBoostSpeedChange: (Float) -> Unit,
+    onResizeModeChange: (Int) -> Unit,
     onAutoPlayNextChange: (Boolean) -> Unit,
     onPictureInPictureChange: (Boolean) -> Unit,
 ) {
     SettingsScaffold(title = "播放器", onBack = onBack) {
         item {
-            SettingsListRow(
+            PlayerPreferenceAxis(
                 icon = Icons.Default.PlayCircle,
                 title = "默认倍速",
                 value = speedDisplayLabel(player.playbackSpeed),
-                onClick = onSpeedClick,
+                options = supportedPlaybackSpeeds.map { it.toString() to speedDisplayLabel(it) },
+                selected = player.playbackSpeed.toString(),
+                onCommit = { onSpeedChange(it.toFloat()) },
             )
-            SettingsListRow(
+            PlayerPreferenceAxis(
                 icon = Icons.Default.PlayCircle,
                 title = "长按倍速",
                 subtitle = "播放时长按画面临时加速",
                 value = speedDisplayLabel(player.longPressBoostSpeed),
-                onClick = onLongPressBoostSpeedClick,
+                options = supportedLongPressBoostSpeeds.map { it.toString() to speedDisplayLabel(it) },
+                selected = player.longPressBoostSpeed.toString(),
+                onCommit = { onLongPressBoostSpeedChange(it.toFloat()) },
             )
-            SettingsListRow(
+            PlayerPreferenceAxis(
                 icon = Icons.Default.PlayCircle,
                 title = "画面模式",
                 value = resizeModeLabel(player.resizeMode),
-                onClick = onResizeModeClick,
+                options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
+                selected = player.resizeMode.toString(),
+                onCommit = { onResizeModeChange(it.toInt()) },
             )
             SettingsSwitchRow(
                 title = "自动播放下一集",
@@ -432,10 +453,36 @@ private fun SettingsPlayerPanel(
 }
 
 @Composable
+private fun PlayerPreferenceAxis(
+    icon: ImageVector,
+    title: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onCommit: (String) -> Unit,
+    subtitle: String? = null,
+) {
+    var draftSelected by remember(selected) { mutableStateOf(selected) }
+    SettingsListRow(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        value = options.firstOrNull { it.first == draftSelected }?.second ?: value,
+        onClick = null,
+        showChevron = false,
+    )
+    HillsDiscreteDragRail(
+        options = options,
+        selected = selected,
+        onPreview = { draftSelected = it },
+        onCommit = onCommit,
+        modifier = Modifier.padding(start = 48.dp, end = 0.dp, bottom = 8.dp),
+    )
+}
+
+@Composable
 private fun SettingsInteractionPanel(
-    player: PlayerPreferences,
     onBack: () -> Unit,
-    onLongPressBoostSpeedClick: () -> Unit,
 ) {
     SettingsScaffold(title = "交互", onBack = onBack) {
         item {
@@ -456,15 +503,10 @@ private fun SettingsInteractionPanel(
                 title = "快进与快退",
                 subtitle = "在画面任意位置左右滑动调整播放进度",
             )
-            Spacer(Modifier.height(20.dp))
-            SettingsSectionHeader("长按播放")
-            Spacer(Modifier.height(8.dp))
             SettingsListRow(
                 icon = Icons.Default.PlayCircle,
                 title = "长按倍速",
-                subtitle = "播放时按住画面临时加速，松开后恢复原倍速",
-                value = speedDisplayLabel(player.longPressBoostSpeed),
-                onClick = onLongPressBoostSpeedClick,
+                subtitle = "播放时按住画面临时加速，松开后恢复原倍速；倍速在播放器设置中调整",
             )
         }
     }
@@ -555,7 +597,7 @@ private fun SettingsUnavailablePanel(
 }
 
 @Composable
-private fun SettingsScaffold(
+internal fun SettingsScaffold(
     title: String,
     onBack: (() -> Unit)? = null,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
@@ -613,7 +655,7 @@ private fun SettingsPageHeader(
 }
 
 @Composable
-private fun SettingsSectionHeader(title: String) {
+internal fun SettingsSectionHeader(title: String) {
     Text(
         title,
         color = MaterialTheme.colorScheme.primary,
@@ -643,7 +685,7 @@ private fun SettingsDestinationRow(
 }
 
 @Composable
-private fun SettingsListRow(
+internal fun SettingsListRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
@@ -702,17 +744,27 @@ private fun SettingsListRow(
 }
 
 @Composable
-private fun SettingsSwitchRow(
+internal fun SettingsSwitchRow(
     title: String,
     subtitle: String,
     checked: Boolean,
     enabled: Boolean = true,
+    icon: ImageVector? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(78.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        icon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(20.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 title,
@@ -758,25 +810,67 @@ private fun SettingsValuePickerDialog(
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .widthIn(max = 420.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF242832),
+            tonalElevation = 8.dp,
+            shadowElevation = 16.dp,
+        ) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                Text(
+                    title,
+                    color = Color(0xFFF2F4FA),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
                 options.forEachIndexed { index, (key, label) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onSelect(key) }.padding(vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    HillsPressable(
+                        onClick = { onSelect(key) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
                     ) {
-                        Text(label, modifier = Modifier.weight(1f))
-                        if (key == selected) Icon(Icons.Default.Check, contentDescription = "当前选项", tint = MaterialTheme.colorScheme.primary)
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                label,
+                                color = if (key == selected) Color(0xFF8397CE) else Color(0xFFD6DBE6),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (key == selected) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (key == selected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "当前选项",
+                                    tint = Color(0xFF8397CE),
+                                )
+                            }
+                        }
                     }
-                    if (index != options.lastIndex) HorizontalDivider()
+                    if (index != options.lastIndex) {
+                        HorizontalDivider(color = Color(0xFF3A404D))
+                    }
                 }
+                Spacer(Modifier.height(12.dp))
+                HillsSecondaryAction(
+                    label = "取消",
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }
 }
 
 private fun resizeModeLabel(mode: Int): String = when (mode) {

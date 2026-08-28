@@ -235,6 +235,7 @@ internal fun NowenPlayerControls(
     onSeekFinished: () -> Unit,
     onSpeedClick: () -> Unit,
     onPictureInPicture: () -> Unit = {},
+    pictureInPictureAvailable: Boolean = false,
     hasPreviousEpisode: Boolean = false,
     onPreviousEpisode: () -> Unit = {},
     hasAudioTracks: Boolean = true,
@@ -285,6 +286,7 @@ internal fun NowenPlayerControls(
                     },
                     showAspectMenu = showAspectMenu,
                     onPictureInPicture = onPictureInPicture,
+                    pictureInPictureAvailable = pictureInPictureAvailable,
                     landscape = landscape,
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
@@ -366,6 +368,7 @@ private fun PlayerTopBar(
     onResizeModeChange: (Int) -> Unit,
     showAspectMenu: Boolean,
     onPictureInPicture: () -> Unit,
+    pictureInPictureAvailable: Boolean,
     landscape: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -418,8 +421,10 @@ private fun PlayerTopBar(
                     }
                 }
             }
-            PlayerIconButton(onClick = onPictureInPicture) {
-                Icon(Icons.Default.PictureInPictureAlt, contentDescription = "画中画", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+            if (pictureInPictureAvailable) {
+                PlayerIconButton(onClick = onPictureInPicture) {
+                    Icon(Icons.Default.PictureInPictureAlt, contentDescription = "画中画", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+                }
             }
             PlayerIconButton(onClick = onSettings) {
                 Icon(Icons.Default.MoreVert, contentDescription = "更多播放选项", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))

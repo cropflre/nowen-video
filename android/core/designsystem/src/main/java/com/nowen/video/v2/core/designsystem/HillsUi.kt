@@ -1,6 +1,7 @@
 package com.nowen.video.v2.core.designsystem
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -17,24 +18,39 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.roundToInt
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -121,11 +137,18 @@ fun HillsState(
 }
 
 @Composable
-fun HillsPrimaryAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null) {
-    HillsPressable(onClick = onClick, modifier = modifier.height(HillsMetrics.controlHeight).clip(RoundedCornerShape(18.dp)).background(NowenColors.Brand)) {
+fun HillsPrimaryAction(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    containerColor: Color = NowenColors.Brand,
+    contentColor: Color = Color.White,
+) {
+    HillsPressable(onClick = onClick, modifier = modifier.height(HillsMetrics.controlHeight).clip(RoundedCornerShape(18.dp)).background(containerColor)) {
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) { Icon(icon, null, tint = Color.White); Spacer(Modifier.width(8.dp)) }
-            Text(label, color = Color.White, fontWeight = FontWeight.SemiBold)
+            if (icon != null) { Icon(icon, null, tint = contentColor); Spacer(Modifier.width(8.dp)) }
+            Text(label, color = contentColor, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -191,6 +214,112 @@ fun HillsToggle(
                     if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                 ),
         )
+    }
+}
+
+@Composable
+fun HillsDiscreteDragRail(
+    options: List<Pair<String, String>>,
+    selected: String,
+    onPreview: (String) -> Unit,
+    onCommit: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (options.isEmpty()) return
+
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val selectedIndex = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+    val lastIndex = options.lastIndex.coerceAtLeast(1)
+    var draftFraction by remember(selected, options) {
+        mutableStateOf(selectedIndex.toFloat() / lastIndex)
+    }
+    val index = (draftFraction.coerceIn(0f, 1f) * lastIndex)
+        .roundToInt()
+        .coerceIn(0, options.lastIndex)
+    val selectedLabel = options[index].second
+    val fractionFromX: (Float) -> Float = { x ->
+        if (size.width <= 0) selectedIndex.toFloat() / lastIndex
+        else (x / size.width.toFloat()).coerceIn(0f, 1f)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .onSizeChanged { size = it }
+            .semantics {
+                contentDescription = "${options.first().second}至${options.last().second}"
+                stateDescription = "当前值 $selectedLabel，共 ${options.size} 个位置"
+            }
+            .pointerInput(options) {
+                var gestureFraction = selectedIndex.toFloat() / lastIndex
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        gestureFraction = fractionFromX(offset.x)
+                        draftFraction = gestureFraction
+                        val previewIndex = (gestureFraction * lastIndex).roundToInt()
+                            .coerceIn(0, options.lastIndex)
+                        onPreview(options[previewIndex].first)
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        gestureFraction = fractionFromX(change.position.x)
+                        draftFraction = gestureFraction
+                        val previewIndex = (gestureFraction * lastIndex).roundToInt()
+                            .coerceIn(0, options.lastIndex)
+                        onPreview(options[previewIndex].first)
+                    },
+                    onDragEnd = {
+                        val commitIndex = (gestureFraction * lastIndex).roundToInt()
+                            .coerceIn(0, options.lastIndex)
+                        draftFraction = commitIndex.toFloat() / lastIndex
+                        onCommit(options[commitIndex].first)
+                    },
+                    onDragCancel = {
+                        gestureFraction = selectedIndex.toFloat() / lastIndex
+                        draftFraction = gestureFraction
+                        onPreview(selected)
+                    },
+                )
+            },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(36.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            options.forEachIndexed { itemIndex, (_, label) ->
+                Text(
+                    text = label,
+                    color = if (itemIndex == index) Color(0xFF8397CE) else Color(0xFFB6BCC8),
+                    fontWeight = if (itemIndex == index) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth().height(28.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .align(Alignment.Center)
+                    .background(Color(0xFF39404D)),
+            )
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .align(Alignment.CenterStart)
+                    .offset {
+                        IntOffset(
+                            x = ((size.width - 16) * draftFraction.coerceIn(0f, 1f))
+                                .roundToInt(),
+                            y = 0,
+                        )
+                    }
+                    .background(Color(0xFF8397CE), CircleShape),
+            )
+        }
     }
 }
 

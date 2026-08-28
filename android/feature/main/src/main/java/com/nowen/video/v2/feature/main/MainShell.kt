@@ -101,6 +101,7 @@ enum class MainTab(
 private const val LIBRARY_BROWSE_ROUTE = "library/{libraryId}/{libraryName}"
 private const val DETAIL_ROUTE = "detail/{mediaId}"
 private const val SERIES_DETAIL_ROUTE = "series/{seriesId}"
+private const val SEASON_EPISODES_ROUTE = "series/{seriesId}/season/{seasonNumber}"
 private const val PLAYER_ROUTE = "player/{mediaId}"
 private const val OFFLINE_PLAYER_ROUTE = "offline/{mediaId}"
 private const val DOWNLOADS_ROUTE = "downloads"
@@ -144,7 +145,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val selectedTab = when (currentRoute) {
-        MainTab.Home.route, LIBRARY_BROWSE_ROUTE, DETAIL_ROUTE, SERIES_DETAIL_ROUTE -> MainTab.Home
+        MainTab.Home.route, LIBRARY_BROWSE_ROUTE, DETAIL_ROUTE, SERIES_DETAIL_ROUTE, SEASON_EPISODES_ROUTE -> MainTab.Home
         MainTab.Favorites.route -> MainTab.Favorites
         MainTab.Search.route, PERSON_DETAIL_ROUTE -> MainTab.Search
         HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE, COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> null
@@ -154,7 +155,8 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         currentRoute != OFFLINE_PLAYER_ROUTE &&
         currentRoute != LIBRARY_BROWSE_ROUTE &&
         currentRoute != DETAIL_ROUTE &&
-        currentRoute != SERIES_DETAIL_ROUTE
+        currentRoute != SERIES_DETAIL_ROUTE &&
+        currentRoute != SEASON_EPISODES_ROUTE
     val playerPreferences by viewModel.playerPreferences.collectAsState()
     val context = LocalContext.current
     var askedDownloadNotificationPermission by rememberSaveable { mutableStateOf(false) }
@@ -187,6 +189,12 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         if (seriesId.isNotBlank()) navController.navigate("series/${Uri.encode(seriesId)}")
     }
 
+    fun openSeason(seriesId: String, seasonNumber: Int) {
+        if (seriesId.isNotBlank()) {
+            navController.navigate("series/${Uri.encode(seriesId)}/season/$seasonNumber")
+        }
+    }
+
     fun openCatalogDetail(card: MediaCard) {
         val id = card.resolvedId
         if (id.isBlank()) return
@@ -213,6 +221,19 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
 
     fun openPerson(personId: String) {
         if (personId.isNotBlank()) navController.navigate("person/${Uri.encode(personId)}")
+    }
+
+    fun openSearch(query: String) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) return
+        val searchEntry = runCatching {
+            navController.getBackStackEntry(MainTab.Search.route)
+        }.getOrNull()
+        searchEntry?.savedStateHandle?.set("search_query", normalized)
+        navController.navigate(MainTab.Search.route) {
+            launchSingleTop = true
+        }
+        navController.currentBackStackEntry?.savedStateHandle?.set("search_query", normalized)
     }
 
     var showWorkspace by rememberSaveable { mutableStateOf(false) }
@@ -250,8 +271,12 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onMediaClick = ::openCatalogDetail,
                 )
             }
-            composable(MainTab.Search.route) {
+            composable(MainTab.Search.route) { entry ->
+                val initialQuery by entry.savedStateHandle
+                    .getStateFlow("search_query", "")
+                    .collectAsState()
                 SearchScreen(
+                    initialQuery = initialQuery,
                     onMediaClick = ::openCatalogDetail,
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
@@ -327,7 +352,28 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onBack = { navController.popBackStack() },
                     onEpisodeClick = ::openDetail,
                     onPlayEpisode = ::openPlayer,
+                    onGenreClick = ::openSearch,
                     onPersonClick = ::openPerson,
+                    onSeasonClick = { season -> openSeason(entry.arguments?.getString("seriesId").orEmpty(), season) },
+                )
+            }
+            composable(
+                route = SEASON_EPISODES_ROUTE,
+                arguments = listOf(
+                    navArgument("seriesId") { type = NavType.StringType },
+                    navArgument("seasonNumber") { type = NavType.IntType },
+                ),
+                enterTransition = { detailEnterTransition },
+                exitTransition = { detailExitTransition },
+                popEnterTransition = { detailPopEnterTransition },
+                popExitTransition = { detailPopExitTransition },
+            ) { entry ->
+                SeasonEpisodesScreen(
+                    seriesId = entry.arguments?.getString("seriesId").orEmpty(),
+                    seasonNumber = entry.arguments?.getInt("seasonNumber") ?: 1,
+                    onBack = { navController.popBackStack() },
+                    onEpisodeClick = ::openDetail,
+                    onPlayEpisode = ::openPlayer,
                 )
             }
             composable(
@@ -355,9 +401,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
-                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { _ ->
+                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { _, pipAvailable ->
                     PlayerScreen(
                         mediaId = mediaId,
+                        pictureInPictureAvailable = pipAvailable,
                         onBack = { navController.popBackStack() },
                         onPlayNext = { nextId ->
                             navController.navigate("player/${Uri.encode(nextId)}") {
@@ -373,9 +420,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType }),
             ) { entry ->
                 val mediaId = entry.arguments?.getString("mediaId").orEmpty()
-                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) {
+                PlaybackPictureInPictureBinding(enabled = playerPreferences.pictureInPictureEnabled) { _, pipAvailable ->
                     OfflinePlayerScreen(
                         mediaId = mediaId,
+                        pictureInPictureAvailable = pipAvailable,
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -555,19 +603,20 @@ private fun WebMobileBottomBarItem(
 @Composable
 private fun PlaybackPictureInPictureBinding(
     enabled: Boolean,
-    content: @Composable (Boolean) -> Unit,
+    content: @Composable (Boolean, Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val host = remember(context) { context.findPlaybackPictureInPictureHost() }
     val fallbackMode = remember { MutableStateFlow(false) }
     val inPictureInPictureMode by (host?.pictureInPictureMode ?: fallbackMode).collectAsState()
 
-    DisposableEffect(host, enabled) {
-        host?.setPlaybackPictureInPictureActive(enabled)
+    val available = enabled && (host?.playbackPictureInPictureSupported == true)
+    DisposableEffect(host, available) {
+        host?.setPlaybackPictureInPictureActive(available)
         onDispose {
             host?.setPlaybackPictureInPictureActive(false)
         }
     }
 
-    content(inPictureInPictureMode)
+    content(inPictureInPictureMode, available)
 }

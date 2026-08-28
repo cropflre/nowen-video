@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 /** Activity 提供给播放器路由的画中画能力契约，避免 feature 模块反向依赖 app。 */
 interface PlaybackPictureInPictureHost {
     val pictureInPictureMode: StateFlow<Boolean>
+    val playbackPictureInPictureSupported: Boolean
     fun setPlaybackPictureInPictureActive(active: Boolean)
     fun enterPlaybackPictureInPicture()
     fun setPlaybackLandscape(active: Boolean)

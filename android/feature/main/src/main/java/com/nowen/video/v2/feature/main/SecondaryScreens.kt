@@ -24,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -151,6 +152,7 @@ class SearchViewModel @Inject constructor(
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
+    initialQuery: String = "",
     onMediaClick: (MediaCard) -> Unit,
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
@@ -159,6 +161,15 @@ fun SearchScreen(
     val state by viewModel.state.collectAsState()
     val session by viewModel.store.snapshot.collectAsState()
     var selectedKinds by rememberSaveable { mutableStateOf(SearchMediaKind.entries.toSet()) }
+
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank() && state.query != initialQuery) {
+            viewModel.query(initialQuery)
+        }
+    }
+    LaunchedEffect(state.query) {
+        selectedKinds = SearchMediaKind.entries.toSet()
+    }
 
     HillsScreen(modifier) { topPadding ->
         Column(

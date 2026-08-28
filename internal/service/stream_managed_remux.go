@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -90,14 +91,18 @@ func (s *StreamService) ManagedRemuxStream(mediaID string, w http.ResponseWriter
 		return fmt.Errorf("媒体文件不可访问: %w", err)
 	}
 
-	args := make([]string, 0, 32)
-	if start := strings.TrimSpace(r.URL.Query().Get("start")); start != "" && start != "0" {
+	query := r.URL.Query()
+	audioTrack := parseNonNegativeQueryInt(query.Get("audio_track"))
+	subtitleTrack := parseOptionalQueryInt(query.Get("subtitle_track"))
+
+	args := make([]string, 0, 36)
+	if start := strings.TrimSpace(query.Get("start")); start != "" && start != "0" {
 		args = append(args, "-ss", start)
 	}
 	args = append(args,
 		"-i", inputPath,
 		"-map", "0:v:0",
-		"-map", "0:a:0?",
+		"-map", fmt.Sprintf("0:a:%d?", audioTrack),
 		"-c:v", "copy",
 	)
 	if mode == ManagedRemuxTranscodeAudio {
@@ -110,8 +115,15 @@ func (s *StreamService) ManagedRemuxStream(mediaID string, w http.ResponseWriter
 	} else {
 		args = append(args, "-c:a", "copy")
 	}
+	if subtitleTrack >= 0 {
+		args = append(args,
+			"-map", fmt.Sprintf("0:s:%d?", subtitleTrack),
+			"-c:s", "mov_text",
+		)
+	} else {
+		args = append(args, "-sn")
+	}
 	args = append(args,
-		"-sn",
 		"-dn",
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof+faststart",
 		"-avoid_negative_ts", "make_zero",
@@ -152,4 +164,20 @@ func (s *StreamService) ManagedRemuxStream(mediaID string, w http.ResponseWriter
 		return fmt.Errorf("managed remux 失败 mode=%s: %s", mode, result.ErrorText())
 	}
 	return nil
+}
+
+func parseNonNegativeQueryInt(value string) int {
+	parsed := parseOptionalQueryInt(value)
+	if parsed < 0 {
+		return 0
+	}
+	return parsed
+}
+
+func parseOptionalQueryInt(value string) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return -1
+	}
+	return parsed
 }

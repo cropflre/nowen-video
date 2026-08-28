@@ -3,48 +3,54 @@
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -52,14 +58,15 @@ import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SeriesRepository
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.HillsChoiceRail
+import com.nowen.video.v2.core.designsystem.HillsPressable
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
 import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.SeasonInfo
 import com.nowen.video.v2.core.model.SeriesBundle
 import com.nowen.video.v2.core.model.WatchHistoryRecord
-import com.nowen.video.v2.core.model.seriesEpisodeLabel
-import com.nowen.video.v2.core.model.seriesEpisodeSubtitle
+import com.nowen.video.v2.core.model.episodeDisplayName
+import com.nowen.video.v2.core.model.userEpisodeTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -72,14 +79,9 @@ import kotlinx.coroutines.launch
 data class SeriesDetailUiState(
     val loading: Boolean = true,
     val bundle: SeriesBundle? = null,
-    val selectedSeasonNumber: Int? = null,
     val history: List<WatchHistoryRecord> = emptyList(),
     val error: String? = null,
 ) {
-    val selectedSeason: SeasonInfo?
-        get() = bundle?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
-            ?: bundle?.seasons?.firstOrNull()
-
     val orderedEpisodes: List<MediaDetail>
         get() = bundle?.seasons.orEmpty()
             .sortedWith(compareBy<SeasonInfo> { it.seasonNumber == 0 }.thenBy { it.seasonNumber })
@@ -119,10 +121,10 @@ data class SeriesDetailUiState(
             val progress = historyByMediaId[episode.id]
             return when {
                 progress != null && !progress.completed && progress.normalizedProgress > 0.01f ->
-                    "继续播放 ${episode.seasonEpisodeCode}"
+                    "继续播放 ${episodeDisplayName(episode.seasonNumber, episode.episodeNumber)}"
                 watchedCount >= orderedEpisodes.size && orderedEpisodes.isNotEmpty() ->
-                    "重新播放 ${episode.seasonEpisodeCode}"
-                else -> "播放 ${episode.seasonEpisodeCode}"
+                    "重新播放 ${episodeDisplayName(episode.seasonNumber, episode.episodeNumber)}"
+                else -> "播放 ${episodeDisplayName(episode.seasonNumber, episode.episodeNumber)}"
             }
         }
 }
@@ -130,12 +132,40 @@ data class SeriesDetailUiState(
 private val WatchHistoryRecord.resolvedMediaId: String
     get() = mediaId.ifBlank { media.resolvedId }
 
-private val MediaDetail.seasonEpisodeCode: String
-    get() = if (seasonNumber == 0) {
-        "SP${episodeNumber.toString().padStart(2, '0')}"
-    } else {
-        "S${seasonNumber.toString().padStart(2, '0')}E${episodeNumber.toString().padStart(2, '0')}"
+internal fun ensureDefaultSeason(bundle: SeriesBundle): SeriesBundle =
+    bundle.copy(
+        seasons = bundle.seasons
+            .distinctBy(SeasonInfo::seasonNumber)
+            .sortedWith(compareBy<SeasonInfo> { it.seasonNumber == 0 }.thenBy { it.seasonNumber }),
+    )
+
+internal fun seriesHeroMetadata(
+    series: com.nowen.video.v2.core.model.SeriesInfo,
+    selectedSeason: SeasonInfo? = null,
+    actualSeasonCount: Int = series.seasonCount,
+): String =
+    listOfNotNull(
+        series.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+        series.year.takeIf { it > 0 }?.toString(),
+        series.genreList.takeIf { it.isNotEmpty() }?.joinToString("、"),
+        selectedSeason?.let { "${it.label} · ${it.episodes.size} 集" },
+        actualSeasonCount.takeIf { it > 0 }?.let { "共 $it 季" },
+        if (selectedSeason == null) series.episodeCount.takeIf { it > 0 }?.let { "$it 集" } else null,
+    ).joinToString(" · ")
+
+private suspend fun loadAllHistory(repository: SocialCatalogRepository): List<WatchHistoryRecord> {
+    val pageSize = 50
+    val first = repository.history(page = 1, size = pageSize).getOrElse { return emptyList() }
+    val totalPages = ((first.total + pageSize - 1) / pageSize).coerceAtLeast(1)
+    if (totalPages == 1) return first.data
+    val remaining = (2..totalPages).mapNotNull { page ->
+        repository.history(page = page, size = pageSize).getOrNull()?.data
     }
+    return buildList {
+        addAll(first.data)
+        remaining.forEach(::addAll)
+    }
+}
 
 @HiltViewModel
 class SeriesDetailViewModel @Inject constructor(
@@ -156,20 +186,15 @@ class SeriesDetailViewModel @Inject constructor(
             runCatching {
                 coroutineScope {
                     val bundleDeferred = async { repository.load(id).getOrThrow() }
-                    val historyDeferred = async {
-                        socialRepository.history(page = 1, size = 100).getOrNull()?.data.orEmpty()
-                    }
-                    val bundle = bundleDeferred.await()
+                    val historyDeferred = async { loadAllHistory(socialRepository) }
+                    val bundle = ensureDefaultSeason(bundleDeferred.await())
                     val history = historyDeferred.await()
                     val provisional = SeriesDetailUiState(
                         loading = false,
                         bundle = bundle,
                         history = history,
                     )
-                    provisional.copy(
-                        selectedSeasonNumber = provisional.continueEpisode?.seasonNumber
-                            ?: initialSeasonNumber(bundle.seasons),
-                    )
+                    provisional
                 }
             }.onSuccess { next ->
                 _state.value = next
@@ -182,15 +207,6 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    fun selectSeason(seasonNumber: Int) {
-        if (_state.value.bundle?.seasons?.none { it.seasonNumber == seasonNumber } != false) return
-        _state.update { it.copy(selectedSeasonNumber = seasonNumber) }
-    }
-}
-
-private enum class SeriesDetailTab(val label: String) {
-    Episodes("剧集"),
-    Overview("简介"),
 }
 
 @Composable
@@ -199,18 +215,19 @@ fun SeriesDetailScreen(
     onBack: () -> Unit,
     onEpisodeClick: (String) -> Unit,
     onPlayEpisode: (String) -> Unit,
+    onGenreClick: (String) -> Unit = {},
     onPersonClick: (String) -> Unit,
+    onSeasonClick: (Int) -> Unit,
     viewModel: SeriesDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val session by viewModel.sessionStore.snapshot.collectAsState()
-    var selectedTab by rememberSaveable(seriesId) { mutableIntStateOf(0) }
     LaunchedEffect(seriesId) { viewModel.load(seriesId) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Color(0xFF3A281E)),
     ) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -224,29 +241,69 @@ fun SeriesDetailScreen(
             state.bundle != null -> {
                 val bundle = state.bundle!!
                 val series = bundle.series
-                val selectedSeason = state.selectedSeason
-                val tabs = SeriesDetailTab.entries
+                val displaySeasons = bundle.seasons.sortedWith(
+                    compareBy<SeasonInfo> { it.seasonNumber == 0 }.thenBy { it.seasonNumber },
+                )
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 36.dp),
                 ) {
                     item {
-                        MobileDetailHero(
+                        SeriesDetailHero(
                             title = series.displayTitle,
                             originalTitle = series.originalTitle,
-                            metadata = series.metadataLabel,
-                            overview = series.overview,
+                            metadata = seriesHeroMetadata(series, null, displaySeasons.size),
                             backdropUrl = seriesBackdropUrl(session.activeServer?.baseUrl, series.id),
                             posterUrl = seriesPosterUrl(session.activeServer?.baseUrl, series.id),
-                            primaryActionLabel = state.continueActionLabel,
-                            onPrimaryAction = {
-                                state.continueEpisode?.let { onPlayEpisode(it.id) }
-                            },
+                            primaryActionLabel = state.continueEpisode?.let { state.continueActionLabel }.orEmpty(),
+                            onPrimaryAction = { state.continueEpisode?.let { onPlayEpisode(it.id) } },
                             onBack = onBack,
                             logoUrl = seriesLogoUrl(session.activeServer?.baseUrl, series.id),
                         )
                     }
-
+                    if (series.overview.isNotBlank() || series.genreList.isNotEmpty() || bundle.persons.any { it.role.equals("director", ignoreCase = true) }) {
+                        item {
+                            SeriesOverviewSynopsis(
+                                overview = series.overview.ifBlank { state.continueEpisode?.overview.orEmpty() },
+                                episode = state.continueEpisode,
+                                genres = series.genreList,
+                                directors = bundle.persons
+                                    .filter { it.role.equals("director", ignoreCase = true) }
+                                    .map { it.person.name }
+                                    .filter(String::isNotBlank)
+                                    .distinct(),
+                                onGenreClick = onGenreClick,
+                            )
+                        }
+                    }
+                    if (state.continueEpisode != null) {
+                        item {
+                            DetailSection("继续观看") {
+                                ContinueEpisodeCard(
+                                    episode = state.continueEpisode!!,
+                                    baseUrl = session.activeServer?.baseUrl,
+                                    progress = state.historyByMediaId[state.continueEpisode!!.id]?.normalizedProgress ?: 0f,
+                                    onOpen = { onEpisodeClick(state.continueEpisode!!.id) },
+                                )
+                            }
+                        }
+                    }
+                    item {
+                        DetailSection(
+                            title = "季",
+                            subtitle = if (displaySeasons.isEmpty()) "服务器未返回季信息" else "选择要浏览的季",
+                        ) {
+                            if (displaySeasons.isEmpty()) {
+                                HillsState("暂无季信息", "当前服务器没有返回可浏览的季。")
+                            } else {
+                                SeasonEntryRail(
+                                    seasons = displaySeasons,
+                                    baseUrl = session.activeServer?.baseUrl,
+                                    onSeasonClick = onSeasonClick,
+                                )
+                            }
+                        }
+                    }
                     if (bundle.persons.isNotEmpty()) {
                         item {
                             DetailCastShelf(
@@ -256,100 +313,6 @@ fun SeriesDetailScreen(
                             )
                         }
                     }
-
-                    item {
-                        DetailTabStrip(
-                            labels = tabs.map(SeriesDetailTab::label),
-                            selectedIndex = selectedTab.coerceIn(0, tabs.lastIndex),
-                            onSelected = { selectedTab = it },
-                        )
-                    }
-
-                    when (tabs[selectedTab.coerceIn(0, tabs.lastIndex)]) {
-                        SeriesDetailTab.Episodes -> {
-                            item {
-                                DetailSection(
-                                    title = "观看进度",
-                                    subtitle = "回到上次播放位置，或继续下一集",
-                                ) {
-                                    DetailInfoPanel(
-                                        listOfNotNull(
-                                            "观看进度" to "${state.watchedCount} / ${state.orderedEpisodes.size} 集",
-                                            state.inProgressCount.takeIf { it > 0 }?.let { "进行中" to "$it 集" },
-                                            state.continueEpisode?.let { "当前" to it.seasonEpisodeCode },
-                                        ),
-                                    )
-                                }
-                            }
-                            item {
-                                DetailSection("选择季") {
-                                    if (bundle.seasons.isEmpty()) {
-                                        HillsState("暂无单集", "服务器中还没有可播放的单集。")
-                                    } else {
-                                        HillsChoiceRail(
-                                            options = bundle.seasons.map { season ->
-                                                season.seasonNumber.toString() to "${season.label} · ${season.episodes.size}"
-                                            },
-                                            selected = selectedSeason?.seasonNumber?.toString().orEmpty(),
-                                            onSelect = { value -> viewModel.selectSeason(value.toInt()) },
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (selectedSeason != null && selectedSeason.episodes.isEmpty()) {
-                                item {
-                                    HillsState(
-                                        title = "本季暂无单集",
-                                        message = "扫描或整理完成后，单集会显示在这里。",
-                                        modifier = Modifier.padding(horizontal = 20.dp),
-                                    )
-                                }
-                            } else {
-                                items(selectedSeason?.episodes.orEmpty(), key = MediaDetail::id) { episode ->
-                                    val history = state.historyByMediaId[episode.id]
-                                    EpisodeWorkspaceCard(
-                                        episode = episode,
-                                        imageUrl = mediaBackdropUrl(session.activeServer?.baseUrl, episode.id),
-                                        history = history,
-                                        highlighted = episode.id == state.continueEpisode?.id,
-                                        onOpen = { onEpisodeClick(episode.id) },
-                                        onPlay = { onPlayEpisode(episode.id) },
-                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-                                    )
-                                }
-                            }
-                        }
-
-                        SeriesDetailTab.Overview -> item {
-                            DetailSection("剧情简介") {
-                                Text(
-                                    series.overview.ifBlank { "暂无简介" },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                if (series.genreList.isNotEmpty()) {
-                                    Spacer(Modifier.height(14.dp))
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(series.genreList, key = { it }) { genre ->
-                                            SuggestionChip(onClick = {}, label = { Text(genre) })
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(16.dp))
-                                DetailInfoPanel(
-                                    listOfNotNull(
-                                        series.seasonCount.takeIf { it > 0 }?.let { "季数" to "$it 季" },
-                                        series.episodeCount.takeIf { it > 0 }?.let { "集数" to "$it 集" },
-                                        series.year.takeIf { it > 0 }?.let { "年份" to it.toString() },
-                                        series.country.takeIf(String::isNotBlank)?.let { "地区" to it },
-                                        series.language.takeIf(String::isNotBlank)?.let { "语言" to it },
-                                        series.studio.takeIf(String::isNotBlank)?.let { "制作" to it },
-                                    ),
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -357,96 +320,302 @@ fun SeriesDetailScreen(
 }
 
 @Composable
-private fun EpisodeWorkspaceCard(
-    episode: MediaDetail,
-    imageUrl: String?,
-    history: WatchHistoryRecord?,
-    highlighted: Boolean,
-    onOpen: () -> Unit,
-    onPlay: () -> Unit,
-    modifier: Modifier = Modifier,
+internal fun SeriesDetailHero(
+    title: String,
+    originalTitle: String,
+    metadata: String,
+    backdropUrl: String?,
+    posterUrl: String?,
+    logoUrl: String?,
+    primaryActionLabel: String,
+    onPrimaryAction: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    Row(
-        modifier = modifier
+    var backdropFailed by remember(title, backdropUrl) { mutableStateOf(backdropUrl.isNullOrBlank()) }
+    val artwork = if (backdropFailed) posterUrl else backdropUrl
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .height(590.dp)
+            .background(Color(0xFF3A281E)),
     ) {
+        artwork?.let { image ->
             AsyncImage(
-                model = imageUrl,
-                contentDescription = episode.seriesEpisodeLabel,
+                model = image,
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = { backdropFailed = true },
                 modifier = Modifier
-                    .width(118.dp)
-                    .aspectRatio(16f / 9f)
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .fillMaxSize()
+                    .then(if (backdropFailed) Modifier else Modifier),
             )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        episode.seasonEpisodeCode,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.10f),
+                        0.46f to Color.Black.copy(alpha = 0.22f),
+                        0.72f to Color(0xFF3A281E).copy(alpha = 0.80f),
+                        1f to Color(0xFF3A281E),
+                    ),
+                ),
+        )
+        Surface(
+            onClick = onBack,
+            modifier = Modifier
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(start = 12.dp, top = 8.dp)
+                .size(48.dp),
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = Color.Black.copy(alpha = 0.42f),
+            contentColor = Color.White,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
+            DetailTitleArtwork(
+                logoUrl = logoUrl,
+                fallbackTitle = title,
+                maxWidth = 360.dp,
+                maxHeight = 112.dp,
+                fallbackStyle = MaterialTheme.typography.displaySmall,
+            )
+            if (originalTitle.isNotBlank() && originalTitle != title) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = originalTitle,
+                    color = Color.White.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = metadata,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(14.dp))
+            if (primaryActionLabel.isNotBlank()) {
+                HillsPrimaryAction(
+                    label = primaryActionLabel,
+                    icon = Icons.Default.PlayArrow,
+                    onClick = onPrimaryAction,
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = Color(0xFFF5B36B),
+                    contentColor = Color(0xFF4B2E1E),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesOverviewSynopsis(
+    overview: String,
+    episode: MediaDetail?,
+    genres: List<String>,
+    directors: List<String>,
+    onGenreClick: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+    ) {
+        if (episode != null) {
+            Text(
+                text = episodeDisplayName(episode.seasonNumber, episode.episodeNumber),
+                color = Color(0xFFF3E6DC),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        if (overview.isNotBlank()) {
+            Text(
+                text = overview,
+                color = Color(0xFFF3E6DC),
+                style = MaterialTheme.typography.bodyLarge,
+                lineHeight = 24.sp,
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (directors.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "导演：${directors.joinToString("、")}",
+                color = Color(0xFFF3E6DC),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (genres.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(genres, key = { it }) { genre ->
+                    SuggestionChip(
+                        onClick = { onGenreClick(genre) },
+                        label = { Text(genre) },
                     )
-                    if (history?.completed == true) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "已看完",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContinueEpisodeCard(
+    episode: MediaDetail,
+    baseUrl: String?,
+    progress: Float,
+    onOpen: () -> Unit,
+) {
+    var imageFailed by remember(episode.id) { mutableStateOf(false) }
+    val imageUrl = if (imageFailed) mediaPosterUrl(baseUrl, episode.id) else mediaBackdropUrl(baseUrl, episode.id)
+    val episodeLabel = episodeDisplayName(episode.seasonNumber, episode.episodeNumber)
+    HillsPressable(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(168.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = episode.userEpisodeTitle,
+                        contentScale = ContentScale.Crop,
+                        onError = { imageFailed = true },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (progress > 0f) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.Transparent,
                         )
                     }
                 }
                 Text(
-                    episode.episodeTitle.ifBlank { episode.seriesEpisodeLabel },
+                    episodeLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
                 )
-                if (episode.seriesEpisodeSubtitle.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
+            }
+            episode.userEpisodeTitle
+                .takeIf { it.isNotBlank() && it != episodeLabel }
+                ?.let { title ->
                     Text(
-                        episode.seriesEpisodeSubtitle,
+                        title,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-                history?.let { record ->
-                    val progress = if (record.completed) 1f else record.normalizedProgress
-                    if (progress > 0f) {
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (record.completed) "已看完" else "已观看 ${(progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        }
+    }
+}
+
+@Composable
+private fun SeasonEntryRail(
+    seasons: List<SeasonInfo>,
+    baseUrl: String?,
+    onSeasonClick: (Int) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(end = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(seasons, key = SeasonInfo::seasonNumber) { season ->
+            val preview = season.episodes.firstOrNull()
+            var imageFailed by remember(season.seasonNumber, preview?.id) { mutableStateOf(false) }
+            val imageUrl = if (imageFailed) {
+                preview?.let { mediaBackdropUrl(baseUrl, it.id) }
+            } else {
+                preview?.let { mediaPosterUrl(baseUrl, it.id) }
+            }
+            HillsPressable(
+                onClick = { onSeasonClick(season.seasonNumber) },
+                modifier = Modifier.width(112.dp),
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        if (imageUrl != null) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = season.label,
+                                contentScale = ContentScale.Crop,
+                                onError = { imageFailed = true },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        val episodeCount = season.episodeCount.takeIf { it > 0 } ?: season.episodes.size
+                        if (episodeCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .size(36.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(Color(0xCC25201D)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    episodeCount.toString(),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(season.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = onPlay) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "播放${episode.seriesEpisodeLabel}")
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        }
     }
 }
 
 internal fun initialSeasonNumber(seasons: List<SeasonInfo>): Int? =
-    seasons.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
+    seasons.firstOrNull { it.seasonNumber > 0 && it.episodes.isNotEmpty() }?.seasonNumber
+        ?: seasons.firstOrNull { it.seasonNumber > 0 }?.seasonNumber
+        ?: seasons.firstOrNull { it.episodes.isNotEmpty() }?.seasonNumber
         ?: seasons.firstOrNull()?.seasonNumber
 
 internal fun seriesPosterUrl(baseUrl: String?, seriesId: String): String? =
