@@ -167,7 +167,7 @@ class LibraryViewModel @Inject constructor(
 
     fun resetFilter() = applyFilter(LibraryFilter())
 
-    fun selectMedia(id: String) {
+    fun selectMedia(id: String, isSeries: Boolean = false) {
         if (id.isBlank()) return
         if (_state.value.selectedMediaId == id && _state.value.selectedDetail != null) return
         selectionJob?.cancel()
@@ -204,7 +204,7 @@ class LibraryViewModel @Inject constructor(
 @Composable
 fun LibraryScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
@@ -295,7 +295,7 @@ private fun LibraryCatalogPane(
     onFilterClick: () -> Unit,
     onRefresh: () -> Unit,
     onFilterChange: (LibraryFilter) -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -364,7 +364,7 @@ private fun LibraryGrid(
     media: LazyPagingItems<MediaCard>,
     state: LibraryUiState,
     baseUrl: String?,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 132.dp),
@@ -399,7 +399,7 @@ private fun LibraryGrid(
                         subtitle = item.year?.toString(),
                         imageUrl = resolveImage(baseUrl, item.resolvedPoster),
                         progress = item.normalizedProgress,
-                        onClick = { onMediaClick(item.resolvedId) },
+                        onClick = { onMediaClick(item.resolvedId, item.isSeries) },
                         modifier = Modifier.padding(3.dp),
                     )
                 }
@@ -534,7 +534,7 @@ private fun LibraryDetailPane(
     state: LibraryUiState,
     baseUrl: String?,
     onRetry: (String) -> Unit,
-    onOpenDetail: (String) -> Unit,
+    onOpenDetail: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -574,7 +574,7 @@ private fun LibraryDetailPane(
 private fun LibraryDetailContent(
     media: MediaDetail,
     baseUrl: String?,
-    onOpenDetail: (String) -> Unit,
+    onOpenDetail: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
 ) {
     Column(
@@ -637,7 +637,7 @@ private fun LibraryDetailContent(
             Text("立即播放")
         }
         OutlinedButton(
-            onClick = { onOpenDetail(media.id) },
+            onClick = { onOpenDetail(media.id, media.mediaType == "series") },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp),

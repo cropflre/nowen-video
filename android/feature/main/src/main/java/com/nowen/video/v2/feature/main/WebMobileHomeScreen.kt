@@ -81,7 +81,7 @@ private val WEB_MOBILE_HOME_GENRES = listOf("动画", "喜剧", "冒险", "家�
 @Composable
 fun WebMobileHomeScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     onRestart: (String) -> Unit = onPlay,
     onLibraryClick: () -> Unit,
@@ -172,7 +172,7 @@ fun WebMobileHomeScreen(
                                     media = media,
                                     imageUrl = webMobileArtwork(baseUrl, media, preferBackdrop = true),
                                     width = cardWidth,
-                                    onClick = { onMediaClick(media.resolvedId) },
+                                    onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                                 )
                             }
                         }
@@ -553,7 +553,7 @@ private fun WebMobilePosterShelf(
     items: List<MediaCard>,
     baseUrl: String?,
     onMore: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
 ) {
     WebMobileSectionSurface {
         WebMobileSectionHeader(title = title, action = "更多", onAction = onMore)
@@ -566,7 +566,7 @@ private fun WebMobilePosterShelf(
                         media = media,
                         imageUrl = webMobileArtwork(baseUrl, media, preferBackdrop = false),
                         width = cardWidth,
-                        onClick = { onMediaClick(media.resolvedId) },
+                        onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                     )
                 }
             }

@@ -104,7 +104,7 @@ class FavoritesViewModel @Inject constructor(
 @Composable
 fun FavoritesScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     viewModel: FavoritesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -124,7 +124,7 @@ fun FavoritesScreen(
                     media = media,
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     subtitle = listOfNotNull(media.year?.toString(), "已收藏").joinToString(" · "),
-                    onClick = { onMediaClick(media.resolvedId.ifBlank { favorite.mediaId }) },
+                    onClick = { onMediaClick(media.resolvedId.ifBlank { favorite.mediaId }, media.isSeries) },
                     action = {
                         IconButton(
                             onClick = { viewModel.remove(favorite.mediaId.ifBlank { media.resolvedId }) },
@@ -199,7 +199,7 @@ class HistoryViewModel @Inject constructor(
 @Composable
 fun HistoryScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     viewModel: HistoryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -229,7 +229,7 @@ fun HistoryScreen(
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     subtitle = history.progressLabel,
                     progress = history.normalizedProgress,
-                    onClick = { onMediaClick(media.resolvedId.ifBlank { history.mediaId }) },
+                    onClick = { onMediaClick(media.resolvedId.ifBlank { history.mediaId }, media.isSeries) },
                     action = {
                         IconButton(
                             onClick = { viewModel.delete(history.mediaId) },
@@ -381,7 +381,7 @@ class CollectionDetailViewModel @Inject constructor(
 fun CollectionDetailScreen(
     collectionId: String,
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     viewModel: CollectionDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -449,7 +449,7 @@ fun CollectionDetailScreen(
                             media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
                             media.resolution.takeIf(String::isNotBlank),
                         ).joinToString(" · "),
-                        onClick = { onMediaClick(media.id) },
+                        onClick = { onMediaClick(media.id, false) },
                     )
                 }
             }
@@ -497,7 +497,7 @@ class PersonDetailViewModel @Inject constructor(
 fun PersonDetailScreen(
     personId: String,
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     viewModel: PersonDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -553,7 +553,7 @@ fun PersonDetailScreen(
                             media = media,
                             imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                             subtitle = media.year?.toString().orEmpty(),
-                            onClick = { onMediaClick(media.resolvedId) },
+                            onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                         )
                     }
                 }

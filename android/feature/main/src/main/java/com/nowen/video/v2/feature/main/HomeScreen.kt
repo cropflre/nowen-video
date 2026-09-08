@@ -140,7 +140,7 @@ class HomeViewModel @Inject constructor(
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     onRestart: (String) -> Unit = onPlay,
     onLibraryClick: () -> Unit,
@@ -243,7 +243,7 @@ fun HomeScreen(
                         LandscapeMediaCard(
                             media = media,
                             imageUrl = resolveHomeArtwork(baseUrl, media, preferBackdrop = true),
-                            onClick = { onMediaClick(media.resolvedId) },
+                            onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                         )
                     }
                 }
@@ -287,7 +287,7 @@ fun HomeScreen(
 private fun HomeHeroCarousel(
     items: List<MediaCard>,
     baseUrl: String?,
-    onOpen: (String) -> Unit,
+    onOpen: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     onRestart: (String) -> Unit,
     onFavoritesClick: () -> Unit,
@@ -484,7 +484,7 @@ private fun HomeHeroCarousel(
                 }
 
                 Surface(
-                    onClick = { onOpen(item.resolvedId) },
+                    onClick = { onOpen(item.resolvedId, item.isSeries) },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp),
@@ -677,7 +677,7 @@ private fun PosterShelf(
     items: List<MediaCard>,
     baseUrl: String?,
     onMore: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
 ) {
     Column {
         HomeSectionHeader(title = title, action = "更多", onAction = onMore)
@@ -687,7 +687,7 @@ private fun PosterShelf(
                 PosterMediaCard(
                     media = media,
                     imageUrl = resolveHomeArtwork(baseUrl, media, preferBackdrop = false),
-                    onClick = { onMediaClick(media.resolvedId) },
+                    onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                 )
             }
         }

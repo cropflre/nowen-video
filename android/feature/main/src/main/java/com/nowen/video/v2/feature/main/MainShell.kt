@@ -153,8 +153,14 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         }
     }
 
-    fun openDetail(mediaId: String) {
-        if (mediaId.isNotBlank()) navController.navigate("detail/${Uri.encode(mediaId)}")
+    fun openDetail(mediaId: String, isSeries: Boolean = false) {
+        if (mediaId.isNotBlank()) {
+            if (isSeries) {
+                navController.navigate("series/${Uri.encode(mediaId)}")
+            } else {
+                navController.navigate("detail/${Uri.encode(mediaId)}")
+            }
+        }
     }
 
     fun openSeries(seriesId: String) {

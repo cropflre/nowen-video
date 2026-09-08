@@ -374,7 +374,7 @@ fun MediaDetailScreen(
     onHighlightPlay: (String, Double) -> Unit = { id, _ -> onPlay(id) },
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
-    onMediaClick: (String) -> Unit = onPlay,
+    onMediaClick: (String, Boolean) -> Unit = { id, _ -> onPlay(id) },
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -528,7 +528,7 @@ fun MediaDetailScreen(
                                         SimilarPosterCard(
                                             media = item,
                                             imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                                            onClick = { onMediaClick(item.resolvedId) },
+                                            onClick = { onMediaClick(item.resolvedId, item.isSeries) },
                                         )
                                     }
                                 }

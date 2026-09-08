@@ -134,7 +134,7 @@ class SearchViewModel @Inject constructor(
 @Composable
 fun SearchScreen(
     modifier: Modifier = Modifier,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
@@ -183,7 +183,7 @@ fun SearchScreen(
                                         subtitle = media.year?.toString(),
                                         imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                                         progress = media.normalizedProgress,
-                                        onClick = { onMediaClick(media.resolvedId) },
+                                        onClick = { onMediaClick(media.resolvedId, media.isSeries) },
                                     )
                                 }
                             }

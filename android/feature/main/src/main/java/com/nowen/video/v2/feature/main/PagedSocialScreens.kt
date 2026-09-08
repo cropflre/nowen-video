@@ -146,7 +146,7 @@ data class PagedSocialAction(
 @Composable
 fun PagedFavoritesScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     viewModel: PagedFavoritesViewModel = hiltViewModel(),
 ) {
     val favorites = viewModel.favorites.collectAsLazyPagingItems()
@@ -215,7 +215,7 @@ fun PagedFavoritesScreen(
                     media = media,
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     removing = action.runningId == mediaId,
-                    onClick = { onMediaClick(mediaId) },
+                    onClick = { onMediaClick(mediaId, media.isSeries) },
                     onRemove = { viewModel.remove(mediaId, favorites::refresh) },
                 )
             }
@@ -236,7 +236,7 @@ fun PagedFavoritesScreen(
 @Composable
 fun PagedHistoryScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (String, Boolean) -> Unit,
     onPlay: (String) -> Unit,
     viewModel: PagedHistoryViewModel = hiltViewModel(),
 ) {
@@ -314,7 +314,7 @@ fun PagedHistoryScreen(
                     imageUrl = mediaBackdropUrl(session.activeServer?.baseUrl, mediaId),
                     deleting = action.runningId == mediaId,
                     onPlay = { onPlay(mediaId) },
-                    onDetail = { onMediaClick(mediaId) },
+                    onDetail = { onMediaClick(mediaId, media.isSeries) },
                     onDelete = { viewModel.delete(mediaId, historyItems::refresh) },
                 )
             }
