@@ -267,6 +267,11 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 	// 判断是否为视频文件或目录
 	ext := strings.ToLower(filepath.Ext(event.Name))
 	isVideo := supportedExts[ext]
+	// 隐藏目录与 NAS 缓存目录（fnOS .@__thumb、群晖 @eaDir 等）内的文件
+	// 是缩略图/预览缓存，不参与媒体导入
+	if isVideo && pathHasHiddenOrCacheSegment(event.Name) {
+		return
+	}
 	isDir := false
 	if info, err := os.Stat(event.Name); err == nil {
 		isDir = info.IsDir()
