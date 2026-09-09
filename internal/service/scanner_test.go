@@ -2,7 +2,11 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/nowen-video/nowen-video/internal/model"
 )
 
 func TestParseEpisodeInfo(t *testing.T) {
@@ -510,5 +514,101 @@ func TestSeasonZeroSupport(t *testing.T) {
 			}
 			fmt.Printf("  ✓ %q → 季号 %d\n", tt.dirName, got)
 		})
+	}
+}
+
+// TestIsHiddenOrCacheDirName 隐藏目录与 NAS 缓存目录名判断
+func TestIsHiddenOrCacheDirName(t *testing.T) {
+	cases := map[string]bool{
+		".@__thumb":         true, // 飞牛 fnOS 缩略图缓存
+		"@eaDir":            true, // 群晖缩略图/元数据
+		"#recycle":          true, // 群晖回收站
+		".Trashes":          true, // macOS
+		".Spotlight-V100":   true, // macOS 索引
+		"$RECYCLE.BIN":      true, // Windows 回收站
+		"System Volume Information": true,
+		"Season 01":         false,
+		"布鲁伊第一季":            false,
+		"extras":            false, // 由 extrasExcludeDirs 单独处理
+		"":                  false,
+	}
+	for name, want := range cases {
+		if got := isHiddenOrCacheDirName(name); got != want {
+			t.Errorf("isHiddenOrCacheDirName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestPathHasHiddenOrCacheSegment 路径中任一段命中隐藏/缓存目录
+func TestPathHasHiddenOrCacheSegment(t *testing.T) {
+	if !pathHasHiddenOrCacheSegment(`/media/剧/.@__thumb/s800《剧》 第1集.mp4`) {
+		t.Error("包含 .@__thumb 段的路径应命中")
+	}
+	if !pathHasHiddenOrCacheSegment(`/media/@eaDir/剧.mp4`) {
+		t.Error("包含 @eaDir 段的路径应命中")
+	}
+	if pathHasHiddenOrCacheSegment(`/media/布鲁伊第一季/《剧》 第1集.mp4`) {
+		t.Error("正常媒体路径不应命中")
+	}
+}
+
+// TestCollectEpisodesSkipsHiddenCacheDirs 剧集收集必须跳过 NAS 缓存目录
+// （回归：fnOS .@__thumb 内 JPEG 缩略图伪 .mp4 被当作剧集入库，产生 mjpeg 幽灵剧集）
+func TestCollectEpisodesSkipsHiddenCacheDirs(t *testing.T) {
+	s := &ScannerService{}
+	root := t.TempDir()
+
+	write := func(rel string) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("S01E01.mp4")
+	write("S01E02.mp4")
+	write("子目录/S01E03.mp4")
+	// fnOS 缩略图缓存：隐藏目录 + 保留原视频 .mp4 扩展名的 JPEG
+	write(".@__thumb/s800《剧》 第1集.mp4")
+	write(".@__thumb/s100《剧》 第2集.mp4")
+	// 群晖 @eaDir
+	write("@eaDir/S01E01.mp4")
+	// 深层嵌套的隐藏目录
+	write("子目录/.Spotlight-V100/S01E04.mp4")
+
+	eps := s.collectEpisodes(root)
+	if len(eps) != 3 {
+		t.Fatalf("应只收集 3 个正片, 实际 %d 个", len(eps))
+	}
+	for _, ep := range eps {
+		if pathHasHiddenOrCacheSegment(ep.FilePath) {
+			t.Errorf("不应收集缓存目录内文件: %s", ep.FilePath)
+		}
+	}
+}
+
+// TestIsStillImageMedia 静态图片防御过滤（不得误杀正常时长的 Motion-JPEG 视频）
+func TestIsStillImageMedia(t *testing.T) {
+	cases := []struct {
+		desc     string
+		codec    string
+		duration float64
+		want     bool
+	}{
+		{"fnOS 缩略图(JPEG 内容, 单帧时长)", "mjpeg", 0.04, true},
+		{"无时长的 JPEG", "mjpeg", 0, true},
+		{"PNG 图片", "png", 0, true},
+		{"正常时长的 Motion-JPEG 视频", "mjpeg", 1420.5, false},
+		{"h264 正片", "h264", 1420.5, false},
+		{"探测失败(codec 为空, 如 ffprobe 不可用)", "", 0, false},
+	}
+	for _, c := range cases {
+		media := &model.Media{VideoCodec: c.codec, Duration: c.duration}
+		if got := isStillImageMedia(media); got != c.want {
+			t.Errorf("%s: isStillImageMedia(codec=%q, dur=%v) = %v, want %v", c.desc, c.codec, c.duration, got, c.want)
+		}
 	}
 }
