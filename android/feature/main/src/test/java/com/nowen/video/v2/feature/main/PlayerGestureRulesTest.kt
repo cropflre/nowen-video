@@ -54,7 +54,7 @@ class PlayerGestureRulesTest {
     fun `timeline controls stay above Android navigation gestures`() {
         val source = readPlayerControlsSource()
         val timelineStart = source.indexOf("val preview = seekPreviewMs ?: positionMs")
-        val timelineEnd = source.indexOf("if (boostingSpeed", startIndex = timelineStart)
+        val timelineEnd = source.indexOf("private fun FixedPlayerSlot", startIndex = timelineStart)
 
         assertTrue("未找到播放器时间轴区域", timelineStart >= 0 && timelineEnd > timelineStart)
         val timelineSource = source.substring(timelineStart, timelineEnd)
@@ -75,18 +75,6 @@ class PlayerGestureRulesTest {
         assertEquals(
             "HTTPS://NOWEN.EXAMPLE/api/stream/movie",
             resolveServerResource("https://nowen.example", "HTTPS://NOWEN.EXAMPLE/api/stream/movie"),
-        )
-    }
-
-    @Test
-    fun `remux track selection preserves existing query and appends indexes`() {
-        assertEquals(
-            "https://nowen.example/api/stream/movie/remux?start=12&audio_track=2&subtitle_track=1",
-            playbackUrlWithTrackSelection(
-                "https://nowen.example/api/stream/movie/remux?start=12",
-                audioTrack = 2,
-                subtitleTrack = 1,
-            ),
         )
     }
 

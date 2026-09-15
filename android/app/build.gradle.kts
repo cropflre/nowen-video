@@ -39,13 +39,13 @@ check(resolvedVersionCode > 0) { "ANDROID_VERSION_CODE must be a positive intege
 val resolvedVersionName = versionNameInput ?: "1.2.9"
 
 android {
-    // Keep the source namespace stable during the UI migration. The installable
-    // product identity is independent from the upstream Nowen application.
+    // The modular implementation keeps its existing source namespace to avoid a
+    // risky package-only rewrite. The public product identity is com.nowen.video.
     namespace = "com.nowen.video.v2"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.nowenplayer"
+        applicationId = "com.nowen.video"
         minSdk = 26
         targetSdk = 35
         versionCode = resolvedVersionCode

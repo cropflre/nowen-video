@@ -144,11 +144,20 @@ fun HillsPrimaryAction(
     icon: ImageVector? = null,
     containerColor: Color = NowenColors.Brand,
     contentColor: Color = Color.White,
+    enabled: Boolean = true,
 ) {
-    HillsPressable(onClick = onClick, modifier = modifier.height(HillsMetrics.controlHeight).clip(RoundedCornerShape(18.dp)).background(containerColor)) {
+    HillsPressable(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .height(HillsMetrics.controlHeight)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (enabled) containerColor else containerColor.copy(alpha = 0.42f)),
+    ) {
+        val resolvedContentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.62f)
         Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) { Icon(icon, null, tint = contentColor); Spacer(Modifier.width(8.dp)) }
-            Text(label, color = contentColor, fontWeight = FontWeight.SemiBold)
+            if (icon != null) { Icon(icon, null, tint = resolvedContentColor); Spacer(Modifier.width(8.dp)) }
+            Text(label, color = resolvedContentColor, fontWeight = FontWeight.SemiBold)
         }
     }
 }

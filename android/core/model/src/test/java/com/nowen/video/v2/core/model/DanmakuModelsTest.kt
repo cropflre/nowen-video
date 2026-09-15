@@ -30,6 +30,7 @@ class DanmakuModelsTest {
     @Test
     fun `shift is applied only to effective display time`() {
         val cue = DanmakuComment(p = "1", m = "shifted").toCue(0, shiftMs = -2_000L)
-        assertEquals(1_000L, cue?.effectiveTimeMs)
+        assertEquals(1_000L, cue?.timeMs)
+        assertEquals(0L, cue?.effectiveTimeMs)
     }
 }

@@ -108,7 +108,9 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                layoutInDisplayCutoutMode = if (!active) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                 } else {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -120,7 +122,7 @@ class MainActivity : ComponentActivity(), PlaybackPictureInPictureHost {
             WindowCompat.setDecorFitsSystemWindows(window, false)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-            WindowCompat.setDecorFitsSystemWindows(window, true)
+            WindowCompat.setDecorFitsSystemWindows(window, false)
         }
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = if (active) {
