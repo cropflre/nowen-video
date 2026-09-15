@@ -1,0 +1,179 @@
+name: PR76 Merge Readiness Autofix
+
+on:
+  push:
+    branches:
+      - fix/pr-76-merge-readiness
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Apply reviewed fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly 1 match, got {count}\n--- needle ---\n{old}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Keep the Android package/product identity compatible with existing Nowen Video installs.
+          replace_once(
+              "android/app/build.gradle.kts",
+              '    // Keep the source namespace stable during the UI migration. The installable\n    // product identity is independent from the upstream Nowen application.\n',
+              '    // The modular implementation keeps its existing source namespace to avoid a\n    // risky package-only rewrite. The public product identity is com.nowen.video.\n',
+          )
+          replace_once(
+              "android/app/build.gradle.kts",
+              '        applicationId = "com.example.nowenplayer"',
+              '        applicationId = "com.nowen.video"',
+          )
+          replace_once(
+              "android/app/src/main/res/values/strings.xml",
+              '    <string name="app_name">媒体播放器</string>',
+              '    <string name="app_name">Nowen Video</string>',
+          )
+          replace_once(
+              "android/core/designsystem/src/main/java/com/nowen/video/v2/core/designsystem/ProductIdentity.kt",
+              '/**\n * User-facing identity for this independently distributed client.\n *\n * Keep product naming here while the final brand is being decided. The Nowen protocol\n * remains a server integration and must not be presented as the Android product brand.\n */\nobject ProductIdentity {\n    const val displayName = "媒体播放器"\n    const val wordmark = "MEDIA PLAYER"\n    const val tagline = "你的自托管媒体空间"\n}\n',
+              '/** User-facing product identity for the official Nowen Video Android client. */\nobject ProductIdentity {\n    const val displayName = "Nowen Video"\n    const val wordmark = "NOWEN VIDEO"\n    const val tagline = "你的自托管媒体空间"\n}\n',
+          )
+
+          # Restore primary action disabled semantics lost during the design-system migration.
+          replace_once(
+              "android/core/designsystem/src/main/java/com/nowen/video/v2/core/designsystem/HillsUi.kt",
+              '''fun HillsPrimaryAction(\n    label: String,\n    onClick: () -> Unit,\n    modifier: Modifier = Modifier,\n    icon: ImageVector? = null,\n    containerColor: Color = NowenColors.Brand,\n    contentColor: Color = Color.White,\n) {\n    HillsPressable(onClick = onClick, modifier = modifier.height(HillsMetrics.controlHeight).clip(RoundedCornerShape(18.dp)).background(containerColor)) {\n        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {\n            if (icon != null) { Icon(icon, null, tint = contentColor); Spacer(Modifier.width(8.dp)) }\n            Text(label, color = contentColor, fontWeight = FontWeight.SemiBold)\n        }\n    }\n}\n''',
+              '''fun HillsPrimaryAction(\n    label: String,\n    onClick: () -> Unit,\n    modifier: Modifier = Modifier,\n    icon: ImageVector? = null,\n    containerColor: Color = NowenColors.Brand,\n    contentColor: Color = Color.White,\n    enabled: Boolean = true,\n) {\n    HillsPressable(\n        onClick = onClick,\n        enabled = enabled,\n        modifier = modifier\n            .height(HillsMetrics.controlHeight)\n            .clip(RoundedCornerShape(18.dp))\n            .background(if (enabled) containerColor else containerColor.copy(alpha = 0.42f)),\n    ) {\n        val resolvedContentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.62f)\n        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {\n            if (icon != null) { Icon(icon, null, tint = resolvedContentColor); Spacer(Modifier.width(8.dp)) }\n            Text(label, color = resolvedContentColor, fontWeight = FontWeight.SemiBold)\n        }\n    }\n}\n''',
+          )
+
+          # Authentication: UI feedback + ViewModel re-entrancy guards.
+          replace_once(
+              "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/AuthScreens.kt",
+              '''    fun login() {\n        val current = _state.value\n        if (current.username.isBlank() || current.password.isBlank()) {\n''',
+              '''    fun login() {\n        val current = _state.value\n        if (current.loading) return\n        if (current.username.isBlank() || current.password.isBlank()) {\n''',
+          )
+          replace_once(
+              "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/AuthScreens.kt",
+              '''                HillsPrimaryAction(\n                    label = if (state.loading) "正在登录" else "登录",\n                    onClick = viewModel::login,\n                    modifier = Modifier.fillMaxWidth(),\n                )\n''',
+              '''                HillsPrimaryAction(\n                    label = if (state.loading) "正在登录" else "登录",\n                    onClick = viewModel::login,\n                    modifier = Modifier.fillMaxWidth(),\n                    enabled = !state.loading,\n                )\n''',
+          )
+          replace_once(
+              "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/AuthScreens.kt",
+              '''    fun submit() {\n        val value = _state.value\n        val error = when {\n''',
+              '''    fun submit() {\n        val value = _state.value\n        if (value.loading) return\n        val error = when {\n''',
+          )
+          replace_once(
+              "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/AuthScreens.kt",
+              '''            HillsPrimaryAction(\n                label = if (state.loading) "正在修改" else "修改密码并继续",\n                onClick = viewModel::submit,\n                modifier = Modifier.fillMaxWidth(),\n            )\n''',
+              '''            HillsPrimaryAction(\n                label = if (state.loading) "正在修改" else "修改密码并继续",\n                onClick = viewModel::submit,\n                modifier = Modifier.fillMaxWidth(),\n                enabled = !state.loading,\n            )\n''',
+          )
+
+          # Server connection already guards re-entry in the ViewModel; reflect it in the button state.
+          replace_once(
+              "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/ServerSetup.kt",
+              '''                HillsPrimaryAction(\n                    label = if (state.loading) "正在连接" else "连接服务器",\n                    onClick = onConnect,\n                    modifier = Modifier.fillMaxWidth(),\n                )\n''',
+              '''                HillsPrimaryAction(\n                    label = if (state.loading) "正在连接" else "连接服务器",\n                    onClick = onConnect,\n                    modifier = Modifier.fillMaxWidth(),\n                    enabled = !state.loading,\n                )\n''',
+          )
+
+          # Protect social/download actions from double submission even if a caller forgets to disable its control.
+          media_detail = "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/MediaDetailScreen.kt"
+          replace_once(
+              media_detail,
+              '''    fun createComment(content: String, rating: Int?) {\n        val mediaId = loadedId ?: return\n        if (content.isBlank()) return\n''',
+              '''    fun createComment(content: String, rating: Int?) {\n        val mediaId = loadedId ?: return\n        if (content.isBlank() || _state.value.commentActionRunning) return\n''',
+          )
+          replace_once(
+              media_detail,
+              '''    fun toggleFavorite() {\n        val mediaId = loadedId ?: return\n        val desired = !_state.value.favorite\n''',
+              '''    fun toggleFavorite() {\n        val mediaId = loadedId ?: return\n        if (_state.value.favoriteActionRunning) return\n        val desired = !_state.value.favorite\n''',
+          )
+          replace_once(
+              media_detail,
+              '''    fun toggleDownload() {\n        val mediaId = loadedId ?: return\n        val current = _state.value.download\n''',
+              '''    fun toggleDownload() {\n        val mediaId = loadedId ?: return\n        if (_state.value.downloadActionRunning) return\n        val current = _state.value.download\n''',
+          )
+          replace_once(
+              media_detail,
+              '''                HillsPrimaryAction(\n                    label = if (actionRunning) "提交中" else "发表",\n                    onClick = onSubmit,\n                    modifier = Modifier.width(94.dp),\n                    icon = Icons.Default.Send,\n                )\n''',
+              '''                HillsPrimaryAction(\n                    label = if (actionRunning) "提交中" else "发表",\n                    onClick = onSubmit,\n                    modifier = Modifier.width(94.dp),\n                    icon = Icons.Default.Send,\n                    enabled = text.isNotBlank() && !actionRunning,\n                )\n''',
+          )
+
+          # Restore the app-wide edge-to-edge contract and cutout mode after leaving playback.
+          replace_once(
+              "android/app/src/main/java/com/nowen/video/v2/MainActivity.kt",
+              '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {\n            window.attributes = window.attributes.apply {\n                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS\n                } else {\n                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES\n                }\n            }\n        }\n''',
+              '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {\n            window.attributes = window.attributes.apply {\n                layoutInDisplayCutoutMode = if (!active) {\n                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT\n                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS\n                } else {\n                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES\n                }\n            }\n        }\n''',
+          )
+          replace_once(
+              "android/app/src/main/java/com/nowen/video/v2/MainActivity.kt",
+              '''        } else {\n            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)\n            WindowCompat.setDecorFitsSystemWindows(window, true)\n        }\n''',
+              '''        } else {\n            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)\n            WindowCompat.setDecorFitsSystemWindows(window, false)\n        }\n''',
+          )
+
+          # Do not feed Media3 TrackGroup-local indexes into server/FFmpeg track ordinals.
+          # Keep local ExoPlayer selection; server-side switching will return when the API exposes stable track IDs.
+          player_screen = "android/feature/main/src/main/java/com/nowen/video/v2/feature/main/PlayerScreen.kt"
+          replace_once(
+              player_screen,
+              '''                viewModel.setSessionTrackSelection(\n                    audioTrack = choice?.trackIndex ?: 0,\n                    subtitleTrack = state.sessionSubtitleTrack,\n                    burnSubtitle = state.sessionBurnSubtitle,\n                    positionMs = displayPositionMs,\n                )\n''',
+              '',
+          )
+          replace_once(
+              player_screen,
+              '''                viewModel.setSessionTrackSelection(\n                    audioTrack = state.sessionAudioTrack,\n                    subtitleTrack = choice?.trackIndex ?: -1,\n                    burnSubtitle = false,\n                    positionMs = displayPositionMs,\n                )\n''',
+              '',
+          )
+          PY
+
+          # Restore the pre-PR managed-remux behavior rather than shipping an ambiguous track-index contract.
+          git show c47593619fc7ee522588ff3d3d6df99277769212:internal/service/stream_managed_remux.go > internal/service/stream_managed_remux.go
+          # Restore the official Nowen launcher artwork as part of the product identity fix.
+          git show c47593619fc7ee522588ff3d3d6df99277769212:android/app/src/main/res/drawable/ic_launcher.xml > android/app/src/main/res/drawable/ic_launcher.xml
+
+      - name: Backend contract tests
+        shell: bash
+        run: go test ./internal/service ./internal/handler
+
+      - name: Android unit, lint and compile gates
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          ./android/gradlew -p android testDebugUnitTest assembleDebugAndroidTest lintDebug assembleDebug --no-daemon --stacktrace
+
+      - name: Commit verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/pr76-autofix.yml
+          git config user.name "cropflre"
+          git config user.email "767308865@qq.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(android): harden PR 76 merge readiness"
+          git push origin HEAD:fix/pr-76-merge-readiness
