@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -63,8 +63,11 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsScreen
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.model.FavoriteRecord
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.WatchHistoryRecord
@@ -145,64 +148,60 @@ data class PagedSocialAction(
 
 @Composable
 fun PagedFavoritesScreen(
-    onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    primaryDestination: Boolean = false,
+    onBack: (() -> Unit)? = null,
+    onMediaClick: (MediaCard) -> Unit,
     viewModel: PagedFavoritesViewModel = hiltViewModel(),
 ) {
     val favorites = viewModel.favorites.collectAsLazyPagingItems()
     val action by viewModel.action.collectAsState()
     val session by viewModel.sessionStore.snapshot.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("我的收藏") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
+    HillsScreen(
+        top = {
+            HillsTopBar(
+                title = "收藏",
+                navigationIcon = if (primaryDestination) null else Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigate = onBack,
             )
         },
-    ) { padding ->
+    ) { topPadding ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 146.dp),
+            columns = GridCells.Fixed(3),
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(padding),
+                .padding(topPadding),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                PersonalWorkspaceHeader(
-                    icon = { Icon(Icons.Default.Favorite, contentDescription = null) },
-                    eyebrow = "MY LIBRARY",
-                    title = "收藏内容",
-                    subtitle = "把喜欢的电影与单集留在一个更容易再次找到的位置。",
-                    count = favorites.itemCount,
-                )
+            if (!primaryDestination) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    PersonalWorkspaceHeader(
+                        icon = { Icon(Icons.Default.Favorite, contentDescription = null) },
+                        eyebrow = "MY LIBRARY",
+                        title = "收藏内容",
+                        subtitle = "把喜欢的电影与单集留在一个更容易再次找到的位置。",
+                        count = favorites.itemCount,
+                    )
+                }
             }
 
             action.error?.let { message ->
-                item(span = { GridItemSpan(maxLineSpan) }) { MessagePanel("操作失败", message) }
+                item(span = { GridItemSpan(maxLineSpan) }) { HillsState("操作失败", message) }
             }
 
             when (val refresh = favorites.loadState.refresh) {
                 is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) {
-                    ElevatedPanel(Modifier.fillMaxWidth()) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(10.dp))
-                        Text("正在同步收藏内容")
-                    }
+                    HillsState("正在同步收藏", "正在加载你的收藏内容")
                 }
                 is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
-                    MessagePanel("加载失败", refresh.error.message ?: "网络请求失败", "重试", favorites::retry)
+                    HillsState("加载失败", refresh.error.message ?: "网络请求失败", "重试", favorites::retry)
                 }
                 else -> if (favorites.itemCount == 0) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        MessagePanel("还没有收藏", "在媒体详情页点击收藏，喜欢的内容会出现在这里。")
+                        HillsState("还没有收藏", "在媒体详情页点击收藏，喜欢的内容会出现在这里。")
                     }
                 }
             }
@@ -215,7 +214,7 @@ fun PagedFavoritesScreen(
                     media = media,
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     removing = action.runningId == mediaId,
-                    onClick = { onMediaClick(mediaId) },
+                    onClick = { onMediaClick(media) },
                     onRemove = { viewModel.remove(mediaId, favorites::refresh) },
                 )
             }
@@ -225,7 +224,7 @@ fun PagedFavoritesScreen(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
-                    MessagePanel("加载更多失败", append.error.message ?: "网络请求失败", "重试", favorites::retry)
+                    HillsState("加载更多失败", append.error.message ?: "网络请求失败", "重试", favorites::retry)
                 }
                 else -> Unit
             }
@@ -236,7 +235,7 @@ fun PagedFavoritesScreen(
 @Composable
 fun PagedHistoryScreen(
     onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
     onPlay: (String) -> Unit,
     viewModel: PagedHistoryViewModel = hiltViewModel(),
 ) {
@@ -245,34 +244,27 @@ fun PagedHistoryScreen(
     val session by viewModel.sessionStore.snapshot.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("观看历史") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
+    HillsScreen(
+        top = {
+            HillsTopBar(
+                title = "观看历史",
+                navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                onNavigate = onBack,
                 actions = {
                     if (historyItems.itemCount > 0) {
                         IconButton(onClick = { confirmClear = true }, enabled = !action.clearing) {
-                            if (action.clearing) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.DeleteSweep, contentDescription = "清空历史")
-                            }
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "清空历史")
                         }
                     }
                 },
             )
         },
-    ) { padding ->
+    ) { topPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(padding),
+                .padding(topPadding),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -286,21 +278,13 @@ fun PagedHistoryScreen(
                 )
             }
 
-            action.error?.let { message -> item { MessagePanel("操作失败", message) } }
+            action.error?.let { message -> item { HillsState("操作失败", message) } }
 
             when (val refresh = historyItems.loadState.refresh) {
-                is LoadState.Loading -> item {
-                    ElevatedPanel(Modifier.fillMaxWidth()) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(10.dp))
-                        Text("正在同步观看历史")
-                    }
-                }
-                is LoadState.Error -> item {
-                    MessagePanel("加载失败", refresh.error.message ?: "网络请求失败", "重试", historyItems::retry)
-                }
+                is LoadState.Loading -> item { HillsState("正在同步历史", "正在加载你的观看记录") }
+                is LoadState.Error -> item { HillsState("加载失败", refresh.error.message ?: "网络请求失败", "重试", historyItems::retry) }
                 else -> if (historyItems.itemCount == 0) {
-                    item { MessagePanel("暂无观看历史", "开始播放后，观看进度会自动记录在这里。") }
+                    item { HillsState("暂无观看历史", "开始播放后，观看进度会自动记录在这里。") }
                 }
             }
 
@@ -314,7 +298,7 @@ fun PagedHistoryScreen(
                     imageUrl = mediaBackdropUrl(session.activeServer?.baseUrl, mediaId),
                     deleting = action.runningId == mediaId,
                     onPlay = { onPlay(mediaId) },
-                    onDetail = { onMediaClick(mediaId) },
+                    onDetail = { onMediaClick(media) },
                     onDelete = { viewModel.delete(mediaId, historyItems::refresh) },
                 )
             }
@@ -322,7 +306,7 @@ fun PagedHistoryScreen(
             when (val append = historyItems.loadState.append) {
                 is LoadState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 is LoadState.Error -> item {
-                    MessagePanel("加载更多失败", append.error.message ?: "网络请求失败", "重试", historyItems::retry)
+                    HillsState("加载更多失败", append.error.message ?: "网络请求失败", "重试", historyItems::retry)
                 }
                 else -> Unit
             }
@@ -353,44 +337,22 @@ private fun PersonalWorkspaceHeader(
     subtitle: String,
     count: Int,
 ) {
-    ElevatedPanel(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                modifier = Modifier.size(44.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ) {
-                Box(contentAlignment = Alignment.Center) { icon() }
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    eyebrow,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (count > 0) {
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Text(
-                        "$count",
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-            }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) { icon() }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(eyebrow, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(3.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (count > 0) Text("$count", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -460,7 +422,7 @@ private fun HistoryWorkspaceCard(
     onDetail: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    ElevatedPanel(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -526,13 +488,18 @@ private fun HistoryWorkspaceCard(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onDetail) { Text("查看详情") }
+            HillsSecondaryAction(
+                label = "查看详情",
+                onClick = onDetail,
+                modifier = Modifier.width(104.dp),
+            )
             Spacer(Modifier.width(8.dp))
-            FilledTonalButton(onClick = onPlay) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (history.completed) "重新播放" else "继续播放")
-            }
+            HillsPrimaryAction(
+                label = if (history.completed) "重新播放" else "继续播放",
+                icon = Icons.Default.PlayArrow,
+                onClick = onPlay,
+                modifier = Modifier.width(126.dp),
+            )
         }
     }
 }

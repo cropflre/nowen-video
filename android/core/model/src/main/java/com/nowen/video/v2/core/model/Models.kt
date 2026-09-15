@@ -109,6 +109,7 @@ data class MediaCard(
     val genres: String = "",
     val resolution: String = "",
     val videoCodec: String = "",
+    @SerialName("episode_count") val episodeCount: Int = 0,
     val episodeTitle: String = "",
     val seasonNumber: Int = 0,
     val episodeNumber: Int = 0,
@@ -171,6 +172,7 @@ private data class MediaCardPayload(
     val genres: String = "",
     val resolution: String = "",
     @SerialName("video_codec") val videoCodec: String = "",
+    @SerialName("episode_count") val episodeCount: Int = 0,
     @SerialName("episode_title") val episodeTitle: String = "",
     @SerialName("season_num") val seasonNumber: Int = 0,
     @SerialName("episode_num") val episodeNumber: Int = 0,
@@ -189,12 +191,18 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             ?: return MediaCard()
         val nestedMedia = root["media"] as? JsonObject
         val nestedSeries = root["series"] as? JsonObject
-        val payloadObject = nestedMedia ?: nestedSeries ?: root
+        val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
+        val payloadObject = when {
+            outerType.equals("series", ignoreCase = true) -> nestedSeries ?: root
+            outerType.equals("movie", ignoreCase = true) -> nestedMedia ?: root
+            nestedSeries != null -> nestedSeries
+            nestedMedia != null -> nestedMedia
+            else -> root
+        }
         val payload = jsonDecoder.json.decodeFromJsonElement(MediaCardPayload.serializer(), payloadObject)
 
         val outerPosition = root.doubleValue("position")
         val outerDuration = root.doubleValue("duration")
-        val outerType = root["type"]?.jsonPrimitive?.content.orEmpty()
         val outerMediaId = root["media_id"]?.jsonPrimitive?.content
         val inferredType = when {
             outerType.isNotBlank() -> outerType
@@ -222,6 +230,7 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             genres = payload.genres,
             resolution = payload.resolution,
             videoCodec = payload.videoCodec,
+            episodeCount = payload.episodeCount,
             episodeTitle = payload.episodeTitle,
             seasonNumber = payload.seasonNumber,
             episodeNumber = payload.episodeNumber,
@@ -255,6 +264,7 @@ object MediaCardSerializer : KSerializer<MediaCard> {
             genres = value.genres,
             resolution = value.resolution,
             videoCodec = value.videoCodec,
+            episodeCount = value.episodeCount,
             episodeTitle = value.episodeTitle,
             seasonNumber = value.seasonNumber,
             episodeNumber = value.episodeNumber,

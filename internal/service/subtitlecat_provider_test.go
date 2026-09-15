@@ -96,8 +96,8 @@ func TestBuildSubtitleSearchQueriesEpisodeKeepsSeasonEpisode(t *testing.T) {
 
 func TestSubtitleCatScoreRejectsWrongEpisode(t *testing.T) {
 	req := SubtitleProviderSearchRequest{
-		FileName: "The.Last.of.Us.S01E02.1080p.WEB-DL.mkv",
-		Title: "The Last of Us",
+		FileName:  "The.Last.of.Us.S01E02.1080p.WEB-DL.mkv",
+		Title:     "The Last of Us",
 		MediaType: "episode",
 	}
 	assert.Greater(t, scoreSubtitleCatCandidate("The.Last.of.Us.S01E02.1080p.WEB-DL", req), 50)
@@ -133,10 +133,10 @@ func TestSubtitleCatSearchAndDownloadWithFixtureServer(t *testing.T) {
 	provider, err := newSubtitleCatProviderForTest(server.URL, zap.NewNop().Sugar())
 	require.NoError(t, err)
 	results, err := provider.Search(context.Background(), SubtitleProviderSearchRequest{
-		Queries: []string{"Interstellar 2014"},
-		FileName: "Interstellar.2014.2160p.BluRay.x265.mkv",
-		Title: "Interstellar",
-		Year: 2014,
+		Queries:   []string{"Interstellar 2014"},
+		FileName:  "Interstellar.2014.2160p.BluRay.x265.mkv",
+		Title:     "Interstellar",
+		Year:      2014,
 		MediaType: "movie",
 		Languages: []string{"zh-CN", "zh-TW", "en"},
 	})

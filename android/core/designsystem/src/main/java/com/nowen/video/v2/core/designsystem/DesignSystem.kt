@@ -1,16 +1,21 @@
 package com.nowen.video.v2.core.designsystem
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
@@ -20,61 +25,73 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
-/**
- * Android 与 Web 移动端共用的视觉基准。
- *
- * 色彩、圆角、排版和内容密度直接映射 Web UI 2.0 的移动端规范，避免 Compose
- * 页面继续落回 Material 默认蓝色、大字号和过度圆角的视觉语言。
- */
+/** Semantic colors for the independently branded Android client. */
 object NowenColors {
-    val DeepSpace = Color(0xFF070A12)
-    val DeepSurface = Color(0xFF101522)
-    val DeepRaised = Color(0xFF171D2B)
-    val Lavender = Color(0xFF7057FF)
-    val LavenderPressed = Color(0xFF6047F2)
-    val Cyan = Color(0xFF5CCED2)
-    val LightBackground = Color(0xFFF7F7FB)
+    val NightBackground = Color(0xFF111318)
+    val NightSurface = Color(0xFF1A1D24)
+    val NightRaised = Color(0xFF252932)
+    val NightOutline = Color(0xFF343944)
+    val Brand = Color(0xFF5D6F9A)
+    val BrandPressed = Color(0xFF4C5F87)
+    val BrandContainer = Color(0xFF29334A)
+    val Gold = Color(0xFFE8AE4D)
+    val LightBackground = Color(0xFFF5F6F8)
     val LightSurface = Color(0xFFFFFFFF)
-    val LightRaised = Color(0xFFF2F2F8)
-    val Ink = Color(0xFF171923)
-    val Muted = Color(0xFF737887)
-    val LightOutline = Color(0xFFE7E8EF)
+    val LightRaised = Color(0xFFE9ECF1)
+    val Ink = Color(0xFF20242C)
+    val Muted = Color(0xFF69707D)
+    val LightOutline = Color(0xFFD9DEE6)
 }
 
-/** Web 移动端与 Android 共用的几何密度。 */
+/** Shared mobile density. Keep media pages compact and touch targets stable. */
 object NowenMobileMetrics {
-    val PageHorizontal = 10.dp
-    val SectionPadding = 14.dp
-    val SectionRadius = 18.dp
+    val PageHorizontal = 20.dp
+    val SectionPadding = 16.dp
+    val SectionRadius = 16.dp
     val CardRadius = 10.dp
-    val CompactCardRadius = 9.dp
-    val RailGap = 10.dp
-    val SectionGap = 18.dp
-    val ControlRadius = 11.dp
+    val CompactCardRadius = 10.dp
+    val RailGap = 12.dp
+    val SectionGap = 24.dp
+    val ControlRadius = 12.dp
+    val BottomBarHeight = 64.dp
+    val TouchTarget = 48.dp
+    val FloatingActionSize = 56.dp
+    val ModalRadius = 24.dp
+}
+
+object NowenMotion {
+    const val PressInMs = 80
+    const val PressOutMs = 120
+    const val ContentEnterMs = 180
+    const val ContentExitMs = 140
+    const val HeroEnterMs = 220
+    const val HeroExitMs = 180
 }
 
 private val DarkScheme = darkColorScheme(
-    primary = NowenColors.Lavender,
+    primary = NowenColors.Brand,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF282044),
-    onPrimaryContainer = Color(0xFFEDE9FF),
-    secondary = NowenColors.Cyan,
-    background = NowenColors.DeepSpace,
-    onBackground = Color(0xFFF5F6FA),
-    surface = NowenColors.DeepSurface,
-    onSurface = Color(0xFFF5F6FA),
-    surfaceVariant = NowenColors.DeepRaised,
-    onSurfaceVariant = Color(0xFFA9AFBE),
-    outline = Color(0xFF303746),
-    outlineVariant = Color(0xFF222937),
+    primaryContainer = NowenColors.BrandContainer,
+    onPrimaryContainer = Color(0xFFDCE5FF),
+    secondary = NowenColors.Gold,
+    onSecondary = Color(0xFF302000),
+    background = NowenColors.NightBackground,
+    onBackground = Color(0xFFF3F5F9),
+    surface = NowenColors.NightSurface,
+    onSurface = Color(0xFFF3F5F9),
+    surfaceVariant = NowenColors.NightRaised,
+    onSurfaceVariant = Color(0xFFB6BCC8),
+    outline = NowenColors.NightOutline,
+    outlineVariant = Color(0xFF2A2E37),
 )
 
 private val LightScheme = lightColorScheme(
-    primary = NowenColors.Lavender,
+    primary = NowenColors.Brand,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF0EDFF),
-    onPrimaryContainer = Color(0xFF4C38C9),
-    secondary = Color(0xFF4E6B79),
+    primaryContainer = Color(0xFFDCE5FF),
+    onPrimaryContainer = Color(0xFF263553),
+    secondary = Color(0xFF8B5A00),
+    onSecondary = Color.White,
     background = NowenColors.LightBackground,
     onBackground = NowenColors.Ink,
     surface = NowenColors.LightSurface,
@@ -82,38 +99,44 @@ private val LightScheme = lightColorScheme(
     surfaceVariant = NowenColors.LightRaised,
     onSurfaceVariant = NowenColors.Muted,
     outline = NowenColors.LightOutline,
-    outlineVariant = Color(0xFFF0F0F5),
+    outlineVariant = Color(0xFFE5E8ED),
 )
 
 private val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(9.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(22.dp),
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(10.dp),
+    extraLarge = RoundedCornerShape(12.dp),
 )
 
 private val Type = Typography(
-    headlineLarge = TextStyle(fontSize = 28.sp, lineHeight = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.45).sp),
-    headlineMedium = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
-    titleLarge = TextStyle(fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    headlineLarge = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+    titleLarge = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold),
     bodyLarge = TextStyle(fontSize = 15.sp, lineHeight = 23.sp),
-    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 20.sp),
-    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold),
+    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
+    labelLarge = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
 )
 
 @Composable
 fun NowenTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkScheme else LightScheme,
         typography = Type,
         shapes = Shapes,
-        content = content,
-    )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -137,19 +160,23 @@ fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(if (compact) 36.dp else 46.dp)
-                .clip(RoundedCornerShape(if (compact) 11.dp else 14.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF8F7AFF), NowenColors.Lavender))),
+                .size(if (compact) 36.dp else 44.dp)
+                .clip(RoundedCornerShape(if (compact) 8.dp else 10.dp))
+                .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) {
-            Text("N", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = ">",
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.headlineMedium,
+            )
         }
-        Spacer(Modifier.width(11.dp))
+        Spacer(Modifier.width(10.dp))
         Column {
-            Text("NOWEN VIDEO", style = MaterialTheme.typography.titleMedium)
+            Text(ProductIdentity.wordmark, style = MaterialTheme.typography.titleMedium)
             if (!compact) {
                 Text(
-                    "你的私人媒体空间",
+                    ProductIdentity.tagline,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -171,7 +198,7 @@ fun ElevatedPanel(
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f),
+            MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         Column(Modifier.padding(NowenMobileMetrics.SectionPadding), content = content)
@@ -217,11 +244,11 @@ fun MediaPosterCard(
                     progress = { progress },
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.Black.copy(alpha = 0.18f),
+                    trackColor = Color.Black.copy(alpha = 0.24f),
                 )
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(7.dp))
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
         if (!subtitle.isNullOrBlank()) {
             Text(
@@ -232,6 +259,81 @@ fun MediaPosterCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+fun HillsPressable(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.98f else 1f,
+        animationSpec = tween(if (pressed) NowenMotion.PressInMs else NowenMotion.PressOutMs),
+        label = "hills_press_scale",
+    )
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
+        content = content,
+    )
+}
+
+@Composable
+fun HillsEmptyState(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun HillsTechnicalRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 2)
     }
 }
 

@@ -485,6 +485,23 @@ func (s *StreamService) GetPosterPath(mediaID string) (string, error) {
 	return "", nil
 }
 
+// GetLogoPath returns the persisted ClearLogo path for a media item.
+// Unlike poster lookup it never probes neighboring artwork, preventing unrelated
+// local images from being mistaken for a transparent title logo.
+func (s *StreamService) GetLogoPath(mediaID string) (string, error) {
+	media, err := s.mediaRepo.FindByID(mediaID)
+	if err != nil {
+		return "", ErrMediaNotFound
+	}
+	if media.LogoPath == "" {
+		return "", nil
+	}
+	if _, err := s.statMediaFile(media.LogoPath); err != nil {
+		return "", nil
+	}
+	return media.LogoPath, nil
+}
+
 // ==================== STRM 远程流代理 ====================
 
 // ProxyRemoteStream 代理远程流媒体（支持 Range 请求，实现拖动进度条）

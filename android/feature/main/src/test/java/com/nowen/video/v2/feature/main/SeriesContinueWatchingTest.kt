@@ -32,7 +32,7 @@ class SeriesContinueWatchingTest {
         )
 
         assertEquals("e2", state.continueEpisode?.id)
-        assertEquals("继续播放 S01E02", state.continueActionLabel)
+        assertEquals("继续播放 第 2 集", state.continueActionLabel)
         assertEquals(1, state.watchedCount)
         assertEquals(1, state.inProgressCount)
     }
@@ -46,7 +46,7 @@ class SeriesContinueWatchingTest {
         )
 
         assertEquals("e2", state.continueEpisode?.id)
-        assertEquals("播放 S01E02", state.continueActionLabel)
+        assertEquals("播放 第 2 集", state.continueActionLabel)
     }
 
     @Test
@@ -58,7 +58,7 @@ class SeriesContinueWatchingTest {
         )
 
         assertEquals("e1", state.continueEpisode?.id)
-        assertEquals("重新播放 S01E01", state.continueActionLabel)
+        assertEquals("重新播放 第 1 集", state.continueActionLabel)
         assertEquals(3, state.watchedCount)
     }
 

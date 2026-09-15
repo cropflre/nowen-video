@@ -72,7 +72,7 @@ func (h *MediaAnalysisHandler) ListHighlights(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
 		"highlights": items,
-		"stale": result.Stale,
+		"stale":      result.Stale,
 	}})
 }
 

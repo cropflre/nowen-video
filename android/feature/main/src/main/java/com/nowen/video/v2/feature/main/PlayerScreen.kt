@@ -1,8 +1,10 @@
 package com.nowen.video.v2.feature.main
 
+import android.media.AudioManager
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -55,17 +60,28 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.nowen.video.v2.core.data.CatalogRepository
+import com.nowen.video.v2.core.data.DanmakuPreferences
+import com.nowen.video.v2.core.data.DanmakuPreferencesStore
+import com.nowen.video.v2.core.data.DanmakuRepository
 import com.nowen.video.v2.core.data.PlayerPreferencesStore
 import com.nowen.video.v2.core.data.ProgressRepository
+import com.nowen.video.v2.core.data.supportedPlaybackSpeeds
 import com.nowen.video.v2.core.data.ServerSessionStore
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.data.SeriesRepository
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.model.CreatePlaybackSessionRequest
+import com.nowen.video.v2.core.model.DanmakuCue
 import com.nowen.video.v2.core.model.MediaDetail
 import com.nowen.video.v2.core.model.PlaybackPlan
 import com.nowen.video.v2.core.model.PlaybackSessionHeartbeatRequest
 import com.nowen.video.v2.core.model.PlaybackSessionResult
 import com.nowen.video.v2.core.model.RestartPlaybackSessionRequest
 import com.nowen.video.v2.core.model.SubtitleTrack
+import com.nowen.video.v2.core.model.episodeDisplayName
+import com.nowen.video.v2.core.model.seasonDisplayName
+import com.nowen.video.v2.core.model.userEpisodeTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
@@ -78,8 +94,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -101,9 +119,12 @@ data class PlayerUiState(
     val mediaDurationMs: Long = 0L,
     val externalSubtitles: List<SubtitleTrack> = emptyList(),
     val nextEpisode: MediaDetail? = null,
+    val previousEpisode: MediaDetail? = null,
+    val seriesEpisodes: List<MediaDetail> = emptyList(),
     val playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
     val fallbackNotice: String? = null,
     val playbackSpeed: Float = 1f,
+    val longPressBoostSpeed: Float = 2f,
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
     val progressQueued: Boolean = false,
@@ -114,7 +135,13 @@ data class PlayerUiState(
     val sessionHeartbeatIntervalMs: Long = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
     val sessionProfileId: String = "auto",
     val sessionMaxBitrate: Int = 0,
+    val sessionAudioTrack: Int = 0,
+    val sessionSubtitleTrack: Int = -1,
+    val sessionBurnSubtitle: Boolean = false,
     val sessionRestarting: Boolean = false,
+    val danmakuCues: List<DanmakuCue> = emptyList(),
+    val danmakuLoading: Boolean = false,
+    val danmakuError: String? = null,
     val error: String? = null,
 )
 
@@ -123,13 +150,23 @@ class PlayerViewModel @Inject constructor(
     private val repository: CatalogRepository,
     private val progressRepository: ProgressRepository,
     private val preferencesStore: PlayerPreferencesStore,
+    private val danmakuRepository: DanmakuRepository,
+    private val danmakuPreferencesStore: DanmakuPreferencesStore,
+    private val seriesRepository: SeriesRepository,
     val sessionStore: ServerSessionStore,
 ) : ViewModel() {
+    val danmakuPreferences = danmakuPreferencesStore.preferences
     private val _state = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = _state
     private val sessionOperationMutex = Mutex()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var loadedId: String? = null
+    private var danmakuGeneration = 0L
+    private var danmakuJob: Job? = null
+    private var danmakuTitle = ""
+    private var danmakuSeason = 0
+    private var danmakuEpisode = 0
+    private var danmakuDuration = 0.0
     private var lastReportedPositionMs = -1L
     private var lastReportElapsedMs = 0L
 
@@ -139,6 +176,7 @@ class PlayerViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         playbackSpeed = preferences.playbackSpeed,
+                        longPressBoostSpeed = preferences.longPressBoostSpeed,
                         resizeMode = preferences.resizeMode,
                         autoPlayNext = preferences.autoPlayNext,
                     )
@@ -150,6 +188,9 @@ class PlayerViewModel @Inject constructor(
     fun load(mediaId: String) {
         if (loadedId == mediaId && _state.value.playbackUrl.isNotBlank()) return
         loadedId = mediaId
+        val generation = ++danmakuGeneration
+        danmakuJob?.cancel()
+        danmakuJob = null
         detachPlaybackSession("media_changed")
         viewModelScope.launch {
             _state.update {
@@ -157,10 +198,15 @@ class PlayerViewModel @Inject constructor(
                     loading = true,
                     title = "",
                     playbackUrl = "",
+                    danmakuCues = emptyList(),
+                    danmakuLoading = false,
+                    danmakuError = null,
                     resumePositionMs = 0L,
                     mediaDurationMs = 0L,
                     externalSubtitles = emptyList(),
                     nextEpisode = null,
+                    previousEpisode = null,
+                    seriesEpisodes = emptyList(),
                     playbackDiagnostics = PlaybackDiagnostics(),
                     fallbackNotice = null,
                     sessionManaged = false,
@@ -170,6 +216,9 @@ class PlayerViewModel @Inject constructor(
                     sessionHeartbeatIntervalMs = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
                     sessionProfileId = "auto",
                     sessionMaxBitrate = 0,
+                    sessionAudioTrack = 0,
+                    sessionSubtitleTrack = -1,
+                    sessionBurnSubtitle = false,
                     sessionRestarting = false,
                     error = null,
                 )
@@ -180,15 +229,31 @@ class PlayerViewModel @Inject constructor(
             }
             val detail = repository.detail(mediaId).getOrNull()
             val subtitles = repository.subtitles(mediaId).getOrNull()
-            val nextEpisode = detail
-                ?.takeIf { it.seriesId.isNotBlank() && it.episodeNumber > 0 }
-                ?.let {
-                    repository.nextEpisode(
-                        seriesId = it.seriesId,
-                        season = it.seasonNumber,
-                        episode = it.episodeNumber,
-                    ).getOrNull()
-                }
+            danmakuTitle = detail?.title?.ifBlank { detail.originalTitle }.orEmpty().ifBlank { stream.title }
+            danmakuSeason = detail?.seasonNumber ?: 0
+            danmakuEpisode = detail?.episodeNumber ?: 0
+            danmakuDuration = stream.duration
+            val danmakuPreferences = danmakuPreferencesStore.preferences.first()
+            if (danmakuPreferences.enabled && danmakuPreferences.autoMatch && danmakuPreferences.apiBaseUrl.isNotBlank()) {
+                requestDanmaku(generation)
+            }
+            val seriesEpisodes = detail?.seriesId
+                ?.takeIf(String::isNotBlank)
+                ?.let { seriesRepository.seasons(it).getOrNull().orEmpty() }
+                ?.let(::flattenSeriesEpisodes)
+                .orEmpty()
+            val currentIndex = seriesEpisodes.indexOfFirst { it.id == mediaId }
+            val previousEpisode = currentIndex.takeIf { it > 0 }?.let(seriesEpisodes::getOrNull)
+            val nextEpisode = currentIndex.takeIf { it >= 0 }?.let { seriesEpisodes.getOrNull(it + 1) }
+                ?: detail
+                    ?.takeIf { it.seriesId.isNotBlank() && it.episodeNumber > 0 }
+                    ?.let {
+                        repository.nextEpisode(
+                            seriesId = it.seriesId,
+                            season = it.seasonNumber,
+                            episode = it.episodeNumber,
+                        ).getOrNull()
+                    }
             val resumeMs = (progressRepository.restorePosition(mediaId, stream.duration) * 1_000)
                 .toLong()
                 .coerceAtLeast(0L)
@@ -203,6 +268,9 @@ class PlayerViewModel @Inject constructor(
                         mediaId = mediaId,
                         profileId = plan.sessionTemplate?.profileId.orEmpty().ifBlank { "auto" },
                         startPositionMs = resumeMs,
+                        audioTrack = _state.value.sessionAudioTrack,
+                        subtitleTrack = _state.value.sessionSubtitleTrack,
+                        burnSubtitle = _state.value.sessionBurnSubtitle,
                         maxBitrate = plan.sessionTemplate?.maxBitrate ?: 0,
                     ),
                 ).getOrElse { error ->
@@ -234,6 +302,8 @@ class PlayerViewModel @Inject constructor(
                     durationMs = durationMs,
                     subtitles = subtitles?.external.orEmpty(),
                     nextEpisode = nextEpisode,
+                    previousEpisode = previousEpisode,
+                    seriesEpisodes = seriesEpisodes,
                     plan = plan,
                     result = sessionResult,
                     playlistUrl = playlist,
@@ -261,6 +331,8 @@ class PlayerViewModel @Inject constructor(
                     mediaDurationMs = durationMs,
                     externalSubtitles = subtitles?.external.orEmpty(),
                     nextEpisode = nextEpisode,
+                    previousEpisode = previousEpisode,
+                    seriesEpisodes = seriesEpisodes,
                     playbackDiagnostics = PlaybackDiagnostics(
                         method = stream.playbackMethod,
                         methodLabel = stream.playbackMethodLabel,
@@ -280,6 +352,8 @@ class PlayerViewModel @Inject constructor(
         durationMs: Long,
         subtitles: List<SubtitleTrack>,
         nextEpisode: MediaDetail?,
+        previousEpisode: MediaDetail?,
+        seriesEpisodes: List<MediaDetail>,
         plan: PlaybackPlan,
         result: PlaybackSessionResult,
         playlistUrl: String,
@@ -296,6 +370,8 @@ class PlayerViewModel @Inject constructor(
                 mediaDurationMs = durationMs,
                 externalSubtitles = subtitles,
                 nextEpisode = nextEpisode,
+                previousEpisode = previousEpisode,
+                seriesEpisodes = seriesEpisodes,
                 playbackDiagnostics = PlaybackDiagnostics(
                     method = "transcode",
                     methodLabel = playbackMethodLabel("transcode"),
@@ -318,6 +394,9 @@ class PlayerViewModel @Inject constructor(
                 sessionMaxBitrate = generation?.maxBitrate?.takeIf { value -> value > 0 }
                     ?: plan.sessionTemplate?.maxBitrate
                     ?: 0,
+                sessionAudioTrack = generation?.audioTrack ?: it.sessionAudioTrack,
+                sessionSubtitleTrack = generation?.subtitleTrack ?: it.sessionSubtitleTrack,
+                sessionBurnSubtitle = generation?.burnSubtitle ?: it.sessionBurnSubtitle,
                 sessionRestarting = false,
                 error = null,
             )
@@ -327,6 +406,73 @@ class PlayerViewModel @Inject constructor(
     fun setPlaybackSpeed(speed: Float) {
         _state.update { it.copy(playbackSpeed = speed) }
         viewModelScope.launch { preferencesStore.setPlaybackSpeed(speed) }
+    }
+
+    fun setDanmakuEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            danmakuPreferencesStore.setEnabled(enabled)
+            if (!enabled) {
+                danmakuJob?.cancel()
+                _state.update { it.copy(danmakuCues = emptyList(), danmakuLoading = false) }
+            }
+        }
+    }
+
+    fun setDanmakuAutoMatch(enabled: Boolean) {
+        viewModelScope.launch { danmakuPreferencesStore.setAutoMatch(enabled) }
+    }
+
+    fun setManualDanmakuCues(cues: List<DanmakuCue>) {
+        viewModelScope.launch {
+            val offsetMs = danmakuPreferencesStore.preferences.first().offsetMs.toLong()
+            _state.update {
+                it.copy(
+                    danmakuCues = cues.map { cue -> cue.copy(shiftMs = cue.shiftMs + offsetMs) },
+                    danmakuLoading = false,
+                    danmakuError = null,
+                )
+            }
+        }
+    }
+
+    fun reloadDanmaku() {
+        if (loadedId.isNullOrBlank()) return
+        danmakuJob?.cancel()
+        requestDanmaku(danmakuGeneration)
+    }
+
+    private fun requestDanmaku(generation: Long) {
+        danmakuJob?.cancel()
+        danmakuJob = viewModelScope.launch {
+            val preferences = danmakuPreferencesStore.preferences.first()
+            if (!preferences.enabled || preferences.apiBaseUrl.isBlank()) {
+                if (generation == danmakuGeneration) {
+                    _state.update { it.copy(danmakuCues = emptyList(), danmakuLoading = false, danmakuError = null) }
+                }
+                return@launch
+            }
+            _state.update { it.copy(danmakuLoading = true, danmakuError = null) }
+            val result = danmakuRepository.loadForMedia(
+                title = danmakuTitle,
+                season = danmakuSeason,
+                episode = danmakuEpisode,
+                duration = danmakuDuration,
+            )
+            if (generation == danmakuGeneration && loadedId != null) {
+                _state.update {
+                    it.copy(
+                        danmakuCues = result.getOrDefault(emptyList()),
+                        danmakuLoading = false,
+                        danmakuError = result.exceptionOrNull()?.message?.take(160),
+                    )
+                }
+            }
+        }
+    }
+
+    fun setLongPressBoostSpeed(speed: Float) {
+        _state.update { it.copy(longPressBoostSpeed = speed) }
+        viewModelScope.launch { preferencesStore.setLongPressBoostSpeed(speed) }
     }
 
     fun setResizeMode(mode: Int) {
@@ -362,6 +508,9 @@ class PlayerViewModel @Inject constructor(
                     RestartPlaybackSessionRequest(
                         profileId = current.sessionProfileId,
                         startPositionMs = target,
+                        audioTrack = current.sessionAudioTrack,
+                        subtitleTrack = current.sessionSubtitleTrack,
+                        burnSubtitle = current.sessionBurnSubtitle,
                         maxBitrate = current.sessionMaxBitrate,
                         reason = reason,
                     ),
@@ -465,6 +614,9 @@ class PlayerViewModel @Inject constructor(
                             mediaId = mediaId,
                             profileId = "auto",
                             startPositionMs = absolutePosition,
+                            audioTrack = current.sessionAudioTrack,
+                            subtitleTrack = current.sessionSubtitleTrack,
+                            burnSubtitle = current.sessionBurnSubtitle,
                         ),
                     ).getOrElse { cause ->
                         _state.update {
@@ -490,6 +642,8 @@ class PlayerViewModel @Inject constructor(
                         durationMs = current.mediaDurationMs,
                         subtitles = current.externalSubtitles,
                         nextEpisode = current.nextEpisode,
+                        previousEpisode = current.previousEpisode,
+                        seriesEpisodes = current.seriesEpisodes,
                         plan = fallbackPlan,
                         result = result,
                         playlistUrl = playlist,
@@ -634,32 +788,54 @@ class PlayerViewModel @Inject constructor(
 @Composable
 fun PlayerScreen(
     mediaId: String,
+    pictureInPictureAvailable: Boolean = false,
     onBack: () -> Unit,
     onPlayNext: (String) -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val danmakuPreferences by viewModel.danmakuPreferences.collectAsState(initial = DanmakuPreferences())
     val session by viewModel.sessionStore.snapshot.collectAsState()
     val context = LocalContext.current
+    val pictureInPictureHost = remember(context) { context.findPlaybackPictureInPictureHost() }
+    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val token = session.token.orEmpty()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showDanmakuSearch by rememberSaveable { mutableStateOf(false) }
     var audioTracks by remember { mutableStateOf(emptyList<PlayerTrackChoice>()) }
     var subtitleTracks by remember { mutableStateOf(emptyList<PlayerTrackChoice>()) }
     var audioAutomatic by remember { mutableStateOf(true) }
     var subtitlesDisabled by remember { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     var showNextEpisodePanel by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var showEpisodeList by rememberSaveable(mediaId) { mutableStateOf(false) }
     var nextEpisodeCountdown by rememberSaveable(mediaId) { mutableIntStateOf(NEXT_EPISODE_COUNTDOWN_SECONDS) }
     var displayPositionMs by remember(mediaId) { mutableStateOf(0L) }
     var playerDurationMs by remember(mediaId) { mutableStateOf(0L) }
     var seekPreviewMs by remember(mediaId) { mutableStateOf<Long?>(null) }
-    var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(true) }
+    var controlsVisible by rememberSaveable(mediaId) { mutableStateOf(false) }
     var controlsEpoch by remember(mediaId) { mutableIntStateOf(0) }
     var isPlaying by remember(mediaId) { mutableStateOf(false) }
     var boostingSpeed by remember(mediaId) { mutableStateOf<Float?>(null) }
+    var brightnessValue by remember(mediaId) { mutableStateOf(0.5f) }
+    var volumeValue by remember(mediaId) { mutableStateOf(0f) }
+    var gestureNotice by remember(mediaId) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(mediaId) { viewModel.load(mediaId) }
+
+    DisposableEffect(pictureInPictureHost) {
+        brightnessValue = pictureInPictureHost?.currentPlaybackScreenBrightness() ?: 0.5f
+        volumeValue = audioManager?.let { manager ->
+            val maximum = manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (maximum > 0) manager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maximum else 0f
+        } ?: 0f
+        pictureInPictureHost?.setPlaybackLandscape(true)
+        onDispose {
+            pictureInPictureHost?.restorePlaybackScreenBrightness()
+            pictureInPictureHost?.setPlaybackLandscape(false)
+        }
+    }
 
     val player = remember(token) {
         val httpFactory = DefaultHttpDataSource.Factory().apply {
@@ -742,7 +918,6 @@ fun PlayerScreen(
             else player.setMediaItem(item)
             player.prepare()
             player.playWhenReady = true
-            revealControls()
         }
     }
 
@@ -750,6 +925,13 @@ fun PlayerScreen(
         if (state.fallbackNotice != null) {
             delay(FALLBACK_NOTICE_DURATION_MS)
             viewModel.clearFallbackNotice()
+        }
+    }
+
+    LaunchedEffect(gestureNotice) {
+        if (gestureNotice != null) {
+            delay(FALLBACK_NOTICE_DURATION_MS)
+            gestureNotice = null
         }
     }
 
@@ -912,12 +1094,12 @@ fun PlayerScreen(
                 modifier = Modifier.align(Alignment.Center),
                 color = MaterialTheme.colorScheme.primary,
             )
-            state.error != null -> MessagePanel(
+            state.error != null -> HillsState(
                 title = "无法播放",
                 message = state.error!!,
                 actionLabel = "返回",
                 onAction = { leavePlayback("playback_error_back", onBack) },
-                modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
             else -> {
                 AndroidView(
@@ -939,14 +1121,52 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
 
+                if (!showSettings && !state.sessionRestarting && danmakuPreferences.enabled) {
+                    DanmakuOverlay(
+                        cues = state.danmakuCues,
+                        positionMs = displayPositionMs,
+                        enabled = danmakuPreferences.enabled,
+                        mode = danmakuPreferences.mode,
+                        fontSizeSp = danmakuPreferences.fontSizeSp,
+                        speed = danmakuPreferences.speed,
+                        opacity = danmakuPreferences.opacity,
+                        maxVisible = danmakuPreferences.maxVisible,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth(0.92f),
+                    )
+                }
+
                 PlayerGestureLayer(
                     currentSpeed = state.playbackSpeed,
+                    longPressBoostSpeed = state.longPressBoostSpeed,
                     enabled = !showSettings && !state.sessionRestarting,
                     onTap = {
                         controlsVisible = !controlsVisible
                         controlsEpoch += 1
                     },
                     onSeekBy = ::seekBy,
+                    onSeekDelta = { delta ->
+                        if (delta != 0L) seekBy(delta)
+                    },
+                    onBrightnessChange = { delta ->
+                        brightnessValue = (brightnessValue - delta).coerceIn(0f, 1f)
+                        pictureInPictureHost?.setPlaybackScreenBrightness(brightnessValue)
+                        gestureNotice = "亮度 ${(brightnessValue * 100).toInt()}%"
+                    },
+                    onVolumeChange = { delta ->
+                        val manager = audioManager
+                        val maximum = manager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
+                        if (manager != null && maximum > 0) {
+                            volumeValue = (volumeValue - delta).coerceIn(0f, 1f)
+                            manager.setStreamVolume(
+                                AudioManager.STREAM_MUSIC,
+                                (volumeValue * maximum).toInt().coerceIn(0, maximum),
+                                0,
+                            )
+                            gestureNotice = "音量 ${(volumeValue * 100).toInt()}%"
+                        }
+                    },
                     onBoostStart = { speed ->
                         boostingSpeed = speed
                         player.setPlaybackSpeed(speed)
@@ -973,6 +1193,37 @@ fun PlayerScreen(
                         showSettings = true
                         controlsVisible = false
                     },
+                    onAspectClick = { controlsVisible = true },
+                    resizeMode = state.resizeMode,
+                    onResizeModeChange = viewModel::setResizeMode,
+                    onPictureInPicture = {
+                        if (pictureInPictureAvailable) pictureInPictureHost?.enterPlaybackPictureInPicture()
+                    },
+                    pictureInPictureAvailable = pictureInPictureAvailable,
+                    hasPreviousEpisode = state.previousEpisode != null,
+                    onPreviousEpisode = {
+                        state.previousEpisode?.let { previous ->
+                            leavePlayback("previous_media", action = { onPlayNext(previous.id) })
+                        }
+                    },
+                    hasNextEpisode = state.nextEpisode != null,
+                    onNextEpisode = {
+                        state.nextEpisode?.let { next ->
+                            leavePlayback("next_media", action = { onPlayNext(next.id) })
+                        }
+                    },
+                    hasEpisodeList = state.seriesEpisodes.size > 1,
+                    onEpisodeListClick = { showEpisodeList = true },
+                    hasAudioTracks = audioTracks.isNotEmpty(),
+                    onAudioClick = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
+                    hasSubtitleTracks = subtitleTracks.isNotEmpty(),
+                    onSubtitleClick = {
+                        showSettings = true
+                        controlsVisible = false
+                    },
                     onPlayPause = {
                         if (player.isPlaying) player.pause() else player.play()
                         revealControls()
@@ -992,6 +1243,19 @@ fun PlayerScreen(
                         showSettings = true
                         controlsVisible = false
                     },
+                    onSpeedDecrease = {
+                        viewModel.setPlaybackSpeed(neighborPlaybackSpeed(state.playbackSpeed, -1))
+                        revealControls()
+                    },
+                    onSpeedIncrease = {
+                        viewModel.setPlaybackSpeed(neighborPlaybackSpeed(state.playbackSpeed, 1))
+                        revealControls()
+                    },
+                    episodeLabel = state.seriesEpisodes
+                        .firstOrNull { it.id == mediaId }
+                        ?.let { episodeDisplayName(it.seasonNumber, it.episodeNumber) }
+                        ?: playerEpisodeLabel(state.title),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -1002,6 +1266,21 @@ fun PlayerScreen(
                 state.progressQueued -> "当前离线，观看进度将在恢复连接后自动同步"
                 else -> null
             }
+        if (gestureNotice != null && !showSettings) {
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = Color.Black.copy(alpha = 0.72f),
+            ) {
+                Text(
+                    text = gestureNotice.orEmpty(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+                )
+            }
+        }
+
         if (statusNotice != null && !showNextEpisodePanel && !showSettings) {
             Surface(
                 modifier = Modifier
@@ -1039,7 +1318,7 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = next.displayTitle,
+                        text = "${episodeDisplayName(next.seasonNumber, next.episodeNumber)} · ${next.userEpisodeTitle}",
                         color = Color.White.copy(alpha = 0.72f),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 4.dp),
@@ -1049,18 +1328,47 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { showNextEpisodePanel = false }) { Text("取消") }
+                        HillsSecondaryAction(
+                            label = "取消",
+                            onClick = { showNextEpisodePanel = false },
+                            modifier = Modifier.width(92.dp),
+                        )
                         Spacer(Modifier.width(8.dp))
-                        Button(
+                        HillsPrimaryAction(
+                            label = "立即播放",
                             onClick = {
                                 showNextEpisodePanel = false
                                 leavePlayback("next_media", action = { onPlayNext(next.id) })
                             },
-                        ) { Text("立即播放") }
+                            modifier = Modifier.width(116.dp),
+                        )
                     }
                 }
             }
         }
+    }
+
+    if (showEpisodeList) {
+        EpisodePickerDialog(
+            title = state.title,
+            episodes = state.seriesEpisodes,
+            selectedId = mediaId,
+            onDismiss = { showEpisodeList = false },
+            onSelect = { selected ->
+                showEpisodeList = false
+                if (selected.id != mediaId) {
+                    leavePlayback("episode_selected", action = { onPlayNext(selected.id) })
+                }
+            },
+        )
+    }
+
+    if (showDanmakuSearch) {
+        DanmakuSearchDialog(
+            initialKeyword = state.title,
+            onDismiss = { showDanmakuSearch = false },
+            onLoaded = viewModel::setManualDanmakuCues,
+        )
     }
 
     if (showSettings) {
@@ -1072,6 +1380,8 @@ fun PlayerScreen(
             playbackDiagnostics = state.playbackDiagnostics,
             playbackSpeed = state.playbackSpeed,
             onPlaybackSpeedChange = viewModel::setPlaybackSpeed,
+            longPressBoostSpeed = state.longPressBoostSpeed,
+            onLongPressBoostSpeedChange = viewModel::setLongPressBoostSpeed,
             resizeMode = state.resizeMode,
             onResizeModeChange = viewModel::setResizeMode,
             autoPlayNext = state.autoPlayNext,
@@ -1088,6 +1398,7 @@ fun PlayerScreen(
             },
             subtitleTracks = subtitleTracks,
             subtitlesDisabled = subtitlesDisabled,
+            danmakuAvailable = danmakuPreferences.apiBaseUrl.isNotBlank(),
             onSubtitleTrackSelected = { choice ->
                 subtitlesDisabled = choice == null
                 player.trackSelectionParameters = if (choice == null) {
@@ -1100,14 +1411,137 @@ fun PlayerScreen(
                     )
                 }
             },
+            danmakuEnabled = danmakuPreferences.enabled,
+            danmakuAutoMatch = danmakuPreferences.autoMatch,
+            danmakuLoading = state.danmakuLoading,
+            danmakuCueCount = state.danmakuCues.size,
+            danmakuError = state.danmakuError,
+            onDanmakuEnabledChange = viewModel::setDanmakuEnabled,
+            onDanmakuAutoMatchChange = viewModel::setDanmakuAutoMatch,
+            onDanmakuSearch = {
+                showSettings = false
+                showDanmakuSearch = true
+            },
+            onDanmakuRematch = viewModel::reloadDanmaku,
         )
     }
 }
 
+@Composable
+private fun EpisodePickerDialog(
+    title: String,
+    episodes: List<MediaDetail>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (MediaDetail) -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 18.dp),
+            ) {
+                Text(
+                    text = "选集 · $title",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                episodes
+                    .groupBy { it.seasonNumber }
+                    .toSortedMap(compareBy<Int> { it == 0 }.thenBy { it })
+                    .forEach { (season, seasonEpisodes) ->
+                        Text(
+                            text = seasonDisplayName(season),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp),
+                        )
+                        seasonEpisodes.forEach { episode ->
+                            val selected = episode.id == selectedId
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelect(episode) }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = episodeDisplayName(episode.seasonNumber, episode.episodeNumber),
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        text = episode.userEpisodeTitle,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (selected) {
+                                    Text("正在播放", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                    }
+            }
+        }
+    }
+}
+
+internal fun flattenSeriesEpisodes(seasons: List<com.nowen.video.v2.core.model.SeasonInfo>): List<MediaDetail> =
+    seasons
+        .sortedWith(compareBy<com.nowen.video.v2.core.model.SeasonInfo> { it.seasonNumber == 0 }.thenBy { it.seasonNumber })
+        .flatMap { it.episodes }
+
 internal fun resolveServerResource(baseUrl: String?, path: String?): String? {
-    if (path.isNullOrBlank()) return null
-    if (path.startsWith("http://") || path.startsWith("https://")) return path
-    return baseUrl?.trimEnd('/') + "/" + path.trimStart('/')
+    val resource = path?.trim().orEmpty()
+    if (resource.isBlank()) return null
+    val absolute = runCatching { java.net.URI(resource) }.getOrNull()
+    val origin = baseUrl?.trim()?.trimEnd('/').orEmpty()
+    if (origin.isBlank()) return null
+    val base = runCatching { java.net.URI(origin) }.getOrNull() ?: return null
+    if (!base.scheme.equals("http", ignoreCase = true) &&
+        !base.scheme.equals("https", ignoreCase = true)
+    ) return null
+    if (absolute?.isAbsolute == true) {
+        val allowedScheme = absolute.scheme.equals(base.scheme, ignoreCase = true)
+        val allowedHost = absolute.host.equals(base.host, ignoreCase = true)
+        val allowedPort = absolute.port == base.port ||
+            (absolute.port == -1 && base.port == -1)
+        return resource.takeIf { allowedScheme && allowedHost && allowedPort }
+    }
+    if (resource.startsWith("//")) return null
+    return origin + "/" + resource.trimStart('/')
+}
+
+internal fun neighborPlaybackSpeed(current: Float, direction: Int): Float {
+    if (direction == 0) {
+        return supportedPlaybackSpeeds.minByOrNull { kotlin.math.abs(it - current) } ?: 1f
+    }
+    return if (direction > 0) {
+        supportedPlaybackSpeeds.firstOrNull { it > current } ?: supportedPlaybackSpeeds.last()
+    } else {
+        supportedPlaybackSpeeds.lastOrNull { it < current } ?: supportedPlaybackSpeeds.first()
+    }
+}
+
+internal fun playerEpisodeLabel(title: String): String {
+    val marker = Regex("\\bS(\\d{1,2})\\s*[:.]?\\s*E(\\d{1,2})\\b", RegexOption.IGNORE_CASE).find(title)
+        ?: return title
+    val season = marker.groupValues[1].toIntOrNull() ?: 1
+    val episode = marker.groupValues[2].toIntOrNull() ?: 0
+    val remainder = title.removeRange(marker.range).trim().trimStart('-', '·', ':', ' ')
+    val label = if (season == 0) "特别篇 $episode" else "第 $episode 集"
+    return label + remainder.takeIf(String::isNotBlank)?.let { " - $it" }.orEmpty()
 }
 
 internal fun formatPlaybackTime(positionMs: Long): String {

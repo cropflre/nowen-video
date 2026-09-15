@@ -13,6 +13,36 @@ import (
 // Backdrop serves the real wide artwork associated with a media item. It
 // deliberately returns 404 when no backdrop exists so the client can fall back
 // to the poster and keep the existing blurred-poster treatment.
+// Logo serves a persisted transparent ClearLogo. Missing logos deliberately
+// return 404 so clients can fall back to the textual title instead of rendering
+// a poster placeholder as a title image.
+func (h *StreamHandler) Logo(c *gin.Context) {
+	id := c.Param("id")
+	logoPath, err := h.streamService.GetLogoPath(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	if logoPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "媒体标题图不存在"})
+		return
+	}
+	fileInfo, statErr := os.Stat(logoPath)
+	if statErr != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "媒体标题图不可用"})
+		return
+	}
+	etag := fmt.Sprintf(`"%x-%x"`, fileInfo.ModTime().UnixNano(), fileInfo.Size())
+	c.Header("ETag", etag)
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	setPosterContentType(c, logoPath)
+	c.Header("Cache-Control", "public, max-age=86400, must-revalidate")
+	c.File(logoPath)
+}
+
 func (h *StreamHandler) Backdrop(c *gin.Context) {
 	id := c.Param("id")
 	backdropPath, err := h.streamService.GetBackdropPath(id)

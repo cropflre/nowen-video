@@ -54,9 +54,9 @@ func TestPreviewThumbnailJobClaimsOnlyMatchingNode(t *testing.T) {
 	})
 	if err := analysis.RegisterComputeTask(MediaComputeTaskRegistration{
 		TaskID: "preview-task", MediaID: "media-1", Fingerprint: "fp-1",
-		JobType: MediaComputeJobPreviewThumbnailV1,
+		JobType:            MediaComputeJobPreviewThumbnailV1,
 		RequiredCapability: MediaComputeCapabilityPreviewThumbnailV1,
-		Input: input,
+		Input:              input,
 	}); err != nil {
 		t.Fatalf("register preview task: %v", err)
 	}

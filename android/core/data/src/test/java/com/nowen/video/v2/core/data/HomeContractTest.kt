@@ -62,4 +62,20 @@ class HomeContractTest {
         assertEquals(listOf("movie", "series"), items.map { it.type })
         assertTrue(items.all { !it.resolvedPoster.isNullOrBlank() })
     }
+
+    @Test
+    fun `search response preserves the explicit series grouping`() {
+        val response = SearchResponse(
+            media = listOf(MediaCard(id = "movie-1", title = "电影")),
+            series = listOf(MediaCard(id = "series-1", title = "剧集")),
+            data = listOf(MediaCard(id = "series-1", title = "错误的通用项", type = "movie")),
+        )
+
+        val items = response.all()
+        assertEquals(listOf("series-1", "movie-1"), items.map { it.resolvedId })
+        assertEquals("series", items.first().type)
+        assertTrue(items.first().isSeries)
+        assertEquals("/api/series/series-1/poster", items.first().resolvedPoster)
+        assertEquals("movie", items.last().type)
+    }
 }

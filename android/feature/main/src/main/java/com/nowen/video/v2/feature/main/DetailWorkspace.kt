@@ -3,6 +3,7 @@
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,17 +18,20 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,9 +57,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsTechnicalRow
+import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
+import com.nowen.video.v2.core.model.MediaPerson
 
 /** Web 移动端同构详情 Hero：海报始终可见，Backdrop 仅作为氛围层。 */
+@Composable
+internal fun DetailTitleArtwork(
+    logoUrl: String?,
+    fallbackTitle: String,
+    maxWidth: androidx.compose.ui.unit.Dp,
+    maxHeight: androidx.compose.ui.unit.Dp,
+    fallbackStyle: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    var logoFailed by remember(logoUrl) { mutableStateOf(logoUrl.isNullOrBlank()) }
+    if (!logoFailed) {
+        AsyncImage(
+            model = logoUrl,
+            contentDescription = fallbackTitle,
+            contentScale = ContentScale.Fit,
+            onError = { logoFailed = true },
+            modifier = modifier
+                .widthIn(max = maxWidth)
+                .heightIn(max = maxHeight),
+        )
+    } else {
+        Text(
+            fallbackTitle,
+            color = Color.White,
+            style = fallbackStyle,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier,
+        )
+    }
+}
+
 @Composable
 internal fun MobileDetailHero(
     title: String,
@@ -67,6 +107,7 @@ internal fun MobileDetailHero(
     primaryActionLabel: String,
     onPrimaryAction: () -> Unit,
     onBack: () -> Unit,
+    logoUrl: String? = null,
     modifier: Modifier = Modifier,
     secondaryActions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -77,7 +118,7 @@ internal fun MobileDetailHero(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(330.dp)
+            .height(500.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         if (backgroundArtwork != null) {
@@ -103,68 +144,47 @@ internal fun MobileDetailHero(
             Modifier
                 .fillMaxSize()
                 .background(
-                    Brush.horizontalGradient(
-                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                        0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.60f),
-                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.28f),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
                     Brush.verticalGradient(
-                        0f to MaterialTheme.colorScheme.background.copy(alpha = 0.10f),
-                        0.72f to Color.Transparent,
-                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.28f),
+                        0f to Color.Black.copy(alpha = 0.16f),
+                        0.42f to Color.Black.copy(alpha = 0.20f),
+                        0.76f to MaterialTheme.colorScheme.background.copy(alpha = 0.66f),
+                        1f to MaterialTheme.colorScheme.background.copy(alpha = 0.98f),
                     ),
                 ),
         )
 
         Surface(
+            onClick = onBack,
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(start = 12.dp, top = 8.dp)
                 .size(44.dp),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            color = Color.Black.copy(alpha = 0.34f),
+            contentColor = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
             shadowElevation = 2.dp,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                modifier = Modifier.padding(10.dp),
+            )
         }
 
-        Row(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.Bottom,
+                .padding(horizontal = 20.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.Bottom,
         ) {
-            AsyncImage(
-                model = posterUrl,
-                contentDescription = title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(124.dp)
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(15.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                DetailTitleArtwork(
+                    logoUrl = logoUrl,
+                    fallbackTitle = title,
+                    maxWidth = 220.dp,
+                    maxHeight = 52.dp,
+                    fallbackStyle = MaterialTheme.typography.headlineMedium,
                 )
                 if (originalTitle.isNotBlank() && originalTitle != title) {
                     Spacer(Modifier.height(4.dp))
@@ -188,23 +208,12 @@ internal fun MobileDetailHero(
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Button(
+                HillsPrimaryAction(
+                    label = primaryActionLabel,
+                    icon = Icons.Default.PlayArrow,
                     onClick = onPrimaryAction,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    shape = RoundedCornerShape(11.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        primaryActionLabel,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -214,7 +223,6 @@ internal fun MobileDetailHero(
                     content = secondaryActions,
                 )
             }
-        }
     }
 }
 
@@ -279,71 +287,79 @@ internal fun DetailInfoPanel(
     modifier: Modifier = Modifier,
 ) {
     if (rows.isEmpty()) return
-    ElevatedPanel(modifier.fillMaxWidth()) {
-        rows.forEachIndexed { index, row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Text(
-                    row.first,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(0.42f),
-                )
-                Text(
-                    row.second,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(0.58f),
-                )
-            }
-            if (index != rows.lastIndex) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 10.dp),
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                )
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(NowenMobileMetrics.SectionRadius),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f),
+        ),
+        shadowElevation = 2.dp,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            rows.forEachIndexed { index, row ->
+                HillsTechnicalRow(label = row.first, value = row.second)
+                if (index != rows.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+                }
             }
         }
     }
 }
 
 @Composable
-internal fun DetailCreditCard(
-    name: String,
-    role: String,
-    imageUrl: String?,
-    onClick: () -> Unit,
+internal fun DetailCastShelf(
+    persons: List<MediaPerson>,
+    baseUrl: String?,
+    onPersonClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (persons.isEmpty()) return
     Column(
         modifier = modifier
-            .width(104.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
     ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(86.dp)
-                .clip(MaterialTheme.shapes.large)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            role,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text("演职人员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(persons.take(16), key = MediaPerson::id) { credit ->
+                Column(
+                    modifier = Modifier
+                        .width(132.dp)
+                        .clickable { onPersonClick(credit.person.id) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    AsyncImage(
+                        model = personProfileUrl(baseUrl, credit.person.id),
+                        contentDescription = credit.person.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        credit.person.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        credit.roleLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
     }
 }

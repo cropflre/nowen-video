@@ -38,8 +38,8 @@ func (h *MediaAnalysisHandler) AnalyzeHighlightsDistributed(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusAccepted, gin.H{
-		"data": task,
-		"message": "精彩片段分析任务已启动",
+		"data":           task,
+		"message":        "精彩片段分析任务已启动",
 		"execution_mode": h.analysis.ExecutionMode(),
 	})
 }

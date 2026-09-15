@@ -199,6 +199,19 @@ func (s *FanartService) EnhanceMovieImages(media *model.Media) error {
 		}
 	}
 
+	// 保存透明标题图；缺失或下载失败不影响其他图片增强。
+	if media.LogoPath == "" && len(images.MovieLogo) > 0 {
+		randomDelay(1000, 2000)
+		bestLogo := s.selectBestImage(images.MovieLogo, "zh", "en")
+		if bestLogo != nil {
+			localPath, err := s.downloadFanartImage(media.ID, bestLogo.URL, "logo")
+			if err == nil {
+				media.LogoPath = localPath
+				updated = true
+			}
+		}
+	}
+
 	if updated {
 		return s.mediaRepo.Update(media)
 	}
@@ -241,6 +254,19 @@ func (s *FanartService) EnhanceTVImages(series *model.Series, tvdbID int) error 
 			localPath, err := s.downloadFanartImageForSeries(series.ID, bestBg.URL, "backdrop")
 			if err == nil {
 				series.BackdropPath = localPath
+				updated = true
+			}
+		}
+	}
+
+	// 保存透明标题图；缺失或下载失败不影响其他图片增强。
+	if series.LogoPath == "" && len(images.TVLogo) > 0 {
+		randomDelay(1000, 2000)
+		bestLogo := s.selectBestImage(images.TVLogo, "zh", "en")
+		if bestLogo != nil {
+			localPath, err := s.downloadFanartImageForSeries(series.ID, bestLogo.URL, "logo")
+			if err == nil {
+				series.LogoPath = localPath
 				updated = true
 			}
 		}
@@ -383,10 +409,10 @@ func (p *FanartProvider) ScrapeMedia(media *model.Media, searchTitle string, yea
 }
 
 func (p *FanartProvider) ScrapeSeries(series *model.Series, searchTitle string, year int, mode string) error {
-	// Fanart.tv 剧集图片需要 TVDB ID
-	// 如果没有 TVDB ID，尝试使用 TMDb ID（Fanart.tv 也支持部分 TMDb ID 查询）
-	if series.TMDbID == 0 {
-		return fmt.Errorf("缺少 TMDb/TVDB ID，跳过 Fanart.tv 图片增强")
+	// Fanart.tv 的 /v3/tv 端点只接受 TheTVDB series ID；不能将 TMDb ID
+	// 误当作 TVDB ID，否则会静默查到错误条目或始终无法下载标题图。
+	if series.TVDbID == 0 {
+		return fmt.Errorf("缺少 TVDB ID，跳过 Fanart.tv 剧集图片增强")
 	}
-	return p.fanart.EnhanceTVImages(series, series.TMDbID)
+	return p.fanart.EnhanceTVImages(series, series.TVDbID)
 }

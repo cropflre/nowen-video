@@ -1,6 +1,7 @@
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDownload
@@ -36,7 +38,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -55,8 +56,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,9 +75,12 @@ import com.nowen.video.v2.core.data.MobileWebParityRepository
 import com.nowen.video.v2.core.data.OfflineDownloadRepository
 import com.nowen.video.v2.core.data.ProgressRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
+import com.nowen.video.v2.core.data.SeriesRepository
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.ElevatedPanel
-import com.nowen.video.v2.core.designsystem.MessagePanel
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
+import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
+import com.nowen.video.v2.core.designsystem.HillsState
+import com.nowen.video.v2.core.designsystem.HillsTextField
 import com.nowen.video.v2.core.model.CollectionWithMedia
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MediaComment
@@ -83,7 +90,11 @@ import com.nowen.video.v2.core.model.MediaHighlight
 import com.nowen.video.v2.core.model.MediaPerson
 import com.nowen.video.v2.core.model.OfflineDownloadRecord
 import com.nowen.video.v2.core.model.OfflineDownloadStatus
+import com.nowen.video.v2.core.model.SeasonInfo
+import com.nowen.video.v2.core.model.SeriesInfo
 import com.nowen.video.v2.core.model.SubtitleTracksResponse
+import com.nowen.video.v2.core.model.episodeDisplayName
+import com.nowen.video.v2.core.model.userEpisodeTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -113,6 +124,8 @@ data class MediaDetailUiState(
     val download: OfflineDownloadRecord? = null,
     val downloadActionRunning: Boolean = false,
     val downloadMessage: String? = null,
+    val episodeSeries: SeriesInfo? = null,
+    val episodeSeason: SeasonInfo? = null,
     val error: String? = null,
 ) {
     val hasResumeProgress: Boolean
@@ -122,6 +135,7 @@ data class MediaDetailUiState(
 @HiltViewModel
 class MediaDetailViewModel @Inject constructor(
     private val repository: CatalogRepository,
+    private val seriesRepository: SeriesRepository,
     private val socialRepository: SocialCatalogRepository,
     private val parityRepository: MobileWebParityRepository,
     private val progressRepository: ProgressRepository,
@@ -172,10 +186,19 @@ class MediaDetailViewModel @Inject constructor(
                             ?: 0.0
                         progressRepository.restorePosition(id, duration)
                     }
+                    val media = mediaDeferred.await()
+                    val episodeBundle = if (media.mediaType.equals("episode", ignoreCase = true) && media.seriesId.isNotBlank()) {
+                        seriesRepository.load(media.seriesId).getOrNull()
+                    } else {
+                        null
+                    }
+                    val directPersons = persons.await()
                     RelatedMediaDetail(
-                        media = mediaDeferred.await(),
+                        media = media,
+                        episodeSeries = episodeBundle?.series,
+                        episodeSeason = episodeBundle?.seasons?.firstOrNull { it.seasonNumber == media.seasonNumber },
                         favorite = favorite.await(),
-                        persons = persons.await(),
+                        persons = selectDetailPersons(directPersons, episodeBundle?.persons.orEmpty()),
                         collection = collection.await(),
                         subtitles = subtitles.await(),
                         highlights = highlights.await(),
@@ -189,6 +212,8 @@ class MediaDetailViewModel @Inject constructor(
                     it.copy(
                         loading = false,
                         media = result.media,
+                        episodeSeries = result.episodeSeries,
+                        episodeSeason = result.episodeSeason,
                         favorite = result.favorite,
                         persons = result.persons,
                         collection = result.collection,
@@ -227,7 +252,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun createComment(content: String, rating: Int?) {
         val mediaId = loadedId ?: return
-        if (content.isBlank()) return
+        if (content.isBlank() || _state.value.commentActionRunning) return
         viewModelScope.launch {
             _state.update { it.copy(commentActionRunning = true, commentMessage = null) }
             parityRepository.createComment(mediaId, content, rating)
@@ -294,6 +319,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun toggleFavorite() {
         val mediaId = loadedId ?: return
+        if (_state.value.favoriteActionRunning) return
         val desired = !_state.value.favorite
         viewModelScope.launch {
             _state.update { it.copy(favoriteActionRunning = true, favoriteMessage = null) }
@@ -320,6 +346,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun toggleDownload() {
         val mediaId = loadedId ?: return
+        if (_state.value.downloadActionRunning) return
         val current = _state.value.download
         viewModelScope.launch {
             _state.update { it.copy(downloadActionRunning = true, downloadMessage = null) }
@@ -353,8 +380,15 @@ class MediaDetailViewModel @Inject constructor(
     }
 }
 
+internal fun selectDetailPersons(
+    directPersons: List<MediaPerson>,
+    seriesPersons: List<MediaPerson>,
+): List<MediaPerson> = directPersons.ifEmpty { seriesPersons }
+
 private data class RelatedMediaDetail(
     val media: MediaDetail,
+    val episodeSeries: SeriesInfo?,
+    val episodeSeason: SeasonInfo?,
     val favorite: Boolean,
     val persons: List<MediaPerson>,
     val collection: CollectionWithMedia?,
@@ -375,12 +409,14 @@ fun MediaDetailScreen(
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
     onMediaClick: (String) -> Unit = onPlay,
+    onSeriesClick: (String) -> Unit = {},
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val session by viewModel.sessionStore.snapshot.collectAsState()
     var highlightsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var castExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
+    var episodeMoreExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var subtitlesExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var commentsExpanded by rememberSaveable(mediaId) { mutableStateOf(false) }
     var commentText by rememberSaveable(mediaId) { mutableStateOf("") }
@@ -390,78 +426,145 @@ fun MediaDetailScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            state.error != null -> MessagePanel(
+            state.error != null -> HillsState(
                 title = "无法打开详情",
                 message = state.error!!,
                 actionLabel = "返回",
                 onAction = onBack,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(20.dp),
+                modifier = Modifier.align(Alignment.Center),
             )
             state.media != null -> {
                 val media = state.media!!
                 val baseUrl = session.activeServer?.baseUrl
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            if (media.mediaType.equals("episode", ignoreCase = true)) {
+                                MaterialTheme.colorScheme.background
+                            } else {
+                                MoviePageBackground
+                            },
+                        ),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    val isEpisode = media.mediaType.equals("episode", ignoreCase = true)
+                    val episodeSeries = state.episodeSeries
+                    val heroTitle = if (isEpisode) episodeSeries?.displayTitle ?: media.title else media.displayTitle
+                    val heroOriginalTitle = if (isEpisode) media.episodeTitle else media.originalTitle
+                    val heroMetadata = if (isEpisode) {
+                        listOfNotNull(
+                            episodeCode(media),
+                            media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+                            media.year.takeIf { it > 0 }?.toString(),
+                            media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+                        ).joinToString(" · ")
+                    } else {
+                        mediaMetadataLabel(media)
+                    }
                     item {
-                        MobileDetailHero(
-                            title = media.displayTitle,
-                            originalTitle = media.originalTitle,
-                            metadata = mediaMetadataLabel(media),
-                            overview = media.overview,
-                            backdropUrl = resolveImage(baseUrl, media.backdropPath),
-                            posterUrl = resolveImage(baseUrl, media.posterPath),
-                            primaryActionLabel = if (state.hasResumeProgress) {
-                                "继续播放 · ${formatResumeTime(state.resumePositionSeconds)}"
-                            } else {
-                                "播放"
-                            },
-                            onPrimaryAction = { onPlay(media.id) },
-                            onBack = onBack,
-                        ) {
-                            FilledTonalButton(
-                                onClick = viewModel::toggleFavorite,
-                                enabled = !state.favoriteActionRunning,
-                                modifier = Modifier.weight(1f).height(42.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
-                            ) {
-                                if (state.favoriteActionRunning) {
-                                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        if (isEpisode) {
+                            MobileDetailHero(
+                                title = heroTitle,
+                                originalTitle = heroOriginalTitle,
+                                metadata = heroMetadata,
+                                overview = media.overview,
+                                backdropUrl = resolveImage(baseUrl, media.backdropPath),
+                                posterUrl = resolveImage(baseUrl, media.posterPath),
+                                primaryActionLabel = if (state.hasResumeProgress) {
+                                    "继续播放 · ${formatResumeTime(state.resumePositionSeconds)}"
                                 } else {
-                                    Icon(
-                                        if (state.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(19.dp),
+                                    "播放"
+                                },
+                                onPrimaryAction = { onPlay(media.id) },
+                                onBack = onBack,
+                                logoUrl = episodeSeries?.let { seriesLogoUrl(baseUrl, it.id) },
+                            ) {
+                                if (episodeSeries?.id?.isNotBlank() == true) {
+                                    HillsSecondaryAction(
+                                        label = "剧集详情",
+                                        onClick = { onSeriesClick(episodeSeries.id) },
+                                        modifier = Modifier.weight(1f),
+                                        icon = Icons.Default.Collections,
                                     )
                                 }
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (state.favorite) "已收藏" else "收藏", fontSize = 12.sp)
+                                HillsSecondaryAction(
+                                    label = if (episodeMoreExpanded) "收起" else "更多",
+                                    onClick = { episodeMoreExpanded = !episodeMoreExpanded },
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.ChevronRight,
+                                )
                             }
-                            FilledTonalButton(
-                                onClick = { subtitlesExpanded = !subtitlesExpanded },
-                                modifier = Modifier.weight(1f).height(42.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
-                            ) {
-                                Icon(Icons.Default.Subtitles, contentDescription = null, modifier = Modifier.size(19.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("字幕", fontSize = 12.sp)
-                            }
+                        } else {
+                            MovieDetailHeader(
+                                media = media,
+                                baseUrl = baseUrl,
+                                hasResumeProgress = state.hasResumeProgress,
+                                resumePositionSeconds = state.resumePositionSeconds,
+                                favorite = state.favorite,
+                                onBack = onBack,
+                                onFavorite = viewModel::toggleFavorite,
+                                onPlay = { onPlay(media.id) },
+                            )
+                        }
+                    }
+
+                    if (isEpisode) {
+                        item {
+                            EpisodePlaybackSpecPanel(
+                                media = media,
+                                subtitles = state.subtitles,
+                            )
+                        }
+                    }
+
+                    if (isEpisode && episodeMoreExpanded) {
+                        item {
+                            EpisodeMoreActions(
+                                favorite = state.favorite,
+                                downloadLabel = downloadCompactLabel(state.download?.status),
+                                onFavorite = viewModel::toggleFavorite,
+                                onSubtitles = { subtitlesExpanded = !subtitlesExpanded },
+                                onDownload = viewModel::toggleDownload,
+                            )
                         }
                     }
 
                     item {
-                        DetailFeedCard(title = "影片简介") {
-                            Text(
-                                media.overview.ifBlank { "暂无简介" },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                lineHeight = 24.sp,
+                        if (isEpisode) {
+                            DetailFeedCard(title = "本集简介") {
+                                Text(
+                                    media.overview.ifBlank { "暂无简介" },
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 24.sp,
+                                )
+                            }
+                        } else {
+                            MovieOverviewSection(media = media, persons = state.persons)
+                        }
+                    }
+
+                    if (!isEpisode && state.persons.isNotEmpty()) {
+                        item {
+                            DetailCastShelf(
+                                persons = state.persons,
+                                baseUrl = baseUrl,
+                                onPersonClick = onPersonClick,
+                            )
+                        }
+                    }
+
+                    val episodeSeason = state.episodeSeason
+                    if (isEpisode && episodeSeries != null && episodeSeason?.episodes?.isNotEmpty() == true) {
+                        item {
+                            EpisodeSeasonShelf(
+                                series = episodeSeries,
+                                season = episodeSeason,
+                                currentMediaId = media.id,
+                                baseUrl = baseUrl,
+                                onEpisodeClick = onMediaClick,
                             )
                         }
                     }
@@ -486,15 +589,23 @@ fun MediaDetailScreen(
 
                     if (state.highlights.isNotEmpty()) {
                         item {
-                            DetailFeedCard(
-                                title = "精彩片段",
-                                count = state.highlights.size,
-                                actionLabel = if (highlightsExpanded) "收起" else "查看更多",
-                                onAction = { highlightsExpanded = !highlightsExpanded },
-                            ) {
-                                HighlightPreviewGrid(
+                            if (isEpisode) {
+                                DetailFeedCard(
+                                    title = "精彩片段",
+                                    count = state.highlights.size,
+                                    actionLabel = if (highlightsExpanded) "收起" else "查看更多",
+                                    onAction = { highlightsExpanded = !highlightsExpanded },
+                                ) {
+                                    HighlightPreviewGrid(
+                                        highlights = state.highlights,
+                                        expanded = highlightsExpanded,
+                                        baseUrl = baseUrl,
+                                        onPlay = { highlight -> onHighlightPlay(media.id, highlight.startTime) },
+                                    )
+                                }
+                            } else {
+                                MovieGalleryShelf(
                                     highlights = state.highlights,
-                                    expanded = highlightsExpanded,
                                     baseUrl = baseUrl,
                                     onPlay = { highlight -> onHighlightPlay(media.id, highlight.startTime) },
                                 )
@@ -502,7 +613,7 @@ fun MediaDetailScreen(
                         }
                     }
 
-                    if (state.persons.isNotEmpty()) {
+                    if (isEpisode && state.persons.isNotEmpty()) {
                         item {
                             DetailFeedCard(
                                 title = "演职人员",
@@ -522,16 +633,24 @@ fun MediaDetailScreen(
 
                     if (state.recommendations.isNotEmpty()) {
                         item {
-                            DetailFeedCard(title = "相似推荐") {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    items(state.recommendations, key = { "similar-${it.resolvedId}" }) { item ->
-                                        SimilarPosterCard(
-                                            media = item,
-                                            imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                                            onClick = { onMediaClick(item.resolvedId) },
-                                        )
+                            if (isEpisode) {
+                                DetailFeedCard(title = "相似推荐") {
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        items(state.recommendations, key = { "similar-${it.resolvedId}" }) { item ->
+                                            SimilarPosterCard(
+                                                media = item,
+                                                imageUrl = resolveImage(baseUrl, item.resolvedPoster),
+                                                onClick = { onMediaClick(item.resolvedId) },
+                                            )
+                                        }
                                     }
                                 }
+                            } else {
+                                MovieRecommendationShelf(
+                                    recommendations = state.recommendations,
+                                    baseUrl = baseUrl,
+                                    onMediaClick = onMediaClick,
+                                )
                             }
                         }
                     }
@@ -563,17 +682,6 @@ fun MediaDetailScreen(
                                         Icon(Icons.Default.ChevronRight, null)
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    item {
-                        DetailFeedCard(title = "技术规格") {
-                            val rows = mediaTechnicalRows(media)
-                            if (rows.isEmpty()) {
-                                Text("暂无技术信息", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                DetailInfoPanel(rows)
                             }
                         }
                     }
@@ -619,12 +727,12 @@ fun MediaDetailScreen(
                                         Icon(downloadActionIcon(download.status), null, tint = MaterialTheme.colorScheme.primary)
                                         Spacer(Modifier.width(10.dp))
                                         Text(downloadActionLabel(download.status), modifier = Modifier.weight(1f))
-                                        FilledTonalButton(
+                                        HillsSecondaryAction(
+                                            label = downloadCompactLabel(download.status),
                                             onClick = viewModel::toggleDownload,
                                             enabled = !state.downloadActionRunning && download.status != OfflineDownloadStatus.Completed,
-                                        ) {
-                                            Text(downloadCompactLabel(download.status))
-                                        }
+                                            modifier = Modifier.width(112.dp),
+                                        )
                                     }
                                     if (download.status != OfflineDownloadStatus.Completed) {
                                         Spacer(Modifier.height(10.dp))
@@ -633,15 +741,13 @@ fun MediaDetailScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
-                                } ?: FilledTonalButton(
+                                } ?: HillsSecondaryAction(
+                                    label = "下载到本机",
+                                    icon = Icons.Default.CloudDownload,
                                     onClick = viewModel::toggleDownload,
                                     enabled = !state.downloadActionRunning,
                                     modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Icon(Icons.Default.CloudDownload, null)
-                                    Spacer(Modifier.width(7.dp))
-                                    Text("下载到本机")
-                                }
+                                )
                                 messages.forEach { message ->
                                     Spacer(Modifier.height(6.dp))
                                     Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -653,6 +759,441 @@ fun MediaDetailScreen(
             }
         }
     }
+}
+
+internal fun mediaLogoUrl(baseUrl: String?, mediaId: String): String? =
+    baseUrl?.trimEnd('/')?.let { "$it/api/media/$mediaId/logo" }
+
+private val MoviePageBackground = Color(0xFF203847)
+private val MovieSpecSurface = Color(0xE5172834)
+private val MoviePlayColor = Color(0xFF9AC9ED)
+
+@Composable
+private fun MovieDetailHeader(
+    media: MediaDetail,
+    baseUrl: String?,
+    hasResumeProgress: Boolean,
+    resumePositionSeconds: Double,
+    favorite: Boolean,
+    onBack: () -> Unit,
+    onFavorite: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    val usePosterAsBackground = media.backdropPath.isBlank()
+    val backdrop = resolveImage(baseUrl, if (usePosterAsBackground) media.posterPath else media.backdropPath)
+    val logo = mediaLogoUrl(baseUrl, media.id)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(650.dp)
+            .background(MoviePageBackground),
+    ) {
+        AsyncImage(
+            model = backdrop,
+            contentDescription = media.displayTitle,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (usePosterAsBackground) {
+                        Modifier
+                            .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
+                            .blur(18.dp)
+                    } else Modifier,
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.16f),
+                        0.40f to MoviePageBackground.copy(alpha = 0.18f),
+                        0.74f to MoviePageBackground.copy(alpha = 0.72f),
+                        1f to MoviePageBackground,
+                    ),
+                ),
+        )
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 16.dp, top = 28.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.34f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+        }
+        IconButton(
+            onClick = onFavorite,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 16.dp, top = 28.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.34f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape),
+        ) {
+            Icon(
+                if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = if (favorite) "取消收藏" else "收藏",
+                tint = Color.White,
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 22.dp),
+        ) {
+            DetailTitleArtwork(
+                logoUrl = logo,
+                fallbackTitle = media.displayTitle,
+                maxWidth = 240.dp,
+                maxHeight = 74.dp,
+                fallbackStyle = MaterialTheme.typography.headlineLarge,
+            )
+            if (media.originalTitle.isNotBlank() && media.originalTitle != media.displayTitle) {
+                Spacer(Modifier.height(3.dp))
+                Text(media.originalTitle, color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.bodyLarge)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(movieMetadataLabel(media), color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(12.dp))
+            MovieSpecPanel(media)
+            Spacer(Modifier.height(14.dp))
+            HillsPrimaryAction(
+                label = if (hasResumeProgress) "继续播放 ${formatResumeTime(resumePositionSeconds)}" else "播放",
+                icon = Icons.Default.PlayArrow,
+                onClick = onPlay,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MovieSpecPanel(media: MediaDetail) {
+    val videoLine = listOfNotNull(
+        media.resolution.takeIf(String::isNotBlank),
+        media.videoCodec.takeIf(String::isNotBlank)?.uppercase(),
+        media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+    ).joinToString(" · ")
+    val audioLine = media.audioCodec.takeIf(String::isNotBlank)?.uppercase().orEmpty()
+    if (videoLine.isBlank() && audioLine.isBlank()) return
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MovieSpecSurface.copy(alpha = 0.90f),
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        shadowElevation = 2.dp,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            if (videoLine.isNotBlank()) {
+                MovieSpecRow("视频", videoLine)
+            }
+            if (videoLine.isNotBlank() && audioLine.isNotBlank()) {
+                androidx.compose.material3.HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
+            }
+            if (audioLine.isNotBlank()) {
+                MovieSpecRow("音频", audioLine)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MovieSpecRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color.White.copy(alpha = 0.64f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(76.dp))
+        Text(value, color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun MovieOverviewSection(
+    media: MediaDetail,
+    persons: List<MediaPerson>,
+) {
+    val directors = persons.filter { it.role.equals("director", ignoreCase = true) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+    ) {
+        Text("影片简介", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            media.overview.ifBlank { "暂无简介" },
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color(0xFFD3DEE5),
+            lineHeight = 27.sp,
+        )
+        if (directors.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "导演：${directors.joinToString("、") { it.person.name.ifBlank { it.roleLabel } }}",
+                color = Color(0xFFB8C7D0),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MovieGalleryShelf(
+    highlights: List<MediaHighlight>,
+    baseUrl: String?,
+    onPlay: (MediaHighlight) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text("精彩片段", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(highlights.take(12), key = MediaHighlight::id) { highlight ->
+                Box(
+                    modifier = Modifier
+                        .width(330.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MovieSpecSurface)
+                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = { onPlay(highlight) }),
+                ) {
+                    AsyncImage(
+                        model = resolveImage(baseUrl, highlight.thumbnailUrl),
+                        contentDescription = highlight.title.ifBlank { "精彩片段" },
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "播放片段",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(34.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MovieRecommendationShelf(
+    recommendations: List<MediaCard>,
+    baseUrl: String?,
+    onMediaClick: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Text("更多类似", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(recommendations, key = { "movie-similar-${it.resolvedId}" }) { item ->
+                MovieRecommendationCard(
+                    media = item,
+                    imageUrl = resolveImage(baseUrl, item.resolvedPoster),
+                    onClick = { onMediaClick(item.resolvedId) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MovieRecommendationCard(
+    media: MediaCard,
+    imageUrl: String?,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.width(128.dp).clickable(onClick = onClick)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MovieSpecSurface)
+                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
+        ) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = media.displayTitle,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (media.rating > 0) {
+                Text(
+                    "%.1f".format(media.rating),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.64f))
+                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Text(media.displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+        media.year?.let { Text(it.toString(), color = Color(0xFFB8C7D0), style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun EpisodeMoreActions(
+    favorite: Boolean,
+    downloadLabel: String,
+    onFavorite: () -> Unit,
+    onSubtitles: () -> Unit,
+    onDownload: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HillsSecondaryAction(
+            label = if (favorite) "已收藏" else "收藏",
+            onClick = onFavorite,
+            modifier = Modifier.weight(1f),
+            icon = if (favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+        )
+        HillsSecondaryAction(
+            label = "字幕",
+            onClick = onSubtitles,
+            modifier = Modifier.weight(1f),
+            icon = Icons.Default.Subtitles,
+        )
+        HillsSecondaryAction(
+            label = downloadLabel,
+            onClick = onDownload,
+            modifier = Modifier.weight(1f),
+            icon = Icons.Default.CloudDownload,
+        )
+    }
+}
+
+@Composable
+private fun EpisodePlaybackSpecPanel(
+    media: MediaDetail,
+    subtitles: SubtitleTracksResponse,
+) {
+    val rows = listOfNotNull(
+        listOfNotNull(
+            media.resolution.takeIf(String::isNotBlank),
+            media.videoCodec.takeIf(String::isNotBlank)?.uppercase(),
+            media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+        ).joinToString(" · ").takeIf(String::isNotBlank)?.let { "视频" to it },
+        media.audioCodec.takeIf(String::isNotBlank)?.uppercase()?.let { "音频" to it },
+        (subtitles.embedded + subtitles.external)
+            .takeIf { it.isNotEmpty() }
+            ?.let { "字幕" to "${it.size} 条可用字幕" },
+    )
+    if (rows.isEmpty()) return
+    DetailInfoPanel(
+        rows = rows,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun EpisodeSeasonShelf(
+    series: SeriesInfo,
+    season: SeasonInfo,
+    currentMediaId: String,
+    baseUrl: String?,
+    onEpisodeClick: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+    ) {
+        Text(
+            "更多来自 ${series.displayTitle} ${season.label}",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(season.episodes, key = MediaDetail::id) { episode ->
+                var imageFailed by rememberSaveable(episode.id) { mutableStateOf(false) }
+                val episodeArtwork = if (imageFailed) {
+                    mediaPosterUrl(baseUrl, episode.id)
+                } else {
+                    mediaBackdropUrl(baseUrl, episode.id)
+                }
+                Column(
+                    modifier = Modifier
+                        .width(220.dp)
+                        .clickable(enabled = episode.id != currentMediaId) { onEpisodeClick(episode.id) },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        AsyncImage(
+                            model = episodeArtwork,
+                            contentDescription = episode.episodeTitle.ifBlank { episodeCode(episode) },
+                            contentScale = ContentScale.Crop,
+                            onError = { imageFailed = true },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (episode.id == currentMediaId) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.48f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("当前播放项", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "${episodeCode(episode)} · ${episode.userEpisodeTitle}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    if (episode.duration > 0.0) {
+                        Text(
+                            formatResumeTime(episode.duration),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun episodeCode(media: MediaDetail): String = when {
+    media.episodeNumber > 0 -> episodeDisplayName(media.seasonNumber, media.episodeNumber)
+    else -> "单集"
 }
 
 @Composable
@@ -673,10 +1214,10 @@ private fun CommentSummarySection(
     onDelete: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    ElevatedPanel(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
     ) {
         Row(
             modifier = Modifier
@@ -750,22 +1291,19 @@ private fun CommentSummarySection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                HillsTextField(
                     value = text,
                     onValueChange = onTextChange,
+                    placeholder = "分享你的观影感受…",
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("分享你的观影感受…") },
-                    singleLine = true,
-                    enabled = !actionRunning,
                 )
-                FilledTonalButton(
+                HillsPrimaryAction(
+                    label = if (actionRunning) "提交中" else "发表",
                     onClick = onSubmit,
+                    modifier = Modifier.width(94.dp),
+                    icon = Icons.Default.Send,
                     enabled = text.isNotBlank() && !actionRunning,
-                    modifier = Modifier.height(56.dp),
-                ) {
-                    if (actionRunning) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Send, contentDescription = "发表")
-                }
+                )
             }
 
             message?.let {
@@ -780,7 +1318,12 @@ private fun CommentSummarySection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("最近评价", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onRefresh, enabled = !loading) { Text("刷新") }
+                HillsSecondaryAction(
+                    label = "刷新",
+                    onClick = onRefresh,
+                    enabled = !loading,
+                    modifier = Modifier.width(84.dp),
+                )
             }
 
             if (loading) {
@@ -866,10 +1409,10 @@ private fun DetailFeedCard(
     onAction: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    ElevatedPanel(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -944,8 +1487,9 @@ private fun HighlightCard(
         onClick = onClick,
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f)),
+        shadowElevation = 2.dp,
     ) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
@@ -1106,7 +1650,7 @@ private fun SimilarPosterCard(
     }
 }
 
-private fun mediaMetadataLabel(media: MediaDetail): String = listOfNotNull(
+private fun movieMetadataLabel(media: MediaDetail): String = listOfNotNull(
     media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
     media.year.takeIf { it > 0 }?.toString(),
     media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
@@ -1114,13 +1658,13 @@ private fun mediaMetadataLabel(media: MediaDetail): String = listOfNotNull(
     splitGenres(media.genres).take(2).joinToString(" · ").takeIf(String::isNotBlank),
 ).joinToString(" · ")
 
-private fun mediaTechnicalRows(media: MediaDetail): List<Pair<String, String>> = listOfNotNull(
-    media.resolution.takeIf(String::isNotBlank)?.let { "分辨率" to it },
-    media.videoCodec.takeIf(String::isNotBlank)?.let { "视频编码" to it },
-    media.audioCodec.takeIf(String::isNotBlank)?.let { "音频编码" to it },
-    media.runtime.takeIf { it > 0 }?.let { "片长" to "$it 分钟" },
-    media.duration.takeIf { it > 0.0 }?.let { "媒体时长" to formatResumeTime(it) },
-)
+private fun mediaMetadataLabel(media: MediaDetail): String = listOfNotNull(
+    media.rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+    media.year.takeIf { it > 0 }?.toString(),
+    media.runtime.takeIf { it > 0 }?.let { "$it 分钟" },
+    media.resolution.takeIf(String::isNotBlank),
+    splitGenres(media.genres).take(2).joinToString(" · ").takeIf(String::isNotBlank),
+).joinToString(" · ")
 
 private fun splitGenres(genres: String): List<String> = genres
     .split(',', '，', '/', '|')

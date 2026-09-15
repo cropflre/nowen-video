@@ -71,7 +71,7 @@ type LegacySourceRetirementReport struct {
 	Blockers              []string                                    `json:"blockers"`
 	EvidenceHash          string                                      `json:"evidence_hash"`
 	LatestDecision        *model.LegacySourceRetirementDecisionRecord `json:"latest_decision,omitempty"`
-	LatestRemovalPlan     *model.LegacySourceRemovalPlanRecord         `json:"latest_removal_plan,omitempty"`
+	LatestRemovalPlan     *model.LegacySourceRemovalPlanRecord        `json:"latest_removal_plan,omitempty"`
 }
 
 type legacySourceRetirementEvidence struct {

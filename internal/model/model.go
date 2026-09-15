@@ -210,6 +210,7 @@ type Series struct {
 	Overview     string  `json:"overview" gorm:"type:text"`
 	PosterPath   string  `json:"poster_path" gorm:"type:text"`
 	BackdropPath string  `json:"backdrop_path" gorm:"type:text"`
+	LogoPath     string  `json:"logo_path" gorm:"type:text"`
 	Rating       float64 `json:"rating"`
 	Genres       string  `json:"genres" gorm:"type:text"`
 	FolderPath   string  `json:"folder_path" gorm:"uniqueIndex;type:text;not null"` // 剧集根目录路径
@@ -217,6 +218,7 @@ type Series struct {
 	EpisodeCount int     `json:"episode_count"`                                     // 总集数
 	// V2 扩展字段
 	TMDbID    int    `json:"tmdb_id" gorm:"index"`
+	TVDbID    int    `json:"tvdb_id" gorm:"index"`
 	IMDbID    string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
 	DoubanID  string `json:"douban_id" gorm:"type:text"`
 	BangumiID int    `json:"bangumi_id" gorm:"index"` // Bangumi 条目 ID
@@ -276,6 +278,7 @@ type Media struct {
 	Overview     string  `json:"overview" gorm:"type:text"`
 	PosterPath   string  `json:"poster_path" gorm:"type:text"`   // 海报图片路径
 	BackdropPath string  `json:"backdrop_path" gorm:"type:text"` // 背景图路径
+	LogoPath     string  `json:"logo_path" gorm:"type:text"`     // 透明标题图路径（ClearLogo）
 	Rating       float64 `json:"rating"`
 	Runtime      int     `json:"runtime"`                             // 时长（分钟）
 	Genres       string  `json:"genres" gorm:"type:text"`             // 逗号分隔的类型
@@ -946,6 +949,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "tags", DDL: "ALTER TABLE `media` ADD COLUMN `tags` text DEFAULT ''"},
 			{Column: "website", DDL: "ALTER TABLE `media` ADD COLUMN `website` text DEFAULT ''"},
 			{Column: "release_date", DDL: "ALTER TABLE `media` ADD COLUMN `release_date` text DEFAULT ''"},
+			{Column: "logo_path", DDL: "ALTER TABLE `media` ADD COLUMN `logo_path` text DEFAULT ''"},
 		},
 		"users": {
 			{Column: "nickname", DDL: "ALTER TABLE `users` ADD COLUMN `nickname` text DEFAULT ''"},
@@ -958,6 +962,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 		},
 		"series": {
 			{Column: "tmdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tmdb_id` integer DEFAULT 0"},
+			{Column: "tvdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tvdb_id` integer DEFAULT 0"},
 			{Column: "bangumi_id", DDL: "ALTER TABLE `series` ADD COLUMN `bangumi_id` integer DEFAULT 0"},
 			{Column: "douban_id", DDL: "ALTER TABLE `series` ADD COLUMN `douban_id` text DEFAULT ''"},
 			{Column: "imdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `imdb_id` text DEFAULT ''"},
@@ -965,6 +970,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "language", DDL: "ALTER TABLE `series` ADD COLUMN `language` text DEFAULT ''"},
 			{Column: "studio", DDL: "ALTER TABLE `series` ADD COLUMN `studio` text DEFAULT ''"},
 			{Column: "tagline", DDL: "ALTER TABLE `series` ADD COLUMN `tagline` text DEFAULT ''"},
+			{Column: "logo_path", DDL: "ALTER TABLE `series` ADD COLUMN `logo_path` text DEFAULT ''"},
 		},
 		"watch_histories": {
 			{Column: "profile_id", DDL: "ALTER TABLE `watch_histories` ADD COLUMN `profile_id` text DEFAULT ''"},

@@ -15,7 +15,7 @@ const (
 	// MediaComputeProtocolVersion 是 Desktop / Android 与 Server 之间统一媒体计算协议版本。
 	MediaComputeProtocolVersion = 2
 
-	MediaComputeJobHighlightV1         = "highlight_v1"
+	MediaComputeJobHighlightV1        = "highlight_v1"
 	MediaComputeCapabilityHighlightV1 = "highlight_v1"
 )
 
@@ -45,11 +45,11 @@ type MediaComputeTaskClaim struct {
 	Input              json.RawMessage `json:"input"`
 	LeaseExpiresAt     time.Time       `json:"lease_expires_at"`
 
-	MediaID        string    `json:"media_id,omitempty"`
-	Fingerprint    string    `json:"fingerprint,omitempty"`
-	Duration       float64   `json:"duration,omitempty"`
-	StreamURL      string    `json:"stream_url,omitempty"`
-	SampleTimes    []float64 `json:"sample_times,omitempty"`
+	MediaID       string    `json:"media_id,omitempty"`
+	Fingerprint   string    `json:"fingerprint,omitempty"`
+	Duration      float64   `json:"duration,omitempty"`
+	StreamURL     string    `json:"stream_url,omitempty"`
+	SampleTimes   []float64 `json:"sample_times,omitempty"`
 	MaxHighlights int       `json:"max_highlights,omitempty"`
 	EngineVersion int       `json:"engine_version,omitempty"`
 }
@@ -80,7 +80,7 @@ type MediaComputeTaskRegistration struct {
 type mediaComputeTaskDescriptor struct {
 	JobType            string
 	RequiredCapability string
-	Input               json.RawMessage
+	Input              json.RawMessage
 }
 
 type mediaComputeDescriptorState struct {
@@ -165,7 +165,7 @@ func mediaComputeDescriptor(s *MediaAnalysisService, taskID string) mediaCompute
 	// Compatibility adapter: legacy dispatcher can only create highlight tasks.
 	// This is intentionally isolated here rather than spread through the selector.
 	return mediaComputeTaskDescriptor{
-		JobType: MediaComputeJobHighlightV1,
+		JobType:            MediaComputeJobHighlightV1,
 		RequiredCapability: MediaComputeCapabilityHighlightV1,
 	}
 }
@@ -238,9 +238,9 @@ func mediaComputeNodeView(s *MediaAnalysisService, worker MediaAnalysisWorkerVie
 	return MediaComputeNodeView{
 		WorkerID: worker.WorkerID, Kind: worker.Kind, Name: worker.Name, Version: worker.Version,
 		Capabilities: worker.Capabilities, Network: worker.Network, Charging: worker.Charging,
-		BatteryPercent: worker.BatteryPercent,
+		BatteryPercent:        worker.BatteryPercent,
 		ClientProtocolVersion: mediaComputeClientProtocolVersion(worker.Version),
-		LastSeen: worker.LastSeen, State: worker.State, TaskID: worker.TaskID, CurrentJobType: jobType,
+		LastSeen:              worker.LastSeen, State: worker.State, TaskID: worker.TaskID, CurrentJobType: jobType,
 	}
 }
 

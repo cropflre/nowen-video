@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +48,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -105,7 +105,7 @@ fun QrScannerDialog(
                             ),
                     )
                     Text(
-                        text = "将 Nowen Video 服务器二维码放入框内",
+                        text = "将 Nowen 服务器二维码放入框内",
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier
@@ -142,9 +142,10 @@ fun QrScannerDialog(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Spacer(Modifier.size(20.dp))
-                        Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                            Text("允许相机权限")
-                        }
+                        HillsPrimaryAction(
+                            label = "允许相机权限",
+                            onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                        )
                     }
                 }
 

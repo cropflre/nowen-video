@@ -131,6 +131,7 @@ func registerCoreAPI(
 	api.GET("/series/:id/next", handlers.Series.NextEpisode)
 	api.GET("/series/:id/poster", handlers.Series.Poster)
 	api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
+	api.GET("/series/:id/logo", handlers.Series.Logo)
 	api.GET("/series/:id/persons", handlers.Series.GetPersons)
 
 	api.GET("/stream/:id/info", guardByMediaID, playbackPlan.GetInfo)
@@ -141,6 +142,7 @@ func registerCoreAPI(
 	api.GET("/stream/:id/strm-check", guardByMediaID, handlers.Stream.STRMCheck)
 	api.GET("/media/:id/poster", handlers.Stream.Poster)
 	api.GET("/media/:id/backdrop", handlers.Stream.Backdrop)
+	api.GET("/media/:id/logo", handlers.Stream.Logo)
 
 	api.POST("/playback/sessions", playbackSessions.Create)
 	api.GET("/playback/sessions/:sessionID/status", playbackSessions.Status)

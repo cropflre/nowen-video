@@ -304,11 +304,14 @@ func main() {
 
 		// 海报/缩略图（不做权限校验：海报属于媒体元信息，不可播放）
 		api.GET("/media/:id/poster", handlers.Stream.Poster)
+		api.GET("/media/:id/backdrop", handlers.Stream.Backdrop)
+		api.GET("/media/:id/logo", handlers.Stream.Logo)
 
 		_ = guardByMediaIDParam // 单保留变量供下文使用
 
 		api.GET("/series/:id/poster", handlers.Series.Poster)
 		api.GET("/series/:id/backdrop", handlers.Series.Backdrop)
+		api.GET("/series/:id/logo", handlers.Series.Logo)
 		api.GET("/series/:id/persons", handlers.Series.GetPersons)
 		api.GET("/media/:id/persons", handlers.Media.GetPersons)
 

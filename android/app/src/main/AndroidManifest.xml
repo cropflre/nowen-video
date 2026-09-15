@@ -18,16 +18,16 @@
         android:name=".NowenApplication"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
-        android:label="Nowen Video"
+        android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Nowen"
+        android:theme="@style/Theme.MediaPlayer"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="true"
             android:supportsPictureInPicture="true"
-            android:theme="@style/Theme.Nowen">
+            android:theme="@style/Theme.MediaPlayer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

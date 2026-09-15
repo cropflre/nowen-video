@@ -3,12 +3,10 @@ package com.nowen.video.v2.feature.main
 import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -16,24 +14,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,7 +47,11 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.nowen.video.v2.core.designsystem.HillsChoiceRail
+import com.nowen.video.v2.core.designsystem.HillsDiscreteDragRail
+import com.nowen.video.v2.core.designsystem.HillsToggle
 import com.nowen.video.v2.core.model.SubtitleTrack
+import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
 
 private val PlayerSpeedOptions = listOf(
     0.5f,
@@ -169,13 +169,14 @@ internal fun externalSubtitleConfigurations(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlayerSettingsSheet(
     onDismiss: () -> Unit,
     playbackDiagnostics: PlaybackDiagnostics,
     playbackSpeed: Float,
     onPlaybackSpeedChange: (Float) -> Unit,
+    longPressBoostSpeed: Float,
+    onLongPressBoostSpeedChange: (Float) -> Unit,
     resizeMode: Int,
     onResizeModeChange: (Int) -> Unit,
     autoPlayNext: Boolean,
@@ -186,6 +187,17 @@ internal fun PlayerSettingsSheet(
     subtitleTracks: List<PlayerTrackChoice>,
     subtitlesDisabled: Boolean,
     onSubtitleTrackSelected: (PlayerTrackChoice?) -> Unit,
+    danmakuAvailable: Boolean = true,
+    danmakuOffline: Boolean = false,
+    danmakuEnabled: Boolean = false,
+    danmakuAutoMatch: Boolean = true,
+    danmakuLoading: Boolean = false,
+    danmakuCueCount: Int = 0,
+    danmakuError: String? = null,
+    onDanmakuEnabledChange: (Boolean) -> Unit = {},
+    onDanmakuAutoMatchChange: (Boolean) -> Unit = {},
+    onDanmakuSearch: () -> Unit = {},
+    onDanmakuRematch: () -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -196,6 +208,8 @@ internal fun PlayerSettingsSheet(
             playbackDiagnostics = playbackDiagnostics,
             playbackSpeed = playbackSpeed,
             onPlaybackSpeedChange = onPlaybackSpeedChange,
+            longPressBoostSpeed = longPressBoostSpeed,
+            onLongPressBoostSpeedChange = onLongPressBoostSpeedChange,
             resizeMode = resizeMode,
             onResizeModeChange = onResizeModeChange,
             autoPlayNext = autoPlayNext,
@@ -206,44 +220,51 @@ internal fun PlayerSettingsSheet(
             subtitleTracks = subtitleTracks,
             subtitlesDisabled = subtitlesDisabled,
             onSubtitleTrackSelected = onSubtitleTrackSelected,
+            danmakuAvailable = danmakuAvailable,
+            danmakuOffline = danmakuOffline,
+            danmakuEnabled = danmakuEnabled,
+            danmakuAutoMatch = danmakuAutoMatch,
+            danmakuLoading = danmakuLoading,
+            danmakuCueCount = danmakuCueCount,
+            danmakuError = danmakuError,
+            onDanmakuEnabledChange = onDanmakuEnabledChange,
+            onDanmakuAutoMatchChange = onDanmakuAutoMatchChange,
+            onDanmakuSearch = onDanmakuSearch,
+            onDanmakuRematch = onDanmakuRematch,
         )
     }
 
-    if (landscape) {
-        Dialog(
-            onDismissRequest = onDismiss,
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false,
-            ),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onDismiss),
+            contentAlignment = if (landscape) Alignment.CenterEnd else Alignment.BottomCenter,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(onClick = onDismiss),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Surface(
-                    modifier = Modifier
+            Surface(
+                modifier = if (landscape) {
+                    Modifier
                         .fillMaxHeight()
                         .widthIn(min = 320.dp, max = 400.dp)
                         .fillMaxWidth(0.42f)
                         .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .clickable(onClick = {}),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-                    tonalElevation = 8.dp,
-                    shadowElevation = 16.dp,
-                ) {
-                    content()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxPortraitHeight)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
                 }
-            }
-        }
-    } else {
-        ModalBottomSheet(onDismissRequest = onDismiss) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = maxPortraitHeight),
+                    .clickable(onClick = {}),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                shape = if (landscape) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp,
             ) {
                 content()
             }
@@ -256,6 +277,8 @@ private fun PlayerSettingsContent(
     playbackDiagnostics: PlaybackDiagnostics,
     playbackSpeed: Float,
     onPlaybackSpeedChange: (Float) -> Unit,
+    longPressBoostSpeed: Float,
+    onLongPressBoostSpeedChange: (Float) -> Unit,
     resizeMode: Int,
     onResizeModeChange: (Int) -> Unit,
     autoPlayNext: Boolean,
@@ -266,8 +289,18 @@ private fun PlayerSettingsContent(
     subtitleTracks: List<PlayerTrackChoice>,
     subtitlesDisabled: Boolean,
     onSubtitleTrackSelected: (PlayerTrackChoice?) -> Unit,
+    danmakuAvailable: Boolean,
+    danmakuOffline: Boolean,
+    danmakuEnabled: Boolean,
+    danmakuAutoMatch: Boolean,
+    danmakuLoading: Boolean,
+    danmakuCueCount: Int,
+    danmakuError: String?,
+    onDanmakuEnabledChange: (Boolean) -> Unit,
+    onDanmakuAutoMatchChange: (Boolean) -> Unit,
+    onDanmakuSearch: () -> Unit,
+    onDanmakuRematch: () -> Unit,
 ) {
-    var showSpeedOptions by rememberSaveable { mutableStateOf(false) }
     var showPlaybackDetails by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -282,88 +315,71 @@ private fun PlayerSettingsContent(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
 
-        ListItem(
-            headlineContent = { Text("当前播放") },
-            supportingContent = {
-                Text(
-                    buildString {
-                        append(playbackDiagnostics.methodLabel)
-                        if (playbackDiagnostics.usingFallback) append(" · 已自动兼容")
-                    },
-                )
+        PlayerSettingsRow(
+            title = "当前播放",
+            subtitle = buildString {
+                append(playbackDiagnostics.methodLabel)
+                if (playbackDiagnostics.usingFallback) append(" · 已自动兼容")
             },
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-        ListItem(
-            headlineContent = { Text("播放速度") },
-            supportingContent = { Text("最高支持 8×，长按画面可临时快速播放") },
-            trailingContent = { Text(speedLabel(playbackSpeed)) },
-            modifier = Modifier.clickable { showSpeedOptions = !showSpeedOptions },
+        PlayerPreferenceAxis(
+            title = "播放速度",
+            subtitle = "最高支持 8×，长按画面可临时快速播放",
+            value = speedLabel(playbackSpeed),
+            options = PlayerSpeedOptions.map { speed -> speed.toString() to speedLabel(speed) },
+            selected = playbackSpeed.toString(),
+            onCommit = { onPlaybackSpeedChange(it.toFloat()) },
         )
-        if (showSpeedOptions) {
-            SpeedOptions(
-                selected = playbackSpeed,
-                onSelected = onPlaybackSpeedChange,
-            )
-        }
+
+        PlayerPreferenceAxis(
+            title = "长按倍速",
+            subtitle = "按住画面时临时使用此速度，松开后恢复",
+            value = speedLabel(longPressBoostSpeed),
+            options = supportedLongPressBoostSpeeds.map { speed -> speed.toString() to speedLabel(speed) },
+            selected = longPressBoostSpeed.toString(),
+            onCommit = { onLongPressBoostSpeedChange(it.toFloat()) },
+        )
 
         SettingsSectionTitle("画面比例")
-        ChoiceRow {
-            listOf(0 to "适应", 1 to "裁切", 2 to "拉伸").forEach { (mode, label) ->
-                FilterChip(
-                    selected = resizeMode == mode,
-                    onClick = { onResizeModeChange(mode) },
-                    label = { Text(label) },
-                )
-            }
-        }
+        HillsDiscreteDragRail(
+            options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
+            selected = resizeMode.toString(),
+            onPreview = {},
+            onCommit = { value -> onResizeModeChange(value.toInt()) },
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        ListItem(
-            headlineContent = { Text("自动播放下一集") },
-            supportingContent = { Text("当前剧集结束后倒计时 5 秒并自动续播") },
-            trailingContent = {
-                Switch(
+        PlayerSettingsRow(
+            title = "自动播放下一集",
+            subtitle = "当前剧集结束后倒计时 5 秒并自动续播",
+            trailing = {
+                HillsToggle(
                     checked = autoPlayNext,
                     onCheckedChange = onAutoPlayNextChange,
                 )
             },
         )
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
         SettingsSectionTitle("音轨")
-        ChoiceRow {
-            FilterChip(
-                selected = audioAutomatic,
-                onClick = { onAudioTrackSelected(null) },
-                label = { Text("自动") },
-            )
-            audioTracks.forEach { track ->
-                FilterChip(
-                    selected = !audioAutomatic && track.selected,
-                    onClick = { onAudioTrackSelected(track) },
-                    label = { Text(track.label) },
-                )
-            }
-        }
+        val audioOptions = listOf("auto" to "自动") + audioTracks.map { trackKey(it) to it.label }
+        val selectedAudio = if (audioAutomatic) "auto" else audioTracks.firstOrNull { it.selected }?.let(::trackKey).orEmpty()
+        HillsChoiceRail(
+            options = audioOptions,
+            selected = selectedAudio,
+            onSelect = { key -> onAudioTrackSelected(audioTracks.firstOrNull { trackKey(it) == key }) },
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
 
         SettingsSectionTitle("字幕")
-        ChoiceRow {
-            FilterChip(
-                selected = subtitlesDisabled,
-                onClick = { onSubtitleTrackSelected(null) },
-                label = { Text("关闭") },
-            )
-            subtitleTracks.forEach { track ->
-                FilterChip(
-                    selected = !subtitlesDisabled && track.selected,
-                    onClick = { onSubtitleTrackSelected(track) },
-                    label = { Text(track.label) },
-                )
-            }
-        }
+        val subtitleOptions = listOf("off" to "关闭") + subtitleTracks.map { trackKey(it) to it.label }
+        val selectedSubtitle = if (subtitlesDisabled) "off" else subtitleTracks.firstOrNull { it.selected }?.let(::trackKey).orEmpty()
+        HillsChoiceRail(
+            options = subtitleOptions,
+            selected = selectedSubtitle,
+            onSelect = { key -> onSubtitleTrackSelected(subtitleTracks.firstOrNull { trackKey(it) == key }) },
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
         if (subtitleTracks.isEmpty()) {
             Text(
                 text = "当前媒体没有可选字幕",
@@ -373,12 +389,71 @@ private fun PlayerSettingsContent(
             )
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        ListItem(
-            headlineContent = { Text("播放信息") },
-            supportingContent = { Text("查看播放方式、兼容策略与诊断信息") },
-            trailingContent = { Text(if (showPlaybackDetails) "收起" else "查看") },
-            modifier = Modifier.clickable { showPlaybackDetails = !showPlaybackDetails },
+        SettingsSectionTitle("弹幕")
+        if (danmakuOffline) {
+            Text(
+                text = "离线播放暂不支持弹幕",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        } else if (!danmakuAvailable) {
+            Text(
+                text = "请先在设置中配置外部弹幕 API",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        } else {
+            PlayerSettingsRow(
+                title = "显示弹幕",
+                subtitle = when {
+                    danmakuLoading -> "正在匹配弹幕…"
+                    danmakuError != null -> "弹幕加载失败"
+                    danmakuCueCount > 0 -> "已加载 $danmakuCueCount 条弹幕"
+                    else -> "来自已配置的外部弹幕服务"
+                },
+                trailing = {
+                    HillsToggle(
+                        checked = danmakuEnabled,
+                        onCheckedChange = onDanmakuEnabledChange,
+                    )
+                },
+            )
+            PlayerSettingsRow(
+                title = "自动匹配",
+                subtitle = "打开媒体时按标题、季和集自动查找",
+                trailing = {
+                    HillsToggle(
+                        checked = danmakuAutoMatch,
+                        onCheckedChange = onDanmakuAutoMatchChange,
+                    )
+                },
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDanmakuSearch) { Text("手动搜索") }
+                TextButton(onClick = onDanmakuRematch, enabled = !danmakuLoading) { Text("重新匹配") }
+            }
+            danmakuError?.let { message ->
+                Text(
+                    text = message.take(120),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
+        }
+
+        PlayerSettingsRow(
+            title = "播放信息",
+            subtitle = "查看播放方式、兼容策略与诊断信息",
+            value = if (showPlaybackDetails) "收起" else "查看",
+            onClick = { showPlaybackDetails = !showPlaybackDetails },
         )
         if (showPlaybackDetails) {
             PlaybackDiagnosticsDetails(playbackDiagnostics)
@@ -389,34 +464,63 @@ private fun PlayerSettingsContent(
 }
 
 @Composable
-private fun SpeedOptions(
-    selected: Float,
-    onSelected: (Float) -> Unit,
+private fun PlayerSettingsRow(
+    title: String,
+    subtitle: String,
+    value: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
 ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = 20.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlayerSpeedOptions.chunked(4).forEach { rowSpeeds ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                rowSpeeds.forEach { speed ->
-                    FilterChip(
-                        selected = selected == speed,
-                        onClick = { onSelected(speed) },
-                        label = { Text(speedLabel(speed)) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                repeat(4 - rowSpeeds.size) {
-                    Spacer(Modifier.weight(1f))
-                }
-            }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                subtitle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(12.dp))
+            trailing()
+        } else if (!value.isNullOrBlank()) {
+            Spacer(Modifier.width(12.dp))
+            Text(value, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
+
+@Composable
+private fun PlayerPreferenceAxis(
+    title: String,
+    subtitle: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onCommit: (String) -> Unit,
+) {
+    var draftSelected by remember(selected) { mutableStateOf(selected) }
+    PlayerSettingsRow(
+        title = title,
+        subtitle = subtitle,
+        value = options.firstOrNull { it.first == draftSelected }?.second ?: value,
+    )
+    HillsDiscreteDragRail(
+        options = options,
+        selected = selected,
+        onPreview = { draftSelected = it },
+        onCommit = onCommit,
+        modifier = Modifier.padding(horizontal = 20.dp),
+    )
+}
+
+private fun trackKey(track: PlayerTrackChoice): String = "${track.trackIndex}:${track.label}"
 
 private fun speedLabel(speed: Float): String = if (speed == 1f) {
     "1.0×"
@@ -471,17 +575,5 @@ private fun SettingsSectionTitle(title: String) {
         text = title,
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
-    )
-}
-
-@Composable
-private fun ChoiceRow(content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        content = content,
     )
 }

@@ -22,6 +22,7 @@ data class MediaDetail(
     val overview: String = "",
     @SerialName("poster_path") val posterPath: String = "",
     @SerialName("backdrop_path") val backdropPath: String = "",
+    @SerialName("logo_path") val logoPath: String = "",
     val rating: Double = 0.0,
     val runtime: Int = 0,
     val genres: String = "",

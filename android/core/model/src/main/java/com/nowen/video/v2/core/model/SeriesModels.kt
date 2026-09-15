@@ -13,6 +13,8 @@ data class SeriesInfo(
     val overview: String = "",
     @SerialName("poster_path") val posterPath: String = "",
     @SerialName("backdrop_path") val backdropPath: String = "",
+    @SerialName("logo_path") val logoPath: String = "",
+    @SerialName("tvdb_id") val tvdbId: Int = 0,
     val rating: Double = 0.0,
     val genres: String = "",
     @SerialName("season_count") val seasonCount: Int = 0,
@@ -27,10 +29,10 @@ data class SeriesInfo(
 
     val metadataLabel: String
         get() = listOfNotNull(
-            year.takeIf { it > 0 }?.toString(),
-            seasonCount.takeIf { it > 0 }?.let { "$it 季" },
-            episodeCount.takeIf { it > 0 }?.let { "$it 集" },
             rating.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
+            year.takeIf { it > 0 }?.toString(),
+            seasonCount.takeIf { it > 0 }?.let { "共 $it 季" },
+            episodeCount.takeIf { it > 0 }?.let { "$it 集" },
         ).joinToString(" · ")
 
     val genreList: List<String>
@@ -48,10 +50,7 @@ data class SeasonInfo(
     val episodes: List<MediaDetail> = emptyList(),
 ) {
     val label: String
-        get() = when (seasonNumber) {
-            0 -> "特别篇"
-            else -> "第 $seasonNumber 季"
-        }
+        get() = seasonDisplayName(seasonNumber)
 
     fun normalized(): SeasonInfo = copy(
         episodes = episodes.sortedWith(
@@ -60,6 +59,18 @@ data class SeasonInfo(
         ),
     )
 }
+
+fun seasonDisplayName(seasonNumber: Int): String {
+    if (seasonNumber == 0) return "特别篇"
+    if (seasonNumber in 1..10) {
+        return "第${listOf("", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十")[seasonNumber]}季"
+    }
+    return "第${seasonNumber}季"
+}
+
+fun episodeDisplayName(seasonNumber: Int, episodeNumber: Int): String =
+    if (seasonNumber == 0) "特别篇 ${episodeNumber.coerceAtLeast(0)}"
+    else "第 ${episodeNumber.coerceAtLeast(0)} 集"
 
 data class SeriesBundle(
     val series: SeriesInfo,
@@ -81,9 +92,19 @@ val MediaDetail.seriesEpisodeLabel: String
         else -> displayTitle
     }
 
+val MediaDetail.userEpisodeTitle: String
+    get() {
+        val rawTitle = episodeTitle.trim()
+        if (rawTitle.isBlank()) return seriesEpisodeLabel
+        val marker = Regex("\\bS\\d{1,2}\\s*[:.]?\\s*E\\d{1,2}\\b", RegexOption.IGNORE_CASE).find(rawTitle)
+            ?: return rawTitle
+        val remainder = rawTitle.removeRange(marker.range).trim().trimStart('-', '·', ':', ' ')
+        return remainder.ifBlank { seriesEpisodeLabel }
+    }
+
 val MediaDetail.seriesEpisodeSubtitle: String
     get() = listOfNotNull(
-        episodeTitle.takeIf(String::isNotBlank),
+        userEpisodeTitle.takeIf { it != seriesEpisodeLabel },
         duration.takeIf { it > 0 }?.let { "${(it / 60).toInt().coerceAtLeast(1)} 分钟" },
         resolution.takeIf(String::isNotBlank),
     ).joinToString(" · ")
