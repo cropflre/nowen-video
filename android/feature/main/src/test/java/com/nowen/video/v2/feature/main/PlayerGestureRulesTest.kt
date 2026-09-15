@@ -54,7 +54,7 @@ class PlayerGestureRulesTest {
     fun `timeline controls stay above Android navigation gestures`() {
         val source = readPlayerControlsSource()
         val timelineStart = source.indexOf("val preview = seekPreviewMs ?: positionMs")
-        val timelineEnd = source.indexOf("if (boostingSpeed", startIndex = timelineStart)
+        val timelineEnd = source.indexOf("private fun FixedPlayerSlot", startIndex = timelineStart)
 
         assertTrue("未找到播放器时间轴区域", timelineStart >= 0 && timelineEnd > timelineStart)
         val timelineSource = source.substring(timelineStart, timelineEnd)
