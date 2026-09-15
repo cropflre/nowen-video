@@ -58,6 +58,7 @@ class LoginViewModel @Inject constructor(
 
     fun login() {
         val current = _state.value
+        if (current.loading) return
         if (current.username.isBlank() || current.password.isBlank()) {
             _state.update { it.copy(error = "请输入用户名和密码") }
             return
@@ -120,6 +121,7 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
                     label = if (state.loading) "正在登录" else "登录",
                     onClick = viewModel::login,
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.loading,
                 )
                 Spacer(Modifier.height(6.dp))
                 HillsSecondaryAction(
@@ -154,6 +156,7 @@ class PasswordViewModel @Inject constructor(
 
     fun submit() {
         val value = _state.value
+        if (value.loading) return
         val error = when {
             value.current.length < 6 -> "当前密码至少 6 位"
             value.next.length < 6 -> "新密码至少 6 位"
@@ -205,6 +208,7 @@ fun ForcePasswordScreen(viewModel: PasswordViewModel = hiltViewModel()) {
                 label = if (state.loading) "正在修改" else "修改密码并继续",
                 onClick = viewModel::submit,
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !state.loading,
             )
         }
     }

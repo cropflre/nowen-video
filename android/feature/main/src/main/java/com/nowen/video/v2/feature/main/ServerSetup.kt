@@ -471,6 +471,7 @@ private fun AddServerDialog(
                     label = if (state.loading) "正在连接" else "连接服务器",
                     onClick = onConnect,
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.loading,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

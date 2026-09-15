@@ -78,18 +78,6 @@ class PlayerGestureRulesTest {
         )
     }
 
-    @Test
-    fun `remux track selection preserves existing query and appends indexes`() {
-        assertEquals(
-            "https://nowen.example/api/stream/movie/remux?start=12&audio_track=2&subtitle_track=1",
-            playbackUrlWithTrackSelection(
-                "https://nowen.example/api/stream/movie/remux?start=12",
-                audioTrack = 2,
-                subtitleTrack = 1,
-            ),
-        )
-    }
-
     private fun readPlayerControlsSource(): String {
         val relativeSource = Path.of(
             "src", "main", "java", "com", "nowen", "video", "v2", "feature", "main", "PlayerControls.kt",

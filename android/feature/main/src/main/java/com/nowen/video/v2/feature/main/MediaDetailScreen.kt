@@ -252,7 +252,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun createComment(content: String, rating: Int?) {
         val mediaId = loadedId ?: return
-        if (content.isBlank()) return
+        if (content.isBlank() || _state.value.commentActionRunning) return
         viewModelScope.launch {
             _state.update { it.copy(commentActionRunning = true, commentMessage = null) }
             parityRepository.createComment(mediaId, content, rating)
@@ -319,6 +319,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun toggleFavorite() {
         val mediaId = loadedId ?: return
+        if (_state.value.favoriteActionRunning) return
         val desired = !_state.value.favorite
         viewModelScope.launch {
             _state.update { it.copy(favoriteActionRunning = true, favoriteMessage = null) }
@@ -345,6 +346,7 @@ class MediaDetailViewModel @Inject constructor(
 
     fun toggleDownload() {
         val mediaId = loadedId ?: return
+        if (_state.value.downloadActionRunning) return
         val current = _state.value.download
         viewModelScope.launch {
             _state.update { it.copy(downloadActionRunning = true, downloadMessage = null) }
@@ -1300,6 +1302,7 @@ private fun CommentSummarySection(
                     onClick = onSubmit,
                     modifier = Modifier.width(94.dp),
                     icon = Icons.Default.Send,
+                    enabled = text.isNotBlank() && !actionRunning,
                 )
             }
 

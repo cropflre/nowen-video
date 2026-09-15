@@ -1,7 +1,6 @@
 package com.nowen.video.v2.feature.main
 
 import android.media.AudioManager
-import android.net.Uri
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -484,38 +483,6 @@ class PlayerViewModel @Inject constructor(
     fun setAutoPlayNext(enabled: Boolean) {
         _state.update { it.copy(autoPlayNext = enabled) }
         viewModelScope.launch { preferencesStore.setAutoPlayNext(enabled) }
-    }
-
-    fun setSessionTrackSelection(
-        audioTrack: Int,
-        subtitleTrack: Int,
-        burnSubtitle: Boolean = false,
-        positionMs: Long,
-    ) {
-        val normalizedAudioTrack = audioTrack.coerceAtLeast(0)
-        val normalizedSubtitleTrack = subtitleTrack.coerceAtLeast(-1)
-        _state.update { current ->
-            val remuxSelection = current.playbackDiagnostics.method.equals("remux", ignoreCase = true) ||
-                current.playbackDiagnostics.method.equals("smart_remux", ignoreCase = true)
-            current.copy(
-                sessionAudioTrack = normalizedAudioTrack,
-                sessionSubtitleTrack = normalizedSubtitleTrack,
-                sessionBurnSubtitle = burnSubtitle,
-                playbackUrl = if (!current.sessionManaged && remuxSelection) {
-                    playbackUrlWithTrackSelection(
-                        current.playbackUrl,
-                        normalizedAudioTrack,
-                        normalizedSubtitleTrack,
-                    )
-                } else {
-                    current.playbackUrl
-                },
-                resumePositionMs = if (!current.sessionManaged && remuxSelection) positionMs.coerceAtLeast(0L) else current.resumePositionMs,
-            )
-        }
-        if (_state.value.sessionManaged) {
-            restartPlaybackSession(positionMs, "track_selection")
-        }
     }
 
     fun absolutePositionMs(relativePositionMs: Long): Long {
@@ -1428,12 +1395,6 @@ fun PlayerScreen(
                     trackType = C.TRACK_TYPE_AUDIO,
                     choice = choice,
                 )
-                viewModel.setSessionTrackSelection(
-                    audioTrack = choice?.trackIndex ?: 0,
-                    subtitleTrack = state.sessionSubtitleTrack,
-                    burnSubtitle = state.sessionBurnSubtitle,
-                    positionMs = displayPositionMs,
-                )
             },
             subtitleTracks = subtitleTracks,
             subtitlesDisabled = subtitlesDisabled,
@@ -1449,12 +1410,6 @@ fun PlayerScreen(
                         choice = choice,
                     )
                 }
-                viewModel.setSessionTrackSelection(
-                    audioTrack = state.sessionAudioTrack,
-                    subtitleTrack = choice?.trackIndex ?: -1,
-                    burnSubtitle = false,
-                    positionMs = displayPositionMs,
-                )
             },
             danmakuEnabled = danmakuPreferences.enabled,
             danmakuAutoMatch = danmakuPreferences.autoMatch,
@@ -1470,28 +1425,6 @@ fun PlayerScreen(
             onDanmakuRematch = viewModel::reloadDanmaku,
         )
     }
-}
-
-internal fun playbackUrlWithTrackSelection(
-    playbackUrl: String,
-    audioTrack: Int,
-    subtitleTrack: Int,
-): String {
-    val uri = runCatching { Uri.parse(playbackUrl) }.getOrNull() ?: return playbackUrl
-    if (uri.scheme.isNullOrBlank() || uri.host.isNullOrBlank()) return playbackUrl
-    val builder = uri.buildUpon().clearQuery()
-    uri.queryParameterNames.forEach { name ->
-        if (name != "audio_track" && name != "subtitle_track") {
-            uri.getQueryParameters(name).forEach { value ->
-                builder.appendQueryParameter(name, value)
-            }
-        }
-    }
-    return builder
-        .appendQueryParameter("audio_track", audioTrack.coerceAtLeast(0).toString())
-        .appendQueryParameter("subtitle_track", subtitleTrack.coerceAtLeast(-1).toString())
-        .build()
-        .toString()
 }
 
 @Composable
@@ -1591,9 +1524,14 @@ internal fun resolveServerResource(baseUrl: String?, path: String?): String? {
 }
 
 internal fun neighborPlaybackSpeed(current: Float, direction: Int): Float {
-    val nearest = supportedPlaybackSpeeds.minByOrNull { kotlin.math.abs(it - current) } ?: 1f
-    val index = supportedPlaybackSpeeds.indexOf(nearest)
-    return supportedPlaybackSpeeds[(index + direction).coerceIn(0, supportedPlaybackSpeeds.lastIndex)]
+    if (direction == 0) {
+        return supportedPlaybackSpeeds.minByOrNull { kotlin.math.abs(it - current) } ?: 1f
+    }
+    return if (direction > 0) {
+        supportedPlaybackSpeeds.firstOrNull { it > current } ?: supportedPlaybackSpeeds.last()
+    } else {
+        supportedPlaybackSpeeds.lastOrNull { it < current } ?: supportedPlaybackSpeeds.first()
+    }
 }
 
 internal fun playerEpisodeLabel(title: String): String {
