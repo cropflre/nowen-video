@@ -409,6 +409,7 @@ fun MediaDetailScreen(
     onPersonClick: (String) -> Unit,
     onCollectionClick: (String) -> Unit,
     onMediaClick: (String) -> Unit = onPlay,
+    onRecommendationClick: (MediaCard) -> Unit = { card -> onMediaClick(card.resolvedId) },
     onSeriesClick: (String) -> Unit = {},
     viewModel: MediaDetailViewModel = hiltViewModel(),
 ) {
@@ -640,7 +641,7 @@ fun MediaDetailScreen(
                                             SimilarPosterCard(
                                                 media = item,
                                                 imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                                                onClick = { onMediaClick(item.resolvedId) },
+                                                onClick = { onRecommendationClick(item) },
                                             )
                                         }
                                     }
@@ -649,7 +650,7 @@ fun MediaDetailScreen(
                                 MovieRecommendationShelf(
                                     recommendations = state.recommendations,
                                     baseUrl = baseUrl,
-                                    onMediaClick = onMediaClick,
+                                    onMediaClick = onRecommendationClick,
                                 )
                             }
                         }
@@ -993,7 +994,7 @@ private fun MovieGalleryShelf(
 private fun MovieRecommendationShelf(
     recommendations: List<MediaCard>,
     baseUrl: String?,
-    onMediaClick: (String) -> Unit,
+    onMediaClick: (MediaCard) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1007,7 +1008,7 @@ private fun MovieRecommendationShelf(
                 MovieRecommendationCard(
                     media = item,
                     imageUrl = resolveImage(baseUrl, item.resolvedPoster),
-                    onClick = { onMediaClick(item.resolvedId) },
+                    onClick = { onMediaClick(item) },
                 )
             }
         }
