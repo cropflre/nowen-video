@@ -148,7 +148,7 @@ func (fw *FileWatcherService) WatchLibrary(lib *model.Library) {
 				return nil
 			}
 			// 忽略隐藏目录
-			if strings.HasPrefix(filepath.Base(path), ".") && path != libPath {
+			if isHiddenOrCacheDirName(filepath.Base(path)) && path != libPath {
 				return filepath.SkipDir
 			}
 			if watchErr := fw.watcher.Add(path); watchErr != nil {
@@ -267,6 +267,8 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 	// 判断是否为视频文件或目录
 	ext := strings.ToLower(filepath.Ext(event.Name))
 	isVideo := supportedExts[ext]
+	// 隐藏目录与 NAS 缓存目录（fnOS .@__thumb、群晖 @eaDir 等）内的文件
+	// 是缩略图/预览缓存，不参与媒体导入
 	isDir := false
 	if info, err := os.Stat(event.Name); err == nil {
 		isDir = info.IsDir()
@@ -281,6 +283,10 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 	// 因此新建子目录可以立即归档到正确的 watchedDirs 索引。
 	libraryID := fw.findLibraryID(event.Name)
 	if libraryID == "" {
+		return
+	}
+	// Check descendants relative to configured roots: the user may deliberately choose a hidden library root.
+	if fw.pathIsInExcludedSubdir(event.Name) {
 		return
 	}
 
@@ -327,6 +333,25 @@ func (fw *FileWatcherService) handleEvent(event fsnotify.Event) {
 
 	// 防抖：3秒内合并多个事件，只触发一次增量扫描
 	fw.debounceScan(libraryID)
+}
+
+// pathIsInExcludedSubdir checks only segments below a configured library root.
+// An explicitly configured hidden root is always allowed, as are its normal descendants.
+func (fw *FileWatcherService) pathIsInExcludedSubdir(path string) bool {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+	found := false
+	for root := range fw.watching {
+		if !pathWithinRoot(path, root) {
+			continue
+		}
+		found = true
+		rel, err := filepath.Rel(root, path)
+		if err == nil && (rel == "." || !pathHasHiddenOrCacheSegment(rel)) {
+			return false
+		}
+	}
+	return found
 }
 
 // findLibraryID 根据文件路径查找所属媒体库 ID

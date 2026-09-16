@@ -37,6 +37,78 @@ var supportedExts = map[string]bool{
 	".strm": true, // STRM 远程流文件
 }
 
+// isHiddenOrCacheDirName 判断目录/文件名是否为隐藏项或 NAS 系统生成的缓存目录。
+//
+// NAS 系统（飞牛 fnOS、群晖、威联通等）会在媒体目录内生成缩略图/预览缓存目录，
+// 例如 fnOS 的 .@__thumb（其中文件名保留了原视频的 .mp4 扩展名，但内容是 JPEG 图片）、
+// 群晖的 @eaDir、#recycle 等。这些缓存绝不能当作正片入库，否则会产生大量
+// "mjpeg/100p" 之类的幽灵剧集并被刮削误配元数据。
+// 对齐 Jellyfin/Emby 的标准行为：隐藏目录一律跳过。
+func isHiddenOrCacheDirName(name string) bool {
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return false
+	}
+	// "." 开头：.@__thumb / .Trashes / .Spotlight-V100 / .fseventsd 等；
+	// "@" 开头：群晖 @eaDir 等元数据目录；
+	// "#" 开头：群晖 #recycle / #snapshot 等回收站与快照目录
+	if strings.HasPrefix(n, ".") || strings.HasPrefix(n, "@") || strings.HasPrefix(n, "#") {
+		return true
+	}
+	return nasCacheDirNames[strings.ToLower(n)]
+}
+
+// nasCacheDirNames 常见 NAS/系统的缓存与元数据目录名（小写，不含前缀规则的兜底）
+var nasCacheDirNames = map[string]bool{
+	"@eadir":                    true, // 群晖缩略图/元数据
+	"$recycle.bin":              true, // Windows 回收站
+	"system volume information": true, // Windows 卷信息
+	"lost+found":                true, // Linux 文件系统
+}
+
+// pathHasHiddenOrCacheSegment 判断路径中任一路径段命中隐藏/缓存目录。
+// 用于文件监听（fsnotify）等拿不到遍历 SkipDir 控制权的场景。
+func pathHasHiddenOrCacheSegment(path string) bool {
+	for _, seg := range strings.FieldsFunc(filepath.ToSlash(path), func(r rune) bool { return r == '/' || r == '\\' }) {
+		if isHiddenOrCacheDirName(seg) {
+			return true
+		}
+	}
+	return false
+}
+
+// stillImageVideoCodecs ffprobe 报告的"静态图片"编解码器集合。
+// JPEG/PNG 等图片（含 NAS 缩略图缓存改名为 .mp4 的文件）被 ffprobe 探测时就是这些 codec。
+var stillImageVideoCodecs = map[string]bool{
+	"mjpeg": true, "mjpegb": true, "jpeg": true, "jpg": true,
+	"png": true, "bmp": true, "webp": true, "tiff": true,
+	"gif": true, "avif": true, "heif": true,
+}
+
+// isStillImageMedia 判断探测结果是否为静态图片而非真实视频。
+// 仅当视频流 codec 命中图片编码且时长近乎为零（单帧图片的特征）时判定为图片，
+// 不会误杀正常时长的 Motion-JPEG 视频文件。
+// 注意：探测失败（codec 为空，如 ffprobe 不可用）时返回 false，避免误清整个媒体库。
+func isStillImageMedia(media *model.Media) bool {
+	if media == nil || media.VideoCodec == "" {
+		return false
+	}
+	return stillImageVideoCodecs[strings.ToLower(media.VideoCodec)] && media.Duration <= 0.1
+}
+
+// isConfiguredLibraryRoot protects a user-selected hidden root while excluding hidden children.
+func isConfiguredLibraryRoot(library *model.Library, path string) bool {
+	if library == nil {
+		return false
+	}
+	for _, root := range library.AllPaths() {
+		if filepath.Clean(root) == filepath.Clean(path) {
+			return true
+		}
+	}
+	return false
+}
+
 // extrasExcludeDirs Emby/Kodi 标准的非正片内容目录名（小写）
 var extrasExcludeDirs = map[string]bool{
 	"extras":            true,
@@ -187,6 +259,9 @@ func (s *ScannerService) looksLikeSeriesFolder(path string) bool {
 	var hasEpisodicVideo bool
 	for _, e := range entries {
 		name := e.Name()
+		if isHiddenOrCacheDirName(name) {
+			continue
+		}
 		if !e.IsDir() {
 			lower := strings.ToLower(name)
 			if lower == "tvshow.nfo" {
@@ -502,7 +577,7 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 		seen[path] = true
 
 		base := filepath.Base(path)
-		if isXiaoyaSkipDir(base) || extrasExcludeDirs[strings.ToLower(base)] {
+		if (depth > 0 && isHiddenOrCacheDirName(base)) || isXiaoyaSkipDir(base) || extrasExcludeDirs[strings.ToLower(base)] {
 			s.logger.Debugf("[xiaoya] 跳过特殊目录: %s", path)
 			return
 		}
@@ -574,7 +649,7 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 				}
 				for i := 0; i < sampleN; i++ {
 					sd := subDirs[i]
-					if isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
+					if isHiddenOrCacheDirName(sd.Name()) || isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
 						continue
 					}
 					childPath := vfsJoin(path, sd.Name())
@@ -603,7 +678,7 @@ func (s *ScannerService) collectMediaRoots(root string, kind string) []string {
 		// 穿透：把每个子目录递归展开
 		expandedCount := 0
 		for _, sd := range subDirs {
-			if isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
+			if isHiddenOrCacheDirName(sd.Name()) || isXiaoyaSkipDir(sd.Name()) || extrasExcludeDirs[strings.ToLower(sd.Name())] {
 				continue
 			}
 			// [tvshow 扫描] 子目录层级过滤非剧集分类（综艺/演唱会/音乐/MV/每日更新）
@@ -764,6 +839,11 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			return nil
 		}
 		if info.IsDir() {
+			// 跳过隐藏目录与 NAS 缓存目录（如 fnOS .@__thumb、群晖 @eaDir），
+			// 其中的"视频文件"实际是缩略图/预览缓存
+			if isHiddenOrCacheDirName(filepath.Base(path)) && !isConfiguredLibraryRoot(library, path) {
+				return filepath.SkipDir
+			}
 			// 跳过 extras/trailers 等非正片目录（P0: 兼容 Emby 标准）
 			if extrasExcludeDirs[strings.ToLower(filepath.Base(path))] {
 				return filepath.SkipDir
@@ -990,6 +1070,11 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	// 【火力全开 A】处理已更新文件：probe 已在上面并行完成，这里只做字幕扫描 + DB 更新
 	if len(updateList) > 0 {
 		for _, pm := range updateList {
+			// Never overwrite a valid indexed record with a disguised still image; manual cleanup of previously indexed ghosts remains separate.
+			if isStillImageMedia(pm.media) {
+				s.logger.Warnf("跳过疑似静态图片的已有媒体更新，保留原记录待人工核查: %s", pm.path)
+				continue
+			}
 			s.scanExternalSubtitles(pm.media)
 			if err := s.mediaRepo.Update(pm.media); err != nil {
 				s.logger.Warnf("更新媒体失败: %s, 错误: %v", pm.path, err)
@@ -1040,6 +1125,12 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 					pm.media.BackdropPath = backdrop
 					s.logger.Debugf("发现本地背景图: %s", backdrop)
 				}
+			}
+
+			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+			if isStillImageMedia(pm.media) {
+				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", pm.media.FilePath, pm.media.VideoCodec)
+				continue
 			}
 
 			if err := s.mediaRepo.Create(pm.media); err != nil {
@@ -1266,7 +1357,7 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			if e.IsDir() {
 				if isSeasonOnlyDirName(e.Name()) {
 					seasonChildCount++
-				} else if !isXiaoyaSkipDir(e.Name()) && !extrasExcludeDirs[strings.ToLower(e.Name())] {
+				} else if !isHiddenOrCacheDirName(e.Name()) && !isXiaoyaSkipDir(e.Name()) && !extrasExcludeDirs[strings.ToLower(e.Name())] {
 					nonSeasonChildCount++
 				}
 			}
@@ -1308,7 +1399,8 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 
 			dirName := entry.Name()
 			// [xiaoya 适配] 跳过特殊目录（ISO/json/画质演示/extras 等）
-			if isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
+			// 同时跳过隐藏目录与 NAS 缓存目录（fnOS .@__thumb、群晖 @eaDir 等）
+			if isHiddenOrCacheDirName(dirName) || isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
 				s.logger.Debugf("[xiaoya] 混合库扫描跳过特殊目录: %s", dirName)
 				continue
 			}
@@ -1369,7 +1461,13 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 	for _, entry := range movieDirs {
 		folderPath := vfsJoin(entry.rootPath, entry.entry.Name())
 		err := s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				if isHiddenOrCacheDirName(filepath.Base(path)) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
@@ -1393,6 +1491,11 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			}
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
+			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+			if isStillImageMedia(media) {
+				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+				return nil
+			}
 			if err := s.mediaRepo.Create(media); err != nil {
 				s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
 				return nil
@@ -1437,6 +1540,11 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 		}
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
+		// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+		if isStillImageMedia(media) {
+			s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+			continue
+		}
 		if err := s.mediaRepo.Create(media); err != nil {
 			s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
 			continue
@@ -1502,6 +1610,9 @@ func (s *ScannerService) isTVShowFolder(folderPath string) bool {
 	// 规则2: 包含 Season 子目录
 	var videoFiles []string
 	for _, entry := range entries {
+		if isHiddenOrCacheDirName(entry.Name()) {
+			continue
+		}
 		if entry.IsDir() {
 			for _, pattern := range seasonDirPatterns {
 				if pattern.MatchString(entry.Name()) {
@@ -1678,6 +1789,9 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		s.logger.Infof("剧集根 %s 包含 %d 个条目", root, len(entries))
 
 		for _, entry := range entries {
+			if isHiddenOrCacheDirName(entry.Name()) {
+				continue
+			}
 			if !entry.IsDir() {
 				// 根目录下的视频文件
 				ext := strings.ToLower(filepath.Ext(entry.Name()))
@@ -1706,7 +1820,9 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 
 			dirName := entry.Name()
 			// [xiaoya 适配] 跳过特殊目录（ISO/json/画质演示/extras 等）
-			if isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
+			// 同时跳过隐藏目录与 NAS 缓存目录（fnOS .@__thumb、群晖 @eaDir 等），
+			// 否则缓存目录会被当作剧集目录，缩略图伪 .mp4 会以剧集身份入库
+			if isHiddenOrCacheDirName(dirName) || isXiaoyaSkipDir(dirName) || extrasExcludeDirs[strings.ToLower(dirName)] {
 				s.logger.Debugf("[xiaoya] 剧集扫描跳过特殊目录: %s", dirName)
 				continue
 			}
@@ -1817,6 +1933,11 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 				media.SeasonNum = ep.SeasonNum
 				media.EpisodeNum = ep.EpisodeNum
 				media.EpisodeTitle = ep.EpisodeTitle
+				// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+				if isStillImageMedia(media) {
+					s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+					continue
+				}
 				if err := s.mediaRepo.Create(media); err != nil {
 					s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
 				}
@@ -1869,6 +1990,12 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			}
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
+
+			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+			if isStillImageMedia(media) {
+				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+				continue
+			}
 
 			if err := s.mediaRepo.Create(media); err != nil {
 				s.logger.Warnf("保存剧集失败: %s, 错误: %v", filePath, err)
@@ -2213,6 +2340,12 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 			s.probeMediaInfo(media)
 			s.scanExternalSubtitles(media)
 
+			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+			if isStillImageMedia(media) {
+				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+				continue
+			}
+
 			if err := s.mediaRepo.Create(media); err != nil {
 				s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
 				continue
@@ -2358,6 +2491,12 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		s.probeMediaInfo(media)
 		s.scanExternalSubtitles(media)
 
+		// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
+		if isStillImageMedia(media) {
+			s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
+			continue
+		}
+
 		if err := s.mediaRepo.Create(media); err != nil {
 			s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
 			continue
@@ -2393,7 +2532,18 @@ func (s *ScannerService) collectEpisodes(folderPath string) []EpisodeInfo {
 	var episodes []EpisodeInfo
 
 	s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			// 跳过隐藏目录与 NAS 缓存目录（fnOS .@__thumb、群晖 @eaDir 等）：
+			// 缓存缩略图保留原视频的 .mp4 扩展名但内容是 JPEG，入库后即"mjpeg 幽灵剧集"
+			if isHiddenOrCacheDirName(filepath.Base(path)) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isHiddenOrCacheDirName(filepath.Base(path)) {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
