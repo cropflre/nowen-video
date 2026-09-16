@@ -393,6 +393,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onPersonClick = ::openPerson,
                     onCollectionClick = ::openCollection,
                     onMediaClick = ::openDetail,
+                    onRecommendationClick = ::openCatalogDetail,
                     onSeriesClick = ::openSeries,
                 )
             }
