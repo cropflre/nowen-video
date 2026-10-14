@@ -90,13 +90,18 @@ services:
       - PGID=0
       - UMASK=000
       - NOWEN_DATABASE_DB_PATH=/data/nowen.db
-      # ⚠️ 必改：换成你自己的随机字符串（至少 32 位）
-      - NOWEN_SECRETS_JWT_SECRET=please-change-this-secret-key
+      # JWT_SECRET 留空/不设置时，程序会自动生成 32 字节随机 secret 并持久化到
+      # /data/.jwt_secret，重启不会导致登录态失效。需要统一密钥管理时，再取消注释
+      # 并填入自己的强随机字符串。
+      # ⚠️ 不要填示例值或可猜测的字符串，那等于公开签名密钥。
+      # - NOWEN_SECRETS_JWT_SECRET=your-own-strong-random-secret
       - NOWEN_CACHE_CACHE_DIR=/cache
       - NOWEN_LOGGING_LEVEL=info
       # ---- 番号刮削（默认关闭）----
-      # 改为 true 后 Go 后端会自动拉起 /app/scripts/adult-scraper/app.py 子进程
-      # 依赖已全部预装（python3 + flask + bs4 + lxml + requests），开箱即用
+      # 改为 true 后 Go 后端会自动拉起 /app/scripts/adult-scraper/app.py 子进程。
+      # ⚠️ 这组变量只对「镜像内自带 Python 运行时」的镜像生效：官方 Docker Hub 镜像由
+      #    Dockerfile 构建，不含 python3 也没有 /app/scripts，因此默认不产生任何效果。
+      #    需要该功能时请把 image 换成基于 Dockerfile.full 构建的镜像。
       - NOWEN_ADULT_SCRAPER_ENABLED=false
       - NOWEN_ADULT_SCRAPER_AUTO_START_PYTHON=true
       - NOWEN_ADULT_SCRAPER_PYTHON_EXECUTABLE=/usr/bin/python3
@@ -120,13 +125,16 @@ services:
 #    后续再开放/关闭注册和邀请码（管理后台 → 用户 / 注册）。
 #
 # 2) 把现有普通用户提权为 admin：
-#    docker exec -it nowen-video sqlite3 /data/nowen.db \
-#      "UPDATE users SET role='admin' WHERE username='yourname';"
+#    镜像内没有预装 sqlite CLI，需要先临时装一个（只影响当前容器，重建后失效）：
+#    docker exec -it nowen-video sh -c \
+#      "apk add --no-cache sqlite && sqlite3 /data/nowen.db \
+#       \"UPDATE users SET role='admin' WHERE username='yourname';\""
 #    然后让该用户重新登录即可。
 #
 # 3) 忘记 admin 密码时重置：
-#    docker exec -it nowen-video sqlite3 /data/nowen.db \
-#      "UPDATE users SET must_change_pwd=1 WHERE role='admin';"
+#    docker exec -it nowen-video sh -c \
+#      "apk add --no-cache sqlite && sqlite3 /data/nowen.db \
+#       \"UPDATE users SET must_change_pwd=1 WHERE role='admin';\""
 #    再用任意 admin 账号登录触发改密流程。
 # =============================================================
 

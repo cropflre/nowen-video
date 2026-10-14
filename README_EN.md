@@ -222,7 +222,23 @@ services:
 
 If no JWT secret is configured explicitly, the server generates a random secret on first startup and persists it in the data directory. `NOWEN_SECRETS_JWT_SECRET` remains available for installations that use centralized secret management.
 
-### 3. Build from Source
+### 3. NAS / Production Deployment
+
+`docker-compose.deploy.yml` in the repository root is a complete configuration for NAS hosts and
+long-running deployments. It already covers transcoding device passthrough, mount permissions,
+remote storage (FUSE), and the device nodes required by each SoC family.
+Usage matches the compose file above — **point the media path at your own directory**, then:
+
+```bash
+docker compose -f docker-compose.deploy.yml up -d
+```
+
+> fnOS GUI users: upload the file under Docker → Compose, or pull `cropflre/nowen-video:latest`
+> from the Images page and create the container there.
+> Do not build the image on the NAS — the build context is incomplete and you will get
+> `failed to read dockerfile`.
+
+### 4. Build from Source
 
 Requires **Go 1.25**, **Node.js 20+**, and **FFmpeg**.
 

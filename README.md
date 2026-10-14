@@ -222,7 +222,21 @@ services:
 
 JWT Secret 未显式配置时，服务端会在首次启动时自动生成随机密钥并持久化到数据目录；如有统一密钥管理需求，也可以通过 `NOWEN_SECRETS_JWT_SECRET` 显式指定。
 
-### 三、源码构建
+### 三、NAS / 生产环境部署
+
+仓库根目录的 `docker-compose.deploy.yml` 是面向 NAS 与长期运行场景的完整配置，
+已经处理好转码设备透传、挂载目录权限、远程存储（FUSE），以及各平台 SoC 需要的设备节点。
+用法和上面的 compose 一样——**把里面的媒体路径改成你的实际路径**，然后：
+
+```bash
+docker compose -f docker-compose.deploy.yml up -d
+```
+
+> 飞牛 OS 图形界面用户：Docker → Compose → 上传该文件即可；也可以在「镜像」里直接拉
+> `cropflre/nowen-video:latest`，再用 GUI 创建容器。
+> 不要在 NAS 上构建镜像——构建上下文不完整，会报 `failed to read dockerfile`。
+
+### 四、源码构建
 
 环境要求：**Go 1.25、Node.js 20+、FFmpeg**
 
