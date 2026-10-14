@@ -198,11 +198,23 @@ func (s *StreamService) ShouldRemux(media *model.Media, userAgent string) bool {
 // ClientSupportsHEVC 粗略判断客户端是否能硬解 HEVC。
 // 主要用于返回 MediaSource 时选择是否标记支持 DirectPlay。
 // Safari 11+/Edge Chromium/Chrome 108+ 都支持 HEVC 硬解。
+//
+// 已识别的第三方客户端：
+//   - Infuse（Apple 全平台）
+//   - Hills（Emby/Jellyfin 客户端，Android + Windows，内置 MPV 内核，另支持 HDR/DV/AV1）
+//   - Yamby（Emby 客户端，Android，内置 MPV 内核，支持 4K 硬解）
+//
+// Hills / Yamby 必须列入白名单：它们的 UA 不含 exoplayer/safari/edg，
+// 若不识别会被当作"未知 Web 客户端"而把 HEVC 片源降级为 HLS 转码。
 func (s *StreamService) ClientSupportsHEVC(userAgent string) bool {
 	uaLower := strings.ToLower(userAgent)
 	switch {
 	case strings.Contains(uaLower, "infuse"):
 		return true // Infuse 全平台硬解 HEVC
+	case strings.Contains(uaLower, "hills"):
+		return true // Hills（Emby/Jellyfin，MPV 内核）
+	case strings.Contains(uaLower, "yamby"):
+		return true // Yamby（Emby，MPV 内核）
 	case strings.Contains(uaLower, "safari") && !strings.Contains(uaLower, "chrome"):
 		return true // 原生 Safari（非 Chromium 内核）
 	case strings.Contains(uaLower, "edg/"):

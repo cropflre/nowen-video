@@ -15,6 +15,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
+	embyh "github.com/nowen-video/nowen-video/internal/handler/emby"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/service"
@@ -75,6 +76,26 @@ func main() {
 		sugar.Info("Desktop Runtime 已禁用 mDNS 服务发现")
 	}
 
+	// ==================== UDP 7359 Emby 自动发现 ====================
+	// Hills / Yamby 等 Emby 客户端在"添加服务器"时会向 255.255.255.255:7359
+	// 广播探测包。mDNS 广播的服务类型是私有的 _nowen-video._tcp，Emby 客户端
+	// 识别不了，因此必须额外启动标准 UDP 发现，否则只能手动输入 IP。
+	// 启动失败不影响主服务（常见于端口被占用或防火墙拦截）。
+	var embyDiscovery *embyh.DiscoveryService
+	if cfg.Emby.EnableCompat && cfg.Emby.EnableAutoDiscovery {
+		embyDiscovery = embyh.NewDiscoveryService(
+			cfg.Emby.AutoDiscoveryPort,
+			embyh.DeriveServerID(cfg),
+			cfg.Emby.ServerName,
+			cfg.App.Port,
+			sugar,
+		)
+		if err := embyDiscovery.Start(); err != nil {
+			sugar.Warnf("Emby UDP 自动发现启动失败（可忽略）: %v", err)
+			embyDiscovery = nil
+		}
+	}
+
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 	if desktopRuntime {
 		addr = fmt.Sprintf("127.0.0.1:%d", cfg.App.Port)
@@ -92,6 +113,9 @@ func main() {
 	<-quit
 	signal.Stop(quit)
 	sugar.Info("正在关闭 nowen-video...")
+	if embyDiscovery != nil {
+		embyDiscovery.Stop()
+	}
 	if !desktopRuntime {
 		mdnsService.Stop()
 	}

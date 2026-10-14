@@ -139,6 +139,40 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	// 字面量路由必须放在 /Items/:id 前，避免官方客户端的 /Items/resume 被 :id 截获。
 	g.GET("/Items/Prefixes", h.ItemPrefixesHandler)
 	g.GET("/items/prefixes", h.ItemPrefixesHandler)
+
+	// ==================== Hills / Yamby 兼容补齐 ====================
+	// 客户端登录后立即上报播放能力（官方 Emby 返回 204）。
+	// 缺失时 Hills/Yamby 可能判定服务器不兼容，表现为"能登录但进不去"。
+	g.POST("/Sessions/Capabilities", h.SessionsCapabilitiesHandler)
+	g.POST("/sessions/capabilities", h.SessionsCapabilitiesHandler)
+	g.POST("/Sessions/Capabilities/Full", h.SessionsCapabilitiesFullHandler)
+	g.POST("/sessions/capabilities/full", h.SessionsCapabilitiesFullHandler)
+
+	// 搜索（Hills 统一搜索 / Yamby 搜索框）
+	g.GET("/Search/Hints", h.SearchHintsHandler)
+	g.GET("/search/hints", h.SearchHintsHandler)
+
+	// 筛选维度（Filters 为字面量，必须位于 /Items/:id 之前）
+	g.GET("/Items/Filters", h.FiltersHandler)
+	g.GET("/Items/Filters2", h.Filters2Handler)
+	g.GET("/items/filters", h.FiltersHandler)
+	g.GET("/items/filters2", h.Filters2Handler)
+
+	// 库文件夹视图（Emby 客户端设置页 / 文件夹视图）
+	g.GET("/Library/VirtualFolders", h.VirtualFoldersHandler)
+	g.GET("/library/virtualfolders", h.VirtualFoldersHandler)
+
+	// 详情页附属内容：本服务不提供，返回空数组让客户端正常渲染
+	g.GET("/Items/:id/Intros", h.IntrosHandler)
+	g.GET("/items/:id/intros", h.IntrosHandler)
+	g.GET("/Users/:userId/Items/:id/Intros", h.IntrosHandler)
+	g.GET("/Items/:id/LocalTrailers", h.LocalTrailersHandler)
+	g.GET("/items/:id/localtrailers", h.LocalTrailersHandler)
+	g.GET("/Users/:userId/Items/:id/LocalTrailers", h.LocalTrailersHandler)
+	g.GET("/Items/:id/AdditionalParts", h.AdditionalPartsHandler)
+	g.GET("/Videos/:id/AdditionalParts", h.AdditionalPartsHandler)
+	g.GET("/Users/:userId/Items/:id/SpecialFeatures", h.SpecialFeaturesHandler)
+
 	g.GET("/Users/:userId/Items/Latest", h.LatestItemsHandler)
 	g.GET("/users/:userId/items/latest", h.LatestItemsHandler)
 	g.GET("/Users/:userId/Items/latest", h.LatestItemsHandler)
