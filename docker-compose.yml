@@ -1,125 +1,18 @@
-version: '3.8'
-
 services:
   nowen-video:
-    build:
-      context: .
-      # 多架构构建（使用 docker buildx 时生效）
-      # 本机架构会自动选择，如需强制指定可取消注释：
-      # platforms:
-      #   - linux/amd64
-      #   - linux/arm64
-      #   - linux/arm/v7
-    # 如果在 x86 主机上拉取 ARM 镜像（或反之），可通过 platform 显式指定
-    # platform: linux/arm64
+    image: ghcr.io/grimm-yh/nowen-video:fix-emby-compat
     container_name: nowen-video
-    # ================= 超级管理员权限（容器侧）=================
-    # 以 root(UID=0) 运行容器内进程，拥有对挂载卷的完全读写权。
-    # 注：飞牛 OS / 绿联 NAS / Synology 等部分 NAS 挂载目录 UID/GID 非 1000，
-    # 以 root 跑可避免 "permission denied" 的问题。
-    user: "0:0"
-    # 授予容器对主机设备的完整访问权（已启用 privileged 时可同时搭配 cap_add）
-    privileged: true
-    # 细粒度能力（privileged 已覆盖，保留便于关闭 privileged 时使用）
-    cap_add:
-      - SYS_ADMIN        # 挂载/解挂（WebDAV/Alist 远程挂载需要）
-      - NET_ADMIN        # 设置路由/代理
-      - SYS_PTRACE       # 诊断排查
-      - DAC_READ_SEARCH  # 跨属主读文件
-    # AppArmor / SELinux 放开，避免飞牛 OS 等系统默认 profile 阻挡 /dev/* 访问
-    security_opt:
-      - apparmor:unconfined
-      - seccomp:unconfined
-    # FUSE 挂载（若应用内接入 rclone/davfs 等）需要
-    # 需要宿主机加载 fuse 内核模块：`modprobe fuse`
-    # =========================================================
     ports:
       - "8080:8080"
+      - "7359:7359/udp"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
     volumes:
-      # 数据持久化
       - ./data:/data
-      # 转码缓存
       - ./cache:/cache
-      # 媒体文件挂载（根据实际NAS路径修改）
-      # 示例: 挂载整个媒体根目录
-      # - /volume1/Media:/media
-      # 示例: 分别挂载不同媒体目录
-      # - /volume1/Media/电影:/media/电影
-      # - /volume1/Media/电视剧:/media/电视剧
-    # 硬件加速设备映射
-    # - amd64 (Intel QSV/VAAPI): /dev/dri
-    # - arm64 (树莓派 V4L2 / 瑞芯微 RKMPP / Mali GPU): /dev/dri, /dev/video*
-    # 如果没有硬件加速需求可以注释掉整个 devices 段
+      - /volume1/Media:/media:ro
     devices:
       - /dev/dri:/dev/dri
-      # FUSE（WebDAV/Alist 挂载用）
-      - /dev/fuse:/dev/fuse
-      # ARM SBC 额外可能需要的设备（按需开启）
-      # - /dev/video10:/dev/video10   # 树莓派 V4L2 H.264 编码
-      # - /dev/video11:/dev/video11
-      # - /dev/video12:/dev/video12
-      # - /dev/mpp_service:/dev/mpp_service  # 瑞芯微 RKMPP
-    environment:
-      # ---- 应用配置 ----
-      - NOWEN_APP_PORT=8080
-      # ---- 用户权限 ----
-      # 已用 user: "0:0" 覆盖，此处 PUID/PGID 仅供镜像入口脚本参考
-      - PUID=0
-      - PGID=0
-      - UMASK=000   # 生成文件默认 777，便于多端共享
-      - NOWEN_APP_DATA_DIR=/data
-      - NOWEN_APP_WEB_DIR=/app/web/dist
-      # ---- 数据库配置 ----
-      - NOWEN_DATABASE_DB_PATH=/data/nowen.db
-      # ---- 密钥配置 ----
-      # JWT_SECRET 留空/不设置时，程序会自动生成 32 字节随机 secret 并持久化到 /data/.jwt_secret，
-      # 重启不会导致登录态失效。如需自定义，可取消注释并填入自己的强随机字符串。
-      # - NOWEN_SECRETS_JWT_SECRET=your-own-strong-random-secret
-      # ---- 缓存配置 ----
-      - NOWEN_CACHE_CACHE_DIR=/cache
-      # ---- 日志配置 ----
-      - NOWEN_LOGGING_LEVEL=info
-      # ---- CORS（多个用逗号分隔，留空禁止跨域，*允许所有） ----
-      # - NOWEN_APP_CORS_ORIGINS=http://localhost:3000
-      - TZ=Asia/Shanghai
     restart: unless-stopped
-    # 健康检查：给足启动时间，避免 ARM NAS 首次扫盘慢被误判不健康
-    # 如果探测失败仍会让 restart 策略生效；但容器刚启动的 120s 内一律视为"启动中"，不计失败次数
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    # 资源限制（NAS场景建议限制，避免拖垮系统）
-    # 注意：ARM 低内存设备（2G 以下）请按实际情况调低 limits，或完全注释掉整个 deploy 段
-    # 当前 2G 限制适合 4G+ 的 NAS；若频繁 OOM 重启会导致登录态丢失。
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
-
-# ================= 应用层"超级管理员"说明 =================
-# 本项目权限模型：users.role = "admin" / "user"
-# 首次启动后，第一个注册的用户自动被授予 admin 角色（见 internal/service/auth.go）。
-# 部署流程：
-#   1. docker compose up -d
-#   2. 浏览器访问 http://<host>:8080
-#   3. 注册你的第一个账号 → 自动成为管理员（超级管理员）
-#   4. 之后再开放注册/配置邀请码控制普通用户
-#
-# 如需把现有普通用户提权为 admin，可直接改数据库：
-#   docker exec -it nowen-video sqlite3 /data/nowen.db \
-#     "UPDATE users SET role='admin' WHERE username='yourname';"
-# ==========================================================
-
-# ================= 多架构构建命令（开发者参考）=================
-# 在支持 buildx 的环境下：
-#   docker buildx create --name nowen-builder --use
-#   docker buildx build \
-#     --platform linux/amd64,linux/arm64,linux/arm/v7 \
-#     -t yourname/nowen-video:latest \
-#     --push .
-# =============================================================

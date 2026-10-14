@@ -20,6 +20,11 @@ fnpack-*
 *.exe
 *.test
 *.out
+# 直接 go build 到仓库根目录时的产物（本仓库历史上误提交过 58MB 二进制）
+/server
+/server-lite
+/nowen-video
+/nowen-video-full
 
 # 运行日志
 *.log

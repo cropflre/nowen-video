@@ -10,8 +10,7 @@ web/node_modules/
 web/dist/
 config.yaml
 config.example.yaml
-docker-compose.yml
-docker-compose.deploy.yml
+docker-compose*.yml
 stderr.log
 stdout.log
 package-lock.json
