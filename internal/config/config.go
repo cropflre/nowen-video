@@ -310,6 +310,10 @@ type RegistrationConfig struct {
 
 // EmbyConfig Emby/Jellyfin 兼容层配置（供移动端/桌面 Emby/Infuse/Jellyfin 客户端登录与播放）
 type EmbyConfig struct {
+	// 是否启用 Emby/Jellyfin 兼容层。Hills / Yamby / Infuse 等第三方客户端
+	// 依赖该层完成登录、媒体库浏览与播放协商；默认 true。
+	// 置为 false 可退回 lite profile 的历史行为（完全不挂载兼容路由）。
+	EnableCompat bool `mapstructure:"enable_compat"`
 	// 服务器对外显示名称（留空则使用主机名或 "nowen-video"）
 	ServerName string `mapstructure:"server_name"`
 	// 是否启用 UDP 7359 局域网服务器自动发现（Emby / Jellyfin 标准协议）
@@ -569,6 +573,12 @@ type STRMConfig struct {
 type Config struct {
 	mu sync.RWMutex `mapstructure:"-"`
 
+	// 启动时实际加载的主配置文件路径（空表示未加载到任何 config.yaml）。
+	// 配置保存优先原地覆写该文件；它是以只读方式挂载/非当前用户所有时，
+	// 回退到数据目录。记录在结构体上而不是每次查询 viper，避免受
+	// viper.WriteConfigAs 内部状态影响。
+	loadedConfigFile string `mapstructure:"-"`
+
 	// 子模块配置
 	Database     DatabaseConfig     `mapstructure:"database"`
 	Secrets      SecretsConfig      `mapstructure:"secrets"`
@@ -614,11 +624,20 @@ func Load() (*Config, error) {
 	// 设置默认值
 	setDefaults()
 
-	// 配置文件搜索路径
+	// 配置文件搜索路径。
+	//
+	// 数据目录可能由 NOWEN_APP_DATA_DIR 指定（正式镜像为 /data），而"配置保存"在
+	// 无法原地覆写时会兜底写到 <DataDir>/config.yaml。该路径必须纳入搜索，
+	// 否则保存成功的配置在下次启动不会被加载（表现为"改了设置，重启后又变回去"）。
+	dataDirForSearch := strings.TrimSpace(os.Getenv("NOWEN_APP_DATA_DIR"))
+	if dataDirForSearch == "" {
+		dataDirForSearch = "./data"
+	}
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./data")
+	viper.AddConfigPath(dataDirForSearch)
 	viper.AddConfigPath("/etc/nowen-video")
 
 	// 环境变量
@@ -628,6 +647,8 @@ func Load() (*Config, error) {
 
 	// 1. 读取主配置文件（不存在也不报错）
 	_ = viper.ReadInConfig()
+	// 记录实际命中的主配置文件路径，供后续保存时优先原地覆写。
+	loadedConfigFile := viper.ConfigFileUsed()
 
 	// 2. 合并 config/ 目录下的分片配置文件
 	if err := mergeConfigDir(); err != nil {
@@ -639,6 +660,7 @@ func Load() (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
+	cfg.loadedConfigFile = loadedConfigFile
 
 	// 4. 向后兼容：将旧版扁平字段合并到子模块
 	cfg.migrateFromFlatConfig()
@@ -811,6 +833,7 @@ func setDefaults() {
 	viper.SetDefault("registration.invite_code", "")
 
 	// ---- Emby 兼容层 ----
+	viper.SetDefault("emby.enable_compat", true)
 	viper.SetDefault("emby.server_name", "")
 	viper.SetDefault("emby.enable_auto_discovery", true)
 	viper.SetDefault("emby.auto_discovery_port", 7359)
@@ -1350,7 +1373,14 @@ func (c *Config) SaveAIConfig() error {
 // 不锁，调用方负责加锁
 func (c *Config) writeAIYaml() error {
 	ac := c.AI
-	aiDirs := []string{"./config", "./data/config", "/etc/nowen-video/config"}
+
+	dataDir := strings.TrimSpace(c.App.DataDir)
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+	dataCfgDir := filepath.Join(dataDir, "config")
+
+	aiDirs := []string{"./config", dataCfgDir, "/etc/nowen-video/config"}
 	var targetFile string
 	for _, dir := range aiDirs {
 		filePath := filepath.Join(dir, "ai.yaml")
@@ -1359,11 +1389,13 @@ func (c *Config) writeAIYaml() error {
 			break
 		}
 	}
-	// 没找到现有 ai.yaml 分片文件时，默认写到 ./config/ai.yaml
+	// 没找到现有 ai.yaml 分片文件时，落到数据目录下的 config/。
+	// 不要用相对 "./config"：容器 CWD(/app) 归 root 所有，非 root 运行会 EACCES。
 	if targetFile == "" {
-		// 确保目录存在
-		_ = os.MkdirAll("./config", 0o755)
-		targetFile = filepath.Join("./config", "ai.yaml")
+		targetFile = filepath.Join(dataCfgDir, "ai.yaml")
+	}
+	if err := os.MkdirAll(filepath.Dir(targetFile), 0o755); err != nil {
+		return fmt.Errorf("创建 AI 配置目录失败(%s): %w", filepath.Dir(targetFile), err)
 	}
 
 	subViper := viper.New()
@@ -1413,19 +1445,70 @@ func (c *Config) writeAIYaml() error {
 	return subViper.WriteConfigAs(targetFile)
 }
 
-// saveConfig 将当前配置写入配置文件
+// saveConfig 将当前配置写入配置文件。
+//
+// 写盘路径的选取规则（修复容器内 "open config.yaml: permission denied"）：
+//  1. 启动时已成功加载某个 config.yaml，且该文件对当前进程可写 → 原地覆盖；
+//  2. 否则回退到数据目录 <DataDir>/config.yaml —— 容器内该目录由 entrypoint
+//     以 PUID:PGID chown，运行身份必然可写；
+//  3. 目标目录不存在时自动创建。
+//
+// 旧实现在 viper.ConfigFileUsed() 为空时直接写相对路径 "config.yaml"，
+// 即进程 CWD（正式镜像 WORKDIR=/app）。/app 由构建阶段以 root 创建且从未 chown，
+// 而运行时通过 su-exec 降到 PUID:PGID（非 root），因此 open 必然 EACCES。
 func (c *Config) saveConfig() error {
-	configFile := viper.ConfigFileUsed()
-	if configFile == "" {
-		configFile = "config.yaml"
+	target := c.resolveConfigWritePath()
+
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("创建配置目录失败(%s): %w", dir, err)
 	}
-	return viper.WriteConfigAs(configFile)
+
+	// 原子写：先写同目录临时文件再 rename，避免写一半崩溃留下损坏的 config.yaml。
+	// 保留 .yaml 扩展名，确保 viper 能推断序列化格式。
+	tmp := target + ".tmp.yaml"
+	if err := viper.WriteConfigAs(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("写入配置失败(%s): %w", target, err)
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("替换配置文件失败(%s): %w", target, err)
+	}
+	return nil
+}
+
+// resolveConfigWritePath 选择本次配置写盘的目标路径。
+func (c *Config) resolveConfigWritePath() string {
+	if used := c.loadedConfigFile; used != "" && isWritableFile(used) {
+		return used
+	}
+	dir := strings.TrimSpace(c.App.DataDir)
+	if dir == "" {
+		dir = "./data"
+	}
+	return filepath.Join(dir, "config.yaml")
+}
+
+// isWritableFile 探测已存在的文件对当前进程是否可写。
+// 以 O_WRONLY|O_APPEND 打开不会截断内容，仅用于权限探测。
+func isWritableFile(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // updateSecretsFile 更新 config/secrets.yaml 分片文件中的指定字段
 // 避免分片文件中的旧值在重启时覆盖用户通过 API 保存的新值
 func (c *Config) updateSecretsFile(key, value string) {
-	secretsDirs := []string{"./config", "./data/config", "/etc/nowen-video/config"}
+	dataDir := strings.TrimSpace(c.App.DataDir)
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+	secretsDirs := []string{"./config", filepath.Join(dataDir, "config"), "./data/config", "/etc/nowen-video/config"}
 	for _, dir := range secretsDirs {
 		filePath := filepath.Join(dir, "secrets.yaml")
 		if _, err := os.Stat(filePath); err != nil {
