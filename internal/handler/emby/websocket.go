@@ -63,6 +63,10 @@ func NewWSHub(logger *zap.SugaredLogger) *WSHub {
 // 鉴权：客户端在 URL query 中携带 ?api_key=<JWT>&deviceId=<id>。
 // 如果 token 无效，升级前返回 401。
 func (h *WSHub) Handler(jwtSecret string) gin.HandlerFunc {
+	return h.HandlerWithValidator(jwtSecret, nil)
+}
+
+func (h *WSHub) HandlerWithValidator(jwtSecret string, validator middleware.TokenVersionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从 query / header 提取 token（WebSocket 阶段客户端只会给 query）
 		tokenStr := c.Query("api_key")
@@ -87,6 +91,9 @@ func (h *WSHub) Handler(jwtSecret string) gin.HandlerFunc {
 		})
 		if err != nil || !token.Valid {
 			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		if !validateEmbyClaims(c, claims, validator) {
 			return
 		}
 

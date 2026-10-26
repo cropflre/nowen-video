@@ -145,6 +145,11 @@ func extractToken(c *gin.Context) (string, EmbyAuthHeader) {
 //   - role:      admin / user
 //   - emby_client / emby_device / emby_device_id / emby_version: 客户端标识
 func EmbyAuth(secret string) gin.HandlerFunc {
+	return EmbyAuthWithValidator(secret, nil)
+}
+
+// EmbyAuthWithValidator 保留 Emby 的 token 传递格式，同时复用主服务的账号撤销校验。
+func EmbyAuthWithValidator(secret string, validator middleware.TokenVersionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr, ah := extractToken(c)
 		if tokenStr == "" {
@@ -160,6 +165,9 @@ func EmbyAuth(secret string) gin.HandlerFunc {
 			abortEmbyUnauthorized(c, "Invalid or expired token")
 			return
 		}
+		if !validateEmbyClaims(c, claims, validator) {
+			return
+		}
 
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
@@ -170,6 +178,18 @@ func EmbyAuth(secret string) gin.HandlerFunc {
 		c.Set("emby_version", ah.Version)
 		c.Next()
 	}
+}
+
+func validateEmbyClaims(c *gin.Context, claims *middleware.Claims, validator middleware.TokenVersionProvider) bool {
+	if validator == nil {
+		return true
+	}
+	version, disabled, err := validator(claims.UserID)
+	if err != nil || disabled || claims.TokenVersion < version {
+		abortEmbyUnauthorized(c, "User unavailable or token revoked")
+		return false
+	}
+	return true
 }
 
 // abortEmbyUnauthorized 返回符合 Emby 客户端期望的 401。

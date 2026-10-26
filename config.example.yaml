@@ -85,6 +85,8 @@ cache:
 # 用于移动端 Emby/Infuse/Jellyfin 客户端登录与播放。无需客户端额外配置，
 # 将手机客户端的"服务器地址"填为 http://<server-ip>:8080 即可登录。
 emby:
+  # 是否启用兼容接口（Docker 官方服务默认开启）
+  enable_compat: true
   # 对外显示的服务器名称（留空则使用主机名）
   server_name: ""
   # 是否启用 UDP 7359 局域网服务器自动发现（Emby/Jellyfin 标准协议）

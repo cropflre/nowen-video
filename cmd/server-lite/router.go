@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/handler"
+	embyh "github.com/nowen-video/nowen-video/internal/handler/emby"
 	"github.com/nowen-video/nowen-video/internal/middleware"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"github.com/nowen-video/nowen-video/internal/serverprofile"
@@ -105,6 +106,22 @@ func buildRouter(
 	r.GET("/api/admin/legacy-source-retirement/:source/isolation", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.IsolationState)
 	r.POST("/api/admin/legacy-source-retirement/:source/isolations", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.Isolate)
 	r.POST("/api/admin/legacy-source-retirement/:source/isolation-rollbacks", jwtMiddleware, middleware.AdminOnly(), legacyRetirementHandler.RollbackIsolation)
+
+	// ==================== Emby / Jellyfin 兼容层 ====================
+	//
+	// Docker 正式镜像（Dockerfile）与 `make build` 都构建本目标，因此这里必须挂载
+	// 兼容层；否则 Hills / Yamby / Infuse 等第三方 Emby 客户端无法连接
+	// （/Users/AuthenticateByName 等端点全部缺失）。
+	//
+	// lite profile 历史上不启动 Emby 兼容子系统；若需要退回旧行为，可通过
+	// emby.enable_compat=false 关闭（见 config.EmbyConfig）。
+	if cfg.Emby.EnableCompat {
+		embyh.SetDefaultPlaybackSessionService(playbackSessions)
+		embyHandler := embyh.NewHandler(cfg, logger, services.Auth, services.Stream, repos)
+		embyh.RegisterRoutes(r, embyHandler, cfg.Secrets.JWTSecret)
+	} else {
+		logger.Info("Emby 兼容层已通过配置关闭 (emby.enable_compat=false)")
+	}
 
 	// Pulse 已从客户端移除。旧书签或旧浏览器地址必须在服务端直接退出该页面，
 	// 避免尚未完成 Service Worker 升级的旧前端继续渲染历史页面。

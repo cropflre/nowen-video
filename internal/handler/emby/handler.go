@@ -33,6 +33,10 @@ type Handler struct {
 
 	// 固定的 ServerId（基于 JWTSecret 派生，重启稳定）
 	serverID string
+
+	// 客户端上报的播放能力（Hills / Yamby 等会在登录后 POST
+	// /Sessions/Capabilities/Full 上报 DeviceProfile）。进程内内存态即可。
+	caps *clientCapabilityStore
 }
 
 // NewHandler 构造 Emby 兼容层。
@@ -58,12 +62,17 @@ func NewHandler(
 		favoriteRepo:    repos.Favorite,
 		mediaPersonRepo: repos.MediaPerson,
 		serverID:        deriveServerID(cfg),
+		caps:            newClientCapabilityStore(),
 	}
 }
 
 // ServerID 派生稳定的 ServerId（Emby 客户端会把 ServerId 存入本地缓存，
 // 重启后仍需保持一致以免用户反复重新配对）。
 func (h *Handler) ServerID() string { return h.serverID }
+
+// DeriveServerID 暴露稳定的 ServerId 派生逻辑给进程启动代码（例如 UDP 7359
+// 自动发现需要与兼容层使用同一个 Id）。同一份配置下结果恒定。
+func DeriveServerID(cfg *config.Config) string { return deriveServerID(cfg) }
 
 // IDMapper 提供给其他包使用的映射器（例如路由层需要反向解析）。
 func (h *Handler) IDMapper() *IDMapper { return h.idMap }

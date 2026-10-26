@@ -222,7 +222,27 @@ services:
 
 JWT Secret 未显式配置时，服务端会在首次启动时自动生成随机密钥并持久化到数据目录；如有统一密钥管理需求，也可以通过 `NOWEN_SECRETS_JWT_SECRET` 显式指定。
 
-### 三、源码构建
+### 三、NAS / 生产环境部署
+
+仓库根目录的 `docker-compose.deploy.yml` 是面向 NAS 与长期运行场景的完整配置，
+包含转码设备透传、挂载目录权限和远程存储（FUSE）的配置示例。
+使用前请修改媒体路径，并按宿主机实际情况调整 `devices`：没有 `/dev/dri` 或
+`/dev/fuse` 时删除对应映射；不使用硬件加速或 FUSE 时无需映射相应设备。然后：
+
+```bash
+docker compose -f docker-compose.deploy.yml up -d
+```
+
+> 飞牛 OS 图形界面用户：Docker → Compose → 上传该文件即可；也可以在「镜像」里直接拉
+> `cropflre/nowen-video:latest`，再用 GUI 创建容器。
+> 推荐直接使用预构建镜像。也可以在资源足够的 NAS 上从完整仓库构建；
+> 只下载 compose 文件不包含构建所需的 Dockerfile 和源码。
+
+Emby / Jellyfin 兼容接口默认开启，Hills、Yamby 等客户端可手动填写服务器地址连接。
+如需关闭，设置 `NOWEN_EMBY_ENABLE_COMPAT=false`。局域网自动发现还需要 UDP 7359
+端口和可达的广播网络；Docker bridge、跨网段或反向代理环境中建议手动填写地址。
+
+### 四、源码构建
 
 环境要求：**Go 1.25、Node.js 20+、FFmpeg**
 
@@ -305,8 +325,10 @@ Nowen Video（弄文影视）已具备正式 fnOS `.fpk` 构建与发布链路�
 ```text
 1. 内置默认值
 2. config.yaml
-3. config/*.yaml
-4. NOWEN_* 环境变量
+3. 数据目录中的 config.yaml（保存设置时的回退副本）
+4. config/*.yaml 等部署分片
+5. 数据目录中的 config/*.yaml（通过管理界面保存的分片）
+6. NOWEN_* 环境变量
 ```
 
 常用配置：

@@ -222,7 +222,28 @@ services:
 
 If no JWT secret is configured explicitly, the server generates a random secret on first startup and persists it in the data directory. `NOWEN_SECRETS_JWT_SECRET` remains available for installations that use centralized secret management.
 
-### 3. Build from Source
+### 3. NAS / Production Deployment
+
+`docker-compose.deploy.yml` in the repository root is a complete configuration for NAS hosts and
+long-running deployments, with examples for transcoding devices, mount permissions, and FUSE.
+Before starting, change the media path and adapt `devices` to your host. Remove `/dev/dri` or
+`/dev/fuse` mappings when those devices are absent or their features are unused. Then:
+
+```bash
+docker compose -f docker-compose.deploy.yml up -d
+```
+
+> fnOS GUI users: upload the file under Docker → Compose, or pull `cropflre/nowen-video:latest`
+> from the Images page and create the container there.
+> Prebuilt images are recommended. A NAS with enough resources can also build from a complete
+> checkout; downloading only the compose file does not supply the Dockerfile or source code.
+
+Emby / Jellyfin compatibility is enabled by default. Hills and Yamby can connect using the
+server address; set `NOWEN_EMBY_ENABLE_COMPAT=false` to disable it. LAN discovery also requires
+UDP 7359 and reachable broadcast traffic. Use a manually entered address with Docker bridge
+networking, routed networks, or reverse proxies when discovery is unavailable.
+
+### 4. Build from Source
 
 Requires **Go 1.25**, **Node.js 20+**, and **FFmpeg**.
 
@@ -305,8 +326,10 @@ Configuration precedence, where later sources override earlier ones:
 ```text
 1. Built-in defaults
 2. config.yaml
-3. config/*.yaml
-4. NOWEN_* environment variables
+3. config.yaml in the data directory (fallback copy saved by the server)
+4. deployment fragments such as config/*.yaml
+5. config/*.yaml in the data directory (fragments saved through administration)
+6. NOWEN_* environment variables
 ```
 
 Common runtime configuration:

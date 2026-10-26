@@ -32,8 +32,8 @@ var (
 	embyPlaybackRuntimes     sync.Map // map[*Handler]*embyPlaybackRuntime
 )
 
-// SetDefaultPlaybackSessionService connects the Full server's single playback
-// runtime to the Emby compatibility layer. Lite does not mount Emby routes.
+// SetDefaultPlaybackSessionService connects the server's single playback
+// runtime to the Emby compatibility layer.
 func SetDefaultPlaybackSessionService(sessions *service.PlaybackSessionService) {
 	defaultPlaybackSessionMu.Lock()
 	defaultPlaybackSessions = sessions

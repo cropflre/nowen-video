@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/middleware"
 )
 
 // RegisterRoutes 把 Emby 兼容层的所有路由挂到给定的 gin.Engine 上。
@@ -19,6 +20,10 @@ import (
 func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 	// CORS 在整个子路由上统一开启（与全局 CORS 并行不冲突）
 	corsMW := EmbyCORS()
+	var validator middleware.TokenVersionProvider
+	if h.auth != nil {
+		validator = h.auth.ValidateTokenVersion
+	}
 
 	// WebSocket 集线器（在所有前缀下共享）
 	var wsHub *WSHub
@@ -31,13 +36,13 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 			registerEmbyPublic(group, h)
 
 			// 需要认证的路由
-			secured := group.Group("", EmbyAuth(jwtSecret))
+			secured := group.Group("", EmbyAuthWithValidator(jwtSecret, validator))
 			registerEmbyAuthed(secured, h)
 
 			// WebSocket（路径固定 /embywebsocket 与 /socket，自带 query token 鉴权）
 			if wsHub != nil {
-				group.GET("/embywebsocket", wsHub.Handler(jwtSecret))
-				group.GET("/socket", wsHub.Handler(jwtSecret))
+				group.GET("/embywebsocket", wsHub.HandlerWithValidator(jwtSecret, validator))
+				group.GET("/socket", wsHub.HandlerWithValidator(jwtSecret, validator))
 			}
 		}
 
@@ -139,6 +144,40 @@ func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
 	// 字面量路由必须放在 /Items/:id 前，避免官方客户端的 /Items/resume 被 :id 截获。
 	g.GET("/Items/Prefixes", h.ItemPrefixesHandler)
 	g.GET("/items/prefixes", h.ItemPrefixesHandler)
+
+	// ==================== Hills / Yamby 兼容补齐 ====================
+	// 客户端登录后立即上报播放能力（官方 Emby 返回 204）。
+	// 缺失时 Hills/Yamby 可能判定服务器不兼容，表现为"能登录但进不去"。
+	g.POST("/Sessions/Capabilities", h.SessionsCapabilitiesHandler)
+	g.POST("/sessions/capabilities", h.SessionsCapabilitiesHandler)
+	g.POST("/Sessions/Capabilities/Full", h.SessionsCapabilitiesFullHandler)
+	g.POST("/sessions/capabilities/full", h.SessionsCapabilitiesFullHandler)
+
+	// 搜索（Hills 统一搜索 / Yamby 搜索框）
+	g.GET("/Search/Hints", h.SearchHintsHandler)
+	g.GET("/search/hints", h.SearchHintsHandler)
+
+	// 筛选维度（Filters 为字面量，必须位于 /Items/:id 之前）
+	g.GET("/Items/Filters", h.FiltersHandler)
+	g.GET("/Items/Filters2", h.Filters2Handler)
+	g.GET("/items/filters", h.FiltersHandler)
+	g.GET("/items/filters2", h.Filters2Handler)
+
+	// 库文件夹视图（Emby 客户端设置页 / 文件夹视图）
+	g.GET("/Library/VirtualFolders", h.VirtualFoldersHandler)
+	g.GET("/library/virtualfolders", h.VirtualFoldersHandler)
+
+	// 详情页附属内容：本服务不提供，返回空数组让客户端正常渲染
+	g.GET("/Items/:id/Intros", h.IntrosHandler)
+	g.GET("/items/:id/intros", h.IntrosHandler)
+	g.GET("/Users/:userId/Items/:id/Intros", h.IntrosHandler)
+	g.GET("/Items/:id/LocalTrailers", h.LocalTrailersHandler)
+	g.GET("/items/:id/localtrailers", h.LocalTrailersHandler)
+	g.GET("/Users/:userId/Items/:id/LocalTrailers", h.LocalTrailersHandler)
+	g.GET("/Items/:id/AdditionalParts", h.AdditionalPartsHandler)
+	g.GET("/Videos/:id/AdditionalParts", h.AdditionalPartsHandler)
+	g.GET("/Users/:userId/Items/:id/SpecialFeatures", h.SpecialFeaturesHandler)
+
 	g.GET("/Users/:userId/Items/Latest", h.LatestItemsHandler)
 	g.GET("/users/:userId/items/latest", h.LatestItemsHandler)
 	g.GET("/Users/:userId/Items/latest", h.LatestItemsHandler)
