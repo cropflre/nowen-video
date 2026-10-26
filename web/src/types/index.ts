@@ -182,6 +182,7 @@ export interface Media {
   genres: string
   file_path: string
   file_size: number
+  stream_url?: string
   media_type: 'movie' | 'episode'
   video_codec: string
   audio_codec: string

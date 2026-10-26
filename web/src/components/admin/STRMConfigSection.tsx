@@ -179,7 +179,7 @@ export default function STRMConfigSection() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <Toggle icon={<Film size={14} />} label="HLS 主清单重写" hint="让分片走后端代理，统一继承媒体的 UA/Referer/Cookie（解决跨域/鉴权）" checked={cfg.rewrite_hls} onChange={(value) => setCfg({ ...cfg, rewrite_hls: value })} />
-                <Toggle icon={<Zap size={14} />} label="扫描时远程 FFprobe 探测" hint="对 mp4/mkv 直链启用，可获取真实时长/分辨率/编码（耗时+1~3s/条）" checked={cfg.remote_probe} onChange={(value) => setCfg({ ...cfg, remote_probe: value })} />
+                <Toggle icon={<Zap size={14} />} label="远程 FFprobe 探测" hint="扫描时探测视频直链；打开详情时获取远程视频的完整技术规格，耗时受探测超时限制。" checked={cfg.remote_probe} onChange={(value) => setCfg({ ...cfg, remote_probe: value })} />
               </div>
 
               <DomainTable title="域名级 User-Agent 白名单" hint="当远程 URL 的 host 命中某个域名时，自动应用对应 UA（Media 级自定义优先）" rows={cfg.domain_user_agents} onAdd={() => addDomain('ua')} onRemove={(domain) => removeDomain('ua', domain)} onRename={(oldKey, newKey) => renameDomain('ua', oldKey, newKey)} onSetValue={(domain, value) => setDomainValue('ua', domain, value)} placeholder="Mozilla/5.0 ..." />

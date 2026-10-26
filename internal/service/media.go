@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,12 +9,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/config"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // MediaService 媒体服务
@@ -26,6 +29,9 @@ type MediaService struct {
 	statsRepo   *repository.PlaybackStatsRepo
 	cfg         *config.Config
 	logger      *zap.SugaredLogger
+	techProbeMu sync.Mutex
+	techProbes  map[string]techProbeCacheEntry
+	techFlights singleflight.Group
 }
 
 func NewMediaService(
@@ -704,7 +710,7 @@ func (s *MediaService) GetDetailEnhanced(id string) (*MediaDetailEnhanced, error
 	}
 
 	// 1. 获取技术规格（FFprobe 详细信息）
-	result.TechSpecs = s.probeTechSpecs(media.FilePath)
+	result.TechSpecs = s.probeTechSpecs(media)
 
 	// 2. 获取媒体库信息
 	if media.LibraryID != "" && s.libRepo != nil {
@@ -727,24 +733,27 @@ func (s *MediaService) GetDetailEnhanced(id string) (*MediaDetailEnhanced, error
 	return result, nil
 }
 
-// probeTechSpecs 使用 FFprobe 获取详细技术规格
-func (s *MediaService) probeTechSpecs(filePath string) *TechSpecs {
+// probeTechSpecsSource uses the same detailed parser for local files and STRM targets.
+func (s *MediaService) probeTechSpecsSource(ctx context.Context, source string, inputArgs []string) *TechSpecs {
 	ffprobePath := "ffprobe"
 	if s.cfg != nil && s.cfg.App.FFprobePath != "" {
 		ffprobePath = s.cfg.App.FFprobePath
 	}
 
-	cmd := exec.Command(ffprobePath,
+	args := []string{
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
-		filePath,
-	)
+	}
+	args = append(args, inputArgs...)
+	args = append(args, "-i", source)
+	cmd := exec.CommandContext(ctx, ffprobePath, args...)
 
 	output, err := cmd.Output()
 	if err != nil {
-		s.logger.Warnf("FFprobe 获取技术规格失败: %s, 错误: %v", filePath, err)
+		// Do not log source URLs or command arguments: they can contain credentials.
+		s.logger.Warnf("FFprobe 获取技术规格失败: %v", err)
 		return nil
 	}
 
@@ -799,7 +808,10 @@ func (s *MediaService) probeTechSpecs(filePath string) *TechSpecs {
 	}
 
 	if err := json.Unmarshal(output, &probeResult); err != nil {
-		s.logger.Warnf("解析 FFprobe 输出失败: %s, 错误: %v", filePath, err)
+		s.logger.Warnf("解析 FFprobe 输出失败: %v", err)
+		return nil
+	}
+	if len(probeResult.Streams) == 0 {
 		return nil
 	}
 

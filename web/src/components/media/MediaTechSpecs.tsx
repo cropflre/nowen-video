@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { formatDate, formatDuration, formatSize } from '@/utils/format'
+import { formatIndexSize, mediaDynamicRange, mediaSourceInfo, realMediaCodec } from '@/utils/mediaTechSpecs'
 import type {
   FileDetail,
   LibraryInfo,
@@ -160,10 +161,7 @@ function isHDR(stream: StreamDetail): boolean {
 }
 
 function getHDRLabel(stream: StreamDetail): string {
-  if (stream.color_transfer === 'smpte2084') return 'HDR10'
-  if (stream.color_transfer === 'arib-std-b67') return 'HLG'
-  if (stream.color_space === 'bt2020nc' || stream.color_space === 'bt2020c') return 'HDR'
-  return 'SDR'
+  return mediaDynamicRange(stream)
 }
 
 function formatColorPrimaries(primaries?: string): string {
@@ -283,6 +281,7 @@ export default function MediaTechSpecs({
   const subtitleStreams = useMemo(() => techSpecs?.streams?.filter((stream) => stream.codec_type === 'subtitle') || [], [techSpecs])
   const mainVideo = videoStreams[0]
   const mainAudio = audioStreams[0]
+  const source = mediaSourceInfo(media, techSpecs, fileInfo)
 
   const tabs = useMemo<TabDef[]>(() => {
     const values: TabDef[] = [
@@ -353,7 +352,7 @@ export default function MediaTechSpecs({
           label="视频"
           value={mainVideo
             ? `${mainVideo.width && mainVideo.height ? `${mainVideo.height}p ` : ''}${formatCodecName(mainVideo.codec_name)}`
-            : (media.resolution || media.video_codec || '-')}
+            : (media.resolution || realMediaCodec(media.video_codec) || '--')}
           detail={mainVideo
             ? [
                 mainVideo.width && mainVideo.height ? `${mainVideo.width}×${mainVideo.height}` : null,
@@ -386,7 +385,7 @@ export default function MediaTechSpecs({
         <SummaryCell
           icon={<Subtitles size={16} />}
           label="字幕"
-          value={subtitleStreams.length > 0 ? `内嵌 ${subtitleStreams.length} 条` : '无内嵌字幕'}
+          value={subtitleStreams.length > 0 ? `内嵌 ${subtitleStreams.length} 条` : techSpecs ? '无内嵌字幕' : '未知'}
           detail={subtitleStreams.length > 0
             ? subtitleStreams.map((stream) => formatLanguage(stream.language)).filter((value, index, array) => array.indexOf(value) === index).join(' / ')
             : '-'}
@@ -394,14 +393,14 @@ export default function MediaTechSpecs({
         <SummaryCell
           icon={<HardDrive size={16} />}
           label="容器"
-          value={techSpecs?.format ? formatContainerName(techSpecs.format.format_name) : fileInfo?.file_ext?.replace('.', '').toUpperCase() || '-'}
+          value={techSpecs?.format ? formatContainerName(techSpecs.format.format_name) : source.container}
           detail={techSpecs?.format
             ? [
                 techSpecs.format.bit_rate ? formatBitRate(techSpecs.format.bit_rate) : null,
                 techSpecs.format.stream_count ? `${techSpecs.format.stream_count} 流` : null,
-                formatSize(media.file_size),
+                source.size > 0 ? formatSize(source.size) : null,
               ].filter(Boolean).join(' · ')
-            : formatSize(media.file_size)}
+            : source.size > 0 ? formatSize(source.size) : '大小未知'}
         />
       </div>
 
@@ -511,12 +510,14 @@ function OverviewPanel({
   library: LibraryInfo | null
   isAdmin: boolean
 }) {
+  const source = mediaSourceInfo(media, techSpecs, fileInfo)
   return (
     <div className="space-y-4">
       <PanelSurface icon={<FileText size={15} />} title="文件基本信息">
         {media.file_path && isAdmin && <PathRow label="路径" value={media.file_path} />}
         <InfoGrid>
-          <CopyableInfo label="文件大小" value={formatSize(media.file_size)} highlight />
+          <CopyableInfo label={source.isSTRM ? 'STRM 索引大小' : '文件大小'} value={source.isSTRM ? formatIndexSize(fileInfo?.file_size || media.file_size) : formatSize(media.file_size)} highlight />
+          {source.isSTRM && <CopyableInfo label="远程视频大小" value={source.size > 0 ? formatSize(source.size) : '未知'} />}
           {fileInfo?.file_ext && <CopyableInfo label="文件格式" value={fileInfo.file_ext.replace('.', '').toUpperCase()} />}
           {media.duration > 0 && <CopyableInfo label="时长" value={formatDuration(media.duration)} highlight />}
           {techSpecs?.format?.duration && <CopyableInfo label="精确时长" value={formatDuration(parseFloat(techSpecs.format.duration))} hint={paramHints.精确时长} />}
@@ -561,7 +562,7 @@ function VideoPanel({ media, streams }: { media: Media; streams: StreamDetail[] 
       <EmptyState
         icon={<Monitor size={26} />}
         title="无详细视频流信息"
-        description={[media.video_codec, media.resolution].filter(Boolean).join(' · ') || '当前媒体没有可展示的视频流元数据。'}
+        description={[realMediaCodec(media.video_codec), media.resolution].filter(Boolean).join(' · ') || '当前媒体没有可展示的视频流元数据。'}
       />
     )
   }
@@ -682,6 +683,7 @@ function FilePanel({
   library: LibraryInfo | null
   isAdmin: boolean
 }) {
+  const source = mediaSourceInfo(media, techSpecs, fileInfo)
   return (
     <div className="space-y-4">
       <PanelSurface icon={<Layers size={15} />} title="文件详情">
@@ -689,7 +691,7 @@ function FilePanel({
         <InfoGrid>
           {fileInfo?.file_name && <CopyableInfo label="文件名" value={fileInfo.file_name} />}
           <CopyableInfo label="文件格式" value={fileInfo?.file_ext?.replace('.', '').toUpperCase() || '-'} />
-          <CopyableInfo label="文件大小" value={formatSize(media.file_size)} highlight />
+          <CopyableInfo label={source.isSTRM ? 'STRM 索引大小' : '文件大小'} value={source.isSTRM ? formatIndexSize(fileInfo?.file_size || media.file_size) : formatSize(media.file_size)} highlight />
           {fileInfo?.mime_type && <CopyableInfo label="MIME 类型" value={fileInfo.mime_type} hint={paramHints['MIME 类型']} />}
           {techSpecs?.format?.duration && <CopyableInfo label="精确时长" value={formatDuration(parseFloat(techSpecs.format.duration))} hint={paramHints.精确时长} />}
           {techSpecs?.format?.bit_rate && <CopyableInfo label="总码率" value={formatBitRate(techSpecs.format.bit_rate)} hint={paramHints.总码率} />}

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { FileDetail, Media, TechSpecs } from '@/types'
 import { formatSize } from '@/utils/format'
+import { mediaDynamicRange, mediaSourceInfo, realMediaCodec } from '@/utils/mediaTechSpecs'
 import { AudioLines, Cpu, Gauge, HardDrive, Monitor, Palette, PanelsTopLeft, ScanLine, Video } from 'lucide-react'
 import DetailSectionTitle from './DetailSectionTitle'
 
@@ -17,13 +18,12 @@ interface StreamShape {
   width?: number
   height?: number
   bit_rate?: string
-  avg_frame_rate?: string
-  r_frame_rate?: string
   channels?: number
   channel_layout?: string
   color_transfer?: string
   color_space?: string
   pix_fmt?: string
+  frame_rate?: string
 }
 
 interface FormatShape {
@@ -41,7 +41,7 @@ function parseFrameRate(value?: string): string {
   if (!value) return '--'
   if (!value.includes('/')) {
     const numeric = parseNumber(value)
-    return numeric ? `${numeric.toFixed(numeric % 1 === 0 ? 0 : 2)} fps` : value
+    return numeric ? `${numeric.toFixed(numeric % 1 === 0 ? 0 : 3)} fps` : '--'
   }
   const [first, second] = value.split('/').map(Number)
   if (!Number.isFinite(first) || !Number.isFinite(second) || second === 0) return value
@@ -68,15 +68,6 @@ function codecLabel(codec?: string, profile?: string): string {
         ? 'AV1'
         : codec.toUpperCase()
   return profile ? `${name} ${profile}` : name
-}
-
-function hdrLabel(stream?: StreamShape): string {
-  if (!stream) return 'SDR'
-  if (stream.color_transfer === 'smpte2084') return 'HDR10'
-  if (stream.color_transfer === 'arib-std-b67') return 'HLG'
-  if (stream.color_space?.includes('2020')) return 'HDR'
-  if (stream.pix_fmt?.includes('10')) return '10-bit'
-  return 'SDR'
 }
 
 function audioLabel(stream?: StreamShape, fallback?: string): string {
@@ -109,7 +100,7 @@ function DetailMetric({
 }
 
 export default function MediaDetailTechOverview({ media, techSpecs, fileInfo }: MediaDetailTechOverviewProps) {
-  const streams = (techSpecs?.streams || []) as unknown as StreamShape[]
+  const streams = techSpecs?.streams || []
   const mainVideo = streams.find((stream) => stream.codec_type === 'video')
   const mainAudio = streams.find((stream) => stream.codec_type === 'audio')
   const format = techSpecs?.format as unknown as FormatShape | null
@@ -117,10 +108,7 @@ export default function MediaDetailTechOverview({ media, techSpecs, fileInfo }: 
   const resolution = mainVideo?.width && mainVideo?.height
     ? `${mainVideo.width}×${mainVideo.height}`
     : media.resolution || '--'
-  const sourceSize = fileInfo?.file_size || media.file_size || 0
-  const container = fileInfo?.file_ext
-    ? fileInfo.file_ext.replace(/^\./, '').toUpperCase()
-    : format?.format_name?.split(',')[0]?.toUpperCase() || '--'
+  const { isSTRM, size: sourceSize, container } = mediaSourceInfo(media, techSpecs, fileInfo)
 
   return (
     <section className="nv-detail-tech-overview" aria-labelledby="detail-tech-overview-title">
@@ -131,14 +119,14 @@ export default function MediaDetailTechOverview({ media, techSpecs, fileInfo }: 
             技术规格
           </DetailSectionTitle>
         </div>
-        <span className="nv-detail-section-hint">主播放文件</span>
+        <span className="nv-detail-section-hint">{isSTRM ? 'STRM 远程视频' : '主播放文件'}</span>
       </div>
 
       <div className="nv-detail-tech-grid">
         <DetailMetric icon={<Monitor size={15} />} label="分辨率" value={resolution} />
-        <DetailMetric icon={<Video size={15} />} label="视频编码" value={codecLabel(mainVideo?.codec_name || media.video_codec, mainVideo?.profile)} />
-        <DetailMetric icon={<Palette size={15} />} label="动态范围" value={hdrLabel(mainVideo)} />
-        <DetailMetric icon={<ScanLine size={15} />} label="帧率" value={parseFrameRate(mainVideo?.avg_frame_rate || mainVideo?.r_frame_rate)} />
+        <DetailMetric icon={<Video size={15} />} label="视频编码" value={codecLabel(mainVideo?.codec_name || realMediaCodec(media.video_codec), mainVideo?.profile)} />
+        <DetailMetric icon={<Palette size={15} />} label="动态范围" value={mediaDynamicRange(mainVideo)} />
+        <DetailMetric icon={<ScanLine size={15} />} label="帧率" value={parseFrameRate(mainVideo?.frame_rate)} />
         <DetailMetric icon={<AudioLines size={15} />} label="音频" value={audioLabel(mainAudio, media.audio_codec)} />
         <DetailMetric icon={<Gauge size={15} />} label="总码率" value={formatBitrate(format?.bit_rate || mainVideo?.bit_rate)} />
         <DetailMetric icon={<PanelsTopLeft size={15} />} label="容器" value={container} />
