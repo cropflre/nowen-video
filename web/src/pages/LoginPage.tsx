@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import AuthShell from '@/components/auth/AuthShell'
+import DevicePairingRequest from '@/components/auth/DevicePairingRequest'
 import { Button, Input } from '@/components/design-system'
 
 export default function LoginPage() {
@@ -13,6 +14,8 @@ export default function LoginPage() {
   const { t } = useTranslation()
 
   const [invitation] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('invite') || '')
+  const [pairCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('pair') || '')
+  const [pairMode, setPairMode] = useState(false)
   const [isRegister, setIsRegister] = useState(Boolean(invitation))
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -56,7 +59,7 @@ export default function LoginPage() {
       const mustChange = Boolean(
         (res.data as { must_change_password?: boolean }).must_change_password || user.must_change_pwd,
       )
-      navigate(mustChange ? '/force-change-password' : '/', { replace: true })
+      navigate(mustChange ? '/force-change-password' : pairCode ? '/pair#' + new URLSearchParams({ code: pairCode }).toString() : '/', { replace: true, state: mustChange && pairCode ? { pairCode } : undefined })
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } }
       setError(axiosErr.response?.data?.error || t('auth.operationFailed'))
@@ -74,12 +77,12 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="NOWEN"
-      eyebrow={isRegister ? t('auth.registerTitle') : t('auth.loginTitle')}
-      description={t('auth.slogan')}
-      footer={footer}
+      title={pairMode ? '登录新设备' : 'NOWEN'}
+      eyebrow={pairMode ? '手机确认' : isRegister ? t('auth.registerTitle') : t('auth.loginTitle')}
+      description={pairMode ? '用已登录的手机确认，即可开始观看。' : t('auth.slogan')}
+      footer={pairMode ? null : footer}
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      {pairMode ? <DevicePairingRequest onBack={() => setPairMode(false)} /> : <form onSubmit={handleSubmit} className="space-y-5">
         {invitation && isRegister && <p className="text-sm">家人邀请你加入。设置账号和密码后，就能开始观看。</p>}
         {error && (
           <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-status-danger)] bg-[var(--nv-bg-surface-soft)] px-4 py-3 text-sm text-[var(--nv-status-danger)]" role="alert">
@@ -141,6 +144,7 @@ export default function LoginPage() {
           {loading ? <Loader2 size={17} className="animate-spin" aria-hidden="true" /> : isRegister ? <UserPlus size={17} aria-hidden="true" /> : <LogIn size={17} aria-hidden="true" />}
           {loading ? t('auth.processing') : isRegister ? t('auth.register') : t('auth.enterDeepSpace')}
         </Button>
+        {!isRegister && initialized && <Button type="button" className="w-full" disabled={loading} onClick={() => setPairMode(true)}>用已登录设备授权</Button>}
 
         {canSwitchMode && (
           <div className="border-t border-[var(--nv-border-subtle)] pt-4 text-center">
@@ -157,7 +161,7 @@ export default function LoginPage() {
             </Button>
           </div>
         )}
-      </form>
+      </form>}
     </AuthShell>
   )
 }

@@ -72,7 +72,8 @@ func (s *PermissionService) GetUserPermission(userID string) (*model.UserPermiss
 	return perm, nil
 }
 
-// UpdateUserPermission preserves child mode when older clients omit the field.
+// UpdateUserPermission preserves omitted policy flags for older clients. The
+// optional flags are child mode followed by parent-controlled autoplay.
 func (s *PermissionService) UpdateUserPermission(userID, allowedLibraries, maxRating string, dailyLimit int, childMode ...bool) error {
 	if _, ok := ratingLevels[maxRating]; !ok || dailyLimit < 0 || dailyLimit > 1440 {
 		return ErrInvalidPermission
@@ -88,7 +89,11 @@ func (s *PermissionService) UpdateUserPermission(userID, allowedLibraries, maxRa
 	if mode && ratingLevels[maxRating] > ratingLevels["PG-13"] {
 		return ErrInvalidPermission
 	}
-	perm := &model.UserPermission{UserID: userID, AllowedLibraries: allowedLibraries, MaxRatingLevel: maxRating, DailyTimeLimit: dailyLimit, ChildMode: mode}
+	allowAutoPlay := current.AllowAutoPlayNext
+	if len(childMode) > 1 {
+		allowAutoPlay = childMode[1]
+	}
+	perm := &model.UserPermission{UserID: userID, AllowedLibraries: allowedLibraries, MaxRatingLevel: maxRating, DailyTimeLimit: dailyLimit, ChildMode: mode, AllowAutoPlayNext: allowAutoPlay}
 	if s.db != nil {
 		if err := s.permRepo.UpdateFamilyPolicy(perm); errors.Is(err, repository.ErrInvalidFamilyPolicy) {
 			return ErrInvalidPermission
@@ -170,10 +175,7 @@ func (s *PermissionService) CheckMediaAccess(userID, mediaID string, lookup Medi
 			if err := catalog.CheckMedia(policy, mediaID); err != nil {
 				return ErrContentRestricted
 			}
-			if ok, _, _ := s.CheckDailyTimeLimit(userID); !ok {
-				return ErrTimeLimitExceeded
-			}
-			return nil
+			return nil // Metadata remains accessible after the viewing budget is spent.
 		}
 	}
 	if lookup != nil {
@@ -223,7 +225,14 @@ func (s *PermissionService) CheckDailyTimeLimit(userID string) (bool, int, int) 
 		return true, 0, 0
 	}
 
-	// 计算今日已观看时长
+	if perm.ChildMode && s.db != nil {
+		status, err := NewFamilyPlaybackService(s.db).Status(userID)
+		if err != nil {
+			return false, 0, 0
+		}
+		return status.RemainingSeconds > 0, int(status.UsedSeconds / 60), int(status.RemainingSeconds / 60)
+	}
+	// Legacy adult-account reference limits retain their existing behavior.
 	todayMinutes, err := s.getTodayWatchMinutes(userID)
 	if err != nil {
 		return false, 0, 0
@@ -274,4 +283,11 @@ func (s *PermissionService) GetContentRating(mediaID string) (string, error) {
 		return "", err
 	}
 	return rating.Level, nil
+}
+
+func (s *PermissionService) CheckChildPlaybackAccess(userID, mediaID string) error {
+	if s.db == nil {
+		return nil
+	}
+	return NewFamilyPlaybackService(s.db).CheckAccess(userID, mediaID)
 }

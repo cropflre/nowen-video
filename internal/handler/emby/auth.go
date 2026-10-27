@@ -149,7 +149,7 @@ func EmbyAuth(secret string) gin.HandlerFunc {
 }
 
 // EmbyAuthWithValidator 保留 Emby 的 token 传递格式，同时复用主服务的账号撤销校验。
-func EmbyAuthWithValidator(secret string, validator middleware.TokenVersionProvider) gin.HandlerFunc {
+func EmbyAuthWithValidator(secret string, validator middleware.TokenVersionProvider, sessions ...middleware.DeviceSessionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenStr, ah := extractToken(c)
 		if tokenStr == "" {
@@ -160,15 +160,16 @@ func EmbyAuthWithValidator(secret string, validator middleware.TokenVersionProvi
 		claims := &middleware.Claims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(secret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 		if err != nil || !token.Valid {
 			abortEmbyUnauthorized(c, "Invalid or expired token")
 			return
 		}
-		if !validateEmbyClaims(c, claims, validator) {
+		if !validateEmbyClaims(c, claims, validator, sessions...) {
 			return
 		}
 
+		c.Set("device_session_id", claims.SessionID)
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
@@ -180,7 +181,10 @@ func EmbyAuthWithValidator(secret string, validator middleware.TokenVersionProvi
 	}
 }
 
-func validateEmbyClaims(c *gin.Context, claims *middleware.Claims, validator middleware.TokenVersionProvider) bool {
+func validateEmbyClaims(c *gin.Context, claims *middleware.Claims, validator middleware.TokenVersionProvider, sessions ...middleware.DeviceSessionProvider) bool {
+	if !middleware.ValidateDeviceClaims(c, claims, sessions...) {
+		return false
+	}
 	if validator == nil {
 		return true
 	}

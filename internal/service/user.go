@@ -231,6 +231,9 @@ func (s *UserService) UpdateSelfProfile(userID string, req *UpdateSelfProfileReq
 	fields := map[string]interface{}{}
 	if req.ViewingPreferences != nil {
 		preferences := *req.ViewingPreferences
+		if current.ChildMode {
+			preferences.AutoPlayNext = current.ViewingPreferences.AutoPlayNext
+		}
 		switch preferences.SubtitleLanguage {
 		case "", "auto", "off", "zh", "en", "ja":
 		default:

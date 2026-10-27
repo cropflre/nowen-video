@@ -665,14 +665,15 @@ func (cr *ContentRating) BeforeCreate(tx *gorm.DB) error {
 
 // UserPermission 用户权限设置
 type UserPermission struct {
-	ChildMode        bool      `json:"child_mode" gorm:"-"`
-	ID               string    `json:"id" gorm:"primaryKey;type:text"`
-	UserID           string    `json:"user_id" gorm:"uniqueIndex;type:text;not null"`
-	AllowedLibraries string    `json:"allowed_libraries" gorm:"type:text"`              // 允许访问的媒体库ID，逗号分隔，空表示全部
-	MaxRatingLevel   string    `json:"max_rating_level" gorm:"type:text;default:NC-17"` // 最高允许观看的分级
-	DailyTimeLimit   int       `json:"daily_time_limit" gorm:"default:0"`               // 每日观看时长限制（分钟），0表示不限
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ChildMode         bool      `json:"child_mode" gorm:"-"`
+	AllowAutoPlayNext bool      `json:"allow_auto_play_next" gorm:"default:false"`
+	ID                string    `json:"id" gorm:"primaryKey;type:text"`
+	UserID            string    `json:"user_id" gorm:"uniqueIndex;type:text;not null"`
+	AllowedLibraries  string    `json:"allowed_libraries" gorm:"type:text"`              // 允许访问的媒体库ID，逗号分隔，空表示全部
+	MaxRatingLevel    string    `json:"max_rating_level" gorm:"type:text;default:NC-17"` // 最高允许观看的分级
+	DailyTimeLimit    int       `json:"daily_time_limit" gorm:"default:0"`               // 每日观看时长限制（分钟），0表示不限
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 
 	User User `json:"-" gorm:"foreignKey:UserID"`
 }
@@ -873,6 +874,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&DanmakuComment{},
 		&ContentRating{},
 		&UserPermission{},
+		&FamilyViewingDay{},
+		&FamilyViewingLease{},
+		&DeviceSession{},
+		&DevicePairing{},
 		&PlaybackStats{},
 		&ScrapeTask{},
 		&ScrapeHistory{},

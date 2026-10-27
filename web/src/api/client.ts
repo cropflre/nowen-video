@@ -68,7 +68,7 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
-const AUTH_SAFE_PATHS = ['/auth/login', '/auth/register', '/auth/status', '/auth/refresh']
+const AUTH_SAFE_PATHS = ['/auth/login', '/auth/register', '/auth/status', '/auth/refresh', '/auth/device-pairing']
 
 let refreshState: { token: string; promise: Promise<string | null> } | null = null
 let loggingOut = false

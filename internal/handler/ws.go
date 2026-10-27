@@ -20,6 +20,7 @@ var upgrader = websocket.Upgrader{
 
 // WSHandler WebSocket处理器
 type WSHandler struct {
+	auth   *service.AuthService
 	users  *service.UserService
 	hub    *service.WSHub
 	logger *zap.SugaredLogger
@@ -38,13 +39,18 @@ func (h *WSHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 	initial, err := h.users.GetProfile(uid)
-	if err != nil || initial.ChildMode || initial.Disabled {
+	expectedVersion := c.GetInt("token_version")
+	if err != nil || initial.ChildMode || initial.Disabled || initial.TokenVersion != expectedVersion {
 		c.AbortWithStatus(http.StatusForbidden)
 		return
 	}
+	sessionID := c.GetString("device_session_id")
 	authorize := func() bool {
+		if sessionID != "" && (h.auth == nil || h.auth.ValidateDeviceSession(uid, sessionID) != nil) {
+			return false
+		}
 		current, err := h.users.GetProfile(uid)
-		return err == nil && !current.ChildMode && !current.Disabled && current.TokenVersion == initial.TokenVersion
+		return err == nil && !current.ChildMode && !current.Disabled && current.TokenVersion == expectedVersion
 	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

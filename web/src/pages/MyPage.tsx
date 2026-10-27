@@ -3,6 +3,8 @@ import { BarChart3, ChevronRight, Clock, Heart, ListVideo, Moon, Server, Setting
 import { Button, Section } from '@/components/design-system'
 import FamilyInvite from '@/components/FamilyInvite'
 import ViewingPreferences from '@/components/ViewingPreferences'
+import ChildViewingSummary from '@/components/ChildViewingSummary'
+import LoginDevices from '@/components/LoginDevices'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -47,6 +49,8 @@ export default function MyPage() {
       </Section>
 
       <ViewingPreferences />
+      {user?.child_mode && <ChildViewingSummary />}
+      <LoginDevices />
 
       <Section title="界面">
         <div className="grid gap-2 sm:grid-cols-2">

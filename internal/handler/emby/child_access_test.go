@@ -79,6 +79,34 @@ func TestEmbyCannotBypassChildPolicyOrFetchAnonymousArtwork(t *testing.T) {
 			t.Fatalf("parent compatibility denied: %d %s", response.Code, response.Body.String())
 		}
 	}
+	parentLogin, err := auth.Login(&service.LoginRequest{Username: parent.Username, Password: "child-password"}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := &middleware.Claims{}
+	if _, err := jwt.ParseWithClaims(parentLogin.Token, claims, func(*jwt.Token) (any, error) { return []byte(cfg.Secrets.JWTSecret), nil }); err != nil {
+		t.Fatal(err)
+	}
+	requestWithSession := httptest.NewRequest("GET", "/Users/Me", nil)
+	requestWithSession.Header.Set("X-Emby-Token", parentLogin.Token)
+	withSession := httptest.NewRecorder()
+	r.ServeHTTP(withSession, requestWithSession)
+	if withSession.Code != 200 {
+		t.Fatal("active session rejected by compatibility auth", withSession.Code)
+	}
+	if err := auth.RevokeDevice(parent.ID, claims.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"", "/emby"} {
+		for _, path := range []string{"/Users/Me", "/Items/123/Images/Primary", "/Videos/123/stream"} {
+			request := httptest.NewRequest("GET", prefix+path+"?api_key="+parentLogin.Token, nil)
+			response := httptest.NewRecorder()
+			r.ServeHTTP(response, request)
+			if response.Code != 401 {
+				t.Fatal("revoked device bypassed compatibility auth", path, response.Code)
+			}
+		}
+	}
 	body, _ := json.Marshal(map[string]string{"Username": kid.Username, "Pw": "child-password"})
 	request := httptest.NewRequest("POST", "/Users/AuthenticateByName", strings.NewReader(string(body)))
 	request.Header.Set("Content-Type", "application/json")

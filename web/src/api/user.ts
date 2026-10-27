@@ -38,6 +38,10 @@ function publishFavoriteChanged(mediaId: string, favorited: boolean) {
 
 // ==================== 用户 ====================
 export const userApi = {
+  familyControls: () => api.get<{ data: FamilyViewingStatus }>('/users/me/family-controls', { timeout: 10000 }),
+  startViewing: (media_id: string) => api.post<{ data: FamilyViewingStatus }>('/users/me/viewing/start', { media_id }, { timeout: 10000 }),
+  renewViewing: (lease_id: string) => api.post<{ data: FamilyViewingStatus }>('/users/me/viewing/renew', { lease_id }, { timeout: 10000 }),
+  stopViewing: (lease_id: string) => api.post<{ data: FamilyViewingStatus }>('/users/me/viewing/stop', { lease_id }, { timeout: 10000 }),
   profile: () =>
     api.get<{ data: User }>('/users/me'),
 
@@ -92,4 +96,16 @@ export const userApi = {
 
   clearHistory: () =>
     api.delete('/users/me/history'),
+}
+
+export interface FamilyViewingStatus {
+  child_mode: boolean
+  allow_auto_play_next: boolean
+  day: string
+  timezone: string
+  daily_limit_seconds: number
+  used_seconds: number
+  remaining_seconds: number
+  lease_id?: string
+  expires_in_ms?: number
 }

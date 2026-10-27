@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { KeyRound, Loader2, LogOut } from 'lucide-react'
 import { authApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import AuthShell from '@/components/auth/AuthShell'
 import { Button, Input } from '@/components/design-system'
+import { logoutDevice } from '@/utils/logoutDevice'
 
 export default function ForceChangePasswordPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const setAuth = useAuthStore((state) => state.setAuth)
-  const logout = useAuthStore((state) => state.logout)
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [newPwd2, setNewPwd2] = useState('')
@@ -33,7 +34,8 @@ export default function ForceChangePasswordPage() {
       }
 
       setAuth(tokenData.token, { ...tokenData.user, must_change_pwd: false })
-      navigate('/', { replace: true })
+      const pairCode = (location.state as { pairCode?: string } | null)?.pairCode
+      navigate(pairCode ? '/pair#' + new URLSearchParams({ code: pairCode }).toString() : '/', { replace: true })
     } catch (err: any) {
       setError(err?.response?.data?.error || '修改密码失败')
     } finally {
@@ -41,9 +43,9 @@ export default function ForceChangePasswordPage() {
     }
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
+  const handleLogout = async () => {
+    await logoutDevice()
+    if (!useAuthStore.getState().isAuthenticated) navigate('/login', { replace: true })
   }
 
   return (

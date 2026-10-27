@@ -6,6 +6,7 @@ import { ToastProvider } from '@/components/Toast'
 import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
 import { ViewingPreferenceBridge } from '@/components/ViewingPreferences'
+import DeviceSessionBridge from '@/components/DeviceSessionBridge'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
@@ -36,6 +37,7 @@ const BrowsePage = lazy(() => import('@/pages/BrowsePage'))
 const PersonDetailPage = lazy(() => import('@/pages/PersonDetailPage'))
 const CollectionsPage = lazy(() => import('@/pages/CollectionsPage'))
 const CollectionDetailPage = lazy(() => import('@/pages/CollectionDetailPage'))
+const DeviceApprovalPage = lazy(() => import('@/pages/DeviceApprovalPage'))
 
 function ServerProfileLoader() {
   const load = useServerProfileStore((state) => state.load)
@@ -105,6 +107,11 @@ function ForceChangePasswordRoute() {
   return <ForceChangePasswordPage />
 }
 
+function DeviceApprovalRoute() {
+  const identity = useAuthStore(state => `${state.user?.id}:${state.user?.role}:${state.user?.child_mode}`)
+  return <div className="mx-auto w-full max-w-3xl p-6"><DeviceApprovalPage key={identity} /></div>
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -124,6 +131,7 @@ export default function App() {
         >
           <ServerProfileLoader />
           <ViewingPreferenceBridge />
+          <DeviceSessionBridge />
           <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />
@@ -136,6 +144,7 @@ export default function App() {
               <Suspense fallback={<PageLoader />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/pair" element={<DeviceApprovalRoute />} />
                   <Route path="/force-change-password" element={<ForceChangePasswordRoute />} />
 
                   <Route

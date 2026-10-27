@@ -106,7 +106,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.RefreshToken(userID)
+	token, err := h.authService.RefreshToken(userID, c.GetString("device_session_id"))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "令牌刷新失败"})
 		return

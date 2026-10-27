@@ -72,6 +72,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   })
 
   const [childMode, setChildMode] = useState(false)
+  const [allowAutoPlayNext, setAllowAutoPlayNext] = useState(false)
   const [permLibraries, setPermLibraries] = useState<string[]>([])
   const [permRating, setPermRating] = useState('NC-17')
   const [permTimeLimit, setPermTimeLimit] = useState(0)
@@ -180,6 +181,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
       const permission = res.data.data
       setPermLibraries(permission.allowed_libraries ? permission.allowed_libraries.split(',').filter(Boolean) : [])
       setChildMode(Boolean(permission.child_mode))
+      setAllowAutoPlayNext(Boolean(permission.allow_auto_play_next))
       setPermRating(permission.max_rating_level || 'NC-17')
       setPermTimeLimit(Math.min(1440, Math.max(0, permission.daily_time_limit || 0)))
     } catch (err: any) {
@@ -198,6 +200,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
     try {
       await adminApi.updateUserPermission(userId, {
         child_mode: childMode,
+        allow_auto_play_next: allowAutoPlayNext,
         allowed_libraries: permLibraries.join(','),
         max_rating_level: permRating,
         daily_time_limit: Math.min(1440, Math.max(0, permTimeLimit)),
@@ -381,7 +384,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
 
                         <label className="flex items-start justify-between gap-4 rounded-lg border border-[var(--nv-border-default)] p-4">
                           <span><strong className="block text-sm">儿童空间</strong><span className="mt-1 block text-sm text-[var(--nv-text-tertiary)]">使用独立账号。退出后，家长需要用自己的账号和密码登录。第三方 Emby 客户端暂不支持儿童账号。</span></span>
-                          <input type="checkbox" role="switch" aria-label="儿童空间" checked={childMode} disabled={savingPerm} onChange={(event) => { setChildMode(event.target.checked); if (event.target.checked) { setPermRating('G'); setPermLibraries([]) } }} className="h-6 w-6 shrink-0" />
+                          <input type="checkbox" role="switch" aria-label="儿童空间" checked={childMode} disabled={savingPerm} onChange={(event) => { setChildMode(event.target.checked); if (event.target.checked) { setPermRating('G'); setPermLibraries([]); setAllowAutoPlayNext(false) } }} className="h-6 w-6 shrink-0" />
                         </label>
                         <div>
                           <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-secondary)]">
@@ -423,7 +426,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                           <div>
                             <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-secondary)]">
                               <Clock size={13} />
-                              每日观看时长参考限制
+                              {childMode ? '每日可观看时间（分钟）' : '每日观看时长参考限制'}
                             </label>
                             <Input
                               type="number"
@@ -444,6 +447,11 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                           </div>
                         </div>
 
+                        {childMode && <label className="flex min-h-12 items-center justify-between gap-4">
+                          <span><strong className="block text-sm">自动播放下一集</strong><span className="text-xs text-[var(--nv-text-tertiary)]">由家长决定，儿童账号无法自行修改</span></span>
+                          <input type="checkbox" role="switch" aria-label="允许儿童自动连播" checked={allowAutoPlayNext} disabled={savingPerm} onChange={(event) => setAllowAutoPlayNext(event.target.checked)} className="h-6 w-6" />
+                        </label>}
+                        {childMode && <p className="text-xs text-[var(--nv-text-tertiary)]">观看时间按服务器当天累计；暂停后停止计时，倍速、拖动进度和重复播放不会重置额度。断网或未正常退出最多计入额外 15 秒。</p>}
                         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--nv-border-subtle)] pt-4">
                           <Button variant="ghost" onClick={closePermEditor} disabled={savingPerm}>取消</Button>
                           <Button variant="primary" loading={savingPerm} onClick={() => void savePerm()} disabled={loadingPerm}>

@@ -7,6 +7,16 @@ import type {
 
 // ==================== 认证 ====================
 export const authApi = {
+  createPairing: (device_name: string) => api.post<{ data: PairingRequest }>('/auth/device-pairing', { device_name }, { timeout: 10000 }),
+  pollPairing: (id: string, secret: string) => api.post<{ data: { status: string; authorization?: TokenResponse } }>('/auth/device-pairing/status', { id, secret }, { timeout: 10000 }),
+  cancelPairing: (id: string, secret: string) => api.post('/auth/device-pairing/cancel', { id, secret }, { timeout: 5000 }),
+  inspectPairing: (code: string) => api.post<{ data: { device_name: string; expires_at: string } }>('/users/me/device-pairing/inspect', { code }, { timeout: 10000 }),
+  approvePairing: (code: string) => api.post('/users/me/device-pairing/approve', { code }, { timeout: 10000 }),
+  devices: () => api.get<{ data: LoginDevice[]; current_id: string }>('/users/me/devices', { timeout: 10000 }),
+  revokeDevice: (id: string) => api.delete('/users/me/devices/' + encodeURIComponent(id), { timeout: 10000 }),
+  revokeAllDevices: () => api.post('/users/me/devices/revoke-all', {}, { timeout: 10000 }),
+  logout: () => api.post<{ server_revoked: boolean }>('/auth/logout', {}, { timeout: 5000 }),
+  deviceStatus: () => api.get('/users/me/device-status', { timeout: 10000 }),
   login: (data: LoginRequest) =>
     api.post<TokenResponse>('/auth/login', data),
 
@@ -26,4 +36,19 @@ export const authApi = {
       old_password: oldPassword,
       new_password: newPassword,
     }),
+}
+
+export interface PairingRequest {
+  id: string
+  secret: string
+  code: string
+  device_name: string
+  expires_in_ms: number
+}
+export interface LoginDevice {
+  id: string
+  name: string
+  created_at: string
+  last_seen_at: string
+  expires_at: string
 }

@@ -13,6 +13,7 @@ package emby
 //   实现一个最小可用的 echo/keepalive server 能消除这些告警，并为将来支持远程控制打基础。
 
 import (
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -35,10 +36,11 @@ var embyWSUpgrader = websocket.Upgrader{
 
 // wsClient 一个已连接的 WebSocket 客户端。
 type wsClient struct {
-	conn     *websocket.Conn
-	userID   string
-	deviceID string
-	sendMu   sync.Mutex
+	conn      *websocket.Conn
+	userID    string
+	deviceID  string
+	authorize func() bool
+	sendMu    sync.Mutex
 }
 
 // WSHub 管理所有活跃的 Emby WebSocket 连接。
@@ -66,7 +68,7 @@ func (h *WSHub) Handler(jwtSecret string) gin.HandlerFunc {
 	return h.HandlerWithValidator(jwtSecret, nil)
 }
 
-func (h *WSHub) HandlerWithValidator(jwtSecret string, validator middleware.TokenVersionProvider) gin.HandlerFunc {
+func (h *WSHub) HandlerWithValidator(jwtSecret string, validator middleware.TokenVersionProvider, sessions ...middleware.DeviceSessionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从 query / header 提取 token（WebSocket 阶段客户端只会给 query）
 		tokenStr := c.Query("api_key")
@@ -88,12 +90,12 @@ func (h *WSHub) HandlerWithValidator(jwtSecret string, validator middleware.Toke
 		claims := &middleware.Claims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 		if err != nil || !token.Valid {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		if !validateEmbyClaims(c, claims, validator) {
+		if !validateEmbyClaims(c, claims, validator, sessions...) {
 			return
 		}
 
@@ -110,6 +112,19 @@ func (h *WSHub) HandlerWithValidator(jwtSecret string, validator middleware.Toke
 			conn:     conn,
 			userID:   claims.UserID,
 			deviceID: c.Query("deviceId"),
+		}
+		client.authorize = func() bool {
+			if claims.ExpiresAt != nil && !time.Now().Before(claims.ExpiresAt.Time) {
+				return false
+			}
+			if claims.SessionID != "" && (len(sessions) == 0 || sessions[0] == nil || sessions[0](claims.UserID, claims.SessionID) != nil) {
+				return false
+			}
+			if validator == nil {
+				return true
+			}
+			version, disabled, err := validator(claims.UserID)
+			return err == nil && !disabled && claims.TokenVersion >= version
 		}
 		h.addClient(client)
 		defer h.removeClient(client)
@@ -163,6 +178,10 @@ func (h *WSHub) readLoop(c *wsClient) {
 		for {
 			select {
 			case <-ticker.C:
+				if c.authorize != nil && !c.authorize() {
+					_ = c.conn.Close()
+					return
+				}
 				c.sendMu.Lock()
 				_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				err := c.conn.WriteMessage(websocket.PingMessage, nil)
@@ -201,6 +220,10 @@ func (h *WSHub) readLoop(c *wsClient) {
 
 // writeJSON 线程安全地写入 JSON 消息。
 func (c *wsClient) writeJSON(v interface{}) error {
+	if c.authorize != nil && !c.authorize() {
+		_ = c.conn.Close()
+		return errors.New("device authorization revoked")
+	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 	_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))

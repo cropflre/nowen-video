@@ -158,6 +158,7 @@ func main() {
 	jwtMiddleware := middleware.JWTAuthWithValidator(
 		cfg.Secrets.JWTSecret,
 		services.Auth.ValidateTokenVersion,
+		services.Auth.ValidateDeviceSession,
 	)
 
 	// Refresh 专用中间件：允许"签名合法但已过期"的 token 进行一次续签，
@@ -166,6 +167,7 @@ func main() {
 	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(
 		cfg.Secrets.JWTSecret,
 		services.Auth.ValidateTokenVersion,
+		services.Auth.ValidateDeviceSession,
 	)
 
 	// 登录日志清理定时任务：保留90天
@@ -179,6 +181,7 @@ func main() {
 	}()
 
 	// 公开路由（无需认证）
+	handlers.Auth.RegisterDevicePairing(r)
 	auth := r.Group("/api/auth")
 	{
 		auth.POST("/login", handlers.Auth.Login)
@@ -251,6 +254,8 @@ func main() {
 	// 需要认证的路由
 	api := r.Group("/api")
 	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
+	handler.RegisterFamilyPlayback(api, repos.DB())
+	handlers.Auth.RegisterDeviceManagement(api)
 	{
 		// 媒体库
 		api.GET("/libraries", handlers.Library.List)

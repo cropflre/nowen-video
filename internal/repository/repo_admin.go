@@ -50,6 +50,7 @@ func (r *UserPermissionRepo) Upsert(perm *model.UserPermission) error {
 	existing.AllowedLibraries = perm.AllowedLibraries
 	existing.MaxRatingLevel = perm.MaxRatingLevel
 	existing.DailyTimeLimit = perm.DailyTimeLimit
+	existing.AllowAutoPlayNext = perm.AllowAutoPlayNext
 	return r.db.Save(&existing).Error
 }
 

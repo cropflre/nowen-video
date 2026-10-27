@@ -113,6 +113,15 @@ func (h childRequest) dispatch() bool {
 	method := c.Request.Method
 	page, size := h.page()
 	filter := h.filter()
+	if (route == "/api/users/me/family-controls" && method == http.MethodGet) ||
+		((route == "/api/users/me/viewing/start" || route == "/api/users/me/viewing/renew" || route == "/api/users/me/viewing/stop") && method == http.MethodPost) {
+		return true
+	}
+	if ((route == "/api/users/me/devices" || route == "/api/users/me/device-status") && method == http.MethodGet) ||
+		(route == "/api/users/me/devices/:deviceId" && method == http.MethodDelete) ||
+		((route == "/api/users/me/devices/revoke-all" || route == "/api/auth/logout" || route == "/api/users/me/device-pairing/inspect" || route == "/api/users/me/device-pairing/approve") && method == http.MethodPost) {
+		return true
+	}
 	if route == "/api/users/me" && (method == http.MethodGet || method == http.MethodPut) {
 		return true
 	}
@@ -252,6 +261,12 @@ func (h childRequest) dispatch() bool {
 		"/api/stream/:id/info", "/api/stream/:id/plan", "/api/stream/:id/direct", "/api/stream/:id/remux", "/api/stream/:id/strm-seg",
 		"/api/subtitle/:id/tracks", "/api/subtitle/:id/extract/:index":
 		if h.mediaOK(c.Param("id")) {
+			if strings.HasPrefix(route, "/api/stream/") && route != "/api/stream/:id/info" && route != "/api/stream/:id/plan" || strings.HasSuffix(route, "/preview") {
+				if err := service.NewFamilyPlaybackService(h.db).CheckAccess(h.policy.UserID, c.Param("id")); err != nil {
+					c.JSON(http.StatusForbidden, gin.H{"error": "请重新确认观看时间后播放", "code": "FAMILY_LEASE_REQUIRED"})
+					return false
+				}
+			}
 			return true
 		}
 		return h.fail(http.StatusNotFound)

@@ -29,6 +29,7 @@ import {
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
 import PlaybackFailure from './player/PlaybackFailure'
+import { prepareChildViewing } from '@/hooks/useChildViewing'
 import SubtitleSearchPanel from './SubtitleSearchPanel'
 import SubtitleContentSearch from './SubtitleContentSearch'
 import { Tag } from '@/components/design-system'
@@ -534,8 +535,17 @@ export default function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    const onPlay = () => setPlaying(true)
-    const onPause = () => setPlaying(false)
+    const onPlay = () => {
+      // The child grant controller may synchronously pause an unauthorized play
+      // before this listener runs, then resume once the server grants time.
+      if (video.paused) return
+      if (useAuthStore.getState().user?.child_mode) hlsRef.current?.startLoad()
+      setPlaying(true)
+    }
+    const onPause = () => {
+      if (useAuthStore.getState().user?.child_mode) hlsRef.current?.stopLoad()
+      setPlaying(false)
+    }
     const onTimeUpdate = () => setCurrentTime(video.currentTime + remuxOffsetRef.current)
     const onDurationChange = () => setDuration(video.duration)
     const onVolumeChange = () => {
@@ -618,42 +628,47 @@ export default function VideoPlayer({
     else video.pause()
   }
 
-  const remuxSeek = useCallback((targetTime: number) => {
+  const remuxSeek = useCallback(async (targetTime: number) => {
     const video = videoRef.current
     if (!video || (mode !== 'remux' && mode !== 'smart_remux') || !src) return
+    if (!await prepareChildViewing(mediaId)) return
     const baseUrl = src.replace(/[&?]start=[^&]*/g, '')
     const separator = baseUrl.includes('?') ? '&' : '?'
     remuxOffsetRef.current = targetTime
     setCurrentTime(targetTime)
     video.src = `${baseUrl}${separator}start=${Math.floor(targetTime)}`
     video.play().catch(() => {})
-  }, [src, mode, setCurrentTime])
+  }, [src, mode, setCurrentTime, mediaId])
 
-  const seek = (seconds: number) => {
+  const seek = async (seconds: number) => {
     const video = videoRef.current
     if (!video) return
+    if (!await prepareChildViewing(mediaId)) return
     if (mode === 'remux' || mode === 'smart_remux') {
       const currentPos = remuxOffsetRef.current + (video.currentTime || 0)
       remuxSeek(Math.max(0, Math.min(displayDuration, currentPos + seconds)))
     } else {
       video.currentTime = Math.max(0, Math.min(video.duration || displayDuration, video.currentTime + seconds))
+      if (useAuthStore.getState().user?.child_mode && video.paused) void video.play().catch(() => {})
     }
     clearTimeout(seekHintTimer.current)
     setSeekHint({ text: seconds > 0 ? `+${seconds}s` : `${seconds}s`, visible: true })
     seekHintTimer.current = window.setTimeout(() => setSeekHint(prev => ({ ...prev, visible: false })), 800)
   }
 
-  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleProgressClick = async (event: React.MouseEvent<HTMLDivElement>) => {
     const video = videoRef.current
     if (!video) return
     const rect = event.currentTarget.getBoundingClientRect()
     const targetTime = ((event.clientX - rect.left) / rect.width) * displayDuration
+    if (!await prepareChildViewing(mediaId)) return
     if (mode === 'remux' || mode === 'smart_remux') {
       remuxSeek(targetTime)
       return
     }
     if (video.duration > 0 && targetTime <= video.duration) video.currentTime = targetTime
     else if (video.duration > 0) video.currentTime = video.duration - 0.5
+    if (useAuthStore.getState().user?.child_mode && video.paused) void video.play().catch(() => {})
   }
 
   const handleProgressHover = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1327,9 +1342,13 @@ export default function VideoPlayer({
                 <SubtitleContentSearch
                   videoRef={videoRef}
                   cues={subtitleCues}
-                  onSeek={(time) => {
+                  onSeek={async (time) => {
+                    if (!await prepareChildViewing(mediaId)) return
                     if (mode === 'remux' || mode === 'smart_remux') remuxSeek(time)
-                    else if (videoRef.current) videoRef.current.currentTime = time
+                    else if (videoRef.current) {
+                      videoRef.current.currentTime = time
+                      if (useAuthStore.getState().user?.child_mode && videoRef.current.paused) void videoRef.current.play().catch(() => {})
+                    }
                   }}
                   onClose={() => setShowContentSearch(false)}
                   hasActiveSubtitle={!!activeSubtitle}

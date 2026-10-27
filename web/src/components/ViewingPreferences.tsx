@@ -63,8 +63,8 @@ export default function ViewingPreferences() {
           <input type="checkbox" role="switch" aria-label="大字模式" checked={preferences.large_text} disabled={saving} onChange={(event) => void save({ large_text: event.target.checked })} className="h-6 w-6 shrink-0" />
         </label>
         <label className="flex min-h-12 cursor-pointer items-center justify-between gap-4">
-          <span><strong className="block">自动播放下一集</strong><span className="block text-sm text-[var(--nv-text-tertiary)]">关闭后，看完一集就停下</span></span>
-          <input type="checkbox" role="switch" aria-label="自动播放下一集" checked={preferences.auto_play_next} disabled={saving} onChange={(event) => void save({ auto_play_next: event.target.checked })} className="h-6 w-6 shrink-0" />
+          <span><strong className="block">自动播放下一集</strong><span className="block text-sm text-[var(--nv-text-tertiary)]">{user?.child_mode ? '由家长设置，关闭后看完一集就停下' : '关闭后，看完一集就停下'}</span></span>
+          <input type="checkbox" role="switch" aria-label="自动播放下一集" checked={preferences.auto_play_next} disabled={saving || user?.child_mode} onChange={(event) => void save({ auto_play_next: event.target.checked })} className="h-6 w-6 shrink-0" />
         </label>
         <label className="flex flex-wrap items-center justify-between gap-3">
           <span><strong className="block">默认字幕</strong><span className="block text-sm text-[var(--nv-text-tertiary)]">优先选择指定语言；没有匹配字幕时保持关闭</span></span>

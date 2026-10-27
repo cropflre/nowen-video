@@ -187,9 +187,13 @@ func (h *Handler) AuthenticateByNameHandler(c *gin.Context) {
 		return
 	}
 
-	loginReq := &service.LoginRequest{Username: username, Password: password}
+	loginReq := &service.LoginRequest{Username: username, Password: password, CompatibilityClient: true, DeviceName: parseEmbyAuthHeader(c.GetHeader("X-Emby-Authorization")).Device}
 	tok, err := h.auth.Login(loginReq, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
+		if err == service.ErrForbidden {
+			c.JSON(http.StatusForbidden, gin.H{"Error": "儿童账号请使用 Nowen Video 网页端"})
+			return
+		}
 		h.logger.Infof("[emby] 登录失败 user=%s err=%v", username, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"Error": "Invalid username or password"})
 		return

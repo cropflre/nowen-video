@@ -5,10 +5,11 @@ import { useAuthStore } from '@/stores/auth'
 import { authApi, userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
+import { logoutDevice } from '@/utils/logoutDevice'
 import { Button, Input, PageContainer, Section, Tag } from '@/components/design-system'
 
 export default function ProfilePage() {
-  const { user, setAuth, updateUser, logout } = useAuthStore()
+  const { user, setAuth, updateUser } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
   const { t } = useTranslation()
@@ -77,9 +78,10 @@ export default function ProfilePage() {
     }
   }
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
+  const handleLogout = async () => {
+    const confirmed = await logoutDevice()
+    if (!useAuthStore.getState().isAuthenticated) navigate('/login')
+    if (!confirmed && !useAuthStore.getState().isAuthenticated) toast.info('已在本机退出。需要撤销其他登录时，请在“登录设备”中操作。')
   }
 
   return (

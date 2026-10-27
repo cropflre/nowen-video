@@ -47,8 +47,8 @@ func buildRouter(
 	if cfg.Secrets.JWTSecret == "" {
 		logger.Fatal("JWT Secret 未配置或自动生成失败，无法启动")
 	}
-	jwtMiddleware := middleware.JWTAuthWithValidator(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
-	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion)
+	jwtMiddleware := middleware.JWTAuthWithValidator(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion, services.Auth.ValidateDeviceSession)
+	jwtRefreshMiddleware := middleware.JWTAuthAllowExpired(cfg.Secrets.JWTSecret, services.Auth.ValidateTokenVersion, services.Auth.ValidateDeviceSession)
 	profileRuntime := serverprofile.NewLiteRuntime(cfg)
 	executionRepo := repository.NewTranscodeExecutionRepo(repos.DB())
 	taskCenterService := service.NewTaskCenterService(
@@ -163,6 +163,7 @@ func registerPublicRoutes(
 	jwtRefreshMiddleware gin.HandlerFunc,
 	childGate gin.HandlerFunc,
 ) {
+	handlers.Auth.RegisterDevicePairing(r)
 	auth := r.Group("/api/auth")
 	auth.POST("/login", handlers.Auth.Login)
 	auth.GET("/status", handlers.Auth.Status)

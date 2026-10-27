@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import VideoPlayer from './VideoPlayer'
 import PlaybackFailure from './player/PlaybackFailure'
+import { prepareChildViewing } from '@/hooks/useChildViewing'
 import { usePlaybackSessionSource } from '@/hooks/usePlaybackSessionSource'
 import { usePlayerStore } from '@/stores/player'
 import { clearPlaybackSessionRuntime, setPlaybackSessionRuntime } from '@/playback/sessionRuntime'
@@ -187,14 +188,14 @@ export default function SessionVideoPlayer({
     absolutePositionRef.current = target
     usePlayerStore.getState().setCurrentTime(target)
 
-    void playback.restart(target, reason).then((success) => {
+    void prepareChildViewing(mediaId).then((allowed) => allowed ? playback.restart(target, reason) : false).then((success) => {
       if (success) return
       resumeAfterSeekRef.current = false
       seekTargetRef.current = null
       absolutePositionRef.current = previousPosition
       usePlayerStore.getState().setCurrentTime(previousPosition)
     }).finally(() => { seekInFlightRef.current = false })
-  }, [knownDuration, playback.sessionId, playback.loading, playback.restart])
+  }, [knownDuration, playback.sessionId, playback.loading, playback.restart, mediaId])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

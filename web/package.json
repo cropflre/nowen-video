@@ -24,6 +24,7 @@
     "hls.js": "^1.5.11",
     "lucide-react": "^0.379.0",
     "mp4box": "^0.5.4",
+    "qrcode-generator": "2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.6.0",

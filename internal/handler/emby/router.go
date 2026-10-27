@@ -21,7 +21,9 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 	// CORS 在整个子路由上统一开启（与全局 CORS 并行不冲突）
 	corsMW := EmbyCORS()
 	var validator middleware.TokenVersionProvider
+	var deviceValidator middleware.DeviceSessionProvider
 	if h.auth != nil {
+		deviceValidator = h.auth.ValidateDeviceSession
 		validator = func(userID string) (int, bool, error) {
 			version, disabled, err := h.auth.ValidateTokenVersion(userID)
 			if err != nil {
@@ -46,13 +48,13 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 			registerEmbyPublic(group, h)
 
 			// 需要认证的路由
-			secured := group.Group("", EmbyAuthWithValidator(jwtSecret, validator))
+			secured := group.Group("", EmbyAuthWithValidator(jwtSecret, validator, deviceValidator))
 			registerEmbyAuthed(secured, h)
 
 			// WebSocket（路径固定 /embywebsocket 与 /socket，自带 query token 鉴权）
 			if wsHub != nil {
-				group.GET("/embywebsocket", wsHub.HandlerWithValidator(jwtSecret, validator))
-				group.GET("/socket", wsHub.HandlerWithValidator(jwtSecret, validator))
+				group.GET("/embywebsocket", wsHub.HandlerWithValidator(jwtSecret, validator, deviceValidator))
+				group.GET("/socket", wsHub.HandlerWithValidator(jwtSecret, validator, deviceValidator))
 			}
 		}
 

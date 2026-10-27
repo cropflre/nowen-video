@@ -26,6 +26,8 @@ func registerCoreAPI(
 ) {
 	api := r.Group("/api")
 	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
+	handler.RegisterFamilyPlayback(api, repos.DB())
+	handlers.Auth.RegisterDeviceManagement(api)
 	service.AttachMediaAnalysisWorkerSettings(mediaAnalysisService, repos.SystemSetting)
 	service.AttachMediaChapterRepository(mediaAnalysisService, repos.VideoChapter)
 

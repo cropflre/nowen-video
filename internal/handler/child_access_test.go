@@ -73,6 +73,7 @@ func childRouter(t *testing.T, db *gorm.DB, repos *repository.Repositories) *gin
 	r := gin.New()
 	auth := service.NewAuthService(repos.User, repos.InviteCode, repos.LoginLog, repos.AuditLog, &config.Config{}, zap.NewNop().Sugar())
 	g := r.Group("/api", middleware.JWTAuthWithValidator(childTestSecret, auth.ValidateTokenVersion), ChildAccessGate(db))
+	RegisterFamilyPlayback(g, db)
 	raw := func(c *gin.Context) {
 		c.Header("Cache-Control", "public, max-age=86400")
 		c.JSON(200, gin.H{"data": "RAW_ADULT_HANDLER", "id": c.Param("id")})
@@ -280,7 +281,7 @@ func (s *childSessionStub) Create(context.Context, string, service.PlaybackSessi
 	panic("unexpected create")
 }
 func (s *childSessionStub) Heartbeat(string, string, service.PlaybackSessionHeartbeatRequest) (service.PlaybackSessionResult, error) {
-	panic("unexpected heartbeat")
+	return s.Status("", "")
 }
 func (s *childSessionStub) Restart(context.Context, string, string, service.PlaybackSessionRestartRequest) (service.PlaybackSessionResult, error) {
 	panic("unexpected restart")

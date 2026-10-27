@@ -710,6 +710,7 @@ export interface DanmakuComment {
 
 // ==================== 权限管理 ====================
 export interface UserPermission {
+  allow_auto_play_next?: boolean
   child_mode?: boolean
   id: string
   user_id: string
@@ -719,6 +720,7 @@ export interface UserPermission {
 }
 
 export interface UpdatePermissionRequest {
+  allow_auto_play_next?: boolean
   child_mode?: boolean
   allowed_libraries: string
   max_rating_level: string

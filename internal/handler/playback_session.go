@@ -56,7 +56,7 @@ func (h *PlaybackSessionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "播放会话参数无效"})
 		return
 	}
-	if err := h.checkMediaAccess(c, request.MediaID); err != nil {
+	if err := h.checkPlaybackAccess(c, request.MediaID); err != nil {
 		h.writeError(c, err)
 		return
 	}
@@ -86,12 +86,12 @@ func (h *PlaybackSessionHandler) Status(c *gin.Context) {
 }
 
 func (h *PlaybackSessionHandler) Heartbeat(c *gin.Context) {
-	if !h.guardSession(c) {
-		return
-	}
 	var request service.PlaybackSessionHeartbeatRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "播放心跳参数无效"})
+		return
+	}
+	if !h.guardSession(c, !request.Paused) {
 		return
 	}
 	result, err := h.sessions.Heartbeat(c.GetString("user_id"), c.Param("sessionID"), request)
@@ -209,13 +209,27 @@ func (h *PlaybackSessionHandler) checkMediaAccess(c *gin.Context, mediaID string
 		return service.ErrForbidden
 	}
 	userID := c.GetString("user_id")
-	return h.permission.CheckMediaAccess(userID, mediaID, func(id string) (string, error) {
+	err := h.permission.CheckMediaAccess(userID, mediaID, func(id string) (string, error) {
 		media, err := h.mediaRepo.FindByID(id)
 		if err != nil {
 			return "", err
 		}
 		return media.LibraryID, nil
 	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *PlaybackSessionHandler) checkPlaybackAccess(c *gin.Context, mediaID string) error {
+	if err := h.checkMediaAccess(c, mediaID); err != nil {
+		return err
+	}
+	if h.permission == nil {
+		return service.ErrForbidden
+	}
+	return h.permission.CheckChildPlaybackAccess(c.GetString("user_id"), mediaID)
 }
 
 func (h *PlaybackSessionHandler) writeError(c *gin.Context, err error) {
@@ -226,7 +240,7 @@ func (h *PlaybackSessionHandler) writeError(c *gin.Context, err error) {
 		errors.Is(err, playbacksession.ErrGenerationNotFound),
 		os.IsNotExist(err):
 		status = http.StatusNotFound
-	case errors.Is(err, service.ErrForbidden),
+	case errors.Is(err, service.ErrFamilyLeaseExpired), errors.Is(err, service.ErrForbidden),
 		errors.Is(err, service.ErrContentRestricted),
 		errors.Is(err, service.ErrTimeLimitExceeded):
 		status = http.StatusForbidden
@@ -255,10 +269,14 @@ func parseGenerationID(raw string) (uint64, error) {
 	return value, nil
 }
 
-func (h *PlaybackSessionHandler) guardSession(c *gin.Context) bool {
+func (h *PlaybackSessionHandler) guardSession(c *gin.Context, requirePlayback ...bool) bool {
 	result, err := h.sessions.Status(c.GetString("user_id"), c.Param("sessionID"))
 	if err == nil {
-		err = h.checkMediaAccess(c, result.Session.MediaID)
+		if len(requirePlayback) > 0 && !requirePlayback[0] {
+			err = h.checkMediaAccess(c, result.Session.MediaID)
+		} else {
+			err = h.checkPlaybackAccess(c, result.Session.MediaID)
+		}
 	}
 	if err != nil {
 		h.writeError(c, err)

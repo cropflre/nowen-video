@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -44,6 +46,7 @@ func CORS(allowedOrigins ...string) gin.HandlerFunc {
 
 // Claims JWT令牌声明
 type Claims struct {
+	SessionID    string `json:"sid,omitempty"`
 	UserID       string `json:"user_id"`
 	Username     string `json:"username"`
 	Role         string `json:"role"`
@@ -54,6 +57,9 @@ type Claims struct {
 // TokenVersionProvider 令牌版本号提供者（解耦，避免中间件依赖 repository）
 // 返回 (当前版本号, 是否被禁用, 错误)
 type TokenVersionProvider func(userID string) (version int, disabled bool, err error)
+type DeviceSessionProvider func(userID, sessionID string) error
+
+var ErrDeviceSessionRejected = errors.New("设备登录已失效，请重新登录")
 
 // JWTAuth JWT认证中间件（基础版：只验签、不检查版本号）
 func JWTAuth(secret string) gin.HandlerFunc {
@@ -64,7 +70,7 @@ func JWTAuth(secret string) gin.HandlerFunc {
 // 当 validator 非空时，会在令牌签名通过后，进一步校验：
 //  1. 用户是否已被禁用（disabled=true 则拒绝）
 //  2. 令牌版本号是否已失效（claims.TokenVersion < 数据库中的 token_version 则拒绝）
-func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.HandlerFunc {
+func JWTAuthWithValidator(secret string, validator TokenVersionProvider, sessions ...DeviceSessionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
 
@@ -91,7 +97,7 @@ func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.Han
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(secret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效或已过期"})
@@ -119,7 +125,12 @@ func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.Han
 			}
 		}
 
+		if !ValidateDeviceClaims(c, claims, sessions...) {
+			return
+		}
 		// 将用户信息存入上下文
+		c.Set("device_session_id", claims.SessionID)
+		c.Set("token_version", claims.TokenVersion)
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
@@ -132,7 +143,7 @@ func JWTAuthWithValidator(secret string, validator TokenVersionProvider) gin.Han
 // 允许签名合法但 exp 已过期的 token 通过，其它所有校验（TokenVersion、用户禁用）保持严格。
 // 目的：用户打开应用时若 token 刚好过期，前端可借助此接口续签一次，避免被强制踢回登录页；
 // 而密码变更/管理员封号场景下 token_version 会递增或 disabled=true，旧 token 依旧无法续签。
-func JWTAuthAllowExpired(secret string, validator TokenVersionProvider) gin.HandlerFunc {
+func JWTAuthAllowExpired(secret string, validator TokenVersionProvider, sessions ...DeviceSessionProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var tokenStr string
 		authHeader := c.GetHeader("Authorization")
@@ -153,18 +164,16 @@ func JWTAuthAllowExpired(secret string, validator TokenVersionProvider) gin.Hand
 		}
 
 		claims := &Claims{}
-		// 注意：使用 ParseUnverified 仍不安全；这里用带签名校验的 Parse，再单独容忍 exp 过期
+		// Signature and algorithm validation are mandatory even when exp is
+		// intentionally tolerated. Never accept a combined signature/expiry error.
 		_, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(secret), nil
-		})
-		if err != nil {
-			// 仅放行 "token 过期"这一种错误；签名错误/格式错误等仍然拒绝
-			if !strings.Contains(err.Error(), "token is expired") {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效"})
-				c.Abort()
-				return
-			}
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithoutClaimsValidation())
+		if err != nil || (claims.NotBefore != nil && time.Now().Before(claims.NotBefore.Time)) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录凭据无效，请重新登录"})
+			return
 		}
+
 		if claims.UserID == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "认证令牌无效"})
 			c.Abort()
@@ -191,6 +200,11 @@ func JWTAuthAllowExpired(secret string, validator TokenVersionProvider) gin.Hand
 			}
 		}
 
+		if !ValidateDeviceClaims(c, claims, sessions...) {
+			return
+		}
+		c.Set("device_session_id", claims.SessionID)
+		c.Set("token_version", claims.TokenVersion)
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
@@ -209,4 +223,24 @@ func AdminOnly() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// A session-bound credential must never silently fall back to account-only auth.
+func ValidateDeviceClaims(c *gin.Context, claims *Claims, sessions ...DeviceSessionProvider) bool {
+	if claims.SessionID == "" {
+		return true
+	}
+	if len(sessions) == 0 || sessions[0] == nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrDeviceSessionRejected.Error()})
+		return false
+	}
+	if err := sessions[0](claims.UserID, claims.SessionID); err != nil {
+		if errors.Is(err, ErrDeviceSessionRejected) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": ErrDeviceSessionRejected.Error()})
+		} else {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "暂时无法确认设备登录，请稍后重试"})
+		}
+		return false
+	}
+	return true
 }

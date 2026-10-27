@@ -98,7 +98,7 @@ func NewHandlers(services *service.Services, repos *repository.Repositories, cfg
 		Playlist:  &PlaylistHandler{playlistService: services.Playlist, logger: logger},
 		Recommend: &RecommendHandler{recommendService: services.Recommend, logger: logger},
 		Cast:      &CastHandler{castService: services.Cast, logger: logger},
-		WS:        &WSHandler{hub: services.WSHub, users: services.User, logger: logger},
+		WS:        &WSHandler{hub: services.WSHub, users: services.User, auth: services.Auth, logger: logger},
 		Bookmark:  &BookmarkHandler{bookmarkService: services.Bookmark, logger: logger},
 		Comment:   &CommentHandler{commentService: services.Comment, logger: logger},
 		Danmaku:   &DanmakuHandler{danmakuService: services.Danmaku, logger: logger},

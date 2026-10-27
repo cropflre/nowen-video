@@ -14,6 +14,8 @@ type UserRepo struct {
 	db *gorm.DB
 }
 
+func (r *UserRepo) DB() *gorm.DB { return r.db }
+
 func (r *UserRepo) Create(user *model.User) error {
 	return r.db.Create(user).Error
 }
@@ -21,12 +23,18 @@ func (r *UserRepo) Create(user *model.User) error {
 func (r *UserRepo) FindByUsername(username string) (*model.User, error) {
 	var user model.User
 	err := r.db.Where("username = ?", username).First(&user).Error
+	if err == nil {
+		err = r.applyChildViewingPreferences(&user)
+	}
 	return &user, err
 }
 
 func (r *UserRepo) FindByID(id string) (*model.User, error) {
 	var user model.User
 	err := r.db.First(&user, "id = ?", id).Error
+	if err == nil {
+		err = r.applyChildViewingPreferences(&user)
+	}
 	return &user, err
 }
 
@@ -101,4 +109,19 @@ func (r *UserRepo) CreateWithInvite(user *model.User, inviteID string) error {
 		}
 		return tx.Create(user).Error
 	})
+}
+
+// The child autoplay value is parent policy, never a self-service preference.
+func (r *UserRepo) applyChildViewingPreferences(user *model.User) error {
+	if !user.ChildMode {
+		return nil
+	}
+	var permission model.UserPermission
+	err := r.db.Where("user_id = ?", user.ID).First(&permission).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	allowed := permission.AllowAutoPlayNext
+	user.ViewingPreferences.AutoPlayNext = &allowed
+	return nil
 }

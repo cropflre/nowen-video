@@ -92,10 +92,11 @@ func (h *AdminHandler) GetUserPermission(c *gin.Context) {
 
 // UpdateUserPermissionRequest 更新用户权限请求
 type UpdateUserPermissionRequest struct {
-	ChildMode        *bool  `json:"child_mode"`
-	AllowedLibraries string `json:"allowed_libraries"` // 逗号分隔的媒体库ID
-	MaxRatingLevel   string `json:"max_rating_level"`
-	DailyTimeLimit   int    `json:"daily_time_limit"` // 分钟
+	AllowAutoPlayNext *bool  `json:"allow_auto_play_next"`
+	ChildMode         *bool  `json:"child_mode"`
+	AllowedLibraries  string `json:"allowed_libraries"` // 逗号分隔的媒体库ID
+	MaxRatingLevel    string `json:"max_rating_level"`
+	DailyTimeLimit    int    `json:"daily_time_limit"` // 分钟
 }
 
 // UpdateUserPermission 更新用户权限
@@ -111,6 +112,17 @@ func (h *AdminHandler) UpdateUserPermission(c *gin.Context) {
 	mode := []bool{}
 	if req.ChildMode != nil {
 		mode = append(mode, *req.ChildMode)
+	}
+	if req.AllowAutoPlayNext != nil {
+		if len(mode) == 0 {
+			current, err := h.permissionService.GetUserPermission(userID)
+			if err != nil {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "无法读取当前权限"})
+				return
+			}
+			mode = append(mode, current.ChildMode)
+		}
+		mode = append(mode, *req.AllowAutoPlayNext)
 	}
 	if err := h.permissionService.UpdateUserPermission(userID, req.AllowedLibraries, req.MaxRatingLevel, req.DailyTimeLimit, mode...); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "更新权限失败"})

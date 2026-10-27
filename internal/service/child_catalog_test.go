@@ -223,7 +223,7 @@ func TestChildDailyLimitDoesNotTreatStorageFailureAsUnusedTime(t *testing.T) {
 	if err := permissions.UpdateUserPermission("child", "kids", "G", 60); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Migrator().DropTable(&model.WatchHistory{}); err != nil {
+	if err := db.Migrator().DropTable(&model.FamilyViewingDay{}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _, _ := permissions.CheckDailyTimeLimit("child"); ok {

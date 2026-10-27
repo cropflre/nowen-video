@@ -7,6 +7,7 @@ import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
+import { useChildViewing } from '@/hooks/useChildViewing'
 import { useAuthStore } from '@/stores/auth'
 import { episodeLabel, resumePosition } from '@/utils/viewing'
 import { Zap, Loader2, Cpu, Clapperboard } from 'lucide-react'
@@ -58,6 +59,7 @@ export default function PlayerPage() {
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
   const preferredSubtitle = useAuthStore((state) => state.user?.viewing_preferences?.subtitle_language || 'auto')
   const [loading, setLoading] = useState(true)
+  const childViewing = useChildViewing(id, childMode, loadAttempt, desktopRuntime.isDesktop, !loading && !loadError && media?.id === id && !!playInfo)
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null)
   const [switchPosition, setSwitchPosition] = useState<number | undefined>(() => highlightMode ? clipStart : undefined)
   const [webcodecsFailed, setWebcodecsFailed] = useState(false)
@@ -196,11 +198,11 @@ export default function PlayerPage() {
     toast.info('正在尝试另一种播放方式，请稍候')
   }, [toast])
 
-  if (loadError) {
+  if (loadError || childViewing.error) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
-        <h1 className="text-lg font-semibold">{accessRevoked ? '这部影片暂未向儿童账号开放' : '暂时无法准备这部影片'}</h1>
-        <p className="text-sm text-[var(--nv-player-text-secondary)]">{accessRevoked ? '请返回选择其他影片，或请家长确认内容分级。' : '影片或观看记录暂时无法读取，请重试。'}</p>
+        <h1 className="text-lg font-semibold">{childViewing.error || (accessRevoked ? '这部影片暂未向儿童账号开放' : '暂时无法准备这部影片')}</h1>
+        <p className="text-sm text-[var(--nv-player-text-secondary)]">{childViewing.error ? '可以返回选择其他活动，或请家长检查观看设置。' : accessRevoked ? '请返回选择其他影片，或请家长确认内容分级。' : '影片或观看记录暂时无法读取，请重试。'}</p>
         <div className="flex gap-3">
           <button type="button" className="nv-button" data-variant="primary" onClick={() => { setLoadError(false); setLoading(true); setLoadAttempt((value) => value + 1) }}>重试</button>
           <button type="button" className="nv-button" data-variant="secondary" onClick={handleBack}>返回</button>
@@ -209,7 +211,7 @@ export default function PlayerPage() {
     )
   }
 
-  if (loading || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || media.id !== id || !playInfo || !id) {
+  if (loading || !childViewing.ready || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || media.id !== id || !playInfo || !id) {
     return (
       <div className="group/player flex h-screen items-center justify-center bg-[var(--nv-player-canvas)]">
         <div className="flex flex-col items-center gap-3">
@@ -246,7 +248,7 @@ export default function PlayerPage() {
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
   const isRandomAccessMp4 = playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v'
   const canUseWC =
-    !highlightMode && (preferredSubtitle === 'auto' || preferredSubtitle === 'off') && !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
+    !childViewing.metered && !highlightMode && (preferredSubtitle === 'auto' || preferredSubtitle === 'off') && !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
     canUseWebCodecs(playInfo.video_codec, playInfo.audio_codec, webcodecsCap) &&
     isRandomAccessMp4
 

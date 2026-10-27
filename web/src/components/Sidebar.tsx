@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useTranslation } from '@/i18n'
+import { useToast } from '@/components/Toast'
+import { logoutDevice } from '@/utils/logoutDevice'
 import { BottomNavigation, NavigationRailLink, NavigationRailSection } from '@/ui'
 import { ChevronLeft, ChevronRight, Film, Heart, Home, LogOut, Moon, Sun, UserRound } from 'lucide-react'
 
@@ -13,7 +15,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed = false, onCollapsedChange }: SidebarProps) {
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
+  const toast = useToast()
   const { theme, toggleTheme } = useThemeStore()
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -36,9 +39,10 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
     },
   ]
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
+  const handleLogout = async () => {
+    const confirmed = await logoutDevice()
+    if (!useAuthStore.getState().isAuthenticated) navigate('/login')
+    if (!confirmed && !useAuthStore.getState().isAuthenticated) toast.info('已在本机退出。需要撤销其他登录时，请在“登录设备”中操作。')
   }
 
   return (

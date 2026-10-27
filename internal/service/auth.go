@@ -36,8 +36,10 @@ func NewAuthService(userRepo *repository.UserRepo, inviteRepo *repository.Invite
 
 // LoginRequest 登录请求
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	CompatibilityClient bool   `json:"-"`
+	DeviceName          string `json:"device_name" binding:"max=80"`
+	Username            string `json:"username" binding:"required"`
+	Password            string `json:"password" binding:"required"`
 }
 
 // RegisterRequest 注册请求
@@ -88,12 +90,15 @@ func (s *AuthService) Login(req *LoginRequest, ip, ua string) (*TokenResponse, e
 		s.recordLogin(user.ID, user.Username, ip, ua, "user_disabled", false)
 		return nil, ErrUserDisabled
 	}
+	if req.CompatibilityClient && user.ChildMode {
+		return nil, ErrForbidden
+	}
 
 	// 更新最后登录信息
 	_ = s.userRepo.UpdateLastLogin(user.ID, ip)
 	s.recordLogin(user.ID, user.Username, ip, ua, "", true)
 
-	resp, err := s.generateToken(user)
+	resp, err := s.newDeviceToken(user, deviceDisplayName(req.DeviceName, ua))
 	if err != nil {
 		return nil, err
 	}
@@ -226,11 +231,11 @@ func (s *AuthService) Register(req *RegisterRequest, ip, ua string) (*TokenRespo
 	s.recordLogin(user.ID, user.Username, ip, ua, "", true)
 
 	s.logger.Infof("新用户注册: %s (角色: %s)", user.Username, user.Role)
-	return s.generateToken(user)
+	return s.newDeviceToken(user, deviceDisplayName("", ua))
 }
 
 // RefreshToken 刷新令牌
-func (s *AuthService) RefreshToken(userID string) (*TokenResponse, error) {
+func (s *AuthService) RefreshToken(userID string, sessionIDs ...string) (*TokenResponse, error) {
 	user, err := s.userRepo.FindByID(userID)
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -238,7 +243,14 @@ func (s *AuthService) RefreshToken(userID string) (*TokenResponse, error) {
 	if user.Disabled {
 		return nil, ErrUserDisabled
 	}
-	return s.generateToken(user)
+	if len(sessionIDs) > 0 && sessionIDs[0] != "" {
+		session, err := s.activeDeviceSession(userID, sessionIDs[0])
+		if err != nil {
+			return nil, err
+		}
+		return s.generateDeviceToken(user, session.ID, session.ExpiresAt)
+	}
+	return s.newDeviceToken(user, "重新登录的设备")
 }
 
 // ValidateTokenVersion 供 JWT 中间件使用：返回用户当前令牌版本号和禁用状态
@@ -250,11 +262,17 @@ func (s *AuthService) ValidateTokenVersion(userID string) (int, bool, error) {
 	return user.TokenVersion, user.Disabled || (user.ChildMode && user.Role == "admin"), nil
 }
 
-// generateToken 生成JWT令牌
-func (s *AuthService) generateToken(user *model.User) (*TokenResponse, error) {
-	expiresAt := time.Now().Add(7 * 24 * time.Hour) // 7天过期
+func (s *AuthService) generateDeviceToken(user *model.User, sessionID string, sessionExpiry ...time.Time) (*TokenResponse, error) {
+	if sessionID == "" {
+		return nil, ErrDeviceUnavailable
+	}
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	if len(sessionExpiry) > 0 && sessionExpiry[0].Before(expiresAt) {
+		expiresAt = sessionExpiry[0]
+	} // 7天过期
 
 	claims := &middleware.Claims{
+		SessionID:    sessionID,
 		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         user.Role,
